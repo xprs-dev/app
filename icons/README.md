@@ -1,4 +1,4 @@
-# Geogram icons
+# XPRS icons
 
 The god sign (star) alone. Ink #2A2620 · bone #E8E3D6 · dark #232A2E · sand #F4F1EA.
 Stroke thickens as the icon shrinks: 7.5% of the box at large sizes, 9% at 48dp, 11.5% at 32dp, 13% at 24dp, 15% at 18dp.

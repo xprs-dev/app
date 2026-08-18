@@ -24,7 +24,7 @@ class WelcomeHeroSource implements HeroSource {
     return [
       _card(
         'welcome',
-        'Welcome to Geogram',
+        'Welcome to XPRS',
         'Messaging that works over Bluetooth, the mesh and the internet — '
             'no account, no phone number.',
         now,
@@ -62,7 +62,7 @@ class WelcomeHeroSource implements HeroSource {
         title: title,
         summary: summary,
         createdAt: createdAt,
-        authorName: 'Geogram',
+        authorName: 'XPRS',
         intent: intent,
       );
 }

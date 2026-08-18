@@ -77,7 +77,7 @@ class _IwiAppState extends State<IwiApp> {
     final hasProfile = ProfileService.instance.hasProfiles &&
         ProfileService.instance.activeProfile != null;
     return MaterialApp(
-      title: 'geogram',
+      title: 'XPRS',
       // Root navigator key — lets context-free services (the remote-control
       // API) push routes, e.g. open a wapp on /api/launch.
       navigatorKey: rootNavigatorKey,

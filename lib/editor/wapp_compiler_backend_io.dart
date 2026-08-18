@@ -55,7 +55,7 @@ class NativeWasiSdkBackend implements CompilerBackend {
       return CompileResult.failure(
         'geogram_wasm_hal.h not found — walked up from '
         '${Directory.current.path} looking for wapps/hal/ and '
-        'nothing matched. Launch geogram from the repo root (or a '
+        'nothing matched. Launch XPRS from the repo root (or a '
         'subdirectory of it) so the header is reachable.',
       );
     }

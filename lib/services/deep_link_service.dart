@@ -56,10 +56,13 @@ class DeepLinkService {
   Future<void> _handle(String url) async {
     LogService.instance.add('DeepLink: $url');
     final lower = url.toLowerCase();
-    // geogram://open?wapp=<folder>&convo=<id> — a tapped Android notification.
+    // xprs://open?wapp=<folder>&convo=<id> — a tapped Android notification.
     // Same opener as the in-app notification center, so both taps land on the
     // same screen: the wapp, on the conversation when one is named.
-    if (lower.startsWith('geogram://open')) {
+    //
+    // `geogram://` is still accepted. Links were shared under the old scheme —
+    // circle invitations in chats and QR codes — and they outlive the rename.
+    if (lower.startsWith('xprs://open') || lower.startsWith('geogram://open')) {
       final uri = Uri.tryParse(url);
       if (uri == null) return;
       await openWappByFolder(
@@ -177,13 +180,14 @@ class DeepLinkService {
   }
 }
 
-/// The word a geogram link is about: the first path segment after the scheme
-/// or host ("geogram://circle/ab12" and "https://x.y/circle/ab12" -> "circle").
+/// The word a link is about: the first path segment after the scheme or host
+/// ("xprs://circle/ab12" and "https://x.y/circle/ab12" -> "circle"). The old
+/// `geogram` scheme is still recognised; see _handle.
 String _linkSubject(String lowerUrl) {
   final u = Uri.tryParse(lowerUrl);
   if (u == null) return '';
   final segs = [
-    if (u.host.isNotEmpty && u.scheme == 'geogram') u.host,
+    if (u.host.isNotEmpty && (u.scheme == 'xprs' || u.scheme == 'geogram')) u.host,
     ...u.pathSegments,
   ].where((s) => s.isNotEmpty).toList();
   return segs.isEmpty ? '' : segs.first;

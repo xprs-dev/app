@@ -1,4 +1,4 @@
-; Geogram Aurora — Inno Setup Script
+; XPRS — Inno Setup Script
 ; Per-user installer EXE with Full and Portable modes (no admin required).
 ; Compile: iscc installer\aurora.iss
 ;   (version auto-read from pubspec.yaml; override with /DMyAppVersion=x.y.z)
@@ -25,9 +25,9 @@
 
 #pragma message "Building installer for version " + MyAppVersion
 
-#define MyAppName "Geogram Aurora"
+#define MyAppName "XPRS"
 #define MyAppExeName "aurora.exe"
-#define MyAppPublisher "Geogram"
+#define MyAppPublisher "XPRS"
 #define MyAppURL "https://github.com/geograms/aurora"
 
 [Setup]
@@ -65,7 +65,7 @@ Name: "full"; Description: "Full installation (recommended)"
 Name: "portable"; Description: "Portable — extract files only, no shortcuts or registry"
 
 [Components]
-Name: "main"; Description: "Geogram Aurora application files"; Types: full portable; Flags: fixed
+Name: "main"; Description: "XPRS application files"; Types: full portable; Flags: fixed
 Name: "shortcuts"; Description: "Start Menu and optional Desktop shortcuts"; Types: full
 
 [Tasks]

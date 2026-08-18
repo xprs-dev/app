@@ -87,7 +87,7 @@
     <uses-permission
         android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
-        android:label="Geogram"
+        android:label="XPRS"
         android:name=".AuroraApplication"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -139,12 +139,22 @@
                 <category
                     android:name="android.intent.category.BROWSABLE"/>
                 <data
-                    android:scheme="geogram"
+                    android:scheme="xprs"
                     android:host="circle"/>
-                <!-- Notification taps: geogram://open?wapp=<folder>&convo=<id>
+                <!-- Notification taps: xprs://open?wapp=<folder>&convo=<id>
                      (BgBridge.notify). Declared here too so the route is
                      resolvable externally (tests, other apps) — it only ever
                      navigates, it carries no privileged action. -->
+                <data
+                    android:scheme="xprs"
+                    android:host="open"/>
+                <!-- The old scheme stays registered. Circle invitations were
+                     shared as geogram://circle/<code> links and QR codes that
+                     are already out in the world; dropping it would break every
+                     one of them. New links use xprs://. -->
+                <data
+                    android:scheme="geogram"
+                    android:host="circle"/>
                 <data
                     android:scheme="geogram"
                     android:host="open"/>

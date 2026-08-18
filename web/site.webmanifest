@@ -1,7 +1,7 @@
 {
-  "name": "Geogram",
-  "short_name": "Geogram",
-  "description": "geogram — offgrid wapp launcher",
+  "name": "XPRS",
+  "short_name": "XPRS",
+  "description": "XPRS — offgrid wapp launcher",
   "start_url": ".",
   "display": "standalone",
   "orientation": "portrait-primary",

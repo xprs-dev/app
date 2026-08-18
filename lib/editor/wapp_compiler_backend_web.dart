@@ -30,7 +30,7 @@ class _WebStubBackend implements CompilerBackend {
   }) async {
     return CompileResult.failure(
       'C compilation is not available in the browser. Use the '
-      'desktop build of geogram to compile wapps, or install '
+      'desktop build of XPRS to compile wapps, or install '
       'a pre-compiled wapp from the store.',
     );
   }

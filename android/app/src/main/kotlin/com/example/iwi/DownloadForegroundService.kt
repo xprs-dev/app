@@ -53,7 +53,7 @@ class DownloadForegroundService : Service() {
             }
         }
         val b = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Geogram Aurora")
+            .setContentTitle("XPRS")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_stat_geogram)
             .setOngoing(true)

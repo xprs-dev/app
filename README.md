@@ -1,6 +1,6 @@
-# Geogram
+# XPRS
 
-Geogram is a messenger and app launcher that works off the grid. It talks over
+XPRS is a messenger and app launcher that works off the grid. It talks over
 the internet, over a [Reticulum](docs/reticulum-connections.md) overlay, and
 straight over [Bluetooth LE](docs/ble.md), and it stitches those together so a
 message or a file gets to the other side over whatever path happens to be up. If
@@ -8,12 +8,12 @@ there is no internet, it falls back to a Bluetooth street mesh and long range
 radio. If there is internet, it uses it. There are no accounts, no phone number,
 and no server in the middle.
 
-On top of that, Geogram runs "wapps": small WebAssembly apps that draw through
+On top of that, XPRS runs "wapps": small WebAssembly apps that draw through
 one shared native UI and use the host's transports. This page walks through the
 four main ones: Chat, Social, Reticulum, and Torrents.
 
 <p align="center">
-  <img src="docs/screenshots/launcher.png" width="240" alt="Geogram launcher">
+  <img src="docs/screenshots/launcher.png" width="240" alt="XPRS launcher">
   <img src="docs/screenshots/social-feed.png" width="240" alt="Social feed">
   <img src="docs/screenshots/reticulum-graph.gif" width="240" alt="Live Reticulum node graph">
 </p>
@@ -24,9 +24,9 @@ The latest stable build:
 
 | Platform | Download |
 |----------|----------|
-| Linux (x64) | [Geogram for Linux (.tar.gz)](https://github.com/geograms/aurora/releases/latest/download/aurora-linux-x64.tar.gz) |
-| Windows (x64) | [Geogram for Windows (installer)](https://github.com/geograms/aurora/releases/latest/download/aurora-windows-x64-setup.exe) |
-| Android | [Geogram for Android (.apk)](https://github.com/geograms/aurora/releases/latest/download/aurora.apk) |
+| Linux (x64) | [XPRS for Linux (.tar.gz)](https://github.com/geograms/aurora/releases/latest/download/aurora-linux-x64.tar.gz) |
+| Windows (x64) | [XPRS for Windows (installer)](https://github.com/geograms/aurora/releases/latest/download/aurora-windows-x64-setup.exe) |
+| Android | [XPRS for Android (.apk)](https://github.com/geograms/aurora/releases/latest/download/aurora.apk) |
 
 Every build, betas included, is on the
 [releases page](https://github.com/geograms/aurora/releases). macOS builds from
@@ -60,9 +60,9 @@ source (see [Build & run](#build--run)).
 
 ## The wapps
 
-Wapps are small WebAssembly apps that borrow Geogram's native UI and its
+Wapps are small WebAssembly apps that borrow XPRS's native UI and its
 transports. All of the app-specific code lives in the wapp, so a wapp can update
-on its own without a fresh install of Geogram. Four of them ship in the box.
+on its own without a fresh install of XPRS. Four of them ship in the box.
 
 ### Chat
 
@@ -101,7 +101,7 @@ everything you post is signed with your own key.
 
 A live picture of the Reticulum network the way your device hears it, drawn
 natively and off the UI thread. You get a radar of **peers**, **hubs**, and other
-**geograms**, with **LoRa** and **Radio** counters along the bottom. Filter by
+**XPRS devices**, with **LoRa** and **Radio** counters along the bottom. Filter by
 network, tap through the devices you can reach (each with its callsign and public
 key), fire off an **LXMF direct message** to any of them, and even open
 **NomadNet** pages over the mesh. It only ever shows what has actually announced
@@ -211,7 +211,7 @@ under [`docs/`](docs/README.md):
 
 ## Build & run
 
-Geogram is a Flutter app, and the Reticulum stack is a pure-Dart package sitting
+XPRS is a Flutter app, and the Reticulum stack is a pure-Dart package sitting
 next to it.
 
 ```sh

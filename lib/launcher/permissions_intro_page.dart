@@ -105,7 +105,7 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Welcome to Geogram',
+                          Text('Welcome to XPRS',
                               style: theme.textTheme.titleLarge
                                   ?.copyWith(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),

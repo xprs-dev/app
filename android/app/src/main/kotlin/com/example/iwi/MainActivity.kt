@@ -75,8 +75,9 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /** Pull a deep link out of an ACTION_VIEW intent, or null. Handled links:
-     * circle invites (https://geogram.radio/circle/… and geogram://circle/…)
-     * and notification taps (geogram://open?wapp=…&convo=…, set by
+     * circle invites (https://geogram.radio/circle/… and xprs://circle/…,
+     * with the old geogram:// scheme still accepted)
+     * and notification taps (xprs://open?wapp=…&convo=…, set by
      * BgBridge.notify so a message notification opens its conversation). */
     private fun linkFrom(intent: Intent?): String? {
         if (intent == null || intent.action != Intent.ACTION_VIEW) return null
@@ -189,7 +190,7 @@ class MainActivity : FlutterFragmentActivity() {
                 if (url == null || name == null) {
                     result.error("ARG", "url and filename required", null)
                 } else {
-                    val title = call.argument<String>("title") ?: "Geogram update"
+                    val title = call.argument<String>("title") ?: "XPRS update"
                     result.success(enqueueDownload(url, name, title))
                 }
             }

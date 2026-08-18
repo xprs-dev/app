@@ -1,5 +1,5 @@
 /*
- * UpdateService — in-app updater for Geogram Aurora.
+ * UpdateService — in-app updater for XPRS.
  *
  * Decentralized, authenticated updates over Reticulum. The publisher owns two
  * signed mutable folders (an IPNS-like, secp256k1-signed content-addressed
@@ -272,7 +272,7 @@ class UpdateService {
     NotificationService.instance.show(GeogramNotification(
       level: NotificationLevel.info,
       title: 'Update available',
-      body: 'Geogram ${sel.version} is available. Open Settings → '
+      body: 'XPRS ${sel.version} is available. Open Settings → '
           'Updates to install.',
       source: 'host:updates',
       scope: NotificationScope.both,
@@ -309,7 +309,7 @@ class UpdateService {
     status.value = UpdateStatus.downloading;
     progress.value = 0;
     error = null;
-    UpdateNative.serviceStart('Downloading Geogram ${release.version}');
+    UpdateNative.serviceStart('Downloading XPRS ${release.version}');
     try {
       void onProgress(int received, int total) {
         if (total > 0) {
@@ -387,7 +387,7 @@ class UpdateService {
     final prev = await _activeDownloadId();
     if (prev != null) await UpdateNative.removeDownload(prev);
     final id = await UpdateNative.enqueueDownload(
-        asset.url, asset.name, 'Downloading Geogram ${release.version}');
+        asset.url, asset.name, 'Downloading XPRS ${release.version}');
     if (id == null) {
       error = 'Could not start the download';
       status.value = UpdateStatus.error;
@@ -517,7 +517,7 @@ class UpdateService {
     final platform = currentUpdatePlatform();
     if (platform == UpdatePlatform.android && !await UpdateNative.canInstall()) {
       await UpdateNative.openInstallSettings();
-      error = 'Allow installing apps from Geogram, then tap Install again.';
+      error = 'Allow installing apps from XPRS, then tap Install again.';
       status.value = UpdateStatus.error;
       return false;
     }

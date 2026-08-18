@@ -339,7 +339,7 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                         )),
                 const SizedBox(height: 4),
                 Text(
-                  'Check for new Geogram releases (stable or beta) and '
+                  'Check for new XPRS releases (stable or beta) and '
                   'install them in place.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: cs.onSurfaceVariant,

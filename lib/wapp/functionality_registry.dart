@@ -4,7 +4,7 @@
  * The launcher rebuilds this whenever it scans for wapps. Providers
  * are WappManifest entries whose manifest.json declared one or more
  * functionality IDs under `provides.functionalities`, plus a
- * synthetic "Geogram Core" entry for the HAL capabilities built
+ * synthetic "XPRS Core" entry for the HAL capabilities built
  * into the runtime itself.
  *
  * Each functionality carries an optional [FunctionalityDef] with
@@ -86,8 +86,8 @@ class FunctionalityRegistry {
   static final WappManifest _coreManifest = WappManifest(
     id: 'geogram.core',
     name: 'core',
-    title: 'Geogram Core',
-    description: 'Built-in HAL capabilities provided by the geogram runtime.',
+    title: 'XPRS Core',
+    description: 'Built-in HAL capabilities provided by the XPRS runtime.',
     kind: 'system',
     dirPath: '',
     providedFunctionalities: coreFunctionalities.keys.toList(),

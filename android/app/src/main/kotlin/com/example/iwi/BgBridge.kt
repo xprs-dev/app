@@ -119,7 +119,7 @@ object BgBridge {
 
     /** Post a heads-up notification for a message/event. Tapping opens the
      * app — and when [wapp] is given, deep-links straight to that wapp (and
-     * to [convo] inside it) via geogram://open, the same route the in-app
+     * to [convo] inside it) via xprs://open, the same route the in-app
      * notification center takes. A notification that names a conversation
      * must open that conversation, not a front page. */
     fun notify(
@@ -144,7 +144,7 @@ object BgBridge {
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
         if (launch != null && !wapp.isNullOrEmpty()) {
             val uri = android.net.Uri.Builder()
-                .scheme("geogram").authority("open")
+                .scheme("xprs").authority("open")
                 .appendQueryParameter("wapp", wapp)
                 .apply { if (!convo.isNullOrEmpty()) appendQueryParameter("convo", convo) }
                 .build()

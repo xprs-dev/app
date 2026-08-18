@@ -128,7 +128,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         final hub = _allNodes.where((e) => e.id == _panelHubId).firstOrNull;
         return hub == null ? 'Devices' : 'Devices · ${hub.label}';
       case _Panel.geogramDevices:
-        return 'Geogram devices';
+        return 'XPRS devices';
       case _Panel.hubs:
         return 'Bootstrap hubs';
       case _Panel.settings:
@@ -694,7 +694,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           ),
           const SizedBox(width: 4),
           _filterChip(
-            label: 'geogram',
+            label: 'XPRS',
             icon: _geoOnly ? Icons.check_box : Icons.check_box_outline_blank,
             active: _geoOnly,
             onTap: () {
@@ -981,7 +981,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                             fontSize: 15,
                             fontWeight: FontWeight.w700)),
                     const SizedBox(width: 4),
-                    const Text('geogram',
+                    const Text('XPRS',
                         style: TextStyle(color: _gMuted, fontSize: 12)),
                     const SizedBox(width: 6),
                     const Icon(Icons.chevron_right, size: 15, color: _gMuted),
@@ -1539,7 +1539,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     final dmText = switch (n.dm) {
       'lxmf' => 'LXMF · direct',
       'sf' => 'LXMF · store-and-forward',
-      'chat' => 'Geogram chat',
+      'chat' => 'XPRS chat',
       _ => 'No 1:1 messaging heard',
     };
     return ListView(padding: const EdgeInsets.all(18), children: [
@@ -1566,7 +1566,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                 style: const TextStyle(
                     color: _gFg, fontSize: 20, fontWeight: FontWeight.w700)),
             const SizedBox(height: 2),
-            Text(kindName + (n.geogram ? ' · geogram' : ''),
+            Text(kindName + (n.geogram ? ' · XPRS' : ''),
                 style: const TextStyle(color: _gMuted, fontSize: 13)),
             if (n.kind != 'self' && m['lastSeen'] != null)
               Padding(
@@ -1815,7 +1815,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-              'No other Reticulum devices right now.\n\n(Your geogram devices are under the "geogram" list; hubs under "hubs".)',
+              'No other Reticulum devices right now.\n\n(Your XPRS devices are under the "XPRS" list; hubs under "hubs".)',
               textAlign: TextAlign.center,
               style: TextStyle(color: _gMuted, fontSize: 13)),
         ),
@@ -1867,7 +1867,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text('No geogram devices reachable right now.',
+          child: Text('No XPRS devices reachable right now.',
               textAlign: TextAlign.center,
               style: TextStyle(color: _gMuted, fontSize: 13)),
         ),
@@ -2004,7 +2004,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         child: Padding(
           padding: EdgeInsets.all(22),
           child: Text(
-              'No reachable people right now.\n\nDevices that announce LXMF — geogram, NomadNet or Sideband — appear here as they are heard.',
+              'No reachable people right now.\n\nDevices that announce LXMF — XPRS, NomadNet or Sideband — appear here as they are heard.',
               textAlign: TextAlign.center,
               style: TextStyle(color: _gMuted, fontSize: 13)),
         ),
@@ -2319,7 +2319,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           style: TextStyle(color: _gMuted, fontSize: 10, letterSpacing: 0.5)),
       const SizedBox(height: 4),
       stat('All time', '$total'),
-      stat('Running geogram', '$geo', color: _gGeo),
+      stat('Running XPRS', '$geo', color: _gGeo),
       stat('Active (24h)', '$seen24h'),
       stat('Live now', '$live'),
       stat('Online now', '$online'),

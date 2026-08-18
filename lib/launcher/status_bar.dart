@@ -201,7 +201,7 @@ class _NetStats {
     this.newPosts = 0,
   });
 
-  /// Who we can reach. It says "geogram devices" explicitly, because the number
+  /// Who we can reach. It says "XPRS devices" explicitly, because the number
   /// people compare this against — the Reticulum wapp's badge — counts a
   /// different population (every LXMF peer heard on the hubs). The two looked
   /// like they contradicted each other while both just said "devices".
@@ -209,12 +209,12 @@ class _NetStats {
     if (!up) return 'Reticulum is off';
     final parts = <String>[];
     if (devices > 0) {
-      parts.add('$devices geogram ${devices == 1 ? 'device' : 'devices'}');
+      parts.add('$devices XPRS ${devices == 1 ? 'device' : 'devices'}');
     }
     if (bleNeighbours > 0) parts.add('$bleNeighbours over Bluetooth');
     if (parts.isEmpty) {
       return hubs > 0
-          ? 'On the network, no geogram devices yet'
+          ? 'On the network, no XPRS devices yet'
           : 'Looking for a way out';
     }
     return parts.join(' · ');

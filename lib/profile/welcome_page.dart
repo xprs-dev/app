@@ -399,7 +399,7 @@ class _WelcomePageState extends State<WelcomePage> {
       builder: (ctx) => AlertDialog(
         title: const Text('Protect your identity'),
         content: const Text(
-          'Allow storage access so Geogram can keep a backup of your secret '
+          'Allow storage access so XPRS can keep a backup of your secret '
           'key on this phone. It lets you restore this identity if you '
           'reinstall the app or clear its data.',
         ),
@@ -481,7 +481,7 @@ class _WelcomePageState extends State<WelcomePage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Welcome to geogram',
+                                  'Welcome to XPRS',
                                   style: theme.textTheme.titleLarge?.copyWith(
                                     fontWeight: FontWeight.bold,
                                   ),
