@@ -957,7 +957,12 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                               fontSize: 15,
                               fontWeight: FontWeight.w700)),
                       const SizedBox(width: 4),
-                      const Text('xprs',
+                      // "on air", not "xprs": the row below counts a
+                      // DIFFERENT population (devices running this app) and
+                      // both said XPRS after the rebrand -- which made a
+                      // correct legend read as a bug, stations on the canvas
+                      // against a zero beside them.
+                      const Text('on air',
                           style: TextStyle(color: _gMuted, fontSize: 12)),
                     ]),
                   ),
@@ -981,7 +986,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                             fontSize: 15,
                             fontWeight: FontWeight.w700)),
                     const SizedBox(width: 4),
-                    const Text('XPRS',
+                    const Text('devices',
                         style: TextStyle(color: _gMuted, fontSize: 12)),
                     const SizedBox(width: 6),
                     const Icon(Icons.chevron_right, size: 15, color: _gMuted),
@@ -1566,7 +1571,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                 style: const TextStyle(
                     color: _gFg, fontSize: 20, fontWeight: FontWeight.w700)),
             const SizedBox(height: 2),
-            Text(kindName + (n.geogram ? ' · XPRS' : ''),
+            Text(kindName + (n.geogram && n.kind != 'xprs' ? ' · XPRS' : ''),
                 style: const TextStyle(color: _gMuted, fontSize: 13)),
             if (n.kind != 'self' && m['lastSeen'] != null)
               Padding(
