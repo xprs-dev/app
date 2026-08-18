@@ -1,0 +1,434 @@
+import 'dart:async';
+import 'dart:developer' as developer;
+
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'models/monitored_task.dart';
+import 'connections/builtin_connections.dart';
+import 'editor/editor_install.dart';
+import 'wapp/host_event_bridge.dart';
+import 'wapp/native/media_capability.dart';
+import 'wapp/native/wasm_video_player.dart' show warmVideoDecoderModule;
+import 'wapp/native/wasm_video_session.dart';
+import 'services/power_governor.dart';
+import 'services/i2p/i2p_background_service.dart';
+import 'services/update_service.dart';
+import 'services/announced_tags_store.dart';
+import 'services/notification_service.dart';
+import 'services/notification_store.dart';
+import 'services/permission_gate.dart';
+import 'services/preferences_service.dart';
+import 'services/blossom_server.dart';
+import 'services/log_service.dart';
+import 'services/remote_api_service.dart';
+import 'services/deep_link_service.dart';
+import 'profile/profile_encryption.dart';
+import 'profile/profile_service.dart';
+import 'platform/platform.dart' show hasImplicitView, signalDartReady;
+import 'profile/storage_paths.dart';
+import 'services/task_monitor_service.dart';
+
+import 'launcher/boot_splash.dart';
+import 'launcher/launcher.dart';
+
+/// Entry point.
+///
+/// Everything runs inside a guarded zone, and the binding is created inside it
+/// too (Flutter requires the binding and `runApp` to share a zone). The point is
+/// the boot engine: it has no Activity and no screen, so a throw on the way to
+/// the first `runApp` used to leave nothing behind at all — no widget, no log,
+/// no clue. Now it is written to the log ring the API serves.
+Future<void> main() async {
+  runZonedGuarded(_boot, (error, stack) {
+    // The zone outlives boot, so it catches every uncaught async error for the
+    // life of the process. Only the ones that land before the first runApp are
+    // boot failures — calling a later one "BOOT FAILED" sends the next reader
+    // hunting through main() for a fault that lives in a service.
+    LogService.instance
+      ..add('${_bootFinished ? "uncaught" : "BOOT FAILED"}: $error')
+      ..add('$stack');
+  });
+}
+
+/// Set once the launcher is on screen; see the error handler above.
+bool _bootFinished = false;
+
+/// Boots the host services through the [BootOrchestrator] and runs the
+/// launcher ([IwiApp]). All launcher UI lives in lib/launcher/.
+Future<void> _boot() async {
+  // Required before any async work that touches platform channels.
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Lock to portrait — the UI is designed portrait-first and auto-rotation is
+  // disorienting on phones (the manifest also pins screenOrientation=portrait,
+  // which is what makes skipping this safe when there is no view).
+  //
+  // ONLY with a view. `flutter/platform` is served by PlatformPlugin, and
+  // PlatformPlugin is built by the Activity delegate — never by a bare
+  // FlutterEngine. On the engine the boot receiver starts there is no Activity,
+  // so this call threw MissingPluginException here, uncaught, BEFORE the first
+  // runApp: no splash, no log line, no services, and MainActivity then attached
+  // the UI to that rootless engine and showed a black screen until force-stop.
+  if (hasImplicitView) {
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  }
+
+  // Mirror everything the app prints into the in-memory log buffer so the
+  // remote-control API can serve it over /api/log.
+  final flutterDebugPrint = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {
+    if (message != null) LogService.instance.add(message);
+    flutterDebugPrint(message, wrapWidth: wrapWidth);
+  };
+  // Proof-of-binary marker — verify via /api/status "build" or /api/log.
+  LogService.instance.add('Aurora started — build $kAuroraBuildTag');
+
+  // Wedge forensics. Two permanent probes, both cheap:
+  //  1. The Dart VM service URI (debug/profile builds) — when the app freezes,
+  //     this is the only way to pull live isolate stacks, and its auth token
+  //     rotates out of logcat within minutes. Persist it in our own log ring.
+  //  2. An event-loop lag probe: a 500ms heartbeat that logs when it fires
+  //     late — any long synchronous main-isolate operation shows up as a
+  //     timestamped 'perf: main isolate stalled' line next to whatever else
+  //     was logged at that moment.
+  unawaited(
+    developer.Service.getInfo().then((info) {
+      final uri = info.serverUri;
+      if (uri == null) return;
+      LogService.instance
+        ..vmServiceUri = '$uri' // pinned; /api/status serves it
+        ..add('Dart VM service: $uri');
+    }).catchError((_) {}),
+  );
+  var lagExpected = DateTime.now().millisecondsSinceEpoch + 500;
+  Timer.periodic(const Duration(milliseconds: 500), (_) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final drift = now - lagExpected;
+    lagExpected = now + 500;
+    if (drift > 300) {
+      LogService.instance.add('perf: main isolate stalled ~${drift}ms');
+    }
+  });
+
+  // Bound the image cache on phones. Flutter's default (100MB / 1000 images)
+  // is sized for desktops; this app feeds it full-resolution network photos
+  // from the launcher's novelties carousel, so the default lets decoded bitmaps
+  // pile up against the Android heap limit. 32MB / 100 images is ample for a
+  // carousel plus a chat's inline media, and keeps the app well clear of the
+  // allocation pressure that fed the GC spiral.
+  if (defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS) {
+    PaintingBinding.instance.imageCache
+      ..maximumSizeBytes = 20 << 20
+      ..maximumSize = 60;
+  }
+
+  // First frame: the triad splash. The Android 12+ system launch window is a
+  // flat colour (transparent icon), so this is the only launch image; the
+  // second runApp below replaces it once boot completes, but never before
+  // the splash has been visible for a beat (see the hold below runAll).
+  final splashShownAt = DateTime.now();
+  runApp(const BootSplashApp());
+
+  // From here the engine has a root widget, so attaching a view to it renders
+  // something. The Android host refuses to reuse an engine that never got
+  // this far — see MainActivity.provideFlutterEngine.
+  unawaited(signalDartReady());
+  _bootFinished = true;
+
+  // The shared-package Blossom server logs through this injectable sink
+  // (it no longer knows aurora's LogService directly).
+  BlossomServer.log = (m) => LogService.instance.add(m);
+
+  // Resolve the writable storage root for this platform before any boot
+  // task touches disk (Android/iOS have no $HOME — use the app sandbox).
+  await initStorageRoot();
+
+  // Video playback is an optional add-on. The host carries NO codec: the
+  // decoder runs as wasm inside a media wapp and pushes RGBA frames to
+  // this generic, codec-free sink. Registering it unconditionally is safe
+  // — media.video only lights up when a wapp advertising it is installed.
+  MediaCapabilities.registerBackend(WasmVideoBackend());
+
+  // Register core host services as parallel boot tasks so they run
+  // through the orchestrator (and show up in the tasks wapp with the
+  // boot:parallel pill). They are cheap and independent, so parallel
+  // is correct — no contention for CPU or memory.
+  BootOrchestrator.instance.register(
+    id: 'notification-service',
+    name: 'Notification service',
+    description:
+        'Registers the system tray notification backend and subscribes '
+        'to host ErrorEvent. In-app display is handled by the '
+        'NotificationLayer overlay wrapping the launcher.',
+    mode: BootStart.parallel,
+    init: () async {
+      NotificationService.instance.init();
+      NotificationStore.instance.init();
+      AnnouncedTagsStore.instance.init();
+    },
+  );
+  BootOrchestrator.instance.register(
+    id: 'register-connections',
+    name: 'Register connections',
+    description:
+        'Registers the built-in transports (internet live; LAN, Bluetooth, '
+        'LoRa, USB as capability-declaring stubs) into the '
+        'ConnectionRegistry so wapps can reason about available connections '
+        'and their characteristics.',
+    mode: BootStart.parallel,
+    init: () async {
+      registerBuiltinConnections();
+    },
+  );
+  BootOrchestrator.instance.register(
+    id: 'host-event-bridge',
+    name: 'Host → wapp event bridge',
+    description:
+        'Republishes AppStarted/WappLoaded/WappUnloaded/WappCrashed/'
+        'ErrorEvent on the wapp event broker as system.* topics.',
+    mode: BootStart.parallel,
+    init: () async {
+      HostEventBridge.instance.install();
+    },
+  );
+  BootOrchestrator.instance.register(
+    id: 'migrate-storage-layout',
+    name: 'Migrate storage layout',
+    description:
+        'One-time on-disk renames: profiles/<id>/ -> devices/<id>/, then '
+        'per-device apps/ -> wapps/ (installed packages) and old wapps/ '
+        '-> data/ (per-wapp settings). No-op once migrated. Must run '
+        'before profile-service and the launcher scan.',
+    mode: BootStart.sequential,
+    init: migrateStorageLayout,
+  );
+  BootOrchestrator.instance.register(
+    id: 'profile-service',
+    name: 'Profile service',
+    description:
+        'Loads profiles.json and the active profile id. Must run '
+        'before the launcher scan because storage_paths.dart '
+        'resolves apps/ and wapps/ under the active profile folder.',
+    mode: BootStart.sequential,
+    init: () async {
+      await ProfileService.instance.load();
+      // On a fresh install (no profiles) the launcher shows the WelcomePage
+      // first-run flow — vanity callsign generator + a nickname the USER
+      // chooses. We do NOT silently mint a default 'aurora' identity. The
+      // active profile is seeded with the default wapps once it exists (see
+      // the seed gate in launcher_app).
+
+      // Encrypted profile with a "keep unlocked on this device" cache:
+      // unlock right here, before the migration/seed boot tasks and the
+      // gated services touch profile storage. This is what lets the
+      // headless Android boot receive messages without a UI. No cache →
+      // stays locked; the UnlockPage (UI) or PermissionGate's system
+      // notification (headless) take it from there.
+      final active = ProfileService.instance.activeProfile;
+      if (active != null &&
+          ProfileEncryption.isEncrypted(active.id) &&
+          await ProfileEncryption.canUnlockSilently(active.id)) {
+        await ProfileEncryption.tryUnlockCached(active.id);
+      }
+    },
+  );
+  BootOrchestrator.instance.register(
+    id: 'install-editor',
+    name: 'Install wapp editor',
+    description:
+        'Installs the built-in wapp editor (App Creator) from bundled '
+        'assets into its own root storage location, outside the grid-'
+        'scanned wapps/ dir. Idempotent (version-guarded). Reachable only '
+        'via the per-wapp Edit action, never as a grid tile.',
+    mode: BootStart.sequential,
+    init: ensureEditorInstalled,
+  );
+  BootOrchestrator.instance.register(
+    id: 'migrate-aprs-to-chat',
+    name: 'Migrate aprs wapp to chat',
+    description:
+        'One-time rename of the comms wapp folder aprs->chat (and its '
+        'autostart preference) so existing profiles transition to the renamed '
+        '"Chat" wapp. Idempotent; runs before seeding + bundled-wapp upgrade so '
+        'the renamed install picks up the new bundle.',
+    mode: BootStart.sequential,
+    init: migrateAprsToChat,
+  );
+  BootOrchestrator.instance.register(
+    id: 'migrate-nostr-to-social',
+    name: 'Migrate nostr wapp to social',
+    description:
+        'One-time rename of the social wapp folder nostr->social (data dir, '
+        'autostart preference and offered-set markers included) so existing '
+        'profiles transition to the renamed "Social" wapp with history intact. '
+        'Idempotent; runs before seeding + bundled-wapp upgrade so the renamed '
+        'install picks up the new bundle.',
+    mode: BootStart.sequential,
+    init: migrateNostrToSocial,
+  );
+  BootOrchestrator.instance.register(
+    id: 'migrate-messages-to-mail',
+    name: 'Migrate messages wapp to mail',
+    description:
+        'One-time rename of the messenger wapp folder messages->mail (data '
+        'dir, autostart preference and offered-set markers included) so '
+        'existing profiles transition to the renamed "Mail" wapp with their '
+        'conversation history intact. Idempotent; runs before seeding + '
+        'bundled-wapp upgrade so the renamed install picks up the new bundle.',
+    mode: BootStart.sequential,
+    init: migrateMessagesToMail,
+  );
+  BootOrchestrator.instance.register(
+    id: 'migrate-reticulum-to-mesh',
+    name: 'Migrate reticulum wapp to mesh',
+    description:
+        'One-time rename of the network wapp folder reticulum->mesh (data '
+        'dir — which carries the node\'s observed.sqlite3 — autostart '
+        'preference and offered-set markers included) so existing profiles '
+        'transition to the renamed "Mesh" wapp, which now covers Reticulum '
+        'and XPRS. Idempotent; runs before seeding + bundled-wapp upgrade '
+        'and before reticulum-autostart, which reads the data dir.',
+    mode: BootStart.sequential,
+    init: migrateReticulumToMesh,
+  );
+  BootOrchestrator.instance.register(
+    id: 'seed-default-wapps',
+    name: 'Seed default wapps',
+    description:
+        'On a brand-new profile, installs the default set (Wapp Store, '
+        'Maps, and the system wapps) into the profile so the launcher is '
+        'usable. Runs once per profile (guarded by a .seeded marker). '
+        'Must run after profile-service so the active profile exists.',
+    mode: BootStart.sequential,
+    init: ensureProfileSeeded,
+  );
+  BootOrchestrator.instance.register(
+    id: 'upgrade-bundled-wapps',
+    name: 'Upgrade bundled wapps',
+    description:
+        'After seeding, replace any installed wapp whose bundled (.wapp) '
+        'version is newer than the installed one, so an app update ships wapp '
+        'fixes to devices without a manual reinstall. Skips uninstalled and '
+        'user-modified wapps; preserves wapp data. Runs every launch.',
+    mode: BootStart.sequential,
+    init: () async {
+      await upgradeBundledWapps();
+    },
+  );
+  BootOrchestrator.instance.register(
+    id: 'ensure-new-default-wapps',
+    name: 'Ensure new default wapps',
+    description:
+        'Backfills default wapps added after a profile was first seeded '
+        '(wallet, atm) into already-seeded profiles, exactly once each, '
+        'without resurrecting wapps the user uninstalled. Runs every launch.',
+    mode: BootStart.sequential,
+    init: () async {
+      await ensureNewDefaultWapps();
+    },
+  );
+
+  BootOrchestrator.instance.register(
+    id: 'reticulum-autostart',
+    name: 'Mesh node (always-on)',
+    description:
+        'Starts the Reticulum node automatically and keeps it running so '
+        'folder sharing, discovery-by-key, and file transfer work with no '
+        'manual step. Connects to a public testnet TCP bootstrap as a client '
+        '(host/port configurable). Fire-and-forget with background retry so '
+        'boot never blocks on the bootstrap connection.',
+    mode: BootStart.parallel,
+    init: () async {
+      // Gated: bringing the node up also brings up the BLE5 interface, and on
+      // Android touching BLE raises a system permission dialog. Boot runs
+      // before runApp(), so an ungated start threw that dialog at the user
+      // BEFORE the permissions intro had even rendered. A user who has not yet
+      // been through the intro gets nothing started here; the intro's
+      // completion starts it (PermissionGate.startGatedServices).
+      // Bounded: this runs BEFORE runApp(), so anything that stalls here holds
+      // the splash on screen with no UI at all. Whatever does not finish in
+      // time is picked up again right after runApp() (same call, idempotent).
+      await Future(() async {
+        if (await PermissionGate.ready) {
+          await PermissionGate.startGatedServices();
+        }
+      }).timeout(const Duration(seconds: 10), onTimeout: () {
+        LogService.instance
+            .add('boot: gated services still starting — continuing to UI');
+      });
+    },
+  );
+
+  // Run every registered boot task. Sequential boot tasks run first,
+  // alone, in registration order; then all parallels run concurrently.
+  await BootOrchestrator.instance.runAll();
+
+  // Keep the triad splash on screen for at least 3 seconds — a fast boot
+  // otherwise flashes it too briefly to read.
+  const minSplash = Duration(seconds: 3);
+  final splashElapsed = DateTime.now().difference(splashShownAt);
+  if (splashElapsed < minSplash) {
+    await Future<void>.delayed(minSplash - splashElapsed);
+  }
+
+  runApp(IwiApp(messengerKey: rootMessengerKey));
+
+  // Warm the video decoder wasm module off the critical path: the first tap
+  // on an inline video then skips the multi-second wasmtime compile
+  // (wasm_run has no module serialization, so this is per-session). Delayed
+  // so it never competes with first paint; the compile itself runs on
+  // wasmtime's native threads.
+  unawaited(
+      Future<void>.delayed(const Duration(seconds: 3), warmVideoDecoderModule));
+
+  // Remote-control API: start after runApp so the root navigator is live
+  // (it backs /api/launch). Gated by a setting (default on); see Settings.
+  final prefs = await PreferencesService.instance();
+  if (prefs.remoteApiEnabled) {
+    await RemoteApiService.instance.start(
+      port: prefs.remoteApiPort,
+      navigatorKey: rootNavigatorKey,
+    );
+  }
+
+  // Main-isolate CPU attribution: one line a minute ranking which monitored
+  // tasks (wapp ticks, service loops) actually burned the main isolate. This
+  // is what tells us — with evidence, not guesswork — which workloads are
+  // worth moving into a worker isolate, and proves the move afterwards.
+  TaskMonitorService.instance.startCpuSummary();
+
+  // Power governor: pause non-critical background tasks on low battery, resume
+  // when power recovers (complements the task monitor's CPU-budget governor).
+  unawaited(PowerGovernor.instance.start());
+
+  // I2P node as a governable background process (opt-in; runs in its own isolate
+  // and is auto-paused on CPU overload / low battery). Fire-and-forget.
+  if (prefs.i2pEnabled) {
+    unawaited(I2pBackgroundService().start());
+  }
+
+  // Background wapp services the user enabled (autostart) — keep e.g. Chat
+  // receiving over BLE without its page open. Gated: these wapps scan/advertise
+  // over BLE, read GPS and run under a foreground-service notification, every
+  // one of which raises an Android permission dialog. Started here only for a
+  // user who already granted everything (the returning user); a first-run user
+  // gets them started by the permissions intro instead.
+  if (await PermissionGate.ready) {
+    unawaited(PermissionGate.startGatedServices());
+  }
+
+  // Deep links (Android): open geogram.radio/circle/<key> straight on the
+  // circles "apply to join" flow. Needs the navigator live (after runApp).
+  unawaited(DeepLinkService.instance.start());
+
+  // Check GitHub for a newer Geogram Aurora release and, if found, surface one
+  // notification (Settings → Updates does the install). Best-effort, off web.
+  unawaited(UpdateService.instance.backgroundCheck());
+}

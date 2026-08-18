@@ -1,0 +1,622 @@
+// Generic, app-agnostic conversation model for the ConversationsField
+// primitive. A wapp owns all semantics (who a conversation is, how it is
+// named, what is pinned, badges, ordering inputs) and drives this store via
+// the ui.convo.* protocol; the host only renders what it is told. There is
+// no domain knowledge here (no groups, callsigns, bulletins, distance, etc.).
+
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
+import 'conversation_db.dart';
+
+/// Short, stable key for a message: the first 8 hex characters of sha1(text),
+/// plus the time it carries — "1a2b3c4d@13:51".
+///
+/// A vote has to name the message it votes on across two devices that may hold
+/// it under different ids (or, for anything sent before ids were derived, no
+/// id at all). Sending the text itself would work and is what a first cut did,
+/// but a message can be an image reference or several hundred characters, and
+/// these votes ride Bluetooth — this is a fixed ~14 characters whatever the
+/// message, and the far side computes the same key from what it already has.
+///
+/// The time is there because content alone is not unique: "ok" gets sent all
+/// day, and a like on this morning's would land on the newest one. It is a
+/// tie-breaker, not a requirement — see [matchesContentKey], which falls back
+/// to content when two clocks disagree about the minute.
+String contentKey(String text, [String time = '']) {
+  final t = text.replaceAll('\n', ' ').trim();
+  if (t.isEmpty) return '';
+  final h = sha1.convert(utf8.encode(t)).toString().substring(0, 8);
+  return time.isEmpty ? h : '$h@$time';
+}
+
+/// Does [key] name this message? [exact] demands the time match too.
+bool matchesContentKey(Map<String, dynamic> m, String key, {bool exact = true}) {
+  final at = key.indexOf('@');
+  final wantHash = at < 0 ? key : key.substring(0, at);
+  final wantTime = at < 0 ? '' : key.substring(at + 1);
+  final text = (m['text'] ?? '').toString();
+  if (contentKey(text) != wantHash) return false;
+  if (!exact || wantTime.isEmpty) return true;
+  return (m['time'] ?? '').toString() == wantTime;
+}
+
+/// One conversation row + its messages. All fields are opaque to the host.
+class ConversationItem {
+  final String id;
+  String title;
+  String subtitle; // preview line for the list
+  String badge; // free-text trailing chip, e.g. a distance the wapp computed
+  String icon; // generic icon name (person, campaign, tag, group, chat…)
+  int unread;
+
+  /// Muted: unread still counts on this row (shown grey) but does NOT propagate
+  /// to the Messages-tab / app-icon badge (no app-wide attention).
+  bool muted;
+
+  /// Closed: removed from the conversation list view. Re-appears when a new
+  /// incoming message arrives.
+  bool closed;
+
+  /// Private: a wapp-defined flag the wapp sets per conversation (e.g. APRS's
+  /// "Reticulum-only" mode). Purely a display hint here — the host shows a lock
+  /// indicator; the wapp owns the routing behaviour.
+  bool private;
+
+  /// Host wall-clock (ms) of the last real activity (message / pin / new
+  /// unread) — the primary sort key so the most recently active conversations
+  /// sit on top. 0 for legacy rows that predate this field; the list sort then
+  /// falls back to unread-first, then non-empty, then insertion order.
+  int activityTs;
+
+  /// Normal messages, in arrival order. Each: {dir, from, text, time}.
+  final List<Map<String, dynamic>> messages = [];
+
+  ConversationItem(
+    this.id, {
+    this.title = '',
+    this.subtitle = '',
+    this.badge = '',
+    this.icon = 'chat',
+    this.unread = 0,
+    this.activityTs = 0,
+    this.muted = false,
+    this.closed = false,
+    this.private = false,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'subtitle': subtitle,
+        'badge': badge,
+        'icon': icon,
+        'unread': unread,
+        'activityTs': activityTs,
+        'muted': muted,
+        'closed': closed,
+        'private': private,
+        'messages': messages,
+      };
+
+  factory ConversationItem.fromJson(Map<String, dynamic> j) {
+    final it = ConversationItem(
+      (j['id'] ?? '').toString(),
+      title: (j['title'] ?? '').toString(),
+      subtitle: (j['subtitle'] ?? '').toString(),
+      badge: (j['badge'] ?? '').toString(),
+      icon: (j['icon'] ?? 'chat').toString(),
+      unread: (j['unread'] as num?)?.toInt() ?? 0,
+      activityTs: (j['activityTs'] as num?)?.toInt() ?? 0,
+      muted: j['muted'] == true,
+      closed: j['closed'] == true,
+      private: j['private'] == true,
+    );
+    final msgs = j['messages'];
+    if (msgs is List) {
+      for (final m in msgs) {
+        if (m is Map) it.messages.add(m.map((k, v) => MapEntry(k.toString(), v)));
+      }
+    }
+    return it;
+  }
+}
+
+class ConversationStore {
+  final Map<String, ConversationItem> items = {};
+
+  /// Durable backing store. When set AND [loaded] is true, every mutation is
+  /// written through as it happens — no debounce, no whole-file rewrite.
+  ConversationDb? db;
+
+  /// Which field name this store is persisted under (one database serves all
+  /// of a wapp's conversation fields).
+  String dbField = 'conversations';
+
+  /// True once the history has been READ successfully (or confirmed empty).
+  ///
+  /// This is the guard that stops the loss it is named after: when a restore
+  /// throws — a locked profile, a wrong key, an unreadable file — the store
+  /// stays usable in memory but NEVER writes, because a store that could not
+  /// read the history must not be allowed to overwrite it. The old code could
+  /// not tell those apart and erased a phone's entire history on every launch.
+  bool loaded = true;
+
+  bool get _wt => db != null && loaded;
+
+  /// Most-recent-first display order.
+  final List<String> order = [];
+
+  /// Reaction tally per message id (mid). The wapp reports each individual
+  /// like/unlike (by an opaque actor id) and the host owns the set, so each
+  /// actor counts once. Value: `{'likers': List<String>, 'mine': bool}`. The
+  /// derived count + my-state are mirrored onto every message carrying that mid
+  /// (`likes`/`liked`) so the renderer reads simple fields. Keyed by mid so it
+  /// survives message ordering and applies across conversations sharing a mid.
+  final Map<String, Map<String, dynamic>> reactions = {};
+
+  /// Delivery/read status per message correlation id (`rid`): 'sent' →
+  /// 'delivered' → 'read' (WhatsApp-style ticks on our own 1:1 messages). Kept
+  /// out-of-band + mirrored onto every message carrying that `rid` (like
+  /// reactions) so an out-of-order receipt still lands. Never downgrades.
+  final Map<String, String> _statuses = {};
+  static const Map<String, int> _statusRank = {
+    'sent': 1,
+    'delivered': 2,
+    'read': 3,
+  };
+
+  /// The conversation currently shown (set by the widget) so the store can
+  /// auto-manage unread counts. Null when no conversation is open.
+  String? openId;
+
+  ConversationItem _ensure(String id) {
+    final it = items.putIfAbsent(id, () => ConversationItem(id, title: id));
+    // Append, don't front-insert: a conversation only rises to the top when it
+    // has ACTUAL activity (addMessage / bump). Front-inserting here made groups
+    // merely listed via upsert (metadata, no message) jump above conversations
+    // with recent messages.
+    if (!order.contains(id)) order.add(id);
+    return it;
+  }
+
+  void _bump(String id) {
+    order.remove(id);
+    order.insert(0, id);
+  }
+
+  /// Create/update a conversation's list-row metadata. Only the keys present
+  /// in [d] are changed.
+  void upsert(Map d) {
+    final id = (d['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    final it = _ensure(id);
+    if (d.containsKey('title')) it.title = (d['title'] ?? '').toString();
+    if (d.containsKey('subtitle')) it.subtitle = (d['subtitle'] ?? '').toString();
+    if (d.containsKey('badge')) it.badge = (d['badge'] ?? '').toString();
+    if (d.containsKey('icon')) it.icon = (d['icon'] ?? 'chat').toString();
+    if (d.containsKey('private')) it.private = d['private'] == true;
+    if (d.containsKey('unread')) {
+      final nv = (d['unread'] as num?)?.toInt() ?? it.unread;
+      if (nv > it.unread) it.activityTs = _nowMs(); // new unread = activity
+      it.unread = nv;
+    }
+    if (d['bump'] == true) {
+      it.activityTs = _nowMs();
+      _bump(id);
+    }
+    // The wapp is the authority on closed state: it emits closed:false when
+    // the user re-engages a muted conversation (open / send / new message).
+    // Without this, addMessage's closed-drop was permanent — nothing ever
+    // cleared the flag.
+    if (d.containsKey('closed')) it.closed = d['closed'] == true;
+    if (_wt) db!.upsertThread(dbField, it);
+  }
+
+  void addMessage(Map d) {
+    final id = (d['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    // A closed conversation is unsubscribed: drop incoming messages so it stays
+    // gone (our own sends still go through — they reopen it intentionally).
+    final existing = items[id];
+    final dir = (d['dir'] ?? 'in').toString();
+    if (existing != null && existing.closed && dir == 'in') return;
+    // A restarted engine re-reads the host's durable inbox from the beginning
+    // and re-emits everything in it, so the same message can arrive twice with
+    // the same content signature. Show it once.
+    final ckey = (d['key'] ?? '').toString();
+    final dmid = (d['mid'] ?? '').toString();
+    if (existing != null) {
+      final dup = existing.messages.any((m) =>
+          (ckey.isNotEmpty && (m['key'] ?? '').toString() == ckey) ||
+          (dmid.isNotEmpty && (m['mid'] ?? '').toString() == dmid));
+      if (dup) return;
+    }
+    final it = _ensure(id);
+    it.messages.add({
+      'dir': dir,
+      'from': (d['from'] ?? '').toString(),
+      'text': (d['text'] ?? '').toString(),
+      'time': (d['time'] ?? '').toString(),
+      'meta': (d['meta'] ?? '').toString(),
+      'key': (d['key'] ?? '').toString(),
+      if ((d['via'] ?? '').toString().isNotEmpty) 'via': d['via'].toString(),
+      // Opaque threading ids set by the wapp (groups only): this message's id
+      // and the id it replies to. The host just stores + renders the relation.
+      if ((d['mid'] ?? '').toString().isNotEmpty) 'mid': d['mid'].toString(),
+      if ((d['parent'] ?? '').toString().isNotEmpty) 'parent': d['parent'].toString(),
+      if ((d['auth'] ?? '').toString().isNotEmpty) 'auth': d['auth'].toString(),
+      if (d['enc'] == true) 'enc': true,
+      // System note (not a real message): rendered as a centered, muted line —
+      // no avatar/name/bubble. Used for in-chat status like "key unknown — sent
+      // public; checking relays".
+      if (d['sys'] == true) 'sys': true,
+      // Reticulum-only (private) message — the wapp tags it so the bubble is
+      // visibly distinct from public APRS traffic (which can also be encrypted).
+      if (d['private'] == true) 'private': true,
+      // Delivery-receipt correlation id + tick state for 1:1 outgoing messages
+      // (WhatsApp-style sent/delivered/read). The wapp stamps `rid` (a small
+      // per-message id echoed back in receipts); `status` advances via setStatus.
+      if ((d['rid'] ?? '').toString().isNotEmpty) 'rid': d['rid'].toString(),
+      if ((d['status'] ?? '').toString().isNotEmpty) 'status': d['status'].toString(),
+      if (d['lat'] != null) 'lat': d['lat'],
+      if (d['lon'] != null) 'lon': d['lon'],
+    });
+    if (it.messages.length > 500) {
+      it.messages.removeRange(0, it.messages.length - 500);
+    }
+    // A like may have arrived before this message — seed its tally now.
+    final mid = (d['mid'] ?? '').toString();
+    if (mid.isNotEmpty && reactions.containsKey(mid)) _applyReaction(mid);
+    // A receipt may have arrived before this bubble — apply the latest status.
+    final rid = (d['rid'] ?? '').toString();
+    if (rid.isNotEmpty && _statuses.containsKey(rid)) _applyStatus(rid);
+    if (dir == 'in' && id != openId && d['sys'] != true) it.unread++;
+    it.activityTs = _nowMs();
+    _bump(id);
+    if (_wt) {
+      db!.addMessage(dbField, id, it.messages.last);
+      db!.upsertThread(dbField, it);
+    }
+  }
+
+  /// Mute / unmute a conversation (its unread stops counting app-wide).
+  void setMuted(String id, bool v) {
+    final it = items[id];
+    if (it == null) return;
+    it.muted = v;
+    if (_wt) db!.upsertThread(dbField, it);
+  }
+
+  /// Close a conversation (hide from the list) or reopen it.
+  void setClosed(String id, bool v) {
+    final it = items[id];
+    if (it == null) return;
+    it.closed = v;
+    if (_wt) db!.upsertThread(dbField, it);
+  }
+
+  /// Remove already-shown messages locally (hide / block — never network state).
+  /// Two forms: `{id, key}` drops one message from one conversation; `{from}`
+  /// drops every message by a sender across all conversations and removes a
+  /// direct conversation row with that callsign.
+  void remove(Map d) {
+    final from = (d['from'] ?? '').toString();
+    if (from.isNotEmpty) {
+      for (final it in items.values) {
+        it.messages.removeWhere((m) => (m['from'] ?? '').toString() == from);
+      }
+      // A 1:1 conversation with the blocked station goes away entirely; group
+      // rows stay (only that sender's messages were stripped).
+      if (items.containsKey(from)) {
+        items.remove(from);
+        order.remove(from);
+      }
+      if (_wt) {
+        db!.removeThread(dbField, from);
+        for (final e in items.entries) {
+          db!.clear(dbField, e.key);
+          for (final m in e.value.messages) {
+            db!.addMessage(dbField, e.key, Map<String, dynamic>.from(m));
+          }
+        }
+      }
+      return;
+    }
+    final id = (d['id'] ?? '').toString();
+    final key = (d['key'] ?? '').toString();
+    if (id.isEmpty) return;
+    if (key.isEmpty) {
+      // Remove the whole conversation row (e.g. a wapp deleting/leaving a circle).
+      items.remove(id);
+      order.remove(id);
+      if (_wt) db!.removeThread(dbField, id);
+      return;
+    }
+    final it = items[id];
+    if (it == null) return;
+    it.messages.removeWhere((m) => (m['key'] ?? '').toString() == key);
+    if (_wt) {
+      db!.clear(dbField, id);
+      for (final m in it.messages) {
+        db!.addMessage(dbField, id, Map<String, dynamic>.from(m));
+      }
+    }
+  }
+
+  /// Record a reaction (like) on a message. [d]: `{mid, from, remove?, mine?}`.
+  /// The set of `likers` is deduped, so each actor counts once however many
+  /// times they vote; `remove` retracts. `mine` marks our own vote.
+  ///
+  /// Returns the conversation and message SOMEONE ELSE just liked of ours, so
+  /// the caller can tell the user — a like that only moves a counter on a
+  /// screen nobody is looking at is a like nobody receives. Null for our own
+  /// votes, retractions, votes on other people's messages, and votes naming a
+  /// message we do not hold.
+  ({String convo, Map<String, dynamic> message, String from})? react(Map d) {
+    var mid = (d['mid'] ?? '').toString();
+    final from = (d['from'] ?? '').toString();
+    if (mid.isEmpty || from.isEmpty) return null;
+    final remove = d['remove'] == true;
+    final mine = d['mine'] == true;
+    // A vote may name a message we hold under a DIFFERENT id, or under none at
+    // all — anything sent before ids were derived, or by a peer that numbers
+    // messages its own way. The text is the one thing both ends always have,
+    // so when the id resolves to nothing we find the message by content and
+    // ADOPT the voter's id for it. The next vote then matches directly, and
+    // the message becomes votable from either side for good.
+    final voted = (d['ck'] ?? '').toString();
+    if (voted.isNotEmpty && !_knowsMid(mid)) {
+      final hit = _byContentKey(d['id']?.toString(), voted);
+      if (hit != null) {
+        final was = (hit.message['mid'] ?? '').toString();
+        if (was.isEmpty) {
+          final oldBody = jsonEncode(hit.message);
+          hit.message['mid'] = mid;
+          if (_wt) {
+            db!.setMessageMid(dbField, hit.convo, oldBody,
+                jsonEncode(hit.message), mid);
+          }
+        } else {
+          mid = was; // we already had an id for it — keep ours, tally on it
+        }
+      }
+    }
+    final r = reactions.putIfAbsent(
+        mid, () => {'likers': <String>[], 'mine': false});
+    final likers = (r['likers'] as List).cast<String>();
+    if (remove) {
+      likers.remove(from);
+      if (mine) r['mine'] = false;
+    } else {
+      if (!likers.contains(from)) likers.add(from);
+      if (mine) r['mine'] = true;
+    }
+    _applyReaction(mid);
+    if (_wt) db!.setReaction(dbField, mid, r);
+    if (remove || mine) return null;
+    for (final e in items.entries) {
+      for (final m in e.value.messages) {
+        if ((m['mid'] ?? '') != mid) continue;
+        if ((m['dir']?.toString() ?? 'in') != 'out') return null; // not ours
+        return (convo: e.key, message: m, from: from);
+      }
+    }
+    return null;
+  }
+
+  /// Do we hold any message carrying [mid]? A vote naming an id we never saw
+  /// is not an error — it is the normal case across two devices that numbered
+  /// the same message differently.
+  bool _knowsMid(String mid) {
+    for (final it in items.values) {
+      for (final m in it.messages) {
+        if ((m['mid'] ?? '') == mid) return true;
+      }
+    }
+    return false;
+  }
+
+  /// The message whose content matches this key, preferring the named
+  /// conversation and the most recent match — the one a person would point at.
+  ({String convo, Map<String, dynamic> message})? _byContentKey(
+      String? convo, String ck) {
+    // Same content AND the same minute first: "ok" is sent all day, and a like
+    // on this morning's must not land on the newest one. If no minute agrees —
+    // two devices stamped the same message a minute apart — fall back to
+    // content and take the most recent, which is still the right message far
+    // more often than nothing at all.
+    for (final exact in [true, false]) {
+      ({String convo, Map<String, dynamic> message})? found;
+      for (final e in items.entries) {
+        if (convo != null && convo.isNotEmpty && e.key != convo) continue;
+        for (final m in e.value.messages) {
+          if (matchesContentKey(m, ck, exact: exact)) {
+            found = (convo: e.key, message: m);
+          }
+        }
+      }
+      if (found != null) return found;
+    }
+    return null;
+  }
+
+  /// Mirror a mid's tally (`likes` count + `liked` mine-flag) onto every stored
+  /// message/pinned entry carrying that mid, across all conversations.
+  void _applyReaction(String mid) {
+    final r = reactions[mid];
+    if (r == null) return;
+    final count = (r['likers'] as List).length;
+    final mine = r['mine'] == true;
+    for (final it in items.values) {
+      for (final m in it.messages) {
+        if ((m['mid'] ?? '') == mid) {
+          m['likes'] = count;
+          m['liked'] = mine;
+          if (_wt) db!.updateMessage(dbField, it.id, m);
+        }
+      }
+    }
+  }
+
+  /// Advance a message's delivery/read status. [d]: `{rid, status}` where status
+  /// is 'sent' | 'delivered' | 'read'. Monotonic — a later, lower-ranked receipt
+  /// (e.g. a delivered arriving after read) is ignored.
+  void setStatus(Map d) {
+    final rid = (d['rid'] ?? '').toString();
+    final s = (d['status'] ?? '').toString();
+    if (rid.isEmpty || !_statusRank.containsKey(s)) return;
+    final cur = _statuses[rid];
+    if (cur != null && (_statusRank[cur] ?? 0) >= (_statusRank[s] ?? 0)) return;
+    _statuses[rid] = s;
+    _applyStatus(rid);
+    if (_wt) db!.setStatus(dbField, rid, s);
+  }
+
+  /// Mirror a rid's status onto every stored message carrying that rid.
+  void _applyStatus(String rid) {
+    final s = _statuses[rid];
+    if (s == null) return;
+    for (final it in items.values) {
+      for (final m in it.messages) {
+        if ((m['rid'] ?? '') == rid) {
+          m['status'] = s;
+          if (_wt) db!.updateMessage(dbField, it.id, m);
+        }
+      }
+    }
+  }
+
+  void clearUnread(String id) {
+    final it = items[id];
+    if (it == null || it.unread == 0) return;
+    it.unread = 0;
+    if (_wt) db!.upsertThread(dbField, it);
+  }
+
+  /// Clear one conversation (id given) or all (id empty/null).
+  void clear([String? id]) {
+    if (id == null || id.isEmpty) {
+      items.clear();
+      order.clear();
+      if (_wt) db!.clear(dbField);
+    } else {
+      items.remove(id);
+      order.remove(id);
+      if (_wt) db!.removeThread(dbField, id);
+    }
+  }
+
+  /// Total unread across all conversations — drives the Messages tab/app-icon
+  /// badge. Muted (and closed) conversations are excluded so they don't pull
+  /// app-wide attention; their count still shows on their own row.
+  int get totalUnread => items.values.fold(
+      0,
+      (sum, it) =>
+          sum + ((it.unread > 0 && !it.muted && !it.closed) ? it.unread : 0));
+
+  static int _nowMs() => DateTime.now().millisecondsSinceEpoch;
+
+  /// Conversations for display, most-recently-active first. Primary key is
+  /// [ConversationItem.activityTs] (host-stamped on real activity). Legacy rows
+  /// (activityTs == 0, saved before that field existed) tie on 0 and fall back
+  /// to: unread first, then non-empty, then insertion order — which fixes
+  /// already-persisted lists where unread/active rows had sunk below empties.
+  List<ConversationItem> ordered() {
+    // Closed conversations are hidden from the list (they reappear on a new
+    // incoming message).
+    final list = [
+      for (final id in order)
+        if (items.containsKey(id) && !items[id]!.closed) items[id]!
+    ];
+    final idx = {for (var i = 0; i < order.length; i++) order[i]: i};
+    list.sort((a, b) {
+      if (a.activityTs != b.activityTs) {
+        return b.activityTs.compareTo(a.activityTs); // newer first
+      }
+      final ua = a.unread > 0 ? 1 : 0, ub = b.unread > 0 ? 1 : 0;
+      if (ua != ub) return ub.compareTo(ua); // unread before read
+      final ma = a.messages.isNotEmpty ? 1 : 0, mb = b.messages.isNotEmpty ? 1 : 0;
+      if (ma != mb) return mb.compareTo(ma); // non-empty before empty
+      return (idx[a.id] ?? 0).compareTo(idx[b.id] ?? 0); // stable
+    });
+    return list;
+  }
+
+  /// Read-only view of the delivery/read statuses (for the durable store).
+  Map<String, String> statusesSnapshot() => Map.unmodifiable(_statuses);
+
+  /// Restore statuses read back from the durable store and re-mirror them.
+  void restoreStatuses(Map<String, String> saved) {
+    _statuses
+      ..clear()
+      ..addAll(saved);
+    for (final rid in _statuses.keys) {
+      _applyStatus(rid);
+    }
+  }
+
+  /// Serialize the whole store for on-disk persistence.
+  Map<String, dynamic> toJson() => {
+        'order': order,
+        'items': {for (final e in items.entries) e.key: e.value.toJson()},
+        'reactions': reactions,
+        'statuses': _statuses,
+      };
+
+  /// Replace the store's contents from a previously [toJson]-ed map.
+  void loadJson(Map<String, dynamic> j) {
+    items.clear();
+    order.clear();
+    reactions.clear();
+    final its = j['items'];
+    if (its is Map) {
+      its.forEach((k, v) {
+        if (v is Map) {
+          items[k.toString()] =
+              ConversationItem.fromJson(v.map((kk, vv) => MapEntry(kk.toString(), vv)));
+        }
+      });
+    }
+    final ord = j['order'];
+    if (ord is List) {
+      for (final id in ord) {
+        final s = id.toString();
+        if (items.containsKey(s) && !order.contains(s)) order.add(s);
+      }
+    }
+    // Defensive: any item missing from the saved order still gets shown.
+    for (final k in items.keys) {
+      if (!order.contains(k)) order.add(k);
+    }
+    // Restore reaction tallies and re-mirror them onto the loaded messages.
+    final rx = j['reactions'];
+    if (rx is Map) {
+      rx.forEach((k, v) {
+        if (v is Map) {
+          final likers = <String>[
+            for (final e in (v['likers'] is List ? v['likers'] as List : const []))
+              e.toString()
+          ];
+          reactions[k.toString()] = {'likers': likers, 'mine': v['mine'] == true};
+        }
+      });
+      for (final mid in reactions.keys) {
+        _applyReaction(mid);
+      }
+    }
+    // Restore delivery/read statuses and re-mirror onto loaded messages.
+    _statuses.clear();
+    final st = j['statuses'];
+    if (st is Map) {
+      st.forEach((k, v) {
+        final s = v.toString();
+        if (_statusRank.containsKey(s)) _statuses[k.toString()] = s;
+      });
+      for (final rid in _statuses.keys) {
+        _applyStatus(rid);
+      }
+    }
+  }
+}

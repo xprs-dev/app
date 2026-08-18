@@ -1,0 +1,1286 @@
+package com.geogram.aurora
+
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
+import android.bluetooth.BluetoothGattServer
+import android.bluetooth.BluetoothGattServerCallback
+import android.bluetooth.BluetoothGattService
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
+import android.bluetooth.le.AdvertiseCallback
+import android.bluetooth.le.AdvertiseData
+import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.le.AdvertisingSet
+import android.bluetooth.le.AdvertisingSetCallback
+import android.bluetooth.le.AdvertisingSetParameters
+import android.bluetooth.le.BluetoothLeAdvertiser
+import android.bluetooth.le.BluetoothLeScanner
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
+import android.content.Context
+import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.Looper
+import android.os.Process
+import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodChannel
+import java.util.UUID
+
+/**
+ * BLE 5 extended advertising + scanning, used as a SHARED connectionless
+ * broadcast bus for every subsystem (Reticulum announces AND APRS group chat).
+ *
+ * One advertising set, MULTIPLEXED: many phones cannot sustain two concurrent
+ * extended advertising sets, and two independent writers of one set just clobber
+ * each other's data. So callers register keyed frames (each with a subtype + a
+ * TTL) and a single rotation round-robins setAdvertisingData among the active
+ * frames, dropping them when they expire. APRS messages and RNS announces are
+ * sparse, so each frame still gets plenty of on-air time.
+ *
+ * MethodChannel  com.geogram.aurora/ble5      : supported / advertiseFrame /
+ *                                               removeFrame / stopAdvertise /
+ *                                               startScan / stopScan
+ * EventChannel   com.geogram.aurora/ble5_scan : inbound frames as a map
+ *                {addr:String, rssi:Int, subtype:Int, data:ByteArray}
+ *
+ * Wire framing of the manufacturer data (company id 0xFFFF):
+ *   [0x3E marker][subtype][payload...]
+ * Subtypes in use: 0x55 = Reticulum packet, 0x41 = APRS broadcast parcel.
+ */
+class Ble5(context: Context, messenger: BinaryMessenger) {
+    companion object {
+        private const val METHOD_CHANNEL = "com.geogram.aurora/ble5"
+        private const val EVENT_CHANNEL = "com.geogram.aurora/ble5_scan"
+        // GATT-client events (connected/disconnected/data) to the Dart side.
+        private const val GATT_EVENT_CHANNEL = "com.geogram.aurora/ble5_gatt"
+        private const val COMPANY_ID = 0xFFFF
+        private const val MARKER = 0x3E.toByte()
+        private const val TAG = "Ble5"
+        private const val SCAN_EVENT_MIN_MS = 750L
+        private const val SCAN_EVENT_CACHE_MAX = 512
+        // How long each active frame stays on air before the rotation advances.
+        // Long enough for a peer's duty-cycled scan to catch it, short enough to
+        // cycle a few frames within a message's TTL.
+        private const val ROTATE_MS = 1200L
+
+        // One presence frame (beacon / announce) for every this-many traffic
+        // slots. 4 keeps a handshake brisk while guaranteeing presence roughly
+        // every 5 seconds even when traffic never stops.
+        private const val PRESENCE_EVERY = 4
+
+        // ── Transmit duty cycle ──────────────────────────────────────────────
+        //
+        // This radio is NOT full duplex. It time-shares one antenna, so every
+        // millisecond spent advertising is a millisecond not listening — and a
+        // device that advertises continuously is deaf for roughly half the time.
+        // That is the wrong trade for a mesh: a beacon says "I am here", which is
+        // worth a few seconds a minute, while everything that actually carries a
+        // message has to be HEARD.
+        //
+        // So the beacon airs in a short window and the rest of the minute is
+        // listening. Peers that want to move bytes upgrade to a GATT link, which
+        // is acknowledged and does not depend on catching an advert.
+        private const val ADV_WINDOW_MS = 10_000L
+        private const val ADV_PERIOD_MS = 30_000L
+
+        // enableAdvertising takes its duration in 10 ms units.
+        private const val ADV_WINDOW_UNITS = (ADV_WINDOW_MS / 10).toInt()
+        // GATT parcel service (matches the ble_peripheral server + the old client).
+        private val SVC_UUID  = UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb")
+        private val FFF1_UUID = UUID.fromString("0000fff1-0000-1000-8000-00805f9b34fb")
+        private val FFF2_UUID = UUID.fromString("0000fff2-0000-1000-8000-00805f9b34fb")
+        private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+    }
+
+    private val appContext: Context = context.applicationContext
+
+    // [prio] frames are TRAFFIC — a link handshake, a message — and they are
+    // aired ahead of the presence adverts. Presence can wait a rotation;
+    // a handshake that waits is a handshake that times out.
+    private class Frame(var mfg: ByteArray, var expiresAt: Long, var prio: Boolean = false)
+
+    private val adapter: BluetoothAdapter? =
+        (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+    // BLE work runs on its OWN thread, never the platform main looper.
+    //
+    // Every advert rotation, scan watchdog, GATT write pump and notify pump used
+    // to be posted to the main looper — the same thread Flutter uses for platform
+    // channels and the same one the Android UI runs on. A phone that is scanning,
+    // advertising and pumping a link at once puts hundreds of these a minute on
+    // the thread the interface needs to stay responsive.
+    //
+    // The sinks are the exception: an EventChannel must be fed from the main
+    // thread, so [ui] exists for exactly that and nothing else.
+    private val worker = HandlerThread("ble5-worker", Process.THREAD_PRIORITY_BACKGROUND)
+        .apply { start() }
+    private val bg = Handler(worker.looper)
+    private val ui = Handler(Looper.getMainLooper())
+    @Volatile private var disposed = false
+
+    // Scan watchdog: vendor power managers (and BT adapter restarts) silently
+    // kill long-running BLE scans — the callback stays registered but no result
+    // ever arrives again. Track the last delivery and force a native
+    // stop+start when the air has been silent implausibly long (our own mesh
+    // beacons alone guarantee traffic every ~30 s when peers are near). The
+    // 2-minute threshold keeps restarts far below Android's 5-starts/30 s cap.
+    @Volatile private var lastScanResultMs = 0L
+    @Volatile private var scanStartedMs = 0L
+    private var scanWatchdogOn = false
+    private val scanWatchdog = object : Runnable {
+        override fun run() {
+            if (disposed) return
+            if (scanCallback != null) {
+                val now = System.currentTimeMillis()
+                val lastSeen = maxOf(lastScanResultMs, scanStartedMs)
+                if (now - lastSeen > 120_000) {
+                    android.util.Log.w(TAG, "scan silent ${(now - lastSeen) / 1000}s — restarting")
+                    stopScan(stopWatchdog = false)
+                    startScan()
+                }
+            }
+            if (scanWatchdogOn) bg.postDelayed(this, 60_000)
+        }
+    }
+    // Read from the BLE scan (binder) thread in onScanResult, written from the
+    // platform main thread when the stream is listened to.
+    @Volatile private var events: EventChannel.EventSink? = null
+
+    private var advertisingSet: AdvertisingSet? = null
+    private var advertiseCallback: AdvertisingSetCallback? = null
+    private var starting = false
+    private var scanner: BluetoothLeScanner? = null
+    private var scanCallback: ScanCallback? = null
+    private val recentScanEvents = LinkedHashMap<String, Long>()
+    private val scanDedupLock = Any()
+
+    // Active broadcast frames keyed by an opaque caller key (insertion-ordered for
+    // a stable round-robin). All access is on the WORKER thread — every entry
+    // point that touches this map is dispatched there.
+    private val frames = LinkedHashMap<String, Frame>()
+    private var rotateIdx = 0
+    private var rotateN = 0
+    private var rotating = false
+    private var lastHex: String? = null // last data put on air (skip redundant sets)
+
+    // ── GATT client (native) ────────────────────────────────────────────────
+    private var gatt: BluetoothGatt? = null
+    private var writeChar: BluetoothGattCharacteristic? = null
+    private var notifyChar: BluetoothGattCharacteristic? = null
+    // Read from the legacy-scan (binder) thread as well as the main thread.
+    @Volatile private var gattEvents: EventChannel.EventSink? = null
+
+    // What the RADIO actually did, as opposed to what we asked it to do.
+    // advertiseFrame() only queues a frame; whether the controller ever put it
+    // on air is decided later, asynchronously, in the AdvertisingSetCallback.
+    // Without this the app counted a refused advert as a sent beacon, and a
+    // device could be mute for hours while reporting "advertising: true".
+    @Volatile private var advOnAir = false
+    private val advAttempts = java.util.concurrent.atomic.AtomicLong(0)
+    private val advFailures = java.util.concurrent.atomic.AtomicLong(0)
+    private val scanResults = java.util.concurrent.atomic.AtomicLong(0)
+    @Volatile private var advLastError: String? = null
+    @Volatile private var lastScanResultAt = 0L
+
+    // ── GATT server (native) ────────────────────────────────────────────────
+    private var gattServer: BluetoothGattServer? = null
+    private var serverNotifyChar: BluetoothGattCharacteristic? = null
+    private var serverCentral: BluetoothDevice? = null
+    private var legacyAdvertiser: BluetoothLeAdvertiser? = null
+    private var legacyAdvCb: AdvertiseCallback? = null
+    private var legacyScanner: BluetoothLeScanner? = null
+    private var legacyScanCb: ScanCallback? = null
+    private var serverCallsign: String = "AURORA"
+    // Android GATT writes must be serialized: issue the next only after the
+    // previous onCharacteristicWrite (with a watchdog fallback). Queue + pump
+    // enforces that. WRITE_TYPE_NO_RESPONSE is used so the link is NOT bonded
+    // (write-with-response on an unbonded link makes Android pop a pairing
+    // dialog — exactly what auto-pairing must avoid).
+    private val writeQueue = ArrayDeque<ByteArray>()
+    private var writeBusy = false
+    private var writeGen = 0
+
+    init {
+        MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "supported" -> result.success(isSupported())
+                // Real per-frame payload cap for THIS controller: many chips
+                // report far less than the BLE5 spec max (e.g. 255 vs 1650),
+                // and an oversized frame is rejected, not truncated — the size
+                // router must know the true ceiling or messages silently drop.
+                "maxPayload" -> result.success(maxDataLen() - 8)
+                // Everything below touches the radio, so it runs on the worker
+                // thread — the method channel delivers calls on the platform
+                // main thread, and a startScan or an advertise there is work the
+                // interface then waits behind.
+                "gattConnect" -> {
+                    val addr = call.argument<String>("address")
+                    val auto = call.argument<Boolean>("auto") ?: false
+                    if (addr == null) result.error("ARG", "address required", null)
+                    else onWorker(result) { gattConnect(addr, auto); true }
+                }
+                "gattWrite" -> {
+                    val data = call.argument<ByteArray>("data")
+                    if (data == null) result.error("ARG", "data required", null)
+                    else onWorker(result) { gattWrite(data) }
+                }
+                "gattDisconnect" -> onWorker(result) { gattDisconnect(); true }
+                "startServer" -> {
+                    val cs = call.argument<String>("callsign") ?: "AURORA"
+                    onWorker(result) { startServer(cs) }
+                }
+                "stopServer" -> onWorker(result) { stopServer(); true }
+                "serverNotify" -> {
+                    val data = call.argument<ByteArray>("data")
+                    if (data == null) result.error("ARG", "data required", null)
+                    else onWorker(result) { serverNotify(data) }
+                }
+                "startLegacyScan" -> onWorker(result) { startLegacyScan() }
+                "stopLegacyScan" -> onWorker(result) { stopLegacyScan(); true }
+                "advertiseFrame" -> {
+                    val key = call.argument<String>("key")
+                    val subtype = call.argument<Int>("subtype")
+                    val data = call.argument<ByteArray>("data")
+                    val ttlMs = call.argument<Int>("ttlMs") ?: 30000
+                    if (key == null || subtype == null || data == null) {
+                        result.error("ARG", "key/subtype/data required", null)
+                    } else {
+                        val prio = call.argument<Boolean>("prio") ?: false
+                        onWorker(result) {
+                            advertiseFrame(key, subtype, data, ttlMs.toLong(), prio)
+                        }
+                    }
+                }
+                "removeFrame" -> {
+                    val key = call.argument<String>("key")
+                    onWorker(result) { if (key != null) removeFrame(key); true }
+                }
+                "stopAdvertise" -> onWorker(result) { stopAdvertise(); true }
+                "radioStatus" -> result.success(radioStatus())
+                "startScan" -> onWorker(result) { startScan() }
+                "stopScan" -> onWorker(result) { stopScan(); true }
+                else -> result.notImplemented()
+            }
+        }
+        EventChannel(messenger, EVENT_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(args: Any?, sink: EventChannel.EventSink?) {
+                    if (!disposed) events = sink
+                }
+                override fun onCancel(args: Any?) { events = null }
+            },
+        )
+        EventChannel(messenger, GATT_EVENT_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(args: Any?, sink: EventChannel.EventSink?) {
+                    if (!disposed) gattEvents = sink
+                }
+                override fun onCancel(args: Any?) { gattEvents = null }
+            },
+        )
+    }
+
+    fun dispose() {
+        if (disposed) return
+        disposed = true
+        events = null
+        gattEvents = null
+        // Tear the radio down on the thread that owns it, then let that thread
+        // finish: quitting the looper from here would abandon a half-stopped
+        // scan and a GATT server nobody ever closes.
+        bg.post {
+            stopScan()
+            stopLegacyScan()
+            stopAdvertise()
+            stopServer()
+            gattDisconnect()
+            synchronized(scanDedupLock) { recentScanEvents.clear() }
+            worker.quitSafely()
+        }
+        ui.removeCallbacksAndMessages(null)
+    }
+
+    private fun isSupported(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val a = adapter ?: return false
+        return a.isLeExtendedAdvertisingSupported
+    }
+
+    private fun maxDataLen(): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return 31
+        return adapter?.leMaximumAdvertisingDataLength ?: 31
+    }
+
+    /**
+     * Register/refresh a keyed broadcast frame. It is multiplexed onto the single
+     * advertising set with all other active frames and aired until [ttlMs]
+     * elapses (callers refresh periodically to keep it alive).
+     */
+    private fun advertiseFrame(
+        key: String,
+        subtype: Int,
+        payload: ByteArray,
+        ttlMs: Long,
+        prio: Boolean = false,
+    ): Boolean {
+        if (disposed || !isSupported()) return false
+        val mfg = ByteArray(payload.size + 2)
+        mfg[0] = MARKER
+        mfg[1] = subtype.toByte()
+        System.arraycopy(payload, 0, mfg, 2, payload.size)
+        // 6 bytes of envelope overhead (length/type/company id) on top of mfg.
+        if (mfg.size + 6 > maxDataLen()) {
+            advFailures.incrementAndGet()
+            advLastError = "frame too large: ${mfg.size}B > ${maxDataLen() - 6}B"
+            android.util.Log.e(TAG, "frame too large for one advert: ${mfg.size}B")
+            return false
+        }
+        advAttempts.incrementAndGet()
+        val now = System.currentTimeMillis()
+        frames[key] = Frame(mfg, now + ttlMs, prio)
+        ensureRotating()
+        ensureAdvWindow()
+        // Air immediately so a just-sent message doesn't wait a full rotation.
+        rotateTick()
+        // Somebody just asked for this to go out: open the window now rather
+        // than at the top of the next period. Still bounded, so the duty holds.
+        if (!advWindowOpen) openAdvWindow()
+        return true
+    }
+
+    private fun removeFrame(key: String) {
+        if (disposed) return
+        frames.remove(key)
+        if (frames.isEmpty()) stopAdvertise()
+    }
+
+    private fun ensureRotating() {
+        if (disposed) return
+        if (rotating) return
+        rotating = true
+        bg.post(rotateRunnable)
+    }
+
+    private val rotateRunnable = object : Runnable {
+        override fun run() {
+            if (disposed) return
+            if (!rotating) return
+            rotateTick()
+            if (frames.isEmpty()) { rotating = false; return }
+            bg.postDelayed(this, ROTATE_MS)
+        }
+    }
+
+    // ── The transmit window ──────────────────────────────────────────────────
+    //
+    // The advertising SET is created once and kept, and only its enable state is
+    // cycled. Stopping and restarting the set is what made Android hand out a
+    // fresh random address every time, so a peer's address book filled with
+    // addresses for one device and the same address was attributed to two
+    // different callsigns seconds apart. One set, one address, a window that
+    // opens and closes.
+    private var advWindowOpen = false
+    private var advWindowScheduled = false
+
+    private fun ensureAdvWindow() {
+        if (disposed || advWindowScheduled) return
+        advWindowScheduled = true
+        bg.post(advWindowRunnable)
+    }
+
+    private val advWindowRunnable = object : Runnable {
+        override fun run() {
+            if (disposed) { advWindowScheduled = false; return }
+            if (frames.isEmpty()) { advWindowScheduled = false; return }
+            openAdvWindow()
+            bg.postDelayed(this, ADV_PERIOD_MS)
+        }
+    }
+
+    /** Air the beacon for [ADV_WINDOW_MS], then fall silent and listen. */
+    private fun openAdvWindow() {
+        val set = advertisingSet ?: return // not started yet; start airs it once
+        advWindowOpen = true
+        try {
+            // Duration is enforced by the controller: it stops on its own, so a
+            // missed callback cannot leave us transmitting for the whole minute.
+            set.enableAdvertising(true, ADV_WINDOW_UNITS, 0)
+        } catch (_: Exception) {
+            advWindowOpen = false
+        }
+    }
+
+    /** Drop expired frames, then put the next active frame on air. */
+    private fun rotateTick() {
+        if (disposed) return
+        val now = System.currentTimeMillis()
+        val it = frames.entries.iterator()
+        while (it.hasNext()) {
+            if (it.next().value.expiresAt <= now) it.remove()
+        }
+        if (frames.isEmpty()) {
+            stopAdvertise()
+            return
+        }
+        // Traffic first — but never to the exclusion of presence.
+        //
+        // Traffic used to take the channel outright whenever any prio frame was
+        // registered, so on a node with a link handshake in flight (8s TTL each,
+        // and there is nearly always one) presence NEVER aired. Measured between
+        // two phones with no internet: the peer heard 19 announces from the
+        // ESP32 and ONE from the phone next to it, so no Reticulum path to that
+        // phone ever formed and every chat message fell back to store-and-carry.
+        // A handshake that completes to a peer nobody can address is not a win.
+        //
+        // So presence gets a guaranteed share: one presence frame every
+        // PRESENCE_EVERY traffic frames. Traffic still dominates — a three-packet
+        // handshake still completes inside a couple of rotations — but "I am
+        // here, and here is where to write to me" keeps reaching the air.
+        val prioKeys = frames.filterValues { it.prio }.keys.toList()
+        val presenceKeys = frames.filterValues { !it.prio }.keys.toList()
+        val usePresence = prioKeys.isEmpty() ||
+            (presenceKeys.isNotEmpty() && (++rotateN % PRESENCE_EVERY == 0))
+        val keys = if (usePresence) presenceKeys else prioKeys
+        if (keys.isEmpty()) return
+        if (rotateIdx >= keys.size) rotateIdx = 0
+        val frame = frames[keys[rotateIdx]] ?: return
+        rotateIdx = (rotateIdx + 1) % keys.size
+        airData(frame.mfg)
+    }
+
+    /** Put one manufacturer-data blob on the single advertising set. */
+    private fun airData(mfg: ByteArray) {
+        if (disposed) return
+        val advertiser = adapter?.bluetoothLeAdvertiser ?: return
+        val data = AdvertiseData.Builder()
+            .addManufacturerData(COMPANY_ID, mfg)
+            .setIncludeDeviceName(false)
+            .build()
+        val existing = advertisingSet
+        if (existing != null) {
+            val hex = mfg.joinToString("") { "%02x".format(it) }
+            if (hex == lastHex) return // already on air with this exact frame
+            lastHex = hex
+            try { existing.setAdvertisingData(data) } catch (_: Exception) {}
+            return
+        }
+        if (starting) return
+        starting = true
+        lastHex = mfg.joinToString("") { "%02x".format(it) }
+        val params = AdvertisingSetParameters.Builder()
+            .setLegacyMode(false)
+            // NON-connectable: this extended set carries ONLY the connectionless
+            // broadcast (APRS + RNS announces). GATT large-file transfer uses the
+            // separate LEGACY connectable presence beacon (ble_peripheral). Android
+            // permits only a limited number of connectable advertisers; a
+            // connectable extended set here would starve the legacy beacon's
+            // connectability, so a discovered peer's GATT connect would time out
+            // (status 147). Non-connectable also frees more advert payload room.
+            .setConnectable(false)
+            .setScannable(false)
+            .setInterval(AdvertisingSetParameters.INTERVAL_MEDIUM)
+            .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_HIGH)
+            .setPrimaryPhy(BluetoothDevice.PHY_LE_1M)
+            // Keep the AUX payload on 1M so every scanner (incl. BlueZ/Linux)
+            // reliably reads it; 2M-only aux is missed by some controllers.
+            .setSecondaryPhy(BluetoothDevice.PHY_LE_1M)
+            .build()
+        val cb = object : AdvertisingSetCallback() {
+            override fun onAdvertisingEnabled(set: AdvertisingSet?, enable: Boolean, status: Int) {
+                // The controller stops on its own when the window's duration
+                // expires — this is the radio going back to listening.
+                advWindowOpen = enable && status == ADVERTISE_SUCCESS
+            }
+
+            override fun onAdvertisingSetStarted(set: AdvertisingSet?, txPower: Int, status: Int) {
+                starting = false
+                if (disposed) {
+                    if (set != null) {
+                        try { advertiser.stopAdvertisingSet(this) } catch (_: Exception) {}
+                    }
+                    return
+                }
+                if (status == ADVERTISE_SUCCESS && set != null) {
+                    advertisingSet = set
+                    advOnAir = true
+                    advLastError = null
+                    // The set comes up advertising, and the window governs it.
+                    //
+                    // The radio is half duplex: time spent talking is time deaf.
+                    // A first attempt at 5s-per-minute silenced this device
+                    // entirely — the peer counted ZERO beacons in two minutes —
+                    // because presence was also losing the rotation to traffic,
+                    // so the few slots inside the window carried handshakes and
+                    // never a beacon. With presence now guaranteed a share
+                    // (PRESENCE_EVERY), the window has something to carry.
+                    //
+                    // It is deliberately gentler than 5s/60s to start: a third of
+                    // the time on air, which still hands two thirds of the radio
+                    // back to listening. Tighten it once the peer's beacon-arrival
+                    // rate is measured across a change (docs/ble5.md section 6).
+                    try { set.enableAdvertising(true, ADV_WINDOW_UNITS, 0) } catch (_: Exception) {}
+                    advWindowOpen = true
+                    ensureAdvWindow()
+                } else {
+                    lastHex = null
+                    advOnAir = false
+                    advFailures.incrementAndGet()
+                    advLastError = "startAdvertisingSet status=$status"
+                    android.util.Log.e(TAG, "advertising set start failed status=$status")
+                    // Tell Dart, so it can log it and fall back to the legacy
+                    // advert instead of believing it is on air.
+                    emitGatt(mapOf("event" to "advertFailed", "status" to status))
+                }
+            }
+        }
+        advertiseCallback = cb
+        try {
+            advertiser.startAdvertisingSet(params, data, null, null, null, cb)
+        } catch (e: Exception) {
+            starting = false
+            lastHex = null
+            advOnAir = false
+            advFailures.incrementAndGet()
+            advLastError = "startAdvertisingSet: ${e.message}"
+            android.util.Log.e(TAG, "startAdvertisingSet: ${e.message}")
+            emitGatt(mapOf("event" to "advertFailed", "status" to -1))
+        }
+    }
+
+    private fun stopAdvertise() {
+        advOnAir = false
+        advWindowOpen = false
+        advWindowScheduled = false
+        frames.clear()
+        rotating = false
+        rotateIdx = 0
+        lastHex = null
+        starting = false
+        val advertiser = adapter?.bluetoothLeAdvertiser
+        val cb = advertiseCallback
+        if (advertiser != null && cb != null) {
+            try { advertiser.stopAdvertisingSet(cb) } catch (_: Exception) {}
+        }
+        advertisingSet = null
+        advertiseCallback = null
+    }
+
+    /** Scan for extended advertisements carrying our company id; deliver every
+     *  0x3E-marker frame as [subtype, payload...] so Dart demuxes by subtype. */
+    private fun startScan(): Boolean {
+        if (disposed) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val s = adapter?.bluetoothLeScanner ?: return false
+        if (scanCallback != null) return true // already scanning
+        val filter = ScanFilter.Builder()
+            .setManufacturerData(COMPANY_ID, byteArrayOf())
+            .build()
+        val settings = ScanSettings.Builder()
+            // Balanced mode is deliberate for always-on/background operation:
+            // low-latency scans can flood the main looper on rugged devices and
+            // make the Flutter UI appear black/unresponsive.
+            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
+            .setLegacy(false) // receive extended advertisements
+            .setPhy(ScanSettings.PHY_LE_ALL_SUPPORTED)
+            .build()
+        val cb = object : ScanCallback() {
+            override fun onScanFailed(errorCode: Int) {
+                if (disposed) return
+                // e.g. APPLICATION_REGISTRATION_FAILED after a BT restart —
+                // drop the dead callback so the watchdog (or next startScan)
+                // can register a fresh one.
+                android.util.Log.e(TAG, "scan failed code=$errorCode — will re-register")
+                scanCallback = null
+                scanner = null
+            }
+            override fun onScanResult(callbackType: Int, result: ScanResult?) {
+                if (disposed) return
+                // Count EVERY advert heard, ours or not, before any filtering.
+                // "no geogram frames" and "the radio hears nothing at all" look
+                // identical from the app otherwise, and they have completely
+                // different causes — the second one means the scan is being
+                // refused or starved by the system, not that nobody is around.
+                scanResults.incrementAndGet()
+                lastScanResultAt = System.currentTimeMillis()
+                val sink = events ?: return
+                val mfg = result?.scanRecord?.getManufacturerSpecificData(COMPANY_ID)
+                    ?: return
+                if (mfg.size < 2 || mfg[0] != MARKER) return
+                val subtype = mfg[1].toInt() and 0xFF
+                val payload = mfg.copyOfRange(2, mfg.size)
+                val addr = result.device?.address ?: ""
+                val rssi = result.rssi
+                val now = System.currentTimeMillis()
+                lastScanResultMs = now
+                if (!shouldEmitScan("ext:$addr:$subtype:${payload.contentHashCode()}", now)) {
+                    return
+                }
+                ui.post {
+                    if (disposed || events !== sink) return@post
+                    try {
+                        sink.success(
+                            mapOf(
+                                "addr" to addr,
+                                "rssi" to rssi,
+                                "subtype" to subtype,
+                                "data" to payload,
+                            ),
+                        )
+                    } catch (t: Throwable) {
+                        android.util.Log.w(TAG, "scan event dropped: ${t.message}")
+                    }
+                }
+            }
+        }
+        scanCallback = cb
+        return try {
+            s.startScan(listOf(filter), settings, cb)
+            scanner = s
+            scanStartedMs = System.currentTimeMillis()
+            if (!scanWatchdogOn) {
+                scanWatchdogOn = true
+                bg.postDelayed(scanWatchdog, 60_000)
+            }
+            true
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "startScan: ${e.message}")
+            scanCallback = null
+            false
+        }
+    }
+
+    private fun shouldEmitScan(key: String, now: Long): Boolean {
+        synchronized(scanDedupLock) {
+            val last = recentScanEvents[key]
+            if (last != null && now - last < SCAN_EVENT_MIN_MS) return false
+            recentScanEvents[key] = now
+            if (recentScanEvents.size > SCAN_EVENT_CACHE_MAX) {
+                val it = recentScanEvents.entries.iterator()
+                while (recentScanEvents.size > SCAN_EVENT_CACHE_MAX / 2 && it.hasNext()) {
+                    it.next()
+                    it.remove()
+                }
+            }
+            return true
+        }
+    }
+
+    private fun stopScan(stopWatchdog: Boolean = true) {
+        val cb = scanCallback
+        if (cb != null) {
+            try { scanner?.stopScan(cb) } catch (_: Exception) {}
+        }
+        scanCallback = null
+        scanner = null
+        if (stopWatchdog) {
+            scanWatchdogOn = false
+            bg.removeCallbacks(scanWatchdog)
+        }
+    }
+
+    // ── GATT client ─────────────────────────────────────────────────────────
+    // Connect to a peer's FFE0 GATT server by address (learned from the extended
+    // scan), so the connectable extended advert above can serve BOTH broadcast
+    // and connections — no legacy advert, no second advertiser.
+
+    /** Ground truth for the diagnostics: attempted vs refused, heard vs deaf. */
+    private fun radioStatus(): Map<String, Any?> = mapOf(
+        "advOnAir" to advOnAir,
+        "advAttempts" to advAttempts.get(),
+        "advFailures" to advFailures.get(),
+        "advLastError" to advLastError,
+        "scanResults" to scanResults.get(),
+        "lastScanResultAgeMs" to
+            (if (lastScanResultAt == 0L) null else System.currentTimeMillis() - lastScanResultAt),
+        "maxDataLen" to maxDataLen(),
+    )
+
+    /// Run [block] on the BLE worker thread and answer the method call from the
+    /// main thread, where a MethodChannel.Result must be completed.
+    private fun <T> onWorker(result: MethodChannel.Result, block: () -> T) {
+        bg.post {
+            val value: Any? = try {
+                block()
+            } catch (t: Throwable) {
+                android.util.Log.e(TAG, "worker call failed: ${t.message}")
+                null
+            }
+            ui.post { try { result.success(value) } catch (_: Throwable) {} }
+        }
+    }
+
+    private fun emitGatt(map: Map<String, Any?>) {
+        val sink = gattEvents ?: return
+        ui.post {
+            if (disposed || gattEvents !== sink) return@post
+            try {
+                sink.success(map)
+            } catch (t: Throwable) {
+                android.util.Log.w(TAG, "GATT event dropped: ${t.message}")
+            }
+        }
+    }
+
+    // Guards the connect-to-ready window: a fringe link can complete the LL
+    // connection yet stall in the ATT handshake (MTU/discovery/CCCD) — the
+    // link then hangs half-open until the idle timer. Tear it down early so
+    // the scheduler can retry; every retry is a fresh chance at the radio dice.
+    private var setupGen = 0
+    private var linkReady = false
+
+    private fun armSetupWatchdog() {
+        val gen = ++setupGen
+        linkReady = false
+        bg.postDelayed({
+            if (!linkReady && setupGen == gen && gatt != null) {
+                android.util.Log.w(TAG, "GATT setup stalled 12s — tearing down for retry")
+                gattDisconnect()
+                emitGatt(mapOf("event" to "disconnected"))
+            }
+        }, 12000)
+    }
+
+    private fun gattConnect(address: String, auto: Boolean = false) {
+        if (disposed) return
+        if (gatt != null) return // one link at a time
+        val dev: BluetoothDevice = try {
+            adapter?.getRemoteDevice(address) ?: return
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "getRemoteDevice($address): ${e.message}"); return
+        }
+        try {
+            // auto=true: controller-level background connect — it keeps
+            // listening for the target's ADV_IND indefinitely instead of the
+            // ~12 s direct-connect window. Essential at fringe RSSI where a
+            // single window rarely catches an advert. The caller bounds the
+            // wait and calls gattDisconnect to abort.
+            gatt = dev.connectGatt(appContext, auto, gattCb, BluetoothDevice.TRANSPORT_LE)
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "connectGatt: ${e.message}")
+            emitGatt(mapOf("event" to "disconnected"))
+        }
+    }
+
+    private fun gattWrite(data: ByteArray): Boolean {
+        if (disposed) return false
+        if (gatt == null || writeChar == null) {
+            android.util.Log.e(TAG, "gattWrite: not connected"); return false
+        }
+        bg.post { writeQueue.add(data); pumpWrites() }
+        return true
+    }
+
+    // Issue one queued write WITH RESPONSE so each parcel is flow-controlled:
+    // the next is sent only after onCharacteristicWrite confirms the ATT response.
+    // Write-WITHOUT-response has no flow control — rapid parcels overrun the
+    // controller buffer and only the first lands. With-response on the peer's
+    // PLAIN (unencrypted) FFF1 does NOT trigger pairing. A watchdog advances if
+    // the stack fails to call back.
+    private fun pumpWrites() {
+        if (disposed) return
+        if (writeBusy) return
+        val g = gatt ?: return
+        val ch = writeChar ?: return
+        val data = writeQueue.removeFirstOrNull() ?: return
+        writeBusy = true
+        val gen = ++writeGen
+        ch.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        val ok = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val rc = g.writeCharacteristic(ch, data,
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                if (rc != BluetoothGatt.GATT_SUCCESS)
+                    android.util.Log.w(TAG, "writeCharacteristic rc=$rc props=${ch.properties}")
+                rc == BluetoothGatt.GATT_SUCCESS
+            } else {
+                @Suppress("DEPRECATION") run { ch.value = data; g.writeCharacteristic(ch) }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "writeCharacteristic: ${e.message}"); false
+        }
+        if (!ok) {
+            writeBusy = false
+            writeQueue.addFirst(data)
+            bg.postDelayed({ pumpWrites() }, 60)
+        } else {
+            // Watchdog: if onCharacteristicWrite never fires, advance anyway. Give a
+            // with-response write longer (the ATT round-trip + peer processing).
+            bg.postDelayed({
+                if (writeBusy && writeGen == gen) { writeBusy = false; pumpWrites() }
+            }, 1500)
+        }
+    }
+
+    private fun gattDisconnect() {
+        val wasDisposed = disposed
+        val g = gatt
+        gatt = null
+        writeChar = null
+        notifyChar = null
+        writeQueue.clear()
+        writeBusy = false
+        if (g != null) {
+            try { g.disconnect() } catch (_: Exception) {}
+            try { g.close() } catch (_: Exception) {}
+        }
+        // Always tell Dart: its link state can desync from the native handle
+        // (seen live: clientLinkUp true for 23 min with gatt==null, so every
+        // idle-drop call here silently no-opped and the mesh stayed wedged).
+        if (!wasDisposed) emitGatt(mapOf("event" to "disconnected"))
+    }
+
+    private val gattCb = object : BluetoothGattCallback() {
+        override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
+            if (disposed) return
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                armSetupWatchdog()
+                // Bulk-transfer throughput: shortest connection interval the
+                // stack grants, and 2M PHY where both radios support it (the
+                // extended-advert sets stay 1M — this touches only the link).
+                try { g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH) } catch (_: Exception) {}
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    try {
+                        g.setPreferredPhy(BluetoothDevice.PHY_LE_2M_MASK,
+                            BluetoothDevice.PHY_LE_2M_MASK,
+                            BluetoothDevice.PHY_OPTION_NO_PREFERRED)
+                    } catch (_: Exception) {}
+                }
+                try { g.requestMtu(512) } catch (_: Exception) {}
+                // discoverServices is kicked off after MTU (onMtuChanged); if MTU
+                // request fails to call back, discover here as a fallback.
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) g.discoverServices()
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                try { g.close() } catch (_: Exception) {}
+                if (gatt === g) { gatt = null; writeChar = null }
+                writeQueue.clear(); writeBusy = false
+                emitGatt(mapOf("event" to "disconnected"))
+            }
+        }
+
+        override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
+            if (disposed) return
+            android.util.Log.i(TAG, "client MTU=$mtu status=$status")
+            try { g.discoverServices() } catch (_: Exception) {}
+        }
+
+        override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+            if (disposed) return
+            val svc = g.getService(SVC_UUID)
+            val write = svc?.getCharacteristic(FFF1_UUID)
+            val notify = svc?.getCharacteristic(FFF2_UUID)
+            if (write == null || notify == null) {
+                android.util.Log.e(TAG, "peer missing FFE0/FFF1/FFF2")
+                gattDisconnect(); emitGatt(mapOf("event" to "disconnected")); return
+            }
+            writeChar = write
+            notifyChar = notify
+            android.util.Log.i(TAG, "GATT discovered FFE0 on ${g.device?.address} " +
+                "fff1.props=${write.properties}")
+            // Notifications are enabled LOCALLY ONLY — the CCCD is never written.
+            //
+            // setCharacteristicNotification is a local call: it tells our own
+            // stack to hand incoming FFF2 notifications to the app, and puts no
+            // packet on air. Writing the 0x2902 descriptor is what goes on air,
+            // and it is the only ATT operation on this link a peer could answer
+            // with "insufficient authentication" — after which Android's client
+            // bonds, and this transport must pair with nobody, ever.
+            //
+            // Nothing is lost by skipping it: the remote server it would inform
+            // is our own code, and pumpNotifies() notifies the connected central
+            // unconditionally, without consulting subscription state. The link
+            // is therefore ready as soon as the characteristics are known, with
+            // no descriptor round-trip to wait for.
+            //
+            // (This was NOT the cause of the pairing dialog — that was
+            // ble_peripheral's GATT server callback calling createBond(); see
+            // BleService._ensureBlePeripheral. Removing the descriptor write is
+            // kept because it deletes the remaining escalation surface and a
+            // round-trip before the first parcel.)
+            try {
+                g.setCharacteristicNotification(notify, true)
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "local notify enable: ${e.message}")
+            }
+            linkReady = true
+            emitGatt(mapOf("event" to "connected"))
+            pumpWrites()
+        }
+
+        // Dead on the phone↔phone path (no descriptor is written any more); kept
+        // for peers whose server genuinely requires a subscription.
+        override fun onDescriptorWrite(
+            g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int,
+        ) {
+            if (disposed) return
+            if (descriptor.uuid == CCCD_UUID) {
+                android.util.Log.i(TAG, "CCCD write status=$status — link ready")
+                linkReady = true
+                emitGatt(mapOf("event" to "connected"))
+            }
+        }
+
+        @Deprecated("compat for < TIRAMISU")
+        override fun onCharacteristicChanged(g: BluetoothGatt, ch: BluetoothGattCharacteristic) {
+            if (disposed) return
+            if (ch.uuid == FFF2_UUID) {
+                @Suppress("DEPRECATION")
+                emitGatt(mapOf("event" to "data", "data" to (ch.value ?: ByteArray(0))))
+            }
+        }
+
+        override fun onCharacteristicChanged(
+            g: BluetoothGatt, ch: BluetoothGattCharacteristic, value: ByteArray,
+        ) {
+            if (disposed) return
+            if (ch.uuid == FFF2_UUID) emitGatt(mapOf("event" to "data", "data" to value))
+        }
+
+        override fun onCharacteristicWrite(
+            g: BluetoothGatt, ch: BluetoothGattCharacteristic, status: Int,
+        ) {
+            if (disposed) return
+            if (status != BluetoothGatt.GATT_SUCCESS)
+                android.util.Log.w(TAG, "onCharacteristicWrite status=$status")
+            // Previous write finished — release the lock and issue the next.
+            bg.post { writeBusy = false; pumpWrites() }
+        }
+    }
+
+    // ── GATT server (native) ────────────────────────────────────────────────
+    // A single coordinated native server is what makes dual-role reliable: the
+    // two-plugin approach (ble_peripheral server + bluetooth_low_energy client)
+    // confused Android's per-device GATT handle cache so only the first write
+    // landed and notify failed with "Device not found". Plain (unencrypted)
+    // characteristics mean no pairing dialog.
+
+    private fun startServer(callsign: String): Boolean {
+        if (disposed) return false
+        serverCallsign = if (callsign.isEmpty()) "AURORA" else callsign
+        val mgr = appContext.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            ?: return false
+        if (gattServer == null) {
+            val server = try { mgr.openGattServer(appContext, gattServerCb) } catch (e: Exception) {
+                android.util.Log.e(TAG, "openGattServer: ${e.message}"); null
+            } ?: return false
+            val svc = BluetoothGattService(SVC_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
+            val fff1 = BluetoothGattCharacteristic(
+                FFF1_UUID,
+                BluetoothGattCharacteristic.PROPERTY_WRITE or
+                    BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
+                BluetoothGattCharacteristic.PERMISSION_WRITE, // PLAIN — no encryption
+            )
+            val fff2 = BluetoothGattCharacteristic(
+                FFF2_UUID,
+                BluetoothGattCharacteristic.PROPERTY_NOTIFY or
+                    BluetoothGattCharacteristic.PROPERTY_READ,
+                BluetoothGattCharacteristic.PERMISSION_READ,
+            )
+            val cccd = BluetoothGattDescriptor(
+                CCCD_UUID,
+                BluetoothGattDescriptor.PERMISSION_READ or
+                    BluetoothGattDescriptor.PERMISSION_WRITE, // PLAIN — no encryption
+            )
+            fff2.addDescriptor(cccd)
+            svc.addCharacteristic(fff1)
+            svc.addCharacteristic(fff2)
+            try { server.addService(svc) } catch (e: Exception) {
+                android.util.Log.e(TAG, "addService: ${e.message}")
+            }
+            gattServer = server
+            serverNotifyChar = fff2
+        }
+        startLegacyAdvert()
+        startLegacyScan()
+        return true
+    }
+
+    private fun stopServer() {
+        stopLegacyAdvert()
+        stopLegacyScan()
+        try { gattServer?.close() } catch (_: Exception) {}
+        gattServer = null
+        serverNotifyChar = null
+        serverCentral = null
+        notifyQueue.clear()
+        notifyBusy = false
+    }
+
+    // Foreign-central defense: our FFE0 service UUID attracts probes from
+    // unrelated street devices (seen live: one reconnecting every ~15 s,
+    // stealing radio time and spawning ghost sessions). Behavior-based: a
+    // central that writes nothing within 10 s is disconnected and its
+    // address ignored for 10 minutes. No pairing, no whitelist sync — a
+    // real peer's first write always lands well within 10 s.
+    private val strangerBlock = HashMap<String, Long>()
+    private var serverProbeGen = 0
+
+    private fun armServerProbe(device: BluetoothDevice) {
+        if (disposed) return
+        val gen = ++serverProbeGen
+        val addr = device.address
+        bg.postDelayed({
+            if (disposed) return@postDelayed
+            if (serverProbeGen == gen && serverCentral?.address == addr &&
+                !serverSawData) {
+                android.util.Log.w(TAG, "server: silent central $addr — dropping (blocked 10min)")
+                strangerBlock[addr] = System.currentTimeMillis() + 600_000
+                try { gattServer?.cancelConnection(device) } catch (_: Exception) {}
+            }
+        }, 10_000)
+    }
+    private var serverSawData = false
+
+    private val gattServerCb = object : BluetoothGattServerCallback() {
+        override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+            if (disposed) return
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                val until = strangerBlock[device.address] ?: 0L
+                if (until > System.currentTimeMillis()) {
+                    try { gattServer?.cancelConnection(device) } catch (_: Exception) {}
+                    return
+                }
+                serverCentral = device
+                serverSawData = false
+                armServerProbe(device)
+                emitGatt(mapOf("event" to "server_connected", "address" to device.address))
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                if (serverCentral?.address == device.address) {
+                    serverCentral = null
+                    notifyQueue.clear()
+                    notifyBusy = false
+                }
+                emitGatt(mapOf("event" to "server_disconnected", "address" to device.address))
+            }
+        }
+
+        override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
+            if (disposed) return
+            android.util.Log.i(TAG, "server MTU=$mtu (${device.address})")
+        }
+
+        override fun onNotificationSent(device: BluetoothDevice, status: Int) {
+            if (disposed) return
+            // Native pacing for server→central bulk: the next queued notify
+            // goes out only after the stack confirms this one left the buffer
+            // (notifications have no ATT-level flow control of their own).
+            bg.post { notifyBusy = false; pumpNotifies() }
+        }
+
+        override fun onCharacteristicWriteRequest(
+            device: BluetoothDevice, requestId: Int, ch: BluetoothGattCharacteristic,
+            preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray,
+        ) {
+            if (disposed) return
+            if (ch.uuid == FFF1_UUID) {
+                serverCentral = device
+                serverSawData = true
+                strangerBlock.remove(device.address)
+                emitGatt(mapOf("event" to "server_data", "address" to device.address,
+                    "data" to value))
+            }
+            if (responseNeeded) {
+                try {
+                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS,
+                        offset, value)
+                } catch (_: Exception) {}
+            }
+        }
+
+        override fun onDescriptorWriteRequest(
+            device: BluetoothDevice, requestId: Int, descriptor: BluetoothGattDescriptor,
+            preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray,
+        ) {
+            if (disposed) return
+            serverSawData = true // a CCCD subscribe is a real peer, not a probe
+            // CCCD subscription from a central — just acknowledge (plain, no auth).
+            if (responseNeeded) {
+                try {
+                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS,
+                        offset, value)
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    /** Notify the connected central on FFF2 (receipts / reverse-direction data).
+     *  Queued + paced by onNotificationSent — back-to-back unpaced notifies
+     *  overrun the controller buffer exactly like unpaced writes did. */
+    private val notifyQueue = ArrayDeque<ByteArray>()
+    private var notifyBusy = false
+    private var notifyGen = 0
+
+    private fun serverNotify(data: ByteArray): Boolean {
+        if (disposed) return false
+        if (gattServer == null || serverCentral == null) return false
+        bg.post {
+            if (notifyQueue.size >= 256) {
+                // Deep overload (should not happen under the WIN_ACK window):
+                // drop oldest; the receiver's resync recovers the gap.
+                notifyQueue.removeFirstOrNull()
+                android.util.Log.w(TAG, "serverNotify: queue overflow, dropped oldest")
+            }
+            notifyQueue.add(data)
+            pumpNotifies()
+        }
+        return true
+    }
+
+    private fun pumpNotifies() {
+        if (disposed) return
+        if (notifyBusy) return
+        val server = gattServer ?: return
+        val ch = serverNotifyChar ?: return
+        val dev = serverCentral ?: return
+        val data = notifyQueue.removeFirstOrNull() ?: return
+        notifyBusy = true
+        val gen = ++notifyGen
+        val ok = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                server.notifyCharacteristicChanged(dev, ch, false, data) == BluetoothStatusOk
+            } else {
+                @Suppress("DEPRECATION") run {
+                    ch.value = data
+                    server.notifyCharacteristicChanged(dev, ch, false)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "serverNotify: ${e.message}"); false
+        }
+        if (!ok) {
+            notifyBusy = false
+            notifyQueue.addFirst(data)
+            bg.postDelayed({ pumpNotifies() }, 60)
+        } else {
+            // Watchdog: some stacks miss onNotificationSent — advance anyway.
+            bg.postDelayed({
+                if (notifyBusy && notifyGen == gen) { notifyBusy = false; pumpNotifies() }
+            }, 800)
+        }
+    }
+
+    private val BluetoothStatusOk: Int
+        get() = android.bluetooth.BluetoothStatusCodes.SUCCESS
+
+    // ── Legacy connectable presence beacon + discovery scan ─────────────────
+    // The GATT path uses a LEGACY connectable advert (separate from the extended
+    // broadcast set) so peers can discover and connect. Beacon manufacturer data:
+    // [0x3E, deviceId(1..15), callsign...] — the geogram presence format.
+
+    private fun startLegacyAdvert() {
+        if (disposed) return
+        val advertiser = adapter?.bluetoothLeAdvertiser ?: return
+        stopLegacyAdvert()
+        val cs = serverCallsign.take(6)
+        val csBytes = cs.toByteArray(Charsets.UTF_8)
+        val mfg = ByteArray(2 + csBytes.size)
+        mfg[0] = MARKER
+        mfg[1] = deviceId(serverCallsign).toByte()
+        System.arraycopy(csBytes, 0, mfg, 2, csBytes.size)
+        val settings = AdvertiseSettings.Builder()
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+            .setConnectable(true)
+            .build()
+        val data = AdvertiseData.Builder()
+            .addManufacturerData(COMPANY_ID, mfg)
+            .setIncludeDeviceName(false)
+            .build()
+        val cb = object : AdvertiseCallback() {
+            override fun onStartFailure(errorCode: Int) {
+                android.util.Log.e(TAG, "legacy advert failed: $errorCode")
+            }
+        }
+        legacyAdvCb = cb
+        legacyAdvertiser = advertiser
+        try { advertiser.startAdvertising(settings, data, cb) } catch (e: Exception) {
+            android.util.Log.e(TAG, "startAdvertising: ${e.message}")
+        }
+    }
+
+    private fun stopLegacyAdvert() {
+        val a = legacyAdvertiser
+        val cb = legacyAdvCb
+        if (a != null && cb != null) {
+            try { a.stopAdvertising(cb) } catch (_: Exception) {}
+        }
+        legacyAdvCb = null
+        legacyAdvertiser = null
+    }
+
+    /** Legacy scan for peers' connectable presence beacons → emit "discovered". */
+    private fun startLegacyScan(): Boolean {
+        if (disposed) return false
+        val s = adapter?.bluetoothLeScanner ?: return false
+        if (legacyScanCb != null) return true
+        val filter = ScanFilter.Builder()
+            .setManufacturerData(COMPANY_ID, byteArrayOf())
+            .build()
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
+            .build()
+        val cb = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult?) {
+                if (disposed) return
+                scanResults.incrementAndGet()          // see the extended scan
+                lastScanResultAt = System.currentTimeMillis()
+                val sink = gattEvents ?: return
+                val mfg = result?.scanRecord?.getManufacturerSpecificData(COMPANY_ID) ?: return
+                // Presence beacon: [0x3E, deviceId 1..15, callsign...].
+                if (mfg.size < 3 || mfg[0] != MARKER) return
+                val id = mfg[1].toInt() and 0xFF
+                if (id < 1 || id > 15) return
+                val callsign = String(mfg, 2, mfg.size - 2, Charsets.UTF_8).trim()
+                val addr = result.device?.address ?: return
+                val now = System.currentTimeMillis()
+                if (!shouldEmitScan("legacy:$addr:$callsign", now)) return
+                ui.post {
+                    if (disposed || gattEvents !== sink) return@post
+                    try {
+                        sink.success(
+                            mapOf(
+                                "event" to "discovered",
+                                "address" to addr,
+                                "callsign" to callsign,
+                            ),
+                        )
+                    } catch (t: Throwable) {
+                        android.util.Log.w(TAG, "legacy scan event dropped: ${t.message}")
+                    }
+                }
+            }
+        }
+        legacyScanCb = cb
+        legacyScanner = s
+        return try {
+            s.startScan(listOf(filter), settings, cb); true
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "legacy startScan: ${e.message}"); legacyScanCb = null; false
+        }
+    }
+
+    private fun stopLegacyScan() {
+        val cb = legacyScanCb
+        if (cb != null) {
+            try { legacyScanner?.stopScan(cb) } catch (_: Exception) {}
+        }
+        legacyScanCb = null
+        legacyScanner = null
+    }
+
+    // Small non-zero device id (1..15) from the callsign — matches the Dart
+    // BleGattServer scheme (FNV-1a, value need only be stable, not unique).
+    private fun deviceId(cs: String): Int {
+        var h = 2166136261L
+        for (b in cs.toByteArray(Charsets.UTF_8)) {
+            h = (h xor (b.toLong() and 0xFF)) * 16777619L and 0xffffffffL
+        }
+        return (h % 15).toInt() + 1
+    }
+}

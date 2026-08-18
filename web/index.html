@@ -1,0 +1,146 @@
+<!DOCTYPE html><html><head>
+  <!--
+    Flutter web bootstrap scaffold for iwi (geogram launcher).
+    `flutter build web` / `flutter run -d chrome` emit
+    flutter_bootstrap.js which then loads main.dart.js. Replacing
+    the previous hand-written vanilla-JS implementation so the web
+    build renders through the SAME Dart/GeoUI codebase as desktop.
+  -->
+
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="geogram — offgrid wapp launcher">
+
+  <!-- iOS meta -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="geogram">
+  <meta name="theme-color" content="#232A2E">
+
+  <!-- Favicon -->
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="favicon-180.png">
+
+  <title>geogram</title>
+  <link rel="manifest" href="site.webmanifest">
+
+  <!--
+    One-shot service-worker purge. Earlier builds registered a
+    Flutter PWA service worker that kept serving stale main.dart.js
+    from Cache Storage even after we rebuilt with --pwa-strategy=none
+    (which only prevents NEW registrations, it doesn't unregister
+    old ones). Incognito is unaffected because it gets a fresh SW
+    scope. This block unregisters any lingering SW, wipes the asset
+    cache, and hard-reloads — guarded by sessionStorage so we don't
+    loop.
+  -->
+  <script>
+    (function () {
+      if (!('serviceWorker' in navigator)) return;
+      if (sessionStorage.getItem('geogram.sw.purged') === '1') return;
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        if (regs.length === 0) return;
+        sessionStorage.setItem('geogram.sw.purged', '1');
+        Promise.all(regs.map(function (r) { return r.unregister(); }))
+          .then(function () {
+            if (window.caches && caches.keys) {
+              return caches.keys().then(function (keys) {
+                return Promise.all(keys.map(function (k) {
+                  return caches.delete(k);
+                }));
+              });
+            }
+          })
+          .then(function () { window.location.reload(); });
+      });
+    })();
+  </script>
+  
+  
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+  <style id="splash-screen-style">
+    html {
+      height: 100%
+    }
+
+    body {
+      margin: 0;
+      min-height: 100%;
+      background-color: #F4F1EA;
+          background-size: 100% 100%;
+    }
+
+    .center {
+      margin: 0;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      -ms-transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%);
+    }
+
+    .contain {
+      display:block;
+      width:100%; height:100%;
+      object-fit: contain;
+    }
+
+    .stretch {
+      display:block;
+      width:100%; height:100%;
+    }
+
+    .cover {
+      display:block;
+      width:100%; height:100%;
+      object-fit: cover;
+    }
+
+    .bottom {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      -ms-transform: translate(-50%, 0);
+      transform: translate(-50%, 0);
+    }
+
+    .bottomLeft {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+    }
+
+    .bottomRight {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background-color: #232A2E;
+          }
+    }
+  </style>
+  <script id="splash-screen-script">
+    function removeSplashFromWeb() {
+      document.getElementById("splash")?.remove();
+      document.getElementById("splash-branding")?.remove();
+      document.body.style.background = "transparent";
+    }
+  </script>
+</head>
+<body>
+  <picture id="splash">
+      <source srcset="splash/img/light-1x.png 1x, splash/img/light-2x.png 2x, splash/img/light-3x.png 3x, splash/img/light-4x.png 4x" media="(prefers-color-scheme: light)">
+      <source srcset="splash/img/dark-1x.png 1x, splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x, splash/img/dark-4x.png 4x" media="(prefers-color-scheme: dark)">
+      <img class="center" aria-hidden="true" src="splash/img/light-1x.png" alt="">
+  </picture>
+  
+  <script src="flutter_bootstrap.js" async=""></script>
+
+
+</body></html>

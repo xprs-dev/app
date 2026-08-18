@@ -1,0 +1,109 @@
+/*
+ * Aurora launcher library.
+ *
+ * All launcher-facing source lives here, split into `part` files so the
+ * many private widgets stay library-private while each concern sits in
+ * its own file:
+ *   - wapp_manifest.dart    — the WappManifest model
+ *   - seeding.dart          — first-run default-wapp install
+ *   - launcher_app.dart     — IwiApp root MaterialApp
+ *   - launcher_page.dart    — the launcher grid + profile switcher
+ *   - settings_page.dart    — the Settings screen
+ *   - wapp_runner_page.dart — generic WASM runner page
+ *
+ * `lib/main.dart` is just the entry point: it boots services and runs
+ * [IwiApp] from this library.
+ */
+library;
+
+import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:async';
+
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding, FrameTiming;
+import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import '../platform/platform.dart' as platform;
+
+import '../wapp/wapp_file_handler.dart';
+import '../profile/welcome_page.dart';
+import '../services/event_bus.dart';
+import '../services/log_service.dart';
+import '../services/notification_service.dart';
+import '../services/notification_store.dart';
+import '../services/reticulum/rns_service.dart';
+import '../services/social/note_text.dart';
+import '../services/mesh/mesh_service.dart';
+import '../services/preferences_service.dart';
+import '../services/launch_count_store.dart';
+import '../services/new_wapp_tracker.dart';
+import '../services/hero/hero_brightness.dart';
+import '../services/hero/hero_feed_service.dart';
+import '../services/hero/hero_inbox.dart';
+import '../services/hero/hero_item.dart';
+import '../services/hero/followed_media_cache.dart';
+import '../services/hero/launcher_visibility.dart';
+import '../util/time_ago.dart';
+import '../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
+import '../services/remote_api_service.dart';
+import '../services/android_permissions_service.dart';
+import '../services/permission_gate.dart';
+import '../services/update_service.dart';
+import '../version.dart';
+import 'update_page.dart';
+import '../profile/iwi_profile.dart';
+import '../profile/profile_encryption.dart';
+import '../profile/profile_service.dart';
+import '../profile/unlock_page.dart';
+import '../profile/profile_avatar.dart';
+import '../profile/profile_edit_page.dart';
+import '../profile/profile_storage.dart';
+import '../profile/profile_storage_factory.dart';
+import '../wapp/dependency_resolver.dart';
+import '../profile/storage_paths.dart';
+import '../services/task_monitor_service.dart';
+import '../services/wapp_unread_service.dart';
+import '../wapp/wapp_installer_service.dart';
+import '../wapp/wapp_signing_service.dart';
+import '../wapp/background_wapp_manager.dart';
+import '../wapp/functionality_registry.dart';
+import '../wapp/wapp_icons.dart';
+import '../wapp/wapp_engine.dart';
+import '../wapp/wapp_open.dart';
+import '../wapp/wapp_page.dart';
+
+import 'hardware_page.dart';
+import 'muted_page.dart';
+import '../services/social/node_profile_service.dart';
+import 'package:reticulum/src/services/social/node_profile.dart';
+
+part 'wapp_manifest.dart';
+part 'seeding.dart';
+part 'permissions_intro_page.dart';
+part 'launcher_app.dart';
+part 'launcher_page.dart';
+part 'settings_page.dart';
+part 'wapp_runner_page.dart';
+part 'home_header.dart';
+part 'connection_indicator.dart';
+part 'hero_carousel.dart';
+part 'quick_launch_row.dart';
+part 'home_modules.dart';
+part 'status_bar.dart';
+part 'all_apps_sheet.dart';
+part 'notifications_page.dart';
+part 'app_drawer.dart';
+
+/// Global messenger key. Held outside any widget so the
+/// [NotificationService] can drive snackbars without needing a
+/// BuildContext from inside an event handler.
+final GlobalKey<ScaffoldMessengerState> rootMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
+/// Global root navigator key. Lets services without a BuildContext (e.g. the
+/// remote-control API) push routes — used to open a wapp on /api/launch.
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();

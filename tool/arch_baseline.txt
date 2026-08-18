@@ -1,0 +1,4 @@
+# Architecture-guard baseline — violations that predate the guard.
+# NEW violations fail the build; these do not. Shrink this file.
+# Regenerate deliberately: dart tool/arch_guard.dart --baseline
+

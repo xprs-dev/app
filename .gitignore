@@ -1,0 +1,59 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+*.hprof
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# iGate provisioning secrets (real values; example is committed)
+esp32/rns_ble5/src/igate_secrets.h
+
+# Reference RNS clone for protocol comparison (re-cloneable; has its own .git)
+archive/
+
+# Local Reticulum update-host test folder (.folder.json holds the master
+# private key — must never be committed)
+updates-host/
+esp32/src/wifi_secrets.h
+esp32/m5stack/src/wifi_secrets.h
+esp32/espnow_probe/src/wifi_secrets.h

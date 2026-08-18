@@ -1,0 +1,638 @@
+/*
+ * mesh_custody — wires the MSP session FSM (mesh_session.dart) into the live
+ * app: session lifecycle per GATT link, and the delegate that answers the
+ * FSM's questions from the SCF store, the mesh table and (Stage 2) the bulk
+ * spool.
+ *
+ * BleService owns the radios and calls in on three events only:
+ *   onLinkUp / onLinkDown — a GATT link appeared/died (either role);
+ *   onFrame               — bytes arrived that demuxed as MSP (0x4D 0x01).
+ * Everything mesh-side happens here; ble_service_io stays transport-only.
+ *
+ * The existing connection model is one client link + one served central at a
+ * time, so the manager holds at most two sessions (dialer + served).
+ */
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import '../../util/media_ref.dart';
+
+import '../log_service.dart';
+import '../xprs/xprs_packet.dart';
+import '../xprs/xprs_vocab.dart';
+import 'mesh_beacon.dart';
+import 'mesh_bulk_spool.dart';
+import 'mesh_frame.dart';
+import 'mesh_courier.dart';
+import 'mesh_service.dart';
+import 'mesh_session.dart';
+import 'mesh_store.dart';
+import 'mesh_transfer_scheduler.dart';
+
+/// Hooks BleService injects so custody can talk back to the transport layer
+/// without a circular import.
+class MeshTransportHooks {
+  /// The peer on the CURRENT link named itself in its HELLO. The transport uses
+  /// it to correct its dial registry — an address learned from a re-aired
+  /// beacon belongs to the relayer, not to the callsign inside the beacon.
+  void Function(String callsign)? peerIdentified;
+
+  /// Send one MSP frame on the client link (our GATT client → peer FFF1).
+  Future<void> Function(Uint8List data)? clientSend;
+
+  /// Send one MSP frame to the connected central (our server FFF2 notify).
+  Future<void> Function(Uint8List data)? serverSend;
+
+  /// Deliver a custody-carried 1:1 frame into the normal inbound path (wapps
+  /// receive it exactly as if it had been heard on the broadcast plane).
+  void Function(Uint8List wire)? deliverLocal;
+
+  /// Drop the client GATT link (session over — free the radio).
+  void Function()? dropClientLink;
+
+  /// Dial [callsign] for a custody session (native GATT connect). Returns
+  /// false when the peer is stale/unknown or the radio is busy.
+  bool Function(String callsign)? dial;
+
+  /// Callsigns currently dialable → ms since last seen.
+  Map<String, int> Function()? dialable;
+}
+
+class MeshSessionManager {
+  MeshSessionManager._();
+  static final MeshSessionManager instance = MeshSessionManager._();
+
+  final MeshTransportHooks hooks = MeshTransportHooks();
+
+  MeshSession? _client; // we dialed out
+  MeshSession? _served; // a central dialed us
+
+  MeshSession? get clientSession => _client;
+  MeshSession? get servedSession => _served;
+  bool get anyActive => _client != null || _served != null;
+
+  /// A GATT link came up. [serverSide] true when a central connected to our
+  /// server (we are "served"); false when our own dial completed.
+  void onLinkUp({required bool serverSide}) {
+    final self =
+        MeshService.instance.tableCallsign;
+    if (self.isEmpty) return; // profile not ready — plain parcel traffic only
+    final send = serverSide ? hooks.serverSend : hooks.clientSend;
+    if (send == null) return;
+
+    final store = MeshStore.instance;
+    final session = MeshSession(
+      dialer: !serverSide,
+      selfCallsign: self,
+      send: send,
+      delegate: MeshCustodyDelegate.instance,
+      maxFrame: 509,
+      pendingMsgs: store.pendingCount().clamp(0, 0xFFFF),
+      pendingBulk: MeshBulkSpool.instance.pendingCount().clamp(0, 255),
+      log: (m) => LogService.instance.add('Mesh: $m'),
+    );
+    if (serverSide) {
+      _served?.close(clean: false);
+      _served = session;
+    } else {
+      _client?.close(clean: false);
+      _client = session;
+    }
+    unawaited(session.start());
+  }
+
+  void onLinkDown({required bool serverSide}) {
+    final s = serverSide ? _served : _client;
+    if (serverSide) {
+      _served = null;
+    } else {
+      _client = null;
+    }
+    if (!serverSide && s != null && s.peerCallsign.isNotEmpty) {
+      // Feed the scheduler's backoff: a session that ended itself (BYE) or
+      // had nothing outstanding is a clean visit; a mid-work drop is not.
+      MeshTransferScheduler.instance.dialResult(s.peerCallsign,
+          clean: s.state == MeshSessionState.closed || s.idle);
+    }
+    s?.close(clean: false);
+  }
+
+  /// Feed an inbound MSP frame. Returns true when consumed (caller must not
+  /// pass it to the legacy parcel queue).
+  bool onFrame(Uint8List data, {required bool serverSide}) {
+    // Two magic bytes are not proof. A parcel chunk starts with a msgId that is
+    // effectively random, so roughly one chunk in 65536 opens with 4D 01 — and
+    // swallowing it here made a file transfer corrupt for no visible reason.
+    // Consume only what actually decodes as MSP; anything else belongs to the
+    // parcel queue.
+    if (!mspIsFrame(data) || mspDecode(data) == null) return false;
+    var s = serverSide ? _served : _client;
+    // A peer can start speaking MSP before our connect callback ran (server
+    // side sees data first on some stacks) — bring the session up lazily.
+    if (s == null) {
+      onLinkUp(serverSide: serverSide);
+      s = serverSide ? _served : _client;
+    }
+    if (s == null) return true; // MSP but no session possible: swallow
+    final session = s;
+    unawaited(session.onFrame(data).then((_) {
+      // The session may have ended itself while handling this frame (peer's
+      // BYE, all work done, error) — reap it so the link drops promptly and
+      // the scheduler learns the outcome instead of waiting for idle-drop.
+      if (session.state == MeshSessionState.closed) {
+        _reap(session, serverSide: serverSide);
+      }
+    }));
+    return true;
+  }
+
+  void _reap(MeshSession s, {required bool serverSide}) {
+    if (serverSide) {
+      if (identical(_served, s)) _served = null;
+      return;
+    }
+    if (!identical(_client, s)) return;
+    _client = null;
+    hooks.dropClientLink?.call(); // free the radio for broadcast
+    if (s.peerCallsign.isNotEmpty) {
+      MeshTransferScheduler.instance
+          .dialResult(s.peerCallsign, clean: s.closedClean);
+    }
+  }
+
+  /// Sweep session slots whose FSM already closed. Sessions can end from
+  /// their internal timers (hello timeout, stall, politeness) — paths that
+  /// never pass through onFrame — and a slot that lingers keeps anyActive
+  /// true forever: the scheduler starves and the GATT link never drops.
+  /// Called from the delegate on every sessionClosed and by the scheduler.
+  void reapClosed() {
+    final c = _client;
+    if (c != null && c.state == MeshSessionState.closed) {
+      _reap(c, serverSide: false);
+    }
+    final v = _served;
+    if (v != null && v.state == MeshSessionState.closed) {
+      _reap(v, serverSide: true);
+    }
+  }
+
+  /// Politely end the dialed session (scheduler's politeness cycle).
+  Future<void> byeClient() async {
+    await _client?.bye(MspBye.politeness);
+  }
+
+  // --- browse-before-carry (the Mesh wapp's "take some with you") -----------
+
+  /// The live dialed session with [callsign], dialing one up when needed.
+  /// Null when the radio is busy with somebody else, the peer cannot be
+  /// dialed, or the session never reaches active within [wait].
+  Future<MeshSession?> _sessionWith(String callsign, Duration wait) async {
+    final want = callsign.trim().toUpperCase();
+    if (want.isEmpty) return null;
+    final up = _client;
+    if (up != null &&
+        up.state == MeshSessionState.active &&
+        up.peerCallsign.toUpperCase() == want) {
+      return up;
+    }
+    if (anyActive) return null; // one session at a time — same rule as the scheduler
+    if (hooks.dial?.call(want) != true) return null;
+    final t0 = DateTime.now();
+    while (DateTime.now().difference(t0) < wait) {
+      await Future.delayed(const Duration(milliseconds: 200));
+      final s = _client;
+      if (s == null) continue;
+      if (s.state == MeshSessionState.active &&
+          s.peerCallsign.toUpperCase() == want) {
+        return s;
+      }
+      if (s.state == MeshSessionState.closed) return null;
+    }
+    return null;
+  }
+
+  /// What [callsign]'s custody store holds — envelopes only. Null when the
+  /// station cannot be reached (or does not serve listings).
+  Future<List<MspMsgListEntry>?> browseCarried(String callsign) async {
+    final s = await _sessionWith(callsign, const Duration(seconds: 12));
+    if (s == null) return null;
+    final l = await s.requestMsgList();
+    return l?.entries;
+  }
+
+  /// Take custody of [ams] from [callsign]. The messages arrive over the MSG
+  /// lane into our own store (the delegate parks them); the station archives
+  /// its copies on our acks. True when the request went out on a live session.
+  Future<bool> pullCarried(String callsign, List<String> ams) async {
+    if (ams.isEmpty) return false;
+    final s = await _sessionWith(callsign, const Duration(seconds: 12));
+    if (s == null) return false;
+    await s.pullMsgs(ams);
+    return true;
+  }
+}
+
+/// The delegate: SCF store + mesh table behind the session FSM. Bulk is
+/// stubbed until Stage 2 (offers are rejected as busy).
+/// Monotonic custody counters, exposed in the mesh status so relaying can be
+/// asserted as a number instead of grepped out of a 200-line rolling log.
+class MeshCustodyCounters {
+  static int custodyIn = 0; // frames we took custody of from a peer
+  static int custodyOut = 0; // frames we handed on and archived
+  static int delivered = 0; // frames that ended at us, the target
+  static int purged = 0; // parked copies dropped by a receipt/bloom
+  static int parked = 0; // frames taken into custody off the air
+  static int sessionsClean = 0;
+  static int sessionsAbrupt = 0;
+
+  /// Sessions that died before the peer said who it was — a dial that cost a
+  /// link and returned nothing. Watch this against `sessionsClean`: churn shows
+  /// up as this number climbing while custody counters stay flat.
+  static int sessionsPreHello = 0;
+
+  static Map<String, dynamic> toJson() => {
+        'custodyIn': custodyIn,
+        'custodyOut': custodyOut,
+        'delivered': delivered,
+        'purged': purged,
+        'parked': parked,
+        'courier': MeshCourierCounters.json(),
+        'sessionsClean': sessionsClean,
+        'sessionsAbrupt': sessionsAbrupt,
+        'sessionsPreHello': sessionsPreHello,
+      };
+}
+
+class MeshCustodyDelegate implements MeshSessionDelegate {
+  MeshCustodyDelegate._();
+  static final MeshCustodyDelegate instance = MeshCustodyDelegate._();
+
+  void _log(String m) => LogService.instance.add('Mesh: $m');
+
+  @override
+  List<MeshPendingMsg> custodyBatchFor(String peer, int max) =>
+      MeshStore.instance.pendingFor(peer, MeshService.instance.table,
+          max: max, selfCallsign: MeshService.instance.tableCallsign);
+
+  @override
+  void custodyTransferred(String peer, MeshPendingMsg m) {
+    MeshStore.instance.markArchived(m.key);
+    MeshCustodyCounters.custodyOut++;
+    _log('custody of ${m.key} -> $peer (archived)');
+  }
+
+  @override
+  int msgReceived(String peer, MspMsg m) {
+    if (m.wire.isEmpty) return MspMsgRej.malformed;
+    final store = MeshStore.instance;
+    final key = m.am.isNotEmpty ? m.am : MeshStore.contentKey(m.wire);
+
+    // Read the addressing, in whichever of the two formats arrived. This used
+    // to parse the compact frame ONLY, so an XPRS packet — which is what the
+    // courier and the chat wapp now hand to a carrier — was answered
+    // "malformed" and the delivery it was carrying died at the last hop. The
+    // parking side (onAirFrame, below) already reads both; this is the other
+    // half of the same seam.
+    final f = MeshFrame.parse(m.wire);
+    if (f == null || f.from.isEmpty) return MspMsgRej.malformed;
+    final (from, to) = (f.from, f.to);
+
+    final self = MeshService.instance.tableCallsign;
+    if (to.toUpperCase() == self.toUpperCase()) {
+      if (m.am.isNotEmpty && store.wasReceived(m.am)) return MspMsgRej.duplicate;
+      store.recordReceivedAm(key);
+      MeshCustodyCounters.delivered++;
+      _log('custody delivery from $peer: $from -> $to');
+      // The core owns delivery: unwrap it and put it in the inbox the wapps
+      // already read. The raw frame still goes down the broadcast stream for
+      // anything listening at the transport level.
+      MeshCourier.instance.ingest(m.wire, via: 'custody');
+      MeshSessionManager.instance.hooks.deliverLocal?.call(m.wire);
+      return 0;
+    }
+
+    // Not for us: take custody (we owe delivery / next hop).
+    final stored = store.offer(
+        target: to, sender: from, wire: m.wire, am: m.am, inTransit: true);
+    if (stored) {
+      MeshCustodyCounters.custodyIn++;
+      _log('took custody of $key for $to (via $peer)');
+      return 0;
+    }
+    // The store refused it. If that is because WE handed this very message on
+    // earlier and archived our copy, then accepting it back is the only answer
+    // that keeps somebody responsible for it: rejecting made the peer archive
+    // its copy too, and the message belonged to nobody. A row still in transit
+    // is a genuine duplicate — we already owe delivery.
+    if (store.reArm(key)) {
+      MeshCustodyCounters.custodyIn++;
+      _log('took custody of $key for $to again (via $peer)');
+      return 0;
+    }
+    // The store would not take it. "Duplicate" is only true when we KNOW the
+    // message (a row we hold, or one we saw delivered) — the giver archives
+    // on that answer, so claiming it for a refusal (carrying switched off,
+    // quota) left the mail belonging to NOBODY: observed live, a carrying-off
+    // phone answered duplicate and three parked messages evaporated off their
+    // custodian. A plain refusal answers quota and the giver keeps custody.
+    if (key.isNotEmpty && (store.holds(key) || store.wasReceived(key))) {
+      return MspMsgRej.duplicate;
+    }
+    return MspMsgRej.quota;
+  }
+
+  @override
+  void peerIdentified(String callsign, {required bool dialer}) {
+    if (callsign.isEmpty) return;
+    MeshSessionManager.instance.hooks.peerIdentified?.call(callsign);
+  }
+
+  @override
+  MspGossip gossipData() {
+    final t = MeshService.instance.table;
+    final entries = <MspGossipEntry>[
+      if (t != null)
+        for (final e in t.exportDv(maxEntries: 100))
+          MspGossipEntry(e.hash, e.cost),
+    ];
+    return MspGossip(
+        entries: entries, bloom: MeshStore.instance.buildHaveBloom());
+  }
+
+  @override
+  void gossipReceived(String peer, MspGossip g) {
+    final t = MeshService.instance.table;
+    if (t == null) return;
+    final n = t.neighbors[peer];
+    if (n != null && g.entries.isNotEmpty) {
+      // A gossip swap is the peer's full DV — same semantics as its beacon,
+      // so reuse the beacon ingest (class/cond from the live neighbor entry).
+      t.ingest(
+        MeshBeacon(
+          callsign: peer,
+          deviceClass: n.deviceClass,
+          cond: n.cond,
+          dv: [for (final e in g.entries) MeshDvEntry(e.hash, e.cost)],
+        ),
+        rssi: n.lastRssi,
+      );
+      MeshService.instance.revision++;
+    }
+    if (g.bloom.isNotEmpty) {
+      final purged = MeshStore.instance.applyPeerBloom(peer, g.bloom);
+      if (purged > 0) {
+        MeshCustodyCounters.purged += purged;
+        _log('peer bloom purged $purged parked msg(s)');
+      }
+    }
+  }
+
+  // --- bulk lane: backed by the disk spool -----------------------------------
+
+  @override
+  MeshBulkPending? nextBulkFor(String peer) =>
+      MeshBulkSpool.instance.nextFor(peer, MeshService.instance.table);
+
+  @override
+  MeshBulkDecision bulkOffered(String peer, MspFileOffer offer) =>
+      MeshBulkSpool.instance.offered(peer, offer);
+
+  @override
+  Uint8List bulkRead(Uint8List sha256, int offset, int len) =>
+      MeshBulkSpool.instance.readAt(sha256, offset, len);
+
+  @override
+  bool bulkWrite(Uint8List sha256, int offset, Uint8List data) =>
+      MeshBulkSpool.instance.writeAt(sha256, offset, data);
+
+  @override
+  bool bulkVerified(Uint8List sha256) => MeshBulkSpool.instance.verify(sha256);
+
+  @override
+  void bulkDone(String peer, Uint8List sha256, bool ok,
+      {required bool toPeer}) {
+    final spool = MeshBulkSpool.instance;
+    if (!ok) {
+      spool.transferEnded(sha256); // spool keeps the offset for resume
+      return;
+    }
+    if (toPeer) {
+      spool.handedOver(sha256, peer);
+    } else {
+      spool.completeInbound(sha256,
+          selfCallsign: MeshService.instance.tableCallsign);
+      MeshService.instance.revision++;
+    }
+  }
+
+  @override
+  void sessionClosed(String peer, {required bool clean}) {
+    if (clean) {
+      MeshCustodyCounters.sessionsClean++;
+    } else {
+      MeshCustodyCounters.sessionsAbrupt++;
+      // A close BEFORE hello is a dial that bought nothing: the link came up,
+      // the peer never identified, and the radio was held for the attempt. It
+      // is counted apart from an abrupt close mid-session because the two have
+      // different causes and only this one is pure waste. Measure before
+      // changing the dial policy — docs/performance.md section 4.
+      if (peer.isEmpty) MeshCustodyCounters.sessionsPreHello++;
+    }
+    _log('session with ${peer.isEmpty ? "(pre-hello)" : peer} closed '
+        '${clean ? "cleanly" : "abruptly"}');
+    // Reap AFTER the close finishes (close() fires this callback mid-teardown).
+    scheduleMicrotask(MeshSessionManager.instance.reapClosed);
+  }
+
+  /// Tap for every compact 0x41 frame crossing the broadcast plane, both
+  /// directions (docs/mesh.md §6): overheard `?ACK`s purge parked copies,
+  /// frames addressed to us feed the have-bloom, and 1:1 frames for OTHERS
+  /// (plus our own outbound) are parked for GATT custody delivery.
+  static void onAirFrame(Uint8List wire, {required bool outbound}) {
+    final store = MeshStore.instance;
+    if (!store.ready) return;
+    final f = MeshFrame.parse(wire);
+    if (f == null) return;
+    final (from, to, text) = (f.from, f.to, f.body);
+    if (from.isEmpty) return;
+
+    if (f.isXprs) {
+      // Only a 1:1 message is custody material. Groups are not carried
+      // (store-and-forward.md §4), and neither is anything else — an
+      // observation, a status or a poll is aired, not couriered.
+      if (f.packet!.type != 'message' || !_isStation(to)) return;
+    } else {
+      // Overheard end-to-end receipt: `?ACK <am> d|r` — the target has it.
+      if (text.startsWith('?ACK ')) {
+        final am = text.length >= 11 ? text.substring(5, 11) : '';
+        if (am.length == 6) {
+          final n = store.purgeAm(am);
+          if (n > 0) {
+            MeshCustodyCounters.purged += n;
+            LogService.instance.add('Mesh: ?ACK $am purged parked copy');
+          }
+        }
+        return;
+      }
+      // Only plain 1:1 traffic is custody material — no groups/control/queries.
+      if (to.isEmpty || '#!?'.contains(to[0]) || text.startsWith('?')) return;
+    }
+
+    // The handle this frame is tracked by: the derived identifier for XPRS
+    // (nothing transmits it), the `am:` token for a compact frame. Both six
+    // hex, so the store column is unchanged.
+    final am = f.id;
+    final self = MeshService.instance.tableCallsign.toUpperCase();
+    if (self.isEmpty) return;
+
+    if (!outbound && to.toUpperCase() == self) {
+      // Ours, heard on air — remember the am so our beacon bloom purges
+      // custodians still carrying it, and deliver it: a re-aired copy from a
+      // custodian is the OTHER half of store-and-forward, and arrives with no
+      // session at all.
+      if (am.isNotEmpty) store.recordReceivedAm(am);
+      MeshCourier.instance.ingest(wire, via: 'mesh');
+      return;
+    }
+    if (to.toUpperCase() == self || from.toUpperCase() == self && !outbound) {
+      return;
+    }
+    // A 1:1 for someone else (or our own outbound): CARRY IT, whoever it is for.
+    //
+    // A custodian that only holds mail for people it already knows is no use to
+    // the person who most needs one — someone out of range of everybody. So a
+    // stranger's message is parked too, and the sorting happens under pressure
+    // rather than at the door: [MeshStore.sweep] evicts `ORDER BY urg, ts`, so
+    // the bottom level goes first and our own last. A hard in-transit cap in
+    // [MeshStore.offer] stops a busy street from filling the disk with mail
+    // this device may never be able to deliver.
+    final t = MeshService.instance.table;
+    final known = from.toUpperCase() == self ||
+        (t != null &&
+            (t.neighbors.keys.any((n) => n.toUpperCase() == to.toUpperCase()) ||
+                t.routes.containsKey(meshHashHex(meshHash(to)))));
+    // A `scope:local` packet is never carried (docs/XPRS.md §13.11.3): it is
+    // for the bearers in range now, and parking it would air it somewhere it
+    // asked not to go. Refused at admission rather than at transmission,
+    // because a copy parked now and aired later is a leak either way.
+    if (!_mayCarry(wire)) {
+      LogService.instance
+          .add('Mesh: refused custody of a scope:local packet $from -> $to');
+      return;
+    }
+    // The sender states what it wants and the carrier decides what it may have.
+    // Mail we originated, or whose target we can reach, may claim any level; a
+    // stranger's is capped below `urgent` so that marking everything urgent —
+    // which stations will — cannot push our own traffic out of our own store.
+    //
+    // The compact frame carries no `urg:`, so until it is replaced the default
+    // holds and this reproduces the previous two-level behaviour exactly: ours
+    // `normal`, a stranger's `low`.
+    final stated = MeshUrgency.fromWire(_urgOf(wire));
+    final urg = known
+        ? stated.cappedAt(MeshUrgency.urgent)
+        : (_urgOf(wire) == null
+            ? MeshUrgency.low
+            : stated.cappedAt(MeshUrgency.high));
+    if (store.offer(
+        target: to, sender: from, wire: wire, am: am, urg: urg)) {
+      MeshCustodyCounters.parked++;
+      LogService.instance.add('Mesh: parked ${am.isEmpty ? "msg" : am} '
+          '$from -> $to for custody${known ? "" : " (stranger)"}');
+    }
+    // Chat attachment: our outbound 1:1 references media we host — queue the
+    // payload for the bulk lane (the message travels custody, bytes follow).
+    if (outbound && text.contains('file:')) {
+      for (final ref in MediaRef.findAll(text)) {
+        if (MeshBulkSpool.instance.enqueueFromArchive(ref.token, to, self)) {
+          LogService.instance
+              .add('Mesh: bulk queued ${ref.token} -> $to');
+        }
+      }
+    }
+  }
+
+  /// Outgoing chat-bubble tap (the PLAINTEXT side): when a 1:1 we sent
+  /// references media we host, queue the payload on the bulk lane. The wire
+  /// tap cannot do this for encrypted 1:1s — the file: token is inside the
+  /// ENC1 blob — but the wapp's ui.convo.msg carries the clear text.
+  static void onConvoOutMessage(Map<String, dynamic> data) {
+    try {
+      if (data['dir'] != 'out') return;
+      final id = data['id'] as String? ?? '';
+      final text = data['text'] as String? ?? '';
+      if (id.isEmpty || '#!?'.contains(id[0]) || !text.contains('file:')) {
+        return;
+      }
+      final self = MeshService.instance.tableCallsign;
+      if (self.isEmpty || !MeshBulkSpool.instance.ready) return;
+      for (final ref in MediaRef.findAll(text)) {
+        if (MeshBulkSpool.instance.enqueueFromArchive(ref.token, id, self)) {
+          LogService.instance.add('Mesh: bulk queued ${ref.token} -> $id');
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Whether `d:` names a station rather than a group.
+  ///
+  /// XPRS section 6.3 keeps the two apart by shape: an open group is an
+  /// uppercase name and may not look like a callsign, a closed group is an
+  /// `X5` callsign, and every station callsign carries a digit — `X1QZ3N`,
+  /// `X3RLY7`, `CT1ABC-9`. So "has a digit and is not X5" is the test, and it
+  /// is the format's own distinction rather than a guess about names.
+  static bool _isStation(String to) {
+    if (to.isEmpty || to.toUpperCase().startsWith('X5')) return false;
+    return to.contains(RegExp(r'[0-9]'));
+  }
+
+  /// The body of [wire] parsed as XPRS, or null when it is not an XPRS packet.
+  ///
+  /// Two formats are in flight during the changeover. The compact frame carries
+  /// its text in the third `\x1F` field; a bare XPRS packet has no `\x1F` at all
+  /// and starts with `t:`. Trying both costs one string scan and means the
+  /// carrier reads whichever arrives.
+  static XprsPacket? _xprsOf(Uint8List wire) {
+    final s = utf8.decode(wire, allowMalformed: true);
+    return XprsPacket.parse(s) ?? XprsPacket.parse(_splitWire(wire)?.$3 ?? '');
+  }
+
+  /// The sender-stated `urg:` value, or null when the frame carries none.
+  ///
+  /// Reading it here rather than later means the carrier honours it the moment
+  /// senders start writing it (docs/XPRS.md §13.5).
+  static String? _urgOf(Uint8List wire) {
+    final p = _xprsOf(wire);
+    if (p != null) return p['urg'];
+    // The compact frame is not XPRS, so scan it for the token directly. This
+    // branch goes away with the frame itself.
+    final t = _splitWire(wire)?.$3;
+    if (t == null) return null;
+    for (final tok in t.split(' ')) {
+      if (tok.startsWith('urg:') && tok.length > 4) return tok.substring(4);
+    }
+    return null;
+  }
+
+  /// Whether this frame may be parked at all.
+  ///
+  /// `scope:local` is for the bearers in range now, so carrying it to another
+  /// town is precisely what it excludes (docs/XPRS.md §13.11.3). The refusal
+  /// belongs at admission rather than at transmission: a copy parked now and
+  /// aired later is a leak wearing the shape of a feature.
+  static bool _mayCarry(Uint8List wire) {
+    final p = _xprsOf(wire);
+    return p == null || xprsMayCarry(p);
+  }
+
+  /// Split a compact frame `from\x1Fto\x1Ftext` (returns null when not one).
+  static (String, String, String)? _splitWire(Uint8List wire) {
+    final s = utf8.decode(wire, allowMalformed: true);
+    final a = s.indexOf('\x1F');
+    if (a <= 0) return null;
+    final b = s.indexOf('\x1F', a + 1);
+    if (b < 0) return null;
+    return (s.substring(0, a), s.substring(a + 1, b), s.substring(b + 1));
+  }
+}

@@ -1,0 +1,53 @@
+name: build-android
+
+# CI build verification only. Tag releases are built + published to
+# geogram.radio by release.yml (no GitHub release attach here).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pubspec.yaml has a path dependency on ../reticulum-dart; clone it next to
+      # the workspace so pub get (incl. flutter-action's setup) can resolve it.
+      - name: Fetch reticulum-dart (path dependency)
+        shell: bash
+        run: git clone --depth 1 https://github.com/geograms/reticulum-dart.git ../reticulum-dart
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Sync version + build number
+        run: |
+          # versionCode = git commit count so it always increases.
+          CODE=$(git rev-list --count HEAD)
+          VER=$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d+ -f1)
+          # For a tag build, use the tag (vX.Y.Z) as the version name.
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then VER="${GITHUB_REF_NAME#v}"; fi
+          sed -i "s/^version:.*/version: ${VER}+${CODE}/" pubspec.yaml
+          dart run tool/update_version.dart
+
+      - run: flutter pub get
+      - run: flutter build apk --release
+
+      - name: Rename artifact
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/aurora.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-android
+          path: dist/aurora.apk

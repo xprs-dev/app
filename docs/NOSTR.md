@@ -1,0 +1,1644 @@
+# NOSTR on geogram: every user a relay
+
+> Companion docs: [nostr-client.md](nostr-client.md) (the client, the relay hub
+> and the transports as they exist today), [dht.md in reticulum-dart](../../reticulum-dart/doc/dht.md)
+> (the who-has layer), [folders.md](folders.md), [mesh.md](mesh.md),
+> [XPRS.md](XPRS.md) (the same roles seen as an APRS replacement for unlicensed
+> users).
+> This file is the **vision and the architecture**; it marks clearly what is
+> built, what is half-built, and what is not built at all.
+
+## Why
+
+NOSTR today is a handful of big relays that everybody connects to. They give no
+guarantee your notes will still be there in ten years, and where a relay *does*
+promise longevity it is usually because somebody with an agenda is paying for
+the disk. A protocol designed to be censorship-resistant ends up with a dozen
+load-bearing servers.
+
+The next step is the obvious one: **each user is a relay.** Each participant
+hosts what it publishes, plus whatever it decided is worth keeping from other
+people. If you care about an author, you keep their notes and their media on
+your own devices — that is what keeps them alive. Nobody else is obliged to,
+and nobody else can be leaned on to stop.
+
+That is not a slogan, it is a storage model with consequences:
+
+- **Your data survives because *you* carry it.** The copy in your pocket is the
+  authoritative one, readable offline, on the bus, in a blackout.
+- **An author survives because their readers carry them.** Popularity becomes
+  literal replication. An author nobody keeps, fades — as it should.
+- **No relay is load-bearing.** Any of them can be taken offline, seized, or
+  quietly co-opted, and nothing is lost, because none of them was the only copy.
+
+geogram runs NOSTR over two networks at once: the plain internet (`wss://`
+relays, Blossom servers) **and** Reticulum (the mesh: LAN, BLE, LoRa, RNS hubs,
+public TCP hubs). Same account, same events, same signatures. You keep
+interacting with the internet NOSTR world you already use, and the same posts
+land on Reticulum relays — including your own device. When the major relays of
+today are gone, nothing about your account or your archive changes.
+
+## The ecosystem: three roles
+
+Everything below hangs off one separation, and it is the whole design:
+
+> **Finding data, hosting data, and owning data are three different jobs, done
+> by three different kinds of device, and no device is forced into more than
+> the one it volunteered for.**
+
+| Role | Answers | Stores | Typical hardware | Volunteered via |
+|---|---|---|---|---|
+| **Publisher** (leaf) | "here are *my* notes" | its own posts + the authors it follows (notes **and** media) | phone, laptop — anything | nothing to volunteer; this is every user |
+| **Indexer** | "*where* can I find notes from `npub…`" | **pointers only** — a who-has map. Never other people's content | old Android on a charger, home WiFi | the **Indexer wapp** |
+| **Archiver** | "I *hold* a copy of that" | other people's content, up to a quota the owner sets | NAS, home server, a phone with a big card, a LoRa/BLE gateway box | the **Archiver wapp** |
+
+A single device can be all three. Most are only a Publisher, and that is fine —
+a network of pure Publishers already works, it just gets slow to search and
+loses anything nobody happened to follow.
+
+### Publisher — the floor
+
+Every geogram device is a relay for itself. It answers queries about its own
+posts, it keeps the authors it follows (that is what *follow* means here: a
+storage decision, not a display filter), and it carries their media. It is
+battery-powered and mostly asleep, so the network must never make it the first
+thing anyone asks.
+
+### Indexer — the phone book
+
+If a thousand users each host their own relay, the naive design is a thousand
+devices asking a thousand devices "anything new?". Phones would cook their
+batteries doing nothing but answering. Fan-out is what killed every previous
+attempt at this.
+
+An **Indexer** is an ordinary device that volunteered: plugged into power, on a
+home WiFi with a real uplink. An old Android in a drawer is perfectly good
+hardware. It receives, from many users, statements of *what they are willing to
+share*, and it answers one question:
+
+> "Where can I find notes from `npub…`?"
+
+**An Indexer is not a disk drive.** It gives out locations, not content. An
+Indexer that vanishes costs the network a directory, not an archive — which is
+exactly what stops the whole thing sliding back into "a few big servers that
+have everything", the world we are leaving.
+
+Indexers **self-nominate**, and they **sync with each other**, because
+indexer-to-indexer traffic is fast and spares the small battery-powered devices.
+When one goes offline you pick another that is still alive with good uptime and
+ask there. No election, no registry, nothing to seize.
+
+### Archiver — the redundancy
+
+Pointers are worthless if every copy they point at is asleep or gone. Somebody
+has to be willing to hold **other people's** bytes. That is a separate,
+explicit, quota-bound offer — never an accident of having volunteered to index.
+
+An **Archiver**:
+
+- **Takes a quota from its owner** ("30 GB, no more") and never exceeds it.
+- **Chooses what it takes**: authors it follows, topics it cares about, or
+  *whatever comes over a direct link* (see below). Eviction is oldest-and-least-
+  wanted first, and never touches the owner's own data.
+- **Pulls from small devices.** A phone that holds the only copy of a
+  neighbourhood's photos is one drop away from losing them. An Archiver mirrors
+  what those devices offer to share, then **publishes itself as a provider** —
+  so the DHT starts pointing at the Archiver instead of waking the phone. The
+  phone's battery, and the data, both survive.
+- **Store-and-forwards on direct connections.** LAN, Bluetooth and LoRa peers
+  come and go and have no route to anywhere. An Archiver on those links accepts
+  what they hand it, holds it, and passes it on when the other side appears — the
+  bridge between an off-grid pocket of the mesh and the rest of the world. The
+  machinery for this exists (`RelayCap.storeForward`, `store_forward.dart`,
+  30-day TTL); the Archiver is what makes it a *role a user chooses* instead of
+  a side effect of being plugged in.
+
+An Archiver is not a backup service and makes no promise to any individual. It
+is redundancy: with a handful of them around an author, that author survives the
+loss of any one machine, including their own.
+
+### How the three fit together
+
+```
+   Publisher (phone)                      Publisher (laptop)
+     keeps: own posts                       keeps: own posts
+            + followed authors                     + followed authors
+        │  publishes ProviderRecord              │
+        │  "I hold npub X"                       │
+        ▼                                        ▼
+   ┌──────────────────── DHT (pointer-only) ────────────────────┐
+   │  key = author npub / file sha256 → [signed provider recs]  │
+   └────────▲───────────────────────────────────────▲───────────┘
+            │ anchored at                           │
+      ┌─────┴──────┐                          ┌─────┴──────┐
+      │  INDEXER   │◄──── sync ──────────────►│  INDEXER   │
+      │ who-has map│  (fast, wired, spares    │ who-has map│
+      │ no content │   the phones)            │ no content │
+      └─────┬──────┘                          └────────────┘
+            │ "npub X lives on: phone, laptop, archiver-7"
+            ▼
+      ┌────────────┐   mirrors small devices, publishes itself as a
+      │  ARCHIVER  │   provider, so the DHT points HERE not at a phone
+      │  quota-set │   ─ and store-and-forwards for LAN/BLE/LoRa peers
+      └────────────┘
+```
+
+A read goes: **local store → DHT resolve (asking an Indexer first) →
+connectionless probe of the returned providers → link only to one that answers
+`HAVE`.** Silence costs nothing, so a sleeping phone is never charged for a query
+it cannot answer. Archivers, being awake and fat, get picked over phones for the
+same content — that is the point of publishing a capacity class in the record.
+
+## What is actually built today
+
+Verified against the code, July 2026. Paths are `reticulum-dart/lib/src/…`
+unless stated.
+
+### Roles and the directory — BUILT (Indexer only)
+
+`services/social/relay_role.dart`:
+
+- `enum RelayRole { leaf, indexer }` — **there is no Archiver role yet**; see the
+  road below.
+- `RelayCap` bit-flags: `search`, `firehose`, `storeForward`, `archive`, `probe`.
+- **Role is derived from hardware, not from a setting**:
+  `RelayAnnouncement.forCapacity()` — a device that is not `unlimited`
+  (charger + WiFi/Ethernet) is a **leaf** advertising only `probe`. An unlimited
+  device becomes an **indexer** (`search | firehose | storeForward | probe`), and
+  one on the top capacity tier (pinned archive / home fibre) also goes `wide` +
+  `archive`. `CapacityGovernor` re-derives it live.
+- `InterestSet` — the topics and author pubkeys a node aggregates. The network
+  shards **by interest**, not by hash range. `wide` = holds everything it sees.
+- `RelayAnnouncement` is the advert itself: `{role, capacity, caps, wide,
+  topics[], authorPrefixes[], pubkey, uptimeSeconds}`, msgpack, carried in the
+  **app_data of the `geogram/relay` RNS announce** (≤ ~350 B, one announce).
+  Authors are advertised as **4-byte prefixes** — enough to shard, not enough to
+  be a mailing list.
+- `RelayDirectory` — every relay announce heard is observed with its hop count
+  (TTL 1 h). `indexers()`, `identityForPubkey(npub) → RnsIdentity`, and
+  **`bestIndexer({topic, author})`**, scored: explicit interest match +1000,
+  wide/archive +400, capacity `(9-cap)*20`, `−hops*10`, freshness as tiebreak.
+
+So "find another indexer with good uptime and ask there" already works: uptime
+is announced, the directory is live, selection is one call.
+
+### Asking a peer without waking it — BUILT
+
+`RelayNode.answerProbe` (`services/social/relay_node.dart`) is a
+**connectionless NOSTR probe**: the query rides a datagram, and a peer holding
+nothing **answers with silence** — no link, no Curve25519 handshake, no radio
+burn. If the answer fits a datagram it comes back inline; if not the peer says
+`HAVE n` and the querier opens a link. Advertised as `RelayCap.probe`, so older
+nodes keep getting links exactly as before.
+
+### The who-has layer — BUILT (for files and folders)
+
+`services/files/dht/` — Kademlia over RNS links. The property that makes it the
+right substrate for Indexers:
+
+> **Holders store pointers only.** The only value in the DHT is a signed
+> `ProviderRecord` = *"pubkey X provides sha256 Y, capacity class C, expires in
+> 45 min"* (~176 B, Ed25519-signed by the provider, so a relaying node cannot
+> forge one). No content, ever.
+
+- Key = first 16 bytes of a sha256 (`dhtFileKey`), or an arbitrary 32-byte key —
+  **folders already publish under their NOSTR public key**
+  (`FileTransferNode.publishKey` / `resolveProviders`). Publishing under an
+  *author's* npub is therefore possible with the code as it stands.
+- `DhtNode`: `k`, `alpha`, iterative FIND_NODE/FIND_VALUE, STORE with anti-abuse
+  caps (`maxStoredKeys`, `maxRecordsPerKey`, `storesRejected`), dead-holder
+  pruning (`demoteProvider` after a failed fetch), lazy TTL expiry, liveness
+  eviction after 5 failed RPCs.
+- **Persistence anchors**: `DhtNode(anchors:)` is a set of always-on nodes that
+  every STORE also goes to and every resolve asks *first*, regardless of XOR
+  distance. The app feeds it **the relay indexers** (`rns_service.dart`
+  `stableAnchors:` = `_relayDir.indexers()` filtered to the good capacity
+  classes, capped to 6). That join — *Indexers are the DHT's anchors* — is the
+  load-bearing piece of the whole design, and it is live.
+- Records republish every 30 min against a 45-min TTL, so a provider that goes
+  away leaves the directory by itself.
+
+### Store-and-forward — BUILT (as a side effect, not as a role)
+
+`services/social/store_forward.dart`: a message for an offline recipient is
+deposited at a node advertising `RelayCap.storeForward` (found via the
+directory) and flushed when the recipient's LXMF destination announces. 30-day
+TTL. This is the Archiver's job, already implemented — it just has no owner-facing
+role, no quota UI, and no direct-link (LAN/BLE/LoRa) policy yet.
+
+### The device as a relay — BUILT
+
+- **Over Reticulum**: `RelayNode` answers `REQ` / `COUNT` / `EVENT` / `DEPOSIT`
+  / `DROP` over RNS links (`relay_protocol.dart`), backed by `RelayEventStore`
+  (SQLite + FTS5, NIP-50 search). A **leaf still answers queries about its own
+  posts** — "ask the author directly" is a real path.
+- **Over the LAN**: `NostrWsServer` — any stock NOSTR client on the LAN can use
+  this device as a `wss://` relay, NIP-11 and all.
+- **Media**: `blossom_server.dart` serves content-addressed blobs over HTTP, and
+  the same blobs are fetchable over Reticulum by sha256 through
+  `FileTransferNode` + `MediaFileSource`, with a Blossom-style **deposit** opcode
+  (`file_transfer.dart`, BIP-340-authorised) for asking a host to keep a blob —
+  the primitive an Archiver accepts on. Blossom-over-Reticulum as an
+  HTTP-compatible service does **not** exist; the RNS path is the files layer.
+
+### Retention: what a node keeps — BUILT
+
+`retention_tier.dart` + `host_retention_policy.dart`: every event is tiered
+**self (0) / followed (1) / stranger (2)**. Strangers get a byte slice, a
+notes-per-month cap and a retention window; eviction only ever deletes tier 2,
+never kinds 0/3. Anything *about you* — a reply, a repost, a reaction carrying
+your `p` tag — is stored at tier 0 the moment it arrives, which is why your
+notifications and the notes they point at are readable with the radio off.
+
+**This is "you keep what matters to you", implemented.** It is also the skeleton
+of the Archiver quota: `HostQuota{ceilingBytes, strangerSliceBytes,
+strangerNotesPerMonth, strangerRetentionMs}` already exists and is enforced.
+
+### Two networks, one store — BUILT
+
+The client (`nostr_relay_hub.dart`) is transport-abstract: a relay is a URI.
+`wss://` → the internet, `local` → this device's own store, `rns://<idhash>` → a
+relay on the mesh. Every event from every transport is signature-verified and
+merged into **one** store, so the feed is a single unified cache and a post goes
+out over both. The user-facing panel is **NOSTR on Internet** (relays + Blossom
+servers: add / remove / enable-disable).
+
+### Reading the public internet: the ingest pipeline — BUILT
+
+This is the half of the system the user actually looks at, and it was the least
+written-down. Everything below is `nostr_relay_hub.dart` +
+`nostr_ws_client.dart`, running inside the **`nostr-engine` isolate** (Schnorr
+never touches the UI thread — see `docs/performance.md`).
+
+**The relay list is a merge, not a seed.** `kDefaultNostrRelays` is offered to a
+device *on every start*, not only when the list is empty — but only for relays it
+has **never been offered before** (`offered`, persisted beside the list). So a
+relay added to the defaults later reaches an install that already exists, and a
+relay the user **removed or disabled stays gone**. Seeding on first run only is
+how a device gets stranded: a phone was found holding two relays, one unreachable
+from its network and one that serves no firehose, with a sixteen-hour-old feed and
+no way for a newer default to ever reach it.
+
+**Five kinds of subscription, and they are not equal.**
+
+| Sub | Filter | Feeds |
+|---|---|---|
+| `fireR*` — the **firehose** | `kinds:[0,1] limit:200` | the **All** tab. Live push, sub-second |
+| `discoR*` / `discoF*` — **discovery** | `kinds:[7]`, then fetch the liked ids | "popular" — can only ever surface a post that *already* has likes |
+| `myfollows` | `authors:[…]` | the **Following** tab |
+| `prof*` / `fireP*` | `kinds:[0]` | names and avatars; batched on a slow timer |
+| `stat*` | reactions/replies for on-screen posts | like and reply counts |
+| notifications | `kinds:[1,6,7] #p:me` | the bell — pinned at tier 0 (see the touch rule) |
+
+Discovery is **not** the All tab and never was: a post cannot have likes the
+moment it is published, so a like-gated feed guarantees the newest thing on
+screen is an hour old. All = firehose + the quality gate.
+
+**Order of operations in `_onEvent` is load-bearing.** In order:
+
+1. **Anything `p`-tagging me is stored first**, at tier 0 — before the reaction
+   short-circuit and **before the rate cap**. A reaction to my post is a fact
+   about me and the relay that carried it may be gone tomorrow.
+2. Reaction receipts for **tracked** posts (the ones on screen) are persisted.
+   The kind-7 firehose is thousands a minute; persisting all of it would be one
+   unbatched INSERT per stranger's like, forever.
+3. Engagement tallies, then discovery tally — both *consume* reactions.
+4. **The firehose branch, and only then the rate cap.** The quality gate
+   (`feed_quality.dart`) decides what is stored and shown; the cap protects the
+   *generic* path, which stores everything it is handed. Getting this backwards
+   is fatal and did happen: relays answer a fresh subscription with a burst (200
+   events each, times every relay), the cap is 15 per 250 ms, so the burst was
+   discarded **before the gate saw a single post** — `dropped=173, fireSeen=0,
+   stored=0` with four relays streaming happily.
+
+> **Invariant for anything added here: a rate limiter must never sit in front of
+> the quality gate.** The gate is the thing that knows what deserves to exist.
+
+**Failure is silent by default, so it must be made loud.** Three ways a relay
+stops feeding you *without raising an error anywhere*:
+
+- **It refuses a subscription** — NIP-01 `CLOSED` (rate-limited, too many
+  filters, auth-required). Parsed and thrown away for a long time; now logged and
+  raised to the hub (`onClosed`).
+- **The socket half-opens** — connected, no data, no error (the phone changed
+  network; a carrier NAT dropped the flow). A client holding open subscriptions
+  is never legitimately silent for minutes: **90 s of silence = the socket is
+  dead**, reconnect (subscriptions are replayed on connect).
+- **It quietly drops one subscription** while still carrying the others. Then the
+  socket looks healthy, the REQ is on the wire, and nothing arrives. Re-sending
+  the REQ down that same connection is useless — the relay already decided to
+  ignore it. Two silent watchdog rounds ⇒ **cycle the socket**, don't re-ask.
+
+> **Invariant: silence is a diagnosis, not a state.** Any new transport must be
+> able to say *why* nothing is arriving — "connected" is not evidence of health.
+
+**Duplicates: three different bugs wearing one face.** They are worth separating,
+because the fixes do not overlap:
+
+1. **The same event on several subscriptions.** One note published to several
+   relays comes back on the firehose *and* discovery *and* follows, each with its
+   own seen-set, and the wapp pours all three into one feed. Fix: **the event id
+   is the post's identity** — the host refuses an append whose id is already in
+   that field (`wapp_page.dart`), and the archive enforces it with a partial
+   UNIQUE index on `mid`.
+2. **A relay re-sending its recent window.** Every re-open replays events. The
+   per-subscription seen-set must be **evicted (oldest first), never cleared** —
+   clearing it made re-sent events look new.
+3. **The same words posted again as a genuinely new event.** Different id,
+   different timestamp, correct signature. Id-dedup cannot see these. Collapse on
+   the **pair — same author AND same text** — newest kept, display-level only.
+   *Text alone is not a duplicate rule*: two people both saying "OK" are two
+   people. And when the same paragraph arrives from **different pubkeys** (a
+   name-and-avatar impersonation cluster), it is not a duplicate at all — it is
+   spam, and it belongs to the gate and the mute list, not to dedup.
+
+**What the gate keeps is observable**: `perf: nostr firehose seen=… kept=… pending=…
+expired=… empty=… flooding=… linkOnly=… duplicate=…`. A filter nobody can see is a
+filter nobody can trust, and "the feed looks empty" has two completely different
+causes — the gate ate it, or the relay sent nothing — with completely different
+fixes.
+
+## The bridge: bring your account, keep what you touch
+
+**The common case is not a fresh start.** Somebody arrives with a NOSTR account
+they already have, following people who are perfectly happy on Damus and Primal
+and have never heard of Reticulum. Nothing about that should change. geogram is
+an ordinary NOSTR client to them: it reads the internet relays, it posts to the
+internet relays, the conversation carries on exactly as before.
+
+What changes is what happens *behind* that, and it costs the user nothing to
+notice: **while you are connected to both networks — and most of the time you
+are — every interaction quietly becomes a copy that survives the internet.**
+
+### The rule: to touch it is to keep it
+
+A like is not a fleeting gesture. It is a *statement that this thing mattered*,
+and it is the cheapest, truest signal we will ever get about what is worth
+preserving. So we take it literally:
+
+> **When you interact with an event, that event — not just your reaction to it —
+> is archived on your own relay, at tier 0, forever, and served from there to
+> Reticulum.**
+
+| You do this | What is kept |
+|---|---|
+| **Like / react** (kind 7) | your reaction **and the note you reacted to**, its author's profile (kind 0), and its media |
+| **Reply** (kind 1 with an `e` tag) | your reply, the note you replied to, and **the thread above it** (parents up to the root — a reply with no context is worthless in ten years) |
+| **Repost / quote** (kind 6 / 1 with a `q`) | the reposted note and its author's profile. You put your name on it; you keep it |
+| **Bookmark / save** | the note, its media, its author. This is the *explicit* form of the same act |
+| **Zap** | same as a like — you paid for it, you certainly meant it |
+| **Follow** (kind 3) | already true today: tier 1, their notes are kept as they arrive |
+
+Everything else you merely scrolled past stays a stranger (tier 2), lives under
+quota, and is evicted in time. **The archive grows along the shape of your
+attention** — which is the only ranking function nobody can buy.
+
+### Media comes too, while it still can
+
+A liked note whose photo lives on a Blossom server is half a memory. So the same
+act pulls the referenced blobs into the local `MediaArchive` (content-addressed by
+sha256, already built), from the internet, **now, while the internet is there** —
+the whole point being that later, it is not. That is a real cost, so it is a real
+setting: notes always; media by size cap, on WiFi, or never (Settings, and the
+Archiver wapp for the machines with disks). But the default for something you
+*liked* is: **take the picture too.**
+
+### And then it is on Reticulum
+
+Once it is in your store it is on the mesh, because your store *is* your relay
+(`RelayNode` serves it, `local` in the relay list is the same events). Nothing
+else has to happen for a peer over LoRa to be able to fetch a note that was
+published on Damus this morning and liked by you at lunch.
+
+Two further steps make it *findable* rather than merely present:
+
+- **Publish the pointer.** A `ProviderRecord` under the author's npub and under
+  the event id — *"I hold this"* — so an Indexer can answer "where can I find that
+  note" with your device. (Road item 1.)
+- **Push, don't just hold.** Events you author, and events you kept, are offered
+  to the Reticulum Indexers and Archivers you know, so the copy is not a single
+  point of failure sitting in your pocket.
+
+### When you write a note
+
+Publishing is one action with two destinations, and they carry different things
+on purpose:
+
+1. **To the public internet relays — the note itself.** Exactly as any other
+   NOSTR client: signed, `EVENT`, to every enabled `wss://` relay. Your friends
+   on Damus see it immediately; nothing about your existing social life changes.
+2. **To your own store — the note itself, tier 0.** It is yours. It is now
+   served over Reticulum by your own `RelayNode`, and it is readable on your
+   device with every radio off.
+3. **To the Reticulum Indexers — *information about* the note, not the note.**
+   An Indexer is a phone book, and a new post is a phone-book update: a signed
+   `ProviderRecord` saying *"npub X has new material; the copy lives here"*,
+   under the author key and the event id. Bytes stay with the author. That is
+   what keeps an Indexer from silently turning back into a server, and it is why
+   this scales to a thousand publishers on a hilltop LoRa link — a pointer is
+   ~176 bytes whatever the size of the note.
+
+**Archivers may then pull the content** — that is their role, and the pointer is
+how they find out there is something to pull. So the copy stops being a single
+point of failure sitting in your pocket, without any Indexer ever having been
+asked to hold it.
+
+The mesh side is a **queue, not a blocking step**. If Reticulum is unreachable
+right now (or the internet is), the outbound sits in an outbox and drains when a
+path appears. Publishing never waits on the worse of the two networks — and
+because an event id is a content hash, delivering it twice is free. Which is the
+next point.
+
+### The same signature on both sides — why the merge is trivially safe
+
+This only works because NOSTR made the right choice: **an event id is the sha256
+of its content, and the signature is over that id.** So:
+
+- The *same* event fetched from Damus and from a LoRa gateway is byte-identical
+  and has the same id. Merging is just a `put` — dedup is by id, and the store
+  already does it.
+- There is no "internet version" and "mesh version" of anything. No forks, no
+  reconciliation, no sync conflicts. One key, one signature, two pipes.
+- A post you make goes out to `wss://` relays **and** to `local` **and** to the
+  mesh in one operation, with one signature. Your friends on Damus see it; a
+  neighbour with no internet sees the same bytes.
+
+### The transition is a fade, not a flag day
+
+Nobody has to be told "the internet relays are gone now, switch". As the public
+relays get worse — dropping old events, going paid, disappearing, being leaned
+on — what you kept is already here, already served, already findable over
+Reticulum, and your reading and posting continue against a relay list that simply
+has fewer `wss://` entries in it than it used to. **The migration happened years
+ago, one like at a time.**
+
+An honest limit, said out loud: this preserves **what your community touched**,
+not "all of NOSTR". Nobody is archiving the firehose, and pretending otherwise
+would be the lie that sinks the whole idea. A note nobody ever liked, replied to,
+reposted or followed the author of will not survive the death of the relay it
+sat on — and that is the correct outcome, because storage is finite and attention
+is the only honest way to spend it.
+
+### Where this stands in the code
+
+**The whole path, end to end, is built and device-validated.** A note fetched
+from a public relay and touched by the user ends up served from this device over
+Reticulum, and the round trip has been demonstrated on a phone:
+
+1. **Fetched** from `wss://` over the firehose/follows subscription, verified in
+   the `nostr-engine` isolate, merged into the one `RelayEventStore` (tier 2 —
+   a stranger, evictable).
+2. **Touched** (like / reply / repost / bookmark / zap). `KeepPolicy` +
+   `KeepService` **promote the target itself to tier 0** — not just your
+   reaction — chase the thread above a reply, ask for the author's kind-0, and
+   pull the referenced media into the content-addressed `MediaArchive`. A keep
+   can only ever *promote*, so a hostile re-send cannot push a kept note back
+   into the evictable slice. The queue is **persisted**, so a like made in a
+   tunnel is finished later by the background service.
+3. **Kept locally** at tier 0, which means it is **already on Reticulum**: your
+   store *is* your relay. `RelayNode` answers `REQ`/`COUNT` over RNS out of the
+   same store, and `local` in the relay list is the same events. The device's own
+   `wss://` server (`NostrWsServer`) serves it to LAN clients too. **Proof: a
+   note first seen on a public relay was afterwards served back out of the
+   phone's own `wss://` relay.**
+4. **Findable**, not merely present: touching or following an author publishes a
+   signed `ProviderRecord` under their pubkey and under the event id — *"I hold
+   this"* — so an Indexer answers *where*, and `fetchAuthorFromMesh` walks the
+   reverse path (resolve → ask the best holders over RNS → verify in the engine
+   isolate → store).
+
+Still **not built** on this path: the outbox that lets a publish survive one of
+the two networks being down (a publish to `wss://` while offline is queued in the
+ws client, but the mesh half is not), and pushing kept events to Indexers and
+Archivers rather than waiting to be asked.
+
+## Abuse: what a hostile network does to us, and what stops it
+
+Everything above is a promise to hold other people's data. That is an open door,
+and it *will* be walked through. The attacks are not hypothetical — they are the
+cheapest things to do to any system like this:
+
+| Attack | What it looks like |
+|---|---|
+| **Sybil flood** | ten thousand generated npubs, each publishing junk, each publishing pointers claiming to hold it |
+| **Eviction attack** | fill an Archiver with bogus notes and blobs until the quota rolls over and **the real, old data is thrown out** — the payload is not the junk, it is the deletion |
+| **Blossom stuffing** | upload garbage blobs, or deposit them, until the disk is gone |
+| **Pointer poison** | publish `ProviderRecord`s for content you do not have, so every resolve wastes a fetch on you |
+| **Amplification** | make a phone serve 4 GB to strangers over cellular, on someone else's dime |
+
+### The first rule: a stranger can never evict
+
+This is the one that matters, and it is a **structural** answer, not a heuristic
+one. The store is already tiered — self (0), followed (1), stranger (2) — and
+`pruneHosted()` **only ever deletes tier 2**. Make that a hard partition with its
+own byte budget:
+
+> **Stranger data can only ever evict stranger data.** No amount of junk, from
+> any number of npubs, can push out a note you liked, an author you follow, or a
+> photo you kept. The junk competes with *itself* for a slice of disk you chose
+> the size of, and everything that matters lives outside that slice.
+
+An eviction attack then achieves nothing except deleting other junk. It is not
+mitigated, it is *pointless* — and that is the difference between a defence and
+a race.
+
+### Cost, identity and reference: three gates on the way in
+
+**1. Nothing anonymous gets stored for free.** Admission is scored, not binary,
+and the ladder is: *me → people I follow → people they follow (WoT, already
+computed for the feed) → a stranger who paid → everyone else.* The first three
+are effectively unlimited (they are the point of the machine). A stranger gets
+the stranger slice, per-pubkey caps within it, and a per-month note count — all
+of which `HostQuota` already enforces; what is missing is that a *new* npub with
+no history and no path to us in the web of trust starts at the bottom of the
+ladder, not in the middle.
+
+**2. A stranger who wants more than the slice pays.** Not money — *cost*. A
+proof-of-work stamp on the event, or the participation coin's postage
+(`coin/postage_gate.dart`, built and unwired). Ten thousand npubs are free to
+generate; ten thousand PoW stamps are not, and that is the entire asymmetry we
+need. The cost applies to **storage and to serving**, not to reading — nobody
+pays to be listened to.
+
+**3. A blob must be spoken for.** This is the Blossom answer, and it is simple:
+**no orphan blobs.** A blob is admitted only if some event *already in our store,
+at a tier we care about*, references its sha256. You cannot fill an Archiver with
+pictures by uploading pictures — you would first have to get a note referencing
+them accepted, which puts you back at gate 1. Uploads from unknown accounts are
+off by default (they already are); the deposit opcode is BIP-340-authorised
+(already is); and a deposit is now also *checked against the reference rule*
+before a byte is written.
+
+### Pointers cannot lie for long
+
+A `ProviderRecord` is signed by the provider, so nobody can forge one *for*
+somebody else, and the DHT already caps `maxRecordsPerKey` and `maxStoredKeys`
+and counts `storesRejected`. What remains is a provider that lies about *itself*
+— claims to hold a file, then does not serve it. `demoteProvider()` already
+exists: a fetch that fails drops the record locally. Make it social: an Indexer
+that hears a demotion for a provider it vouched for **lowers that provider's
+standing in its own answers**, and a provider whose records are demoted repeatedly
+stops being handed out. Lying costs you the only thing you have — being chosen.
+
+### Serving: a budget for strangers, and none for friends
+
+Point (4) of the brief, and it is its own section below: **Bandwidth belongs to
+the owner of the device.** See *Serving quota* further down.
+
+### What is honest to say
+
+None of this makes abuse impossible. It makes it **expensive, self-limiting, and
+incapable of destroying anything you chose to keep** — which is the achievable
+goal. A system that promised more would be lying.
+
+## Reticulum first, the internet second
+
+**Default search order: local store → Reticulum → the public internet.** Not for
+performance — for exposure.
+
+Fetching a file over the internet tells a server, and everyone on the path to it,
+**your IP address and exactly what you are reading**. Blossom is content-addressed
+HTTPS: the sha256 you request *is* the identity of the content, and the request
+carries your address on it. A Reticulum fetch carries neither — destinations are
+cryptographic hashes, the path is a mesh, and the device that answers you knows a
+destination, not a person at an address.
+
+So:
+
+- **Files and media: always try Reticulum first**, even when it is slower. A slow
+  private fetch beats a fast one that publishes your reading list. The internet
+  is the fallback, not the default, and if the blob is available from a peer it is
+  never fetched over HTTP at all.
+- **Notes: local, then the mesh, then the relays.** Same order, same reason. A
+  `REQ` to a public relay tells that relay who you follow, what you search for and
+  when you are awake; a query answered from the store or a mesh peer tells it
+  nothing.
+- **Search terms leave the device last of all.** A NIP-50 search against a public
+  relay is a search *log entry* on somebody else's disk. Search the local FTS5
+  index and the mesh Indexers first; go to the internet only when the user asked
+  for something we plainly do not have, and prefer relays the user chose.
+- **The user is told which path served them.** A small badge — *served over
+  Reticulum* / *fetched from the internet* — because a privacy property nobody can
+  observe is a privacy property nobody should believe. (The transport tag already
+  exists in the chat wapp; the same idea, one layer up.)
+
+The cost is honest: sometimes the mesh does not have it, and the fallback is a
+real fetch with a real IP. That is a *timeout and a fallback*, not a silent
+preference for whatever answers first — and the user can turn the fallback off
+entirely on a device that must never touch the internet.
+
+## What an Indexer actually answers
+
+An Indexer never says "here is the file". It says **"these N devices have it"** —
+and the redundancy is the *point*, not an accident. But a bare list of npubs is
+almost useless: the client still has to guess which one to call, and guessing
+wrong costs a wasted link, a wasted transmission, or a stranger's cellular data.
+
+So the answer to a resolve carries, **per holder**, what a caller needs to choose
+well:
+
+| Per holder | Why the client needs it |
+|---|---|
+| **Provider pubkey + destination** | who to call |
+| **Last heard** (seconds ago) | a holder last seen 3 weeks ago is a lottery ticket; one seen 40 seconds ago is a phone call |
+| **Provenance of that fact** | *"I heard this myself"* vs *"Indexer B told me, and B had heard it 20 minutes before that"*. After sync, freshness is **second-hand**, and the age of the *information* is not the age of the *device*. Both are reported: `heard 5m ago (direct)` vs `heard 30m ago (via B, synced 5m ago)` |
+| **Power + uplink** (from the physical profile) | this is the whole reason the profile exists: **prefer the box on mains and WiFi over the phone on battery and a metered data plan.** Same file, very different cost to the person holding it |
+| **Capacity class** | already in the `ProviderRecord` today |
+| **Radios + listening schedule** | if the only path to a holder is LoRa, the caller needs the frequency and the window before it tries |
+| **Coverage region** | is this holder even in a position to reach me when the internet is down |
+
+The client then picks by a rule the user would recognise as fair: **an awake
+machine on mains and WiFi first; a battery phone on cellular last, and only if
+nothing else has it.** A holder on a metered connection is a *last resort*, and
+the network should feel that way to the person carrying it — the reward for
+volunteering a good machine is that it, and not somebody's phone, is the one that
+gets called.
+
+Wire-wise this is a few extra bytes per holder in the `VALUE` reply (last-heard as
+a varint, a provenance byte, and the announce's capacity/power/uplink nibbles the
+Indexer already holds in its directory). It costs nothing to carry and it removes
+the guesswork entirely.
+
+## Serving quota: bandwidth belongs to the device's owner
+
+Holding data for others is generous. Being made to *pay* to hand it out is not —
+and the two are different taps. A hostile client cannot delete your data (the
+tier partition sees to that), but it can absolutely make your phone push
+gigabytes to strangers over a data plan you are paying for. That is the
+amplification attack, and the answer is a budget with the requester's identity in
+it.
+
+**Trusted requesters are unmetered. Strangers get a budget.**
+
+- **Me, my other devices, the people I follow, and (optionally) their follows** —
+  no restriction. The whole purpose of keeping their data is to hand it back to
+  them.
+- **Everyone else** — a bandwidth quota the owner sets, in the units a human
+  actually thinks in: *"up to 500 MB a day to people I don't know"*, and
+  separately *"…and nothing at all when I'm on cellular"*. `ServeQuota` already
+  has a daily byte budget and a `servingAllowed` flag driven by the capacity
+  governor; what it lacks is **who is asking**, which the link already tells us
+  (every relay/file link is authenticated by the peer's key).
+- **Per-stranger caps under the aggregate**, so one npub cannot eat the whole
+  stranger budget and starve the rest.
+- **Graceful refusal, not silence.** Over budget, a node does not go dark — it
+  answers *"not me, try one of these"* and hands back the other providers from the
+  DHT. The request still gets served, by the machine that volunteered for it. A
+  hostile client, meanwhile, learns nothing and gets nothing.
+- **The defaults are the important part.** A phone on cellular serves strangers
+  **nothing**, by default, today (`serveOnCellular`). That stays. An Archiver on
+  mains and fibre serves generously, by default — because it *volunteered*, and
+  that is what the role means.
+
+The Archiver wapp's **Quota** screen owns the storage half of this; the same panel
+gains the bandwidth half, because to a user they are one question with two
+numbers: *how much of my disk, and how much of my line?*
+
+## Status: what is built, and what is not
+
+Updated as the road lands. Nothing here is aspirational — if it says BUILT, it
+is in `main` with tests, and the device-validated ones say so.
+
+### Landed since this document was written
+
+- **The touch rule** (`keep_policy.dart`, `keep_service.dart`) — BUILT, and
+  **validated on a phone against live internet relays**: an upvote pins the note
+  itself at tier 0 in the store this device serves, chases the thread above a
+  reply, asks for the author's kind-0, and pulls the pictures. A keep can only
+  ever *promote*, so a hostile re-send cannot push a kept note back into the
+  evictable slice. The queue is persisted, so a like made in a tunnel is
+  finished by the background service. **Proof: a note first seen on a public
+  relay was afterwards served back out of the phone's own `wss://` relay.**
+- **Author-provider records** — BUILT. Following, keeping, or touching an author
+  publishes a signed `ProviderRecord` under their 32-byte pubkey, so "where can I
+  find npub X" is a DHT resolve whose answer is a list of devices. The reverse
+  path (`fetchAuthorFromMesh`) resolves, asks the best providers over Reticulum,
+  verifies in the engine isolate, and stores.
+- **The hard tier partition** — BUILT (it was already structural; it is now
+  *asserted*). A flood of twenty stranger npubs evicts only stranger junk: never
+  my posts, never a followed person's words, never a photo I kept. An eviction
+  attack is not mitigated, it is pointless.
+- **Identity-aware serving** — BUILT. `ServeQuota` knows who is asking: my own
+  devices and the people I follow are unmetered; strangers share one daily
+  budget the owner sets, zero on cellular.
+- **Reticulum-first media** — BUILT. A Blossom URL carries its sha256, so the
+  mesh is tried first and the internet is a fallback that can be switched off
+  entirely; the log names the path that served the bytes.
+- **The physical profile + the resilience score** — BUILT (`node_profile.dart`,
+  `listening_schedule.dart`), announced in the relay app_data, editable in
+  **Settings → Hardware**, and device-validated. Facts only on the wire — there
+  is no "I am precious" field, and a test asserts it. `bestIndexer()` picks the
+  fibre box on a normal day and, from the *same* directory and the *same*
+  announces, the solar+Starlink+LoRa box when the internet path is gone.
+- **The listening schedule** — BUILT. `always` · `every 30m for 3m` ·
+  `06:00-18:00 weekdays` · `dawn-dusk` · `dawn+30m-dusk-30m`. Clock-free duty
+  terms are normative (an ESP32 after a reboot can honour them from `millis()`
+  alone), a node with no clock may advertise nothing else, and a duty cycle tells
+  a caller to retry across one full period rather than give up after one
+  unanswered call.
+- **Verification off the UI isolate** — BUILT. Events arriving over Reticulum are
+  verified in the `nostr-engine` isolate and stored with `putAllVerified`; main
+  never runs secp256k1.
+- **Feed health against the public internet** — BUILT and device-validated (a
+  phone whose All/Following had not moved in sixteen hours, on a network hostile
+  to relays). Four defects, each hiding the next, and each one is now an
+  invariant with a test:
+  - **Relay defaults merge on every start** (never-offered only), so an existing
+    install is not stranded on a dead list and a removed relay is not
+    resurrected.
+  - **The quality gate runs before the rate cap.** The cap was discarding the
+    relays' opening burst before the gate saw it: `dropped=173, fireSeen=0,
+    stored=0` with four relays streaming. A burst larger than the cap must still
+    reach the feed.
+  - **A refused subscription (`CLOSED`) and a half-open socket are reported**,
+    and a relay that stops answering gets a **new socket, not another REQ**.
+  - **Duplicates are three separate problems** — same event on several subs (id
+    dedup), a relay re-sending its window (evict the seen-set, never clear it),
+    and one account re-posting the same words (collapse on author+text, newest
+    kept). Same text from *different* pubkeys is spam, not a duplicate: that is
+    the gate's and the mute list's job, and content-only dedup is forbidden — two
+    people saying "OK" are two people.
+
+### Not built (do not assume it)
+
+1. **Indexers still answer *what*, not *where*.** An Indexer is still a relay
+   host that stores stranger events under quota and serves them back. The
+   pointer-only model is the target; the DHT implements the primitive and author
+   records now feed it, but the Indexer's *answer* is not yet the pointer map.
+2. ~~Indexer↔Indexer sync~~ — **BUILT end to end**: pointer log, `(epoch, seq)`
+   cursor (persisted, so an ESP32 resumes after a reboot),
+   `SYNC_REQ`/`SYNC_RES`/`SYNC_RESET` served by `RelayNode`, a merge that verifies
+   every record against the provider that signed it, and a scheduler that runs
+   only when this device IS an Indexer and only talks to peers that say they are
+   too — battery leaves are never sync partners. **VALIDATED ACROSS TWO INTERNET
+   CONNECTIONS**: two phones on different networks, one published a pointer (a
+   like → keep → author record) and the other pulled it — `sync: 3b02bb89 +2 -0
+   bad=0 seq=2`, after a correct SYNC_RESET on first contact. Superseded text:
+   `PointerLog` (append-only, insertions *and* removals, bounded + compacted),
+   the `(epoch, seq)` cursor a clockless node can persist, `PointerSyncServer` /
+   `PointerSyncClient` (verify every record against the provider that signed it —
+   a forged envelope and a rebuilt log are both covered by tests), and
+   `SYNC_REQ`/`SYNC_RES`/`SYNC_RESET` on the relay protocol. What is missing is
+   the *scheduler*: nothing yet picks sync partners from the directory and runs
+   the exchange on a timer.
+3. ~~The Archiver~~ — **BUILT and device-validated.** `ArchiverPolicy` +
+   `admitToArchive` (silence is not consent; a quota is a ceiling; a direct-link
+   peer gets in on the strength of the link; everything else must be something
+   the owner volunteered for), enforced on every deposit. The **direct-link
+   admission now fires**: the main isolate already ingests every packet with its
+   arrival interface, so it remembers it per link and a LAN/Bluetooth/LoRa peer
+   is recognised as one with no route to anywhere else. An unknown interface
+   reads as the internet — the safe default, asserted by test. The
+   **mirror-the-small-devices loop** runs: an Archiver pulls what the leaves
+   around it share, then publishes itself, so the DHT hands out the mains box
+   instead of somebody's phone. And the **Archiver wapp** ships: opens at 0 GB,
+   raises in 5 GB steps, and lists everything held for others with a drop on
+   every row.
+4. ~~Resolve answers are bare.~~ **BUILT.** The `VALUE` reply now carries a
+   6-byte `HolderHint` per record: last-heard, whether that is first-hand or came
+   from a sync (a rumour is discounted), and the holder's power, uplink and
+   radios — filled in by the host from the relay directory. `scoreHolder` puts the
+   mains-and-WiFi box first and the battery phone on cellular last. Hints ride
+   *after* the records, so a node that predates them is none the wiser.
+5. **`rns://` relay URIs are inert in the shipped app.** The relay hub runs on a
+   background isolate constructed with `rnsClientFactory: null`, so an `rns://…`
+   entry resolves to a null client. Real Reticulum relay traffic goes through
+   `RelayNode` on the main isolate instead. `NostrRnsClient` is complete and
+   unused.
+6. **No long-lived subscriptions over RNS.** A `REQ` returns one `RESULT` and
+   ends; mesh "subscriptions" poll. Correct for a mesh — just don't expect push.
+7. **The remaining abuse gates.** The WoT-scored admission ladder, the
+   postage/PoW cost for the stranger tail (`coin/postage_gate.dart` exists and is
+   unwired), the **no-orphan-blobs** rule on deposits and uploads, and demotion
+   feeding back into an Indexer's ranking.
+8. **No Blossom over Reticulum** (HTTP only), and BUD-02 upload auth is not
+   verified — uploads are gated by a toggle.
+9. ~~The Indexer and Archiver wapps~~ — **BUILT and device-validated.** The
+   Indexer is a statistics-first dashboard on a new native `$type:"stats"` GeoUI
+   widget (stat tiles + a 48-hour requests-per-hour sparkline backed by a
+   persisted hourly ring), with the volunteer control, editable indexing topics
+   (persisted, re-announced with a typing debounce), and previewed maintenance
+   sweeps whose removals propagate through the pointer log. **No per-entity
+   lists anywhere** — pointers, authors and peers could be millions, so the UI
+   shows counts and shapes, never rows. The Archiver owns the quota, the policy
+   and the statistics/cleanup Space screen. HAL families `hal.node` and
+   `hal.archive`.
+10. **Search is not yet privacy-ordered.** Media and single notes are (the mesh
+    is resolved and asked first, and a kept note now has a pointer of its own so
+    it can be found by id). A NIP-50 *search* still goes to the relays before the
+    mesh Indexers are asked.
+
+## Planned: the physical profile — what a node is made of
+
+Every role above is a promise about *software*. Whether a node can keep that
+promise on the worst day of the year is a question about **hardware, power and
+antennas**, and today the code asks only two-thirds of one of those questions
+(`CapacityProfile`: is it charging, and what kind of network — that's it).
+
+That is not enough. **A solar-powered Indexer on Starlink is worth more than a
+hundred fibre boxes when the grid goes down**, and the network has to be able to
+know that *before* it needs it. So every node — Publisher, Indexer, Archiver —
+carries a physical profile, and every node that has to choose a peer can read it.
+
+### What is announced
+
+Added to `RelayAnnouncement` (the `geogram/relay` announce app_data, msgpack,
+short keys, ~20–30 B on top of the existing ~350 B budget — it must never cost a
+second announce packet):
+
+| Field | Key | Values |
+|---|---|---|
+| **Power source** | `ps` | `grid` · `grid+ups` · `solar` · `solar+battery` · `wind/hydro` · `vehicle` · `battery-only` |
+| **Powered fraction** | `pw` | 0–100: **percent of the last 7 days this node actually had power**. Measured by the governor, not typed by the user |
+| **Uplink kind** | `up` | `fibre/wired` · `wifi` · `cellular` · `satellite` (Starlink et al.) · `none` — *offgrid*, mesh-only |
+| **Uplink speed** | `bw` | measured bytes/sec, log-bucketed (one byte: 2^n) — an *observed* number, not a sales figure |
+| **Other links** | `lk` | bitmask: `LoRa` · `Bluetooth` · `WiFi-Direct` · `packet radio / AX.25` · `serial` · `RNS TCP hub` |
+| **Autonomy** | `au` | hours this node expects to keep running with no grid and no sun (battery bank ÷ draw). 0 = unknown |
+| **Coverage** | `gh` + `rx[]` | a **coarse** geohash of the region this node serves, plus **one entry per radio**: its range, its band, and the frequency it is listening on (see below). Absent = says nothing about where it is |
+
+Two rules keep this honest:
+
+1. **Announce facts, score locally.** A node never announces "I am precious".
+   It announces what it *is*; every asker computes its own score from that. There
+   is nothing to inflate that would be believed, because…
+2. **Claims are corroborated by observation.** A node claiming `pw: 100` that we
+   have heard from twice in a week is scored on the two times we heard it. The
+   `RelayDirectory` already tracks observed uptime, freshness and hop count, and
+   `bw` is checked against what the transfer actually did. **Observed beats
+   claimed, always.** Self-reported physical facts are a *hint that saves a
+   measurement*, never a credential.
+
+`pw`, `bw` and `au` are measured by the existing `CapacityGovernor` (extended: it
+already samples charging state and network kind on a timer — it starts keeping a
+7-day powered-fraction ring and a throughput estimate). `ps`, `up` and `lk` are
+the parts a human must state — nothing on Android can tell you the roof has a
+solar panel on it, and no API reports a LoRa antenna.
+
+### Coverage: where a node is useful, and how far it reaches
+
+A radio has a footprint, and that footprint is the whole point of it. "There is a
+LoRa gateway with a 12 km range on the hill above the valley" is *actionable* —
+it tells a phone in that valley who to shout at, and it tells the network which
+nodes still connect two towns when everything between them is down. A LoRa node
+that never says where it is is a radio nobody can find.
+
+So the profile can carry:
+
+- **`gh`** — a **geohash of the region the node serves**. Deliberately coarse.
+- **`rx[]`** — **one entry per radio this node listens on**, because one number
+  cannot describe a machine with two antennas.
+
+#### One range per link, because the antennas are not the same
+
+A node may have Bluetooth (tens of metres), a LoRa gateway (a few km), and an HF
+or VHF station that reaches 80 km. Collapsing that into a single "range" is a
+lie in both directions: it makes the Bluetooth look magical and the radio look
+useless. Each radio therefore gets its own entry:
+
+| Sub-field | Meaning |
+|---|---|
+| `l` | which link — LoRa · packet radio / AX.25 · Bluetooth · WiFi-Direct · other |
+| `r` | **range in km** for *this* link, as the person who raised the antenna estimates it |
+| `f` | **the frequency it is listening on**, in kHz (868 200, 433 775, 144 800, 14 105 …). 0 = not applicable (Bluetooth) |
+| `m` | modulation / mode, short string: `LoRa-SF7BW125`, `FSK`, `AX.25-1200`, `JS8`, … — free-form, because the radio world will always invent another one |
+| `d` | **when it is listening** — a schedule string (next section). Default `always` |
+
+**The frequency is the point.** A range says a station *could* hear you; a
+frequency says *where to call*. Without it, discovering "there is an 80 km packet
+station over that ridge" is a fact you cannot act on — you would have to guess
+the band, and guessing is exactly what a mesh is supposed to spare you. With it,
+a phone with a LoRa dongle, or an operator with an HF rig, knows precisely what
+to tune to and in which mode.
+
+Wire cost: 4–5 chars of geohash, plus ~8–14 bytes per radio entry. Two radios is
+about 30 bytes — inside the announce budget, and if a node really has five, the
+list is capped and the longest-range ones win, because those are the ones nobody
+else can substitute.
+
+#### The listening schedule (`d`)
+
+Solar and battery stations do not hear 24/7 — they wake, listen and sleep. **A
+node that is only reachable in a window is not broken, it is thrifty**, and a
+caller who gives up after one unanswered call has thrown away a perfectly good
+station. So the schedule is part of the advert, and it is **one string that a
+person can read and a machine can parse** — no separate "display" and "wire"
+forms to drift apart, and nothing a user has to translate into cron.
+
+**Grammar** (case-insensitive, canonical form is lower-case):
+
+```
+schedule   := "always" | term ("," term)*        ; commas = union ("or")
+term       := duty | window
+duty       := "every" span "for" span            ; clock-free — a repeating cycle
+window     := range [ days ]                     ; needs a clock
+range      := point "-" point
+point      := HH:MM | "dawn" | "dusk" [ offset ]
+offset     := ("+"|"-") span
+days       := "mon".."sun" ( "," day | "-" day )* | "weekdays" | "weekends" | "daily"
+span       := INT ("m"|"h")                      ; minutes or hours
+```
+
+Times are **UTC** unless suffixed `local` — a mesh spans time zones, and a
+station that says `06:00-18:00` and means "my local morning" is a station nobody
+can call. `dawn`/`dusk` resolve against the node's own announced coverage region
+(that is the second thing the geohash is for): a solar node's real schedule *is*
+the sun, and writing it as `dawn-dusk` stays correct in December.
+
+**Examples — this is the whole feature:**
+
+| String | Reads as | Who says it |
+|---|---|---|
+| `always` | listening 24/7 | mains-powered gateway |
+| `every 30m for 3m` | wakes for 3 minutes, every 30 | battery LoRa node |
+| `every 10m for 1m` | 1 minute in every 10 | ESP32 with no clock |
+| `06:00-18:00` | daylight hours, UTC, every day | solar node, fixed window |
+| `06:00-18:00 local` | the same, in its own time zone | a person's home station |
+| `dawn-dusk` | as long as the sun is up, wherever it is | solar node, done right |
+| `dawn+30m-dusk-30m` | sun up, with a margin to charge | cautious solar node |
+| `08:00-20:00 weekdays, 10:00-14:00 sat` | an office box and its Saturday | a club station |
+| `every 15m for 2m, 18:00-22:00` | thrifty all day, wide open in the evening | the common real case |
+
+**Clockless is not a degraded mode, it is a first mode.** `every N for M` needs
+no calendar, no NTP, no RTC — it is a duty cycle, and an ESP32 that just rebooted
+can honour it from `millis()` alone. Anything the node cannot resolve, it must
+not claim: **a node with no clock advertises only `duty` terms.** Advertising
+`06:00-18:00` when you cannot tell the time is a lie that costs a caller a wasted
+transmission on a battery, which is exactly the resource this whole design exists
+to protect.
+
+**What the caller does with it.** Parse → *is it listening now?* → if yes, call.
+If no, `nextWindow()` gives the instant it wakes, and the call is queued for then
+rather than burned now. With a duty cycle and no shared clock, phase is unknown —
+so the caller **retries across one full period** (`every 30m for 3m` ⇒ keep trying
+for 30 minutes, and you are guaranteed to land inside a listening window) instead
+of concluding the station is dead after one try. A schedule that turns out to be
+wrong is corrected by observation, like every other claim: the directory already
+records when a peer actually answered.
+
+**On the wire** the string is short enough (`every 30m for 3m` is 17 bytes) that
+it can simply be sent as text, and the announce budget can take it for one or two
+radios. A node that is tight for space may send the **canonical packed form**
+instead — one byte of kind, then the parameters (`duty`: two varints; `window`:
+two 11-bit minute-of-day values, a day bitmask, and a flag for UTC/local/solar) —
+typically 3–5 bytes. **The text is normative and the packed form is an
+optimisation**: they must round-trip, and a receiver that does not understand a
+term ignores that term rather than the whole schedule (so a future `dawn` term
+never breaks an old node — it just makes it call at a time the station is asleep,
+which is the failure it already knows how to survive).
+
+The parser, the packer and `isListeningNow()` / `nextWindow()` are one small
+pure-Dart file with a table-driven test, testable with no radio in the room.
+
+Rules, and they are firm because this is the one field that can hurt somebody:
+
+- **It is a region, never a position.** The user does not report GPS — they
+  **pick a place on the map** (reuse the existing `maps` wapp / the host's map
+  picker) and choose how coarse to be. The stored value is a truncated geohash;
+  the precision *is* the privacy control, and it is shown as what it means:
+  *5 characters ≈ a town (±2.4 km)*, *4 ≈ a district (±20 km)*, *3 ≈ a region
+  (±78 km)*. Default for a phone: **nothing at all**.
+- **Opt-in, per device, and it defaults to off.** A phone in someone's pocket has
+  no business advertising where it sleeps. This field exists for **infrastructure
+  that wants to be found**: the gateway on the hill, the solar box on the roof of
+  the community centre, the Archiver in the village hall. Those nodes gain
+  everything by being locatable and risk nothing — they are already a physical
+  antenna in a public place.
+- **Coarse by construction.** A truncated geohash cannot be sharpened, and each
+  range is one number in km. There is nothing here to triangulate with. If a user
+  picks town-level precision, town-level is all that exists on the wire — the
+  fine bits are never stored, so they cannot leak later. (A licensed station is a
+  separate case: its callsign and its location are already public by law, and its
+  operator may well *want* the precise entry. That is their choice to make, not
+  our default.)
+- **It is a claim like any other.** A node saying "80 km on 144.800" is telling
+  you what to *try*, not what is true. Whether it answers is the only real
+  evidence, and the directory already keeps that.
+
+What it buys, all of it at the moment the internet is not there:
+
+- **"Who can reach me right now, and on what?"** — a phone with no signal filters
+  the directory to nodes whose region is adjacent to its own and whose radios
+  plausibly cover the gap, then calls them **on the link and the frequency they
+  said they were listening on** — instead of spraying the whole mesh. A node with
+  a LoRa dongle only cares about the LoRa entries; an operator with a VHF rig only
+  cares about the packet ones. Same announce, different reader.
+- **A map of the mesh that a human can read.** The Reticulum wapp already draws a
+  graph; with coverage it can draw it *on the map*: who covers this valley, where
+  the hole is, which single node is bridging two towns (and therefore which one
+  to add redundancy next to). That is a picture a community can act on.
+- **Disaster routing.** When the score enters degraded mode (below), coverage is
+  how a node decides *which* solar-and-LoRa neighbour is worth waking: the one
+  whose footprint actually overlaps the people who need it.
+
+### The score, and why it changes with the weather
+
+Every asker computes a **resilience score** locally, from the announced facts and
+its own observations. Two profiles, and the node switches between them by itself:
+
+**Normal times** — the internet is up, and what matters is speed and closeness:
+uplink speed, low hop count, high uptime. A fibre box wins. This is roughly what
+`bestIndexer()` scores today (interest match, capacity class, hops, freshness).
+
+**Degraded mode** — entered when the internet path is *gone*: no `wss://` relay
+reachable, no RNS TCP hub answering, for long enough that it is not a blip. Now
+the weights invert, and the scoring becomes a survivability question:
+
+| Signal | Why it is worth points when things are broken |
+|---|---|
+| **Grid-independent power** (`solar+battery`, `wind/hydro`, high `au`) | It is still running. Nothing else matters if it is dark. |
+| **Grid-independent uplink** (`satellite`) | Starlink survives the local ISP, the local exchange and the local flood. It is a path *out* that does not depend on any infrastructure between here and the horizon. |
+| **Off-grid links** (`LoRa`, `packet radio`, `Bluetooth`) | It can be *reached* without any internet at all — from a phone with no signal, over kilometres, on a battery. |
+| **Coverage that overlaps mine, on a radio I actually have** (`gh` + `rx[]`) | A solar LoRa gateway 200 km away cannot help me. The one on the hill above this valley can — and if all I own is LoRa, its 80 km HF entry is worth nothing to me while its 6 km LoRa entry is worth everything. Score per link, not per node. |
+| **High powered-fraction, observed** | It was there yesterday, and the day before. |
+| Uplink speed | Still counts, but far below all of the above. A slow node that exists beats a fast node that is a brick. |
+
+So **solar + Starlink + LoRa** is the top of the table in a disaster and
+unremarkable on a Tuesday — which is exactly right, and exactly what a fixed
+score cannot express. A node with that profile should also be *told* it is
+precious, and asked (in the wapp) to keep itself that way: pinned interests, a
+bigger quota, sync partners chosen for reach rather than speed.
+
+Nothing here is a new transport or a new protocol — it is six fields in an
+announce, a governor that already runs, and a scoring function that reads the
+room. That is deliberate: **the disaster case must not depend on code that only
+runs during a disaster.** The same announce, the same directory, the same probe;
+only the weights move.
+
+### Where it shows up
+
+- **`bestIndexer()` / provider selection** — the score replaces the current
+  capacity-class-only ordering, and the DHT's `ProviderRecord` capacity class
+  gains the same treatment (prefer an Archiver that is still powered over one
+  that is not).
+- **DHT anchors** — the persistence anchors an Indexer publishes to should skew
+  toward grid-independent nodes, because an anchor set that all shares one grid
+  is not an anchor set.
+- **Sync partners** — an Indexer in degraded mode syncs with whoever is *still
+  there*, not with whoever is fastest.
+- **Settings → Hardware** (below) — stated once, for the device, and read by
+  every role.
+
+### Stated once: Settings → Hardware
+
+The physical profile describes **the device**, not a role. A user who volunteers
+the same box as an Indexer *and* an Archiver must not be asked twice what it is
+plugged into, and two answers that can disagree is a bug waiting to be filed.
+
+So it lives in **Settings, as its own full-size panel** — not a section squeezed
+into a list, because the point is to make the *combinations* easy to state:
+power source × uplink kind × which radios are actually attached. A full panel can
+lay those out as pickers and toggles that read like a description of the machine
+in front of you; a settings row cannot.
+
+The panel holds:
+
+- **What only a human knows** — power source (grid / grid+UPS / solar /
+  solar+battery / wind / vehicle / battery-only), uplink kind (wired / WiFi /
+  cellular / satellite / none), autonomy in hours without grid or sun, and which
+  extra links are physically attached (LoRa, Bluetooth, WiFi-Direct, packet
+  radio, serial). Sensible defaults, so a normal phone user never touches it.
+- **Coverage** (off by default) — *"pick the area this device serves"* opens the
+  **map**; the user drops a pin and chooses the precision with a slider labelled
+  in plain words (town / district / region). The panel draws the resulting circle:
+  **this is what the network will be told, and nothing finer.** A phone leaves it
+  off; the gateway on the hill turns it on, because being found is the entire
+  reason it is up there.
+- **Radios** — a row per antenna, added by the user, because a machine with a
+  LoRa hat *and* a VHF rig has two very different footprints and one number would
+  lie about both. Each row: the link, the **range in km**, the **frequency it
+  listens on**, the mode, and **when it is listening**. Each row draws its own
+  circle on the same map, in its own colour, so the user *sees* the difference
+  between 6 km of LoRa and 80 km of packet — and so does the network.
+- **The schedule editor** is a picker, not a text box, but it *writes the string*
+  and shows it: pick `always`, or `every [30m] for [3m]`, or `[06:00]–[18:00]` on
+  chosen days, or `dawn–dusk`, and the panel prints back the canonical line
+  (`every 30m for 3m, 18:00-22:00`) plus a plain-language sentence and a 24-hour
+  strip showing the awake bands. Typing the string by hand is allowed and parses
+  to the same thing — the string is the format, the picker is a convenience.
+  A device with no clock is offered **only** the `every N for M` form, because it
+  cannot honestly promise a time of day.
+- **What the device measured for them** — powered fraction over the last 7 days,
+  real observed throughput. Read-only, and shown next to the claims so the two
+  can be compared honestly.
+- **What it means** — the resilience score in **both** modes, in plain words:
+  *"On a normal day this device is an ordinary node. If the grid goes down it
+  becomes one of the most valuable ones your network has."* People who own such
+  hardware should be told, because they are the ones who decide whether to keep
+  it running.
+
+Roles **read** this profile; they never restate it. The Indexer and Archiver
+wapps each show a one-line summary of it with a link straight into the panel
+(*"Solar · Starlink · LoRa · 96% powered — change in Settings"*), and everything
+else — the announce, the score, anchor choice, sync-partner choice — is derived
+from the single stored profile. One source of truth, one place to edit it.
+
+## Planned: Indexer↔Indexer sync — "what changed?"
+
+Indexers exchange **addresses, never content**: the unit of sync is the signed
+`ProviderRecord` (*"pubkey X provides key K, capacity C, expires at T"*, ~176 B),
+which is exactly what the DHT already stores. Because every record is signed by
+the provider itself, an Indexer can pass on a record it received from a third
+party and the receiver still verifies it end-to-end — a relaying Indexer cannot
+forge, retarget or resurrect a pointer. That is what makes gossip between them
+safe, and what lets a fresh Indexer fill its map from a peer instead of by
+waiting for a thousand phones to re-announce.
+
+Indexer-to-indexer traffic is fast and wired, so this is where the load should
+sit: the phones announce once, the Indexers spread it among themselves.
+
+### The pointer log
+
+Each Indexer keeps its pointer map as an **append-only log**, and every entry
+gets, at the moment it is accepted:
+
+- **`seq`** — a strictly increasing 64-bit counter, local to this Indexer, that
+  never repeats and never goes backwards. It is a *position in my log*, not a
+  measure of anything.
+- **`ts`** — the local wall-clock time, **when the node has a clock**. Optional.
+- **`epoch`** — a random 8-byte id for the *current* log. Regenerated whenever
+  the log is truncated, rebuilt, wiped, or restored from a snapshot.
+
+The log holds insertions *and* removals (a provider that was demoted, a record
+that expired), because "this address is dead" is as important to propagate as
+"this address is new" — otherwise every Indexer's map only ever grows.
+
+### Two cursors, because not every node has a clock
+
+A peer asks **"what changed since …"** and may express *since* in either of two
+ways. Both are answered; a node offers whichever it can honour.
+
+| Cursor | Asked by | Meaning |
+|---|---|---|
+| **`since_seq` + `epoch`** | anything, and the **only** option for a clockless node | "resume my read of *your* log at position `seq`" |
+| **`since_ts`** | a node with a working clock | "everything you accepted after this instant" |
+
+The sequence cursor is the primitive and the time cursor is the convenience.
+**An ESP32 that reboots has no idea what day it is** — it has no RTC, no NTP, and
+possibly no route to anything that does. It cannot say "since Tuesday". But it
+*can* persist eight bytes: the last `(epoch, seq)` it read from each peer it
+syncs with. That is a durable, restart-proof, clock-free cursor, and it is why
+`seq` — not time — is the normative one. A time cursor is also inherently
+untrustworthy across a fleet: two Indexers with skewed clocks will silently drop
+or duplicate records at the boundary. `seq` cannot skew, because it is not a
+measurement — it is a position in one node's log, interpreted only by that node.
+
+**`epoch` is what makes `seq` safe.** A cursor is only meaningful against the log
+it came from. If the peer's `epoch` no longer matches the one the cursor carries,
+the peer's log was rebuilt underneath us and the position is meaningless — the
+peer says so, and the asker restarts from zero (or from a snapshot, below)
+instead of silently missing everything that happened in between. This is the
+failure mode that quietly corrupts every naive "sync since N" design, and the
+epoch closes it for the price of eight bytes.
+
+### The exchange
+
+Three new opcodes on the existing relay protocol (msgpack over an RNS link,
+alongside `EVENT`/`REQ`/`COUNT`/`DEPOSIT`/`DROP` — see `relay_protocol.dart`):
+
+| op | payload | meaning |
+|---|---|---|
+| `SYNC_REQ` | `[op, epoch?, since_seq?, since_ts?, filter?, max]` | "what changed since…" — `filter` narrows to an interest set (topics / author prefixes), so a small Indexer syncs only its own shard |
+| `SYNC_RES` | `[op, epoch, records[], removals[], next_seq, more]` | a bounded batch, plus the cursor to resume from and whether there is more waiting |
+| `SYNC_RESET` | `[op, epoch, oldest_seq]` | "your cursor is not from this log (or is older than what I still hold) — start over" |
+
+Rules that make it survive real networks:
+
+- **Bounded batches, resumable.** `max` caps the batch to what fits a link; the
+  asker loops on `next_seq` while `more` is set. A LoRa-attached Indexer takes
+  the same log in tiny bites over hours; the cursor makes that free.
+- **Idempotent merge.** A record is keyed by `(key, providerPub)` and the newest
+  `timestampMs` wins. Replaying an overlapping range is harmless, so a cursor
+  that is *too old* costs bandwidth, never correctness. Nodes should always
+  re-ask from slightly before their cursor rather than risk a gap.
+- **Verify on arrival, always.** Every record's signature is checked against
+  `providerPub` before it enters the map; unsigned or expired records are
+  dropped, not relayed. An Indexer never has to trust the Indexer it is talking
+  to.
+- **Removals are TTL-bounded too.** A removal (`demoteProvider`, expiry) is kept
+  in the log long enough to propagate, then compacted away — otherwise the log is
+  immortal. Compaction bumps `oldest_seq`, and any peer whose cursor predates
+  that gets a `SYNC_RESET`.
+- **Snapshot for the cold or the reset.** A node with no cursor (or a rejected
+  one) asks for a filtered snapshot of the *live* map — expired records already
+  gone — and receives it as a normal batched stream ending at the peer's current
+  `next_seq`. A fresh Indexer is useful within one exchange instead of after a
+  full announce cycle.
+- **Anti-abuse is the same as everywhere else.** The store caps
+  (`maxStoredKeys`, `maxRecordsPerKey`) apply to synced records exactly as to
+  direct STOREs, so a hostile peer cannot inflate a neighbour's map, and a
+  provider that never answers a fetch is pruned locally (`demoteProvider`)
+  regardless of who vouched for it.
+
+### Who syncs with whom
+
+From the `RelayDirectory`: peers advertising `RelayCap.search`, preferring high
+uptime and low hop count (both already announced), a handful at a time, at an
+interval scaled to capacity — a home-fibre Indexer every few minutes, a LoRa one
+when the link is idle. **Battery-powered leaves are never sync partners**: they
+announce, they are indexed, they are left alone. That asymmetry is the whole
+reason the role exists.
+
+## Planned: the Indexer wapp
+
+**Purpose: let a person volunteer a device, see what it is doing for the network,
+and take the offer back.** Today the role is inferred from the charger and the
+WiFi, which is right as a *default* but wrong as the *only* way — a user with an
+old phone in a drawer has no way to say "yes, use this", and a user on a metered
+home line has no way to say "no, don't".
+
+Screens:
+
+- **Volunteer** — one switch: *Serve as an Indexer*. States: `off` /
+  `on when plugged in` (the current behaviour) / `always on`. Shows plainly what
+  it costs (uplink, no meaningful disk) and what it does **not** do: *an Indexer
+  stores no one else's posts. It remembers where they are. It is not a backup.*
+- **What I answer** — the interest set (`InterestSet`): topics and authors this
+  node indexes, or **wide** (index everything it hears). Prefilled from what the
+  owner already follows.
+- **Live** — the numbers, because a role nobody can inspect is a role nobody
+  trusts: queries answered/hour, pointers held, distinct authors covered,
+  providers demoted (dead pointers pruned), uptime as announced, peers who chose
+  us as their anchor.
+- **The network** — the `RelayDirectory` as a list: the other Indexers this
+  device knows, their capacity, uptime and hop distance, which one is currently
+  `bestIndexer` for a given author.
+- **Sync** — one row per peer we sync pointers with: its `epoch`, our cursor
+  (`seq`, and the time if it has a clock), how far behind we are, records pulled
+  and pushed, and when a `SYNC_RESET` last forced a restart. A stuck cursor is
+  the first thing to look at when an Indexer starts giving stale answers, so it
+  has to be visible.
+
+Host work behind it: expose the role manager (`RelayRoleManager.applyCapacity` +
+an explicit override), the `InterestSet`, and the `DhtNode` counters
+(`storedKeys`, `replicasStored`, `providersDemoted`, `storesRejected`) through
+the HAL. Wire the road items 1–4 below so the numbers are about *pointers*, not
+about stored notes.
+
+## Planned: the Archiver wapp
+
+**Purpose: let a person donate storage on purpose, with a number they choose,
+and know exactly what is on their disk and why.**
+
+Screens:
+
+- **Quota** — a slider and a number: *hold up to N GB for other people*. This is
+  the whole contract. Current use, free space, what gets evicted next
+  (oldest-and-least-wanted; the owner's own data is never touched). Backed by
+  `HostQuota`, which already enforces a ceiling, a stranger slice, a monthly
+  note cap and a retention window.
+- **What I host** — checkboxes, and they are the interesting part:
+  - *Authors I follow* — the default; redundancy for the people this user
+    already cares about.
+  - *Topics* — the interest set again.
+  - *Whatever arrives over a direct link* — **LAN, Bluetooth, LoRa**. A peer
+    with no route to anywhere hands its data to this device, which holds it and
+    passes it on when the far side appears. This is store-and-forward as an
+    explicit, quota-bound *offer* rather than a side effect of being plugged in.
+    Per-transport switches, because a LoRa gateway wants a very different policy
+    (tiny, precious, slow) from a LAN box.
+  - *Mirror the small devices near me* — pull what battery-powered peers are
+    willing to share, then publish ourselves as a provider so the DHT stops
+    waking them.
+- **What's on my disk** — a real list: author, size, how many other providers
+  hold this (redundancy count, from the DHT), last time somebody actually fetched
+  it. With **Drop** on every row. A user who cannot see and delete what strangers
+  put on their machine has not consented to anything.
+- **Deposits** — inbound "please keep this blob" requests (the BIP-340-authorised
+  deposit opcode already exists): accept / reject policy, and a log.
+The physical profile is **not** repeated here — it is the device's, stated once in
+Settings → Hardware. The wapp shows the one-line summary and links into it. It
+matters more to an Archiver than to anyone, though: an Archiver that dies with the
+grid is holding the only copy of somebody's photos on a disk that just went dark,
+and a solar Archiver with a LoRa antenna is where a neighbourhood's data should
+live — so the summary line is what the quota screen should be read against.
+
+Host work behind it: a `RelayRole.archiver` (or a capability flag on the
+announce, which is cheaper on the wire — `RelayCap.archive` already exists and
+is currently derived, not chosen), the quota + policy plumbed to `HostQuota` and
+the deposit verdict hook, per-transport admission (the interface a peer arrived
+on is already known), and the mirror loop generalised from the existing
+indexer-host folder mirroring (`_autoSyncTick`).
+
+## The road
+
+Dependency order. Each step is small and independently useful.
+
+0. ~~**The touch rule + the bridge**~~ — **DONE** (device-validated): a `KeepPolicy` between the wapp's
+   like/reply/repost/bookmark and `store.put(tier:)`, so interacting with an
+   internet note pins **the note**, its author's profile, its thread parents and
+   its media — locally, at tier 0. Plus the publish path notifying the Reticulum
+   Indexers, and an outbox so a publish survives either network being down. This
+   is first because it is what makes everything below have something to point at.
+1. ~~**Publish author-provider records.**~~ — **DONE**. When a device keeps an author (follow ⇒
+   tier 1 ⇒ it already stores their notes) or keeps a note by the touch rule,
+   publish a `ProviderRecord` under `key = the author's 32-byte pubkey` (and the
+   event id), exactly as folders already do. "Who has notes from `npub…`" becomes
+   a DHT resolve, and the answer is a list of devices — not a server.
+2. **Resolve-then-probe-then-ask in the client.** Local store → DHT resolve
+   (anchored at Indexers) → connectionless probe of the providers → link only to
+   one that says `HAVE`. Silence costs nothing; this is what keeps a
+   thousand-relay network from melting phones.
+3. **Make the Indexer pointer-only.** It answers *where* and stores the provider
+   map, not the notes. It may keep a small hot cache of recent events for its
+   advertised interests (that is what `RelayCap.firehose` means), but its promise
+   to the network is the directory. Told to the user in those words: *an Indexer
+   is not your backup.*
+4. ~~**Indexer↔Indexer sync**~~ — **BUILT** (log, cursor, protocol, verified
+   merge; 15 tests). Remaining: the scheduler that picks partners from the
+   directory and runs it on a timer.
+5. ~~**The physical profile**~~ — **DONE** (announce + Settings → Hardware, device-validated): power, uplink and autonomy on the announce,
+   plus an opt-in coverage region (coarse, picked on the map) with **one entry per
+   radio** — its range, its listening frequency, its mode and its duty. The
+   governor extended to measure powered-fraction and throughput. **One full-size
+   Hardware panel in Settings**, where the device is described once and each radio
+   draws its own circle on the map. And a resilience score that re-weights itself
+   when the internet path disappears, scoring **per link** — a neighbour's 80 km
+   HF entry is worthless to a caller who only owns LoRa. Do this *before* the
+   wapps, so both read a profile that already exists instead of each growing its
+   own copy of it.
+6. **The Indexer wapp** (above) — the role becomes something a person grants,
+   inspects and revokes.
+7. **The Archiver role**, then the **Archiver wapp** (above): quota, policy,
+   direct-link store-and-forward, mirror-the-small-devices, and a visible,
+   deletable list of what is being held for others.
+8. **Retention rules on both.** What is worth a pointer: a record signed by a
+   provider that actually answers, an author somebody follows, a topic in the
+   interest set. What is not: unsolicited floods (the store caps), records whose
+   provider never answers a fetch (`demoteProvider` already prunes those), and
+   eventually a postage/PoW cost per store for the abusive tail.
+8a. **The abuse defences** — the **hard tier partition is DONE and asserted**; the rest (WoT ladder, postage, no-orphan-blobs, demotion feedback) remains. It
+    is the one that makes an eviction attack pointless rather than merely
+    expensive, and it is a few lines in `pruneHosted()` plus a separate byte
+    budget. Then the WoT admission ladder, the no-orphan-blobs rule on deposits
+    and uploads, the postage gate for the tail, and demotion feeding back into
+    Indexer ranking.
+8b. ~~**Identity-aware serving**~~ — **DONE**: the peer key is already on the link, so
+    `ServeQuota` learns *who* — unmetered for me/my devices/my follows, a
+    stranger budget the owner sets in MB/day, per-stranger caps under it, nothing
+    at all on cellular by default, and a graceful *"not me, try these"* refusal
+    that hands back the other providers instead of going dark.
+8c. **Rich resolve answers** (above): last-heard + provenance (direct vs synced,
+    and how old the *information* is), power/uplink, radios and schedule per
+    holder, so the client calls the mains-powered box and leaves the phone on
+    cellular alone.
+8d. **Reticulum first, internet second** — **DONE for media** (the log names the path; the badge and the notes/search half remain), end to end, with a visible badge
+    saying which path served the user and a switch to turn the internet fallback
+    off entirely.
+9. **Media follows the author.** Following keeps their blobs too — Blossom is
+   part of the package. Your phone carries the photos and videos of the people
+   you care about, fetchable over the internet by sha256 *or* over Reticulum from
+   another device that also kept them. Archivers hold the redundant copies.
+10. **Merge the two worlds properly.** Wire `rnsClientFactory` so `rns://` relays
+   are first-class in the same relay list as `wss://` ones, and a single post
+   fans out to internet relays, mesh Indexers, Archivers and the copy on your own
+   disk, in one operation, with one signature. That is the end state: NOSTR works
+   exactly as it does today, and it keeps working after the relays we use today
+   are gone.
+
+## How Nomadnet propagation should work (the intended picture)
+
+The Social "Nomadnet" feed carries NOSTR publications over Reticulum. The
+mechanism has three moving parts — **discovery**, **content fan-out**, and
+**pointer sync + content-pull** — and they must not be conflated. Announces are
+flooded by the hubs and arrive reliably; point-to-point *links* between two
+hub-connected clients are what actually carry event content, and they are the
+fragile part. The pictures below are how it is meant to hang together.
+
+### 0. Two devices, both charger+WiFi → both Indexers
+
+```
+        C61 (X1A67X)                              TANK2 (X1RD89)
+     charger + WiFi = INDEXER                 charger + WiFi = INDEXER
+     serve=true (answers whole store)         serve=true (answers whole store)
+        │                                        │
+        └──────────── public RNS hubs ───────────┘
+              (rns.beleth / inertia / wisco …)
+        announces FLOOD through here reliably;
+        client↔client LINKS must be established through here (the fragile bit)
+```
+
+A phone plugged in but sitting at 100% reports `NOT_CHARGING`
+(`connectedNotCharging`) — that still counts as **on power**, so it is an
+Indexer, not a Publisher-only leaf.
+
+### 1. Discovery — role rides the announce that survives
+
+The dedicated `geogram/relay` announce is dropped by the hubs' announce
+rate-limiting. So the RelayAnnouncement (role, services, capacity, pubkey,
+optional coords) is **piggybacked onto the callsign/chat announce** — the one
+that always gets through:
+
+```
+  C61 announce  ─▶  app_data = "X1A67X" 0x00 <RelayAnnouncement: indexer,
+                                                caps=search|firehose|…, npub, hw>
+                         │  flooded by hubs
+                         ▼
+  TANK2 receiver: split on NUL
+        ├─ "X1A67X"           → callsign → _callIdentity (reachable peer)
+        └─ <RelayAnnouncement> → _relayDir.observe → "heard indexer 3b02bb89"
+```
+
+Result: each phone lists the other as a searchable Indexer → the precondition
+for both fan-out and pointer sync.
+
+### 2. Content fan-out — the fast path when a link exists
+
+On publish, the note (and any kind-6/7 reaction) is stored locally and PUSHED as
+a signed EVENT to every announced Indexer. The receiver's `onEvent` refreshes the
+open feed instantly — no poll:
+
+```
+  C61: user posts "hello"
+     │ relayPublish
+     ├─▶ local store (self tier)                    [visible on C61 instantly]
+     └─▶ _relay.publish(TANK2, EVENT "hello") ─────▶ TANK2 store.put
+                                                        │ onEvent (z=rns)
+                                                        ▼
+                                                 onNomadnetInbound
+                                                        ▼
+                                          TANK2 Nomadnet refreshes NOW
+```
+
+Requires a working C61→TANK2 link. When that link forms, this is the sub-second
+path.
+
+### 3. Pointer sync + content-pull — the catch-up / no-shared-indexer path
+
+Pointer sync trades **who-has**, never bytes. So after sync learns a location,
+the content must be pulled in a second step over the same (already-warm) link:
+
+```
+  C61                                         TANK2
+  publishAuthorProvider(self)
+    → pointer log: {key=npub_C61, provider=C61}
+        │  SYNC_REQ / SYNC_RES (epoch,seq)
+        └──────────────────────────────────▶  acceptSyncedPointer
+                                                 "C61 holds notes from npub_C61"
+                                                        │ _pullAuthorNotesFrom(C61, npub_C61)
+                                                        ▼
+                              REQ kind[1,6,7] authors=[npub_C61] z=rns since=cursor
+        answer: the actual notes  ◀───────────────────┤
+                                                        ▼
+                                       verify → store → onNomadnetInbound
+                                                        ▼
+                                          TANK2 Nomadnet shows them
+```
+
+Same link requirement — the content-pull REQ has to be answered.
+
+### 4. The incremental pull — the steady-state backstop
+
+While the Nomadnet tab is open, each Indexer/peer is asked **only for what is new
+since our last contact with IT** (a persisted per-target cursor), so bandwidth is
+spent on new content and a newly-met Indexer still gets its backlog:
+
+```
+  every 90s while viewing Nomadnet:
+    for each target T in {best indexer, heard relays, callsign peers}:
+        since = cursor[T] ?? now-6h
+        REQ kind[1,6,7] z=rns since  ─▶ T
+        answer ─▶ verify → archive; cursor[T] = newest_created_at + 1
+```
+
+### The dependency, stated plainly
+
+```
+   role=indexer (capacity)         announce piggyback
+          └────────────┬───────────────────┘
+                       ▼
+             each sees the other Indexer
+                       │
+        ┌──────────────┴───────────────┐
+        ▼                              ▼
+   fan-out EVENT push          pointer sync → content-pull
+        └──────────────┬───────────────┘
+                       ▼
+        ***a point-to-point RNS link that ANSWERS***   ← the current wall:
+                       │                                   REQ/sync return
+                       ▼                                   "0 answered" between
+             note bytes cross → feed shows it             two NAT'd phones
+```
+
+Everything above the wall is built and, through discovery, verified. The wall is
+the transport: two hub-connected clients hearing each other's announces but not
+yet forming an answered link for content. Nothing in the NOSTR or sync layers
+fixes that — it is path-request / link-establishment through the hubs.
+
+## What actually works — validated cross-device findings
+
+The "current wall" above was written when links between two NAT'd phones returned
+`0 answered` and nothing crossed. That wall has since been **cleared in
+practice**: with the transport routed over the chat destination (see below),
+publications, replies, reply-to-replies, and likes all propagate between two
+phones **on different internet networks, through public hubs only, with no static
+paths**. This section records what was proven on real devices (C61 `X1A67X` ↔
+TANK2 `X1RD89`) and *why* it works, so the mechanics are not mistaken for luck.
+
+### Finding 1 — the link answers once it rides the chat destination
+
+The relay REQ/EVENT/SYNC links were dialing the peer's `geogram/relay`
+destination, which the hubs rate-limit and **drop** — so there was never a path
+and the link timed out (`0 answered`). The fix that made everything cross: route
+relay links over the **chat destination** (the announce that always propagates),
+exactly as the DHT already does, and demux the two RPC protocols sharing that
+destination with a 1-byte frame tag (`DHT=0x01`, `relay=0x02`). After this, REQ
+and EVENT frames are answered and content moves. **This is the single change that
+turned "nothing crosses" into "everything crosses."**
+
+### Finding 2 — delivery does NOT require a direct A↔B link; a shared Indexer is enough
+
+The two phones rarely form a *direct* answered link (asymmetric NAT — see
+Finding 3). They don't need one. Delivery converges through a **mutually-reachable
+Indexer**:
+
+```
+  C61 posts/likes ──fan-out push──▶  Indexer 95432b8d  ◀──incremental pull── TANK2
+      (author fans to its                (both phones                (weak leg pulls
+       announced indexers)                heard this hash)             from the shared one)
+```
+
+The operational signature to look for: the SAME `relay: heard indexer <hash>`
+line on BOTH devices. Once a common hash appears, the weakly-connected phone pulls
+the content from it even though it can't reach the author directly. In the live
+run the shared hash was `95432b8d`; C61 had fanned the reply+like there, TANK2
+pulled it from there. **A shared Indexer is the reliable path; a direct link is
+the fast bonus when it happens.**
+
+### Finding 3 — reachability is asymmetric, and that is normal
+
+The two legs are not symmetric. C61 reported `1 geogram device · 4 hubs · 8 other
+peers`; TANK2 reported `On the network … 1 hub`, no direct geograms. The
+better-connected node reaches the other directly and its own posts push straight
+across; the weak node cannot pull from the author and must go through the shared
+Indexer. Consequence for testing: **check the "On the network" card on BOTH
+phones.** If one shows only hubs and no geograms, expect its inbound to arrive by
+pull-through-indexer (minutes), not by direct push (sub-second) — and do not read
+the delay as breakage.
+
+### Finding 4 — timing: sub-second on a warm direct link, ~minutes via an Indexer
+
+- **Direct push** (author→peer link exists): the peer's `onNomadnetInbound` fires
+  and the feed refreshes in **under a second** (`fan-out EVENT <id> -> <peer>` on
+  the sender, `nomadnet-inbound: kind=N <id> PUSHED in` on the receiver).
+- **Via shared Indexer** (weak leg): bounded by the 90s pull cadence plus NAT link
+  warmup — several `0 answered` cycles are normal before one `1 answered
+  [<hash>:<n>]` lands. Observed convergence for a reply-to-reply and a like:
+  **~20 min** on the weak leg. **Restarting the app re-runs discovery**
+  (`announceRelayNow` + immediate pull) and noticeably speeds convergence.
+
+### Finding 5 — everything is a plain signed NOSTR event; id-dedup makes multi-path safe
+
+Post, reply, reply-to-reply = kind-1 (reply carries an `e` tag to its parent);
+like = kind-7; repost = kind-6. Every one is tagged **`z=rns`** at publish so the
+Nomadnet feed filters mesh-native events in and the internet firehose out. Because
+each event is immutable and identified by its NOSTR id, the same event arriving by
+push AND by pull AND by a later sync is deduped for free (`byId` in the pull,
+`seen` in verify, `INSERT OR IGNORE` by mid in the archive). This is what lets
+delivery take **any** available path without coordination — and lets the same
+account run on several devices and merge by id with no conflict logic.
+
+### Finding 6 — two cursor/counter correctness rules the live test exposed
+
+- **Pull cursor must not skip the boundary second.** Advancing the per-target
+  cursor to `maxSec + 1` permanently skipped an event that shared its `created_at`
+  second (a reply-to-reply typed seconds after its parent, or a clock-lagged peer).
+  Store `maxSec` and re-include the boundary second; id-dedup makes the re-fetch
+  free.
+- **The reply badge must count the whole thread.** Counting only direct children
+  showed "2" on a starter whose thread expanded 3 messages. A recursive count over
+  parent links (nested descendants included) makes the badge agree with the thread.
+
+### Finding 7 — notifications ride the same events, and must show a callsign
+
+An interaction directed at us (kind-1/6/7 that `#p`-tags self, authored by someone
+else) becomes an in-app notification via `maybeNotifyInbound` on the inbound event
+— no bespoke notification channel, no wss. The name shown must resolve through
+**profile name → `callsignForHex(pubkey)` (observed callsign, else derived
+`X1<short>`) → raw hex only as a last resort**; showing the 12-char hex prefix
+(e.g. `1b4e5d3686a0`) is a bug, and it must be fixed in every place a notification
+name is rendered — the push notification AND the in-app Notifications panel.
+
+### The corrected dependency picture
+
+```
+   role=indexer (capacity) ──piggyback announce──▶ each hears the other's role
+                                    │
+        ┌───────────────────────────┴───────────────────────────┐
+        ▼                                                        ▼
+   direct link EXISTS (often only one direction)        NO direct link (weak NAT leg)
+        │ fan-out EVENT push, sub-second                        │ converge via a
+        ▼                                                        ▼ SHARED indexer both reach
+   note bytes cross ◀───────────── z=rns signed event ─────────▶ pull-through, ~minutes
+        └───────────────────────────┬───────────────────────────┘
+                                     ▼
+                    id-dedup absorbs the duplicate → feed shows it once
+```
+
+The transport is no longer the wall it once was: chat-dest routing gives the links
+a path, and a shared Indexer removes the need for a direct A↔B link entirely.
+
+## The one-sentence version
+
+Users keep what they value, Archivers hold the redundant copies, Indexers
+remember where everything is, and the two networks — internet and Reticulum —
+carry the same signed events, so no relay is ever load-bearing again.
