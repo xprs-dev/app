@@ -1,5 +1,5 @@
 #!/bin/sh
-# Geogram Iwi — Android APK builder (low-RAM safe)
+# XPRS Iwi — Android APK builder (low-RAM safe)
 #
 # Builds a release APK without OOM-killing the host.
 # Gradle JVM is capped at 1.5 GB and workers at 2 so the

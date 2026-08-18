@@ -1,8 +1,8 @@
 /*
- * geogram event bus
+ * XPRS event bus
  *
  * Type-safe broadcast event channel for cross-component communication
- * inside the geogram Flutter host (iwi/). API mirrors the parent repo's
+ * inside the XPRS Flutter host (iwi/). API mirrors the parent repo's
  * lib/util/event_bus.dart so a shared package can be extracted later.
  *
  * Use this for host-side signalling between services, the launcher, and

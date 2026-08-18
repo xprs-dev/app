@@ -1,4 +1,4 @@
-/// Geogram Wapp CLI — runs a WASM wapp interactively from the terminal.
+/// XPRS Wapp CLI — runs a WASM wapp interactively from the terminal.
 ///
 /// Usage: dart run bin/wapp_cli.dart <path/to/wapp-dir>
 ///
@@ -538,7 +538,7 @@ Future<void> main(List<String> args) async {
   _moduleId = moduleId;
 
   // Storage dir
-  final storageDir = '${Directory.systemTemp.path}/geogram_cli/$moduleId';
+  final storageDir = '${Directory.systemTemp.path}/xprs_cli/$moduleId';
   Directory(storageDir).createSync(recursive: true);
 
   // Banner
@@ -1174,7 +1174,7 @@ void _performSearch(
     });
     HttpTransport.shared.get(
       uri,
-      headers: const {'User-Agent': 'Geogram/1.0'},
+      headers: const {'User-Agent': 'XPRS/1.0'},
     ).then((resp) {
       final body = resp.bodyString;
       final results = (jsonDecode(body) as List).map((r) {
@@ -1367,10 +1367,10 @@ void _handleWappInstall(Map<String, dynamic> data) {
     try {
       HttpTransport.shared.get(
         Uri.parse(url),
-        headers: const {'User-Agent': 'Geogram/1.0'},
+        headers: const {'User-Agent': 'XPRS/1.0'},
       ).then((resp) {
         final installDir =
-            '${Directory.systemTemp.path}/geogram_cli/wapps/$name';
+            '${Directory.systemTemp.path}/xprs_cli/wapps/$name';
         Directory(installDir).createSync(recursive: true);
         final destPath = '$installDir/$name-$version.wapp';
         File(destPath).writeAsBytesSync(resp.bodyBytes);

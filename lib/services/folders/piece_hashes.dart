@@ -1,5 +1,5 @@
 /*
- * Copyright (c) geogram
+ * Copyright (c) xprs
  * License: Apache-2.0
  *
  * The piece-hash list of a file (docs/torrents.md §8 step 2).

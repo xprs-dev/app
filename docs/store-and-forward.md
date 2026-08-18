@@ -9,7 +9,7 @@ called back when one arrives ([architecture.md](architecture.md)).
 
 Implementation: `lib/services/mesh/mesh_courier.dart` (decision, transmission,
 ingest), `mesh_custody.dart` (taps), `mesh_store.dart` (parked mail database),
-`common/geogram_blemesh/blemesh_scf.c` in xprs-esp32 (firmware side).
+`common/xprs_blemesh/blemesh_scf.c` in xprs-esp32 (firmware side).
 
 ---
 
@@ -82,7 +82,7 @@ deriving it is safer than trusting an address the sender wrote. `np:` because a
 sealed body already proves who the copy is for.
 
 **The dongle is ported** (xprs-esp32 `models/tdongle-s3/firmware`, via
-`common/geogram_xprs` — a C
+`common/xprs_xprs` — a C
 mirror of `lib/services/xprs/` verified against the same 205-example corpus):
 it reads XPRS on both subtypes, parks 1:1 `t:message` mail keyed by the derived
 identifier at the stated (capped) urgency, refuses `scope:local` at admission,

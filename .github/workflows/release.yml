@@ -3,8 +3,8 @@ name: release
 # Build the Android / Linux / Windows artifacts on a version tag and attach them
 # to a GitHub Release on THIS repo as assets (NOT committed to git, so the source
 # repo stays lean). No secrets: uses the automatic GITHUB_TOKEN. The website repo
-# (geograms/geogram-html) sync.yml then downloads these release assets, builds
-# the feed (stable.json/beta.json), and hosts the binaries at geogram.radio/
+# (the xprs.dev site repo) sync.yml then downloads these release assets, builds
+# the feed (stable.json/beta.json), and hosts the binaries at xprs.dev/
 # updates — the only place the app fetches from (NO github.com runtime dependency).
 
 on:
@@ -26,7 +26,7 @@ jobs:
       # first `pub get` (run by flutter-action's setup) can resolve it.
       - name: Fetch reticulum-dart (path dependency)
         shell: bash
-        run: git clone --depth 1 https://github.com/geograms/reticulum-dart.git ../reticulum-dart
+        run: git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -54,9 +54,9 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/geogram-release.jks
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/xprs-release.jks
           cat > android/key.properties <<EOF
-          storeFile=geogram-release.jks
+          storeFile=xprs-release.jks
           storePassword=${ANDROID_KEYSTORE_PASSWORD}
           keyAlias=${ANDROID_KEY_ALIAS}
           keyPassword=${ANDROID_KEY_PASSWORD}
@@ -85,7 +85,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Fetch reticulum-dart (path dependency)
         shell: bash
-        run: git clone --depth 1 https://github.com/geograms/reticulum-dart.git ../reticulum-dart
+        run: git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
       - name: Install Linux build deps
         run: |
           sudo apt-get update
@@ -121,7 +121,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Fetch reticulum-dart (path dependency)
         shell: bash
-        run: git clone --depth 1 https://github.com/geograms/reticulum-dart.git ../reticulum-dart
+        run: git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -203,7 +203,7 @@ jobs:
           fi
       # Publish the binaries as GitHub Release assets — NOT committed to git, so
       # the source repo stays lean. The website's sync.yml downloads these and
-      # hosts them at geogram.radio/updates (the only place the app fetches from).
+      # hosts them at xprs.dev/updates (the only place the app fetches from).
       - name: Create GitHub Release with binaries as assets
         uses: softprops/action-gh-release@v2
         with:

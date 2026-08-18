@@ -184,7 +184,7 @@ class WappLogEntry {
   String get levelName => const ['DEBUG', 'INFO', 'WARN', 'ERROR'][level.clamp(0, 3)];
 }
 
-/// Lightweight WASM engine that loads a module and provides the full Geogram HAL.
+/// Lightweight WASM engine that loads a module and provides the full XPRS HAL.
 class WappEngine {
   static int _nextEngineId = 0;
 
@@ -3313,7 +3313,7 @@ class WappEngine {
       (int filterPtr, int filterLen, int outPtr, int outCap) {
         if (outCap <= 0) return 0;
         String? service;
-        var geogramOnly = false;
+        var xprsOnly = false;
         String? search;
         // "Who is in the room" instead of "what is the network" — see
         // RnsService.graphSnapshot. Absent key means the full graph, so the
@@ -3326,7 +3326,7 @@ class WappEngine {
                 as Map<String, dynamic>;
             final s = f['service'];
             if (s is String && s.isNotEmpty) service = s;
-            geogramOnly = f['geogramOnly'] == true;
+            xprsOnly = f['xprsOnly'] == true;
             final q = f['search'];
             if (q is String && q.isNotEmpty) search = q;
             localOnly = f['localOnly'] == true;
@@ -3336,7 +3336,7 @@ class WappEngine {
         }
         final snap = RnsService.instance.graphSnapshot(
             service: service,
-            geogramOnly: geogramOnly,
+            xprsOnly: xprsOnly,
             search: search,
             localOnly: localOnly,
             limit: limit,
@@ -3652,7 +3652,7 @@ class WappEngine {
       results: [ValueTy.i32],
     );
     // Everyone messageable, in one list: LXMF peers heard on the mesh plus
-    // geogram people, each row carrying where it came from and how fresh it
+    // XPRS people, each row carrying where it came from and how fresh it
     // is. Not liveness-gated — see RnsService.messagingDirectory.
     final halPeopleDirectory = WasmFunction(
       (int qPtr, int qLen, int outPtr, int outCap) {

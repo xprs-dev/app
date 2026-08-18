@@ -3,7 +3,7 @@
 The Chat wapp models rooms as **NIP-72 moderated communities** plus a custom,
 npub-signed **moderation op-log**, all reduced client-side. Rooms federate to any
 standard NOSTR relay: a room is a plain kind-34550 community, room messages are
-ordinary kind-1 notes tagged to it, and a non-geogram client simply ignores our
+ordinary kind-1 notes tagged to it, and a non-xprs client simply ignores our
 custom op kind. All of this lives in the wapp (`wapps/chat/room.c` + `room.h`);
 the host stays generic (only its existing `hal_nostr_*`, `hal_sqlite_*`,
 `hal_crypto_*` HALs are used).
@@ -51,9 +51,9 @@ wapp is implementing.
 |---|---|---|
 | Room definition | **34550** (NIP-72) | `d`=roomId, `name`, `description`, `p`=moderator (`["p",pub,"","moderator"]`), `a`=parent (`34550:<parentAdmin>:<parentId>`) for a sub-room, `access`=`open`\|`members` |
 | Room message | **1** | `a`=`34550:<admin>:<roomId>`, `h`=roomId |
-| Moderation op | **9078** (custom) | `h`=roomId (or `*` for a wapp-wide ban), `p`=target, `op`, `until`, `amount`, `client`=`geogram-chat` |
-| Sub-room proposal | **9079** (custom) | `h`=parentRoomId, `name`, `client`=`geogram-chat` |
-| Sub-room approval | **9080** (custom) | `e`=proposalId, `h`=parentRoomId, `client`=`geogram-chat` |
+| Moderation op | **9078** (custom) | `h`=roomId (or `*` for a wapp-wide ban), `p`=target, `op`, `until`, `amount`, `client`=`xprs-chat` |
+| Sub-room proposal | **9079** (custom) | `h`=parentRoomId, `name`, `client`=`xprs-chat` |
+| Sub-room approval | **9080** (custom) | `e`=proposalId, `h`=parentRoomId, `client`=`xprs-chat` |
 
 `op` is one of `kick`, `suspend`, `unsuspend`, `ban`, `close`, `award`, `deduct`,
 `promote`, `demote`. Content of a 9078 is the optional reason. 9078/9079/9080 are

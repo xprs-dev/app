@@ -78,7 +78,7 @@ class _StatusBarState extends State<_StatusBar> {
 
     final next = _NetStats(
       up: rns.isUp,
-      devices: reach.geogram,
+      devices: reach.xprs,
       others: reach.others,
       hubs: reach.hubs,
       bleNeighbours: MeshService.instance.table?.neighbors.length ?? 0,
@@ -184,7 +184,7 @@ class _StatusBarState extends State<_StatusBar> {
 /// the reader to work out what the ratio even meant.
 class _NetStats {
   final bool up;
-  final int devices; // GEOGRAM devices — the ones you can actually talk to
+  final int devices; // XPRS devices — the ones you can actually talk to
   final int others; // other Reticulum peers (Sideband/NomadNet) — context only
   final int hubs; // internet uplinks we hold
   final int bleNeighbours; // BLE mesh neighbours heard

@@ -79,7 +79,7 @@ class ReleaseInfo {
     );
   }
 
-  /// Parse a self-hosted geogram.radio feed object (updates/stable.json or
+  /// Parse a self-hosted xprs.dev feed object (updates/stable.json or
   /// updates/beta.json). Schema:
   ///   {
   ///     "version": "1.2.3", "tagName": "v1.2.3",
@@ -93,7 +93,7 @@ class ReleaseInfo {
   /// "retry" instead of Android's "package appears to be invalid".
   /// Asset `url`s may be relative — they are resolved against [baseUrl] (the
   /// directory the feed JSON was fetched from, e.g.
-  /// "https://geogram.radio/updates"). Absolute http(s) urls pass through.
+  /// "https://xprs.dev/updates"). Absolute http(s) urls pass through.
   /// Accepts snake_case keys too so a GitHub-shaped object also parses.
   factory ReleaseInfo.fromFeed(Map<String, dynamic> json, {String baseUrl = ''}) {
     final tag = (json['tagName'] as String?) ??

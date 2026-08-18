@@ -309,7 +309,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
   static Color _onBubbleFg(bool outgoing, int incomingAlpha) =>
       Colors.white.withAlpha(outgoing ? 235 : incomingAlpha);
 
-  /// Signature verdict badge (XPRS). verified=green, forged=red,
+  /// Signature verdict badge (xprs). verified=green, forged=red,
   /// unverified=grey (signed but sender key unknown). Nothing for unsigned.
   /// On the blue outgoing bubble those hues are unreadable, so verified and
   /// unverified go white and forged goes pale pink — still a warning, but legible.
@@ -348,7 +348,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
     );
   }
 
-  /// Lock badge (XPRS): the message was end-to-end encrypted to/from this peer.
+  /// Lock badge (xprs): the message was end-to-end encrypted to/from this peer.
   Widget _encBadge(Map<String, dynamic> m) {
     if (m['enc'] != true) return const SizedBox.shrink();
     // A private (Reticulum-only) message is labelled "private" by _privBadge —

@@ -55,13 +55,13 @@ class UpdateService {
   String get stableFolder => _stableFolder;
   String get betaFolder => _betaFolder;
 
-  // Preferred, authoritative source: the self-hosted geogram.radio feed (no
+  // Preferred, authoritative source: the self-hosted xprs.dev feed (no
   // github.com at runtime — required by the F-Droid policy). Each channel is a
   // small JSON document with relative asset URLs resolved against this base; the
   // binaries are served from the same site. Reticulum (the folders above) is the
   // decentralized fallback used only when the website can't be reached.
   // Overridable at runtime for self-hosters.
-  static const String defaultUpdateFeedBase = 'https://geogram.radio/updates';
+  static const String defaultUpdateFeedBase = 'https://xprs.dev/updates';
   String _feedBase = defaultUpdateFeedBase;
   String get feedBase => _feedBase;
 
@@ -116,7 +116,7 @@ class UpdateService {
   ///
   /// and this reports unsupported, so every check, download and install path
   /// short-circuits and the Update Center hides itself. Direct-download builds
-  /// (geogram.radio, CI artefacts) keep it on and are unaffected.
+  /// (xprs.dev, CI artefacts) keep it on and are unaffected.
   static const bool selfUpdateEnabled =
       bool.fromEnvironment('SELF_UPDATE', defaultValue: true);
 
@@ -141,7 +141,7 @@ class UpdateService {
     _feedBase = (f != null && f.isNotEmpty) ? f : defaultUpdateFeedBase;
   }
 
-  /// Change the website feed base URL (e.g. https://geogram.radio/updates). Pass
+  /// Change the website feed base URL (e.g. https://xprs.dev/updates). Pass
   /// empty to reset to the default. Returns the normalised value stored.
   Future<String> setFeedBase(String input) async {
     final v = input.trim();
@@ -212,7 +212,7 @@ class UpdateService {
     }
   }
 
-  /// Fetch one channel from the geogram.radio feed over HTTP and parse it. The
+  /// Fetch one channel from the xprs.dev feed over HTTP and parse it. The
   /// feed's relative asset URLs are resolved against the feed base. Returns null
   /// on any error / non-200 / empty so the caller falls back to Reticulum. With
   /// [prereleaseOk] false, a prerelease document is ignored.
@@ -269,7 +269,7 @@ class UpdateService {
     final p = await SharedPreferences.getInstance();
     if (p.getString(_kNotified) == sel!.version) return;
     await p.setString(_kNotified, sel.version);
-    NotificationService.instance.show(GeogramNotification(
+    NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
       title: 'Update available',
       body: 'XPRS ${sel.version} is available. Open Settings → '
@@ -280,7 +280,7 @@ class UpdateService {
   }
 
   /// Download the artifact for [release] on the current platform. A website
-  /// (http/https) asset is streamed over HTTPS from geogram.radio; a Reticulum
+  /// (http/https) asset is streamed over HTTPS from xprs.dev; a Reticulum
   /// asset (sha256 handle) is fetched peer-to-peer and sha-verified. The right
   /// per-ABI split APK is chosen on Android.
   Future<bool> download(ReleaseInfo release) async {
@@ -325,7 +325,7 @@ class UpdateService {
           lower.startsWith('http://') || lower.startsWith('https://');
       String? path;
       if (isHttp) {
-        // Website source (geogram.radio): stream the binary over HTTPS. Trust is
+        // Website source (xprs.dev): stream the binary over HTTPS. Trust is
         // the TLS connection to the authoritative site; a size mismatch (when the
         // feed advertised one) is treated as a failed/partial download.
         path = await UpdateNative.download(asset.url, asset.name, onProgress);
@@ -517,7 +517,7 @@ class UpdateService {
     final platform = currentUpdatePlatform();
     if (platform == UpdatePlatform.android && !await UpdateNative.canInstall()) {
       await UpdateNative.openInstallSettings();
-      error = 'Allow installing apps from XPRS, then tap Install again.';
+      error = 'Allow installing apps from xprs, then tap Install again.';
       status.value = UpdateStatus.error;
       return false;
     }

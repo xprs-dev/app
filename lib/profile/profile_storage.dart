@@ -1,7 +1,7 @@
 /*
- * geogram filesystem abstraction
+ * XPRS filesystem abstraction
  *
- * Every storage operation in the geogram Flutter host must go through this
+ * Every storage operation in the XPRS Flutter host must go through this
  * abstraction. No direct dart:io File/Directory calls anywhere else in
  * iwi/lib/ — not because dart:io is bad, but because the backing store may be
  * an encrypted SQLite archive, a browser IndexedDB tree, or (today) a plain

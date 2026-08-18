@@ -110,7 +110,7 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Deep links: tapping https://geogram.radio/circle/<key> opens Aurora
+            <!-- Deep links: tapping https://xprs.dev/circle/<key> opens Aurora
                  straight on the "apply to join" flow. autoVerify lets Android open
                  the link without the chooser once the assetlinks are served. -->
             <intent-filter
@@ -123,11 +123,11 @@
                     android:name="android.intent.category.BROWSABLE"/>
                 <data
                     android:scheme="https"
-                    android:host="geogram.radio"
+                    android:host="xprs.dev"
                     android:pathPrefix="/circle"/>
                 <data
                     android:scheme="http"
-                    android:host="geogram.radio"
+                    android:host="xprs.dev"
                     android:pathPrefix="/circle"/>
             </intent-filter>
             <!-- Custom-scheme fallback (QR apps / chats that don't linkify https). -->
@@ -149,14 +149,14 @@
                     android:scheme="xprs"
                     android:host="open"/>
                 <!-- The old scheme stays registered. Circle invitations were
-                     shared as geogram://circle/<code> links and QR codes that
+                     shared as xprs://circle/<code> links and QR codes that
                      are already out in the world; dropping it would break every
                      one of them. New links use xprs://. -->
                 <data
-                    android:scheme="geogram"
+                    android:scheme="xprs"
                     android:host="circle"/>
                 <data
-                    android:scheme="geogram"
+                    android:scheme="xprs"
                     android:host="open"/>
             </intent-filter>
         </activity>
@@ -195,7 +195,7 @@
             android:exported="false">
             <intent-filter>
                 <action
-                    android:name="com.geogram.aurora.MEDIA_ACTION"/>
+                    android:name="com.xprs.app.MEDIA_ACTION"/>
             </intent-filter>
         </receiver>
         <!-- FileProvider so the downloaded APK can be handed to the system

@@ -3,7 +3,7 @@
  * launcher grid, optionally landing straight on a conversation.
  *
  * Used by the in-app notification center (tap a row) and the Android
- * notification deep link (geogram://open?wapp=<folder>&convo=<id>), so both
+ * notification deep link (xprs://open?wapp=<folder>&convo=<id>), so both
  * taps behave identically by construction. The launcher grid keeps its own
  * richer path (dependency gate, launch counters); this is the lightweight
  * "just open it" door, same as the remote API's /api/launch.

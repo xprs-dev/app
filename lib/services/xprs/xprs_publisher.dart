@@ -9,7 +9,7 @@
 /// `scope:` (docs/XPRS.md section 13.11) gates reach: a `local` packet stays
 /// on the short-range bearers, a country scope is not gatewayed by a node
 /// that cannot place itself, and the default — global — goes everywhere
-/// active, which is geogram's stated behaviour.
+/// active, which is xprs's stated behaviour.
 ///
 /// Long content splits into section 6.6 parts (at most nine, split only at
 /// spaces, same `ts:` throughout) and the signature covers the REASSEMBLED

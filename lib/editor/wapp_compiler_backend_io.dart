@@ -53,7 +53,7 @@ class NativeWasiSdkBackend implements CompilerBackend {
     final halDir = _findHalDir();
     if (halDir == null) {
       return CompileResult.failure(
-        'geogram_wasm_hal.h not found — walked up from '
+        'xprs_wasm_hal.h not found — walked up from '
         '${Directory.current.path} looking for wapps/hal/ and '
         'nothing matched. Launch XPRS from the repo root (or a '
         'subdirectory of it) so the header is reachable.',
@@ -151,7 +151,7 @@ class NativeWasiSdkBackend implements CompilerBackend {
     }
     final halDir = _findHalDir();
     if (halDir == null) {
-      return CompileResult.failure('geogram_wasm_hal.h not found');
+      return CompileResult.failure('xprs_wasm_hal.h not found');
     }
     final sdkDir = '${Directory(halDir).parent.path}/sdk';
     final runner = '$sdkDir/wapp_test.c';
@@ -229,7 +229,7 @@ class NativeWasiSdkBackend implements CompilerBackend {
       '$cwd/../../../wapps/hal',
     ];
     for (final c in candidates) {
-      if (File('$c/geogram_wasm_hal.h').existsSync()) return c;
+      if (File('$c/xprs_wasm_hal.h').existsSync()) return c;
     }
     return null;
   }

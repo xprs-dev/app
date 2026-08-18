@@ -84,7 +84,7 @@ class FunctionalityRegistry {
       };
 
   static final WappManifest _coreManifest = WappManifest(
-    id: 'geogram.core',
+    id: 'xprs.core',
     name: 'core',
     title: 'XPRS Core',
     description: 'Built-in HAL capabilities provided by the XPRS runtime.',
@@ -249,7 +249,7 @@ class FunctionalityRegistry {
       EndpointDef('hal_rns_hubs', 'Configured bootstrap hubs [{endpoint,connected}]', [],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef('hal_rns_nodes', 'Observed network graph {nodes,edges} (filtered)', [
-        ParamDef('filter', 'string', 'JSON {service,geogramOnly,search} (empty = none)'),
+        ParamDef('filter', 'string', 'JSON {service,xprsOnly,search} (empty = none)'),
       ], ReturnDef('int', 'Bytes written, negated required size if too small')),
     ]),
     'hal.node': FunctionalityDef('hal.node',

@@ -91,7 +91,7 @@ class _IwiAppState extends State<IwiApp> {
       navigatorObservers: [launcherRouteObserver],
       // Material 3's default seed is purple; override to blue so
       // the launcher, buttons and accents land on a cooler palette
-      // that matches the geogram brand.
+      // that matches the XPRS brand.
       //
       // The background is true black, not M3's dark surface: the launcher is
       // mostly full-bleed imagery over empty space, and on OLED the empty space

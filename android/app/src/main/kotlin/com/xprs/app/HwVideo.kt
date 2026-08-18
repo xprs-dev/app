@@ -1,4 +1,4 @@
-package com.geogram.aurora
+package com.xprs.app
 
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
@@ -29,8 +29,8 @@ class HwVideo(
     messenger: BinaryMessenger,
 ) {
     companion object {
-        const val CHANNEL = "com.geogram.aurora/hwvideo"
-        const val EVENT_CHANNEL = "com.geogram.aurora/hwvideo_events"
+        const val CHANNEL = "com.xprs.app/hwvideo"
+        const val EVENT_CHANNEL = "com.xprs.app/hwvideo_events"
     }
 
     private val players = mutableMapOf<Int, Player>()
@@ -181,7 +181,7 @@ class HwVideo(
      * Poster fast path: one frame at [atMs] via MediaMetadataRetriever, on a
      * worker thread, downscaled to [maxPx] on the long edge, PNG bytes (null
      * on any failure — caller falls back to the wasm scan). Ported from the
-     * proven geogram implementation.
+     * proven xprs implementation.
      */
     private fun extractThumbnailAsync(
         path: String,

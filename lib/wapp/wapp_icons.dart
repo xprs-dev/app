@@ -6,7 +6,7 @@
  * call this so the same wapp looks the same on both surfaces.
  *
  * The function is case-insensitive and matches substrings, so
- * "tools.geogram.terminal" and "terminal" both resolve to
+ * "tools.xprs.terminal" and "terminal" both resolve to
  * Icons.terminal. Order of the checks matters — more specific
  * substrings come first.
  */

@@ -240,8 +240,8 @@ says enough about each of them that the client can choose well.
 
 ## 7. The wapp
 
-`wapps/torrents`, id `tools.geogram.torrents`. Like every wapp, the code lives in
-the `geograms/wapps` repo; aurora is the engine (see the HAL rule: no
+`wapps/torrents`, id `tools.xprs.torrents`. Like every wapp, the code lives in
+the `xprss/wapps` repo; aurora is the engine (see the HAL rule: no
 torrent-specific logic in `lib/` — it belongs in the wapp's C + GeoUI, on top of
 generic host HALs).
 
@@ -325,7 +325,7 @@ public hub.
 
 The publisher's phone is no longer the only copy — which is what a pin is for.
 
-- **The wapp itself** (`wapps/torrents`, id `tools.geogram.torrents`): **built**,
+- **The wapp itself** (`wapps/torrents`, id `tools.xprs.torrents`): **built**,
   and well past the original five screens — see §7 for the current UI (one
   navigable library list, the Info screen, Search, the download-folder setting).
   It autostarts in the background (aurora's `_defaultAutostartWappIds`), because a
@@ -395,7 +395,7 @@ with extra steps.
 | **Storage** | incomplete-dir vs completed-dir, move storage, "delete torrent" vs "delete torrent **and** data", and a real disk-full path that pauses rather than corrupts |
 | **Watch folder / auto-add** | drop an npub in a list (or a file in a directory) and it downloads |
 | **Labels** | categories, filters, sort. Free, and the difference between 6 torrents and 600 |
-| **Deep links** | `geogram://torrent/<npub>` (and a bare `npub1…`) handled as a magnet link from chat, QR, or the OS |
+| **Deep links** | `xprs://torrent/<npub>` (and a bare `npub1…`) handled as a magnet link from chat, QR, or the OS |
 | **Creation params** | piece size, exclude patterns, follow-symlinks, file ordering |
 
 ### Deliberately absent
@@ -417,7 +417,7 @@ about the network.
 
 ```
 ntorrent1qqsrq…               ← paste anywhere: chat, QR, a note, the clipboard
-geogram://torrent/ntorrent1qqsrq…   ← the OS deep link
+xprs://torrent/ntorrent1qqsrq…   ← the OS deep link
 ```
 
 ### Why not just the npub
@@ -472,7 +472,7 @@ key — never a name it cannot prove.
 - `npub1…` → still accepted as a folder pointer with **zero hints and no author**.
   It works; it is just the slow cold start. This keeps every link ever shared
   before this section valid.
-- `geogram://torrent/<ntorrent|npub>` → the same, from the OS.
+- `xprs://torrent/<ntorrent|npub>` → the same, from the OS.
 - An `ntorrent` with an unknown TLV type is **not** an error: unknown types are
   skipped, so the encoding can grow without breaking old clients.
 

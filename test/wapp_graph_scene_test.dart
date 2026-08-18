@@ -12,7 +12,7 @@ RnsGraphNode node(
   String via = 'tcp:hub.example.net:4242',
   String relayer = '',
   List<String> services = const [],
-  bool geogram = false,
+  bool xprs = false,
 }) =>
     RnsGraphNode({
       'id': id,
@@ -21,7 +21,7 @@ RnsGraphNode node(
       'hops': hops,
       'via': via,
       'relayer': relayer,
-      'geogram': geogram,
+      'xprs': xprs,
       'services': services,
       'meta': const <String, dynamic>{},
     });

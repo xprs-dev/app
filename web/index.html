@@ -40,10 +40,10 @@
   <script>
     (function () {
       if (!('serviceWorker' in navigator)) return;
-      if (sessionStorage.getItem('geogram.sw.purged') === '1') return;
+      if (sessionStorage.getItem('xprs.sw.purged') === '1') return;
       navigator.serviceWorker.getRegistrations().then(function (regs) {
         if (regs.length === 0) return;
-        sessionStorage.setItem('geogram.sw.purged', '1');
+        sessionStorage.setItem('xprs.sw.purged', '1');
         Promise.all(regs.map(function (r) { return r.unregister(); }))
           .then(function () {
             if (window.caches && caches.keys) {

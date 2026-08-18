@@ -4,7 +4,7 @@
  * Lets the user change the editable parts of a profile (nickname, description,
  * avatar colour and avatar image) and shows the read-only identity (callsign +
  * npub, with copy) plus a reveal/copy of the secret key for backup. Also
- * deletes the profile. Ported in spirit from geogram/lib/pages/profile_page.dart
+ * deletes the profile. Ported in spirit from xprs/lib/pages/profile_page.dart
  * but adapted to Aurora's [IwiProfile] + [ProfileService].
  */
 

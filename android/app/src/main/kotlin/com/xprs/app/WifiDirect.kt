@@ -1,4 +1,4 @@
-package com.geogram.aurora
+package com.xprs.app
 
 import android.Manifest
 import android.content.BroadcastReceiver
@@ -34,18 +34,18 @@ import io.flutter.plugin.common.MethodChannel
  * the P2P stack with group churn. Teardown happens only by explicit
  * removeGroup()/disconnect() policy calls.
  *
- * MethodChannel  com.geogram.aurora/wifidirect :
+ * MethodChannel  com.xprs.app/wifidirect :
  *   supported / ensureGroup / removeGroup / connectToGroup / disconnect /
  *   groupInfo
- * EventChannel   com.geogram.aurora/wifidirect_events : maps
+ * EventChannel   com.xprs.app/wifidirect_events : maps
  *   {event:'p2pState', enabled:Bool}
  *   {event:'connection', connected:Bool, isGo:Bool, goIp:String?}
  *   {event:'group', active:Bool, isGo:Bool, ssid:String?, clientCount:Int}
  */
 class WifiDirect(context: Context, messenger: BinaryMessenger) {
     companion object {
-        private const val METHOD_CHANNEL = "com.geogram.aurora/wifidirect"
-        private const val EVENT_CHANNEL = "com.geogram.aurora/wifidirect_events"
+        private const val METHOD_CHANNEL = "com.xprs.app/wifidirect"
+        private const val EVENT_CHANNEL = "com.xprs.app/wifidirect_events"
         private const val TAG = "WifiDirect"
     }
 

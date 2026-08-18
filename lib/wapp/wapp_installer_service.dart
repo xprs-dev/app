@@ -11,7 +11,7 @@
  *
  * On success, fires `WappLoadedEvent` on the host `EventBus` so
  * `LauncherPage._scanArchiveBody` picks up the new wapp on its next
- * rebuild — no geogram restart required.
+ * rebuild — no XPRS restart required.
  */
 
 import 'dart:convert';

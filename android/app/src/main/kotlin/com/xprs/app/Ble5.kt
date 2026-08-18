@@ -1,4 +1,4 @@
-package com.geogram.aurora
+package com.xprs.app
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -45,10 +45,10 @@ import java.util.UUID
  * frames, dropping them when they expire. APRS messages and RNS announces are
  * sparse, so each frame still gets plenty of on-air time.
  *
- * MethodChannel  com.geogram.aurora/ble5      : supported / advertiseFrame /
+ * MethodChannel  com.xprs.app/ble5      : supported / advertiseFrame /
  *                                               removeFrame / stopAdvertise /
  *                                               startScan / stopScan
- * EventChannel   com.geogram.aurora/ble5_scan : inbound frames as a map
+ * EventChannel   com.xprs.app/ble5_scan : inbound frames as a map
  *                {addr:String, rssi:Int, subtype:Int, data:ByteArray}
  *
  * Wire framing of the manufacturer data (company id 0xFFFF):
@@ -57,10 +57,10 @@ import java.util.UUID
  */
 class Ble5(context: Context, messenger: BinaryMessenger) {
     companion object {
-        private const val METHOD_CHANNEL = "com.geogram.aurora/ble5"
-        private const val EVENT_CHANNEL = "com.geogram.aurora/ble5_scan"
+        private const val METHOD_CHANNEL = "com.xprs.app/ble5"
+        private const val EVENT_CHANNEL = "com.xprs.app/ble5_scan"
         // GATT-client events (connected/disconnected/data) to the Dart side.
-        private const val GATT_EVENT_CHANNEL = "com.geogram.aurora/ble5_gatt"
+        private const val GATT_EVENT_CHANNEL = "com.xprs.app/ble5_gatt"
         private const val COMPANY_ID = 0xFFFF
         private const val MARKER = 0x3E.toByte()
         private const val TAG = "Ble5"
@@ -603,7 +603,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             override fun onScanResult(callbackType: Int, result: ScanResult?) {
                 if (disposed) return
                 // Count EVERY advert heard, ours or not, before any filtering.
-                // "no geogram frames" and "the radio hears nothing at all" look
+                // "no xprs frames" and "the radio hears nothing at all" look
                 // identical from the app otherwise, and they have completely
                 // different causes — the second one means the scan is being
                 // refused or starved by the system, not that nobody is around.
@@ -1171,7 +1171,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     // ── Legacy connectable presence beacon + discovery scan ─────────────────
     // The GATT path uses a LEGACY connectable advert (separate from the extended
     // broadcast set) so peers can discover and connect. Beacon manufacturer data:
-    // [0x3E, deviceId(1..15), callsign...] — the geogram presence format.
+    // [0x3E, deviceId(1..15), callsign...] — the xprs presence format.
 
     private fun startLegacyAdvert() {
         if (disposed) return

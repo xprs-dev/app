@@ -547,7 +547,7 @@ class _SlippyMapState extends State<_SlippyMap>
       });
       final resp = await HttpTransport.shared.get(
         uri,
-        headers: const {'User-Agent': 'Geogram/1.0'},
+        headers: const {'User-Agent': 'XPRS/1.0'},
         timeout: const Duration(seconds: 10),
       );
       final body = resp.bodyString;

@@ -120,11 +120,11 @@ import 'rns_tcp_server_interface.dart';
 import 'rns_transport.dart';
 import 'wapp_mailbox.dart';
 
-// Our Reticulum destination namespace is "geogram" (the platform); Aurora is one
-// branch of it. All overlay services share it: geogram/chat, geogram/files,
-// geogram/dht, geogram/relay. (LXMF stays the standard lxmf/delivery for
+// Our Reticulum destination namespace is "xprs" (the platform); Aurora is one
+// branch of it. All overlay services share it: xprs/chat, xprs/files,
+// xprs/dht, xprs/relay. (LXMF stays the standard lxmf/delivery for
 // interop with Sideband/NomadNet.)
-const String _app = 'geogram';
+const String _app = 'xprs';
 const List<String> _aspects = ['chat'];
 // Dedicated destination for wapp-to-wapp datagrams (circles, etc.), kept off the
 // chat/files/dht/relay destinations so its traffic demultiplexes cleanly.
@@ -158,7 +158,7 @@ class RnsService {
   RnsTransportClient? _transport;
   final List<RnsInterface> _ifaces = [];
   RnsTcpServerInterface? _server;
-  // Loopback "shared instance" so other geogram apps (e.g. GNPA) route through
+  // Loopback "shared instance" so other XPRS apps (e.g. GNPA) route through
   // this node instead of each running their own Reticulum stack.
   RnsTcpServerInterface? _gateway;
   // Hub uplinks (tcpclient). We connect to ALL reachable bootstrap hubs at once
@@ -183,7 +183,7 @@ class RnsService {
   // Reachability self-heal: if the observed network collapses to zero reachable
   // devices while we still hold hub uplinks, some segment wedged silently (the
   // "tank2 showed zero devices until restart" case). We track the high-water mark
-  // of reachable geogram devices this session and the wall-clock we first saw the
+  // of reachable XPRS devices this session and the wall-clock we first saw the
   // collapse, then force a full mesh redial if it persists.
   int _reachHighWater = 0;
   int _reachZeroSinceMs = 0;
@@ -639,7 +639,7 @@ class RnsService {
   final List<Map<String, dynamic>> _inbox = [];
 
   // Per-wapp datagram channel: wapps (e.g. circles) exchange opaque, app-tagged
-  // datagrams over the dedicated "geogram/wapp" destination. Inbound datagrams
+  // datagrams over the dedicated "xprs/wapp" destination. Inbound datagrams
   // are demultiplexed by tag into these per-tag queues, drained by the calling
   // wapp's engine; the payload is whatever bytes the wapp sent (it encrypts
   // end-to-end itself — this channel is a dumb pipe).
@@ -904,7 +904,7 @@ class RnsService {
   ///     while the hub carrying our device announces was dead.
   ///
   ///  2. Reachability collapse: even with a live-looking uplink, if the observed
-  ///     network drops from "we've seen geogram devices" to zero-reachable and
+  ///     network drops from "we've seen XPRS devices" to zero-reachable and
   ///     stays there past the grace window, some segment wedged silently. Force a
   ///     full mesh redial (the "restart the app fixed it" recovery, automated).
   void _watchdogTick() {
@@ -945,7 +945,7 @@ class RnsService {
     }
 
     // Layer 2: reachability collapse self-heal.
-    final reachable = _reachableGeogramCount(nowMs);
+    final reachable = _reachableXPRSCount(nowMs);
     if (reachable > _reachHighWater) _reachHighWater = reachable;
     if (reachable > 0) {
       _reachZeroSinceMs = 0; // healthy — reset the collapse clock
@@ -970,14 +970,14 @@ class RnsService {
     }
   }
 
-  /// Count of geogram devices reachable right now — the same freshness gate the
+  /// Count of XPRS devices reachable right now — the same freshness gate the
   /// wapp headline uses ([graphSnapshot]'s isFresh), so the self-heal fires on
   /// exactly the number the user sees hit zero.
-  int _reachableGeogramCount(int nowMs) {
+  int _reachableXPRSCount(int nowMs) {
     var n = 0;
     for (final node in _observed.values) {
       if (nowMs - node.lastSeenMs > _onlineWindowMs) continue; // gone quiet
-      if (_isGeogramNode(node)) n++;
+      if (_isXprsNode(node)) n++;
     }
     return n;
   }
@@ -989,7 +989,7 @@ class RnsService {
   /// different populations under the same word. They are not the same thing and
   /// never were:
   ///
-  ///   * [geogram] — devices running this app. The ones you can actually DO
+  ///   * [xprs] — devices running this app. The ones you can actually DO
   ///     something with: message them, share a folder, sync a circle.
   ///   * [others] — every other Reticulum peer heard through the hubs
   ///     (Sideband, NomadNet, plain LXMF nodes). Real, but not ours.
@@ -997,7 +997,7 @@ class RnsService {
   /// Both use the graph's freshness rule, including the re-announce gate that
   /// keeps a hub's connect-flood from inventing hundreds of ghosts. Anything
   /// that shows a device count must come through here.
-  ({int geogram, int others, int hubs}) reachability() {
+  ({int xprs, int others, int hubs}) reachability() {
     sweepObserved();
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
@@ -1011,18 +1011,18 @@ class RnsService {
       hubIds.addAll(n.relayers);
     }
 
-    var geogram = 0;
+    var xprs = 0;
     var others = 0;
     for (final n in _observed.values) {
       if (!_isFreshNode(n, nowMs)) continue;
       if (hubIds.contains(n.identityHex)) continue;
-      if (_isGeogramNode(n)) {
-        geogram++;
+      if (_isXprsNode(n)) {
+        xprs++;
       } else {
         others++;
       }
     }
-    return (geogram: geogram, others: others, hubs: _connectedHubs.length);
+    return (xprs: xprs, others: others, hubs: _connectedHubs.length);
   }
 
   /// Is this node reachable RIGHT NOW — one rule, used everywhere.
@@ -1033,10 +1033,10 @@ class RnsService {
   /// device that was online *at any point recently* — and stamping lastSeen=now
   /// on receipt makes all of them look live.
   ///
-  /// Geogram devices used to be exempt from that gate, on the theory that our
+  /// XPRS devices used to be exempt from that gate, on the theory that our
   /// own devices are never flood ghosts. They absolutely are: a hub replays a
-  /// cached announce from a geogram device that has been off for days exactly
-  /// like any other. That exemption is why the launcher claimed 23 geogram
+  /// cached announce from a XPRS device that has been off for days exactly
+  /// like any other. That exemption is why the launcher claimed 23 xprs
   /// devices on a network where four were running.
   ///
   /// Only the LAN keeps the fast path: a peer on our own subnet is heard
@@ -1054,7 +1054,7 @@ class RnsService {
   }
 
   /// Everyone this device could start a conversation with, in ONE list:
-  /// NomadNet/Sideband peers heard on the mesh (LXMF) and geogram people
+  /// NomadNet/Sideband peers heard on the mesh (LXMF) and XPRS people
   /// (callsign / npub), newest-heard first, each row saying where it came from.
   ///
   /// Deliberately NOT gated by [_isFreshNode]. That gate answers "is this
@@ -1074,7 +1074,7 @@ class RnsService {
     final now = DateTime.now().millisecondsSinceEpoch;
     final out = <Map<String, dynamic>>[];
 
-    // ── LXMF peers (NomadNet, Sideband, other geogram devices) ──
+    // ── LXMF peers (NomadNet, Sideband, other XPRS devices) ──
     var lxmfTagged = 0, destOk = 0;
     for (final n in _observed.values) {
       if (!n.services.contains('lxmf')) continue;
@@ -1098,7 +1098,7 @@ class RnsService {
         'name': name,
         'callsign': call,
         'identity': n.identityHex,
-        'geogram': _isGeogramNode(n),
+        'xprs': _isXprsNode(n),
         'hops': n.hops,
         'via': n.via,
         'lastSeen': n.lastSeenMs,
@@ -1126,7 +1126,7 @@ class RnsService {
         'name': '',
         'callsign': entry.value,
         'identity': '',
-        'geogram': true, // it speaks XPRS, so it is one of ours
+        'xprs': true, // it speaks XPRS, so it is one of ours
         'hops': 1, // heard directly on the radio
         'via': 'ble5',
         'lastSeen': at,
@@ -1134,10 +1134,10 @@ class RnsService {
       });
     }
 
-    // ── Geogram people (their 1:1 is NOSTR kind-4, handled by Messages) ──
+    // ── XPRS people (their 1:1 is NOSTR kind-4, handled by Messages) ──
     for (final p in searchPeople(q)) {
       out.add({
-        'kind': 'geogram',
+        'kind': 'xprs',
         'callsign': p['callsign'] ?? '',
         'npub': p['npub'] ?? '',
         'nick': p['nick'] ?? '',
@@ -1169,8 +1169,8 @@ class RnsService {
     return out;
   }
 
-  /// Geogram devices reachable right now — the number the launcher shows.
-  int get reachableDevices => reachability().geogram;
+  /// XPRS devices reachable right now — the number the launcher shows.
+  int get reachableDevices => reachability().xprs;
 
   /// Posts from [authors] we have stored since [sinceMs]. What the launcher
   /// means by "new posts": written by someone you follow, after the last time
@@ -1461,7 +1461,7 @@ class RnsService {
   // Our node's 16-byte identity hash (the WFD negotiation addresses by it).
   Uint8List? get identityHash16 => _id?.hash;
 
-  /// A heard geogram peer's identity by its 16-byte hash, or null.
+  /// A heard XPRS peer's identity by its 16-byte hash, or null.
   RnsIdentity? identityByHash16(Uint8List h16) {
     final want = _hex(h16);
     for (final id in _callIdentity.values) {
@@ -1572,7 +1572,7 @@ class RnsService {
 
   // Persistent on-disk cache of observed nodes (set [observedStorePath] before
   // start; the app points it at the reticulum wapp's per-profile data folder).
-  // Keeps "first seen by you" across restarts and answers fast count/geogram
+  // Keeps "first seen by you" across restarts and answers fast count/xprs
   // queries over the full history, not just the live (capped/swept) set.
   String? observedStorePath;
   ObservedStore? _obStore;
@@ -1581,7 +1581,7 @@ class RnsService {
   Timer? _obFlushTimer;
   Map<String, dynamic> _obStats = const {
     'total': 0,
-    'geogram': 0,
+    'xprs': 0,
     'oldest': 0,
     'seen24h': 0,
   };
@@ -1602,7 +1602,7 @@ class RnsService {
           'pubkey': n.publicKeyHex,
           'callsign': n.callsign ?? '',
           'services': (n.services.toList()..sort()).join(','),
-          'geogram': n.services.any((s) => s != 'lxmf' && s != 'lxmf-prop')
+          'xprs': n.services.any((s) => s != 'lxmf' && s != 'lxmf-prop')
               ? 1
               : 0,
           'hops': n.hops,
@@ -1625,7 +1625,7 @@ class RnsService {
   // warm-start ([_warmStartFromCache], which reads the cache directly).
 
   /// Warm-start discovery from the persistent observed-node cache: seed the DHT
-  /// routing table from the public keys of known geogram peers (so resolve /
+  /// routing table from the public keys of known XPRS peers (so resolve /
   /// publish act immediately), then pull transport paths to the steadiest peers
   /// (highest advertised uptime → likely indexers) FIRST, so the first folder /
   /// file lookup is routable within seconds instead of waiting minutes for live
@@ -1634,7 +1634,7 @@ class RnsService {
     final st = _obStore;
     final f = _files;
     if (st == null || f == null || !_up) return;
-    final rows = st.topGeogramPeers(limit: 64);
+    final rows = st.topXprsPeers(limit: 64);
     if (rows.isEmpty) return;
     final pubs = <Uint8List>[];
     for (final r in rows) {
@@ -1663,7 +1663,7 @@ class RnsService {
 
   // (serviceLabel, app, aspects) tuples. A destination hash binds an identity to
   // a (app, aspects) name, so we classify an announce by recomputing the hash for
-  // the announcing identity and matching. Geogram software ⇔ announces any
+  // the announcing identity and matching. XPRS software ⇔ announces any
   // non-LXMF service here (generic Reticulum nodes announce only lxmf/*).
   static final List<(String, String, List<String>)> _serviceTuples = [
     ('chat', _app, _aspects),
@@ -1921,10 +1921,10 @@ class RnsService {
 
   static String _shortHex(String h) => h.length > 8 ? h.substring(0, 8) : h;
 
-  // A geogram device carries a geogram service (chat/relay/wapp/files/dht) — our
-  // own network. Bare LXMF and NomadNet ('node') services are NOT geogram.
+  // A XPRS device carries a XPRS service (chat/relay/wapp/files/dht) — our
+  // own network. Bare LXMF and NomadNet ('node') services are NOT xprs.
   static const _nonGeoSvc = {'lxmf', 'lxmf-prop', 'node'};
-  bool _isGeogramNode(_ObservedNode n) =>
+  bool _isXprsNode(_ObservedNode n) =>
       n.services.any((s) => !_nonGeoSvc.contains(s));
 
   /// Build a graph node JSON for an observed node (shared by [graphSnapshot] and
@@ -1941,7 +1941,7 @@ class RnsService {
         if (relay.announcement.caps & bit != 0) caps.add(name);
       }
     }
-    // In geogram the CALLSIGN is npub-derived (X1<4>); the NICKNAME is the peer's
+    // In XPRS the CALLSIGN is npub-derived (X1<4>); the NICKNAME is the peer's
     // kind-0 display_name when fetched, else its announced text.
     final pub = n.nostrPubHex;
     var callsign = '';
@@ -1979,7 +1979,7 @@ class RnsService {
           : n.services.contains('chat')
           ? 'chat'
           : '',
-      'geogram': _isGeogramNode(n),
+      'xprs': _isXprsNode(n),
       'hops': n.hops,
       'via': n.via,
       'relayer': n.relayerHex ?? '',
@@ -2073,7 +2073,7 @@ class RnsService {
     for (final n in _observed.values) {
       if (_lxmfDestHexForPub(n.publicKeyHex).toLowerCase() != want) continue;
       matched++;
-      // A geogram device announces its callsign as the LXMF display name, so
+      // A XPRS device announces its callsign as the LXMF display name, so
       // either field names the same person. Requiring `callsign` alone made
       // every peer we know only through its LXMF announce unaddressable.
       call = (n.callsign ?? '').trim();
@@ -2145,7 +2145,7 @@ class RnsService {
             '(via $via)');
   }
 
-  /// Other Reticulum devices ALIVE right now — NOT our geogram devices and
+  /// Other Reticulum devices ALIVE right now — NOT our XPRS devices and
   /// NOT hubs/relayers. Gated like [graphSnapshot]'s isFresh: a hub dumps its
   /// cached announce table at us on connect and stamps hundreds of long-dead
   /// nodes "heard just now", so being recent is not enough — a generic remote
@@ -2176,7 +2176,7 @@ class RnsService {
     for (final n in _observed.values) {
       if (!alive(n)) continue; // live now, not a connect-flood ghost
       if (hubIds.contains(n.identityHex)) continue; // it's a hub
-      if (_isGeogramNode(n)) continue; // geogram → its own list
+      if (_isXprsNode(n)) continue; // XPRS → its own list
       out.add(_nodeJson(n, 'leaf', relayByHex));
     }
     out.sort(
@@ -2191,11 +2191,11 @@ class RnsService {
   /// webview. Topology is hub-centric: [self] in the centre, identified transport
   /// nodes (the relayers other nodes are reached through) as hubs, and the
   /// remaining nodes as leaves clustered under their relayer (or direct neighbours
-  /// of self). [service] filters to nodes announcing that service; [geogramOnly]
+  /// of self). [service] filters to nodes announcing that service; [xprsOnly]
   /// hides generic Reticulum nodes; [search] matches callsign/identity/service.
   /// [localOnly] answers a different question from the rest: not "what is the
   /// network" but "who is in the room" — every node heard on something other
-  /// than the internet, geogram or not, newest first, capped at [limit]. The
+  /// than the internet, XPRS or not, newest first, capped at [limit]. The
   /// Chat wapp's nearby list is built from exactly this, so the list and the
   /// graph can never disagree about who is local.
   /// [includeXprs] merges the XPRS stations this device has heard over the
@@ -2204,7 +2204,7 @@ class RnsService {
   /// `localOnly` consumers (the Chat wapp's nearby list) are unchanged.
   Map<String, dynamic> graphSnapshot({
     String? service,
-    bool geogramOnly = false,
+    bool xprsOnly = false,
     String? search,
     bool localOnly = false,
     int limit = 0,
@@ -2217,9 +2217,9 @@ class RnsService {
     for (final e in _relayDir.entries()) {
       relayByHex[e.idHex] = e;
     }
-    // A geogram device carries a geogram service (chat/relay/wapp/files/dht) —
-    // our own network. LXMF and NomadNet ('node') services are NOT geogram.
-    bool isGeogram(_ObservedNode n) => _isGeogramNode(n);
+    // A XPRS device carries a XPRS service (chat/relay/wapp/files/dht) —
+    // our own network. LXMF and NomadNet ('node') services are NOT xprs.
+    bool isXPRS(_ObservedNode n) => _isXprsNode(n);
 
     // Which observed nodes to show. A recent lastSeen alone isn't enough: linking
     // a hub floods its cached announce table at us, so every long-dead node it
@@ -2228,14 +2228,14 @@ class RnsService {
     //
     // BUT the strict "re-announced ≥2× spread over 25s" test also hid the user's
     // OWN devices: a LAN peer's announce often arrives twice within a few ms (two
-    // interfaces), so its heardCount is 2 but the spread is ~0 — and a geogram
+    // interfaces), so its heardCount is 2 but the spread is ~0 — and a xprs
     // node we just heard shouldn't need a full re-announce cycle to appear. So we
     // trust the two categories that are never flood ghosts — LAN peers and
-    // geogram devices — as soon as they're heard, and keep the strict spread gate
+    // XPRS devices — as soon as they're heard, and keep the strict spread gate
     // only for generic remote nodes (to filter the flood).
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    // ONE rule (see _isFreshNode). This used to wave geogram devices through on
-    // a single announce, which meant every stale geogram announce a hub replayed
+    // ONE rule (see _isFreshNode). This used to wave XPRS devices through on
+    // a single announce, which meant every stale XPRS announce a hub replayed
     // from its cache counted as a live device.
     bool isFresh(_ObservedNode n) => _isFreshNode(n, nowMs);
 
@@ -2248,7 +2248,7 @@ class RnsService {
     }
 
     bool matchesFilters(_ObservedNode n) {
-      if (geogramOnly && !isGeogram(n)) return false;
+      if (xprsOnly && !isXPRS(n)) return false;
       if (service != null &&
           service.isNotEmpty &&
           !n.services.contains(service)) {
@@ -2287,7 +2287,7 @@ class RnsService {
       'label': _announceText.isNotEmpty ? _announceText : 'this node',
       'kind': 'self',
       'services': const [],
-      'geogram': true,
+      'xprs': true,
       'hops': 0,
       'via': '',
       'relayer': '',
@@ -2320,7 +2320,7 @@ class RnsService {
           'label': 'hub ${shortHex(hubId)}',
           'kind': 'hub',
           'services': const [],
-          'geogram': false,
+          'xprs': false,
           'hops': 1,
           'via': '',
           'relayer': '',
@@ -2369,8 +2369,8 @@ class RnsService {
     // when a station's callsign already labels an RNS node (one device, two
     // protocols); the dongle may still appear twice when its RNS announce
     // label ("tdongle-s3") differs from its XPRS callsign ("X3JS7Y") — two
-    // identities on the wire, honestly shown. `geogramOnly` keeps them (an XPRS
-    // station is geogram-speaking by definition).
+    // identities on the wire, honestly shown. `xprsOnly` keeps them (an XPRS
+    // station is xprs-speaking by definition).
     //
     // A `service:` filter used to hide every one of them, on the reasoning that
     // a beacon announces no services. It does now: `t:service serve:index,…`
@@ -2398,7 +2398,7 @@ class RnsService {
           'label': call,
           'kind': 'xprs',
           'services': s.services,
-          'geogram': true,
+          'xprs': true,
           'hops': 1,
           // The bearer doubles as the via tag, so the scene colours the orb
           // by the network it was actually heard on (ble/lan/lora).
@@ -2439,15 +2439,15 @@ class RnsService {
 
     // Headline counts for the wapp: devices reachable right now (the same fresh
     // set the canvas shows) and how many of those accept LXMF. Deliberately
-    // UNFILTERED so the search/service/geogram chips don't shrink them.
+    // UNFILTERED so the search/service/XPRS chips don't shrink them.
     var online = 0;
     var lxmfReachable = 0; // online peers that announced an LXMF delivery dest
-    var geogramReachable = 0; // online peers running geogram software
+    var xprsReachable = 0; // online peers running XPRS software
     for (final n in _observed.values) {
       if (isFresh(n)) {
         online++;
         if (n.services.contains('lxmf')) lxmfReachable++;
-        if (isGeogram(n)) geogramReachable++;
+        if (isXPRS(n)) xprsReachable++;
       }
     }
 
@@ -2482,9 +2482,9 @@ class RnsService {
       'observed': _observed.length,
       'online': online,
       'lxmfReachable': lxmfReachable,
-      'geogramReachable': geogramReachable,
+      'xprsReachable': xprsReachable,
       'passive': _transport?.passive ?? false,
-      // Persistent all-time counts from the on-disk cache (total/geogram/oldest).
+      // Persistent all-time counts from the on-disk cache (total/xprs/oldest).
       'stats': _obStats,
     };
   }
@@ -2653,15 +2653,14 @@ class RnsService {
                 dhtK: 20,
                 dhtAlpha: 6,
                 // Run DHT RPC links over the CHAT destination, not the dedicated
-                // geogram/dht dest. Public hubs rate-limit announces and routinely drop
-                // the geogram/dht announce, so peers have no transport path to each
+                // xprs/dht dest. Public hubs rate-limit announces and routinely drop
+                // the xprs/dht announce, so peers have no transport path to each
                 // other's dht dest and STOREs never land (replication failed; resolve
                 // only worked because the holder kept its own record + k=96). The chat
                 // announce is the most reliably propagated one, so routing RPC there
                 // makes any chat-reachable peer DHT-reachable. The Kademlia node id is
-                // still derived from geogram/dht locally and is unaffected. Updated nodes
-                // also dual-accept on the legacy dht dest for the mixed-fleet migration.
-                rpcApp: _app, // 'geogram'
+                // still derived from xprs/dht locally and is unaffected.
+                rpcApp: _app, // 'xprs'
                 rpcAspects: _aspects, // ['chat']
                 // The chat dest is shared: DHT accepts its links first, so relay
                 // RPC frames (tag 0x02) that arrive on a DHT-owned link are
@@ -3005,8 +3004,8 @@ class RnsService {
             store: _relayStore!,
             send: (raw) => _transport?.sendLinkAware(raw),
             // Run relay RPC links (REQ/EVENT/COUNT/SYNC) over the CHAT
-            // destination, not the dedicated geogram/relay dest. Public hubs
-            // rate-limit and DROP the geogram/relay announce, so peers have no
+            // destination, not the dedicated xprs/relay dest. Public hubs
+            // rate-limit and DROP the xprs/relay announce, so peers have no
             // transport path to each other's relay dest and every REQ/sync link
             // times out ("0 answered"). The chat announce is the one that
             // reliably propagates (and now carries the piggybacked relay role),
@@ -3111,12 +3110,12 @@ class RnsService {
                 await emailResolver?.call(email);
               },
               relayInfo: () => {
-                'name': 'geogram',
+                'name': 'xprs',
                 'description':
-                    'geogram device relay — REQ kind 30078 #d mailto:<email> '
+                    'XPRS device relay — REQ kind 30078 #d mailto:<email> '
                         'to resolve an email address into a verified npub',
                 'pubkey': selfPubHex,
-                'software': 'geogram-aurora',
+                'software': 'xprs',
                 'supported_nips': [1, 9, 11, 50],
                 'limitation': {'max_message_length': 131072},
               },
@@ -3479,7 +3478,7 @@ class RnsService {
         await _enableBleBridge();
       }
 
-      // Local loopback gateway: let other geogram apps on this device share this
+      // Local loopback gateway: let other XPRS apps on this device share this
       // node (one identity, one set of uplinks) instead of each binding their
       // own ports. Loopback-only and non-fatal if the port is taken.
       if (localGateway && _gateway == null) {
@@ -3563,7 +3562,7 @@ class RnsService {
         'RNS: node up mode=$mode id=${_id!.hexHash} dest=$destHex',
       );
       // Warm-start discovery from the persistent peer cache: seed the DHT overlay
-      // and pull paths to the steadiest known geogram nodes first, so folder/file
+      // and pull paths to the steadiest known XPRS nodes first, so folder/file
       // discovery works within seconds instead of waiting minutes for live
       // announces to converge.
       unawaited(_warmStartFromCache());
@@ -3739,11 +3738,11 @@ class RnsService {
   /// (The chat dest is announced separately by [announce] with the callsign.)
   Future<void> _announceServiceDests() async {
     if (!_up || _id == null) return;
-    // No geogram/dht announce: DHT RPC rides the chat dest now (the dht dest is
+    // No xprs/dht announce: DHT RPC rides the chat dest now (the dht dest is
     // never dialled), and overlay membership is learned from the chat/files
     // announces. Dropping it removes one of the per-cycle service announces so the
     // ones that matter are less likely to hit the hubs' announce budget. The
-    // Kademlia node id is still derived from geogram/dht locally — it needs no
+    // Kademlia node id is still derived from xprs/dht locally — it needs no
     // announce.
     for (final aspects in [_aspectsFiles]) {
       final pkt = await RnsAnnounceBuilder.build(
@@ -4084,7 +4083,7 @@ class RnsService {
     // wapp-channel early-return below so wapp/rv destinations are observed too.
     _observeAnnounce(ann, hops, via);
     // Wapp datagram channel: a datagram arrives as an announce of the sender's
-    // "geogram/wapp" destination carrying RAW app_data [tagLen:1][tag][payload].
+    // "xprs/wapp" destination carrying RAW app_data [tagLen:1][tag][payload].
     // Route it to the matching per-tag queue and stop — not a chat/route announce.
     final wappHash = RnsDestination.hash(ann.identity, _app, _aspectsWapp);
     if (RnsCrypto.constantTimeEquals(ann.destHash, wappHash)) {
@@ -4108,13 +4107,13 @@ class RnsService {
     // OR files; the chat announce below adds it too). Every Aurora node runs the
     // DHT, and a contact's DHT id is derived from its IDENTITY regardless of
     // which aspect we heard — so keying overlay membership off ONLY the dedicated
-    // "geogram/dht" announce was fragile: the public hubs rate-limit announce
+    // "xprs/dht" announce was fragile: the public hubs rate-limit announce
     // propagation, and that single announce is frequently dropped while the same
     // node's files/chat announces get through (observed live: a peer's chat
     // announce arrived but its dht announce never did, so it never joined the
-    // overlay and folder discovery failed). Matching any "geogram" dest is still
+    // overlay and folder discovery failed). Matching any "xprs" dest is still
     // a cryptographic identity↔name proof, so non-Aurora identities
-    // (Sideband/NomadNet/rnsd) — which never announce a "geogram" dest — are
+    // (Sideband/NomadNet/rnsd) — which never announce a "xprs" dest — are
     // still never added; lookups don't waste rounds on nodes that can't answer.
     final dhtHash = RnsDestination.hash(ann.identity, _app, _aspectsDht);
     final filesHash = RnsDestination.hash(ann.identity, _app, _aspectsFiles);
@@ -6351,7 +6350,7 @@ class RnsService {
 
   // ── LXMF conversations (NomadNet / Sideband / group nodes) ──────────────────
   // Every conversation is keyed by the PEER's LXMF delivery-dest hash (hex) —
-  // the same address we send replies to. Peers can be geogram devices, NomadNet
+  // the same address we send replies to. Peers can be XPRS devices, NomadNet
   // or Sideband users, or LXMF distribution-group nodes (group chat): they all
   // speak the same LXMF protocol, so one conversation model serves all of them.
   final Map<String, List<Map<String, dynamic>>> _lxmfConvos = {};
@@ -6626,7 +6625,7 @@ class RnsService {
   /// Best-effort fetch of an OBSERVED peer's kind-0 profile DIRECTLY from it (it
   /// runs a relay), so the reticulum wapp can show its real nickname instead of
   /// the generic announced text. Unlike [_maybeFetchFollowedProfile] this isn't
-  /// gated on follow — any reachable geogram device. Deduped + TTL'd; the result
+  /// gated on follow — any reachable XPRS device. Deduped + TTL'd; the result
   /// lands in [_relayStore] where [_profileNameFor] reads it next snapshot.
   void _maybeFetchObservedProfile(String pubHex) {
     final r = _relay;
@@ -8062,7 +8061,7 @@ class RnsService {
     };
     LogService.instance.add('NOSTR: notify $who $what (${e['id']})');
     NotificationService.instance.show(
-      GeogramNotification(
+      XprsNotification(
         level: NotificationLevel.info,
         title: '$who $what',
         body: kind == 1 && content.isNotEmpty ? content : null,

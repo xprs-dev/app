@@ -1,7 +1,7 @@
 name: build-android
 
 # CI build verification only. Tag releases are built + published to
-# geogram.radio by release.yml (no GitHub release attach here).
+# xprs.dev by release.yml (no GitHub release attach here).
 on:
   push:
     branches: [main]
@@ -17,7 +17,7 @@ jobs:
       # the workspace so pub get (incl. flutter-action's setup) can resolve it.
       - name: Fetch reticulum-dart (path dependency)
         shell: bash
-        run: git clone --depth 1 https://github.com/geograms/reticulum-dart.git ../reticulum-dart
+        run: git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
 
       - uses: actions/setup-java@v4
         with:

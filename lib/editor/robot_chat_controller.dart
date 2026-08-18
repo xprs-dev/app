@@ -5,7 +5,7 @@
  * from PreferencesService), and streams the assistant's reply token-by-token.
  * The wapp's current files are injected as context on every turn so the model
  * can propose edits; it returns whole-file replacements in fenced
- * `geogram-file:<name>` blocks that the Robot UI turns into Apply buttons.
+ * `xprs-file:<name>` blocks that the Robot UI turns into Apply buttons.
  *
  * UI-agnostic: a ChangeNotifier the Robot widget rebuilds from.
  */
@@ -18,7 +18,7 @@ import '../ai/ai.dart';
 import '../services/preferences_service.dart';
 
 /// A whole-file replacement the AI proposed, parsed from a fenced
-/// `geogram-file:<name>` block in an assistant message.
+/// `xprs-file:<name>` block in an assistant message.
 class ProposedFile {
   final String name; // 'main.c' | 'home.ui.json' | ...
   final String content;
@@ -135,7 +135,7 @@ class RobotChatController extends ChangeNotifier {
   // ── File-block parsing ────────────────────────────────────────────────
 
   static final _fileBlock = RegExp(
-    r'```geogram-file:([^\s`]+)[ \t]*\r?\n(.*?)```',
+    r'```xprs-file:([^\s`]+)[ \t]*\r?\n(.*?)```',
     dotAll: true,
   );
 
@@ -160,13 +160,13 @@ $uiJson
 ''';
 
   static const _defaultSystemPrompt = '''
-You are the assistant inside Aurora's wapp editor. A "wapp" is a small app written in C (compiled to WebAssembly) whose screens are described declaratively in a GeoUI file, home.ui.json. The C `main.c` implements module_init/module_tick/module_handle_event against the geogram HAL; home.ui.json is a JSON array of screen blocks (\$:"screen") containing groups, fields and actions.
+You are the assistant inside Aurora's wapp editor. A "wapp" is a small app written in C (compiled to WebAssembly) whose screens are described declaratively in a GeoUI file, home.ui.json. The C `main.c` implements module_init/module_tick/module_handle_event against the XPRS HAL; home.ui.json is a JSON array of screen blocks (\$:"screen") containing groups, fields and actions.
 
 Help the user change the wapp. Be concise.
 
-When you change a file, output its COMPLETE new contents (not a diff) in a fenced code block whose info string is `geogram-file:<filename>`, where <filename> is exactly `main.c` or `home.ui.json`. Example:
+When you change a file, output its COMPLETE new contents (not a diff) in a fenced code block whose info string is `xprs-file:<filename>`, where <filename> is exactly `main.c` or `home.ui.json`. Example:
 
-```geogram-file:home.ui.json
+```xprs-file:home.ui.json
 [ ... full updated JSON ... ]
 ```
 

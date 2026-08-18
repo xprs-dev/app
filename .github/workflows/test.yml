@@ -22,7 +22,7 @@ jobs:
       - name: Checkout reticulum-dart (path dependency)
         uses: actions/checkout@v4
         with:
-          repository: geograms/reticulum-dart
+          repository: xprs-dev/reticulum-dart
           path: reticulum-dart
 
       - uses: subosito/flutter-action@v2

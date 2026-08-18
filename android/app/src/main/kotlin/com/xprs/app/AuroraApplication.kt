@@ -1,4 +1,4 @@
-package com.geogram.aurora
+package com.xprs.app
 
 import android.app.Application
 import android.util.Log

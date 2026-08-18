@@ -41,7 +41,7 @@ ProfileStorage makeFilesystemStorage(String basePath) =>
 
 /// `localStorage`-persisted variant of [MemoryProfileStorage].
 ///
-/// Loads any existing snapshot from `geogram.storage:<basePath>` in
+/// Loads any existing snapshot from `xprs.storage:<basePath>` in
 /// the constructor (synchronous — `localStorage` is a sync API) and
 /// flushes the in-memory file map back to the same key on every
 /// mutation via [onMutate]. Failures are swallowed so a blown quota
@@ -53,13 +53,29 @@ class _LocalStorageProfileStorage extends MemoryProfileStorage {
   }
 
   /// Key under which this storage lives in localStorage. Prefixed
-  /// with `geogram.storage:` so it doesn't collide with
+  /// with `xprs.storage:` so it doesn't collide with
   /// shared_preferences' own entries or anything else.
-  String get _storageKey => 'geogram.storage:$basePath';
+  String get _storageKey => 'xprs.storage:$basePath';
+
+  /// What this key was called before the rename. This blob is the ENTIRE
+  /// filesystem for the web build -- profiles, keys, wapp data -- so a bare
+  /// key change would boot every existing web user as a fresh install with
+  /// their old data stranded in localStorage. Carried over once, then the old
+  /// key is dropped.
+  String get _legacyStorageKey => 'geogram.storage:$basePath';
 
   void _hydrate(String basePath) {
     try {
-      final raw = web.window.localStorage.getItem(_storageKey);
+      var raw = web.window.localStorage.getItem(_storageKey);
+      if (raw == null) {
+        raw = web.window.localStorage.getItem(_legacyStorageKey);
+        if (raw != null) {
+          web.window.localStorage.setItem(_storageKey, raw);
+          try {
+            web.window.localStorage.removeItem(_legacyStorageKey);
+          } catch (_) {}
+        }
+      }
       if (raw == null) return;
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return;

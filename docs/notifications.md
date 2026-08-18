@@ -1,6 +1,6 @@
 # Notifications
 
-How any wapp or host code raises a notification in geogram, and how notifications
+How any wapp or host code raises a notification in xprs, and how notifications
 travel from an in-app card all the way to an OS-level toast on the desktop or Android.
 
 > **Not covered here:** the Activity feed (`lib/wapp/geoui/widgets/activity_feed.dart`)
@@ -10,7 +10,7 @@ travel from an in-app card all the way to an OS-level toast on the desktop or An
 
 ## TL;DR
 
-- **One entry point:** `NotificationService.instance.show(GeogramNotification(...))`.
+- **One entry point:** `NotificationService.instance.show(XPRSNotification(...))`.
 - **From a wapp:** send an outbox message `{"type":"notify", ...}` via `hal_msg_send`.
   There is no dedicated `hal_notify` symbol — `notify` is a message *type*.
 - **Severity:** `info | success | warning | error`.
@@ -30,7 +30,7 @@ host drains the wapp outbox:
   foreground wapp → wapp_page._drainOutbox        (scope respected)
   headless  wapp  → BackgroundWappManager         (scope forced to 'both')
       ▼
-NotificationService.instance.show(GeogramNotification)      lib/services/notification_service.dart
+NotificationService.instance.show(XPRSNotification)      lib/services/notification_service.dart
   ├─ dedupe by tag, append to in-memory history (cap 200)
   ├─ fire NotificationShownEvent on the EventBus
   │     ├─ NotificationLayer  → in-app stacking overlay      (scope app|both)
@@ -55,7 +55,7 @@ the EventBus — funnels through `NotificationService.instance.show(...)`.
 enum NotificationLevel { info, success, warning, error }   // severity
 enum NotificationScope { app, system, both }               // reach; app is the default
 
-class GeogramNotification {
+class XPRSNotification {
   final NotificationLevel level;
   final String title;
   final String? body;
@@ -106,7 +106,7 @@ String parsing accepts aliases: `warn` → `warning`, `err` → `error`. Unknown
 ### Android native channels
 
 At the OS layer, Android sorts notifications into channels (each with its own importance
-and user-facing settings). Package `com.geogram.aurora`:
+and user-facing settings). Package `com.xprs.app`:
 
 | Channel id       | Label                  | Importance | Badges icon? | Used for                                          |
 |------------------|------------------------|-----------|:---:|---------------------------------------------------|
@@ -201,7 +201,7 @@ is a message type, not a HAL function.
 Call the service directly, using the `host:<service>` source convention:
 
 ```dart
-NotificationService.instance.show(GeogramNotification(
+NotificationService.instance.show(XPRSNotification(
   level: NotificationLevel.error,
   title: 'Sync failed',
   body: 'Could not reach hub',
@@ -233,7 +233,7 @@ notification. You often don't need to raise error notifications by hand — fire
   (`lib/wapp/wapp_open.dart`), the same helper the Android tap deep link uses;
   `host:updates` opens Settings; any other `host:*` row is inert.
 - **Android tap deep link** — `BgBridge.notify` attaches
-  `geogram://open?wapp=<folder>&convo=<id>` to the notification's tap intent;
+  `xprs://open?wapp=<folder>&convo=<id>` to the notification's tap intent;
   `MainActivity.linkFrom` accepts it and `DeepLinkService` routes it through
   the same `openWappByFolder`. One opener, two doors.
 - **OS notification** — for `system`/`both`: `notify-send` (Linux), `osascript`
@@ -279,7 +279,7 @@ remains as a backstop for messages already in flight.
 |----------|:-------------------:|-----------------------------------------------------|
 | Linux    | ✅                  | `notify-send` (`--urgency=critical` for errors)      |
 | macOS    | ✅                  | `osascript -e 'display notification ...'`             |
-| Android  | ✅                  | `MethodChannel` `com.geogram.aurora/bg_service` `notify` → `BgBridge` → `NotificationManager` (heads-up, channel "Messages & events") |
+| Android  | ✅                  | `MethodChannel` `com.xprs.app/bg_service` `notify` → `BgBridge` → `NotificationManager` (heads-up, channel "Messages & events") |
 | Windows  | ❌                  | not implemented (planned: winrt toast)               |
 | Web      | ❌                  | no-op                                                |
 
@@ -291,11 +291,11 @@ notifications are always delivered even where OS escalation isn't wired up. No
 
 | Path | Role |
 |------|------|
-| `lib/services/notification_service.dart`        | enums, `GeogramNotification`, `NotificationService`, backends, `NotificationLayer` overlay |
+| `lib/services/notification_service.dart`        | enums, `XPRSNotification`, `NotificationService`, backends, `NotificationLayer` overlay |
 | `lib/services/notification_store.dart`          | persistence + `unreadCount` |
 | `lib/services/announced_tags_store.dart`        | persisted announce-once guard (per-profile tag set) |
 | `lib/wapp/wapp_open.dart`                        | shared open-wapp(+convo) helper for notification taps |
-| `lib/services/deep_link_service.dart`            | geogram://open route for Android notification taps |
+| `lib/services/deep_link_service.dart`            | xprs://open route for Android notification taps |
 | `lib/launcher/notifications_page.dart`          | notification center UI |
 | `lib/launcher/home_header.dart`                 | bell + badge |
 | `lib/services/wapp_unread_service.dart`         | `unread` badge counts (separate from notifications) |
@@ -303,5 +303,5 @@ notifications are always delivered even where OS escalation isn't wired up. No
 | `lib/wapp/background_wapp_manager.dart`          | headless wapp outbox → forces `scope: both` |
 | `lib/wapp/wapp_engine.dart`                      | `hal.msg_send` host import binding |
 | `lib/platform/platform_io.dart`                 | `showSystemNotification` per-OS dispatch |
-| `android/app/src/main/kotlin/com/example/iwi/BgBridge.kt` | Android `notify` handler + channels |
-| `android/app/src/main/kotlin/com/example/iwi/BgService.kt`| foreground service keeping headless process alive |
+| `android/app/src/main/kotlin/com/xprs/app/BgBridge.kt` | Android `notify` handler + channels |
+| `android/app/src/main/kotlin/com/xprs/app/BgService.kt`| foreground service keeping headless process alive |

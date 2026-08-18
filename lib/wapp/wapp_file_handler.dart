@@ -2,7 +2,7 @@
  * WappFileHandler — one `provides.file_handlers` entry from a wapp
  * manifest. Declares which file extensions / MIME types a wapp can
  * open, the verb to show in an "Open with…" picker, and the modes it
- * supports. Ported from the root geogram manifest model.
+ * supports. Ported from the root XPRS manifest model.
  */
 
 class WappFileHandler {

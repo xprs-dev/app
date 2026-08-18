@@ -237,7 +237,7 @@ class _ModuleObjectReference {
   }
 }
 
-// PATCHED (geogram): `ffi.Uint32`, not `ffi.Int64`.
+// PATCHED (xprs): `ffi.Uint32`, not `ffi.Int64`.
 //
 // Rust declares this callback as
 //   fn(function_id: u32, args: *mut DartAbi) -> *mut wire_list_wasm_val
@@ -335,7 +335,7 @@ class _References {
       pointer = platform.api2wire_list_wasm_val(mapped);
     } catch (e, s) {
       print('_globalWasmFunction error: $e $s');
-      // PATCHED (geogram): never return nullptr.
+      // PATCHED (xprs): never return nullptr.
       //
       // Rethrowing let the exception escape an FFI callback, whose default
       // return is nullptr — and Rust immediately does box_from_leak_ptr(result)

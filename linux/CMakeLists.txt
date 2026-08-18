@@ -7,7 +7,7 @@ project(runner LANGUAGES CXX)
 set(BINARY_NAME "aurora")
 # The unique GTK application identifier for this application. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
-set(APPLICATION_ID "radio.geogram.aurora")
+set(APPLICATION_ID "radio.xprs.app")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -108,11 +108,11 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/app_icon.png"
 # installs land in /usr/share/icons/hicolor and /usr/share/applications.
 foreach(ICON_SIZE 16 22 24 32 48 64 128 256 512)
   install(FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/icons/hicolor/${ICON_SIZE}x${ICON_SIZE}/apps/geogram.png"
+    "${CMAKE_CURRENT_SOURCE_DIR}/icons/hicolor/${ICON_SIZE}x${ICON_SIZE}/apps/xprs.png"
     DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/${ICON_SIZE}x${ICON_SIZE}/apps"
     COMPONENT Runtime)
 endforeach()
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/geogram.desktop"
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/xprs.desktop"
   DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications"
   COMPONENT Runtime)
 

@@ -1,6 +1,6 @@
 {
-  "schema": "geogram.wapp.signature/1",
-  "wapp_id": "tools.geogram.app-creator",
+  "schema": "xprs.wapp.signature/1",
+  "wapp_id": "tools.xprs.app-creator",
   "wapp_version": "0.1.0",
   "signed_at": 1776257139,
   "publisher_npub": "npub1lut3k0m4mue97yuyj7f50qrnwz06kwgk8x03uta904ujsu4lcehq9u67tm",
@@ -26,15 +26,15 @@
     "tags": [
       [
         "d",
-        "geogram.wapp:tools.geogram.app-creator"
+        "xprs.wapp:tools.xprs.app-creator"
       ],
       [
         "t",
-        "geogram-wapp-signature"
+        "xprs-wapp-signature"
       ],
       [
         "wapp_id",
-        "tools.geogram.app-creator"
+        "tools.xprs.app-creator"
       ],
       [
         "wapp_version",

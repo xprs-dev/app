@@ -1,4 +1,4 @@
-package com.geogram.aurora
+package com.xprs.app
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -138,7 +138,7 @@ class BgService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Aurora")
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_stat_geogram)
+            .setSmallIcon(R.drawable.ic_stat_xprs)
             .setOngoing(true)
             .setContentIntent(pi)
             .build()
@@ -150,7 +150,7 @@ class BgService : Service() {
         private const val CHANNEL_ID = "aurora_service"
         private const val NOTIF_ID = 7001
         private const val TICK_MS = 2000L
-        const val ACTION_START_FROM_BOOT = "com.geogram.aurora.START_FROM_BOOT"
+        const val ACTION_START_FROM_BOOT = "com.xprs.app.START_FROM_BOOT"
 
         /** Start the service from the boot receiver (no Activity available). */
         fun startFromBoot(context: Context) {

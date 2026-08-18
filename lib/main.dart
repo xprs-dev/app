@@ -424,11 +424,11 @@ Future<void> _boot() async {
     unawaited(PermissionGate.startGatedServices());
   }
 
-  // Deep links (Android): open geogram.radio/circle/<key> straight on the
+  // Deep links (Android): open xprs.dev/circle/<key> straight on the
   // circles "apply to join" flow. Needs the navigator live (after runApp).
   unawaited(DeepLinkService.instance.start());
 
-  // Check GitHub for a newer Geogram Aurora release and, if found, surface one
+  // Check GitHub for a newer XPRS Aurora release and, if found, surface one
   // notification (Settings → Updates does the install). Best-effort, off web.
   unawaited(UpdateService.instance.backgroundCheck());
 }

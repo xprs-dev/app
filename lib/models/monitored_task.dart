@@ -1,7 +1,7 @@
 /*
  * MonitoredTask — value object for tasks tracked by [TaskMonitorService].
  *
- * Mirrors parent geogram's lib/models/monitored_task.dart so a shared
+ * Mirrors parent xprs's lib/models/monitored_task.dart so a shared
  * package can be extracted later. Pure Dart, no Flutter deps.
  */
 
@@ -32,7 +32,7 @@ enum TaskStatus {
   error,
 }
 
-/// How a task participates in the geogram boot phase. Used by the
+/// How a task participates in the XPRS boot phase. Used by the
 /// [BootOrchestrator] to schedule heavy startup work without competing
 /// with everything else for CPU and memory at the same time.
 enum BootStart {
@@ -75,7 +75,7 @@ class MonitoredTask {
   final TaskPriority priority;
   final TaskType type;
 
-  /// How this task participates in the geogram boot phase. Default
+  /// How this task participates in the XPRS boot phase. Default
   /// [BootStart.none] — only the [BootOrchestrator] / runMonitoredStartup
   /// path sets this to anything else.
   final BootStart bootStart;

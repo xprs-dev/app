@@ -68,7 +68,7 @@ is most of the battle.
 
 | Concern | Layer | File |
 |---|---|---|
-| Wapp UI + Following/thread/search drains | wapp C → WASM | `geograms/wapps/social/main.c`, `screens/*.ui.json` |
+| Wapp UI + Following/thread/search drains | wapp C → WASM | `xprss/wapps/social/main.c`, `screens/*.ui.json` |
 | Feed rendering (cards, tabs, compose) | host GeoUI | `aurora/lib/wapp/geoui/widgets/activity_feed.dart` |
 | Feed state, archive, ranking, likes, profiles | host page | `aurora/lib/wapp/wapp_page.dart` |
 | **The All-feed data source** | host, main isolate | `aurora/lib/services/social/nostr_all_poller.dart` |

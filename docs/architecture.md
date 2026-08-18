@@ -164,7 +164,7 @@ a commit names a symbol whose definition is still unstaged, `flutter test`
 passes here because this machine has both halves, and the build is the first
 thing to find out. The sibling is the sharper version — aurora depends on
 reticulum-dart by path, so it resolves to your working tree locally and to
-`geograms/reticulum-dart@main` in CI, which means an uncommitted change there is
+`xprss/reticulum-dart@main` in CI, which means an uncommitted change there is
 invisible to every local check at the same time as it is invisible to CI.
 
 Both checks are pure git, so the hook costs milliseconds and says nothing at all

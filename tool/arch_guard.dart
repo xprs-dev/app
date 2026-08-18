@@ -88,7 +88,7 @@ const rules = <Rule>[
         'capability and let the wapp use it — otherwise every wapp needs its '
         'own special case in lib/.',
     appliesTo: ['lib/services/**', 'lib/connections/**'],
-    pattern: r'''\b(?:wappId|appId|id)\s*==\s*['"]tools\.geogram\.\w+['"]''',
+    pattern: r'''\b(?:wappId|appId|id)\s*==\s*['"]tools\.xprs\.\w+['"]''',
   ),
 
   // ── the HAL surface ───────────────────────────────────────────────────────

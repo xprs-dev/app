@@ -1,7 +1,7 @@
 /*
- * NotificationService — unified notification surface for geogram.
+ * NotificationService — unified notification surface for xprs.
  *
- * Every user-visible notification in geogram (from host services or
+ * Every user-visible notification in XPRS (from host services or
  * from wapps) must go through this service. No wapp or service should
  * call ScaffoldMessenger or notify-send directly; routing through here
  * lets us add per-wapp mute settings, notification history, do-not-
@@ -46,7 +46,7 @@ enum NotificationScope {
 }
 
 /// Value object describing one notification.
-class GeogramNotification {
+class XprsNotification {
   final NotificationLevel level;
   final String title;
   final String? body;
@@ -72,7 +72,7 @@ class GeogramNotification {
 
   final DateTime timestamp;
 
-  GeogramNotification({
+  XprsNotification({
     required this.level,
     required this.title,
     this.body,
@@ -93,7 +93,7 @@ abstract class NotificationBackend {
   /// service to skip this backend for that delivery.
   bool handlesScope(NotificationScope scope);
 
-  Future<void> show(GeogramNotification n);
+  Future<void> show(XprsNotification n);
 }
 
 // ── In-app display ──────────────────────────────────────────────────
@@ -117,7 +117,7 @@ class SystemTrayNotificationBackend implements NotificationBackend {
       scope == NotificationScope.system || scope == NotificationScope.both;
 
   @override
-  Future<void> show(GeogramNotification n) async {
+  Future<void> show(XprsNotification n) async {
     // Not while the user is looking at the app. A system heads-up drops a bar
     // over the top of whatever they are reading — including the very chat the
     // notification is about — and the in-app card (bottom of the screen, and
@@ -133,7 +133,7 @@ class SystemTrayNotificationBackend implements NotificationBackend {
       title: n.title,
       body: n.body,
       error: n.level == NotificationLevel.error,
-      // Android routes taps through geogram://open — hand over the wapp
+      // Android routes taps through xprs://open — hand over the wapp
       // folder and the conversation so the tap can land on the thread.
       wapp: n.source.startsWith('wapp:') ? n.source.substring(5) : null,
       convo: n.convo,
@@ -151,7 +151,7 @@ class NotificationService {
 
   /// Rolling in-memory history. Capped at [maxHistory]. Reserved for a
   /// future history / debug UI.
-  final List<GeogramNotification> history = [];
+  final List<XprsNotification> history = [];
   static const int maxHistory = 200;
 
   EventSubscription<ErrorEvent>? _errorSub;
@@ -174,7 +174,7 @@ class NotificationService {
     _backends.add(SystemTrayNotificationBackend());
 
     _errorSub = EventBus().on<ErrorEvent>((e) {
-      show(GeogramNotification(
+      show(XprsNotification(
         level: NotificationLevel.error,
         title: 'Error',
         body: e.message,
@@ -190,7 +190,7 @@ class NotificationService {
 
   void _flushPending() {
     if (_pending.isEmpty) return;
-    final batch = List<GeogramNotification>.of(_pending);
+    final batch = List<XprsNotification>.of(_pending);
     _pending.clear();
     for (final n in batch) {
       show(n);
@@ -201,19 +201,19 @@ class NotificationService {
   /// loading the active profile's announced set. Replayed through [show]'s
   /// guard once the store is ready, so boot-time behavior does not depend on
   /// load-vs-event timing.
-  final List<GeogramNotification> _pending = [];
+  final List<XprsNotification> _pending = [];
 
   /// Dispatch [n] to every backend that declares it handles the
   /// notification's scope. Backend errors are swallowed so one broken
   /// backend cannot prevent the others from firing.
   ///
-  /// A notification carrying a [GeogramNotification.tag] is announced once,
+  /// A notification carrying a [XprsNotification.tag] is announced once,
   /// ever, ACROSS RESTARTS: the tag is its identity, persisted per profile by
   /// [AnnouncedTagsStore]. Wapps re-subscribe and re-ingest their backlog on
   /// every start (Social answers its inbox out of SQLite, Mail replays the
   /// relay backlog), so a process-lifetime guard would re-announce — and
   /// re-mark unread — everything the user already saw.
-  void show(GeogramNotification n) {
+  void show(XprsNotification n) {
     final tag = n.tag;
     if (tag != null && tag.isNotEmpty) {
       final guard = AnnouncedTagsStore.instance;
@@ -254,7 +254,7 @@ class NotificationService {
 /// History / debug UIs and [NotificationLayer] subscribe to this for
 /// live updates.
 class NotificationShownEvent extends AppEvent {
-  final GeogramNotification notification;
+  final XprsNotification notification;
   NotificationShownEvent(this.notification);
 }
 
@@ -366,13 +366,13 @@ class _NotificationLayerState extends State<NotificationLayer> {
 }
 
 class _VisibleNotification {
-  final GeogramNotification notification;
+  final XprsNotification notification;
   final int key;
   _VisibleNotification(this.notification, this.key);
 }
 
 class _NotificationCard extends StatelessWidget {
-  final GeogramNotification notification;
+  final XprsNotification notification;
   final VoidCallback onDismiss;
   const _NotificationCard({
     required this.notification,
@@ -396,7 +396,7 @@ class _NotificationCard extends StatelessWidget {
     };
     // A notification about something ("X liked your message") is only useful if
     // it takes you to that something. The Android tray tap already routes
-    // through geogram://open -> openWappByFolder; the in-app card was a dead
+    // through xprs://open -> openWappByFolder; the in-app card was a dead
     // rectangle, so a like told you it happened and then left you to find it.
     final wapp = n.source.startsWith('wapp:') ? n.source.substring(5) : '';
     final canOpen = wapp.isNotEmpty;
@@ -476,7 +476,7 @@ class _NotificationCard extends StatelessWidget {
 /// about; the tally is on a screen they are usually not looking at. Generic
 /// conversation semantics, so it lives with the store rather than in a wapp:
 /// the store is what knows whose message was liked.
-GeogramNotification likeNotification({
+XprsNotification likeNotification({
   required String wappName,
   required String convo,
   required String from,
@@ -484,7 +484,7 @@ GeogramNotification likeNotification({
 }) {
   var text = (message['text'] ?? '').toString().replaceAll('\n', ' ').trim();
   if (text.length > 80) text = '${text.substring(0, 80)}…';
-  return GeogramNotification(
+  return XprsNotification(
     level: NotificationLevel.info,
     title: '$from liked your message',
     body: text.isEmpty ? null : text,

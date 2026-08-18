@@ -74,7 +74,7 @@ class RnsGraphNode {
   final String id;
   final String label;
   final String kind; // self | hub | leaf (as the snapshot saw it)
-  final bool geogram;
+  final bool xprs;
   final String relayer;
   final List<String> services;
   final int hops;
@@ -115,7 +115,7 @@ class RnsGraphNode {
         kind = (m['kind'] ?? 'leaf').toString(),
         dm = (m['dm'] ?? '').toString(),
         npub = ((m['meta'] as Map?)?['npub'] ?? '').toString(),
-        geogram = m['geogram'] == true,
+        xprs = m['xprs'] == true,
         relayer = (m['relayer'] ?? '').toString(),
         services =
             (m['services'] as List?)?.map((e) => e.toString()).toList() ??
@@ -142,7 +142,7 @@ class RnsGraphNode {
         kind = 'hub',
         dm = '',
         npub = '',
-        geogram = false,
+        xprs = false,
         relayer = '',
         services = const [],
         hops = 1,
@@ -567,13 +567,13 @@ LayoutGeometry rnsEgoLayout(List<SceneNode<RnsGraphNode>> nodes) {
 }
 
 /// How each node looks as an orb: hierarchy by size and dressing, network by
-/// colour. Geogram devices wear a green second ring (the 2D view's code).
+/// colour. XPRS devices wear a green second ring (the 2D view's code).
 NodeSprite spriteOfRnsNode(
   SceneNode<RnsGraphNode> node, {
   String? expandedHubId,
 }) {
   final n = node.data;
-  const geogramGreen = Color(0xFF3FB950);
+  const xprsGreen = Color(0xFF3FB950);
   switch (n.effectiveKind) {
     case 'self':
       return NodeSprite(
@@ -593,7 +593,7 @@ NodeSprite spriteOfRnsNode(
         coreColor: n.iface.color,
         haloScale: 2.6,
         ringColor: Colors.white70,
-        secondaryColor: n.geogram ? geogramGreen : null,
+        secondaryColor: n.xprs ? xprsGreen : null,
         badge:
             n.members > 0 && n.id != expandedHubId ? '${n.members}' : null,
         // A pill floating on a 2px dot looks broken; match the halo floor.
@@ -618,13 +618,13 @@ NodeSprite spriteOfRnsNode(
         radius: direct ? 22 : 17,
         coreColor: n.iface.color,
         ringColor: xprs ? Colors.white38 : null,
-        // The OUTER ring, which is the thick one, and red replaces the geogram
+        // The OUTER ring, which is the thick one, and red replaces the xprs
         // green rather than sitting inside it: a station that has signed
         // something with a name that is not its own should not still be wearing
         // the colour that means "one of us".
         secondaryColor: forged
             ? const Color(0xFFF85149)
-            : (n.geogram ? geogramGreen : null),
+            : (n.xprs ? xprsGreen : null),
         label: n.label,
         labelMinPx: direct ? kRnsLabelFloorPx : null,
         labelPriority: direct ? 1 : 0,

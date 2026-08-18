@@ -24,7 +24,7 @@ Uint8List? roundTrip(BLEOutgoingMessage msg) {
 }
 
 void main() {
-  group('BLE parcel protocol (copied from geogram)', () {
+  group('BLE parcel protocol (copied from xprs)', () {
     test('single-parcel message round-trips (typical APRS frame)', () {
       final payload = Uint8List.fromList(utf8.encode('CT1ABC\x1fX3WWAJ\x1fhello over a GATT parcel'));
       final out = roundTrip(BLEOutgoingMessage(payload: payload, targetDeviceId: 'peer'));

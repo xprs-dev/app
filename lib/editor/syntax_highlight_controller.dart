@@ -1,5 +1,5 @@
 /*
- * Copyright (c) geogram
+ * Copyright (c) xprs
  * License: Apache-2.0
  *
  * Ported from the parent repo's lib/widgets/syntax_highlight_controller.dart

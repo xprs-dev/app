@@ -28,7 +28,7 @@ So transmission is a WINDOW, not a state:
 | `ADV_PERIOD_MS` | 60 000 — how often that window opens |
 | Rest of the minute | receiving |
 
-(`android/app/src/main/kotlin/com/example/iwi/Ble5.kt`.) The window is enforced
+(`android/app/src/main/kotlin/com/xprs/app/Ble5.kt`.) The window is enforced
 by the controller itself — `AdvertisingSet.enableAdvertising(true, duration, 0)`
 — so a missed callback cannot leave the device transmitting for a whole minute.
 Registering a frame while the radio is listening opens the window immediately

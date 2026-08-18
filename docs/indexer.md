@@ -62,7 +62,7 @@ this is the index underneath it.
 A Kademlia-style DHT over Reticulum (`dht/dht_core.dart`):
 
 - keyspace is Reticulum's native **128 bits**; a node's id is its DHT
-  destination hash (`RnsDestination.hash(identity, 'geogram', ['dht'])`), and a
+  destination hash (`RnsDestination.hash(identity, 'xprs', ['dht'])`), and a
   file's routing key is the first 128 bits of its sha256
 - distance is XOR, and the *k* nodes closest to a file's key hold its records
 - replies are capped so one fits a single link-encrypted packet — 5 contacts or
@@ -233,7 +233,7 @@ no re-signing. An indexer passes on the author's packet.
 
 # The ESP32 implementation (T-Dongle)
 
-`common/geogram_xprsindex/` in xprs-esp32. Same role, no SQLite, and the reasons are
+`common/xprs_xprsindex/` in xprs-esp32. Same role, no SQLite, and the reasons are
 measured rather than aesthetic — see `docs/esp32.md`.
 
 - the app is ~1.86 MB in a 1,966,080 B partition and the board has **no PSRAM**,

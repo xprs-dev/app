@@ -90,7 +90,7 @@ closure).
   subscriptions) plus kind-24133 request/response. Works on Android, on Linux, and
   **headless** — no Activity. This is the only signer that can sign while the app
   is in the background, which makes it the one that matters most (§6).
-- **`Nip55Signer`** — Amber, over a new `com.geogram.aurora/signer` method channel
+- **`Nip55Signer`** — Amber, over a new `com.xprs.app/signer` method channel
   following the `WifiDirect(context, messenger)` shape (`NativeBridgeRegistry.kt`).
   Needs `startActivityForResult`, which **does not exist** in `MainActivity.kt`
   today (only `startActivity`) — that plumbing is new.
@@ -143,7 +143,7 @@ Each ships independently, in this order:
    envelopes; drop `hal_identity_sign`. A wire-format change, but circles are
    private groups: the blast radius is only members, who all update together.
 4. **chat** — drop the XPRS `~sig` and the `ENC1:` envelope; messages become signed
-   NOSTR events + NIP-44. **Last, and the one with real fallout:** other geogram
+   NOSTR events + NIP-44. **Last, and the one with real fallout:** other xprs
    devices already speak that wire format. Old builds will show the new messages as
    *unverified* (not forged), and old `ENC1:` history must still open — so
    `XprsCrypto.decryptFrom` stays on the **read** path for one release, and the UI
@@ -182,7 +182,7 @@ the signer for one signature — which doubles as proof it really holds the key.
 | `lib/services/reticulum/rns_service.dart` | `_profilePrivHex` → signer; ~12 sign sites async |
 | `lib/wapp/wapp_engine.dart` | HAL v2; **delete** `hal_identity_sign` / `hal_encrypt` / `hal_decrypt` |
 | `lib/wapp/coin/*` | its own generated wallet key |
-| `wapps/{social,messages,circles,chat}/main.c`, `wapps/hal/geogram_wasm_hal.h` | the four migrations |
+| `wapps/{social,messages,circles,chat}/main.c`, `wapps/hal/xprs_wasm_hal.h` | the four migrations |
 | `reticulum-dart/.../xprs_crypto.dart` | verify/decrypt only, then delete (its `nip04*` helpers stay — they are real NIP-04) |
 
 ## 10. Verification

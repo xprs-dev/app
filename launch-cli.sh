@@ -1,5 +1,5 @@
 #!/bin/sh
-# Geogram Wapp CLI Launcher
+# XPRS Wapp CLI Launcher
 #
 # Usage: ./launch-cli.sh <wapp-name>
 # Example: ./launch-cli.sh terminal

@@ -14,7 +14,7 @@
  *
  * Published topics:
  *
- *   system.app.started       — geogram launcher finished booting
+ *   system.app.started       — XPRS launcher finished booting
  *   system.wapp.loaded       — a wapp finished module_init
  *   system.wapp.unloaded     — a wapp page disposed
  *   system.wapp.crashed      — a wapp threw during load / tick / event

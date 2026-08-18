@@ -10,7 +10,7 @@ over the public internet (found while testing two phones on different networks):
 
 1. **Wapp announces must be flood-exempt.** `RnsTransport` caps verification of
    announces from *new* destinations (~20/s) so the public-hub flood can't peg
-   the CPU, exempting `priorityAnnounceNames`. The `geogram/wapp` aspect was
+   the CPU, exempting `priorityAnnounceNames`. The `xprs/wapp` aspect was
    missing, so a peer's wapp-datagram announce got shed on busy hubs. Fix: add
    `RnsDestination.nameHash(_app, _aspectsWapp)` to the priority set in
    `rns_service.dart` start().

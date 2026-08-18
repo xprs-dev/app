@@ -1,6 +1,6 @@
 /*
  * FileFolderPicker — a self-contained file/folder navigator, ported (core UX)
- * from geogram/lib/widgets/file_folder_picker.dart but without its mirror/sync/
+ * from xprs/lib/widgets/file_folder_picker.dart but without its mirror/sync/
  * thumbnail/cache dependencies.
  *
  * One navigator shows BOTH files and folders. Tapping a folder navigates into

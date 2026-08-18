@@ -22,10 +22,10 @@ import 'video_time_bar.dart';
 
 void _log(String line) => LogService.instance.add('[wvp] $line');
 
-/// Thin wrapper over the `com.geogram.aurora/hwvideo` channel.
+/// Thin wrapper over the `com.xprs.app/hwvideo` channel.
 class HwVideoController {
-  static const _ch = MethodChannel('com.geogram.aurora/hwvideo');
-  static const _evCh = EventChannel('com.geogram.aurora/hwvideo_events');
+  static const _ch = MethodChannel('com.xprs.app/hwvideo');
+  static const _evCh = EventChannel('com.xprs.app/hwvideo_events');
   static Stream<Map<dynamic, dynamic>>? _events;
 
   /// Shared broadcast stream of player events; filter by `id`.

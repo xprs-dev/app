@@ -1,14 +1,14 @@
 /*
  * IwiProfile — slimmed-down profile model for the iwi launcher.
  *
- * Ported shape from geogram/lib/models/profile.dart but stripped to the
+ * Ported shape from xprs/lib/models/profile.dart but stripped to the
  * fields that the launcher actually cares about. The parent project's
  * Profile carries ~20 station/location/relay fields that iwi doesn't
  * need. If iwi ever needs them, add them here rather than importing
  * the parent class — the two lifecycles are intentionally decoupled.
  *
  * Persistence: written as a JSON entry inside `profiles.json` at the
- * geogram root by [ProfileService]. Never persist [nsec] anywhere
+ * XPRS root by [ProfileService]. Never persist [nsec] anywhere
  * outside this file — it is the private signing key and must stay
  * inside the profile folder.
  */
@@ -135,7 +135,7 @@ class IwiProfile {
   }
 }
 
-/// The eight avatar colour choices, matching the original geogram palette.
+/// The eight avatar colour choices, matching the original XPRS palette.
 const List<String> kProfileColors = [
   'red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan',
 ];

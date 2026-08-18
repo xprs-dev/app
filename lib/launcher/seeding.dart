@@ -122,7 +122,7 @@ Future<void> migrateNostrToSocial() => _migrateWappFolder('nostr', 'social');
 /// history, its dedup ring and its autostart setting across the rename.
 Future<void> migrateMessagesToMail() => _migrateWappFolder('messages', 'mail');
 
-/// Rename reticulum -> mesh: the graph wapp now covers Reticulum AND XPRS,
+/// Rename reticulum -> mesh: the graph wapp now covers Reticulum AND xprs,
 /// and its data dir carries the node's observed.sqlite3 (rns_autostart).
 Future<void> migrateReticulumToMesh() => _migrateWappFolder('reticulum', 'mesh');
 

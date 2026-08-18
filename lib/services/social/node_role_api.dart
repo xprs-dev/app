@@ -554,7 +554,7 @@ class NodeRoleApi {
     // Say it happened. A destructive action that reports nothing leaves the
     // person unsure whether it ran — and "nothing to delete" is a real,
     // legitimate outcome that must not look like a broken button.
-    NotificationService.instance.show(GeogramNotification(
+    NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
       title: r.items == 0
           ? 'Nothing to free'

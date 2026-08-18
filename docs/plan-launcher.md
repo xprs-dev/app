@@ -20,7 +20,7 @@ code.
 
 **Hard constraints.** `lib/` stays generic — no hardcoded wapp names in host
 paths; wapp-specific behaviour is declared in manifests and resolved
-generically. All wapp code lives in the `geograms/wapps` repo; wapp-side work is
+generically. All wapp code lives in the `xprss/wapps` repo; wapp-side work is
 a called-out follow-up. Real implementations, no stubs.
 
 ## Decisions taken
@@ -68,7 +68,7 @@ Verified against the tree, correcting the initial assumptions:
 `StoredNotification {id, level, title, body, source, timestamp}` (toJson/fromJson).
 `NotificationStore` singleton: `ValueNotifier<List<StoredNotification>> items`
 (newest-first, bounded ~300), `ValueNotifier<int> unreadCount`, `init()`,
-`record(GeogramNotification)`, `markAllSeen()`, `clear()`.
+`record(XPRSNotification)`, `markAllSeen()`, `clear()`.
 
 `init()` subscribes to `EventBus().on<NotificationShownEvent>` exactly as
 `NotificationLayer` does (`notification_service.dart:225`); `record` is wrapped
@@ -102,7 +102,7 @@ the `part` list in `lib/launcher/launcher.dart`.
 `NotificationsPage` mirrors gnpa's (`app.dart:2378`): filter chips, day-grouped
 list (Today/Yesterday/date), row card with 44×44 icon, title/subtitle, relative
 time. Filter dimension = `NotificationLevel` plus `source` prefix (`wapp:` vs
-`host:`) — both already on `GeogramNotification`. `markAllSeen()` in `initState`.
+`host:`) — both already on `XPRSNotification`. `markAllSeen()` in `initState`.
 
 `_NoveltiesCarousel` follows gnpa's `_FeaturedCarousel` (`app.dart:2036`):
 `PageView.builder`, height ~172, animated dot indicators, `ClipRRect` radius 16
@@ -221,7 +221,7 @@ Host-only, each shippable alone:
 6. `WappUnreadService` namespacing + `provides.intents` + `view.open` plumbing
    (a harmless no-op until wapps opt in)
 
-**Follow-ups in `geograms/wapps`** (none block host shipping): chat wapp declares
+**Follow-ups in `xprss/wapps`** (none block host shipping): chat wapp declares
 `provides.intents: ["mail","chat"]` (until then the mail/chat icons
 resolve nothing and are hidden); handles `view.open` (until then they open the
 wapp at its default view); emits per-intent unread (until then the chat badge is

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-/// First Flutter frame during startup: the full Geogram triad (star +
+/// First Flutter frame during startup: the full XPRS triad (star +
 /// mountains + waves) over the wordmark. Android 12+ owns the launch window
 /// and circle-masks its icon; this frame follows it on the same background
 /// colour so the two read as one continuous launch. Shown by main() before
@@ -38,8 +38,8 @@ class _BootSplashPage extends StatelessWidget {
       child: Center(
         child: SvgPicture.asset(
           dark
-              ? 'assets/splash/geogram-triad-dark.svg'
-              : 'assets/splash/geogram-triad.svg',
+              ? 'assets/splash/xprs-triad-dark.svg'
+              : 'assets/splash/xprs-triad.svg',
           width: triadWidth,
         ),
       ),

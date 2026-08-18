@@ -1,4 +1,4 @@
-package com.geogram.aurora
+package com.xprs.app
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -15,8 +15,8 @@ import androidx.core.content.ContextCompat
 
 /**
  * Keeps an in-app update download alive (and shows its progress) when the app is
- * backgrounded during the download. Mirrors geogram's DownloadForegroundService.
- * Controlled from Dart via the com.geogram.aurora/updates MethodChannel.
+ * backgrounded during the download. Mirrors xprs's DownloadForegroundService.
+ * Controlled from Dart via the com.xprs.app/updates MethodChannel.
  */
 class DownloadForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
@@ -55,7 +55,7 @@ class DownloadForegroundService : Service() {
         val b = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("XPRS")
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_stat_geogram)
+            .setSmallIcon(R.drawable.ic_stat_xprs)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
         if (progress in 0..100) {

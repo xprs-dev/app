@@ -28,14 +28,14 @@ import 'profile_crypto.dart';
 import 'storage_paths.dart';
 
 /// Test seam: overrides the storage root used to map database paths to
-/// profiles (normally `geogramRootStorage().basePath`).
+/// profiles (normally `xprsRootStorage().basePath`).
 @visibleForTesting
 String? profileDbRootOverride;
 
 /// Storage root used for profile-path mapping (override-aware; normally
-/// `geogramRootStorage().basePath`).
+/// `xprsRootStorage().basePath`).
 String profileStorageRoot() =>
-    profileDbRootOverride ?? geogramRootStorage().basePath;
+    profileDbRootOverride ?? xprsRootStorage().basePath;
 
 /// Thrown when a database inside an encrypted profile is opened before the
 /// profile has been unlocked.

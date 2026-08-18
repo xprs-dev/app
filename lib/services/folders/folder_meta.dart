@@ -1,5 +1,5 @@
 /*
- * Copyright (c) geogram
+ * Copyright (c) xprs
  * License: Apache-2.0
  *
  * `data/meta.json` — what a shared folder SAYS ABOUT ITSELF.

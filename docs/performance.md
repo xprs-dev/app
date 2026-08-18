@@ -212,7 +212,7 @@ Rules:
    Ticks are 100/s; `delta*100/(seconds*100)` = % of one core.
 4. **A/B by turning things off.** `POST /api/wapp/stop {"wapp":"chat"}` is the
    cleanest lever the app has. Just do it over long windows.
-5. **Thread names matter.** `.geogram.aurora` is the platform/main thread,
+5. **Thread names matter.** `.xprs.aurora` is the platform/main thread,
    `1.raster` is Flutter's rasteriser, `DartWorker` are isolate threads (the VM
    pool reuses them, so a name does not identify an isolate), `mali-*` is the GPU
    driver.
@@ -228,9 +228,9 @@ Every one of these produced a wrong number that I believed for a while.
    `am force-stop` cleared it. So a measurement taken after A/B-ing wapps through
    the API is measuring the leak, not the app.
    ```sh
-   adb shell am force-stop com.geogram.aurora
-   adb shell pidof com.geogram.aurora        # must print nothing
-   adb shell am start -n com.geogram.aurora/.MainActivity
+   adb shell am force-stop com.xprs.app
+   adb shell pidof com.xprs.app        # must print nothing
+   adb shell am start -n com.xprs.app/.MainActivity
    ```
 7. **Never quote CPU from a `--profile` build.** It has the VM service, an
    unoptimised-ish AOT, and observatory overhead. A profile build read **106%**
@@ -332,7 +332,7 @@ the screen off, and who is awake to see the result?*
   to `android/build/` and the APK looks "missing" while Flutter cheerfully reports
   it built.
 - **`adb monkey` injects a random tap** after launching. Use
-  `am start -n com.geogram.aurora/.MainActivity`.
+  `am start -n com.xprs.app/.MainActivity`.
 
 ---
 
@@ -639,7 +639,7 @@ Dart timers or on the Activity being alive. The stack that already solves this:
   add a second foreground service for a new task — hold the existing one.
 - **A native heartbeat drives Dart, because Dart timers can't drive themselves.**
   `BgService` posts a `Handler` runnable every `TICK_MS = 2000` that calls
-  `onTick` over the `com.geogram.aurora/bg_service` MethodChannel. Dart side:
+  `onTick` over the `com.xprs.app/bg_service` MethodChannel. Dart side:
   `AndroidForegroundService._onCall` → `BackgroundWappManager.tickAllFromNative()`
   → every `BackgroundService.tickNow()`. **This is why `BackgroundService` has both
   a Dart `Timer.periodic` and a `tickNow()`:** the timer runs foreground, the native

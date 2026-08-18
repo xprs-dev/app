@@ -1,13 +1,13 @@
 /*
  * ProfileService — singleton managing iwi profiles.
  *
- * Persists a list of [IwiProfile]s to `profiles.json` at the geogram
- * root (see `geogramRootStorage()` in storage_paths.dart). Tracks a
+ * Persists a list of [IwiProfile]s to `profiles.json` at the xprs
+ * root (see `xprsRootStorage()` in storage_paths.dart). Tracks a
  * single active profile id and publishes changes via
  * [activeProfileNotifier] so the launcher, storage paths, and any
  * other listener can rebuild when the user switches identities.
  *
- * The parent geogram project has a much bigger ProfileService with
+ * The parent XPRS project has a much bigger ProfileService with
  * NIP-05 registry, station mode, vanity keygen, encrypted archives
  * and so on. iwi intentionally stays minimal: create / list / switch
  * / delete. Everything else is a future phase.
@@ -91,7 +91,7 @@ class ProfileService {
     // happen before any store is constructed; this boot task runs before
     // wapp/reticulum autostart on both UI and headless engines.
     reticulum.dbOpener = openProfileDb;
-    final root = geogramRootStorage();
+    final root = xprsRootStorage();
     await root.createDirectory('');
     final existing = await root.readJson(_profilesFile);
     if (existing != null) {
@@ -219,9 +219,9 @@ class ProfileService {
   ProfileStorage storageForProfile(String id) {
     if (ProfileKeyring.instance.isEncryptedProfile(id)) {
       return EncryptedProfileStorage(
-          id, geogramRootStorage().getAbsolutePath('devices/$id'));
+          id, xprsRootStorage().getAbsolutePath('devices/$id'));
     }
-    return ScopedProfileStorage(geogramRootStorage(), 'devices/$id');
+    return ScopedProfileStorage(xprsRootStorage(), 'devices/$id');
   }
 
   /// Switch the active profile to [id]. Fires the notifier so the
@@ -252,7 +252,7 @@ class ProfileService {
   }
 
   Future<void> _persist() async {
-    final root = geogramRootStorage();
+    final root = xprsRootStorage();
     await root.writeJson(_profilesFile, {
       'profiles': _profiles.map((p) => p.toJson()).toList(),
       _activeKey: _activeId,

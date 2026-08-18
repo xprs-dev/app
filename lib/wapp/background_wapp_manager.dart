@@ -524,7 +524,7 @@ class _WappBackgroundService extends BackgroundService {
           _ => NotificationLevel.info,
         };
         NotificationService.instance.show(
-          GeogramNotification(
+          XprsNotification(
             level: level,
             title: data['title'] as String? ?? name,
             body: data['body'] as String?,

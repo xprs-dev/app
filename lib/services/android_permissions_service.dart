@@ -1,5 +1,5 @@
 /*
- * Android runtime permission requests, modelled on geogram's
+ * Android runtime permission requests, modelled on xprs's
  * BLEPermissionService. Aurora needs BLE (scan/connect/advertise) for the
  * street mesh + APRS-over-BLE, notifications for background message alerts,
  * and broad file access for the encrypted identity backup that survives an

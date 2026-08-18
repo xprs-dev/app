@@ -1,10 +1,10 @@
 /*
  * Deep links — Android only (for now).
  *
- * Tapping a https://geogram.radio/circle/<key> link (or the geogram://circle/<key>
+ * Tapping a https://xprs.dev/circle/<key> link (or the xprs://circle/<key>
  * fallback) opens Aurora straight on the circles wapp's "apply to join" flow.
  * MainActivity captures the launch URI and pushes later ones over the
- * `com.geogram.aurora/links` method channel; we resolve the circles wapp and
+ * `com.xprs.app/links` method channel; we resolve the circles wapp and
  * push its WappPage with an `apply_url` initial command carrying the full link.
  *
  * The wapp parses the circle id back out of the URL (full key, authoritative) so
@@ -28,7 +28,7 @@ class DeepLinkService {
   DeepLinkService._();
   static final DeepLinkService instance = DeepLinkService._();
 
-  static const _channel = MethodChannel('com.geogram.aurora/links');
+  static const _channel = MethodChannel('com.xprs.app/links');
 
   bool _started = false;
 
@@ -60,9 +60,9 @@ class DeepLinkService {
     // Same opener as the in-app notification center, so both taps land on the
     // same screen: the wapp, on the conversation when one is named.
     //
-    // `geogram://` is still accepted. Links were shared under the old scheme —
+    // `xprs://` is still accepted. Links were shared under the old scheme —
     // circle invitations in chats and QR codes — and they outlive the rename.
-    if (lower.startsWith('xprs://open') || lower.startsWith('geogram://open')) {
+    if (lower.startsWith('xprs://open') || lower.startsWith('xprs://open')) {
       final uri = Uri.tryParse(url);
       if (uri == null) return;
       await openWappByFolder(
@@ -129,7 +129,7 @@ class DeepLinkService {
   /// A wapp declares what it opens in its own manifest, the same way it
   /// declares file handlers and view intents:
   ///
-  ///     "provides": { "links": ["/circle/", "geogram://circle"] }
+  ///     "provides": { "links": ["/circle/", "xprs://circle"] }
   ///
   /// The core matches and routes; it does not know that circles exist. Naming
   /// a wapp here would put one application's routing table inside the core,
@@ -157,7 +157,7 @@ class DeepLinkService {
     }
     // Fallback for wapps installed before they declared `provides.links`:
     // match the link's own subject word against the wapp's identity —
-    // "geogram://circle/…" -> a wapp called circles. Derived from the URL, so
+    // "xprs://circle/…" -> a wapp called circles. Derived from the URL, so
     // the core still names no application (docs/architecture.md §3). Drops out
     // once installed copies carry the declaration.
     final subject = _linkSubject(lower);
@@ -182,12 +182,12 @@ class DeepLinkService {
 
 /// The word a link is about: the first path segment after the scheme or host
 /// ("xprs://circle/ab12" and "https://x.y/circle/ab12" -> "circle"). The old
-/// `geogram` scheme is still recognised; see _handle.
+/// `xprs` scheme is still recognised; see _handle.
 String _linkSubject(String lowerUrl) {
   final u = Uri.tryParse(lowerUrl);
   if (u == null) return '';
   final segs = [
-    if (u.host.isNotEmpty && (u.scheme == 'xprs' || u.scheme == 'geogram')) u.host,
+    if (u.host.isNotEmpty && (u.scheme == 'xprs' || u.scheme == 'xprs')) u.host,
     ...u.pathSegments,
   ].where((s) => s.isNotEmpty).toList();
   return segs.isEmpty ? '' : segs.first;

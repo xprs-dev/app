@@ -141,8 +141,8 @@ pipe frames to the engine (verify/store stay off the UI thread).
    handed off. Build `31910` (versionCode 33910) IS installed and contains
    everything above. Protocol:
    - `adb shell svc power stayon true` (removes the screen-off/Doze variable);
-   - kill properly: `adb shell am force-stop com.geogram.aurora`, **verify**
-     `adb shell pidof com.geogram.aurora` is empty;
+   - kill properly: `adb shell am force-stop com.xprs.app`, **verify**
+     `adb shell pidof com.xprs.app` is empty;
    - launch, open Social → screenshot: posts present, top post minutes old, like
      counts non-zero on curated posts;
    - stay ≥6 min (one full poll cycle; watch `curator: 5-min cycle handed over N`
@@ -170,7 +170,7 @@ pipe frames to the engine (verify/store stay off the UI thread).
 - **A second Claude session shares these repos and the phone.** It bumps
   versionCode (31xxx → 33xxx ranges collide); `adb install -r` of an older
   versionCode **prints nothing useful and keeps the old app** — ALWAYS verify
-  with `dumpsys package com.geogram.aurora | grep versionCode` after install,
+  with `dumpsys package com.xprs.app | grep versionCode` after install,
   and rebuild with a higher `--build-number` when beaten. It also edits
   `reticulum-dart/lib/src/services/files/*` and `aurora/lib/wapp/wapp_engine.dart`
   mid-save: Gradle failures naming `FolderMeta` / `_onPiecePacket` are THEIR
@@ -179,7 +179,7 @@ pipe frames to the engine (verify/store stay off the UI thread).
   build started after such a leak fails with `Target file "lib/main.dart" not
   found` — and a subsequent `adb install` then silently installs the PREVIOUS
   apk. Two separate "validated" runs were actually running stale builds because
-  of this. Always build with an explicit cwd of `~/code/geogram/aurora`.
+  of this. Always build with an explicit cwd of `~/code/xprs/aurora`.
 - **Wrap every flutter/gradle build in `~/bin/android-build-locked`** (16 GB
   machine, two concurrent builds freeze it).
 - **Wapps bundle by version**: rebuilding `social.wapp` with the same manifest

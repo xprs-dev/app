@@ -1,7 +1,7 @@
 /*
  * Native (dart:io) implementation of the Aurora remote-control HTTP API.
  * See remote_api_service.dart for the endpoint contract. Modelled on
- * geogram's LogApiService: binds InternetAddress.anyIPv4:<port>, dispatches
+ * xprs's LogApiService: binds InternetAddress.anyIPv4:<port>, dispatches
  * the /api/ paths, CORS-open, JSON in/out.
  */
 
@@ -60,7 +60,7 @@ class RemoteApiService {
   RemoteApiService._();
   static final RemoteApiService instance = RemoteApiService._();
 
-  /// Standard geogram device-API port.
+  /// Standard XPRS device-API port.
   static const int defaultPort = 3456;
 
   HttpServer? _server;

@@ -381,7 +381,7 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
   /// store wapp itself isn't present.
   void _openStore() {
     final store = _wapps?.where(
-      (w) => w.id == 'tools.geogram.install' || w.name == 'install',
+      (w) => w.id == 'tools.xprs.install' || w.name == 'install',
     );
     final installWapp = (store != null && store.isNotEmpty)
         ? store.first

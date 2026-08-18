@@ -2,7 +2,7 @@
  * ObservedStore — a small, persistent on-disk cache of the Reticulum nodes this
  * device has observed (heard announce). Backs RnsService's in-memory registry so
  * "first seen by you" survives restarts, and so the amount of devices / how many
- * are geogram-related can be answered with a fast indexed query instead of only
+ * are xprs-related can be answered with a fast indexed query instead of only
  * the live (capped, swept) working set.
  *
  * Generic RNS infrastructure — carries no app-specific knowledge. The DB path is
@@ -40,7 +40,7 @@ class ObservedStore {
           pubkey     TEXT,
           callsign   TEXT,
           services   TEXT,
-          geogram    INTEGER NOT NULL DEFAULT 0,
+          xprs       INTEGER NOT NULL DEFAULT 0,
           hops       INTEGER NOT NULL DEFAULT 0,
           via        TEXT,
           uptime     INTEGER NOT NULL DEFAULT 0,
@@ -55,7 +55,17 @@ class ObservedStore {
       if (!cols.contains('uptime')) {
         db.execute('ALTER TABLE nodes ADD COLUMN uptime INTEGER NOT NULL DEFAULT 0;');
       }
-      db.execute('CREATE INDEX IF NOT EXISTS idx_nodes_geo ON nodes(geogram);');
+      // v1: the column was called `geogram` before the rename. CREATE TABLE
+      // no-ops on an existing database, so without this every query below
+      // would throw `no such column: xprs` into a catch that swallows it --
+      // the peer history would silently empty and the DHT would lose its
+      // warm start, with nothing in the log to say why.
+      if (cols.contains('geogram') && !cols.contains('xprs')) {
+        db.execute('ALTER TABLE nodes RENAME COLUMN geogram TO xprs;');
+      }
+      final ver = db.select('PRAGMA user_version').first.columnAt(0) as int;
+      if (ver < 1) db.execute('PRAGMA user_version = 1');
+      db.execute('CREATE INDEX IF NOT EXISTS idx_nodes_geo ON nodes(xprs);');
       db.execute('CREATE INDEX IF NOT EXISTS idx_nodes_last ON nodes(last_seen);');
       _db = db;
       return true;
@@ -82,7 +92,7 @@ class ObservedStore {
   }
 
   /// Upsert a batch of node rows in one transaction. [rows] entries carry:
-  /// id, pubkey, callsign, services (csv), geogram (0/1), hops, via,
+  /// id, pubkey, callsign, services (csv), xprs (0/1), hops, via,
   /// firstSeen, lastSeen. first_seen is preserved across updates.
   void upsertMany(Iterable<Map<String, Object?>> rows) {
     final db = _db;
@@ -91,13 +101,13 @@ class ObservedStore {
     try {
       db.execute('BEGIN');
       stmt = db.prepare('''
-        INSERT INTO nodes(id,pubkey,callsign,services,geogram,hops,via,uptime,first_seen,last_seen)
+        INSERT INTO nodes(id,pubkey,callsign,services,xprs,hops,via,uptime,first_seen,last_seen)
         VALUES(?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
           pubkey=excluded.pubkey,
           callsign=COALESCE(NULLIF(excluded.callsign,''), nodes.callsign),
           services=excluded.services,
-          geogram=MAX(nodes.geogram, excluded.geogram),
+          xprs=MAX(nodes.xprs, excluded.xprs),
           hops=excluded.hops,
           via=excluded.via,
           uptime=CASE WHEN excluded.uptime>0 THEN excluded.uptime ELSE nodes.uptime END,
@@ -109,7 +119,7 @@ class ObservedStore {
           r['pubkey'] ?? '',
           r['callsign'] ?? '',
           r['services'] ?? '',
-          r['geogram'] ?? 0,
+          r['xprs'] ?? 0,
           r['hops'] ?? 0,
           r['via'] ?? '',
           r['uptime'] ?? 0,
@@ -128,20 +138,20 @@ class ObservedStore {
     }
   }
 
-  /// The best-known geogram peers to warm-start discovery from: those running
-  /// geogram software with a usable public key, ranked by advertised uptime
+  /// The best-known XPRS peers to warm-start discovery from: those running
+  /// XPRS software with a usable public key, ranked by advertised uptime
   /// (stable nodes — likely indexers — first) then recency. Each row carries
   /// {id, pubkey, services, uptime, lastSeen}. Used on boot to seed the DHT
   /// routing table + relay directory and path-request/ping the steadiest peers
   /// first, instead of waiting minutes for live announces to converge.
-  List<Map<String, Object?>> topGeogramPeers({int limit = 64}) {
+  List<Map<String, Object?>> topXprsPeers({int limit = 64}) {
     final db = _db;
     if (db == null) return const [];
     try {
       final rows = db.select('''
         SELECT id, pubkey, services, uptime, last_seen
         FROM nodes
-        WHERE geogram=1 AND pubkey IS NOT NULL AND pubkey<>''
+        WHERE xprs=1 AND pubkey IS NOT NULL AND pubkey<>''
         ORDER BY uptime DESC, last_seen DESC
         LIMIT ?
       ''', [limit]);
@@ -156,7 +166,7 @@ class ObservedStore {
           }
       ];
     } catch (e) {
-      LogService.instance.add('ObservedStore: topGeogramPeers failed: $e');
+      LogService.instance.add('ObservedStore: topXprsPeers failed: $e');
       return const [];
     }
   }
@@ -198,11 +208,11 @@ class ObservedStore {
   }
 
   /// Summary counts over everything ever persisted: total nodes, how many are
-  /// geogram software, the earliest first-seen, and recent activity.
+  /// XPRS software, the earliest first-seen, and recent activity.
   Map<String, dynamic> stats() {
     final db = _db;
     if (db == null) {
-      return {'total': 0, 'geogram': 0, 'oldest': 0, 'seen24h': 0};
+      return {'total': 0, 'xprs': 0, 'oldest': 0, 'seen24h': 0};
     }
     try {
       int scalar(String sql, [List<Object?> p = const []]) {
@@ -214,7 +224,7 @@ class ObservedStore {
       final now = DateTime.now().millisecondsSinceEpoch;
       return {
         'total': scalar('SELECT count(*) AS v FROM nodes'),
-        'geogram': scalar('SELECT count(*) AS v FROM nodes WHERE geogram=1'),
+        'xprs': scalar('SELECT count(*) AS v FROM nodes WHERE xprs=1'),
         'oldest': scalar('SELECT COALESCE(min(first_seen),0) AS v FROM nodes'),
         'seen24h': scalar(
             'SELECT count(*) AS v FROM nodes WHERE last_seen > ?',
@@ -222,7 +232,7 @@ class ObservedStore {
       };
     } catch (e) {
       LogService.instance.add('ObservedStore: stats failed: $e');
-      return {'total': 0, 'geogram': 0, 'oldest': 0, 'seen24h': 0};
+      return {'total': 0, 'xprs': 0, 'oldest': 0, 'seen24h': 0};
     }
   }
 

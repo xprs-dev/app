@@ -51,7 +51,7 @@ now only `libapp.so`, `libflutter.so`, `libwasm_run_dart.so`, `libsqlcipher.so`,
 
 ### 1.2 Self-update
 
-The Update Center downloads and installs APKs from `geogram.radio`. F-Droid is
+The Update Center downloads and installs APKs from `xprs.dev`. F-Droid is
 the updater for what it ships and rejects apps that update themselves.
 
 Handled: build with `--dart-define=SELF_UPDATE=false` and
@@ -88,7 +88,7 @@ APRS-IS are proprietary services, although nothing depends on them.
 
 | Host | Purpose |
 |---|---|
-| `geogram.radio` | Update feed + wapp catalog. Self-hosted by the project. |
+| `xprs.dev` | Update feed + wapp catalog. Self-hosted by the project. |
 | `tile.openstreetmap.org`, `nominatim.openstreetmap.org` | Map tiles and search (ODbL). |
 | `relay.damus.io`, `nos.lol`, `relay.nostr.band`, `relay.primal.net`, `purplepag.es` | Default NOSTR relays, open protocol, all replaceable in Settings. |
 | `blossom.primal.net`, `nostr.download` | Blossom blob servers (open protocol). |

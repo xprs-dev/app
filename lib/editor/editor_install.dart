@@ -2,7 +2,7 @@
  * Installs the built-in wapp editor (App Creator) from bundled assets.
  *
  * The editor used to be seeded as a normal grid wapp from the sibling
- * geogram/wapps repo. It is now bundled under assets/editor/app-creator/ and
+ * xprs/wapps repo. It is now bundled under assets/editor/app-creator/ and
  * written to its own storage location (editorWappStorage(), at the aurora
  * root, outside any profile's installed `wapps/`) so it never shows in the
  * launcher grid and is reachable only through the per-wapp Edit action.

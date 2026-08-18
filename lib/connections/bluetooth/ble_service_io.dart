@@ -86,7 +86,7 @@ class BleService {
 
   // Advertising backend: on Android/iOS use the ble_peripheral package (the
   // bluetooth_low_energy PeripheralManager doesn't reliably radiate on some
-  // Android chipsets — geogram uses ble_peripheral for the same reason). On
+  // Android chipsets — XPRS uses ble_peripheral for the same reason). On
   // Linux fall back to BlueZ D-Bus. Scanning always uses CentralManager above.
   bool get _useBlePeripheral => Platform.isAndroid || Platform.isIOS;
   bool _blePeripheralReady = false;
@@ -738,7 +738,7 @@ class BleService {
     // Mesh custody tap: overheard ?ACKs purge, our 1:1s feed the have-bloom,
     // others' 1:1s get parked for GATT delivery (docs/mesh.md §6).
     MeshCustodyDelegate.onAirFrame(f.data, outbound: false);
-    // And, when it is XPRS, show it to whoever is watching the air. Includes
+    // And, when it is xprs, show it to whoever is watching the air. Includes
     // traffic addressed to other people — that is most of what a mesh carries,
     // and seeing it is the point of the XPRS wapp.
     final xp = XprsPacket.parse(utf8.decode(f.data, allowMalformed: true));

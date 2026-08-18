@@ -1,4 +1,4 @@
-package com.geogram.aurora
+package com.xprs.app
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -25,7 +25,7 @@ import io.flutter.plugin.common.MethodChannel
  */
 object BgBridge {
     private const val TAG = "BgBridge"
-    const val CHANNEL_NAME = "com.geogram.aurora/bg_service"
+    const val CHANNEL_NAME = "com.xprs.app/bg_service"
     private const val EVENT_CHANNEL_ID = "aurora_events"
     const val PREFS_NAME = "FlutterSharedPreferences"
     const val AUTO_START_KEY = "flutter.autoStartOnBoot"
@@ -162,7 +162,7 @@ object BgBridge {
         val n: Notification = NotificationCompat.Builder(context, EVENT_CHANNEL_ID)
             .setContentTitle(title)
             .apply { if (!body.isNullOrEmpty()) setContentText(body) }
-            .setSmallIcon(R.drawable.ic_stat_geogram)
+            .setSmallIcon(R.drawable.ic_stat_xprs)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .apply { if (pi != null) setContentIntent(pi) }

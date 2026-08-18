@@ -45,7 +45,7 @@ class StoredNotification {
     );
   }
 
-  factory StoredNotification.fromNotification(GeogramNotification n) {
+  factory StoredNotification.fromNotification(XprsNotification n) {
     final ts = n.timestamp;
     return StoredNotification(
       // The tag, when there is one, IS the identity: the same event announced
@@ -109,7 +109,7 @@ class NotificationStore {
     unawaited(_load());
   }
 
-  Future<void> record(GeogramNotification n) async {
+  Future<void> record(XprsNotification n) async {
     final incoming = StoredNotification.fromNotification(n);
     // Same id = same notification. Replace it in place instead of stacking
     // another copy on top of it.

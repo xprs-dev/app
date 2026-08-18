@@ -66,7 +66,7 @@ static void my_application_activate(GApplication* application) {
   // themed icon name for XDG hicolor lookups when the app is installed.
   // Themed name first, file icon last: GTK treats icon and icon-name as
   // last-set-wins, and only the file icon exports _NET_WM_ICON on X11.
-  gtk_window_set_icon_name(window, "geogram");
+  gtk_window_set_icon_name(window, "xprs");
   g_autoptr(GError) icon_error = nullptr;
   g_autofree gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
   if (exe_path != nullptr) {

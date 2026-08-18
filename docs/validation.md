@@ -43,15 +43,15 @@ For any UI-affecting change, before claiming done:
      in-app version label) is the new one. An installed APK carrying a stale wapp is
      the single most common reason a "landed" fix appears not to have landed.
 2. **Fully kill the old app, then launch — installing is NOT enough.** An install
-   over a running app does **not** restart it: the *old* Geogram process keeps
+   over a running app does **not** restart it: the *old* XPRS process keeps
    running the *old* code, and every tap you then make tests the version you thought
    you replaced. This is the trap that most often makes a real fix look like it
    didn't land — the AI concludes the change failed and re-does work that was already
    correct. So, every time, before touching the UI:
    ```sh
-   adb shell am force-stop com.geogram.aurora
-   adb shell pidof com.geogram.aurora        # MUST print nothing — if it prints a PID, kill again
-   adb shell am start -n com.geogram.aurora/.MainActivity
+   adb shell am force-stop com.xprs.app
+   adb shell pidof com.xprs.app        # MUST print nothing — if it prints a PID, kill again
+   adb shell am start -n com.xprs.app/.MainActivity
    ```
    `force-stop` (not just closing the app, not just a back-swipe — those leave the
    foreground service and its process alive, §Device hygiene). Confirm `pidof` is

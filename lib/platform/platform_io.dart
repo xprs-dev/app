@@ -65,7 +65,7 @@ Future<void> showSystemNotification({
   try {
     if (Platform.isLinux) {
       await Process.run('notify-send', [
-        '--app-name=geogram',
+        '--app-name=xprs',
         if (error) '--urgency=critical',
         title,
         if (body != null && body.isNotEmpty) body,
@@ -111,7 +111,7 @@ Future<void> clearSystemNotifications() async {
 
 // Native bridge for Android system notifications (shared with the foreground
 // service). A rolling id so distinct events stack instead of replacing.
-const MethodChannel _bgChannel = MethodChannel('com.geogram.aurora/bg_service');
+const MethodChannel _bgChannel = MethodChannel('com.xprs.app/bg_service');
 int _androidNotifId = 9000;
 
 bool get supportsSubprocesses => true;

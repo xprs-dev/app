@@ -2,8 +2,8 @@
  * UpdatePage — the in-app Update Center (Settings → Updates).
  *
  * Shows the running version, a stable + beta release "table" pulled from GitHub
- * (geograms/aurora), release notes, and a Download → Install action for the
- * selected channel. Mirrors geogram's update page; the beta toggle opts into
+ * (xprss/aurora), release notes, and a Download → Install action for the
+ * selected channel. Mirrors xprs's update page; the beta toggle opts into
  * pre-releases. Disabled on web (managed by the store/package manager).
  */
 

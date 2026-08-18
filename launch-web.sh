@@ -1,5 +1,5 @@
 #!/bin/sh
-# Geogram Iwi — Web Launcher
+# XPRS Iwi — Web Launcher
 #
 # Builds the Flutter web bundle from the same Dart source that
 # powers the desktop launcher and serves it plus every wapp from

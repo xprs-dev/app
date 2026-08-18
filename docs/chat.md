@@ -14,7 +14,7 @@ reference, [`chat-rooms.md`](./chat-rooms.md); the NOSTR transport and sync
 reliability rules live in [`NOSTR.md`](./NOSTR.md). Read those for depth; read this
 for the whole picture and the state of play.
 
-- **Source of truth for code:** `geograms/wapps` repo, folder `chat/` (`main.c`,
+- **Source of truth for code:** `xprss/wapps` repo, folder `chat/` (`main.c`,
   `room.c`/`room.h`, `chat.c`, `ble.c`, `screens/home.ui.json`, `manifest.json`).
   Aurora only carries a bundled copy at `assets/wapps/chat.wapp`.
 - **Current version:** `0.2.117`.
@@ -77,7 +77,7 @@ Chat messages are NOSTR events; they travel by whatever Aurora has:
 - **Bluetooth (BLE).** Off-grid parcel transport (`ble.c`): connectionless
   broadcast ≤300 B, GATT for larger. Toggle in Settings.
 - **Internet relays.** Standard `wss://` NOSTR relays — a room is a NIP-72
-  community, messages are ordinary kind-1 notes, so non-geogram clients interop.
+  community, messages are ordinary kind-1 notes, so non-xprs clients interop.
 - **APRS — legacy.** Retained but no longer surfaced in the UI.
 
 Reliability rules inherited from `NOSTR.md` and already applied to rooms: **dedup
@@ -336,7 +336,7 @@ one presence table the wapp merges from three sources:
 
 | Source | What it gives |
 |---|---|
-| `hal_people_directory` | Reticulum: geogram people + LXMF peers, with `via` (interface) and hop count |
+| `hal_people_directory` | Reticulum: xprs people + LXMF peers, with `via` (interface) and hop count |
 | `hal_mesh_devices` | BLE street-mesh neighbours (direct radio reach) |
 | `g_pk_call` / `g_pk_ts` | the pubkey beacons Chat already hears over BLE broadcast / APRS / RNS |
 

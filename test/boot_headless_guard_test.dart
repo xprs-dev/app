@@ -75,7 +75,7 @@ void main() {
 
   test('the host refuses to hand the UI an engine that never came up', () {
     final kotlin = File(
-      'android/app/src/main/kotlin/com/example/iwi/MainActivity.kt',
+      'android/app/src/main/kotlin/com/xprs/app/MainActivity.kt',
     ).readAsStringSync();
     final provide = kotlin.indexOf('override fun provideFlutterEngine');
     expect(provide, greaterThan(-1));
@@ -88,14 +88,14 @@ void main() {
 
   test('readiness is reset when a new headless engine is created', () {
     final app = File(
-      'android/app/src/main/kotlin/com/example/iwi/AuroraApplication.kt',
+      'android/app/src/main/kotlin/com/xprs/app/AuroraApplication.kt',
     ).readAsStringSync();
     expect(app, contains('dartReady = false'),
         reason: 'a stale true from a previous engine would wave the dead one '
             'straight through');
 
     final bridge = File(
-      'android/app/src/main/kotlin/com/example/iwi/BgBridge.kt',
+      'android/app/src/main/kotlin/com/xprs/app/BgBridge.kt',
     ).readAsStringSync();
     expect(bridge, contains('"dartReady"'),
         reason: 'the flag needs the channel handler Dart calls');

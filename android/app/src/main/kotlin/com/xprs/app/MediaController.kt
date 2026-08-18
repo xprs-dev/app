@@ -1,4 +1,4 @@
-package com.geogram.aurora
+package com.xprs.app
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -29,7 +29,7 @@ import androidx.media.app.NotificationCompat.MediaStyle
 object MediaController {
     private const val CHANNEL_ID = "aurora_media"
     private const val NOTIF_ID = 7002
-    const val ACTION = "com.geogram.aurora.MEDIA_ACTION"
+    const val ACTION = "com.xprs.app.MEDIA_ACTION"
 
     private var session: MediaSessionCompat? = null
     private var audioManager: AudioManager? = null
@@ -142,7 +142,7 @@ object MediaController {
         } else null
 
         val b = NotificationCompat.Builder(ctx, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_geogram)
+            .setSmallIcon(R.drawable.ic_stat_xprs)
             .setContentTitle(title.ifEmpty { "Aurora" })
             .setContentText(artist)
             .setOngoing(playing)

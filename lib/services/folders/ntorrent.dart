@@ -1,5 +1,5 @@
 /*
- * Copyright (c) geogram
+ * Copyright (c) xprs
  * License: Apache-2.0
  *
  * `ntorrent1…` — the shareable address of a torrent folder (docs/torrents.md §11).
@@ -85,7 +85,11 @@ class Ntorrent {
   static NtorrentRef? decode(String input) {
     var s = input.trim();
     if (s.startsWith('nostr:')) s = s.substring(6);
-    if (s.startsWith('geogram://torrent/')) s = s.substring(18);
+    const deepPrefix = 'xprs://torrent/';
+    // Derive the length. It was a hardcoded 18 for the old scheme and the
+    // rename shortened the prefix without touching the number, which silently
+    // ate three characters of the payload.
+    if (s.startsWith(deepPrefix)) s = s.substring(deepPrefix.length);
     if (s.isEmpty) return null;
 
     if (RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(s)) {

@@ -1,5 +1,5 @@
 // The `uptime:`/`lifetime:` qty formatter (docs/XPRS.md section 10.5) — the
-// same ranges the ESP32's xprs_fmt_duration uses (geogram_xprs), so the two
+// same ranges the ESP32's xprs_fmt_duration uses (xprs_xprs), so the two
 // stations describe themselves in the same units.
 import 'package:flutter_test/flutter_test.dart';
 

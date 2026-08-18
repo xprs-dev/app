@@ -1,4 +1,4 @@
-package com.geogram.aurora
+package com.xprs.app
 
 import android.app.DownloadManager
 import android.content.Context
@@ -26,8 +26,8 @@ class MainActivity : FlutterFragmentActivity() {
         // Held so the foreground service can ping Dart ('onTick') even while
         // the activity is backgrounded. Mirrors AuroraApplication.bgChannel.
         var channel: MethodChannel? = null
-        private const val UPDATE_CHANNEL = "com.geogram.aurora/updates"
-        private const val LINKS_CHANNEL = "com.geogram.aurora/links"
+        private const val UPDATE_CHANNEL = "com.xprs.app/updates"
+        private const val LINKS_CHANNEL = "com.xprs.app/links"
     }
 
     // Deep-link plumbing: the URI a cold start was launched with (delivered to
@@ -75,8 +75,8 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /** Pull a deep link out of an ACTION_VIEW intent, or null. Handled links:
-     * circle invites (https://geogram.radio/circle/… and xprs://circle/…,
-     * with the old geogram:// scheme still accepted)
+     * circle invites (https://xprs.dev/circle/… and xprs://circle/…,
+     * with the old xprs:// scheme still accepted)
      * and notification taps (xprs://open?wapp=…&convo=…, set by
      * BgBridge.notify so a message notification opens its conversation). */
     private fun linkFrom(intent: Intent?): String? {
@@ -84,8 +84,8 @@ class MainActivity : FlutterFragmentActivity() {
         val data = intent.data ?: return null
         val s = data.toString()
         val ok = (data.scheme == "https" || data.scheme == "http") &&
-            data.host == "geogram.radio" && (data.path?.startsWith("/circle") == true) ||
-            (data.scheme == "geogram" && (data.host == "circle" || data.host == "open"))
+            data.host == "xprs.dev" && (data.path?.startsWith("/circle") == true) ||
+            (data.scheme == "xprs" && (data.host == "circle" || data.host == "open"))
         return if (ok) s else null
     }
 
@@ -138,7 +138,7 @@ class MainActivity : FlutterFragmentActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, UPDATE_CHANNEL)
             .setMethodCallHandler { call, result -> handleUpdate(call, result) }
 
-        // Deep links (geogram.radio/circle/<key>): expose the launch URI and push
+        // Deep links (xprs.dev/circle/<key>): expose the launch URI and push
         // any later ones (onNewIntent) to Dart's DeepLinkService.
         linksChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LINKS_CHANNEL)
             .also { ch ->
@@ -182,7 +182,7 @@ class MainActivity : FlutterFragmentActivity() {
             // System DownloadManager: process-independent background download that
             // survives the app being closed, auto-resumes an interrupted transfer,
             // and only reports success once the whole file has landed (so we never
-            // hand a truncated APK to the installer). Used for the geogram.radio
+            // hand a truncated APK to the installer). Used for the xprs.dev
             // HTTP(S) feed on Android; the Reticulum P2P path stays in Dart.
             "enqueueDownload" -> {
                 val url = call.argument<String>("url")
@@ -347,7 +347,7 @@ class MainActivity : FlutterFragmentActivity() {
                 )
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(true)
-                .addRequestHeader("User-Agent", "geogram-aurora-updater")
+                .addRequestHeader("User-Agent", "xprs-aurora-updater")
             dm().enqueue(req)
         } catch (e: Exception) {
             android.util.Log.e("MainActivity", "enqueueDownload failed: ${e.message}")

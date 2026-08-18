@@ -22,7 +22,7 @@ void main() {
 
   test('a tagged notification is shown once, however many times it is raised',
       () {
-    final n = GeogramNotification(
+    final n = XprsNotification(
       level: NotificationLevel.info,
       title: 'someone liked your post',
       source: 'wapp:social',
@@ -38,13 +38,13 @@ void main() {
   });
 
   test('different events still get their own card', () {
-    NotificationService.instance.show(GeogramNotification(
+    NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
       title: 'A liked your post',
       source: 'wapp:social',
       tag: 'nostr:aaa',
     ));
-    NotificationService.instance.show(GeogramNotification(
+    NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
       title: 'B replied to you',
       source: 'wapp:social',
@@ -55,7 +55,7 @@ void main() {
   });
 
   test('the guard is persistent: a service restart does not re-announce', () {
-    final n = GeogramNotification(
+    final n = XprsNotification(
       level: NotificationLevel.info,
       title: 'someone liked your post',
       source: 'wapp:social',
@@ -74,7 +74,7 @@ void main() {
 
   test('tagged notifications buffer until the guard has loaded', () {
     AnnouncedTagsStore.instance.reset(); // loaded = false again
-    final n = GeogramNotification(
+    final n = XprsNotification(
       level: NotificationLevel.info,
       title: 'early bird',
       source: 'wapp:social',
@@ -87,7 +87,7 @@ void main() {
 
   test('untagged notifications are untouched — no accidental suppression', () {
     for (var i = 0; i < 3; i++) {
-      NotificationService.instance.show(GeogramNotification(
+      NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.info,
         title: 'build finished',
         source: 'host:updates',

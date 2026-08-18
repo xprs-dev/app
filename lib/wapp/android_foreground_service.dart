@@ -24,7 +24,7 @@ class AndroidForegroundService {
   }
   static final AndroidForegroundService instance = AndroidForegroundService._();
 
-  static const _channel = MethodChannel('com.geogram.aurora/bg_service');
+  static const _channel = MethodChannel('com.xprs.app/bg_service');
   bool _running = false;
 
   // Ref-counted holders. The native foreground service is started when the

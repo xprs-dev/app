@@ -14,7 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class BatteryOptimization {
-  static const _channel = MethodChannel('com.geogram.aurora/updates');
+  static const _channel = MethodChannel('com.xprs.app/updates');
 
   static bool get _android =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;

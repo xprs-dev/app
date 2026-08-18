@@ -28,7 +28,7 @@ paths below assume they are checked out as siblings of this directory:
 | | |
 |---|---|
 | `../reticulum-dart` | the library: Reticulum, NOSTR, LXMF, DHT, files, and `XprsCrypto`. A **path dependency** in `pubspec.yaml`, so it must be a sibling or the build fails |
-| `../wapps` | wapp source (`geograms/wapps`); `assets/wapps/*.wapp` here are built copies |
+| `../wapps` | wapp source (`xprss/wapps`); `assets/wapps/*.wapp` here are built copies |
 | ESP32 firmware | `xprs-dev/xprs-esp32`, formerly `esp32/` in this repo. `docs/ble5.md` and `docs/lan.md` describe transports with an end in each, so they are kept here AND there and must not drift |
 
 `docs/XPRS.md` is a copy of the protocol specification (`xprs-dev/spec`). Keep
@@ -47,7 +47,7 @@ into whatever they are doing. Use a private X server instead:
 ```sh
 Xvfb :99 -screen 0 1400x900x24 &                            # once
 DISPLAY=:99 ./build/linux/x64/release/bundle/aurora &        # the app
-DISPLAY=:99 xdotool search --class radio.geogram.aurora      # find its window
+DISPLAY=:99 xdotool search --class radio.xprs.app      # find its window
 DISPLAY=:99 xdotool mousemove --window <id> X Y click 1      # drive it
 import -display :99 -window root shot.png                    # screenshot
 ```
@@ -72,12 +72,12 @@ concurrent builds freeze it). Launch the **built bundle** directly rather than
 queued APK build waits on it.
 
 Android installs need `--build-number` above the installed `versionCode`
-(`adb shell dumpsys package com.geogram.aurora | grep versionCode`), and other
+(`adb shell dumpsys package com.xprs.app | grep versionCode`), and other
 sessions may be installing to the same phone.
 
 ## Wapps
 
-Wapp source lives in `../wapps` (the `geograms/wapps` repo), not here;
+Wapp source lives in `../wapps` (the `xprss/wapps` repo), not here;
 `assets/wapps/*.wapp` are built copies. Ship chain:
 
 ```sh

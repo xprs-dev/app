@@ -28,7 +28,7 @@
 #define MyAppName "XPRS"
 #define MyAppExeName "aurora.exe"
 #define MyAppPublisher "XPRS"
-#define MyAppURL "https://github.com/geograms/aurora"
+#define MyAppURL "https://github.com/xprss/aurora"
 
 [Setup]
 AppId={{D2A7C4E1-9B3F-4E62-8A05-7F1C6B9E2A44}
@@ -39,7 +39,7 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}/releases
-DefaultDirName={localappdata}\GeogramAurora
+DefaultDirName={localappdata}\XPRSAurora
 DefaultGroupName={#MyAppName}
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog

@@ -1425,7 +1425,7 @@ class _WappPageState extends State<WappPage>
     //      across a few candidate layouts (deriving from widget.wappDir was
     //      off by one level after the wapps/archive -> wapps move).
     //   3. Nothing — the wasm's built-in DEFAULT_SOURCE
-    //      (https://geogram.radio/wapps) takes over.
+    //      (https://xprs.dev/wapps) takes over.
     if (_wappName == 'install' && !_engine.hasKvKey('source')) {
       final hostDefault = PreferencesService.instanceSync?.wappStoreSource;
       if (hostDefault != null && hostDefault.isNotEmpty) {
@@ -1549,7 +1549,7 @@ class _WappPageState extends State<WappPage>
       }
 
       // Deep-link / launch command: deliver one command to the module after
-      // init (e.g. a circles "apply_url" from a geogram.radio/circle link).
+      // init (e.g. a circles "apply_url" from a xprs.dev/circle link).
       final initCmd = widget.initialCommand;
       if (initCmd != null && initCmd.isNotEmpty) {
         _engine.sendMessage(initCmd);
@@ -2309,7 +2309,7 @@ class _WappPageState extends State<WappPage>
           // Legacy message shape — route through the unified service
           // so old wapps inherit system-tray delivery + history.
           NotificationService.instance.show(
-            GeogramNotification(
+            XprsNotification(
               level: NotificationLevel.info,
               title: _wappName,
               body: data['message'] as String? ?? '',
@@ -2332,7 +2332,7 @@ class _WappPageState extends State<WappPage>
             _ => NotificationScope.app,
           };
           NotificationService.instance.show(
-            GeogramNotification(
+            XprsNotification(
               level: level,
               title: data['title'] as String? ?? _wappName,
               body: data['body'] as String?,
@@ -2803,7 +2803,7 @@ class _WappPageState extends State<WappPage>
       // "Install…" flow on the exact same code path.
       final InstallResult result;
       if (isRemote) {
-        // Remote catalog (e.g. raw.githubusercontent.com/geograms/wapps/
+        // Remote catalog (e.g. raw.githubusercontent.com/xprss/wapps/
         // main/binaries): download the .wapp ZIP over HTTP. The store's
         // do_install already rewrote any github tree URL to the raw form,
         // so concatenating dir + file gives the byte URL directly.
@@ -7477,7 +7477,7 @@ class _WappPageState extends State<WappPage>
     );
   }
 
-  /// Open the shared full profile page for a geogram device tapped in the
+  /// Open the shared full profile page for a XPRS device tapped in the
   /// Reticulum graph — the same page NOSTR/Chat show (Follow / Message / Mute),
   /// plus the reticulum facts: observed first-seen + the hubs it's reachable via.
   void _openReticulumProfile({
@@ -10882,7 +10882,7 @@ class _WappPageState extends State<WappPage>
     return _buildAppCreatorSettings(renderer);
   }
 
-  // Available HAL capability groups — derived from geogram_wasm_hal.h.
+  // Available HAL capability groups — derived from xprs_wasm_hal.h.
   // Each entry maps a manifest requires.hal tag to a human description.
   static const _halCapabilities = <String, String>{
     'log': 'Logging',

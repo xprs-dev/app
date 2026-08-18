@@ -1,9 +1,9 @@
 // =============================================================================
-// publish_release.dart — publish a built Aurora release to the geogram.radio
-// update feed (the geograms/geogram-html GitHub Pages repo).
+// publish_release.dart — publish a built Aurora release to the xprs.dev
+// update feed (the xprss/xprs-html GitHub Pages repo).
 //
 // The in-app updater (lib/services/update_service.dart) reads a self-hosted
-// feed at https://geogram.radio/updates with two channel files:
+// feed at https://xprs.dev/updates with two channel files:
 //   updates/stable.json   — latest stable release
 //   updates/beta.json     — latest release incl. pre-releases
 // and per-version binaries under updates/v<version>/. This script copies the
@@ -12,7 +12,7 @@
 //
 // Usage:
 //   dart run tool/publish_release.dart \
-//       --site <path-to-geogram-html-repo> \
+//       --site <path-to-xprs-html-repo> \
 //       --version <X.Y.Z[-beta.N]> \
 //       [--notes <notes-file>] [--name "<title>"] [--date <ISO8601>] \
 //       [--keep <N>] \
@@ -22,8 +22,8 @@
 // to beta.json only; a stable version publishes to BOTH stable.json and
 // beta.json (so the beta channel always tracks the newest build).
 //
-// `--site` defaults to ../old/geogram-html relative to the repo root (the
-// local checkout of geograms/geogram-html in this workspace).
+// `--site` defaults to ../old/xprs-html relative to the repo root (the
+// local checkout of xprss/xprs-html in this workspace).
 //
 // `--keep <N>` (default 5) prunes old updates/v<version>/ dirs to bound the
 // size of the Pages repo: it keeps the N newest versions (by semver) PLUS
@@ -76,9 +76,9 @@ void main(List<String> argv) {
     exit(2);
   }
 
-  // Default site path: ../old/geogram-html relative to this repo's root.
+  // Default site path: ../old/xprs-html relative to this repo's root.
   final repoRoot = Directory.current.path;
-  site ??= '$repoRoot/../old/geogram-html';
+  site ??= '$repoRoot/../old/xprs-html';
   final updatesDir = Directory('$site/updates');
   final versionDir = Directory('${updatesDir.path}/v$version');
   versionDir.createSync(recursive: true);
@@ -111,7 +111,7 @@ void main(List<String> argv) {
   final feed = <String, dynamic>{
     'version': v,
     'tagName': 'v$v',
-    'name': name ?? 'Geogram Aurora $v',
+    'name': name ?? 'XPRS Aurora $v',
     'body': notes ?? '',
     'publishedAt': date ?? DateTime.now().toUtc().toIso8601String(),
     'prerelease': isPre,

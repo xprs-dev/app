@@ -1,7 +1,7 @@
 /*
  * WelcomePage — first-run profile creation for iwi.
  *
- * Ported and slimmed down from geogram/lib/pages/welcome_page.dart.
+ * Ported and slimmed down from xprs/lib/pages/welcome_page.dart.
  * The parent page ships a lot of extras (vanity generator, i18n,
  * station mode, permissions onboarding) that iwi doesn't need yet.
  * What's preserved: the callsign preview card, regenerate, import

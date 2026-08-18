@@ -1,4 +1,4 @@
-# NOSTR on geogram: every user a relay
+# NOSTR on xprs: every user a relay
 
 > Companion docs: [nostr-client.md](nostr-client.md) (the client, the relay hub
 > and the transports as they exist today), [dht.md in reticulum-dart](../../reticulum-dart/doc/dht.md)
@@ -31,7 +31,7 @@ That is not a slogan, it is a storage model with consequences:
 - **No relay is load-bearing.** Any of them can be taken offline, seized, or
   quietly co-opted, and nothing is lost, because none of them was the only copy.
 
-geogram runs NOSTR over two networks at once: the plain internet (`wss://`
+xprs runs NOSTR over two networks at once: the plain internet (`wss://`
 relays, Blossom servers) **and** Reticulum (the mesh: LAN, BLE, LoRa, RNS hubs,
 public TCP hubs). Same account, same events, same signatures. You keep
 interacting with the internet NOSTR world you already use, and the same posts
@@ -58,7 +58,7 @@ loses anything nobody happened to follow.
 
 ### Publisher — the floor
 
-Every geogram device is a relay for itself. It answers queries about its own
+Every xprs device is a relay for itself. It answers queries about its own
 posts, it keeps the authors it follows (that is what *follow* means here: a
 storage decision, not a display filter), and it carries their media. It is
 battery-powered and mostly asleep, so the network must never make it the first
@@ -171,7 +171,7 @@ unless stated.
   shards **by interest**, not by hash range. `wide` = holds everything it sees.
 - `RelayAnnouncement` is the advert itself: `{role, capacity, caps, wide,
   topics[], authorPrefixes[], pubkey, uptimeSeconds}`, msgpack, carried in the
-  **app_data of the `geogram/relay` RNS announce** (≤ ~350 B, one announce).
+  **app_data of the `xprs/relay` RNS announce** (≤ ~350 B, one announce).
   Authors are advertised as **4-byte prefixes** — enough to shard, not enough to
   be a mailing list.
 - `RelayDirectory` — every relay announce heard is observed with its hop count
@@ -362,7 +362,7 @@ fixes.
 
 **The common case is not a fresh start.** Somebody arrives with a NOSTR account
 they already have, following people who are perfectly happy on Damus and Primal
-and have never heard of Reticulum. Nothing about that should change. geogram is
+and have never heard of Reticulum. Nothing about that should change. xprs is
 an ordinary NOSTR client to them: it reads the internet relays, it posts to the
 internet relays, the conversation carries on exactly as before.
 
@@ -842,7 +842,7 @@ carries a physical profile, and every node that has to choose a peer can read it
 
 ### What is announced
 
-Added to `RelayAnnouncement` (the `geogram/relay` announce app_data, msgpack,
+Added to `RelayAnnouncement` (the `xprs/relay` announce app_data, msgpack,
 short keys, ~20–30 B on top of the existing ~350 B budget — it must never cost a
 second announce packet):
 
@@ -1423,7 +1423,7 @@ Indexer, not a Publisher-only leaf.
 
 ### 1. Discovery — role rides the announce that survives
 
-The dedicated `geogram/relay` announce is dropped by the hubs' announce
+The dedicated `xprs/relay` announce is dropped by the hubs' announce
 rate-limiting. So the RelayAnnouncement (role, services, capacity, pubkey,
 optional coords) is **piggybacked onto the callsign/chat announce** — the one
 that always gets through:
@@ -1536,7 +1536,7 @@ TANK2 `X1RD89`) and *why* it works, so the mechanics are not mistaken for luck.
 
 ### Finding 1 — the link answers once it rides the chat destination
 
-The relay REQ/EVENT/SYNC links were dialing the peer's `geogram/relay`
+The relay REQ/EVENT/SYNC links were dialing the peer's `xprs/relay`
 destination, which the hubs rate-limit and **drop** — so there was never a path
 and the link timed out (`0 answered`). The fix that made everything cross: route
 relay links over the **chat destination** (the announce that always propagates),
@@ -1566,12 +1566,12 @@ the fast bonus when it happens.**
 
 ### Finding 3 — reachability is asymmetric, and that is normal
 
-The two legs are not symmetric. C61 reported `1 geogram device · 4 hubs · 8 other
-peers`; TANK2 reported `On the network … 1 hub`, no direct geograms. The
+The two legs are not symmetric. C61 reported `1 xprs device · 4 hubs · 8 other
+peers`; TANK2 reported `On the network … 1 hub`, no direct xprss. The
 better-connected node reaches the other directly and its own posts push straight
 across; the weak node cannot pull from the author and must go through the shared
 Indexer. Consequence for testing: **check the "On the network" card on BOTH
-phones.** If one shows only hubs and no geograms, expect its inbound to arrive by
+phones.** If one shows only hubs and no xprss, expect its inbound to arrive by
 pull-through-indexer (minutes), not by direct push (sub-second) — and do not read
 the delay as breakage.
 

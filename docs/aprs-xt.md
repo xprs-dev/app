@@ -1,6 +1,6 @@
 # APRS-XT — APRS eXtended messaging protocol
 
-> Part of the Geogram protocol docs — see [README](README.md) for the full set
+> Part of the XPRS protocol docs — see [README](README.md) for the full set
 > ([Reticulum](../../reticulum-dart/doc/reticulum.md), [DHT](../../reticulum-dart/doc/dht.md), [APRS transport](aprs.md),
 > [BLE transport](ble.md), [file sharing](../../reticulum-dart/doc/file-sharing.md)).
 
@@ -336,9 +336,9 @@ Mapping for a receiver:
 - `pubkey`  = `base64url_decode(body)` → 32 raw bytes (use directly for
   signature verification, or re‑encode to `npub` for display).
 
-Recommended cadence: low (the key rarely changes) — Geogram sends one **every
+Recommended cadence: low (the key rarely changes) — XPRS sends one **every
 hour**, on whichever transports are up. A receiver should
-treat repeats as refreshes of the same record. Geogram only **persists** the keys
+treat repeats as refreshes of the same record. XPRS only **persists** the keys
 of callsigns it actually interacts with (chats with or follows): a NOSTR beacon
 from a stranger is parked in memory and promoted to the stored map the moment you
 interact with that callsign. These beacons are intercepted before the chat layer,
@@ -654,10 +654,10 @@ neither this document nor the shipped code has any equivalent of.
 
 ---
 
-*This spec documents the Geogram APRS wapp implementation (`wapps/aprs`). The
+*This spec documents the XPRS APRS wapp implementation (`wapps/aprs`). The
 TNC2 framing helpers live in `aprs.c`/`aprs.h`; the BLE compact form in
-`BLE_PROTOCOL.md`; the host-side signing in `geogram/lib/util/aprs-xt_sign.dart`
+`BLE_PROTOCOL.md`; the host-side signing in `xprs/lib/util/aprs-xt_sign.dart`
 (exposed via `hal_identity_sign`/`hal_verify`); the media token parser in
-`geogram/lib/util/media_ref.dart` and the media archive in
-`geogram/lib/util/media_archive.dart`. Signed messages (§14) ship in wapp
+`xprs/lib/util/media_ref.dart` and the media archive in
+`xprs/lib/util/media_archive.dart`. Signed messages (§14) ship in wapp
 0.2.18; media references (§15) are specified as of 0.2.35.*

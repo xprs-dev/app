@@ -1,4 +1,4 @@
-// The frame swap: we emit XPRS, we still read the compact frame.
+// The frame swap: we emit xprs, we still read the compact frame.
 //
 // MeshFrame is the seam. Everything above it — custody admission, the store
 // key, the courier's ingest — asks it for from/to/id/body and never learns

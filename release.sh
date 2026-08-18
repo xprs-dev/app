@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# release.sh — cut a Geogram Aurora release.
+# release.sh — cut a XPRS Aurora release.
 #
 # Bumps pubspec.yaml, syncs lib/version.dart, commits, tags vX.Y.Z and pushes.
 # The release workflow (.github/workflows/release.yml) then builds the Android

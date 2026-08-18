@@ -157,7 +157,7 @@ class PreferencesService {
   //
   //   * the kind-3 contact list on the relays — MIRRORED, not accumulated. It is
   //     the account's truth, and it changes.
-  //   * followsLocal — people followed inside geogram.
+  //   * followsLocal — people followed inside xprs.
   //   * followsUnfollowed — people the user has explicitly unfollowed HERE. This
   //     is what makes an unfollow stick: without it the next mirror of the
   //     relay's kind-3 (which we do not rewrite) puts them straight back, which
@@ -626,7 +626,7 @@ class PreferencesService {
   // deployment can point the store at a different catalog without
   // rebuilding the wasm. Empty/null = fall back to the in-repo binaries
   // dir (dev checkout) or the wapp's built-in default
-  // (https://geogram.radio/wapps).
+  // (https://xprs.dev/wapps).
   // The store's own Settings tab can still override this per-install.
   String? get wappStoreSource => _prefs.getString('wappStore.source');
   set wappStoreSource(String? v) {

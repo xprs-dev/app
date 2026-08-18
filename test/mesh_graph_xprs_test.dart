@@ -26,7 +26,7 @@ void main() {
     expect(st, hasLength(1), reason: 'the station must appear exactly once');
     expect(st.first['kind'], 'xprs');
     expect(st.first['via'], 'ble');
-    expect(st.first['geogram'], true);
+    expect(st.first['xprs'], true);
     final meta = st.first['meta'] as Map;
     expect(meta['rssi'], -49);
     expect(meta['uptime'], '26h');

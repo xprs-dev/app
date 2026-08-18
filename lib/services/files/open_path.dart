@@ -10,7 +10,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-const MethodChannel _ch = MethodChannel('com.geogram.aurora/updates');
+const MethodChannel _ch = MethodChannel('com.xprs.app/updates');
 
 /// Hand ONE file to whatever the system uses to view it: a photo to the gallery,
 /// a PDF to a reader, an APK to the package installer, a video to a player.

@@ -1,4 +1,4 @@
-package com.geogram.aurora
+package com.xprs.app
 
 import android.content.BroadcastReceiver
 import android.content.Context

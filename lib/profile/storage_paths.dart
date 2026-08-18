@@ -1,5 +1,5 @@
 /*
- * Central resolution of geogram storage roots. Every ProfileStorage instance
+ * Central resolution of XPRS storage roots. Every ProfileStorage instance
  * in iwi/lib/ should be obtained through this file so there is exactly one
  * place that knows the on-disk layout.
  *
@@ -17,10 +17,10 @@
  * profiles switches which `wapps/` and `data/` folders the launcher sees.
  *
  * IMPORTANT: aurora stores under ~/.local/share/aurora — NOT
- * ~/.local/share/geogram. The geogram dir belongs to the separate, real
- * geogram app and holds the user's real data; aurora must never read,
+ * ~/.local/share/xprs. The XPRS dir belongs to the separate, real
+ * XPRS app and holds the user's real data; aurora must never read,
  * write, or delete there. (The old iwi fork wrongly pointed here at
- * geogram's dir; that is fixed.)
+ * xprs's dir; that is fixed.)
  */
 
 import 'package:path_provider/path_provider.dart';
@@ -54,20 +54,20 @@ Future<void> initStorageRoot() async {
   _resolvedBase = '$home/.local/share/aurora';
 }
 
-String _geogramBaseDir() {
+String _xprsBaseDir() {
   if (_resolvedBase != null) return _resolvedBase!;
   // Fallback if initStorageRoot() hasn't run yet (desktop layout).
   final home = platform.homeDir() ?? '/tmp';
   return '$home/.local/share/aurora';
 }
 
-/// Root storage — everything the geogram launcher persists lives under this.
+/// Root storage — everything the XPRS launcher persists lives under this.
 /// Non-profile data (profiles.json itself, future cross-profile caches)
 /// is written directly here; everything else flows through
 /// [activeProfileRoot] below. On web the factory returns an in-memory
 /// store, so the path string is purely cosmetic there.
-ProfileStorage geogramRootStorage() =>
-    makeFilesystemStorage(_geogramBaseDir());
+ProfileStorage xprsRootStorage() =>
+    makeFilesystemStorage(_xprsBaseDir());
 
 /// Root storage for the currently-active profile. Returns a scoped
 /// `devices/<id>/` storage when a profile is active, or
@@ -78,7 +78,7 @@ ProfileStorage geogramRootStorage() =>
 ProfileStorage activeProfileRoot() {
   final scoped = ProfileService.instance.activeProfileStorage();
   if (scoped != null) return scoped;
-  return ScopedProfileStorage(geogramRootStorage(), 'devices/_no_profile');
+  return ScopedProfileStorage(xprsRootStorage(), 'devices/_no_profile');
 }
 
 /// Installed-wapps directory for the active profile. Each subdirectory
@@ -118,7 +118,7 @@ ProfileStorage wappPackageStorage(String wappDir) =>
 /// only via the per-wapp Edit action. The folder name stays `app-creator` so
 /// WappPage's `_isAppCreator` (folder-name based) keeps working.
 ProfileStorage editorWappStorage() =>
-    ScopedProfileStorage(geogramRootStorage(), 'editor/app-creator');
+    ScopedProfileStorage(xprsRootStorage(), 'editor/app-creator');
 
 /// Absolute path to the editor package dir — handed to WappPage.wappDir.
 String editorWappDirPath() => editorWappStorage().basePath;
@@ -135,7 +135,7 @@ String editorWappDirPath() => editorWappStorage().basePath;
 /// clobber an existing `devices/` dir. Must run before the launcher
 /// scans the active profile's `apps/`.
 Future<void> migrateProfilesDirToDevices() async {
-  final root = geogramRootStorage();
+  final root = xprsRootStorage();
   if (!await root.directoryExists('profiles')) return;
   if (await root.directoryExists('devices')) return;
   await root.renameDirectory('profiles', 'devices');
@@ -155,7 +155,7 @@ Future<void> migrateStorageLayout() async {
 /// packages rename takes it. Idempotent: each step is guarded so a
 /// re-run (or an already-new layout) is a no-op.
 Future<void> _migrateAppsAndDataFolders() async {
-  final root = geogramRootStorage();
+  final root = xprsRootStorage();
   if (!await root.directoryExists('devices')) return;
   final devices = await root.listDirectory('devices');
   for (final d in devices) {

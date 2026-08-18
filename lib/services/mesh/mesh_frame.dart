@@ -48,7 +48,7 @@ class MeshFrame {
 
   bool get isXprs => packet != null;
 
-  /// Read [wire] as XPRS, falling back to the compact frame.
+  /// Read [wire] as xprs, falling back to the compact frame.
   ///
   /// XPRS is tried first and the test is unambiguous: a compact frame always
   /// contains two `\x1F` bytes and an XPRS packet contains none and starts

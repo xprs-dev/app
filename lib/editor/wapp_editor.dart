@@ -133,7 +133,7 @@ extension _WappEditor on _WappPageState {
 
     if (!result.ok) {
       _logLine('compile failed: ${result.error}');
-      NotificationService.instance.show(GeogramNotification(
+      NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
         title: 'Compile failed',
         body: result.error ?? 'see log view for details',
@@ -148,7 +148,7 @@ extension _WappEditor on _WappPageState {
     _loadedWasmBytes = null;
     _logLine(
         'compile ok: ${bytes.length} bytes in ${result.durationMs}ms');
-    NotificationService.instance.show(GeogramNotification(
+    NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.success,
       title: 'Compile succeeded',
       body:
@@ -260,7 +260,7 @@ extension _WappEditor on _WappPageState {
     );
     if (!result.ok) {
       _logLine('install failed: ${result.error}');
-      NotificationService.instance.show(GeogramNotification(
+      NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
         title: 'Install failed',
         body: result.error ?? 'see log view',
@@ -280,7 +280,7 @@ extension _WappEditor on _WappPageState {
     _loadedWasmBytes = null;
 
     _logLine('install ok: $id');
-    NotificationService.instance.show(GeogramNotification(
+    NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.success,
       title: 'Installed',
       body: (title.isNotEmpty ? title : folderName) +
@@ -315,7 +315,7 @@ extension _WappEditor on _WappPageState {
     final manifest = await pkg.readJson('manifest.json');
     if (manifest == null) {
       _logLine('(load) missing or invalid manifest.json at ${entry.dirPath}');
-      NotificationService.instance.show(GeogramNotification(
+      NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
         title: 'Load failed',
         body: 'manifest.json not found at ${entry.dirPath}',
@@ -421,7 +421,7 @@ extension _WappEditor on _WappPageState {
       _logLine('(no main.c shipped with this wapp — Code tab will be '
           'empty; Compile will rebuild from whatever you type in)');
     }
-    NotificationService.instance.show(GeogramNotification(
+    NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.success,
       title: 'Loaded ${entry.folder}',
       body: entry.isBuiltIn
@@ -465,7 +465,7 @@ extension _WappEditor on _WappPageState {
     _fieldValues['source__readonly'] = false;
     _tickIntervalController.text = '5000';
     _logLine('── new project — fields reset to defaults ──');
-    NotificationService.instance.show(GeogramNotification(
+    NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
       title: 'New wapp',
       body: 'Fields reset. Edit Settings, then Compile + Install.',
@@ -594,7 +594,7 @@ extension _WappEditor on _WappPageState {
     final pkg = wappPackageStorage(dir);
     final manifest = await pkg.readJson('manifest.json');
     if (manifest == null) {
-      NotificationService.instance.show(GeogramNotification(
+      NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
         title: 'Edit failed',
         body: 'manifest.json not found at $dir',
@@ -625,7 +625,7 @@ extension _WappEditor on _WappPageState {
   Future<void> _editThisWapp() async {
     final appCreatorDir = editorWappDirPath();
     if (!await wappPackageStorage(appCreatorDir).exists('manifest.json')) {
-      NotificationService.instance.show(GeogramNotification(
+      NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
         title: 'Editor not available',
         body: 'The built-in wapp editor failed to install. Restart aurora.',
@@ -3002,7 +3002,7 @@ extension _WappEditor on _WappPageState {
   Future<void> _settingsSaveToDisk() async {
     final id = (_fieldValues['wapp_id'] as String?) ?? '';
     if (id.isEmpty) {
-      NotificationService.instance.show(GeogramNotification(
+      NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
         title: 'Cannot save',
         body: 'Open or create a project first (ID is empty).',
@@ -3055,7 +3055,7 @@ extension _WappEditor on _WappPageState {
       await installedAppsStorage()
           .deleteDirectory(entry.folder, recursive: true);
     } catch (e) {
-      NotificationService.instance.show(GeogramNotification(
+      NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
         title: 'Delete failed',
         body: e.toString(),
@@ -3063,7 +3063,7 @@ extension _WappEditor on _WappPageState {
       ));
       return;
     }
-    NotificationService.instance.show(GeogramNotification(
+    NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
       title: 'Deleted ${entry.folder}',
       source: 'host:app-creator',
@@ -3244,7 +3244,7 @@ extension _WappEditor on _WappPageState {
   Future<void> _translationsSaveToDisk() async {
     final id = (_fieldValues['wapp_id'] as String?) ?? '';
     if (id.isEmpty) {
-      NotificationService.instance.show(GeogramNotification(
+      NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
         title: 'Cannot save translations',
         body: 'Open or create a project first (ID is empty).',

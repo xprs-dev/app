@@ -6,7 +6,7 @@ Stroke thickens as the icon shrinks: 7.5% of the box at large sizes, 9% at 48dp,
 ## android/
 - `mipmap-*/ic_launcher_foreground.png` — adaptive foreground, transparent, star in the 66dp safe zone
 - `mipmap-*/ic_launcher.png` — legacy square launcher
-- `drawable-*/ic_stat_geogram.png` — notification, white on transparent (Android discards colour)
+- `drawable-*/ic_stat_xprs.png` — notification, white on transparent (Android discards colour)
 - `ic_launcher_monochrome_432.png` — Android 13 themed-icon layer
 - `ic_launcher.xml` — adaptive-icon definition; background colour #232A2E
 - `play-store-512.png` — store listing
@@ -15,12 +15,12 @@ Stroke thickens as the icon shrinks: 7.5% of the box at large sizes, 9% at 48dp,
 `AppIcon-*.png`, opaque, square, no alpha and no pre-rounded corners — iOS applies its own mask.
 
 ## linux/
-Freedesktop hicolor tree: install `<size>x<size>/geogram.png` to `/usr/share/icons/hicolor/<size>x<size>/apps/`.
-`geogram-512-dark.png` is the light-on-dark variant for dark shells.
+Freedesktop hicolor tree: install `<size>x<size>/xprs.png` to `/usr/share/icons/hicolor/<size>x<size>/apps/`.
+`xprs-512-dark.png` is the light-on-dark variant for dark shells.
 
 ## splash/
 Full triad — the launch surface, the only place with room for all three signs.
-- `geogram-triad.svg` / `geogram-triad-dark.svg` — source vectors (ink / bone)
+- `xprs-triad.svg` / `xprs-triad-dark.svg` — source vectors (ink / bone)
 - `android-*/splash_triad.png` + `splash_triad_dark.png` — five densities, transparent
 
 Android 12+ owns the launch window and only accepts the masked launcher icon,
@@ -63,4 +63,4 @@ flutter_launcher_icons:
   adaptive_icon_monochrome: "icons/android/ic_launcher_monochrome_432.png"
 ```
 
-Source vectors: `geogram-star.svg`, `geogram-star-notification.svg`.
+Source vectors: `xprs-star.svg`, `xprs-star-notification.svg`.

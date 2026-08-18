@@ -4,7 +4,7 @@
 //   Windows: run the Inno Setup installer silently, then quit
 //   Linux:   extract the tar.gz, stage an apply-update.sh that swaps the binary
 //            + data/lib after we exit, then restart
-// Mirrors geogram's flow. Selected on every dart:io target via update_native.dart.
+// Mirrors xprs's flow. Selected on every dart:io target via update_native.dart.
 
 import 'dart:io';
 
@@ -18,7 +18,7 @@ import 'package:path_provider/path_provider.dart';
 import 'update_models.dart';
 
 class UpdateNative {
-  static const _channel = MethodChannel('com.geogram.aurora/updates');
+  static const _channel = MethodChannel('com.xprs.app/updates');
 
   static bool get supported => true;
 
@@ -48,7 +48,7 @@ class UpdateNative {
     IOSink? sink;
     try {
       final req = http.Request('GET', Uri.parse(url))
-        ..headers['User-Agent'] = 'geogram-aurora-updater';
+        ..headers['User-Agent'] = 'xprs-updater';
       final resp = await client.send(req);
       if (resp.statusCode != 200) {
         debugPrint('UpdateNative.download HTTP ${resp.statusCode}');
@@ -215,7 +215,7 @@ nohup "\$APPDIR/aurora" >/dev/null 2>&1 &
   // ── Android system DownloadManager ──────────────────────────────────
   // A process-independent background download: it survives the app being
   // closed, auto-resumes an interrupted transfer, and only reports success once
-  // the whole file is on disk. Used for the geogram.radio HTTP(S) feed so
+  // the whole file is on disk. Used for the xprs.dev HTTP(S) feed so
   // leaving the Update panel (or the app) doesn't stop or corrupt the download.
 
   /// True only where the DownloadManager path applies (Android).

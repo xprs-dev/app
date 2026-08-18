@@ -41,7 +41,7 @@ done
 # --- app package id (for launching) -----------------------------------------
 PKG="$(grep -oE 'applicationId[[:space:]]*=[[:space:]]*"[^"]+"' \
         android/app/build.gradle.kts 2>/dev/null | grep -oE '"[^"]+"' | tr -d '"' | head -1)"
-PKG="${PKG:-com.geogram.aurora}"
+PKG="${PKG:-com.xprs.app}"
 
 # --- connected devices (state == "device") ----------------------------------
 mapfile -t DEVICES < <("$ADB" devices | awk 'NR>1 && $2=="device" {print $1}')

@@ -1,10 +1,10 @@
-# geogram (iwi/) reusable components
+# xprs (iwi/) reusable components
 
-Catalog of reusable libraries inside the geogram Flutter launcher (`iwi/`).
+Catalog of reusable libraries inside the xprs Flutter launcher (`iwi/`).
 Each entry should describe what the component does, where it lives, and the
 non-obvious constraints a future caller needs to know.
 
-> The wider geogram repo has its own `../docs/reusable.md` covering the
+> The wider xprs repo has its own `../docs/reusable.md` covering the
 > parent app's components. This file is scoped to `iwi/lib/` only.
 
 > **Prefer the wapp layer to the core engine.** Updating a wapp is cheap — it
@@ -28,11 +28,11 @@ non-obvious constraints a future caller needs to know.
 - `lib/services/profile_storage.dart` — `ProfileStorage` (abstract),
   `StorageEntry`, `FilesystemProfileStorage`, `ScopedProfileStorage`
 - `lib/services/storage_paths.dart` — helpers that hand back ready-to-use
-  storages: `geogramRootStorage()`, `installedAppsStorage()`,
+  storages: `xprsRootStorage()`, `installedAppsStorage()`,
   `wappsDataStorage(prefs)`, `wappDataStorageFor(prefs, wappId)`,
   `wappPackageStorage(absPath)`
 
-**What it is.** Every filesystem operation in geogram (iwi) goes through
+**What it is.** Every filesystem operation in xprs (iwi) goes through
 `ProfileStorage`. No `dart:io` `File` / `Directory` calls anywhere else in
 `lib/` — that rule is enforced by code review and the analyser will catch
 slips because the storage call sites do not import `dart:io`. The pillar
@@ -60,7 +60,7 @@ later with a single import change):
 **Storage layout under the user home:**
 
 ```
-~/.local/share/geogram/
+~/.local/share/xprs/
   apps/<wapp-id>/    extracted .wapp packages (installed wapps)
   wapps/<wapp-id>/   per-wapp runtime data (kv.json, future hal_file_*)
 ```
@@ -85,7 +85,7 @@ The HAL declares synchronous `hal_file_open/read/write/close`. On
 variants, but that locks `hal_file_*` to native filesystem backends. The
 alternative is to redesign `hal_file_*` to be async with polling
 (matching `hal_http_*`), which works on every backend but requires
-updating `wapps/hal/geogram_wasm_hal.h` and any wapp that touches files.
+updating `wapps/hal/xprs_wasm_hal.h` and any wapp that touches files.
 This decision is deferred until a real wapp needs file I/O on encrypted
 or browser backends.
 
@@ -115,7 +115,7 @@ or browser backends.
 Type-safe — `EventBus().on<MyEvent>(handler)` only fires for that
 concrete type. Dispatch uses `event.runtimeType` so subclass events
 route correctly even when fired via the base type. API mirrors parent
-geogram's `lib/util/event_bus.dart`.
+xprs's `lib/util/event_bus.dart`.
 
 **Built-in events:**
 - `AppStartedEvent` — fired once after launcher startup completes
@@ -274,7 +274,7 @@ publish — host observers can subscribe to that directly.
 **What it is.** Singleton that every user-visible notification must
 go through — from host services AND from wapps. Wraps multiple
 `NotificationBackend` implementations and fans out each
-`GeogramNotification` to the backends whose `handlesScope` matches.
+`XPRSNotification` to the backends whose `handlesScope` matches.
 Also subscribes to `ErrorEvent` on `EventBus` and auto-shows each
 error as an error-level in-app notification.
 
@@ -291,7 +291,7 @@ error as an error-level in-app notification.
 - `SystemTrayNotificationBackend` — handles `scope` `system`/`both`;
   delegates to `platform.showSystemNotification(...)`: `notify-send` on
   Linux (`--urgency=critical` for errors), `osascript` on macOS, and on
-  Android a `MethodChannel` `com.geogram.aurora/bg_service` `notify` call
+  Android a `MethodChannel` `com.xprs.app/bg_service` `notify` call
   → `BgBridge` → `NotificationManager`. Windows is not implemented yet;
   Web is a no-op.
 
@@ -309,14 +309,14 @@ See `docs/notifications.md` for the full developer guide.
 ```
 
 `wapp_page.dart`'s `_drainOutbox` translates this into
-`NotificationService.instance.show(GeogramNotification(...))` with
+`NotificationService.instance.show(XPRSNotification(...))` with
 `source="wapp:<wappName>"`. The legacy `ui.toast` message shape is
 also routed through the service so old wapps inherit system-tray
 delivery + history for free.
 
 **Host-side usage:**
 ```dart
-NotificationService.instance.show(GeogramNotification(
+NotificationService.instance.show(XPRSNotification(
   level: NotificationLevel.warning,
   title: 'Low memory',
   body: 'Pausing non-critical tasks',
@@ -491,7 +491,7 @@ in-app notification with the raw response JSON in the body.
 **What it is.** Single registry of every background task in the
 host. Solves the previous-implementation pain point of "threads
 spawning everywhere with no visibility, no scheduling, no CPU
-budget". Mirrors parent geogram's
+budget". Mirrors parent xprs's
 `lib/services/task_monitor_service.dart` for future merge.
 
 **Lifecycle:**
@@ -546,7 +546,7 @@ also fire `ErrorEvent` on `EventBus`.
 
 These components exist so the **App Creator** wapp
 (`wapps/archive/app-creator/`) can let a user write, compile, and
-install a new wapp without leaving geogram. They are deliberately
+install a new wapp without leaving xprs. They are deliberately
 reusable: any future wapp that needs a syntax-highlighted editor, a
 log surface, a compile pipeline, or a "write this into
 `installedAppsStorage()` and rescan the launcher" step gets to drop
@@ -629,7 +629,7 @@ flag set the existing wapps use (`--target=wasm32-wasi -O2 -flto
 -nostartfiles -o output.wasm source.c`), reads the output from
 `<wappData>/compile-tmp/output.wasm`. The HAL header is located by
 walking up from `Directory.current.path` looking for
-`wapps/hal/geogram_wasm_hal.h`.
+`wapps/hal/xprs_wasm_hal.h`.
 
 **Phase 2b todo:** add `InWasmClangBackend` that reads a bundled
 wasm-clang binary from `pkg.readBytes('media/compilers/cpp.wasm')`
@@ -656,7 +656,7 @@ caller needs to change.
 **Files:** `lib/services/wapp_installer_service.dart`
 
 **What it is.** Writes a new wapp directory under
-`installedAppsStorage()` (`~/.local/share/geogram/apps/<folder>/`),
+`installedAppsStorage()` (`~/.local/share/xprs/apps/<folder>/`),
 matching the on-disk layout the launcher's `_scanArchiveBody`
 already knows how to read. Fires `WappLoadedEvent` on `EventBus`
 so the launcher rescans without a restart.
@@ -665,9 +665,9 @@ so the launcher rescans without a restart.
 
 ```dart
 final result = await WappInstallerService.instance.installFromCompiled(
-  id: 'user.geogram.my-first',
+  id: 'user.xprs.my-first',
   name: 'My first wapp',
-  description: 'A wapp I wrote inside geogram.',
+  description: 'A wapp I wrote inside xprs.',
   wasmBytes: compiledBytes,
   version: '1.0.0',          // default
   homeScreenJson: null,      // default: auto-generate a label screen

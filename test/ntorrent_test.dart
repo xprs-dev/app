@@ -66,10 +66,10 @@ void main() {
     expect(ref.hints, isEmpty);
   });
 
-  test('accepts raw hex and the geogram:// deep link', () {
+  test('accepts raw hex and the xprs:// deep link', () {
     expect(Ntorrent.decode(_folderId)!.folderId, _folderId);
     final link = Ntorrent.encode(_folderId, hints: [_dest(2)]);
-    final deep = Ntorrent.decode('geogram://torrent/$link')!;
+    final deep = Ntorrent.decode('xprs://torrent/$link')!;
     expect(deep.folderId, _folderId);
     expect(deep.hints.single, _dest(2));
   });

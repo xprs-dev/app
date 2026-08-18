@@ -12,7 +12,7 @@ Status: all five phases implemented (crypto core, SQLCipher databases, profile.e
 
 ## Context
 
-Each Aurora profile (`devices/<id>/`) holds private user data — chat history, messages, media, wallet, folder keys — today all plaintext. Requirement: profile data encrypted at rest, unlocked with a user password (emoji allowed) **mixed with the profile's nsec**. The earlier geogram iteration (`/home/brito/code/geogram/geogram`) already built the hard part: a proven `encrypted_archive` Dart package (SQLite container `EARCH01`, Argon2id → wrapped random master key → HKDF per-file keys → AES-256-GCM chunks, streaming, password change = re-wrap only). Old geogram derived the key from nsec only — the user password + emoji mix is new here.
+Each Aurora profile (`devices/<id>/`) holds private user data — chat history, messages, media, wallet, folder keys — today all plaintext. Requirement: profile data encrypted at rest, unlocked with a user password (emoji allowed) **mixed with the profile's nsec**. The earlier xprs iteration (`/home/brito/code/xprs/xprs`) already built the hard part: a proven `encrypted_archive` Dart package (SQLite container `EARCH01`, Argon2id → wrapped random master key → HKDF per-file keys → AES-256-GCM chunks, streaming, password change = re-wrap only). Old xprs derived the key from nsec only — the user password + emoji mix is new here.
 
 **Approved decisions:**
 1. **No plaintext ever on disk** — extract-to-disk/repack explicitly rejected.
@@ -46,7 +46,7 @@ remember  = {PMK, nsec} in app-private prefs (Android Keystore wrap = later hard
 ## Components
 
 ### 1. Port `encrypted_archive` package
-Copy `/home/brito/code/geogram/geogram/packages/encrypted_archive` → `aurora/packages/encrypted_archive`. All deps already in aurora (`sqlite3`, `cryptography`, `crypto`, `archive`).
+Copy `/home/brito/code/xprs/xprs/packages/encrypted_archive` → `aurora/packages/encrypted_archive`. All deps already in aurora (`sqlite3`, `cryptography`, `crypto`, `archive`).
 **Modification**: add **sync** read/write/exists paths (AES-GCM via `pointycastle`'s `GCMBlockCipher` — sync; the `cryptography` package is Future-only) so the WASM HAL sync callbacks (`ProfileStorage.readBytesSync` etc., `lib/profile/profile_storage.dart:80-96`) work. Argon2id stays async (unlock-time only).
 
 ### 2. SQLCipher for live databases

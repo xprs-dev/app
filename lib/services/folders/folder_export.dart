@@ -1,5 +1,5 @@
 /*
- * Copyright (c) geogram
+ * Copyright (c) xprs
  * License: Apache-2.0
  *
  * Materialise one file out of the content-addressed archive so the OS can open

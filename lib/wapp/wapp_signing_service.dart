@@ -121,8 +121,8 @@ class WappSigningService {
         createdAt: now,
         kind: NostrEventKind.applicationSpecificData,
         tags: [
-          ['d', 'geogram.wapp:$wappId'],
-          ['t', 'geogram-wapp-signature'],
+          ['d', 'xprs.wapp:$wappId'],
+          ['t', 'xprs-wapp-signature'],
           ['wapp_id', wappId],
           ['wapp_version', wappVersion],
           ['manifest_digest', digestHex],
@@ -132,7 +132,7 @@ class WappSigningService {
       event.sign(pubkeyHex);
 
       final sig = <String, dynamic>{
-        'schema': 'geogram.wapp.signature/1',
+        'schema': 'xprs.wapp.signature/1',
         'wapp_id': wappId,
         'wapp_version': wappVersion,
         'signed_at': now,

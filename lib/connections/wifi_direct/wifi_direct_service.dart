@@ -38,8 +38,8 @@ class WifiDirectService {
   WifiDirectService._();
   static final WifiDirectService instance = WifiDirectService._();
 
-  static const _method = MethodChannel('com.geogram.aurora/wifidirect');
-  static const _events = EventChannel('com.geogram.aurora/wifidirect_events');
+  static const _method = MethodChannel('com.xprs.app/wifidirect');
+  static const _events = EventChannel('com.xprs.app/wifidirect_events');
 
   Stream<WfdEvent>? _stream;
 

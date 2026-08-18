@@ -51,7 +51,7 @@ class _GraphView extends StatefulWidget {
   /// Avoids a second in-panel back arrow.
   final void Function(String? title, VoidCallback? back)? onPanelNav;
 
-  /// Open the shared profile page for a geogram device (callsign + its NOSTR
+  /// Open the shared profile page for a XPRS device (callsign + its NOSTR
   /// npub), with the reticulum facts (observed first-seen + reachable-via hubs).
   final void Function(String callsign, String? npub, int? firstSeenMs,
       List<String> reachableVia)? onOpenProfile;
@@ -70,7 +70,7 @@ enum _Panel {
   detail,
   devices, // all reachable devices (from the badge's "N devices")
   hubDevices,
-  geogramDevices,
+  xprsDevices,
   hubs,
   settings,
   chats, // the People directory (messaging itself lives in the Chat wapp)
@@ -79,7 +79,7 @@ enum _Panel {
 
 class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   List<RnsGraphNode> _allNodes = const [];
-  // Other Reticulum devices (NOT geogram, NOT hubs) heard on the hubs — the full
+  // Other Reticulum devices (NOT xprs, NOT hubs) heard on the hubs — the full
   // observed set (NOT gated on re-announce), refreshed each data tick. This is
   // what the badge's "N devices" list shows.
   List<RnsGraphNode> _otherDevices = const [];
@@ -127,7 +127,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       case _Panel.hubDevices:
         final hub = _allNodes.where((e) => e.id == _panelHubId).firstOrNull;
         return hub == null ? 'Devices' : 'Devices · ${hub.label}';
-      case _Panel.geogramDevices:
+      case _Panel.xprsDevices:
         return 'XPRS devices';
       case _Panel.hubs:
         return 'Bootstrap hubs';
@@ -315,7 +315,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     // restarts a 1200ms glide for every node — so an unchanged network still
     // twitched, forever. Skip the whole thing when nothing that affects what
     // is drawn has changed. The signature has to include the render-visible
-    // data (label, members, geogram), not just the topology: the controller
+    // data (label, members, xprs), not just the topology: the controller
     // keeps the old node objects, so anything left out of it would go stale on
     // screen instead of updating.
     final signature = StringBuffer(_expandedHubId ?? '-');
@@ -335,7 +335,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         ..write(':')
         ..write(d.members)
         ..write(':')
-        ..write(d.geogram ? 1 : 0)
+        ..write(d.xprs ? 1 : 0)
         ..write(':')
         // Whether this station has been caught signing something it could not
         // have signed changes its ORB, so it belongs here — see the note above:
@@ -554,7 +554,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // ── Commands ──
   void _emitFilter() => widget.onCommand({
         'command': 'graph_filter',
-        'geogramOnly': _geoOnly,
+        'xprsOnly': _geoOnly,
         'service': _service,
         'search': _searchCtl.text.trim(),
       });
@@ -860,9 +860,9 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // to. Tapping opens the bootstrap-hubs panel.
   Widget _buildReachBadge() {
     // Three DISTINCT categories, each its own count + list:
-    //  • geogram  — our devices;
+    //  • XPRS  — our devices;
     //  • devices  — other Reticulum peers (NomadNet/Sideband/generic), NOT
-    //               geogram and NOT hubs;
+    //               XPRS and NOT hubs;
     //  • hubs     — connected bootstrap hubs.
     // ONE source of truth, shared with the launcher's status bar
     // (RnsService.reachability). These counts used to be derived here, from the
@@ -870,7 +870,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     // look like a bug in both: "8 devices" on the home screen against "209
     // devices" here — the same word for two different populations.
     final reach = RnsService.instance.reachability();
-    final geo = reach.geogram;
+    final geo = reach.xprs;
     final online = reach.others;
     final hubs = reach.hubs;
     // XPRS stations heard over the air right now (XprsMonitor's own staleness
@@ -914,7 +914,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                               fontWeight: FontWeight.w700)),
                       const SizedBox(width: 4),
                       // NOT "devices": these are other people's Reticulum peers
-                      // (Sideband, NomadNet, plain LXMF), not geogram devices.
+                      // (Sideband, NomadNet, plain LXMF), not XPRS devices.
                       // Calling both "devices" is what made this badge and the
                       // launcher look like they were contradicting each other.
                       Text(online == 1 ? 'peer' : 'peers',
@@ -969,11 +969,11 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                 ],
               ]),
               const Divider(height: 1, thickness: 1, color: _gBorder),
-              // Line 2 — geogram-reachable devices → list + 1:1 messaging.
+              // Line 2 — xprs-reachable devices → list + 1:1 messaging.
               InkWell(
                 borderRadius:
                     const BorderRadius.vertical(bottom: Radius.circular(8)),
-                onTap: () => setState(() => _panel = _Panel.geogramDevices),
+                onTap: () => setState(() => _panel = _Panel.xprsDevices),
                 child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -1036,8 +1036,8 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       case _Panel.hubDevices:
         content = _hubDevicesBody(_panelHubId ?? '');
         break;
-      case _Panel.geogramDevices:
-        content = _geogramDevicesBody();
+      case _Panel.xprsDevices:
+        content = _xprsDevicesBody();
         break;
       case _Panel.hubs:
         content = _hubsBody();
@@ -1539,7 +1539,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         ? _gSelf
         : n.effectiveKind == 'hub'
             ? _gHub
-            : (n.geogram ? _gGeo : _gGeneric);
+            : (n.xprs ? _gGeo : _gGeneric);
     final initial = n.label.isNotEmpty ? n.label.substring(0, 1).toUpperCase() : '?';
     final dmText = switch (n.dm) {
       'lxmf' => 'LXMF · direct',
@@ -1571,7 +1571,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                 style: const TextStyle(
                     color: _gFg, fontSize: 20, fontWeight: FontWeight.w700)),
             const SizedBox(height: 2),
-            Text(kindName + (n.geogram && n.kind != 'xprs' ? ' · XPRS' : ''),
+            Text(kindName + (n.xprs && n.kind != 'xprs' ? ' · XPRS' : ''),
                 style: const TextStyle(color: _gMuted, fontSize: 13)),
             if (n.kind != 'self' && m['lastSeen'] != null)
               Padding(
@@ -1616,9 +1616,9 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           const SizedBox(width: 6),
           Text(dmText, style: const TextStyle(color: _gMuted, fontSize: 13)),
         ]),
-      // A geogram peer has a full profile (name/pic/about + follow/mute + its
+      // A XPRS peer has a full profile (name/pic/about + follow/mute + its
       // reticulum facts) — open the same page the NOSTR/Chat wapps show.
-      if (n.geogram && n.kind != 'self') ...[
+      if (n.xprs && n.kind != 'self') ...[
         const SizedBox(height: 8),
         SizedBox(
           width: double.infinity,
@@ -1793,7 +1793,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     return labels.toList()..sort();
   }
 
-  // Open the shared full profile page for a geogram peer (Follow / Message /
+  // Open the shared full profile page for a XPRS peer (Follow / Message /
   // Mute + observed first-seen + reachable-via hubs).
   void _openPeerProfile(RnsGraphNode n) {
     final callsign = (n.meta['callsign'] ?? '').toString().isNotEmpty
@@ -1805,8 +1805,8 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             _reachableViaFor(n));
   }
 
-  // Other Reticulum devices (NomadNet / Sideband / generic) — NOT geogram and
-  // NOT hubs. From the badge's "N devices" line. (Geogram → its own list; hubs →
+  // Other Reticulum devices (NomadNet / Sideband / generic) — NOT XPRS and
+  // NOT hubs. From the badge's "N devices" line. (XPRS → its own list; hubs →
   // the hubs panel.)
   Widget _devicesBody() {
     final peers = _dedupPeers(_otherDevices.toList()
@@ -1838,7 +1838,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         _allNodes.where((n) => n.effectiveRelayer == hubId).toList()
       ..sort((a, b) {
         // Messageable people first, then by name — so the useful rows are on top.
-        if (a.geogram != b.geogram) return a.geogram ? -1 : 1;
+        if (a.xprs != b.xprs) return a.xprs ? -1 : 1;
         final am = a.dm.isNotEmpty, bm = b.dm.isNotEmpty;
         if (am != bm) return am ? -1 : 1;
         return a.label.toLowerCase().compareTo(b.label.toLowerCase());
@@ -1861,11 +1861,11 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     );
   }
 
-  // Reachable geogram devices, compact + one-tap to message. Opened from the
-  // badge's "geogram" line.
-  Widget _geogramDevicesBody() {
+  // Reachable XPRS devices, compact + one-tap to message. Opened from the
+  // badge's "xprs" line.
+  Widget _xprsDevicesBody() {
     final peers = _dedupPeers(_allNodes
-        .where((n) => n.kind != 'self' && n.geogram)
+        .where((n) => n.kind != 'self' && n.xprs)
         .toList()
       ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase())));
     if (peers.isEmpty) {
@@ -1986,13 +1986,13 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
 
   // ── LXMF conversations (NomadNet / Sideband / group chats) ──
   // The list of open conversations, plus a way to start a new one / join a group
-  // by pasting an LXMF address. Peers can be geogram devices, NomadNet/Sideband
+  // by pasting an LXMF address. Peers can be XPRS devices, NomadNet/Sideband
   // users, or LXMF distribution-group nodes — all interoperate over LXMF.
   // The People directory: who is out there and reachable. Messaging them
   // deep-links into the Chat wapp — no conversation UI lives here any more.
   Widget _chatsBody() => _peopleList();
 
-  // Reachable, messageable peers (geogram / NomadNet / Sideband), newest network
+  // Reachable, messageable peers (XPRS / NomadNet / Sideband), newest network
   // heard. Tap a row → start messaging. Compact single-line rows.
   Widget _peopleList() {
     final peers = _dedupPeers(_allNodes.where((n) {
@@ -2001,7 +2001,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       return n.dm.isNotEmpty && pubkey.isNotEmpty; // can receive a 1:1 message
     }).toList()
       ..sort((a, b) {
-        if (a.geogram != b.geogram) return a.geogram ? -1 : 1; // our devices top
+        if (a.xprs != b.xprs) return a.xprs ? -1 : 1; // our devices top
         return a.label.toLowerCase().compareTo(b.label.toLowerCase());
       }));
     if (peers.isEmpty) {
@@ -2009,7 +2009,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         child: Padding(
           padding: EdgeInsets.all(22),
           child: Text(
-              'No reachable people right now.\n\nDevices that announce LXMF — XPRS, NomadNet or Sideband — appear here as they are heard.',
+              'No reachable people right now.\n\nDevices that announce LXMF — xprs, NomadNet or Sideband — appear here as they are heard.',
               textAlign: TextAlign.center,
               style: TextStyle(color: _gMuted, fontSize: 13)),
         ),
@@ -2023,17 +2023,17 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   }
 
   // One compact, tappable peer row.
-  //  • geogram peer → row opens its full PROFILE (avatar + a send shortcut);
+  //  • XPRS peer → row opens its full PROFILE (avatar + a send shortcut);
   //  • other messageable peer (NomadNet/Sideband) → row opens a chat;
   //  • bare node/relay → row opens the graph detail.
   Widget _peerRow(RnsGraphNode p) {
     final pubkey = (p.meta['pubkey'] ?? '').toString();
     final canMsg = p.dm.isNotEmpty && pubkey.isNotEmpty;
-    final color = p.geogram
+    final color = p.xprs
         ? _gGeo
         : (p.dm.isNotEmpty ? _gSelf : _gGeneric);
     // A short tag telling the peer's network apart at a glance.
-    final tag = p.geogram
+    final tag = p.xprs
         ? ''
         : p.services.contains('node')
             ? 'nomadnet'
@@ -2041,12 +2041,12 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                 ? 'lxmf'
                 : (p.services.isNotEmpty ? p.services.first : '');
     final avatar =
-        (p.geogram && p.npub.isNotEmpty) ? widget.avatarFor?.call(p.npub) : null;
+        (p.xprs && p.npub.isNotEmpty) ? widget.avatarFor?.call(p.npub) : null;
     void onRowTap() {
       if (p.services.contains('node')) {
         // A NomadNet node → browse its pages.
         _openNodePage((p.meta['pubkey'] ?? '').toString(), p.label);
-      } else if (p.geogram) {
+      } else if (p.xprs) {
         _openPeerProfile(p);
       } else if (canMsg) {
         _messagePeer(p, pubkey);
@@ -2065,7 +2065,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         child: Row(children: [
-          // Leading: profile avatar for a geogram peer, else a status dot.
+          // Leading: profile avatar for a XPRS peer, else a status dot.
           if (avatar != null)
             CircleAvatar(radius: 15, backgroundImage: avatar)
           else
@@ -2104,9 +2104,9 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                         style: const TextStyle(color: _gMuted, fontSize: 11)),
                 ]),
           ),
-          // Geogram: the row opens the profile, so give a direct Message
+          // xprs: the row opens the profile, so give a direct Message
           // shortcut here. Others: a plain affordance.
-          if (p.geogram && canMsg)
+          if (p.xprs && canMsg)
             InkWell(
               onTap: () => _messagePeer(p, pubkey),
               borderRadius: BorderRadius.circular(16),
@@ -2292,7 +2292,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     final passive = d['passive'] == true;
     final stats = (d['stats'] as Map?)?.cast<String, dynamic>() ?? const {};
     final total = (stats['total'] as num?)?.toInt() ?? 0;
-    final geo = (stats['geogram'] as num?)?.toInt() ?? 0;
+    final geo = (stats['xprs'] as num?)?.toInt() ?? 0;
     final seen24h = (stats['seen24h'] as num?)?.toInt() ?? 0;
     final oldest = (stats['oldest'] as num?)?.toInt() ?? 0;
     final live = (d['observed'] as num?)?.toInt() ?? _allNodes.length;

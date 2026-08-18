@@ -587,7 +587,7 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
     return to.contains(RegExp(r'[0-9]'));
   }
 
-  /// The body of [wire] parsed as XPRS, or null when it is not an XPRS packet.
+  /// The body of [wire] parsed as xprs, or null when it is not an XPRS packet.
   ///
   /// Two formats are in flight during the changeover. The compact frame carries
   /// its text in the third `\x1F` field; a bare XPRS packet has no `\x1F` at all
@@ -605,7 +605,7 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
   static String? _urgOf(Uint8List wire) {
     final p = _xprsOf(wire);
     if (p != null) return p['urg'];
-    // The compact frame is not XPRS, so scan it for the token directly. This
+    // The compact frame is not xprs, so scan it for the token directly. This
     // branch goes away with the frame itself.
     final t = _splitWire(wire)?.$3;
     if (t == null) return null;

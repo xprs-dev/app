@@ -11,7 +11,7 @@ share the same root idea -- the group is a keypair, and whoever holds the
 private half administers it -- and diverge on whether the member list is a
 secret.
 
-Source of truth: `geogram/wapps/circles/` (C → wasm). Host HAL: `lib/wapp/wapp_engine.dart`.
+Source of truth: `xprs/wapps/circles/` (C → wasm). Host HAL: `lib/wapp/wapp_engine.dart`.
 
 ## 1. Where the code lives
 
@@ -95,7 +95,7 @@ no SQLCipher). On Android: `…/app_flutter/<profile>/wapps-data/circles/`.
 ## 5. RNS datagram protocol (the wapp channel)
 
 Transport = `RnsService.wappBroadcast(tag, payload)`: wraps the payload in an
-announce of the sender's `geogram/wapp` destination carrying
+announce of the sender's `xprs/wapp` destination carrying
 `{t:<wappId>, p:base64(payload)}`. Every peer running the same wapp id receives
 it (`wappDrain`). One packet, a few hundred bytes; larger → chunk in the wapp.
 **Content privacy is the wapp's job** (encrypt before broadcast).
@@ -119,7 +119,7 @@ Datagram kinds (`circle_on_datagram` dispatch, field `"k"`):
    first member (role `admin`), insert index + per-circle DB, show the row.
 2. **Share** (`circle_open_share`): exposes three forms —
    - full key `circle:<64hex>` (authoritative),
-   - deep link / QR `https://geogram.radio/circle/<64hex>`,
+   - deep link / QR `https://xprs.dev/circle/<64hex>`,
    - **short code** `circle/<first3>-<last3>` — only ~24 bits, **NOT a secret**,
      for quick human reference (`circle_short_code`).
 3. **Apply** (`circle_apply_join`): resolve the ref to a full `circleId`, sign
@@ -181,7 +181,7 @@ they blocked circles datagrams from crossing device-to-device:
 4. **Wapp announces were shed by the flood budget.** The transport caps
    verification of announces from *new* destinations to ~20/s so the public-hub
    flood can't peg the CPU, exempting a `priorityAnnounceNames` allowlist (chat,
-   files, dht, relay, lxmf). The **`geogram/wapp`** aspect was missing from that
+   files, dht, relay, lxmf). The **`xprs/wapp`** aspect was missing from that
    list, so on a busy public hub a peer's wapp-datagram announce (a new
    destination) was dropped amid the flood and never delivered. → **Fixed:** add
    the wapp name-hash to `priorityAnnounceNames` (`rns_service.dart`).
@@ -245,7 +245,7 @@ curl localhost:<localport>/api/log?n=200            # wapp + RNS logs
 ```
 
 Read the sqlite DBs directly (verify ciphertext at rest, membership, requests):
-`adb -s <serial> exec-out run-as com.geogram.aurora cat <path>/circles/<db>`.
+`adb -s <serial> exec-out run-as com.xprs.app cat <path>/circles/<db>`.
 
 ## 12. Cooperative data exchange / gossip transport (validated 2026-06-22)
 
@@ -258,7 +258,7 @@ A circle "datagram" is the inner JSON (`{"k":"msg"|"ks"|"key"|"kr"|"rq"|...}`).
 It can travel three ways; circles now uses each where it fits:
 
 1. **Broadcast announce** (`hal_rns_broadcast` → `RnsService.wappBroadcast`): the
-   datagram rides the app_data of an RNS *announce* of the sender's `geogram/wapp`
+   datagram rides the app_data of an RNS *announce* of the sender's `xprs/wapp`
    destination. One-to-many, no path needed. **BUT announces are unreliable
    device-to-device on busy public hubs** — they're rate-limited (announce_cap)
    and the community hubs don't reliably flood one leaf's announce to another.

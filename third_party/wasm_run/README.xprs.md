@@ -3,7 +3,7 @@
 Fork of `wasm_run 0.1.0+2` (pub.dev, published 2023 — still the newest release,
 so there is no upstream fix to wait for). Everything is upstream except two
 edits in `lib/src/wasm_bindings/_wasm_interop_native.dart`, both marked
-`PATCHED (geogram)`.
+`PATCHED (xprs)`.
 
 ## 1. The host-callback ABI was wrong on 32-bit ARM
 

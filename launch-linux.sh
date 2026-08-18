@@ -4,7 +4,7 @@
 # Compiles the Flutter Linux desktop bundle and launches the resulting
 # binary. The binary is run with the project root as its working
 # directory so the launcher's wapp scan (`$cwd/../wapps`) resolves to
-# the sibling /home/brito/code/geogram/wapps/ folder.
+# the sibling /home/brito/code/xprs/wapps/ folder.
 #
 # Usage:
 #   ./launch-linux.sh            # debug build, then launch

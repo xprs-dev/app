@@ -1,10 +1,10 @@
 /*
  * TaskMonitorService — central registry for background tasks.
  *
- * Mirrors parent geogram's lib/services/task_monitor_service.dart so a
+ * Mirrors parent xprs's lib/services/task_monitor_service.dart so a
  * shared package can be extracted later. Pure Dart, no Flutter deps.
  *
- * The motivating problem: the previous geogram implementation had
+ * The motivating problem: the previous XPRS implementation had
  * threads/loops spawning ad-hoc, with no way to know what was running,
  * how much CPU it consumed, what order it started in, or how to pause
  * non-critical work on a constrained device. This service is the single
@@ -359,7 +359,7 @@ class TaskMonitorService {
 //
 // Wrap any one-shot startup step in this helper so it auto-registers
 // with the task monitor and reports start/success/failure. This is the
-// pattern from parent geogram's main.dart `_initService`. Wapps and
+// pattern from parent xprs's main.dart `_initService`. Wapps and
 // startup code should NOT roll their own try/catch around init steps —
 // always go through here so the monitor sees them.
 //
@@ -407,7 +407,7 @@ Future<void> runMonitoredStartup(
 
 // ── BootOrchestrator ────────────────────────────────────────────────
 //
-// Two-phase boot sequencer. Code that needs to run during geogram
+// Two-phase boot sequencer. Code that needs to run during xprs
 // startup should call [BootOrchestrator.instance.register] *before*
 // `runApp`, then `main()` calls [runAll] exactly once. Sequential
 // tasks run first, alone, in registration order. Parallel tasks run
@@ -438,7 +438,7 @@ class BootOrchestrator {
 
   final List<_BootEntry> _pending = [];
 
-  /// Register a task to run during the geogram boot phase. Must be
+  /// Register a task to run during the XPRS boot phase. Must be
   /// called before [runAll]. Order matters for [BootStart.sequential]
   /// — tasks run in registration order, so register the most critical
   /// dependency first.
