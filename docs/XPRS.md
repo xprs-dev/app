@@ -842,6 +842,54 @@ t:observation f:X3WX01 pos:38.7223,-9.1393 temp:14.2C zpm:8 ts:2026-08-08_14:26:
 82 bytes. Every existing receiver reads `temp:14.2` and `ts:`, skips `zpm:8`, and
 is otherwise unaffected.
 
+### 4.10 JSON
+
+A packet is a flat list of `key:value` pairs, so it is a JSON object already.
+The conversion needs no schema, no table and no knowledge of any packet type.
+
+```
+t:message f:X1QZ3N d:X1RD89 ts:2026-08-18_09:15:00 m:arrived at the marina
+```
+
+```json
+{"t":"message","f":"X1QZ3N","d":"X1RD89","ts":"2026-08-18_09:15:00",
+ "m":"arrived at the marina"}
+```
+
+**Wire to JSON.** Read fields left to right. Each is a key, a `:`, and a value.
+Split on the FIRST colon only -- a value may contain colons, and `m:` usually
+does. Fields are separated by exactly one space, except that everything after
+` m:` is the message, spaces included. A key is 1 to 8 lowercase letters and
+digits and appears once (section 23.4), so it is a valid and unique JSON member
+name with nothing to escape.
+
+**Every value is a JSON string.** `temp:14.2C` is `"14.2C"` and not `14.2`: the
+unit is part of the value (section 4.4), and a reader that converts to a number
+has silently thrown away what the number meant. `peers:2` is `"2"`. There are
+no JSON numbers, no booleans and no nulls anywhere in a packet -- a value is
+never empty (section 4), so a key that carries no information is simply absent.
+
+**JSON to wire.** Write `t:` first, `m:` last where present, one space between
+fields, no space after a colon. The result is a packet, subject to the 250-byte
+limit like any other.
+
+**The one thing to be careful with is order.** A JSON object is unordered by
+definition, and the identifier in section 5 is a SHA-256 over the wire bytes.
+Converting a packet to JSON and back can therefore reorder the middle fields
+and produce a DIFFERENT identifier for the same message. Two consequences,
+and neither is a limitation of JSON so much as a rule about where the
+identifier lives:
+
+- Compute an identifier from the wire, never from the JSON. A tool that stores
+  packets as JSON should store the identifier alongside, or keep the original
+  bytes.
+- A converter that must round-trip byte-exactly has to preserve field order:
+  an ordered map, or an array of `[key, value]` pairs.
+
+For reading, filtering, indexing and shipping packets between programs, the
+object form is enough and the order does not matter. It matters when a
+signature or an identifier has to still be true afterwards.
+
 ---
 
 ## 5. Message identifiers

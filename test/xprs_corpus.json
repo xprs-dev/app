@@ -110,6 +110,11 @@
 "id": "3f95e7"
 },
 {
+"wire": "t:message f:X1QZ3N d:X1RD89 ts:2026-08-18_09:15:00 m:arrived at the marina",
+"bytes": null,
+"id": "d77f4f"
+},
+{
 "wire": "t:message f:X1QZ3N ts:2026-08-08_14:26:40 m:OK   ->  ca5413",
 "bytes": null,
 "id": "79db36"
