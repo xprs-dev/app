@@ -22,13 +22,14 @@ import 'dart:isolate';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:reticulum/reticulum.dart' show NostrCrypto;
 
 import 'iwi_profile.dart';
 import '../util/nostr_key_generator.dart';
 
 /// The only characters a callsign can ever contain.
 ///
-/// A callsign is `X1` + the first four characters of the npub, and an npub is
+/// A callsign is `X1` + two to five characters of the npub, and an npub is
 /// bech32 — whose alphabet is `qpzry9x8gf2tvdw0s3jn54khce6mua7l`. So **B, I, O
 /// and 1 do not exist in any callsign**, and neither does any other character
 /// outside this set.
@@ -39,8 +40,61 @@ import '../util/nostr_key_generator.dart';
 /// characters that can actually be found.
 const String kCallsignAlphabet = 'QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L';
 
+/// How many characters of the key a callsign shows, and the default (spec
+/// section 3). Four is what every callsign in the field is today.
+const int kMinCallsignLength = NostrCrypto.kMinCallsignLength;
+const int kMaxCallsignLength = NostrCrypto.kMaxCallsignLength;
+const int kDefaultCallsignLength = NostrCrypto.kDefaultCallsignLength;
+
+/// What a given length actually costs the holder, said plainly.
+///
+/// The numbers are `32^n`: how many callsigns exist at that length, after how
+/// many users two people are more likely than not to share one, and how many
+/// keypairs someone must grind to wear yours. A short callsign is a weak one
+/// and the screen has to say so rather than let the user find out later.
+class CallsignLengthFacts {
+  final int length;
+  final int space;
+  final int collideAfter;
+
+  const CallsignLengthFacts(this.length, this.space, this.collideAfter);
+
+  static const List<CallsignLengthFacts> all = [
+    CallsignLengthFacts(2, 1024, 40),
+    CallsignLengthFacts(3, 32768, 226),
+    CallsignLengthFacts(4, 1048576, 1283),
+    CallsignLengthFacts(5, 33554432, 7259),
+  ];
+
+  static CallsignLengthFacts of(int length) =>
+      all.firstWhere((f) => f.length == length,
+          orElse: () => all[kDefaultCallsignLength - kMinCallsignLength]);
+
+  /// How long grinding a matching key takes, in words rather than keypairs.
+  String get forgeEffort => switch (length) {
+        2 => 'in under a second',
+        3 => 'in a few seconds',
+        4 => 'in a few minutes',
+        _ => 'in hours',
+      };
+
+  bool get isWeak => length < kDefaultCallsignLength;
+
+  /// 1048576 -> "1,048,576". Local rather than a dependency on intl for one
+  /// string on one screen.
+  static String grouped(int v) {
+    final s = v.toString();
+    final b = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
+      b.write(s[i]);
+    }
+    return b.toString();
+  }
+}
+
 /// Brute-forces vanity callsigns off the main isolate. The main isolate sends
-/// `{pattern, batchSize}`; we generate that many keypairs and reply with
+/// `{pattern, batchSize, length}`; we generate that many keypairs and reply with
 /// `{keysGenerated, matches}` where each match's callsign contains the pattern.
 /// One batch per reply keeps the UI responsive and the search stoppable.
 void vanityIsolate(SendPort mainSendPort) {
@@ -54,10 +108,13 @@ void vanityIsolate(SendPort mainSendPort) {
     if (message is Map) {
       final pattern = message['pattern'] as String;
       final batchSize = message['batchSize'] as int;
+      final length =
+          (message['length'] as int?) ?? kDefaultCallsignLength;
       var generated = 0;
       final matches = <Map<String, String>>[];
       for (var i = 0; i < batchSize; i++) {
-        final keys = NostrKeyGenerator.generateKeyPair();
+        final keys =
+            NostrKeyGenerator.generateKeyPair(callsignLength: length);
         generated++;
         if (keys.callsign.contains(pattern)) {
           matches.add({
@@ -86,6 +143,11 @@ class VanityCallsignPage extends StatefulWidget {
 class _VanityCallsignPageState extends State<VanityCallsignPage> {
   final TextEditingController _pattern = TextEditingController();
 
+  /// How many characters of the key the callsign will show. Fixed once the
+  /// profile is written — the callsign is also its directory name on disk —
+  /// so this screen is the only place it can be chosen.
+  int _length = kDefaultCallsignLength;
+
   bool _running = false;
   int _tried = 0;
   Duration _elapsed = Duration.zero;
@@ -106,7 +168,7 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
 
   Future<void> _start() async {
     final pattern = _pattern.text.trim().toUpperCase();
-    if (pattern.isEmpty || pattern.length > 4) return;
+    if (pattern.isEmpty || pattern.length > _length) return;
     // Belt and braces: the field already filters, but a pattern containing a
     // character no callsign can hold would search until the battery died.
     if (pattern.split('').any((c) => !kCallsignAlphabet.contains(c))) return;
@@ -152,8 +214,23 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
     });
   }
 
-  void _requestBatch(String pattern) =>
-      _sendPort?.send({'pattern': pattern, 'batchSize': 1000});
+  void _requestBatch(String pattern) => _sendPort
+      ?.send({'pattern': pattern, 'batchSize': 1000, 'length': _length});
+
+  /// Changing the length invalidates every match already found (they are the
+  /// wrong shape now) and any pattern longer than the new callsign.
+  void _setLength(int n) {
+    if (n == _length || _running) return;
+    setState(() {
+      _length = n;
+      _matches.clear();
+      _tried = 0;
+      _elapsed = Duration.zero;
+      if (_pattern.text.length > n) {
+        _pattern.text = _pattern.text.substring(0, n);
+      }
+    });
+  }
 
   void _stop() {
     _sendPort?.send('stop');
@@ -180,6 +257,68 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
   void _use(IwiProfile p) {
     _stop();
     Navigator.of(context).pop(p);
+  }
+
+  /// How long the callsign is, and what that choice costs.
+  ///
+  /// Shorter is genuinely weaker and the screen says so where the choice is
+  /// made, not in a footnote: a two-character callsign collides after about
+  /// forty users and can be forged in a thousand tries. The number is not
+  /// hidden behind "advanced".
+  Widget _lengthPicker(ThemeData theme, ColorScheme cs) {
+    final facts = CallsignLengthFacts.of(_length);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Callsign length',
+            style: theme.textTheme.labelLarge
+                ?.copyWith(color: cs.onSurfaceVariant)),
+        const SizedBox(height: 8),
+        SegmentedButton<int>(
+          segments: [
+            for (var i = kMinCallsignLength; i <= kMaxCallsignLength; i++)
+              ButtonSegment<int>(
+                value: i,
+                label: Text('X1${'•' * i}'),
+                enabled: !_running,
+              ),
+          ],
+          selected: {_length},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) => _setLength(s.first),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          '${CallsignLengthFacts.grouped(facts.space)} callsigns of this length exist.'
+          '${_length == kDefaultCallsignLength ? ' This is the default.' : ''}',
+          style:
+              theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              facts.isWeak ? Icons.warning_amber_rounded : Icons.info_outline,
+              size: 16,
+              color: facts.isWeak ? cs.error : cs.onSurfaceVariant,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'About ${CallsignLengthFacts.grouped(facts.collideAfter)} users before two people '
+                'share one, and someone can grind a key that wears yours '
+                '${facts.forgeEffort}. A callsign is a label, not proof of who '
+                'you are — messages are signed with your key either way.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                    color: facts.isWeak ? cs.error : cs.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   @override
@@ -227,6 +366,8 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                 style: theme.textTheme.bodySmall?.copyWith(color: cs.tertiary),
               ),
               const SizedBox(height: 20),
+              _lengthPicker(theme, cs),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   Expanded(
@@ -235,7 +376,7 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                       enabled: !_running,
                       autofocus: true,
                       textCapitalization: TextCapitalization.characters,
-                      maxLength: 4,
+                      maxLength: _length,
                       // Only characters a callsign can actually contain — a
                       // pattern with a B in it would never, ever match.
                       inputFormatters: [
@@ -247,10 +388,10 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                       ],
                       style: const TextStyle(
                           fontFamily: 'monospace', fontSize: 20),
-                      decoration: const InputDecoration(
-                        labelText: 'Pattern (1–4 characters)',
+                      decoration: InputDecoration(
+                        labelText: 'Pattern (1–$_length characters)',
                         hintText: 'e.g. CAT',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
                         counterText: '',
                       ),
                       onChanged: (_) => setState(() {}),

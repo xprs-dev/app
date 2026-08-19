@@ -53,7 +53,10 @@ class XprsIngest {
   static int refusedRns = 0;
   static int _lastRefuseLogMs = 0;
 
-  static String _base(String c) => c.trim().toUpperCase().split('-').first;
+  /// The person, with any device suffix removed: `X1ABCD-1` -> `X1ABCD`
+  /// (spec section 3.1). One definition, shared, so the person/device
+  /// split cannot drift between the archive, the ingest and the server.
+  static String _base(String c) => NostrCrypto.bareCallsign(c);
 
   /// The archive's name for how a packet arrived. A custody session and the
   /// overheard mesh both run over a BLE link — physically local, so they

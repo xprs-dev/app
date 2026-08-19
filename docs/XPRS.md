@@ -121,21 +121,30 @@ t:message f:X1QZ3N d:LISBOA ts:2026-08-08_14:26:40 m:net starts in ten minutes
 
 ## 3. Callsigns
 
-An XPRS callsign is `X1`, `X3` or `X5` followed by four characters derived from
-the holder's public key:
+An XPRS callsign is `X1`, `X3`, `X4` or `X5` followed by two to five characters
+derived from the holder's public key:
 
 ```
 X1 = person or operator
 X3 = station, relay or unattended equipment
+X4 = automated device, operated by a controller (section 25.7.1)
 X5 = group (section 26)
 ```
 
 A group holds a keypair like anything else, so it gets a callsign like anything
 else. What differs is only who holds the private half: a person for `X1`, a
-machine for `X3`, and whoever administers the group for `X5`.
+machine for `X3`, the controller that operates the device for `X4`, and
+whoever administers the group for `X5`.
 
-The four characters are taken from the bech32 encoding of the key, so the
-letters `b`, `i` and `o` and the digit `1` never appear in them.
+Those characters are taken from the bech32 encoding of the key, so the letters
+`b`, `i` and `o` and the digit `1` never appear in them.
+
+**How many characters is the holder's own choice, and four is the default.** A
+station that never chooses shows four, which is what every self-generated
+callsign in the field is. The choice is made once, when the key is generated,
+and is then fixed: the callsign is how the holder is addressed and stored, and
+a station that changed it would be a different station to everyone who had
+heard it.
 
 Callsigns are **always uppercase** and are **not a fixed length**. A callsign
 issued by a radio authority is equally valid on the wire, including a suffix:
@@ -146,11 +155,46 @@ t:message f:CT1ABC-9 d:G0XYZ/P ts:2026-08-08_14:26:40 m:gate is closed, use the 
 
 89 bytes. Nothing in this format assumes a callsign length.
 
-An XPRS callsign is a label, not an identity. Four characters is approximately
-one million values, and collisions can be produced deliberately. A receiver that
-needs to establish identity verifies a signature against the full public key
-(section 9). No authority issues, revokes or vouches for an `X1`, `X3` or `X5`
-callsign.
+An XPRS callsign is a label, not an identity, and a shorter one is a weaker
+label:
+
+| characters | callsigns | two holders collide after | forging one costs |
+|---|---|---|---|
+| 2 | 1,024 | ~40 holders | ~1,024 keypairs |
+| 3 | 32,768 | ~226 holders | ~32,768 keypairs |
+| 4 | 1,048,576 | ~1,283 holders | ~1,048,576 keypairs |
+| 5 | 33,554,432 | ~7,259 holders | ~33,554,432 keypairs |
+
+Collisions can be produced deliberately at any of these lengths -- at two
+characters, in about a thousand tries. A receiver that needs to establish
+identity verifies a signature against the full public key (section 9). No
+authority issues, revokes or vouches for an `X1`, `X3`, `X4` or `X5` callsign.
+
+### 3.0.1 A callsign is matched whole, never by prefix
+
+Because the characters are a prefix of the key's encoding, one key can derive
+four different callsigns: a holder whose key encodes to `qpzr8...` could show
+`X1QP`, `X1QPZ`, `X1QPZR` or `X1QPZR8`. They are **four different labels, and
+the holder wears exactly one of them.**
+
+The order of operations is fixed, and inverting it would break section 3.1:
+
+```
+strip the device suffix first, then compare the bare callsign as a whole string
+
+X1ABCD-1  and  X1ABCD-2   the same person on two devices
+X1AB      and  X1ABCD     different labels, even from one key
+```
+
+A station answers to its own bare callsign and to its own suffixed forms, and
+to no other truncation of its key. A receiver never resolves a callsign with a
+prefix match.
+
+Checking that a callsign *could* have come from a key -- recomputing the bech32
+encoding and comparing that many characters -- does not establish which length
+the holder chose, since all four truncations of one key pass such a test. What
+makes a callsign canonical is the identity announcement that declares it
+(section 10.6), which is signed.
 
 That last sentence has a consequence on the air: **a self-generated callsign may
 never be transmitted on licensed spectrum**, where identifying the station is a
@@ -161,8 +205,8 @@ with.
 ### 3.1 One person, several devices
 
 The same person runs a phone, a tablet, and a node in the shed. All three hold
-the same key, so all three derive the same four characters -- and on the air they
-are one callsign saying three different things.
+the same key and show it at the same length, so all three derive the same
+callsign -- and on the air they are one callsign saying three different things.
 
 APRS answered this with an SSID: `CT1ABC-9`. XPRS keeps that notation, because
 it is the one every operator already reads, and changes what sits underneath it.
@@ -1271,6 +1315,7 @@ q:identity   send your public key
 q:sign       sign a receipt confirming you read this
 q:pong       reply to this reachability test
 q:have       say whether you hold the file named by file:
+q:state      send your device state: state:, level:, target: (section 25.7)
 ```
 
 Several are separated by commas. An unknown word is ignored, so `q:pos,bat,co2`
@@ -1364,8 +1409,8 @@ attacker never held (section 13.7.1).
 ## 8. Reserved words
 
 `q:` and `s:` words assigned by this document: `ack`, `read`, `sign`, `pos`,
-`batt`, `identity`, `pong`, `have`, `no`. Command words assigned: `history`,
-`file`, `put`. Reactions assigned for `add:` and `remove:`:
+`batt`, `identity`, `pong`, `have`, `state`, `no`. Command words assigned:
+`history`, `file`, `put`, `set`, `interpret`. Reactions assigned for `add:` and `remove:`:
 `like`, `repost`. All other words are reserved. A word beginning with `z` is private, as a
 key beginning with `z` is.
 
@@ -1924,12 +1969,12 @@ rule in this document that is not ours to relax: it comes from national
 regulation, it applies to the person keying the transmitter, and no property of
 the format changes it.
 
-An `X1`, `X3` or `X5` callsign is derived by its holder from its own key
+An `X1`, `X3`, `X4` or `X5` callsign is derived by its holder from its own key
 (section 3). No authority issued it, no register lists it, and it can be
 generated by anyone in a moment. That is as it should be on licence-free spectrum, where a callsign is
 a label. On licensed spectrum it identifies nobody, which is the thing an
 identification requirement exists to prevent, so a packet whose `f:` is `X1`,
-`X3` or `X5` **must never be originated onto a licensed frequency**. A licensed operator
+`X3`, `X4` or `X5` **must never be originated onto a licensed frequency**. A licensed operator
 transmits under the callsign on their licence, which the format already accepts
 at any length and with a suffix.
 
@@ -2168,6 +2213,9 @@ t:observation f:X1BOA3 pos:38.6902,-9.4012 wave:1.8m seatemp:18.4C type:boat ts:
 | `lifetime` | `qty` | how long the station has run in total, across every restart | duration |
 | `odometer` | `qty` | distance travelled over the station's service life | distance |
 | `type` | `enum` | what the station is or is riding on, from the set in section 14.2 | |
+| `state` | `enum` | a device's principal condition, from the closed list in section 25.7 | |
+| `level` | `qty` | how far, when a condition is partial (section 25.7) | proportion |
+| `target` | `qty` | the setpoint a device holds a reading at (section 25.7) | |
 
 Radiation readings -- ionizing and electromagnetic -- are their own family,
 section 10.5.1.
@@ -4485,6 +4533,7 @@ t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,mailbox ts:2026-08-08_14:26:4
 | `nostr` | runs a NOSTR relay |
 | `files` | hosts content-addressed files: answers `q:have` (section 7.1) and `cmd:file`, and accepts `cmd:put` deposits within its budgets (section 25.2) |
 | `history` | keeps a spool of what it has heard, and re-airs it on `cmd:history` |
+| `devices` | operates automated devices, each an `X4` station of its own (section 25.7.1) |
 | `index` | an indexer (section 36): archives its depositors' publications, answers queries, and publishes its directory (section 36.9) |
 | `time` | has a clock worth trusting, usually from GNSS |
 | `weather` | publishes observations |
@@ -4962,6 +5011,157 @@ because it is the only thing standing between a stranger and the interpreter.
 what it produces onto the same fixed set of commands a `cmd:` would have named,
 and apply the same permission test. An interpreter that can emit any action at
 all has made the allow-list decorative.
+
+### 25.7 Devices: a shared vocabulary for acting on things
+
+A command word is agreed between two stations (section 25), and between two
+stations that is enough: `cmd:door-open` works because both ends chose it.
+It stops working the moment the devices belong to strangers -- a lamp cannot
+be operated by a visiting phone that has never heard the lamp-owner's word
+for "on". The home-automation industry spent a decade arriving at this
+lesson, and its answer (Matter is the current name for it) is not a wire
+format worth importing but a vocabulary worth compressing: devices
+interoperate when the words for acting on them are few, fixed and shared.
+This section is that vocabulary in XPRS grammar.
+
+**`cmd:set` asks a device to make a state true**, and carries its parameters
+in the keys of this document, never in `arg:` (the rule of section 25.2):
+
+```
+132  t:command f:X1A67X d:X1LAMP ts:2026-08-19_18:30:00 cmd:set state:on sig:<60 characters>
+142  t:command f:X1A67X d:X1LAMP ts:2026-08-19_18:30:00 cmd:set state:on level:40% sig:<60 characters>
+136  t:command f:X1A67X d:X1DOOR ts:2026-08-19_18:30:00 cmd:set state:locked sig:<60 characters>
+134  t:command f:X1A67X d:X1HEAT ts:2026-08-19_18:30:00 cmd:set target:21C sig:<60 characters>
+```
+
+Three keys carry the whole model:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `state` | `enum` | the device's principal condition, from the closed list below |
+| `level` | `qty`, proportion | how far, when a condition is partial: a dimmer, a valve, a volume |
+| `target` | `qty` | the setpoint a device holds a reading at, in the reading's own unit |
+
+`state:` takes a word from a **closed list this document owns**:
+
+| Word | Device class | May be commanded |
+|---|---|---|
+| `on`, `off` | switch, light, pump, relay | yes |
+| `open`, `closed` | contact, valve, gate, cover | yes |
+| `locked`, `unlocked` | lock | yes |
+| `motion`, `clear` | occupancy sensor | no, report only |
+| `pressed` | button, doorbell | no, report only |
+
+Closed, exactly because of who must agree on it: two strangers' devices, made
+in different years by people who never met. An operator inventing a word here
+would be back at `cmd:door-open`. A device asked for a state it does not have
+-- `state:disco`, or `state:pressed`, which is a thing that happens and not a
+thing that is made true -- answers `code:400`. New words need this document to
+change, which is the cost of the only list everybody holds.
+
+`level:` accompanies a state rather than implying one: `cmd:set state:on
+level:40%` says both, and a report says both back. `target:` is the setpoint
+counterpart of a measurement key -- `temp:` (section 10.3) reports what IS,
+`target:` what the device is asked to hold:
+
+```
+76   t:observation f:X1HEAT temp:19.5C target:21C batt:64% ts:2026-08-19_18:30:00
+```
+
+**The result states what IS, not what was asked.** The keys of the command
+come back carrying the condition the device actually reached, and the
+`code:` table of section 25.1 needs nothing added:
+
+```
+151  t:result f:X1LAMP d:X1A67X ts:2026-08-19_18:30:05 r:1cc8af code:200 state:on level:40% sig:<60 characters>
+```
+
+**Reading a device is the existing request**, with one new word (section 7):
+
+```
+58   t:request f:X1A67X d:X1DOOR ts:2026-08-19_18:30:00 q:state
+84   t:observation f:X1DOOR d:X1A67X state:locked batt:82% ts:2026-08-19_18:30:00 s:state
+```
+
+**And a sensor that has something to say just observes**, unsolicited, the
+way every observation in section 10 already travels -- a doorbell press is
+`state:pressed` with the owner in `d:`:
+
+```
+44   t:observation f:X1DOOR state:closed batt:82%
+68   t:observation f:X1BELL d:X1A67X state:pressed ts:2026-08-19_18:30:00
+```
+
+**Section 25.4 is not optional here, and a lock is the reason it is written
+the way it is.** The network is open; anyone in radio range can air a packet.
+So: a `cmd:set` that is unsigned or fails verification is discarded, never
+answered. A verified signer must still be on the allow-list the device's
+owner holds, or the answer is `code:403`:
+
+```
+138  t:command f:X1RD89 d:X1DOOR ts:2026-08-19_18:30:00 cmd:set state:unlocked sig:<60 characters>
+156  t:result f:X1DOOR d:X1RD89 ts:2026-08-19_18:30:05 r:498c72 code:403 sig:<60 characters> m:not on the allow list
+```
+
+The 300-second window and the derived-identifier idempotency of section 25.4
+are what keep a recorded `state:unlocked` from opening the door tomorrow,
+and carriers drop commands rather than park them (section 25.4), because
+later is what an act must never be. A report is different: `state:pressed`
+from an unsigned doorbell is a claim like any observation, weighed like one
+(section 10.5), and acted on by a person rather than a mechanism.
+
+### 25.7.1 Controllers, and the X4 callsign
+
+A pump has no radio. What it has is a controller -- an ESP32 on the wall, a
+node in the shed -- that switches it, reads it, and speaks XPRS on its
+behalf. The controller pattern is **one radio operating several devices**,
+and the format gives each operated device a callsign of its own: `X4`
+(section 3), derived from a keypair generated for that device, **whose
+private half the controller holds**. On the air the controller is invisible:
+a command is addressed `d:` to the device, and the answer comes back `f:`
+the device, signed with the device's key -- the controller signing as its
+proxy, which it can do for the same reason it can switch the pump.
+
+The tempting shortcut is suffixes of the controller's own callsign --
+`X3RLY7-1`, `X3RLY7-2` -- and it is wrong for the reason section 3.1 makes
+plain: a suffix shares the callsign's key. Every device would sign with the
+controller's key, so an allow-list could not name one device without naming
+them all, and no device could ever be revoked, rotated or handed to a new
+owner on its own. A keypair per device is what makes each one separately
+addressable, separately allow-listed, and separately disownable: selling
+the pump is handing over its private key, and a prudent buyer rotates it --
+a new key, and with it a new callsign, because a key that changed hands is
+not the key it was.
+
+A controller says it operates devices, and each device then speaks for
+itself -- an identity binding its callsign to its key, and observations as
+any station airs them:
+
+```
+126  t:service f:X3RLY7 serve:relay,devices ts:2026-08-19_18:40:00 sig:<60 characters>
+186  t:identity f:X4PL3M ts:2026-08-19_18:40:00 k:npub1pl3m7fu9j9uenmyva7ha6x9eqwymytv2847ccv4vxdmn45y50q7h7k5f nick:yard-pump sig:<60 characters>
+66   t:observation f:X4PL3M state:off volt:23.8V ts:2026-08-19_18:40:00
+```
+
+Commanding it is section 25.7 unchanged, because an `X4` station is a
+station:
+
+```
+132  t:command f:X1A67X d:X4PL3M ts:2026-08-19_18:41:00 cmd:set state:on sig:<60 characters>
+141  t:result f:X4PL3M d:X1A67X ts:2026-08-19_18:41:02 r:44df54 code:200 state:on sig:<60 characters>
+```
+
+The allow-list of section 25.4 is kept **per device**, on the controller,
+configured by the device's owner: the neighbour trusted to run the pump is
+not thereby trusted to unlock the door, even when one ESP32 operates both.
+Everything else follows from what `X4` already is. The prefix tells a
+receiver the station is a machine acting under someone's configuration --
+worth knowing before trusting its claims (section 10.5). It is
+self-generated, so it never originates on licensed spectrum (section
+9.4.1). And a controller that dies takes its devices off the air exactly as
+any station goes silent, which is the honest signal: a lamp whose
+controller is gone IS unreachable, and nothing in the format pretends
+otherwise.
 
 ---
 
@@ -5947,6 +6147,9 @@ packet **250 bytes**, on every transport.
 | `lifetime` | `qty` | how long the station has run in total, across every restart | duration |
 | `odometer` | `qty` | distance travelled over the station's service life | distance |
 | `type` | `enum` | what the station is or is riding on, from the set in section 14.2 | |
+| `state` | `enum` | a device's principal condition, from the closed list in section 25.7 | |
+| `level` | `qty` | how far, when a condition is partial (section 25.7) | proportion |
+| `target` | `qty` | the setpoint a device holds a reading at (section 25.7) | |
 
 ### Radiation (section 10.5.1)
 
@@ -6013,7 +6216,8 @@ dot, never a trailing dot. Trailing zeros are significant.
 
 `q:` asks and `s:` answers with the same words, several separated by commas.
 
-Assigned: `ack`, `read`, `sign`, `pos`, `batt`, `identity`, `pong`, `no`.
+Assigned: `ack`, `read`, `sign`, `pos`, `batt`, `identity`, `pong`, `have`,
+`state`, `no`.
 
 `s:no` means the request will not be served at all. A partial answer names only
 what it satisfied.
@@ -6145,9 +6349,17 @@ names the reassembled packet rather than any part. Must be signed, expires after
 otherwise, never carried, never shown as a message. Authentication is not
 authorisation -- the allow-list is the bot's.
 
+`cmd:set` makes a device state true (section 25.7): `state:` from the closed
+list `on off open closed locked unlocked` (`motion clear pressed` are report
+only), `level:` for the partial degree, `target:` for a setpoint. The result
+echoes what IS. Unsigned is discarded; signed and unknown is `403`.
+
 `t:service` advertises what a station does: `relay` `mailbox` `internet` `aprs`
-`nostr` `files` `time` `weather` `wifi` `other`. Physical goods are `t:offer`,
-not this. A claim about capability, never evidence of good faith.
+`nostr` `files` `history` `devices` `index` `time` `weather` `wifi` `other`.
+Physical goods are `t:offer`, not this. A claim about capability, never
+evidence of good faith. `devices` means the station is a controller: each
+automated device it operates is an `X4` station with its own keypair, held
+and signed for by the controller (section 25.7.1).
 
 `t:mailbox` names the stations that hold mail for the sender, `hold:` in order
 of preference. Several coexist, each optionally bounded by `since:` and `until:`;
@@ -6165,8 +6377,9 @@ private.
 ```
 t:command f:X1BOA3 d:X3RLY7 ts:... cmd:history since:... sig:...
 t:command f:X1BOA3 d:X3RLY7 ts:... cmd:history since:... until:... only:X5A3F2 sig:...
-t:command f:X1QZ3N d:X3RLY7 ts:... cmd:file file:nYxKz...M1w.jpg [off:64kB] sig:...
-t:command f:X1QZ3N d:X3RLY7 ts:... cmd:put file:nYxKz...M1w.jpg size:2MB [until:...] sig:...
+t:command f:X1QZ3N d:X3RLY7 ts:... cmd:file file:nYxKz...M1w.jpg sig:...
+t:command f:X1QZ3N d:X3RLY7 ts:... cmd:file file:nYxKz...M1w.jpg off:64kB sig:...
+t:command f:X1QZ3N d:X3RLY7 ts:... cmd:put file:nYxKz...M1w.jpg size:2MB until:... sig:...
 ```
 
 Standard commands carry parameters in named keys, never `arg:`. The station
@@ -6749,7 +6962,7 @@ No indexer holds the whole network, and any indexer can point across it.
 
 | Element | State |
 |---|---|
-| **On the air** | **implemented** on the Flutter side: the discovery beacon is an XPRS `t:observation` on its own BLE5 subtype `0x58` (`docs/ble5.md`), carrying `peers:`, `hears:` and `mail:`; `MeshCourier` emits XPRS for every carried message, and custody reads it. The **chat wapp emits XPRS too** since 0.4.38 -- 1:1, group, broadcast and position (`wapps/chat/xprs.c`, `docs/aprs-xt.md` section 2.2) -- keeping the compact frame only for its own control frames (`?MAIL`, `?IGATE`, `?PING`) and for a body over 250 bytes. Every receiver still reads both, so an un-ported peer keeps working. The ESP32 T-Dongle (`esp32/rns_ble5`) speaks XPRS too via `esp32/components/xprs_xprs`, a C mirror of `lib/services/xprs/` replaying the same 205-example corpus: it reads both subtypes, parks `t:message` mail by derived identifier, relays with `via:`, answers `t:ping` with `t:pong rssi:` (rate-limited per section 31.2), refuses `scope:local` at custody admission, dates its packets `epoch:` (section 10.7, NVS boot counter) and transmits unsigned |
+| **On the air** | **implemented** on the Flutter side: the discovery beacon is an XPRS `t:observation` on its own BLE5 subtype `0x58` (`docs/ble5.md`), carrying `peers:`, `hears:` and `mail:`; `MeshCourier` emits XPRS for every carried message, and custody reads it. The **chat wapp emits XPRS too** since 0.4.38 -- 1:1, group, broadcast and position (`wapps/chat/xprs.c`, `docs/aprs-xt.md` section 2.2) -- keeping the compact frame only for its own control frames (`?MAIL`, `?IGATE`, `?PING`) and for a body over 250 bytes. Every receiver still reads both, so an un-ported peer keeps working. The ESP32 T-Dongle (`esp32/rns_ble5`) speaks XPRS too via `esp32/components/geogram_xprs`, a C mirror of `lib/services/xprs/` replaying the same 205-example corpus: it reads both subtypes, parks `t:message` mail by derived identifier, relays with `via:`, answers `t:ping` with `t:pong rssi:` (rate-limited per section 31.2), refuses `scope:local` at custody admission, dates its packets `epoch:` (section 10.7, NVS boot counter) and transmits unsigned |
 | **The packet format itself** | **implemented**; `lib/services/xprs/` parses, encodes, derives identifiers and signs. Every example packet in this document is a test fixture: `test/xprs_packet_test.dart` round-trips all 201 byte-exact, checks each stated byte count, and cross-checks every identifier against an independent Python implementation |
 | Section 5 identifiers | **implemented** |
 | Section 9.1 signatures, and surviving a relay | **implemented**; `test/xprs_sig_test.dart` signs, relays three hops and re-verifies |
@@ -6774,7 +6987,7 @@ No indexer holds the whole network, and any indexer can point across it.
 | Section 13.7.1, receipts without asking | **specified, not yet on the air.** The rule and its exclusions are settled and the two example packets are test fixtures; no station sends an unasked `s:ack` yet. What made it necessary is fixed already on the Reticulum side: an unacknowledged single-packet delivery no longer reports itself as delivered, and the sender retries at 20s/60s/5min before leaving the copy held (`lxmf_router.dart`) |
 | Long messages in parts | implemented |
 | Encryption and the sealed-body band rule | implemented |
-| Section 9.4.1, no self-generated callsign onto licensed spectrum | not implemented, and violated today: the ESP32 iGate computes an APRS-IS passcode for an `X3` callsign and states in `esp32/components/xprs_aprsis/aprsis.h` that no licence is needed for one |
+| Section 9.4.1, no self-generated callsign onto licensed spectrum | not implemented, and violated today: the ESP32 iGate computes an APRS-IS passcode for an `X3` callsign and states in `esp32/components/geogram_aprsis/aprsis.h` that no licence is needed for one |
 | Section 9.4.2, an issued callsign bound to a key by `t:identity` | not implemented; identity announcements are not built, and no user interface offers to enter a licensed callsign |
 | File references by content hash | **implemented**, in the base64url form this document now specifies (`MediaRef`); the older 64-hex form is still read |
 | Identity announcement | implemented |

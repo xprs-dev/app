@@ -18,6 +18,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
 import '../mesh/mesh_service.dart';
 import 'xprs_history_server.dart';
@@ -51,7 +52,7 @@ class XprsTcp {
       if (p == null) return;
       final selfCall = MeshService.instance.tableCallsign.trim();
       if (selfCall.isEmpty) return;
-      final selfBase = selfCall.toUpperCase().split('-').first;
+      final selfBase = NostrCrypto.bareCallsign(selfCall);
 
       if (local) {
         // A LAN peer is a local bearer like any radio: sighting + spool.
@@ -69,7 +70,7 @@ class XprsTcp {
 
       // A reachability test is answered on the socket that asked (section 7's
       // vocabulary; no rssi: — a TCP byte has no signal strength to report).
-      final to = (p['d'] ?? '').trim().toUpperCase().split('-').first;
+      final to = NostrCrypto.bareCallsign(p['d'] ?? '');
       if (p.type == 'ping' && (to.isEmpty || to == selfBase)) {
         final from = (p['f'] ?? '').trim().toUpperCase();
         final now = DateTime.now().toUtc();

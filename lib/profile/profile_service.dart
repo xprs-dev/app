@@ -128,8 +128,16 @@ class ProfileService {
   /// Generate a fresh key pair and return an unpersisted preview.
   /// The welcome page iterates on these without writing anything to
   /// disk until the user hits Continue.
-  IwiProfile generatePreview({String nickname = ''}) {
-    final keys = NostrKeyGenerator.generateKeyPair();
+  ///
+  /// [callsignLength] is how many characters of the key the callsign shows,
+  /// 2 to 5 (spec section 3). Four is the default and what every callsign in
+  /// the field is today; the length is fixed once the profile is written,
+  /// because the callsign is also the profile's directory name on disk.
+  IwiProfile generatePreview(
+      {String nickname = '',
+      int callsignLength = reticulum.NostrCrypto.kDefaultCallsignLength}) {
+    final keys =
+        NostrKeyGenerator.generateKeyPair(callsignLength: callsignLength);
     return IwiProfile(
       id: keys.callsign,
       nickname: nickname,
@@ -142,7 +150,12 @@ class ProfileService {
 
   /// Build an IwiProfile from an imported nsec. Throws
   /// [ArgumentError] if the nsec is malformed. Does not persist.
-  IwiProfile buildFromNsec(String nsec, {String nickname = ''}) {
+  ///
+  /// [callsignLength] defaults to four, so an nsec imported from an older
+  /// install rebuilds exactly the callsign it had before.
+  IwiProfile buildFromNsec(String nsec,
+      {String nickname = '',
+      int callsignLength = reticulum.NostrCrypto.kDefaultCallsignLength}) {
     if (!NostrKeyGenerator.isValidNsec(nsec)) {
       throw ArgumentError('Invalid nsec — must be a bech32 nsec1… string');
     }
@@ -150,7 +163,8 @@ class ProfileService {
     if (npub == null) {
       throw ArgumentError('Could not derive npub from nsec');
     }
-    final callsign = NostrKeyGenerator.deriveCallsign(npub);
+    final callsign =
+        NostrKeyGenerator.deriveCallsign(npub, length: callsignLength);
     return IwiProfile(
       id: callsign,
       nickname: nickname,

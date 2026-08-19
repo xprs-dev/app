@@ -29,6 +29,7 @@ import 'dart:typed_data';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../../profile/profile_db.dart';
+import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
 import 'xprs_id.dart';
 import 'xprs_packet.dart';
@@ -153,7 +154,10 @@ class XprsArchive {
     _db = null;
   }
 
-  static String _base(String c) => c.trim().toUpperCase().split('-').first;
+  /// The person, with any device suffix removed: `X1ABCD-1` -> `X1ABCD`
+  /// (spec section 3.1). One definition, shared, so the person/device
+  /// split cannot drift between the archive, the ingest and the server.
+  static String _base(String c) => NostrCrypto.bareCallsign(c);
 
   /// Record a heard packet. O(1): RAM append, nothing else — this sits on the
   /// radio receive path. [own] marks our own publication at transmit time.

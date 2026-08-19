@@ -24,6 +24,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../../connections/bluetooth/ble5_bus.dart';
+import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
 import 'xprs_archive.dart';
@@ -255,7 +256,10 @@ class XprsHistoryServer {
         .advertiseFrame(key, Ble5Subtype.xprs, bytes, ttl: ttl);
   }
 
-  static String _base(String c) => c.trim().toUpperCase().split('-').first;
+  /// The person, with any device suffix removed: `X1ABCD-1` -> `X1ABCD`
+  /// (spec section 3.1). One definition, shared, so the person/device
+  /// split cannot drift between the archive, the ingest and the server.
+  static String _base(String c) => NostrCrypto.bareCallsign(c);
 
   /// Tests only: forget budgets, dedup and any running chain.
   void reset() {
