@@ -277,8 +277,12 @@ class XprsPublisher {
   /// carries no sig, apply the scope rules, air on every active bearer and
   /// spool our own copy. The caller owns the content.
   Future<Map<String, String>> publishWire(String wireIn) async {
+    LogService.instance.add('XPRS: publishWire <- $wireIn');
     var p = XprsPacket.parse(wireIn.trim());
-    if (p == null || !p.fits) return const {};
+    if (p == null || !p.fits) {
+      LogService.instance.add('XPRS: publishWire rejected (parse/fit)');
+      return const {};
+    }
     final call =
         (ProfileService.instance.activeProfile?.callsign ?? '').trim();
     final from = (p['f'] ?? '').toUpperCase();

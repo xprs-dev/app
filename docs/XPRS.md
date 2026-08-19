@@ -5,7 +5,8 @@ Protocol specification. Author: Max Brito.
 Copyright (c) 2026 Max Brito. Licensed under Creative Commons Attribution
 4.0 International (CC BY 4.0) -- share and adapt it for any purpose,
 including commercially, giving credit to Max Brito, linking the licence and
-stating what you changed. Full text in [LICENSE](LICENSE), or at
+stating what you changed. Full text in [LICENSE](LICENSE), notice in
+[NOTICE](NOTICE), or at
 <https://creativecommons.org/licenses/by/4.0/>. Implementations are separate
 works under their own licences.
 
@@ -16,6 +17,50 @@ on amateur bands it operates under amateur rules -- plain text, a
 government-issued callsign, no ciphertext (sections 9.4 and 33).
 
 Status: DRAFT 10. Section 36 states which parts are implemented.
+
+---
+
+## Contents
+
+Every section is linkable: `XPRS.md#3-callsigns` and so on.
+
+1. [Purpose](#1-purpose)
+2. [Design rules](#2-design-rules)
+3. [Callsigns](#3-callsigns)
+4. [Packet](#4-packet)
+5. [Message identifiers](#5-message-identifiers)
+6. [Messages](#6-messages)
+7. [Asking and answering](#7-asking-and-answering)
+8. [Reserved words](#8-reserved-words)
+9. [Signing and privacy](#9-signing-and-privacy)
+10. [Observations](#10-observations)
+11. [Examples](#11-examples)
+12. [Worked exchanges](#12-worked-exchanges)
+13. [Relaying and carried messages](#13-relaying-and-carried-messages)
+14. [Tracks](#14-tracks)
+15. [Calls for help](#15-calls-for-help)
+16. [Warnings](#16-warnings)
+17. [Notices](#17-notices)
+18. [Proving a callsign](#18-proving-a-callsign)
+19. [Blog posts](#19-blog-posts)
+20. [Passages](#20-passages)
+21. [Events](#21-events)
+22. [Offers and needs](#22-offers-and-needs)
+23. [Channels](#23-channels)
+24. [Services](#24-services)
+25. [Commands](#25-commands)
+26. [Closed groups](#26-closed-groups)
+27. [Status](#27-status)
+28. [Polls](#28-polls)
+29. [Reporting](#29-reporting)
+30. [Places](#30-places)
+31. [Airtime](#31-airtime)
+32. [Adding a field, worked](#32-adding-a-field-worked)
+33. [Operating alongside APRS](#33-operating-alongside-aprs)
+34. [Reserved](#34-reserved)
+35. [Cheat sheet](#35-cheat-sheet)
+36. [Publishing, and the indexers you choose](#36-publishing-and-the-indexers-you-choose)
+37. [Implementation status](#37-implementation-status)
 
 ---
 

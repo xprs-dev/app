@@ -3281,7 +3281,16 @@ class _WappPageState extends State<WappPage>
     // wapp even get my send?" was unanswerable without it.
     LogService.instance.add('wapp $_wappName: cmd $cmd');
     _engine.sendMessage(jsonEncode({'command': cmd, 'fields': scalarFields}));
-    _engine.handleEvent();
+    // module_handle_event consumes ONE queued message per call, and other
+    // messages (broker events, earlier commands) may sit ahead of this one.
+    // A single pump then processed a stale message and left the user's click
+    // in the queue — the wapp "ignored" the button. Pump until the inbox is
+    // empty, with a cap so a wapp that enqueues from its own handler can't
+    // wedge the UI thread.
+    var pumps = 0;
+    do {
+      _engine.handleEvent();
+    } while (_engine.inboxLength > 0 && ++pumps < 32);
     _drainOutbox();
   }
 
