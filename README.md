@@ -24,12 +24,12 @@ The latest stable build:
 
 | Platform | Download |
 |----------|----------|
-| Linux (x64) | [XPRS for Linux (.tar.gz)](https://github.com/xprss/aurora/releases/latest/download/aurora-linux-x64.tar.gz) |
-| Windows (x64) | [XPRS for Windows (installer)](https://github.com/xprss/aurora/releases/latest/download/aurora-windows-x64-setup.exe) |
-| Android | [XPRS for Android (.apk)](https://github.com/xprss/aurora/releases/latest/download/aurora.apk) |
+| Linux (x64) | [XPRS for Linux (.tar.gz)](https://github.com/xprs-dev/xprs-flutter/releases/latest/download/aurora-linux-x64.tar.gz) |
+| Windows (x64) | [XPRS for Windows (installer)](https://github.com/xprs-dev/xprs-flutter/releases/latest/download/aurora-windows-x64-setup.exe) |
+| Android | [XPRS for Android (.apk)](https://github.com/xprs-dev/xprs-flutter/releases/latest/download/aurora.apk) |
 
 Every build, betas included, is on the
-[releases page](https://github.com/xprss/aurora/releases). macOS builds from
+[releases page](https://github.com/xprs-dev/xprs-flutter/releases). macOS builds from
 source (see [Build & run](#build--run)).
 
 ## What it does
@@ -254,7 +254,7 @@ build is queued: `flutter run` holds the build lock for as long as the app is
 open, so an APK build behind it waits for you to quit.
 
 The wapps that ship with the app live in `assets/wapps/`. To rebuild one from
-source, see the [`xprss/wapps`](https://github.com/xprss/wapps) repo.
+source, see the [`xprs-dev/wapps`](https://github.com/xprs-dev/wapps) repo.
 
 ## Development
 
@@ -268,7 +268,7 @@ source, see the [`xprss/wapps`](https://github.com/xprss/wapps) repo.
 > but cannot express, or a host service that cuts across everything. Keep the host
 > generic: app-specific rules (Chat conventions, social logic, torrent formats) go
 > in the wapp's C and GeoUI, never in `lib/`. Most changes belong in
-> [`xprss/wapps`](https://github.com/xprss/wapps), not here.
+> [`xprs-dev/wapps`](https://github.com/xprs-dev/wapps), not here.
 
 These documents set out how code is written and accepted here. Read the one that
 covers your area before you touch it. They are the rules, not just notes.

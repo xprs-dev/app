@@ -20,7 +20,7 @@ code.
 
 **Hard constraints.** `lib/` stays generic — no hardcoded wapp names in host
 paths; wapp-specific behaviour is declared in manifests and resolved
-generically. All wapp code lives in the `xprss/wapps` repo; wapp-side work is
+generically. All wapp code lives in the `xprs-dev/wapps` repo; wapp-side work is
 a called-out follow-up. Real implementations, no stubs.
 
 ## Decisions taken
@@ -221,7 +221,7 @@ Host-only, each shippable alone:
 6. `WappUnreadService` namespacing + `provides.intents` + `view.open` plumbing
    (a harmless no-op until wapps opt in)
 
-**Follow-ups in `xprss/wapps`** (none block host shipping): chat wapp declares
+**Follow-ups in `xprs-dev/wapps`** (none block host shipping): chat wapp declares
 `provides.intents: ["mail","chat"]` (until then the mail/chat icons
 resolve nothing and are hidden); handles `view.open` (until then they open the
 wapp at its default view); emits per-intent unread (until then the chat badge is

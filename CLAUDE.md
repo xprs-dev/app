@@ -28,7 +28,7 @@ paths below assume they are checked out as siblings of this directory:
 | | |
 |---|---|
 | `../reticulum-dart` | the library: Reticulum, NOSTR, LXMF, DHT, files, and `XprsCrypto`. A **path dependency** in `pubspec.yaml`, so it must be a sibling or the build fails |
-| `../wapps` | wapp source (`xprss/wapps`); `assets/wapps/*.wapp` here are built copies |
+| `../wapps` | wapp source (`xprs-dev/wapps`); `assets/wapps/*.wapp` here are built copies |
 | ESP32 firmware | `xprs-dev/xprs-esp32`, formerly `esp32/` in this repo. `docs/ble5.md` and `docs/lan.md` describe transports with an end in each, so they are kept here AND there and must not drift |
 
 `docs/XPRS.md` is a copy of the protocol specification (`xprs-dev/spec`). Keep
@@ -77,7 +77,7 @@ sessions may be installing to the same phone.
 
 ## Wapps
 
-Wapp source lives in `../wapps` (the `xprss/wapps` repo), not here;
+Wapp source lives in `../wapps` (the `xprs-dev/wapps` repo), not here;
 `assets/wapps/*.wapp` are built copies. Ship chain:
 
 ```sh

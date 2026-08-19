@@ -12,7 +12,7 @@ users only ever talk to xprs.dev.
 ## 1. The big picture
 
 ```
-  xprss/aurora (source + CI)            xprss/wapps (wapp sources + binaries)
+  xprs-dev/xprs-flutter (source + CI)            xprs-dev/wapps (wapp sources + binaries)
         │                                          │
         │ release.yml on tag vX.Y.Z                │ build-archive.sh commits binaries/
         │  • build android/linux/windows           │
@@ -20,14 +20,14 @@ users only ever talk to xprs.dev.
         │    RELEASE ASSETS (not committed —        │
         │    keeps the source repo lean)           │
         ▼                                          ▼
-  xprss/aurora Releases (assets)      xprss/wapps/binaries/
+  xprs-dev/xprs-flutter Releases (assets)      xprs-dev/wapps/binaries/
         │                                          │
         └──────────────┬───────────────────────────┘
-                       │  xprss/xprs-html  ·  sync.yml (cron + manual)
+                       │  xprs-dev/xprs-dev.github.io  ·  sync.yml (cron + manual)
                        │   • download aurora release assets -> build feed JSON
                        │   • copy wapps binaries/ -> wapps/
                        ▼   (commits to itself with the default GITHUB_TOKEN)
-              xprss/xprs-html  ──GitHub Pages──►  https://xprs.dev
+              xprs-dev/xprs-dev.github.io  ──GitHub Pages──►  https://xprs.dev
                        │                                   /updates  (app updates)
                        │                                   /wapps    (wapp store)
                        ▼
@@ -43,9 +43,9 @@ Three repos, one website:
 
 | Repo | Role |
 |------|------|
-| `xprss/aurora` | The Flutter app + release CI. On a tag it builds the 3 platforms and commits the **update feed** into its own `updates/`. |
-| `xprss/wapps` | Wapp C sources + built `.wapp` packages in `binaries/` (with `index.json`). |
-| `xprss/xprs-html` | The xprs.dev website (GitHub Pages, `CNAME = xprs.dev`). Its `sync.yml` **copies** the published files from the other two repos into itself. |
+| `xprs-dev/xprs-flutter` | The Flutter app + release CI. On a tag it builds the 3 platforms and commits the **update feed** into its own `updates/`. |
+| `xprs-dev/wapps` | Wapp C sources + built `.wapp` packages in `binaries/` (with `index.json`). |
+| `xprs-dev/xprs-dev.github.io` | The xprs.dev website (GitHub Pages, `CNAME = xprs.dev`). Its `sync.yml` **copies** the published files from the other two repos into itself. |
 
 **No deploy keys / secrets anywhere.** Each workflow uses only the automatic
 `GITHUB_TOKEN`: write to its own repo, read from public repos.
@@ -142,7 +142,7 @@ tag is what triggers the pipeline.
      to a **GitHub Release** on aurora as assets (`softprops/action-gh-release`,
      default `GITHUB_TOKEN`, `prerelease` when the tag has a `-`). Nothing is
      committed to git — the source repo stays lean.
-2. **`xprss/xprs-html` `.github/workflows/sync.yml`** (cron every 3h, or
+2. **`xprs-dev/xprs-dev.github.io` `.github/workflows/sync.yml`** (cron every 3h, or
    trigger manually):
    - resolves the latest stable + latest (beta) release tags from aurora;
    - if the feed is already current, stops (no redundant downloads);
@@ -156,7 +156,7 @@ tag is what triggers the pipeline.
 
 To skip the wait for the cron, trigger the mirror immediately:
 ```sh
-gh workflow run sync.yml -R xprss/xprs-html
+gh workflow run sync.yml -R xprs-dev/xprs-dev.github.io
 ```
 
 ---
@@ -185,7 +185,7 @@ The tool imports only `dart:` libraries, so it runs standalone (no `pub get`):
 
 The wapp catalog has its own mirror helper:
 ```sh
-# in xprss/wapps, after ./build-archive.sh
+# in xprs-dev/wapps, after ./build-archive.sh
 ./publish-to-website.sh /path/to/xprs-html   # rsync binaries/ -> wapps/
 ```
 
@@ -193,7 +193,7 @@ The wapp catalog has its own mirror helper:
 
 ## 6. The website repo (xprs.dev)
 
-`xprss/xprs-html`, GitHub Pages from `main` root, `CNAME = xprs.dev`.
+`xprs-dev/xprs-dev.github.io`, GitHub Pages from `main` root, `CNAME = xprs.dev`.
 
 - **`.nojekyll` at the root is REQUIRED.** Without it, GitHub Pages runs Jekyll
   and drops the binary `.wapp` packages and JSON under `/wapps` and `/updates`

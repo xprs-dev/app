@@ -14,7 +14,7 @@ reference, [`chat-rooms.md`](./chat-rooms.md); the NOSTR transport and sync
 reliability rules live in [`NOSTR.md`](./NOSTR.md). Read those for depth; read this
 for the whole picture and the state of play.
 
-- **Source of truth for code:** `xprss/wapps` repo, folder `chat/` (`main.c`,
+- **Source of truth for code:** `xprs-dev/wapps` repo, folder `chat/` (`main.c`,
   `room.c`/`room.h`, `chat.c`, `ble.c`, `screens/home.ui.json`, `manifest.json`).
   Aurora only carries a bundled copy at `assets/wapps/chat.wapp`.
 - **Current version:** `0.2.117`.

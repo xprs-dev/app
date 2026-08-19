@@ -1,6 +1,6 @@
 // =============================================================================
 // publish_release.dart — publish a built Aurora release to the xprs.dev
-// update feed (the xprss/xprs-html GitHub Pages repo).
+// update feed (the xprs-dev/xprs-dev.github.io GitHub Pages repo).
 //
 // The in-app updater (lib/services/update_service.dart) reads a self-hosted
 // feed at https://xprs.dev/updates with two channel files:
@@ -12,7 +12,7 @@
 //
 // Usage:
 //   dart run tool/publish_release.dart \
-//       --site <path-to-xprs-html-repo> \
+//       --site <path-to-website-repo> \
 //       --version <X.Y.Z[-beta.N]> \
 //       [--notes <notes-file>] [--name "<title>"] [--date <ISO8601>] \
 //       [--keep <N>] \
@@ -22,8 +22,8 @@
 // to beta.json only; a stable version publishes to BOTH stable.json and
 // beta.json (so the beta channel always tracks the newest build).
 //
-// `--site` defaults to ../old/xprs-html relative to the repo root (the
-// local checkout of xprss/xprs-html in this workspace).
+// `--site` defaults to ../website relative to the repo root (the
+// local checkout of xprs-dev/xprs-dev.github.io in this workspace).
 //
 // `--keep <N>` (default 5) prunes old updates/v<version>/ dirs to bound the
 // size of the Pages repo: it keeps the N newest versions (by semver) PLUS
@@ -76,9 +76,9 @@ void main(List<String> argv) {
     exit(2);
   }
 
-  // Default site path: ../old/xprs-html relative to this repo's root.
+  // Default site path: ../website relative to this repo's root.
   final repoRoot = Directory.current.path;
-  site ??= '$repoRoot/../old/xprs-html';
+  site ??= '$repoRoot/../website';
   final updatesDir = Directory('$site/updates');
   final versionDir = Directory('${updatesDir.path}/v$version');
   versionDir.createSync(recursive: true);

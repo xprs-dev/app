@@ -140,7 +140,7 @@ notification for a new message.
 
 ## 7. Outcome (2026-07-11) — built and validated
 
-Shipped as `wapps/messages` v0.1.2 (`xprss/wapps` `989ae1a`). Validated on C61
+Shipped as `wapps/messages` v0.1.2 (`xprs-dev/wapps` `989ae1a`). Validated on C61
 and TANK2 on **different networks** (home Wi-Fi `192.168.178.x` vs phone hotspot
 `172.20.10.x`, mutually unreachable at IP level, so every copy crossed a public
 hub), on release-grade AOT builds:

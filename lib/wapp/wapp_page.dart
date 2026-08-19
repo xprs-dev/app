@@ -2803,7 +2803,7 @@ class _WappPageState extends State<WappPage>
       // "Install…" flow on the exact same code path.
       final InstallResult result;
       if (isRemote) {
-        // Remote catalog (e.g. raw.githubusercontent.com/xprss/wapps/
+        // Remote catalog (e.g. raw.githubusercontent.com/xprs-dev/wapps/
         // main/binaries): download the .wapp ZIP over HTTP. The store's
         // do_install already rewrote any github tree URL to the raw form,
         // so concatenating dir + file gives the byte URL directly.

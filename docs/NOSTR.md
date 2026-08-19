@@ -1567,11 +1567,11 @@ the fast bonus when it happens.**
 ### Finding 3 — reachability is asymmetric, and that is normal
 
 The two legs are not symmetric. C61 reported `1 xprs device · 4 hubs · 8 other
-peers`; TANK2 reported `On the network … 1 hub`, no direct xprss. The
+peers`; TANK2 reported `On the network … 1 hub`, no direct XPRS stations. The
 better-connected node reaches the other directly and its own posts push straight
 across; the weak node cannot pull from the author and must go through the shared
 Indexer. Consequence for testing: **check the "On the network" card on BOTH
-phones.** If one shows only hubs and no xprss, expect its inbound to arrive by
+phones.** If one shows only hubs and no XPRS stations, expect its inbound to arrive by
 pull-through-indexer (minutes), not by direct push (sub-second) — and do not read
 the delay as breakage.
 

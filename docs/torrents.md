@@ -241,7 +241,7 @@ says enough about each of them that the client can choose well.
 ## 7. The wapp
 
 `wapps/torrents`, id `tools.xprs.torrents`. Like every wapp, the code lives in
-the `xprss/wapps` repo; aurora is the engine (see the HAL rule: no
+the `xprs-dev/wapps` repo; aurora is the engine (see the HAL rule: no
 torrent-specific logic in `lib/` — it belongs in the wapp's C + GeoUI, on top of
 generic host HALs).
 
