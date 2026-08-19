@@ -3286,6 +3286,22 @@ stranger's promise can survive. An operator who knows their LoRa reaches the
 campsite and nothing beyond may say so, and their station then carries `local`
 packets on it.
 
+**The approved room wires, end to end.** These three lines are the whole
+chat interoperability story -- a phone application, a captive-portal web
+page and a microcontroller's LCD all read and write exactly these, with no
+translation layer anywhere:
+
+```
+t:message f:X16JK8 ts:2026-08-19_14:37:08 scope:local sig:<60 characters> m:hello from the Chat wapp, locally
+t:message f:X9WEB ts:2026-08-19_14:58:01 m:round two global
+t:message f:X1QZ3N ts:2026-08-19_15:02:10 scope:local root:399227 r:8536fb sig:<60 characters> m:replying inside the local room
+```
+
+The first is the local room: twelve bytes of `scope:` buy the whole privacy
+behaviour, everything else is an ordinary message packet. The second is the
+global room, which is simply the default. The third shows that threads
+(section 6.4) compose with scope like any other field.
+
 **Applications show the two scopes as two conversations.** The `scope:local`
 traffic is the room of whoever is actually around -- the marina, the building,
 the campsite -- and the unmarked default is the conversation that travels. A
