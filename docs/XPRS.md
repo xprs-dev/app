@@ -170,6 +170,12 @@ characters, in about a thousand tries. A receiver that needs to establish
 identity verifies a signature against the full public key (section 9). No
 authority issues, revokes or vouches for an `X1`, `X3`, `X4` or `X5` callsign.
 
+That last sentence has a consequence on the air: **a self-generated callsign may
+never be transmitted on licensed spectrum**, where identifying the station is a
+condition of the licence. Section 9.4.1 states the rule and section 9.4.2 shows
+how an operator ties a callsign that *was* issued to them to the key they sign
+with.
+
 ### 3.0.1 A callsign is matched whole, never by prefix
 
 Because the characters are a prefix of the key's encoding, one key can derive
@@ -196,11 +202,6 @@ the holder chose, since all four truncations of one key pass such a test. What
 makes a callsign canonical is the identity announcement that declares it
 (section 10.6), which is signed.
 
-That last sentence has a consequence on the air: **a self-generated callsign may
-never be transmitted on licensed spectrum**, where identifying the station is a
-condition of the licence. Section 9.4.1 states the rule and section 9.4.2 shows
-how an operator ties a callsign that *was* issued to them to the key they sign
-with.
 
 ### 3.1 One person, several devices
 
@@ -874,8 +875,9 @@ t:message f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 m:meet at the bridge at six
 
 `d:` holds a group name. Group names are uppercase, 1 to 16 characters. A
 station tells an open group from a person or a machine by the `X1`/`X3` prefix
-and the four characters that follow, so an open group may not be named like one
-of those.
+and the characters that follow, so an open group may not be named like one of
+those -- at any of the lengths section 3 allows, which is why a four-character
+group name such as `X1AB` is now as unusable as `X1ABCD` was.
 
 ```
 t:message f:X1QZ3N d:LISBOA ts:2026-08-08_14:26:40 m:net starts in ten minutes
@@ -3766,8 +3768,8 @@ It is optional, most traffic will not carry one, and a signed packet can be
 replayed later by anyone who heard it.
 
 An `X1` or `X3` callsign is derived from its own public key (section 3), so a
-station cannot announce one it does not hold: the four characters would not
-match. **This does not extend to a callsign issued by a radio authority.**
+station cannot announce one it does not hold: the characters would not match,
+at whatever length it announces. **This does not extend to a callsign issued by a radio authority.**
 `CT1ABC-9` has no arithmetic relationship to any key, so nothing in the format
 prevents a second station from claiming it.
 
@@ -5203,13 +5205,14 @@ when the signature verifies (section 9.3.1). A group needs no announcement
 packet of its own, no registry and no creation ceremony. It exists once somebody
 generates a key and says so.
 
-**An `X5` callsign is a label, exactly as every other callsign is.** Four
-characters is about a million values, and an attacker who wants a callsign that
-looks like `X5A3F2` can grind keys until one produces those four characters.
-Section 3 already says this and the answer is the same here: the group is its
-**full public key**, and a receiver that has not verified a signature against
-that key has identified nothing. Two groups with the same four characters are
-two groups, and a client that holds the key of one is not fooled by the other.
+**An `X5` callsign is a label, exactly as every other callsign is.** An
+attacker who wants a callsign that looks like `X5A3F2` can grind keys until one
+produces those characters -- about a million tries at four characters, and about
+a thousand at two, as the table in section 3 sets out. Section 3 already says
+this and the answer is the same here: the group is its **full public key**, and
+a receiver that has not verified a signature against that key has identified
+nothing. Two groups wearing the same characters are two groups, and a client
+that holds the key of one is not fooled by the other.
 
 ### 26.2 Subgroups
 
