@@ -615,6 +615,21 @@
 "id": "d03014"
 },
 {
+"wire": "t:message f:X16JK8 ts:2026-08-19_14:37:08 scope:local sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK m:hello from the Chat wapp, locally",
+"bytes": null,
+"id": "81ed04"
+},
+{
+"wire": "t:message f:X9WEB ts:2026-08-19_14:58:01 m:round two global",
+"bytes": null,
+"id": "86be1b"
+},
+{
+"wire": "t:message f:X1QZ3N ts:2026-08-19_15:02:10 scope:local root:399227 r:8536fb sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK m:replying inside the local room",
+"bytes": null,
+"id": "d8373e"
+},
+{
 "wire": "t:warning f:X3RLY7 pos:39.4012,-8.2043 rad:5km kind:fire sev:danger scope:PT ts:2026-08-08_14:26:40",
 "bytes": 99,
 "id": "03b64e"

@@ -308,6 +308,10 @@ class XprsPublisher {
     }
     if (carriedBy != null) XprsIngest.own(wire, bearer: carriedBy);
     published++;
+    // One line per caller-composed wire: which bearers took it. A wire that
+    // silently reached nobody is the failure mode that costs a day.
+    LogService.instance.add(
+        'XPRS: ${p.type} wire — ${report.entries.map((e) => '${e.key}:${e.value}').join(', ')}');
     return report;
   }
 

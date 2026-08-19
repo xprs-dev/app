@@ -1,6 +1,13 @@
 # XPRS, eXtended Packet Radio System
 
-Protocol specification.
+Protocol specification. Author: Max Brito.
+
+Copyright (c) 2026 Max Brito. Licensed under Creative Commons Attribution
+4.0 International (CC BY 4.0) -- share and adapt it for any purpose,
+including commercially, giving credit to Max Brito, linking the licence and
+stating what you changed. Full text in [LICENSE](LICENSE), or at
+<https://creativecommons.org/licenses/by/4.0/>. Implementations are separate
+works under their own licences.
 
 XPRS carries position, movement, weather, telemetry and messages between
 stations over licence-free spectrum, amateur bands and the internet. It

@@ -522,6 +522,23 @@ class _WappPageState extends State<WappPage>
   /// open/send/close path that actually reaches relays.
   void _likePost(String mid, bool like) {
     if (mid.isEmpty) return;
+    // Social is XPRS: the wapp airs a t:reaction (6.5) naming the post's
+    // section-5 id, and the vote lands in the core activity archive under our
+    // callsign. The heard copy returning through the spool is idempotent.
+    if (_wappName == 'social') {
+      final self =
+          (ProfileService.instance.activeProfile?.callsign ?? '').toUpperCase();
+      if (self.isNotEmpty) {
+        _activityArchive?.setReaction(mid, self, like, true);
+        _followingArchive?.setReaction(mid, self, like, true);
+      }
+      _fieldValues['activity_mid'] = mid;
+      _fieldValues['activity_set'] = like ? '1' : '0';
+      _sendCommand('activity_like');
+      _activityRev.value++;
+      setState(() {});
+      return;
+    }
     final self = RnsService.instance.nostrSelfHex()?.toLowerCase();
     if (self != null) {
       _activityArchive?.setReaction(mid, self, like, true);
@@ -6262,7 +6279,7 @@ class _WappPageState extends State<WappPage>
               mentionResolver: RnsService.instance.nostrMentionName,
               onMentionTap: _openNostrProfileByHex,
               likeInfo: _likeInfoFor,
-              onLike: _wappName == 'social' ? null : _likePost,
+              onLike: _likePost,
               replyCount: _replyCountFor,
               onReplyPost: (post) {
                 Navigator.of(context).pop();
@@ -6528,9 +6545,9 @@ class _WappPageState extends State<WappPage>
         likeInfo: _likeInfoFor,
         // Votes are host-side NOSTR (NIP-25 "+"/"-"): the wapp does not need to
         // know, and every other NOSTR client reads them.
-        // Social is XPRS now: section 27 has no like, vote or repost
-        // packet, so no callback is supplied and the widget omits the button
-        // rather than showing one that does nothing.
+        // Social is XPRS now: a like travels as t:reaction (6.5) via
+        // _likePost, but section 27 has no vote or repost packet, so those
+        // callbacks stay off and the widget omits buttons that would lie.
         voteInfo: (mid) => RnsService.instance.nostrVotes(mid),
         onVote: _wappName == 'social'
             ? null
@@ -6542,7 +6559,7 @@ class _WappPageState extends State<WappPage>
         isSaved: (mid) => _activityArchive?.isSaved(mid) ?? false,
         savedPosts: () =>
             _activityArchive?.savedPosts() ?? const <Map<String, dynamic>>[],
-        onLike: _wappName == 'social' ? null : _likePost,
+        onLike: _likePost,
         onSave: (post) {
           _activityArchive?.toggleSaved(post);
           _keepPostMedia(post); // pinned/saved — keep its media
@@ -7067,12 +7084,7 @@ class _WappPageState extends State<WappPage>
                 _fieldValues['activity_target_mid'] = parentMid;
                 _fieldValues['activity_input'] = body;
                 _sendCommand('activity_reply');
-                // Publish the reply HOST-SIDE (kind-1 e-tagged to the parent),
-                // same as posts — the wapp's reply round-trip has the same
-                // hal_nostr_* gap, so a reply otherwise never reached the mesh.
-                if (_wappName == 'social') {
-                  unawaited(RnsService.instance.nostrReply(parentMid, body));
-                }
+  
               },
               onSenderTap: _feedSenderTap,
               profileFor: _feedProfileFor,
