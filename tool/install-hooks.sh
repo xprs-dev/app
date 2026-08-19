@@ -66,7 +66,7 @@ if [ -n "$dirty" ]; then
 fi
 
 # 2. The sibling package. Aurora depends on ../reticulum-dart by path, so it
-#    resolves to YOUR working tree here and to xprss/reticulum-dart@main in
+#    resolves to YOUR working tree here and to xprs-dev/reticulum-dart@main in
 #    CI. Anything uncommitted there exists for you and for nobody else. A
 #    warning, not a refusal: unrelated work often sits in that repo.
 sib="$root/../reticulum-dart"

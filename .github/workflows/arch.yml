@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
         continue-on-error: true
         with:
-          repository: geograms/wapps
+          repository: xprs-dev/wapps
           path: wapps
 
       - uses: dart-lang/setup-dart@v1
