@@ -272,6 +272,45 @@ class XprsPublisher {
     return report;
   }
 
+  /// Publish one caller-composed wire (spec/API-HTTP.md send semantics):
+  /// validate section 4 syntax, sign it when it speaks as this station and
+  /// carries no sig, apply the scope rules, air on every active bearer and
+  /// spool our own copy. The caller owns the content.
+  Future<Map<String, String>> publishWire(String wireIn) async {
+    var p = XprsPacket.parse(wireIn.trim());
+    if (p == null || !p.fits) return const {};
+    final call =
+        (ProfileService.instance.activeProfile?.callsign ?? '').trim();
+    final from = (p['f'] ?? '').toUpperCase();
+    if (call.isNotEmpty &&
+        from.split('-').first == call.toUpperCase().split('-').first &&
+        !p.has('sig')) {
+      final d = xprsProfileScalar();
+      if (d != null) p = xprsSign(p, d);
+    }
+    final wire = p.encode();
+    final local = xprsScope(p).scope != XprsScope.global;
+
+    final report = <String, String>{};
+    String? carriedBy;
+    for (final b in bearers) {
+      if (local && !b.shortRange) {
+        report[b.name] = 'scope';
+        continue;
+      }
+      if (!await b.active) {
+        report[b.name] = 'inactive';
+        continue;
+      }
+      final ok = await b.send(wire, part: 1);
+      report[b.name] = ok ? 'sent' : 'refused';
+      if (ok) carriedBy ??= b.archiveBearer;
+    }
+    if (carriedBy != null) XprsIngest.own(wire, bearer: carriedBy);
+    published++;
+    return report;
+  }
+
   /// Test seam: exactly the wires [publishStatus] would air for [head] and
   /// [body], with [signingKey] standing in for the profile key (a unit test
   /// has no profile).

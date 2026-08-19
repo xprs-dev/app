@@ -331,6 +331,15 @@ class FunctionalityRegistry {
             ParamDef('query', 'string', 'JSON filter, "{}" for the latest'),
           ],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
+      EndpointDef(
+          'hal_xprs_send',
+          'Air one caller-composed XPRS wire: section 4 validated, signed '
+          'when it speaks as this station, scope rules applied, own copy '
+          'spooled',
+          [
+            ParamDef('wire', 'string', 'the packet, verbatim'),
+          ],
+          ReturnDef('int', '0 queued, -1 invalid')),
       EndpointDef('hal_xprs_set_pref',
           'Set a spool tunable "key=value" (archive, archiveMaxMb, '
           'archiveMaxDays, serveHistory)', [

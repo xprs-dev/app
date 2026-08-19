@@ -31,6 +31,7 @@ import '../services/mesh/mesh_carry_broker.dart';
 import '../services/mesh/mesh_service.dart';
 import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_monitor.dart';
+import '../services/xprs/xprs_packet.dart';
 import '../services/xprs/xprs_publisher.dart';
 import '../services/xprs/xprs_vocab.dart';
 import '../services/torrent_service.dart';
@@ -3526,6 +3527,20 @@ class WappEngine {
       results: [ValueTy.i32],
     );
 
+    // hal_xprs_send: air one caller-composed XPRS wire (validated, signed
+    // when it speaks as this station, scope rules applied). 0 = queued,
+    // -1 = did not parse. Fire-and-forget like hal_xprs_status.
+    final halXprsSend = WasmFunction(
+      (int ptr, int len) {
+        final wire = _readStr(ptr, len).trim();
+        final p = XprsPacket.parse(wire);
+        if (p == null || !p.fits) return -1;
+        unawaited(XprsPublisher.instance.publishWire(wire));
+        return 0;
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     // hal_xprs_history: the persistent spool, past the monitor's 200-ring.
     // Read-only; the query is a JSON filter and the reply is rows newest
     // first. Runs synchronously on an indexed table with the limit clamped —
@@ -3915,6 +3930,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_traffic', halXprsTraffic),
       WasmImport('hal', 'xprs_status', halXprsStatus),
       WasmImport('hal', 'xprs_history', halXprsHistory),
+      WasmImport('hal', 'xprs_send', halXprsSend),
       WasmImport('hal', 'xprs_set_pref', halXprsSetPref),
       WasmImport('hal', 'mesh_scf_status', halMeshScfStatus),
       WasmImport('hal', 'mesh_transfers', halMeshTransfers),
