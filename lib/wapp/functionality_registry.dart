@@ -324,8 +324,9 @@ class FunctionalityRegistry {
       EndpointDef(
           'hal_xprs_history',
           'The persistent spool of heard packets (XPRS \u00a724 serve:history), '
-          'newest first. Query JSON {since,until,only,limit} \u2014 since/until '
-          'are XPRS timestamps, only matches sender or addressee \u2014 returns '
+          'newest first. Query JSON {since,until,only,types,limit} \u2014 '
+          'since/until are XPRS timestamps, only matches sender or addressee, '
+          'types is a list of packet types to keep \u2014 returns '
           '[{ts,bearer,rssi,from,to,type,id,mine,own,sig,heard,wire}]',
           [
             ParamDef('query', 'string', 'JSON filter, "{}" for the latest'),

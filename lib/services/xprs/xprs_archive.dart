@@ -410,12 +410,20 @@ class XprsArchive {
     int? sinceMs,
     int? untilMs,
     String? only,
+    List<String>? types,
     int limit = 200,
   }) {
     final db = _db;
     if (db == null) return const [];
     final where = StringBuffer('1=1');
     final args = <Object?>[];
+    // A caller that only reads conversations (message + reaction) must not
+    // have its window eaten by the observation chatter, which outnumbers
+    // everything else on a busy bench.
+    if (types != null && types.isNotEmpty) {
+      where.write(' AND type IN (${List.filled(types.length, '?').join(',')})');
+      args.addAll(types);
+    }
     if (sinceMs != null) {
       where.write(' AND pts >= ?');
       args.add(sinceMs);

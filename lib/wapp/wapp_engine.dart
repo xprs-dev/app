@@ -3550,18 +3550,22 @@ class WappEngine {
         if (outCap <= 0) return 0;
         int? sinceMs, untilMs;
         String? only;
+        List<String>? types;
         var limit = 200;
         try {
           final q = jsonDecode(_readStr(qPtr, qLen)) as Map<String, dynamic>;
           sinceMs = xprsParseTs(q['since'] as String?);
           untilMs = xprsParseTs(q['until'] as String?);
           only = q['only'] as String?;
+          final t = q['types'];
+          if (t is List) types = t.map((e) => e.toString()).toList();
           limit = (q['limit'] as num?)?.toInt() ?? 200;
         } catch (_) {}
         final bytes = utf8.encode(jsonEncode(XprsArchive.instance.query(
             sinceMs: sinceMs,
             untilMs: untilMs,
             only: only,
+            types: types,
             limit: limit.clamp(1, 200))));
         if (bytes.length > outCap) return -bytes.length;
         return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
