@@ -3268,13 +3268,29 @@ t:message f:X1QZ3N d:LISBOA ts:2026-08-08_14:26:40 scope:local m:anyone got a 10
 92 bytes, twelve of them the field.
 
 **`local` names bearers, not a distance.** A station must not put the packet on
-LoRa, on any radio band, on a satellite, or onto the internet. It may put it on
-Bluetooth, WiFi Direct, WiFi Aware or the network it is attached to.
+a radio band, on a satellite, or onto the internet. It may put it on Bluetooth,
+WiFi Direct, WiFi Aware or the network it is attached to.
 
 That is the difference between "the people in this building" and "everyone who
 can hear a 500 mW transmitter", and it is a privacy control as much as a noise
 one: a question asked in a marina should not arrive in the next county, and it
 certainly should not reach a relay that gates to the internet.
+
+**LoRa sits on the boundary, and the operator places it.** A LoRa link can be a
+building's own low-power mesh or a forty-kilometre shot across a valley, and no
+rule written here can know which one a given antenna is. Whether a station
+treats ITS LoRa as a local bearer is the operator's setting. The default is NOT
+local: a sender marking a packet `local` is trusting every station within
+earshot with the promise above, and the conservative reading is the only one a
+stranger's promise can survive. An operator who knows their LoRa reaches the
+campsite and nothing beyond may say so, and their station then carries `local`
+packets on it.
+
+**Applications show the two scopes as two conversations.** The `scope:local`
+traffic is the room of whoever is actually around -- the marina, the building,
+the campsite -- and the unmarked default is the conversation that travels. A
+chat that mixes them flattens exactly the distinction the field exists to
+draw.
 
 **A `local` packet is not carried.** Section 13.4 exists to deliver somewhere
 else later, and somewhere else later is what `local` excludes. A carrier holding
