@@ -190,6 +190,9 @@ class MeshCourier {
     // `enqueueAdvert` — the custody tap parked our own outbound copy on its way
     // to the radio. No advert, no tap, so the copy is offered directly.
     MeshCustodyDelegate.onAirFrame(Uint8List.fromList(wire), outbound: true);
+    // Ours: it goes in our own log whether or not a carrier ever picks it up.
+    // `custody` is where it is, not a radio it went out on.
+    XprsIngest.own(utf8.decode(wire), bearer: 'custody');
     MeshCourierCounters.aired++;
     LogService.instance.add(
         'Courier: no path to $call — ${wire.length}B parked for custody'

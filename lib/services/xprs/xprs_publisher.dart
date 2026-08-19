@@ -201,13 +201,20 @@ class XprsPublisher {
       if (ok) carriedBy ??= b.archiveBearer;
     }
 
-    // Our own publication enters our own spool the moment it was aired
-    // anywhere — a cmd:history asked of the author must be able to replay
-    // the author (section 36.5). Once per wire, whichever bearer carried it.
-    if (carriedBy != null) {
-      for (final w in wires) {
-        XprsIngest.own(w, bearer: carriedBy);
-      }
+    // Our own publication enters our own spool whether or not a radio took
+    // it. A cmd:history asked of the author must be able to replay the author
+    // (section 36.5), and the words exist either way: this used to be gated on
+    // `carriedBy != null`, so a status composed with no bearer active was
+    // never stored, never shown, and reported no error. The bearer records
+    // what actually carried it, or `none` when nothing did — an honest row
+    // rather than an absent one.
+    //
+    // Written once per wire AFTER the send loop, deliberately: the ON CONFLICT
+    // clause in the archive does not update `bearer` and does increment
+    // `heard`, so recording first and amending later would leave the bearer
+    // empty and count one packet as heard twice.
+    for (final w in wires) {
+      XprsIngest.own(w, bearer: carriedBy ?? 'none');
     }
 
     published++;

@@ -97,7 +97,11 @@ class XprsIngest {
     // check it.
     if (p.type == 'identity') _bindIdentity(from, p);
 
-    if (_archiveOn) {
+    // The preference governs the INDEXER — other people's traffic. A packet
+    // addressed to us is our own mail and is kept either way.
+    final forUs = _base(p['d'] ?? '').isNotEmpty &&
+        _base(p['d'] ?? '') == _base(selfCallsign);
+    if (_archiveOn || forUs) {
       XprsArchive.instance
           .admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
     }
@@ -157,11 +161,20 @@ class XprsIngest {
     }
   }
 
-  /// One of OUR wires, at the moment it was successfully aired. Archived with
-  /// `own=1` so a `cmd:history` asked of the author can replay the author —
-  /// which is the whole reason a station keeps its own log (section 36.5).
+  /// One of OUR wires, at the moment it was put on a bearer — or attempted and
+  /// carried by none, in which case [bearer] is `none`. Archived with `own=1`
+  /// so a `cmd:history` asked of the author can replay the author, which is
+  /// the whole reason a station keeps its own log (section 36.5).
+  ///
+  /// **This is the single recorder for outbound traffic, and it is not
+  /// optional.** It ignores the `xprsArchive` preference on purpose: that
+  /// preference governs whether this station indexes OTHER people's traffic,
+  /// where the storage cost and the choice actually live. Switching the
+  /// indexer off must not stop a station keeping its own log.
+  ///
+  /// Every transmit primitive calls this. A new bearer that does not is a
+  /// bearer whose traffic silently leaves no trace.
   static void own(String wire, {required String bearer}) {
-    if (!_archiveOn) return;
     final p = XprsPacket.parse(wire);
     if (p == null) return;
     XprsArchive.instance
@@ -189,9 +202,19 @@ class XprsIngest {
       }
       return;
     }
+    final toC = _base(p['d'] ?? '');
+
+    // Addressed to us: our own mail, kept with no declaration from anyone and
+    // regardless of the indexer preference. The declaration rule below exists
+    // to stop this station spooling the whole Reticulum lane on other
+    // people's behalf; it was never meant to refuse our own post.
+    if (toC.isNotEmpty && toC == self) {
+      XprsArchive.instance.admit(p, bearer: 'rns');
+      return;
+    }
+
     if (!_archiveOn) return;
 
-    final toC = _base(p['d'] ?? '');
     final admitted = XprsArchive.instance.hasActiveDecl(fromC) ||
         (toC.isNotEmpty && XprsArchive.instance.hasActiveDecl(toC));
     if (!admitted) {

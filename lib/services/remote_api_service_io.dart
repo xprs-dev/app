@@ -935,7 +935,7 @@ class RemoteApiService {
         // A wire this station aired belongs in its own spool (§36.5) — the
         // publisher archives its sends, and this test hook must match, or a
         // cmd:history asked of the author cannot replay the author.
-        if (aired) XprsIngest.own(p.encode(), bearer: 'ble');
+        XprsIngest.own(p.encode(), bearer: aired ? 'ble' : 'none');
         return _json(res, {
           'ok': aired,
           'bytes': p.byteLength,

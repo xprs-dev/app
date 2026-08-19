@@ -71,6 +71,7 @@ import '../services/notification_service.dart';
 import '../services/location_service.dart';
 import '../services/preferences_service.dart';
 import '../services/reticulum/rns_service.dart';
+import '../services/xprs/xprs_publisher.dart';
 import '../services/xprs/xprs_monitor.dart';
 import '../util/time_ago.dart';
 import '../services/wapp_unread_service.dart';
@@ -6620,37 +6621,26 @@ class _WappPageState extends State<WappPage>
           // mesh); publishing here guarantees it lands in the relay store and
           // fans out to peer indexers. nostrPost fires onSelfNotePublished, which
           // reconciles the optimistic placeholder below with the real event id.
+          // Social airs the post as a t:status HERE, not in the wapp.
+          //
+          // Nothing goes to NOSTR any more — the feed is XPRS and a post sent
+          // to relays would land where the feed cannot read it back from. And
+          // the publish is host-side for the same reason the NOSTR post
+          // eventually was: the wapp round-trip is not dependable enough to be
+          // the only path. Measured on this wapp — `ready` and the tick both
+          // run and fill the feed, while the identical handler never reaches
+          // its `activity_send` branch, so a post made through the wapp
+          // vanished with no error anywhere.
+          //
+          // The core picks the bearers, splits per section 6.6 and signs; the
+          // packet then returns through our own spool like anyone else's, so
+          // the feed shows it once.
           if (_wappName == 'social' && body.isNotEmpty) {
-            unawaited(RnsService.instance.nostrPost(1, body, const []));
+            unawaited(XprsPublisher.instance.publishStatus(body));
           }
-          // Show MY post the instant I hit Post — don't wait for the publish
-          // round-trip. Drop an optimistic row into the Nomadnet archive now;
-          // when the real signed event lands, onSelfNotePublished replaces this
-          // placeholder (matched by author+text) with the real-id row.
-          if (_wappName == 'social' &&
-              _socialFeedFilter == 'nomadnet' &&
-              body.isNotEmpty &&
-              _nomadnetArchive != null) {
-            final selfHex =
-                RnsService.instance.selfPubHex?.toLowerCase() ?? '';
-            final now = DateTime.now();
-            final hh = now.hour.toString().padLeft(2, '0');
-            final mm = now.minute.toString().padLeft(2, '0');
-            _nomadnetArchive!.add(<String, dynamic>{
-              'dir': 'in',
-              'from': selfHex.length >= 12 ? selfHex.substring(0, 12) : selfHex,
-              'author': selfHex,
-              'text': body,
-              'mid': '', // pending — no event id yet
-              'parent': '',
-              'pop': 0,
-              'source': 'nomadnet',
-              't': now.millisecondsSinceEpoch,
-              'time': '$hh:$mm',
-            });
-            _activityRev.value++;
-            setState(() {});
-          }
+          
+          // No optimistic row: our own status comes back through the spool
+          // like any other packet, so the feed shows it once rather than twice.
         },
       );
     }

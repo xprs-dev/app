@@ -269,13 +269,23 @@ class XprsArchive {
 
   void _prune(Database db, {int? nowMs}) {
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
-    // Age, once per session — a year-old packet is a year old whoever wrote
-    // it, so nothing is protected from this pass. Expired declarations go in
-    // the same breath.
+    // Age, once per session. Our own side of the conversation is exempt, the
+    // same way the byte cap below already exempts it: this station IS its own
+    // archive, and a log that deletes what you said and what was said to you
+    // is not one. Everyone else's traffic still ages out — that is the
+    // indexer's job and where the storage actually goes.
+    //
+    // Own `observation` beacons are the exception to the exemption: one every
+    // 300 s is ~100k rows a year, and a beacon is telemetry rather than
+    // something anybody said. They age out with the rest.
+    //
+    // Expired declarations go in the same breath.
     if (!_prunedThisSession) {
       _prunedThisSession = true;
       try {
-        db.execute('DELETE FROM packets WHERE pts < ?',
+        db.execute(
+            'DELETE FROM packets WHERE pts < ? '
+            "AND (own = 0 OR type = 'observation') AND mine = 0",
             [now - maxAgeDays * 86400000]);
         db.execute(
             'DELETE FROM mailbox_decl WHERE until IS NOT NULL AND until < ?',

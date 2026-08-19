@@ -519,6 +519,9 @@ class MeshService {
       // as sent is how a device ends up reporting a healthy beacon while
       // broadcasting into nothing — the same trap the binary beacon above
       // documents.
+      // Ours, so it goes in our own log either way (section 36.5) — the
+      // bearer says whether a radio actually took it.
+      XprsIngest.own(p.encode(), bearer: aired ? 'ble' : 'none');
       if (aired) {
         _xprsBeaconsSent++;
       } else {
@@ -584,7 +587,9 @@ class MeshService {
     if (fit.hears.isNotEmpty) p = p.with_('hears', fit.hears.join(','));
     if (d != null) p = xprsSign(p, d);
 
-    if (XprsLan.instance.send(p.encode())) {
+    final aired = XprsLan.instance.send(p.encode());
+    XprsIngest.own(p.encode(), bearer: aired ? 'lan' : 'none');
+    if (aired) {
       _xprsLanBeaconsSent++;
     } else {
       _xprsLanBeaconsFailed++;

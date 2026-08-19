@@ -268,4 +268,66 @@ void main() {
     expect(windowed.length + since.length, 4,
         reason: 'boundary belongs to since side exactly once');
   });
+
+  // ── The station keeps its own log ──────────────────────────────────────
+  //
+  // An installation is its own archive and indexer, so what it SENT and what
+  // was addressed to IT are kept unconditionally. Each of these pins a hole
+  // that was silent: no error, no row, nothing to notice.
+
+  test('own packet survives the age prune; a heard one of the same age does not',
+      () {
+    const dayMs = 86400000;
+    final old = DateTime.utc(2020).millisecondsSinceEpoch;
+    a.admit(_p('t:info f:X1AAA ts:2020-01-01_10:00:00 m:theirs'),
+        bearer: 'ble', nowMs: old);
+    a.admit(_p('t:status f:X1SELF ts:2020-01-01_10:00:00 m:mine'),
+        bearer: 'ble', own: true, nowMs: old);
+    a.admit(_p('t:message f:X1AAA d:X1SELF ts:2020-01-01_10:00:00 m:for me'),
+        bearer: 'ble', nowMs: old);
+    // The age pass runs once per session, on the first flush — so this is one
+    // flush, dated long after the packets it is writing.
+    a.flush(nowMs: old + 400 * dayMs);
+    final kept = a.query().map((r) => r['wire'] as String).toList();
+    expect(kept.any((w) => w.contains('m:mine')), isTrue,
+        reason: 'what we said is ours to keep');
+    expect(kept.any((w) => w.contains('m:for me')), isTrue,
+        reason: 'what was addressed to us is ours to keep');
+    expect(kept.any((w) => w.contains('m:theirs')), isFalse,
+        reason: "someone else's traffic still ages out — that is the spool");
+  });
+
+  test('our own beacons are the exception and do age out', () {
+    const dayMs = 86400000;
+    final old = DateTime.utc(2020).millisecondsSinceEpoch;
+    a.admit(_p('t:observation f:X1SELF ts:2020-01-01_10:00:00 link:ble peers:2'),
+        bearer: 'ble', own: true, nowMs: old);
+    a.admit(_p('t:status f:X1SELF ts:2020-01-01_10:00:00 m:words'),
+        bearer: 'ble', own: true, nowMs: old);
+    a.flush(nowMs: old + 400 * dayMs);
+    final kept = a.query().map((r) => r['type'] as String).toList();
+    expect(kept, contains('status'));
+    expect(kept, isNot(contains('observation')),
+        reason: 'a beacon is telemetry, not something anybody said');
+  });
+
+  test('own() records a wire that no bearer took', () {
+    // The bug that started this: a status composed with no radio active was
+    // never stored, never shown and reported nothing. It is recorded now, and
+    // the bearer says plainly that it aired nowhere.
+    //
+    // NOT covered here: that own() ignores the xprsArchive preference. This
+    // test cannot reach it — PreferencesService has no instance under
+    // flutter_test, so the pref reads as its `?? true` default and the old
+    // code would pass this too. That path is held by the absence of the early
+    // return in own(), not by this test.
+    XprsIngest.own('t:status f:X1SELF ts:2026-08-13_10:00:00 m:no bearer',
+        bearer: 'none');
+    a.flush(nowMs: 1000);
+    final rows = a.query();
+    expect(rows.length, 1);
+    expect(rows.first['own'], isTrue);
+    expect(rows.first['bearer'], 'none',
+        reason: 'aired nowhere, and the row says so');
+  });
 }
