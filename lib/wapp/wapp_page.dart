@@ -1291,36 +1291,11 @@ class _WappPageState extends State<WappPage>
         following: _followingArchive!,
         followedPubkeys: RnsService.instance.nostrFollowPubkeys(),
       );
-      _activityArchive!.retainSources({'firehose', 'discovery'});
-      _allPoller = NostrAllPoller(
-        archive: _activityArchive!,
-        onChanged: () {
-          if (mounted) {
-            _activityRev.value++;
-            setState(() {});
-          }
-        },
-        onProfiles: (profs) {
-          // Cache kind-0 profiles keyed by the 12-char prefix the feed resolves
-          // by, so author names/avatars show instead of hex keys.
-          for (final e in profs.entries) {
-            final short = e.key.length >= 12 ? e.key.substring(0, 12) : e.key;
-            _wappProfiles[short] = e.value;
-          }
-          if (_wappProfiles.length > 4000) {
-            _wappProfiles.remove(_wappProfiles.keys.first);
-          }
-        },
-        onActivity: (act) {
-          for (final e in act.entries) {
-            final prev = _postActivityMs[e.key] ?? 0;
-            if (e.value > prev) _postActivityMs[e.key] = e.value;
-          }
-          if (_postActivityMs.length > 4000) {
-            _postActivityMs.remove(_postActivityMs.keys.first);
-          }
-        },
-      )..start();
+      // The feed is XPRS statuses now. Old NOSTR rows (firehose/discovery)
+      // are dropped wholesale rather than migrated: they came from a lane
+      // this wapp no longer has.
+      _activityArchive!.retainSources({'xprs', 'following'});
+      // The internet firehose is gone: the feed is XPRS statuses now.
 
       // Nomadnet: its OWN separate archive + a poller that runs ONLY while the
       // Nomadnet tab is viewed (started/stopped in onFilterChanged) — battery.
@@ -1334,48 +1309,8 @@ class _WappPageState extends State<WappPage>
         wappData,
         fileName: 'social_nomadnet2.sqlite3',
       );
-      _nomadPoller = NomadnetPoller(
-        archive: _nomadnetArchive!,
-        onChanged: () {
-          if (mounted) {
-            _activityRev.value++;
-            setState(() {});
-          }
-        },
-        onProfiles: (profs) {
-          for (final e in profs.entries) {
-            final short = e.key.length >= 12 ? e.key.substring(0, 12) : e.key;
-            _wappProfiles[short] = e.value;
-          }
-          if (_wappProfiles.length > 4000) {
-            _wappProfiles.remove(_wappProfiles.keys.first);
-          }
-        },
-      );
-      // Start it now only if the restored tab IS Nomadnet.
-      if (_socialFeedFilter == 'nomadnet') _nomadPoller!.start();
-      // Instant own-post echo: the moment WE publish a note it is stored in the
-      // relay store (with the reticulum-native marker), so drop it straight into
-      // the Nomadnet archive by its real event id — no poll, no fire-and-forget
-      // race. The later mesh poll dedups by mid. Fires regardless of the open
-      // tab, so the post is already cached when the user visits Nomadnet.
-      RnsService.instance.onSelfNotePublished = (json) {
-        final arch = _nomadnetArchive;
-        if (arch == null) return;
-        final row = nomadnetRowFromJson(json);
-        if (row == null) return;
-        // Replace the optimistic placeholder (added on Post) with the real-id
-        // row so likes/threading work and it doesn't show twice.
-        arch.removePending(
-          (row['author'] ?? '').toString(),
-          (row['text'] ?? '').toString(),
-        );
-        arch.add(row);
-        if (mounted) {
-          _activityRev.value++;
-          setState(() {});
-        }
-      };
+      // The NOSTR-over-Reticulum poller is gone with it.
+      // No self-note echo: our own status comes back through the spool.
       // Live push trigger: a peer indexer fanned a z=rns event (post or
       // reaction) into our store — surface it on the open Nomadnet feed at once,
       // no poll, no socket. Fires regardless of the current tab (cached for the
@@ -1934,10 +1869,13 @@ class _WappPageState extends State<WappPage>
               // both the curated and direct-follow subscriptions; each archive
               // must make its own idempotent routing decision.
               if (fieldName == 'activity') {
-                final target = _wappName == 'social' && source == 'following'
-                    ? _followingArchive
-                    : _activityArchive;
-                target?.add(msg);
+                // Mesh shows everything heard; Following is the same post
+                // filed again under the callsigns you follow. The wapp owns
+                // the follow list, so it labels the post and we file it.
+                _activityArchive?.add(msg);
+                if (_wappName == 'social' && source == 'following') {
+                  _followingArchive?.add(msg);
+                }
                 _activityRev.value++;
               }
               if (!dup) {
@@ -6206,68 +6144,11 @@ class _WappPageState extends State<WappPage>
     if (_socialFeedFilter == 'following') {
       return _followingArchive?.recent() ?? const <Map<String, dynamic>>[];
     }
-    if (_socialFeedFilter == 'nomadnet') {
-      // Reticulum feed: raw newest-first, NO curation/ranking (the widget does
-      // the roots-only display filter).
-      return _nomadnetArchive?.recent(limit: 200) ??
-          const <Map<String, dynamic>>[];
-    }
-    if (_rankedCache != null &&
-        _rankedCacheRev == _activityRev.value &&
-        _rankedCacheFilter == _socialFeedFilter) {
-      return _rankedCache!;
-    }
-    // Top-level only: replies (parent set) are stored so a post's reply count is
-    // real, but the All list shows roots — a reply to some off-screen post has no
-    // context here and would just be clutter.
-    final arch = _activityArchive;
-    final roots = [
-      for (final p in arch?.recent(limit: 400) ?? const <Map<String, dynamic>>[])
-        if ((p['parent'] ?? '').toString().isEmpty) p,
-    ];
-    if (arch == null) return roots;
-    // CURATE by REAL engagement, decayed by age. The poller already writes only
-    // the ~20 most-engaged posts per cycle; here we rank the accumulated set so
-    // the most-liked/active float to the top and yesterday's popular post fades
-    // below today's. Engagement dominates (a like ~3pts, a reply ~4); freshness
-    // is a decay multiplier, not a base — a fresh no-engagement post ranks low,
-    // which is honest. Ascending sort: best LAST → the feed reverses for display,
-    // so best ends up on top. Capped to a clean curated list.
-    final now = DateTime.now().millisecondsSinceEpoch;
-    double score(Map<String, dynamic> p) {
-      final t = (p['t'] as int?) ?? now;
-      final ageHours = (now - t) / 3600000.0;
-      final mid = (p['mid'] ?? '').toString();
-      final likes = mid.isEmpty ? 0 : arch.likeInfo(mid).count;
-      final replies = mid.isEmpty ? 0 : arch.replyCount(mid);
-      final engagement = 1 + likes * 3.0 + replies * 4.0;
-      final decay = 1.0 / (1.0 + (ageHours < 0 ? 0 : ageHours) / 1.5);
-      return engagement * decay;
-    }
-
-    final scored = [
-      for (final p in roots) (p: p, s: score(p)),
-    ]..sort((a, b) => a.s.compareTo(b.s)); // ascending: best last → top
-    // Keep a bounded, curated list (a few cycles' worth), best last.
-    const maxShown = 60;
-    final start = scored.length > maxShown ? scored.length - maxShown : 0;
-    final result = [
-      for (final e in scored.sublist(start))
-        () {
-          // Flag "(updated)": an old post whose newest like/reply landed well
-          // after it was posted is on screen because of that activity, not
-          // recency — say so instead of implying it is fresh.
-          final mid = (e.p['mid'] ?? '').toString();
-          final t = (e.p['t'] as int?) ?? now;
-          final la = _postActivityMs[mid] ?? 0;
-          final updated = la > t + 5 * 60 * 1000 && now - la < 6 * 3600 * 1000;
-          return updated ? ({...e.p, 'updated': true}) : e.p;
-        }(),
-    ];
-    _rankedCache = result;
-    _rankedCacheRev = _activityRev.value;
-    _rankedCacheFilter = _socialFeedFilter;
-    return result;
+    // The Mesh feed: raw newest-first, NO curation/ranking. Statuses have no
+    // likes or replies, so ranking by engagement would sort by nothing and the
+    // 60-post cap would silently hide the rest.
+    return _activityArchive?.recent(limit: 200) ??
+        const <Map<String, dynamic>>[];
   }
 
   Future<List<Map<String, dynamic>>> _loadOlderSocialPosts(int beforeMs) async {
@@ -6376,7 +6257,7 @@ class _WappPageState extends State<WappPage>
               mentionResolver: RnsService.instance.nostrMentionName,
               onMentionTap: _openNostrProfileByHex,
               likeInfo: _likeInfoFor,
-              onLike: _likePost,
+              onLike: _wappName == 'social' ? null : _likePost,
               replyCount: _replyCountFor,
               onReplyPost: (post) {
                 Navigator.of(context).pop();
@@ -6642,23 +6523,28 @@ class _WappPageState extends State<WappPage>
         likeInfo: _likeInfoFor,
         // Votes are host-side NOSTR (NIP-25 "+"/"-"): the wapp does not need to
         // know, and every other NOSTR client reads them.
+        // Social is XPRS now: section 27 has no like, vote or repost
+        // packet, so no callback is supplied and the widget omits the button
+        // rather than showing one that does nothing.
         voteInfo: (mid) => RnsService.instance.nostrVotes(mid),
-        onVote: (mid, vote) {
-          final author = _activityAuthorHex(mid);
-          RnsService.instance.nostrVote(mid, author, vote);
-          setState(() {});
-        },
+        onVote: _wappName == 'social'
+            ? null
+            : (mid, vote) {
+                final author = _activityAuthorHex(mid);
+                RnsService.instance.nostrVote(mid, author, vote);
+                setState(() {});
+              },
         isSaved: (mid) => _activityArchive?.isSaved(mid) ?? false,
         savedPosts: () =>
             _activityArchive?.savedPosts() ?? const <Map<String, dynamic>>[],
-        onLike: _likePost,
+        onLike: _wappName == 'social' ? null : _likePost,
         onSave: (post) {
           _activityArchive?.toggleSaved(post);
           _keepPostMedia(post); // pinned/saved — keep its media
           setState(() {});
         },
         isReposted: (mid) => _wappReposted.contains(mid),
-        onRepost: _repostPost,
+        onRepost: _wappName == 'social' ? null : _repostPost,
         onSelfTap: () {
           final self = ProfileService.instance.activeProfile;
           if (self != null) _openProfile(self.callsign);

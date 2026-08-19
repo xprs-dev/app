@@ -402,29 +402,19 @@ class _ActivityFeedState extends State<ActivityFeed> {
         }).toList();
         break;
       case _ActivityFilter.all:
-        // Everything happening now: root posts, newest first, from anyone.
+        // The Mesh feed: root statuses this station heard, newest first, from
+        // anyone.
         //
-        // This used to require `pop==1 || likes>=2` — i.e. "All" meant "roots
-        // that already collected two likes". A post cannot have likes the moment
-        // it is published, so no fresh post could EVER appear here, and the tab
-        // whose whole job is discovering people you don't follow yet showed you
-        // hour-old material. The like gate was standing in for spam filtering and
-        // doing it badly; the host's quality gate (feed_quality.dart) does that
-        // job properly now, upstream, before a post ever reaches this widget.
-        final curated =
-            widget.curatedAll ||
-            src.any((p) => (p['source'] ?? '') == 'firehose');
-        posts = src.reversed.where((p) {
-          if (!_isStreamPost(p) || !_isRoot(p)) return false;
-          if (!curated) return true; // generic APRS/chat activity feed
-          // Social's All view is curated strangers PLUS the complete direct
-          // following stream. The two histories live in separate SQLite files
-          // but are merged by the host before reaching this filter.
-          final source = (p['source'] ?? '').toString();
-          return source == 'firehose' ||
-              source == 'following' ||
-              p['dir'] == 'out';
-        }).toList();
+        // There is no curation here and there cannot be. This branch used to
+        // admit only `source == 'firehose' || 'following'` — the NOSTR lanes —
+        // and everything else fell through the bottom silently. When the feed
+        // became XPRS the rows arrived tagged `xprs`, were archived correctly,
+        // and then vanished at this line: a full database behind an empty
+        // screen. Curating by engagement is meaningless anyway, because a
+        // t:status carries no like and no reply to curate by (section 27).
+        posts = src.reversed
+            .where((p) => _isStreamPost(p) && _isRoot(p))
+            .toList();
         break;
       case _ActivityFilter.nomadnet:
         // Publications fetched over Reticulum: root posts, newest-first, from
@@ -679,14 +669,15 @@ class _ActivityFeedState extends State<ActivityFeed> {
       );
     }
 
-    // Four tabs overflow narrow phones — make the bar horizontally scrollable.
+    // Keep the bar horizontally scrollable — narrow phones still clip three.
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          tab(Icons.public, 'Internet', _ActivityFilter.all),
-          tab(Icons.hub, 'Mesh', _ActivityFilter.nomadnet),
+          // The feed is XPRS now: statuses this station heard on the air.
+          // There is no Internet tab because there is no internet lane.
+          tab(Icons.hub, 'Mesh', _ActivityFilter.all),
           tab(Icons.people, 'Following', _ActivityFilter.following),
           tab(Icons.bookmark, 'Saved', _ActivityFilter.favorites),
         ],
@@ -701,9 +692,9 @@ class _ActivityFeedState extends State<ActivityFeed> {
       _ActivityFilter.following =>
         'Nothing from people you follow yet.\nFollow callsigns to see their posts here.',
       _ActivityFilter.all =>
-        'No activity yet.\nPosts from groups and people you follow show here.',
+        'Nothing heard yet.\nStatuses from stations in range appear here.',
       _ActivityFilter.nomadnet =>
-        'No Mesh posts yet.\nPublications from the Reticulum network appear here while this tab is open.',
+        'Nothing heard yet.\nStatuses from stations in range appear here.',
     };
     return Center(
       child: Padding(
@@ -1354,27 +1345,39 @@ class ActivityPostCard extends StatelessWidget {
       padding: const EdgeInsets.only(top: 6),
       child: Row(
         children: [
-          action(
-            info.mine ? Icons.favorite : Icons.favorite_border,
-            info.count > 0 ? '${info.count}' : null,
-            info.mine ? Colors.pink : muted,
-            onLike == null ? null : () => onLike!(mid, !info.mine),
-          ),
-          const SizedBox(width: 18),
-          action(
-            Icons.chat_bubble_outline,
-            replies > 0 ? '$replies' : null,
-            muted,
-            onReply,
-          ),
-          const SizedBox(width: 18),
-          action(
-            Icons.repeat,
-            null,
-            (isReposted?.call(mid) ?? false) ? const Color(0xFF00BA7C) : muted,
-            onRepost == null ? null : () => onRepost!(post),
-          ),
-          const SizedBox(width: 18),
+          // A gesture with nothing behind it is worse than a missing one: an
+          // XPRS status has no like, reply or repost packet (section 27), so
+          // the host passes no callback and the affordance is simply absent
+          // rather than sitting there dead.
+          if (onLike != null) ...[
+            action(
+              info.mine ? Icons.favorite : Icons.favorite_border,
+              info.count > 0 ? '${info.count}' : null,
+              info.mine ? Colors.pink : muted,
+              () => onLike!(mid, !info.mine),
+            ),
+            const SizedBox(width: 18),
+          ],
+          if (onReply != null) ...[
+            action(
+              Icons.chat_bubble_outline,
+              replies > 0 ? '$replies' : null,
+              muted,
+              onReply,
+            ),
+            const SizedBox(width: 18),
+          ],
+          if (onRepost != null) ...[
+            action(
+              Icons.repeat,
+              null,
+              (isReposted?.call(mid) ?? false)
+                  ? const Color(0xFF00BA7C)
+                  : muted,
+              () => onRepost!(post),
+            ),
+            const SizedBox(width: 18),
+          ],
           action(
             saved ? Icons.bookmark : Icons.bookmark_border,
             null,
@@ -1386,6 +1389,7 @@ class ActivityPostCard extends StatelessWidget {
           // shoulder as if they were the same gesture.
           const Spacer(),
           ...(() {
+            if (onVote == null) return const <Widget>[];
             final v = voteInfo?.call(mid) ?? (up: 0, down: 0, mine: 0);
             return [
               action(
