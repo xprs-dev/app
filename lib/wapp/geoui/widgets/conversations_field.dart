@@ -147,6 +147,11 @@ class ConversationsField extends StatefulWidget {
   final void Function(String id, String key)? onHide;
   final void Function(String id, String from)? onBlock;
 
+  /// "Message <sender> directly" on a group bubble: the host opens (or
+  /// creates) the 1:1 with that callsign. Only offered inside group
+  /// conversations — in a 1:1 the thread already IS the direct line.
+  final void Function(String from)? onDirectMessage;
+
   /// Per-conversation "…" menu actions. Mute toggles app-wide attention for the
   /// row; Close removes it from the list. Null disables the menu.
   final void Function(String id, bool muted)? onMute;
@@ -208,6 +213,7 @@ class ConversationsField extends StatefulWidget {
     this.onForward,
     this.onHide,
     this.onBlock,
+    this.onDirectMessage,
     this.onMute,
     this.onClose,
     this.roomActions = const [],
@@ -784,6 +790,11 @@ class _ConversationsFieldState extends State<ConversationsField> {
             onBlock: widget.onBlock == null
                 ? null
                 : (m) => widget.onBlock!(id, (m['from'] ?? '').toString()),
+            // Group threads only — a 1:1 already is the direct line.
+            onDirectMessage:
+                (widget.onDirectMessage == null || !id.startsWith('#'))
+                ? null
+                : widget.onDirectMessage,
           ),
         ),
       ],

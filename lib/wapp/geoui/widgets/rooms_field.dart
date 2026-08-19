@@ -52,6 +52,10 @@ class RoomsField extends StatefulWidget {
   final void Function(String id, String key)? onHide;
   final void Function(String from)? onBlock;
 
+  /// "Message <sender> directly" from a room bubble: the host asks the wapp to
+  /// open (or create) the 1:1 with that callsign.
+  final void Function(String from)? onDirectMessage;
+
   const RoomsField({
     super.key,
     required this.rooms,
@@ -68,6 +72,7 @@ class RoomsField extends StatefulWidget {
     this.onSenderTap,
     this.onHide,
     this.onBlock,
+    this.onDirectMessage,
   });
 
   @override
@@ -673,6 +678,7 @@ class _RoomsFieldState extends State<RoomsField> {
                     onBlock: widget.onBlock == null
                         ? null
                         : (m) => widget.onBlock!((m['from'] ?? '').toString()),
+                    onDirectMessage: widget.onDirectMessage,
                   ),
                 ),
         ),

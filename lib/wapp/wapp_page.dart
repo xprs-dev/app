@@ -3376,6 +3376,9 @@ class _WappPageState extends State<WappPage>
         _fieldValues['conversations_blockcall'] = from;
         _sendCommand('conversations_block');
       },
+      // Chat is a group client — the 1:1 lives wherever the profile's
+      // "Message" button goes (the lxmf/npub thread), so route there.
+      onDirectMessage: (from) => _openChatWithPeer(from),
     );
     // A message still on its way says so where it happened — on its own bubble,
     // by having no tick yet (chat_view_field's _statusBadge: nothing while
@@ -3495,6 +3498,7 @@ class _WappPageState extends State<WappPage>
         // ignore: discarded_futures
         _confirmBlockConversation(field, id, from.isNotEmpty ? from : id);
       },
+      onDirectMessage: (from) => _openChatWithPeer(from),
       onMute: (id, muted) {
         setState(() => store.setMuted(id, muted));
         _syncAppBadge(); // muting drops it from the app-wide badge

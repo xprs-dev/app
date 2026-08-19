@@ -82,6 +82,11 @@ class ChatViewField extends StatefulWidget {
   final void Function(Map<String, dynamic> m)? onHide;
   final void Function(Map<String, dynamic> m)? onBlock;
 
+  /// "Message <sender> directly" on someone else's bubble: the host opens (or
+  /// creates) the 1:1 conversation with that callsign. Offered only when the
+  /// bubble isn't already in a 1:1 with its sender.
+  final void Function(String from)? onDirectMessage;
+
   /// Tapping a feed item that carries a `convo` (e.g. the Activity feed). The
   /// host opens that conversation. Only items with a non-empty `convo` are
   /// tappable; others ignore the tap.
@@ -104,6 +109,7 @@ class ChatViewField extends StatefulWidget {
     this.onForward,
     this.onHide,
     this.onBlock,
+    this.onDirectMessage,
     this.onItemTap,
   });
 
@@ -1059,6 +1065,16 @@ class _ChatViewFieldState extends State<ChatViewField> {
                 onTap: () {
                   Navigator.pop(sheet);
                   widget.onHide!(m);
+                },
+              ),
+            // A direct line to the sender — only on someone else's message.
+            if (widget.onDirectMessage != null && !outgoing && from.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.alternate_email),
+                title: Text('Message $from directly'),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  widget.onDirectMessage!(from);
                 },
               ),
             // Block only makes sense for someone else's message.
