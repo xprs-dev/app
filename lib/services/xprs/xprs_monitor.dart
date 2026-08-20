@@ -80,7 +80,28 @@ class XprsStation {
         packets = 0;
 
   final String callsign;
+
+  /// The bearer the LAST packet arrived over. Kept for the many readers that
+  /// want one word for "how did I hear this".
   String bearer;
+
+  /// EVERY bearer this station has been heard on, each with the moment it was
+  /// last heard there. One station is commonly reachable several ways at once
+  /// -- a phone on the LAN that is also advertising over BLE5, a dongle on
+  /// both BLE5 and ESP-NOW -- and a single `bearer` field could only ever name
+  /// the most recent, flipping between them packet by packet and hiding the
+  /// rest. The per-bearer timestamp is what lets a reader age each one out on
+  /// its own: BLE5 going quiet does not mean the LAN did.
+  final Map<String, int> bearers = {};
+
+  /// The bearers heard within [window], newest first. The honest answer to
+  /// "how can I reach this station right now".
+  List<String> bearersFresh(int nowMs, int windowMs) {
+    final live = bearers.entries.where((e) => nowMs - e.value <= windowMs).toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return [for (final e in live) e.key];
+  }
+
   int firstMs;
   int lastMs;
   int packets;
@@ -99,6 +120,11 @@ class XprsStation {
   /// What it says it does for other stations (section 24, `serve:`). This is
   /// how an indexer is told from a phone: `index` in here and nowhere else.
   List<String> services = const [];
+
+  /// The last value this station reported for each measurement key it has
+  /// ever sent (section 10.4 telemetry, section 23.3 supply). Kept as the text
+  /// on the wire, unit included -- `14.2C`, not `14.2`.
+  final Map<String, String> readings = {};
 
   /// An indexer's `count:` — how many callsigns it is archiving (section 36.9).
   int? count;
@@ -195,7 +221,15 @@ class XprsMonitor {
 
     final st = _stations.putIfAbsent(from, () => XprsStation(from, bearer, now));
     st.bearer = bearer;
+    st.bearers[bearer] = now;
     st.lastMs = now;
+    // Keep the latest of anything it measured. A weather station's temp and a
+    // tracker's battery arrive on ordinary packets, not a special type, so
+    // this reads whatever the packet happens to carry.
+    for (final k in kXprsReadings) {
+      final v = p[k];
+      if (v != null && v.isNotEmpty) st.readings[k] = v;
+    }
     st.rssi = rssi;
     st.packets++;
     // A beacon says how many it can reach and whether it is holding mail; an

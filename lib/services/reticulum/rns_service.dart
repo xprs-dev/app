@@ -2424,8 +2424,18 @@ class RnsService {
             'firstSeen': s.firstMs,
             'lastSeen': s.lastMs,
             'bearer': s.bearer,
+            // EVERY way this station is reachable right now, not just the one
+            // its last packet came in on. A dongle on BLE5 and ESP-NOW, or a
+            // phone on the LAN that is also advertising, is reachable several
+            // ways at once and the panel says so.
+            'bearers': s.bearersFresh(
+                DateTime.now().millisecondsSinceEpoch,
+                XprsMonitor.staleAfter.inMilliseconds),
             'rssi': s.rssi,
             'packets': s.packets,
+            // Whatever it last measured -- temperature, battery, what powers
+            // it. Text as sent, unit included (section 4.4).
+            if (s.readings.isNotEmpty) 'readings': s.readings,
             // What its signatures turned out to be (§9.1), as judged by the
             // spool. Absent when nothing of its has been judged yet, which is
             // not the same as unsigned.

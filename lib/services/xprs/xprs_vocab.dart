@@ -150,6 +150,26 @@ const Set<String> kXprsServices = {
   'other',
 };
 
+/// The measurement keys a station may report about itself or its surroundings
+/// (`docs/XPRS.md` sections 10.4 and 23.3, listed together at section 9.2.1).
+/// Values are kept as the TEXT that was sent: the unit is part of the value
+/// (section 4.4), so `temp:14.2C` is shown as "14.2C" and never turned into a
+/// bare number that has lost what it measured.
+///
+/// There is deliberately no storage or disk key here, because the format has
+/// none. An archiver says how much it holds with `count:` (section 36.9) and
+/// how much mail is waiting with `mail:`, and those are the honest answers to
+/// "how full is it".
+const Set<String> kXprsReadings = {
+  // weather
+  'temp', 'hum', 'press', 'wind', 'wdir', 'intemp', 'inhum',
+  'rain1', 'rain24',
+  // telemetry
+  'batt', 'dose', 'lifedose', 'radon', 'rf', 'efield', 'mfield', 'odometer',
+  // what keeps it running (section 23.3)
+  'supply',
+};
+
 /// The `serve:` list of a packet, filtered to the words section 24 defines.
 /// Empty when the packet claims nothing.
 List<String> xprsServices(XprsPacket p) {

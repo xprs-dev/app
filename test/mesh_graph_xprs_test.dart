@@ -157,4 +157,71 @@ void main() {
 
     XprsMonitor.instance.clear();
   });
+
+  // ── Reachability and readings, the two things the node panel asks for ──
+
+  test('a station heard on two bearers is reachable on both, not the last one',
+      () {
+    XprsMonitor.instance.clear();
+    final p = XprsPacket.parse('t:observation f:X3DUAL link:lan peers:1')!;
+    // Same station, two radios. Before bearers were a set, the second offer
+    // simply overwrote the first and the station claimed only ESP-NOW -- so a
+    // device you could reach two ways showed one, and the BLE5 legend chip
+    // could read 0 with a BLE5 device on the canvas.
+    XprsMonitor.instance.offer(p, bearer: 'ble', selfCallsign: 'X1TEST');
+    XprsMonitor.instance.offer(p, bearer: 'espnow', selfCallsign: 'X1TEST');
+
+    final st = XprsMonitor.instance.stations['X3DUAL']!;
+    expect(st.bearers.keys, containsAll(['ble', 'espnow']));
+    expect(st.bearer, 'espnow', reason: 'still the most recent, for one-word readers');
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    expect(st.bearersFresh(now, 600000), containsAll(['ble', 'espnow']));
+    // Each bearer ages on its own clock: BLE5 going quiet is not the LAN
+    // going quiet.
+    st.bearers['ble'] = now - 900000;
+    expect(st.bearersFresh(now, 600000), ['espnow']);
+
+    final node = (RnsService.instance.graphSnapshot(includeXprs: true)['nodes']
+            as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((n) => n['id'] == 'xprs:X3DUAL');
+    expect((node['meta'] as Map)['bearers'], contains('espnow'));
+    XprsMonitor.instance.clear();
+  });
+
+  test('what a station measured reaches the panel, unit and all', () {
+    XprsMonitor.instance.clear();
+    final wx = XprsPacket.parse('t:observation f:X3WX01 link:lan '
+        'temp:14.2C hum:78% batt:64% supply:solar')!;
+    XprsMonitor.instance.offer(wx, bearer: 'lan', selfCallsign: 'X1TEST');
+
+    final st = XprsMonitor.instance.stations['X3WX01']!;
+    // The TEXT, never a parsed number: the unit is part of the value
+    // (section 4.4), and 14.2 alone has lost what it measured.
+    expect(st.readings['temp'], '14.2C');
+    expect(st.readings['hum'], '78%');
+    expect(st.readings['batt'], '64%');
+    expect(st.readings['supply'], 'solar');
+
+    final node = (RnsService.instance.graphSnapshot(includeXprs: true)['nodes']
+            as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((n) => n['id'] == 'xprs:X3WX01');
+    expect(((node['meta'] as Map)['readings'] as Map)['temp'], '14.2C');
+    XprsMonitor.instance.clear();
+  });
+
+  test('a station that measured nothing carries no readings key', () {
+    XprsMonitor.instance.clear();
+    final b = XprsPacket.parse('t:observation f:X3BARE link:lan peers:1')!;
+    XprsMonitor.instance.offer(b, bearer: 'lan', selfCallsign: 'X1TEST');
+    final node = (RnsService.instance.graphSnapshot(includeXprs: true)['nodes']
+            as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((n) => n['id'] == 'xprs:X3BARE');
+    expect((node['meta'] as Map).containsKey('readings'), isFalse,
+        reason: 'absent is not the same as empty; the panel shows no section');
+    XprsMonitor.instance.clear();
+  });
 }

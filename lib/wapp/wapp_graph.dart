@@ -797,7 +797,14 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     final counts = <RnsIface, int>{};
     for (final n in _allNodes) {
       if (n.kind == 'self') continue;
-      counts[n.iface] = (counts[n.iface] ?? 0) + 1;
+      // A node counts on EVERY network it is reachable on, not just the one
+      // its last packet arrived over. A dongle heard on BLE5 and ESP-NOW is
+      // genuinely both, and counting it once put it under whichever bearer
+      // spoke most recently -- so the BLE5 chip could read 0 with a BLE5
+      // device on the canvas.
+      for (final i in n.ifaces) {
+        counts[i] = (counts[i] ?? 0) + 1;
+      }
     }
     return Positioned(
       left: 10,
@@ -808,9 +815,12 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         spacing: 6,
         runSpacing: 6,
         children: [
+          // EVERY bearer, always, dimmed when empty. Hiding a chip at zero
+          // meant BLE5 vanished whenever nothing was on it, which reads as
+          // "this build has no Bluetooth" rather than "nothing there yet" --
+          // and BLE5 is the bearer XPRS leans on hardest.
           for (final iface in RnsIface.values)
-            if ((counts[iface] ?? 0) > 0 || iface.forwardLooking)
-              _legendChip(iface, counts[iface] ?? 0),
+            _legendChip(iface, counts[iface] ?? 0),
         ],
       ),
     );
@@ -818,7 +828,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
 
   Widget _legendChip(RnsIface iface, int count) {
     final active = _focusedIface == iface;
-    final dimmed = iface.forwardLooking && count == 0;
+    final dimmed = count == 0;
     return Opacity(
       opacity: dimmed ? 0.45 : 1,
       child: InkWell(
@@ -864,20 +874,26 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // window); the hub count is how many bootstrap hubs we currently hold a link
   // to. Tapping opens the bootstrap-hubs panel.
   Widget _buildReachBadge() {
-    // Three DISTINCT categories, each its own count + list:
-    //  • XPRS  — our devices;
-    //  • devices  — other Reticulum peers (NomadNet/Sideband/generic), NOT
-    //               XPRS and NOT hubs;
-    //  • hubs     — connected bootstrap hubs.
-    // ONE source of truth, shared with the launcher's status bar
-    // (RnsService.reachability). These counts used to be derived here, from the
-    // graph's own node lists, and disagreed with the launcher badly enough to
-    // look like a bug in both: "8 devices" on the home screen against "209
-    // devices" here — the same word for two different populations.
-    final reach = RnsService.instance.reachability();
-    final geo = reach.xprs;
-    final online = reach.others;
-    final hubs = reach.hubs;
+    // ONE RULE: every number here is the LENGTH OF THE LIST IT OPENS.
+    //
+    // Three tap targets, three populations, and they are genuinely different
+    // questions -- what this station has heard announce (peers), what it is
+    // configured to dial (hubs), and what is on the canvas (XPRS devices).
+    // Each count is therefore computed from the same source as its own panel
+    // body, a few lines below, and from nothing else.
+    //
+    // They used to come from RnsService.reachability() instead, which counts
+    // the Reticulum announce registry. XPRS stations heard over the AIR are
+    // not in that registry -- XprsMonitor holds them -- so the badge read
+    // "0 devices" directly above a list of five of them. A counter that
+    // disagrees with the list one tap away is worse than no counter.
+    //
+    // The launcher's status bar still uses reachability(), and that is right:
+    // it answers "what can I reach", not "what am I looking at".
+    final geo = _dedupPeers(
+        _allNodes.where((n) => n.kind != 'self' && n.xprs).toList()).length;
+    final online = _dedupPeers(_otherDevices.toList()).length;
+    final hubs = _hubList.length;
     // XPRS stations heard over the air right now (XprsMonitor's own staleness
     // window). A count, not a tap target: the stations are already on the
     // canvas as nodes — this line says how many of the orbs are that kind.
@@ -1059,8 +1075,36 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       case _Panel.none:
         return const SizedBox.shrink();
     }
-    // Full-screen panel (no side-strip popup, no own header — the host app bar
-    // shows the title + the single back arrow; see _reportNav).
+    // On a WIDE screen the panel docks to the right and the graph keeps the
+    // rest. Covering a landscape display with a 680-wide column centred in a
+    // sea of background wastes the screen and, worse, hides the thing the
+    // panel is about -- you lose sight of where the node sits the moment you
+    // ask about it. Tapping another orb just re-points the panel.
+    //
+    // Portrait keeps the full-screen sheet: there is no room beside a phone
+    // held upright, and a narrow column there would be worse than the sheet.
+    final size = MediaQuery.of(context).size;
+    final docked = size.width >= 720 && size.width > size.height;
+    if (docked) {
+      final w = size.width * 0.34 < 320
+          ? 320.0
+          : (size.width * 0.34 > 460 ? 460.0 : size.width * 0.34);
+      return Positioned(
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: w,
+        child: Material(
+          color: _gBg,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: _gBorder)),
+            ),
+            child: content,
+          ),
+        ),
+      );
+    }
     return Positioned.fill(
       child: Material(
         color: _gBg,
@@ -1134,6 +1178,92 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   /// The XPRS station card body: what the beacon said, drawn to be read at a
   /// glance (docs/XPRS.md §10.5-10.6). Distance instead of dBm, tiles instead
   /// of a key/value waterfall, and the door into the station's carried mail.
+
+  /// Section 24's `serve:` words, as a person would say them. The wire word is
+  /// terse on purpose (250 bytes); a panel has room to say what it means.
+  static const Map<String, String> _serviceLabels = {
+    'relay': 'Relay',
+    'archive': 'Archiver',
+    'internet': 'Internet gateway',
+    'aprs': 'APRS gateway',
+    'nostr': 'NOSTR relay',
+    'files': 'File server',
+    'devices': 'Device controller',
+    'time': 'Time source',
+    'weather': 'Weather station',
+    'wifi': 'WiFi for people nearby',
+    'other': 'Something else (see its message)',
+  };
+
+  /// Measurement keys (section 10.4 telemetry, 23.3 supply), named for reading.
+  static const Map<String, String> _readingLabels = {
+    'temp': 'Temperature', 'hum': 'Humidity', 'press': 'Pressure',
+    'wind': 'Wind', 'wdir': 'Wind direction', 'intemp': 'Indoor temperature',
+    'inhum': 'Indoor humidity', 'rain1': 'Rain, last hour',
+    'rain24': 'Rain, 24 hours', 'batt': 'Battery', 'dose': 'Radiation dose',
+    'lifedose': 'Lifetime dose', 'radon': 'Radon', 'rf': 'RF field',
+    'efield': 'Electric field', 'mfield': 'Magnetic field',
+    'odometer': 'Odometer', 'supply': 'Powered by',
+  };
+
+  /// The bearer word as the legend names it, so the panel and the chips at the
+  /// bottom of the graph agree.
+  static String _bearerLabel(String b) {
+    switch (b.toLowerCase()) {
+      case 'ble':
+        return 'BLE5';
+      case 'lan':
+        return 'LAN';
+      case 'espnow':
+        return 'ESP-NOW';
+      case 'wifi':
+        return 'WiFi';
+      case 'lora':
+        return 'LoRa';
+      case 'vhf':
+        return 'VHF';
+      case 'uhf':
+        return 'UHF';
+      case 'hf':
+        return 'HF';
+      default:
+        return b.toUpperCase();
+    }
+  }
+
+  /// Every way this node can be reached, one chip each, coloured like the
+  /// legend. A station is often reachable several ways at once and which ones
+  /// is the first thing you want when deciding whether it is worth calling.
+  Widget _reachRow(List<String> bearers) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final b in bearers)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            decoration: BoxDecoration(
+              color: ifaceForBearer(b).color.withAlpha(38),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: ifaceForBearer(b).color.withAlpha(120)),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                    color: ifaceForBearer(b).color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+              Text(_bearerLabel(b),
+                  style: const TextStyle(
+                      color: _gFg, fontSize: 12, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+      ],
+    );
+  }
+
   List<Widget> _xprsStats(RnsGraphNode n, Map<String, dynamic> m) {
     final bearer = (m['bearer'] ?? '').toString();
     final rssi = (m['rssi'] as num?)?.toInt() ?? 0;
@@ -1143,15 +1273,33 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     final packets = (m['packets'] as num?)?.toInt() ?? 0;
     final dist = bearer == 'ble' && rssi != 0 ? bleDistanceEstimate(rssi) : '';
     final count = (m['count'] as num?)?.toInt() ?? 0;
+    final reach = n.bearers.isNotEmpty
+        ? n.bearers
+        : (bearer.isNotEmpty ? [bearer] : const <String>[]);
+    final readings = (m['readings'] as Map?)?.cast<String, dynamic>() ?? const {};
     return [
+      // How to reach it, first: before what it holds or how long it has been
+      // up, the question is whether you can talk to it at all, and by which
+      // radio.
+      if (reach.isNotEmpty) ...[
+        const Padding(
+          padding: EdgeInsets.only(bottom: 6),
+          child: Text('REACHABLE OVER',
+              style: TextStyle(
+                  color: _gMuted,
+                  fontSize: 11,
+                  letterSpacing: 0.6,
+                  fontWeight: FontWeight.w700)),
+        ),
+        _reachRow(reach),
+        const SizedBox(height: 12),
+      ],
       Wrap(spacing: 8, runSpacing: 8, children: [
         if (count > 0)
           _statTile(Icons.inventory_2_outlined, '$count', 'callsigns archived',
               color: _gGeo),
         if (dist.isNotEmpty)
           _statTile(Icons.social_distance_outlined, dist, 'away, roughly'),
-        if (dist.isEmpty && bearer.isNotEmpty)
-          _statTile(Icons.podcasts_outlined, bearer.toUpperCase(), 'heard over'),
         if (uptime.isNotEmpty)
           _statTile(Icons.timer_outlined, uptime, 'running now'),
         if (lifetime.isNotEmpty)
@@ -1172,6 +1320,22 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           child: Text('distance is a rough estimate from signal ($rssi dBm)',
               style: const TextStyle(color: _gMuted, fontSize: 11)),
         ),
+      // What it last measured. Shown as the station SAID it -- `14.2C`, not a
+      // number this app decided the unit of (section 4.4).
+      if (readings.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 4),
+          child: Text('LAST REPORTED',
+              style: TextStyle(
+                  color: _gMuted,
+                  fontSize: 11,
+                  letterSpacing: 0.6,
+                  fontWeight: FontWeight.w700)),
+        ),
+        for (final e in readings.entries)
+          _kv(_readingLabels[e.key] ?? e.key, e.value.toString()),
+      ],
       if (mail > 0) ...[
         const SizedBox(height: 12),
         SizedBox(
@@ -1659,14 +1823,16 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       if (n.services.isNotEmpty) ...[
         const Padding(
           padding: EdgeInsets.only(bottom: 4),
-          child: Text('Answers to',
+          child: Text('HOSTS',
               style: TextStyle(
                   color: _gMuted,
                   fontSize: 11,
                   letterSpacing: 0.6,
                   fontWeight: FontWeight.w700)),
         ),
-        _chips(n.services),
+        // Said as a person would say it. `archive` on the wire is an archiver
+        // to a reader, and a panel has the room the packet does not.
+        _chips([for (final w in n.services) _serviceLabels[w] ?? w]),
       ],
       // An XPRS station gets a compact, glanceable account instead of the key/
       // value waterfall: icon tiles (distance, service record, mail) and the

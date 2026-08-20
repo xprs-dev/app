@@ -30,7 +30,7 @@ import '../services/reticulum/rns_iface_kind.dart';
 /// yellow, purple and red, far apart on a dark background. LoRa and packet
 /// radio are not carried by the Dart stack yet; their chips render dimmed.
 enum RnsIface {
-  ble('BLE', Color(0xFF4FC3F7)),
+  ble('BLE5', Color(0xFF4FC3F7)),
   lanWifi('LAN/WiFi', Color(0xFF66BB6A)),
   internet('Internet', Color(0xFFFFD54F)),
   lora('LoRa', Color(0xFFB388FF), forwardLooking: true),
@@ -40,7 +40,34 @@ enum RnsIface {
 
   final String label;
   final Color color;
+
+  /// A bearer XPRS specifies but this build cannot carry traffic on yet. The
+  /// legend still lists it, dimmed, rather than hiding it -- an absent chip
+  /// reads as "no such thing", a dim one as "nothing here right now".
   final bool forwardLooking;
+}
+
+/// The bearer word the wire uses (`ble`, `lan`, `espnow`, `lora`, `vhf`...)
+/// mapped onto the network the legend groups by. ESP-NOW and WiFi are both
+/// carried on the same radio as the LAN as far as a person reading the graph
+/// is concerned; LoRa, VHF/UHF/HF are their own things.
+RnsIface ifaceForBearer(String bearer) {
+  switch (bearer.toLowerCase()) {
+    case 'ble':
+      return RnsIface.ble;
+    case 'lan':
+    case 'wifi':
+    case 'espnow':
+      return RnsIface.lanWifi;
+    case 'lora':
+      return RnsIface.lora;
+    case 'vhf':
+    case 'uhf':
+    case 'hf':
+      return RnsIface.radio;
+    default:
+      return RnsIface.internet;
+  }
 }
 
 /// Classify a node's `via` tag (the local interface its announce arrived on:
@@ -87,6 +114,17 @@ class RnsGraphNode {
   final int firstSeenMs;
   final List<String> relayers;
 
+  /// Every bearer this node is reachable on right now, freshest first, as the
+  /// host resolved it (`meta.bearers`). Usually one; a dongle on BLE5 and
+  /// ESP-NOW, or a phone on the LAN that is also advertising, has several, and
+  /// [iface] can only ever name the newest of them.
+  final List<String> bearers;
+
+  /// Those bearers as networks the legend groups by, deduplicated.
+  Set<RnsIface> get ifaces => bearers.isEmpty
+      ? {iface}
+      : {for (final b in bearers) ifaceForBearer(b)};
+
   /// The network this node is reached over — resolved after parsing.
   RnsIface iface = RnsIface.internet;
 
@@ -128,6 +166,11 @@ class RnsGraphNode {
                 ?.map((e) => e.toString())
                 .toList() ??
             const [],
+        bearers = ((m['meta'] as Map?)?['bearers'] as List?)
+                ?.map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList() ??
+            const [],
         childCount = ((m['meta'] as Map?)?['children'] as num?)?.toInt() ?? 0 {
     effectiveRelayer = relayer;
     members = childCount;
@@ -150,6 +193,7 @@ class RnsGraphNode {
         meta = const {},
         firstSeenMs = 0,
         relayers = const [],
+        bearers = const [],
         childCount = 0;
 }
 
