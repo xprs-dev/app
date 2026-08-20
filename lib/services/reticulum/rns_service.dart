@@ -2373,7 +2373,7 @@ class RnsService {
     // station is xprs-speaking by definition).
     //
     // A `service:` filter used to hide every one of them, on the reasoning that
-    // a beacon announces no services. It does now: `t:service serve:index,…`
+    // a beacon announces no services. It does now: `t:service serve:archive`
     // (§24) is exactly how an indexer says what it is, so these stations are
     // filtered on what they claim like anything else.
     if (includeXprs && !localOnly) {
@@ -2407,10 +2407,18 @@ class RnsService {
           'meta': {
             'callsign': call,
             'pubkey': npubForCallsign(call) ?? '',
-            // The one word the panel reads as a role. An indexer says so in
-            // `serve:` (§36), and that is the whole difference between a
-            // station worth asking for history and a phone that walked past.
-            'role': s.services.contains('index') ? 'indexer' : '',
+            // The one word the panel reads as a role, and the whole
+            // difference between a station worth asking for history and a
+            // phone that walked past.
+            //
+            // The word on the wire is `archive` (section 24), not `index`:
+            // section 24 folds keeping a spool, answering cmd:history and
+            // holding mail into that single claim, and section 36 calls the
+            // station doing it an indexer. This read `contains('index')`,
+            // which xprsServices can never return because `index` is not in
+            // kXprsServices -- so the role was unreachable and every archiver
+            // on the air rendered as an ordinary station.
+            'role': s.services.contains('archive') ? 'indexer' : '',
             'caps': const <String>[],
             'capacity': 0,
             'firstSeen': s.firstMs,

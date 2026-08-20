@@ -143,6 +143,7 @@ const Set<String> kXprsServices = {
   'aprs',
   'nostr',
   'files',
+  'devices',
   'time',
   'weather',
   'wifi',

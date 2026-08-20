@@ -58,11 +58,15 @@ void main() {
     XprsMonitor.instance.clear();
   });
 
-  test('a station that says serve:index reads as an indexer', () {
+  test('a station that says serve:archive reads as an indexer', () {
     XprsMonitor.instance.clear();
-    // What the T-Dongle airs every 600 s (docs/device-tdongle.md).
+    // Section 24's vocabulary. `archive` is one claim covering all of it:
+    // keeping a spool, re-airing it on cmd:history, and holding mail for
+    // stations that named this one. There is no separate `index`, `history`
+    // or `mailbox` word -- a packet claiming those claims nothing, because
+    // xprsServices drops anything section 24 does not define.
     final svc = XprsPacket.parse('t:service f:X3WWAJ '
-        'serve:index,history,mailbox count:212 ts:2026-08-17_15:00:00');
+        'serve:relay,archive count:212 ts:2026-08-17_15:00:00');
     XprsMonitor.instance
         .offer(svc!, bearer: 'lan', selfCallsign: 'X1TEST');
 
@@ -70,14 +74,14 @@ void main() {
             as List)
         .cast<Map<String, dynamic>>()
         .firstWhere((n) => n['id'] == 'xprs:X3WWAJ');
-    expect((node['services'] as List), containsAll(['index', 'history']));
+    expect((node['services'] as List), containsAll(['relay', 'archive']));
     expect((node['meta'] as Map)['role'], 'indexer',
-        reason: 'serve:index is the whole difference from a passing phone');
+        reason: 'serve:archive is the whole difference from a passing phone');
     expect((node['meta'] as Map)['count'], 212);
 
     // A service filter now SELECTS these stations instead of dropping them.
-    final indexers = (RnsService.instance
-            .graphSnapshot(includeXprs: true, service: 'index')['nodes'] as List)
+    final indexers = (RnsService.instance.graphSnapshot(
+        includeXprs: true, service: 'archive')['nodes'] as List)
         .cast<Map<String, dynamic>>();
     expect(indexers.any((n) => n['id'] == 'xprs:X3WWAJ'), true);
     final files = (RnsService.instance
