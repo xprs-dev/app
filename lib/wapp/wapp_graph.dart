@@ -164,7 +164,12 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
 
   // Filter controls.
   final TextEditingController _searchCtl = TextEditingController();
-  bool _geoOnly = false;
+  // Starts CHECKED, matching the wapp that drives this widget: the mesh wapp
+  // asks for XPRS-only by default (Reticulum gateways are exempt and come
+  // through regardless). Left at false the chip claimed the filter was off
+  // while the graph was plainly filtered, and the first tap then appeared to
+  // do nothing because it asked for the state already in force.
+  bool _geoOnly = true;
   String _service = '';
   Timer? _searchDebounce;
 
