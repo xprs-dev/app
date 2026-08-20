@@ -1510,7 +1510,7 @@ attacker never held (section 13.7.1).
 
 `q:` and `s:` words assigned by this document: `ack`, `read`, `sign`, `pos`,
 `batt`, `identity`, `pong`, `have`, `state`, `no`. Command words assigned:
-`history`, `file`, `put`, `set`, `interpret`. Reactions assigned for `add:` and `remove:`:
+`history`, `file`, `put`, `set`, `interpret`, `update`. Reactions assigned for `add:` and `remove:`:
 `like`, `repost`. All other words are reserved. A word beginning with `z` is private, as a
 key beginning with `z` is.
 
@@ -2313,6 +2313,7 @@ t:observation f:X1BOA3 pos:38.6902,-9.4012 wave:1.8m seatemp:18.4C type:boat ts:
 | `lifetime` | `qty` | how long the station has run in total, across every restart | duration |
 | `odometer` | `qty` | distance travelled over the station's service life | distance |
 | `type` | `enum` | what the station is or is riding on, from the set in section 14.2 | |
+| `fw` | `text` | the firmware version this station is running (section 25.8) | |
 | `state` | `enum` | a device's principal condition, from the closed list in section 25.7 | |
 | `level` | `qty` | how far, when a condition is partial (section 25.7) | proportion |
 | `target` | `qty` | the setpoint a device holds a reading at (section 25.7) | |
@@ -4855,6 +4856,12 @@ has**, not in `arg:`. `arg:` is positional, and design rule 1 says there are no
 positional fields; it stays for operator commands, where this document has no
 key to offer.
 
+**`cmd:update` asks a station to install a firmware version.** It is the
+third that cannot work between strangers if every station names it
+differently, and it is specified in section 25.8 because what it costs --
+a station that reboots into code somebody else chose -- deserves its own
+rules rather than a line in a table.
+
 **`cmd:file` asks for the bytes behind a `file:` reference.**
 
 ```
@@ -5292,6 +5299,106 @@ self-generated, so it never originates on licensed spectrum (section
 any station goes silent, which is the honest signal: a lamp whose
 controller is gone IS unreachable, and nothing in the format pretends
 otherwise.
+
+### 25.8 Keeping a station's firmware current
+
+A station on a roof is the case this section exists for. Reaching it with
+a cable costs a ladder, so it either updates over the air or it stays on
+the version it was carried up with -- and a network of stations that can
+never be fixed is a network whose worst bug is permanent.
+
+**`cmd:update` asks a station to install firmware.** It is an actuation,
+so section 25.4 applies in full and without exception: unsigned or
+unverifiable is discarded and never answered, a verified signer must be on
+the allow-list the owner holds or the answer is `code:403`, and the
+command expires with the 300-second window.
+
+```
+126  t:command f:X1RD89 d:X3P7QK ts:2026-08-20_14:26:40 cmd:update sig:<60 characters>
+136  t:command f:X1RD89 d:X3P7QK ts:2026-08-20_14:26:40 cmd:update ver:1.4.2 sig:<60 characters>
+165  t:command f:X1RD89 d:X3P7QK ts:2026-08-20_14:26:40 cmd:update url:http://192.168.1.9/fw/m5-1.4.2.bin sig:<60 characters>
+```
+
+The bare form means "install what your configured source offers". `ver:`
+pins a version, so a fleet lands on one build rather than on whatever each
+node happened to find. `url:` names a source for this one install -- a
+mirror on the local network, or a laptop on a bench -- and changes nothing
+about what is accepted: the image still has to carry a signature the
+station already trusts.
+
+**A station accepts an image, never a source.** This is the rule the whole
+section turns on. The bytes are authenticated by a signature made by the
+key whose holder is entitled to publish firmware for that station, and
+that signature is checked before a single byte is written to storage. A
+hostile source -- a poisoned mirror, a lying DNS answer, an operator's own
+mistake -- can therefore waste a station's airtime and cannot change what
+it runs. It also means the transport needs no trust of its own: plain
+HTTP, a phone on the station's own access point, or a peer handing over
+bytes it already holds are all equally acceptable carriers.
+
+**What is signed is not the image alone.** A bare digest is a hazard: the
+same key signs this station's packets, and a signature over 32 bytes says
+nothing about which 32 bytes were meant. The approval therefore covers a
+line that no packet can produce -- a packet always begins `t:` -- naming
+the product, the board, the version, the size and the image's digest
+together:
+
+```
+xprsfw1 m5stack-core 1.4.2 1340320 3f7a1c...(64 lowercase hex)
+```
+
+So a build for one board can never be installed on another, and an
+approval for one version can never be replayed as approval for the next.
+
+**The station answers twice, and the second answer is the one that
+matters.** `code:202` says the command was accepted and the work has
+started. Minutes and one reboot later, the station says how it went, with
+the same `r:` naming the original command:
+
+```
+132  t:result f:X3P7QK d:X1RD89 ts:2026-08-20_14:26:41 r:9f2c41 code:202 sig:<60 characters>
+141  t:result f:X3P7QK d:X1RD89 ts:2026-08-20_14:33:12 r:9f2c41 code:200 fw:1.4.2 sig:<60 characters>
+155  t:result f:X3P7QK d:X1RD89 ts:2026-08-20_14:33:12 r:9f2c41 code:500 fw:1.4.1 sig:<60 characters> m:rolled back
+```
+
+`code:200` is aired by the NEW firmware after it has proved it works --
+not when the bytes finished arriving, which proves only that bytes
+arrived. `code:500` with the old version in `fw:` is aired by the OLD
+firmware after the station put itself back, and it is the most valuable
+packet in this section: a failed remote update reporting its own failure,
+from a station nobody had to visit. `code:403` refuses a signer who is not
+allowed, `code:408` one whose command has expired, `code:429` a station
+already installing something, and `code:500` with `m:` a transfer that
+arrived corrupt.
+
+**A station that cannot go back should not go forward.** The reason this
+is safe to do to a station on a roof is that the old firmware stays where
+it is until the new one has earned its place: kept, unmodified, in the
+slot it was running from, and restored automatically if the new one fails
+to come up or fails to say it is well within a bounded time. A station
+with room for only one firmware image may implement `cmd:update`, and
+should answer `code:403` and say so, because an update that cannot be
+undone is a decision the operator should make with a cable in hand.
+
+**Every station says what it runs.** `fw:` on the periodic announcement
+(section 24) costs about ten bytes and makes a fleet's version spread
+visible to anyone already listening, without asking any station anything:
+
+```
+117  t:service f:X3P7QK serve:archive count:1234 fw:1.4.2 sig:<60 characters>
+```
+
+That is how an operator finds the three nodes still on last month's build,
+and how a station that answers nothing at all still reports the one fact
+that explains why.
+
+**What this section does not do.** It does not say where firmware comes
+from, who may publish it, how an allow-list is distributed, or what a
+version string means -- those are the operator's, exactly as section 25.4
+says authorisation is. And it defends nothing against somebody standing at
+the station with a cable, which is deliberate: the owner of a device is
+entitled to change what it runs, and a station that its owner cannot
+repair is not a station they own.
 
 ---
 
