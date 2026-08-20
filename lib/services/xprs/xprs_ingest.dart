@@ -42,6 +42,10 @@ class XprsIngest {
   static void Function(XprsPacket p,
       {required String selfBase, required String bearer})? onCommand;
 
+  /// Every heard `t:result`, for whoever asked the question it answers --
+  /// the catch-up poller advances its watermark on these (36.10.1).
+  static void Function(XprsPacket p)? onResult;
+
   /// Set by RnsService, which owns the callsign→key map, so a `t:identity`
   /// heard on any bearer lands in the same place a key learned from an
   /// announce does. Same reasoning as [XprsArchive.keyResolver]: this file
@@ -111,6 +115,14 @@ class XprsIngest {
           selfBase: _base(selfCallsign), bearer: _archiveBearer(bearer));
     } catch (e) {
       LogService.instance.add('XPRS: command handling failed: $e');
+    }
+
+    if (p.type == 'result') {
+      try {
+        onResult?.call(p);
+      } catch (e) {
+        LogService.instance.add('XPRS: result handling failed: $e');
+      }
     }
   }
 

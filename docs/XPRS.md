@@ -7131,6 +7131,46 @@ cooldown of at least ten minutes); do not ask without a synced clock (a
 nothing missing asks for nothing -- an empty reply costs the peer its
 budget all the same.
 
+### 36.10.1 The pocket device polls
+
+Section 36.10 is written for stations that notice an absence. A pocket
+device cannot: it sleeps in a pocket, wakes on a desk, crosses town, and
+has no idea which of those was an absence worth naming. So it does not
+track absences at all -- it keeps a WATERMARK and polls.
+
+The watermark is one persisted timestamp: the end of the last window an
+archiver answered for. The poll is the same ask as any meeting:
+
+```
+165  t:command f:X1QZ3N d:X3ARC1 ts:2026-08-20_09:30:00 scope:local cmd:history since:2026-08-20_09:20:00 sig:<60 characters>
+```
+
+`since:` is the watermark. `scope:local` keeps the ask on the short-range
+bearers, which is where a locally-reachable archiver by definition is.
+
+The cycle:
+
+1. Every poll period (default TEN MINUTES), the device looks at the
+   stations it has heard DIRECTLY (no `via:`) within the last beacon
+   staleness window and picks the ones announcing `serve:archive`.
+2. To each, at most one ask per period, it sends `cmd:history since:` the
+   watermark. A fresh install has no watermark and asks for nothing; it
+   sets the watermark to now and starts keeping.
+3. The watermark advances to the ask's own `ts:` when the archiver
+   answers `code:200` or `code:206` -- or `code:404` (nothing held is an
+   answer). It does NOT advance on `code:429` or on silence, so an
+   unanswered window is simply asked for again next period.
+4. The window an ask may claim is bounded to seven days. A device that
+   was away longer asks for the last week; anything older is fetched
+   deliberately, not by a background poll.
+
+Ten minutes is not arbitrary: section 31's reference serving budget
+answers a known caller six times an hour, and a ten-minute poll is
+exactly that ceiling. A device polling faster steals its own budget; a
+device polling slower merely learns the news later. Replayed packets
+deduplicate on the section 5 identifier, so a window asked twice costs
+airtime, never correctness.
+
 ### 36.11 When the store is full
 
 An archiver's capacity is whatever its operator gave it, and when the
