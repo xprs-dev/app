@@ -4,8 +4,23 @@ part of 'launcher.dart';
 
 /// Folder names always auto-installed on first run, on top of every
 /// `kind: "system"` wapp. Keeps the default set in one place.
+/// Never seeded, whatever else says otherwise.
+///
+/// THREE passes install wapps, each selecting differently, and each one leaks
+/// a wapp the others would have caught: the filesystem sweep takes anything
+/// declaring `kind: "system"`; the asset sweep takes EVERY bundled `.wapp`
+/// with no filter at all; and upgradeBundledWapps installs any bundled wapp
+/// that is not already present, on every boot. One list, checked in all
+/// three -- a name removed from only one of them comes back.
+///
+///  - `app-creator` is the wapp editor, installed to its own location and
+///    reached through each wapp's Edit action; it was never a grid tile.
+///  - `install` is the Wapp Store, hidden until it is finished. It ships in
+///    assets/ and declares `kind: "system"`, so it slipped through both
+///    sweeps until each was told about it by name.
+const _kNeverSeed = {'app-creator', 'install'};
+
 const _kDefaultSeedNames = {
-  'install',
   'mail',
   'chat',
   'mp4player',
@@ -201,6 +216,10 @@ Future<int> upgradeBundledWapps() async {
     for (final asset in bundles) {
       final name =
           asset.substring(prefix.length, asset.length - '.wapp'.length);
+      // This sweep INSTALLS a bundled wapp that is not present, so without
+      // this it would put the Wapp Store back on every boot of a profile that
+      // does not have it — quietly undoing the seeding rules above.
+      if (_kNeverSeed.contains(name)) continue;
       final instManifest = await installed.readJson('$name/manifest.json');
       if (instManifest == null) {
         // Not installed: first-time bundle addition → install once.
@@ -262,6 +281,7 @@ Future<int> _seedDefaultsFromAssets() async {
     for (final asset in bundles) {
       final name =
           asset.substring(prefix.length, asset.length - '.wapp'.length);
+      if (_kNeverSeed.contains(name)) continue;
       final data = await rootBundle.load(asset);
       final res = await WappInstallerService.instance.installFromBytes(
           wappId: name, zipBytes: data.buffer.asUint8List());
@@ -289,10 +309,7 @@ Future<int> _seedDefaultsFromFilesystem() async {
       final pkg = wappPackageStorage(dir);
       final manifest = await pkg.readJson('manifest.json');
       if (manifest == null) continue;
-      // The wapp editor is no longer a grid wapp — it's bundled and
-      // installed to its own location (see editor_install.dart) and reached
-      // only via the per-wapp Edit action. Never seed it into the grid.
-      if (entry.name == 'app-creator') continue;
+      if (_kNeverSeed.contains(entry.name)) continue;
       final kind = manifest['kind'] as String? ?? 'app';
       if (!_kDefaultSeedNames.contains(entry.name) && kind != 'system') {
         continue;

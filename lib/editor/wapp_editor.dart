@@ -727,9 +727,7 @@ extension _WappEditor on _WappPageState {
                       _projectsLoading
                           ? 'Scanning installed wapps…'
                           : 'No user-installed wapps yet.\n'
-                              'Click "Create new wapp" to start one, or use '
-                              'the Install wapp from the launcher to pull '
-                              'one from a repository.',
+                              'Click "Create new wapp" to start one.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),

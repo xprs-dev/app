@@ -127,21 +127,6 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
   String _folderSubtitle(String v) =>
       v.trim().isEmpty ? 'Not set (uses the built-in default)' : v.trim();
 
-  Future<void> _editWappStoreFolder() async {
-    final r = await _editTextPref(
-      title: 'Wapp store folder',
-      help: 'Reticulum address (npub… or hex folder id) of a signed folder '
-          'that holds .wapp packages and an index.json catalog. The store '
-          'fetches and verifies them peer-to-peer — no web server needed. '
-          'Leave blank to use the built-in default source.',
-      hint: 'npub1…',
-      initial: _prefs?.wappStoreSource ?? '',
-    );
-    if (r == null || _prefs == null) return;
-    _prefs!.wappStoreSource = r.isEmpty ? null : r;
-    if (mounted) setState(() {});
-  }
-
   Future<void> _editUpdateFolder({required bool beta}) async {
     final r = await _editTextPref(
       title: beta ? 'Update folder (beta)' : 'Update folder (stable)',
@@ -684,19 +669,6 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                   color: cs.surfaceContainerLow,
                   child: Column(
                     children: [
-                      ListTile(
-                        leading: const Icon(Icons.widgets_outlined),
-                        title: const Text('Wapp store folder'),
-                        subtitle: Text(
-                          _folderSubtitle(_prefs?.wappStoreSource ?? ''),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: cs.onSurfaceVariant),
-                        ),
-                        trailing: const Icon(Icons.edit),
-                        onTap: _editWappStoreFolder,
-                      ),
-                      const Divider(height: 1),
                       ListTile(
                         leading: const Icon(Icons.system_update_alt),
                         title: const Text('Update folder (stable)'),

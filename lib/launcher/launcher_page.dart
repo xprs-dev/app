@@ -4,10 +4,16 @@ part of 'launcher.dart';
 
 /// Wapps that are installed but temporarily hidden from the grid (their
 /// implementation isn't finished yet). Folder names, matched during the scan.
-const Set<String> _kHiddenWapps = {'maps', 'atm', 'wallet'};
+///
+/// `install` is the Wapp Store, and it is here for a different reason from the
+/// rest: it works, but it is not finished enough to ship in the first official
+/// releases. Everything behind it is intact -- the wapp still ships in
+/// assets/, WappInstallerService and hal_http are untouched -- so putting it
+/// back is deleting one word from this set.
+const Set<String> _kHiddenWapps = {'maps', 'atm', 'wallet', 'install'};
 
 /// Outcome of the unmet-dependency dialog shown before launching a wapp.
-enum _DepAction { cancel, openAnyway, install }
+enum _DepAction { cancel, openAnyway }
 
 class LauncherPage extends StatefulWidget {
   const LauncherPage({super.key});
@@ -213,11 +219,10 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
     if (unmet.isNotEmpty) {
       final action = await _showDependencyDialog(manifest, unmet);
       if (action == null || action == _DepAction.cancel) return;
-      if (action == _DepAction.install) {
-        _openStore();
-        return;
-      }
-      // _DepAction.openAnyway falls through to the normal launch.
+      // _DepAction.openAnyway falls through to the normal launch. There is no
+      // "install a provider" path while the Wapp Store is hidden, and offering
+      // a button that ends in "Wapp Store is not installed" would be the app
+      // sending the user after something it has taken away.
     }
     if (!mounted) return;
     // Opening clears the tile's unread badge; the wapp re-publishes its live
@@ -376,36 +381,6 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
     _scanArchive(); // Rescan after returning (edits may change metadata)
   }
 
-  /// Open the Wapp Store (the `install` wapp) so the user can install a
-  /// provider for a missing dependency. Falls back to a snackbar if the
-  /// store wapp itself isn't present.
-  void _openStore() {
-    final store = _wapps?.where(
-      (w) => w.id == 'tools.xprs.install' || w.name == 'install',
-    );
-    final installWapp = (store != null && store.isNotEmpty)
-        ? store.first
-        : null;
-    if (installWapp == null) {
-      rootMessengerKey.currentState?.showSnackBar(
-        const SnackBar(content: Text('Wapp Store is not installed')),
-      );
-      return;
-    }
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute(
-            builder: (_) => WappPage(
-              wappDir: installWapp.dirPath,
-              title: installWapp.title.isNotEmpty
-                  ? installWapp.title
-                  : installWapp.name,
-            ),
-          ),
-        )
-        .then((_) => _scanArchive());
-  }
-
   Future<_DepAction?> _showDependencyDialog(
     WappManifest manifest,
     UnmetDependencies unmet,
@@ -447,8 +422,8 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
           children: [
             const Text(
               'This wapp depends on capabilities that no installed wapp '
-              'provides yet. Install a provider from the Wapp Store, or '
-              'open it anyway.',
+              'provides. You can open it anyway - the missing pieces may '
+              'simply go unused.',
             ),
             section('Functionalities', unmet.functionalities),
             section('Libraries', unmet.libraries),
@@ -460,13 +435,9 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
             onPressed: () => Navigator.pop(ctx, _DepAction.cancel),
             child: const Text('Cancel'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () => Navigator.pop(ctx, _DepAction.openAnyway),
             child: const Text('Open anyway'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, _DepAction.install),
-            child: const Text('Install…'),
           ),
         ],
       ),

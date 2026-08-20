@@ -302,9 +302,9 @@ Future<void> _boot() async {
     id: 'seed-default-wapps',
     name: 'Seed default wapps',
     description:
-        'On a brand-new profile, installs the default set (Wapp Store, '
-        'Maps, and the system wapps) into the profile so the launcher is '
-        'usable. Runs once per profile (guarded by a .seeded marker). '
+        'On a brand-new profile, installs the default set (Chat, Mail, '
+        'Social, Mesh and the system wapps) into the profile so the launcher '
+        'is usable. Runs once per profile (guarded by a .seeded marker). '
         'Must run after profile-service so the active profile exists.',
     mode: BootStart.sequential,
     init: ensureProfileSeeded,
