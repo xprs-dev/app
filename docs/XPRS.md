@@ -7111,8 +7111,12 @@ asks that station for the window it missed:
 t:command f:X3ARC1 d:X3ARC2 ts:2026-08-20_08:30:00 cmd:history since:2026-08-20_06:12:44 sig:<60 characters>
 ```
 
-`since:` is the timestamp of the newest packet the asker already holds --
-everything after that is exactly the hole. The peer re-airs its spool for
+`since:` is the timestamp of the newest packet the asker held WHEN THE
+HOLE BEGAN -- at power-on, the newest already on disk. The live newest is
+useless for this: by the time the peer is sighted, fresh traffic has
+pushed it past the very window the absence made, and the ask would ask
+for nothing. Overlap is harmless -- replayed packets deduplicate on the
+section 5 identifier. The peer re-airs its spool for
 that window under its own section 31 serving budget, on the bearer the ask
 arrived on. The replayed packets are ORIGINALS: each carries its author's
 signature and verifies (or fails) on its own, and each is heard on the air
