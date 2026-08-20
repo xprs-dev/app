@@ -59,7 +59,7 @@ Every section is linkable: `XPRS.md#3-callsigns` and so on.
 33. [Operating alongside APRS](#33-operating-alongside-aprs)
 34. [Reserved](#34-reserved)
 35. [Cheat sheet](#35-cheat-sheet)
-36. [Publishing, and the indexers you choose](#36-publishing-and-the-indexers-you-choose)
+36. [Publishing, and the archivers you choose](#36-publishing-and-the-archivers-you-choose)
 37. [Implementation status](#37-implementation-status)
 
 ---
@@ -82,9 +82,9 @@ three decades of use showed to be limits:
   (section 13) -- and history, so a station away for four days asks for the
   days it missed (section 25.2).
 - **The internet side was one central system.** APRS-IS sees every packet,
-  and everyone depends on it. XPRS replaces it with indexers each station
+  and everyone depends on it. XPRS replaces it with archivers each station
   CHOOSES, federated by directories rather than by copying each other's
-  traffic (section 36) -- no indexer holds the network, every indexer can
+  traffic (section 36) -- no archiver holds the network, every archiver can
   point across it.
 - **Content stopped at 67 characters.** XPRS carries files of any size by
   content hash -- described, found, fetched in pieces, or inline when tiny
@@ -122,11 +122,9 @@ somebody's ordinary device rather than appointed infrastructure.
 | **station** | one device speaking XPRS under a callsign; an operator's phone, tracker and desktop are stations sharing a base callsign | 3.1 |
 | **relay** (APRS: digipeater) | repeats a packet on the medium it heard it, within the hop budget, appending itself to `via:` | 13.1-13.2 |
 | **carrier** | holds a message in custody for a station that is absent, and hands it over -- with a signed receipt -- when it can | 13.3-13.7 |
-| **mailbox** | a station a recipient DECLARED as where to leave their mail (`t:mailbox hold:`), or one volunteering (`serve:mailbox`) | 13.12, 24.2 |
-| **gateway** (APRS: iGate) | republishes packets onto something that is not XPRS -- an indexer, APRS-IS, the internet -- under the scope rules, and publishes who it hears so the absent stay reachable | 13.11.3, 36.1, 36.8 |
-| **history server** | keeps a spool of what it heard and re-airs it on request (`serve:history`, `cmd:history`) | 24, 25.2, 31.3 |
+| **gateway** (APRS: iGate) | republishes packets onto something that is not XPRS -- an archiver, APRS-IS, the internet -- under the scope rules, and publishes who it hears so the absent stay reachable | 13.11.3, 36.1, 36.8 |
 | **file server** | holds content-addressed files and serves them by hash (`serve:files`, `cmd:file`, `q:have`) | 6.7, 24 |
-| **indexer** | archives the publications of depositors its operator chose, answers queries about them, holds mail, and federates with other indexers by directory -- never by content | 36 |
+| **archiver** | keeps packets and answers for them: the spool of what it heard (re-aired on `cmd:history`), the publications of its depositors, and mail held for recipients (`t:mailbox hold:` names one deliberately). Every station is one at its own scale; `serve:archive` announces the role to others | 24, 25.2, 36 |
 | **group** | an address several stations read -- a name, not a boundary, and not a station | 6.3, 26 |
 
 The table is descriptive, not a licence scheme: a phone in a pocket is a
@@ -2543,7 +2541,7 @@ Three limits, stated because a topology map invites over-reading:
 
 The truncation of section 10.6.4 is **per bearer**, not a property of the
 list. The advert channel cuts `hears:` to what fits one advert; the same
-observation pushed to an indexer (section 36) carries the full list, over
+observation pushed to an archiver (section 36) carries the full list, over
 section 6.6 parts when a busy gateway hears more than one packet holds --
 about twenty-five callsigns fit a packet, two hundred fit nine. `peers:`
 stays the true total either way, so a cut list is always visibly cut.
@@ -3554,7 +3552,7 @@ declaration made about September is better information than one made about every
 month. Within a single declaration, `hold:` stays in order of preference.
 
 Outside every window a sender falls back to the open-ended declaration, and
-failing that to any station advertising `serve:mailbox` (section 24.2).
+failing that to any station advertising `serve:archive` (section 24.2).
 
 ### 13.12.2 Cancelling one
 
@@ -4651,7 +4649,7 @@ then bracket a lane both actually chose.
 `t:service` says what a station does for other stations.
 
 ```
-t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,mailbox ts:2026-08-08_14:26:40 sig:<60 characters>
+t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,archive ts:2026-08-08_14:26:40 sig:<60 characters>
 ```
 
 146 bytes: a node that repeats packets and carries mail.
@@ -4661,14 +4659,12 @@ t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,mailbox ts:2026-08-08_14:26:4
 | Word | The station |
 |---|---|
 | `relay` | repeats packets it hears |
-| `mailbox` | carries mail for stations it cannot reach |
+| `archive` | an archiver (section 36): keeps a spool of what it hears and re-airs it on `cmd:history`, archives its depositors' publications and answers queries, holds mail for stations that named it (or for anyone, as it pleases), and publishes its directory (section 36.9) |
 | `internet` | gateways to the internet |
 | `aprs` | gateways to APRS-IS |
 | `nostr` | runs a NOSTR relay |
 | `files` | hosts content-addressed files: answers `q:have` (section 7.1) and `cmd:file`, and accepts `cmd:put` deposits within its budgets (section 25.2) |
-| `history` | keeps a spool of what it has heard, and re-airs it on `cmd:history` |
 | `devices` | operates automated devices, each an `X4` station of its own (section 25.7.1) |
-| `index` | an indexer (section 36): archives its depositors' publications, answers queries, and publishes its directory (section 36.9) |
 | `time` | has a clock worth trusting, usually from GNSS |
 | `weather` | publishes observations |
 | `wifi` | offers network access to people nearby |
@@ -4678,7 +4674,7 @@ A station with a position and a power source says so, because both decide
 whether it is worth routing through:
 
 ```
-t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,mailbox,internet,aprs supply:solar ts:2026-08-08_14:26:40 sig:<60 characters>
+t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,archive,internet,aprs supply:solar ts:2026-08-08_14:26:40 sig:<60 characters>
 ```
 
 173 bytes. `supply:solar` from section 23.3 means it survives a power cut,
@@ -4695,13 +4691,13 @@ advertising a socket for humans.
 
 ### 24.2 The other half of a mailbox
 
-`serve:mailbox` is a station volunteering. `t:mailbox` (section 13.12) is a
-recipient nominating. They are opposite directions of the same arrangement and
-neither implies the other.
+`serve:archive` is a station volunteering to hold mail. `t:mailbox` (section
+13.12) is a recipient nominating. They are opposite directions of the same
+arrangement and neither implies the other.
 
 A sender with mail for an unreachable station looks for a `t:mailbox` from that
 station first, because the recipient knows best who sees them. Failing that, any
-station advertising `serve:mailbox` is a reasonable guess. **Neither is a
+station advertising `serve:archive` is a reasonable guess. **Neither is a
 promise.** A carrier is under the quota and eviction rules of
 [store-and-forward.md](store-and-forward.md) whatever it advertised, and a
 station that stops carrying does not owe anybody a withdrawal.
@@ -4973,7 +4969,7 @@ numbers to allocate, no agreement about where one station's history ends and
 another's begins, and no bug at the boundary between two windows. Asking two
 stations for overlapping windows costs airtime and nothing else.
 
-A station that keeps a spool says so with `serve:history` (section 24). What it
+A station that keeps a spool says so with `serve:archive` (section 24). What it
 keeps, for how long and for whom is its own to decide and to change: section 31.3
 says why this document sets no retention period, and section 31.2 what a station
 owes a stranger regardless.
@@ -6008,7 +6004,7 @@ stranger's chatter within hours of hearing it. Ask such a station "how far back
 do you go" and there is no honest answer: it goes back a year for one callsign
 and an afternoon for the next.
 
-So a station advertises `serve:history` and nothing more. **The claim is "ask
+So a station advertises `serve:archive` and nothing more. **The claim is "ask
 me", never "I hold everything since a date"**, and a station that keeps four
 hours of strangers should not dress that up as four months.
 
@@ -6489,8 +6485,8 @@ list `on off open closed locked unlocked` (`motion clear pressed` are report
 only), `level:` for the partial degree, `target:` for a setpoint. The result
 echoes what IS. Unsigned is discarded; signed and unknown is `403`.
 
-`t:service` advertises what a station does: `relay` `mailbox` `internet` `aprs`
-`nostr` `files` `history` `devices` `index` `time` `weather` `wifi` `other`.
+`t:service` advertises what a station does: `relay` `archive` `internet`
+`aprs` `nostr` `files` `devices` `time` `weather` `wifi` `other`.
 Physical goods are `t:offer`, not this. A claim about capability, never
 evidence of good faith. `devices` means the station is a controller: each
 automated device it operates is an `X4` station with its own keypair, held
@@ -6525,7 +6521,7 @@ asking again. No cursor, no session. `404` nothing held, `403` refused, `429`
 over budget with alternatives in `m:`.
 Derived identifiers make the replay safe: a duplicate collapses on the identifier
 it already had, so there are no cursors and overlapping windows cost only
-airtime. Advertise a spool with `serve:history`, files with `serve:files`.
+airtime. Advertise a spool with `serve:archive`, files with `serve:files`.
 
 ### Mentions, threads and files
 
@@ -6556,12 +6552,12 @@ parts, joined with nothing. Piece lists (`sha size` per line, piece order)
 let partial holders serve what they verified. The BitTorrent infohash is
 derived deterministically and never needs transmitting between stations.
 
-Indexers (section 36.9): content only from chosen depositors, NEVER from
-another indexer. Between indexers only the directory travels -- an `XDIR1`
+Archivers (section 36.9): content only from chosen depositors, NEVER from
+another archiver. Between archivers only the directory travels -- an `XDIR1`
 listing, one `call ts` line per archived callsign, announced with
-`t:service serve:index count: file:<ref>.xdir` and fetched like any file. A
-miss answers `code:404 m:try <peers>`. Discovery: `serve:index` on the air,
-or another indexer's verbatim copy of the signed announcement.
+`t:service serve:archive count: file:<ref>.xdir` and fetched like any file. A
+miss answers `code:404 m:try <peers>`. Discovery: `serve:archive` on the air,
+or another archiver's verbatim copy of the signed announcement.
 
 ### The radio itself
 
@@ -6659,7 +6655,7 @@ opposite things.
 **Retention is the station's own** -- this format sets no period, no minimum and
 no eviction order. A spool is not a time window: a station may keep a followed
 callsign for a year and a stranger for an afternoon, so it advertises
-`serve:history` and never a depth. Answer `code:404` for a window you no longer
+`serve:archive` and never a depth. Answer `code:404` for a window you no longer
 hold. A client assumes no depth: ask, take what arrives, ask somebody else for
 the rest.
 
@@ -6780,22 +6776,31 @@ document.
 
 ---
 
-## 36. Publishing, and the indexers you choose
+## 36. Publishing, and the archivers you choose
 
 APRS-IS is a server you connect to. Everything you send becomes everyone's,
 everywhere, and everything anyone sends comes back at you as a firehose you
 filter locally. It works, it has worked for decades, and it has one centre.
 
 This section describes the same service without the centre: **a station keeps
-its own publications and hands them to the indexers its operator chose.** No
-station is obliged to have an indexer, and no indexer sees traffic from a
+its own publications and hands them to the archivers its operator chose.** No
+station is obliged to have an archiver, and no archiver sees traffic from a
 station that did not pick it.
+
+**Every station is an archiver at its own scale.** The role is one role --
+keep packets, answer for them, hold mail -- and only the scale is a choice.
+A phone in a pocket archives its operator's own words and the words of the
+callsigns they follow, and announces nothing. A powered station on a roof --
+the ESP32 boards are the working example -- archives everything it hears,
+carries mail, bridges bearers, and announces `serve:archive` so others can
+lean on it. Between the two is every intermediate an operator cares to
+configure; the grammar is the same at both ends.
 
 ### 36.1 What a publication is
 
-An indexer holds two different things, and the difference is `d:`.
+An archiver holds two different things, and the difference is `d:`.
 
-| | What it is | What the indexer does with it |
+| | What it is | What the archiver does with it |
 |---|---|---|
 | **A publication** -- no `d:`, and a type from the list below | offered to whoever is interested | answers queries about it, to anybody |
 | **Mail** -- anything carrying `d:` | addressed to one station | holds it for that station and tells them it is there; never offers it to a third party (section 36.7) |
@@ -6811,7 +6816,7 @@ at its ear right now, and `ts:` says how fresh that claim is -- the whole
 "where can X1BOA3 be reached" question answered by a packet that already
 existed. And a gateway passes on the `t:identity` (and `t:mailbox`) packets
 of the stations it hears verbatim, which section 36.2 already makes safe:
-the author's signature travels with the packet, so an indexer's copy proves
+the author's signature travels with the packet, so an archiver's copy proves
 itself against the author's key, not against the gateway's honesty.
 
 Neither published nor held: `ping` and `pong`. They measure whether a path is
@@ -6823,9 +6828,9 @@ is for. So a `t:message` is mail, a `t:command` to a station that is asleep is
 mail, and a `t:warning` with no `d:` is a publication -- which is what each of
 them plainly is.
 
-### 36.2 The indexer is sent the packet, not a description of it
+### 36.2 The archiver is sent the packet, not a description of it
 
-An indexer receives the publication **exactly as it was composed and signed**:
+An archiver receives the publication **exactly as it was composed and signed**:
 
 ```
 t:warning f:X3RLY7 pos:39.40,-8.20 rad:5km dest:38.72,-9.14 near:40km urg:urgent kind:fire sev:danger until:2026-08-10_00:00:00 ts:2026-08-08_14:26:40
@@ -6848,31 +6853,31 @@ content IS the smaller thing, and it rides the packets.
 **Everything a query needs is already in it.** `t:` the type, `f:` the author,
 `ts:` when it was composed, `pos:` where it is, `dest:` and `near:` the region
 it is addressed to, `until:` when it stops mattering, `scope:` how far it may
-travel. An indexer answers by reading fields it was handed.
+travel. An archiver answers by reading fields it was handed.
 
-**And the signature travels with it.** An indexer passing on a third party's
+**And the signature travels with it.** An archiver passing on a third party's
 publication can neither forge it, retarget it nor resurrect it, and the receiver
-verifies against the author's key rather than trusting the indexer that handed
-it over. That is what makes gossip between indexers safe, and it is the same
+verifies against the author's key rather than trusting the archiver that handed
+it over. That is what makes gossip between archivers safe, and it is the same
 property section 9.1 already gives every signed packet.
 
-### 36.3 You choose your indexers
+### 36.3 You choose your archivers
 
-**A station pushes to the indexers its operator picked, and to no others.**
+**A station pushes to the archivers its operator picked, and to no others.**
 
 - The list is configuration: editable, with defaults, and adding or removing an
-  indexer is an ordinary act rather than a reinstall.
-- **Zero indexers is a valid, working configuration.** Such a station keeps its
+  archiver is an ordinary act rather than a reinstall.
+- **Zero archivers is a valid, working configuration.** Such a station keeps its
   publications and serves them to anyone who asks over the radio (section 36.5).
   It is not findable by somebody who was not listening at the time. That
   is a fair trade and it must remain available: a station that talks only to the
   people in range of it is not a degraded station, it is a private one.
 - The choice is **per station, not per operator**. One person's phone may push
-  to two indexers while their node in the shed pushes to none.
-- An indexer may decline what it is offered. Its disk, its bandwidth, its
+  to two archivers while their node in the shed pushes to none.
+- An archiver may decline what it is offered. Its disk, its bandwidth, its
   decision -- the same rule section 31.2 states for serving strangers.
 
-The station remembers **what each indexer has already had**, as a position in
+The station remembers **what each archiver has already had**, as a position in
 its own log rather than a time (section 13 makes the same argument for cursors:
 a position cannot skew, and a device with no clock can still persist one). A
 reconnect resumes; it does not re-send.
@@ -6904,7 +6909,7 @@ miss". Publishing adds no verb of its own.
 ### 36.6 What replaces the filter
 
 An APRS-IS client subscribes with a filter and receives a stream. Here a reader
-**asks an indexer a question** and gets the packets that answer it: by author,
+**asks an archiver a question** and gets the packets that answer it: by author,
 by type, by region and radius, by time window. Every one of those reads a field
 the packet already carries, so the query surface needs no vocabulary of its own
 and cannot drift from the format it queries.
@@ -6914,7 +6919,7 @@ word: **`only:` matches a callsign wherever the packet carries it** -- as
 author, as addressee, or inside a list field (`hears:`, `hold:`, `via:`,
 `grant:`). "Everything about X1BOA3" naturally includes the gateway
 observations that list it as heard, which is the answer to "where can X1BOA3
-be reached". Worked, against an indexer:
+be reached". Worked, against an archiver:
 
 ```
 165  t:command f:X1QZ3N d:X3IDX1 ts:2026-08-17_14:00:00 cmd:history only:X1BOA3 since:2026-08-17_13:00:00 sig:<60 characters>
@@ -6933,31 +6938,31 @@ internet-connected station is one radio hop from the recipient, and how
 stale that knowledge is -- `ts:` is the freshness, and a reader that gets
 three gateways back prefers the newest.
 
-A miss is not a dead end: an indexer that does not archive the asked-about
+A miss is not a dead end: an archiver that does not archive the asked-about
 callsign answers `code:404` with `m:try` naming peers whose directories list
 it (section 36.9).
 
 The difference that matters is not the syntax. It is that the reader chose the
-indexer, the publisher chose the indexer, and neither had to be the same choice
+archiver, the publisher chose the archiver, and neither had to be the same choice
 for the network to work.
 
-### 36.7 An indexer is also a mailbox
+### 36.7 An archiver is also a mailbox
 
 **The sender is usually gone.** Somebody writes a message on a phone, the phone
 is put in a pocket, the screen goes off and the radio with it. If delivery
 depended on that phone still being reachable when the recipient next wakes up,
 most messages between people who are not simultaneously awake would never
 arrive. Store-and-forward exists for this case (section 13.3), and an
-indexer is the best carrier on the network for it: always on, addressable, and
+archiver is the best carrier on the network for it: always on, addressable, and
 chosen deliberately.
 
-So **mail is handed to an indexer too**, and the indexer tells the recipient
-there is something waiting. An indexer is therefore a natural entry in a
+So **mail is handed to an archiver too**, and the archiver tells the recipient
+there is something waiting. An archiver is therefore a natural entry in a
 station's `hold:` list (section 13.12) -- that mechanism already exists and needs
 nothing added.
 
 **Privacy is the content's problem, and the format already solved it.** Seal the
-body with `x:` (section 9.2) and the indexer stores something it cannot read:
+body with `x:` (section 9.2) and the archiver stores something it cannot read:
 
 ```
 t:message f:X1QZ3N d:X1RD89 ts:2026-08-13_10:14:00 x:pQ4m9xT2vB8kR until:2026-08-20_00:00:00 sig:<60 characters>
@@ -6965,43 +6970,43 @@ t:message f:X1QZ3N d:X1RD89 ts:2026-08-13_10:14:00 x:pQ4m9xT2vB8kR until:2026-08
 
 157 bytes. **Be clear about what that does and does not hide.** `t:`, `f:`, `d:`
 and `ts:` stay in cleartext, because a station that cannot see who a packet is
-for cannot deliver it. The indexer therefore learns that X1QZ3N wrote to X1RD89
+for cannot deliver it. The archiver therefore learns that X1QZ3N wrote to X1RD89
 at that minute, and how often the two of them do that -- and so did every
 APRS-IS server, for every message, in full. Encryption protects the contents;
-choosing your indexer is what protects the pattern.
+choosing your archiver is what protects the pattern.
 
-**It is a hold, not an archive.** `until:` bounds it, and the indexer releases
+**It is a hold, not an archive.** `until:` bounds it, and the archiver releases
 its copy the moment it hears a receipt whose signature it has verified -- the
 rule section 7 already states for every carrier, and the reason section 13.7.1
 insists a receipt be signed: an unsigned one would let a stranger delete other
-people's undelivered mail from every indexer holding it.
+people's undelivered mail from every archiver holding it.
 
-An indexer may refuse to carry mail at all, or carry it only for
+An archiver may refuse to carry mail at all, or carry it only for
 stations it knows. Its disk, its bandwidth, its decision (section 31.2).
 
 ### 36.8 The gateway is the last mile
 
-Sections 36.1 and 36.6 built the outbound half: the gateway told the indexer
+Sections 36.1 and 36.6 built the outbound half: the gateway told the archiver
 who it hears, and a sender found the gateway. This section is the return leg
--- how mail deposited at an indexer reaches a station that has never touched
+-- how mail deposited at an archiver reaches a station that has never touched
 the internet and never will.
 
 Section 36.7
 says mail is never offered to a third party, and a gateway asking for
 somebody else's mail IS a third party. Section 13.12 solves it only for
 stations that declared a mailbox -- and a solar tracker on a ridge has had no
-way to declare anything to an indexer it cannot reach.
+way to declare anything to an archiver it cannot reach.
 
 The resolution splits on what the mail is:
 
 - **Sealed mail travels on the strength of the seal.** A packet whose body is
   `x:` (section 9.2) is ciphertext to everyone but the recipient; carrying it
   is what custody already is (section 13.6), and handing it to one more
-  carrier discloses nothing the airwaves would not. An indexer releases
+  carrier discloses nothing the airwaves would not. An archiver releases
   sealed mail to a station whose own published observation currently lists
   the recipient in `hears:` -- the gateway one radio hop from delivering. A
   false `hears:` buys an attacker a copy of ciphertext and the envelope
-  metadata the indexer already held, which section 36.7 already priced.
+  metadata the archiver already held, which section 36.7 already priced.
 - **Clear mail is released only to a declared holder** (`hold:`, section
   13.12) or fetched by the recipient itself. Plaintext is disclosure, and
   disclosure follows the recipient's stated arrangements or nobody's.
@@ -7020,25 +7025,25 @@ the same path:
 130  t:receipt f:X1BOA3 d:X1QZ3N r:b47210 ts:2026-08-17_14:19:12 s:ack sig:<60 characters>
 ```
 
-The receipt is signed by the recipient, so the indexer verifies it and
+The receipt is signed by the recipient, so the archiver verifies it and
 releases its held copy (section 36.7), the gateway archives its own, and the
 sender -- three networks away -- knows the tracker on the ridge has the
 message. The gateway was trusted with nothing but ciphertext and effort:
 an iGate useful for what it hears and carries, with no need to read what
 it moves.
 
-### 36.9 Indexers among themselves
+### 36.9 Archivers among themselves
 
-**An indexer never accepts content from another indexer.** This rule keeps
+**An archiver never accepts content from another archiver.** This rule keeps
 a federation of archives from becoming one pool of spam. A peer's archive is that
 peer's admission decisions -- which callsigns its operator chose to keep, under
 which quotas -- and bulk-importing it imports every decision the other
 operator got wrong, at zero cost to whoever got them made. Content enters an
-indexer exactly one way: section 36.3, from the callsigns its operator chose
+archiver exactly one way: section 36.3, from the callsigns its operator chose
 or agreed to receive. (The gateway pass-through of section 36.1 is the same
-rule, not an exception -- the gateway is a depositor this indexer accepted.)
+rule, not an exception -- the gateway is a depositor this archiver accepted.)
 
-What indexers DO exchange is a **directory**: which callsigns each one is
+What archivers DO exchange is a **directory**: which callsigns each one is
 archiving or receiving from, and the most recent time it heard from each. A
 text listing in the section 6.7.2 family:
 
@@ -7051,19 +7056,19 @@ X1QZ3N 2026-08-17_14:05:02
 
 One line per callsign, `call` then `ts` -- two value types this document
 already has -- sorted by callsign. The directory is an ordinary
-content-addressed file: named in its indexer's signed service announcement,
+content-addressed file: named in its archiver's signed service announcement,
 fetched with `cmd:file`, verified against its reference like anything else.
 
 ```
-198  t:service f:X3IDX1 serve:index,history,mailbox count:212 file:qA7dTf2mWx9bK4pZcV0yLuJ3gRhN8sE5iDoQ6vXaB1M.xdir ts:2026-08-17_15:00:00 sig:<60 characters>
+184  t:service f:X3ARC1 serve:archive count:212 file:qA7dTf2mWx9bK4pZcV0yLuJ3gRhN8sE5iDoQ6vXaB1M.xdir ts:2026-08-17_15:00:00 sig:<60 characters>
 ```
 
 `count:` says how many callsigns before anyone fetches anything. The
-economics are section 36.2's, applied between indexers: a line costs about
+economics are section 36.2's, applied between archivers: a line costs about
 28 bytes, ten thousand callsigns cost about 280 kB, and an UNCHANGED
 directory has an unchanged hash -- so polling a quiet peer costs a
 `q:have`-sized question and moves nothing. What a consumer stores is
-pointers -- callsign, which indexer, how fresh -- never the content behind
+pointers -- callsign, which archiver, how fresh -- never the content behind
 them, which stays where its operator admitted it.
 
 A false directory line is priced like a false `hears:` (section 10.6.3): it
@@ -7071,25 +7076,86 @@ buys its author one wasted redirect per reader and nothing else, because the
 content a reader is redirected to still answers or fails on its own
 signatures.
 
-**Discovery needs nothing new.** A station finds an indexer three ways:
-`serve:index` heard in a beacon or a `t:service` on the air; another
-indexer's copy of that same signed announcement -- `service` is already a
+**Discovery needs nothing new.** A station finds an archiver three ways:
+`serve:archive` heard in a beacon or a `t:service` on the air; another
+archiver's copy of that same signed announcement -- `service` is already a
 publication type, and section 36.2 makes passing it on verbatim safe; and
 the redirect, which is how the federation answers a miss:
 
 ```
-152  t:result f:X3IDX1 d:X1QZ3N ts:2026-08-17_15:04:10 r:5fd021 code:404 sig:<60 characters> m:try X3IDX2,X3IDX7
+152  t:result f:X3ARC1 d:X1QZ3N ts:2026-08-17_15:04:10 r:5fd021 code:404 sig:<60 characters> m:try X3ARC2,X3ARC7
 ```
 
-An indexer asked about a callsign it does not archive says so plainly and
+An archiver asked about a callsign it does not archive says so plainly and
 names, in `m:try`, the peers whose directories list it -- the alternates
 section 25.2.1 defined for `429`, extended to the miss. The reader asks the
-named peer directly; the first indexer never proxies, because proxying is
+named peer directly; the first archiver never proxies, because proxying is
 how content crosses the line this section drew.
 
 The result is a federation of small archives, each vouching only for what
 its operator chose to keep, joined by directories that say who keeps what.
-No indexer holds the whole network, and any indexer can point across it.
+No archiver holds the whole network, and any archiver can point across it.
+
+### 36.10 Two archivers meet
+
+A station that was away has a hole in its archive exactly as wide as its
+absence, and the network already has the tool that fills it: `cmd:history`
+(section 25.2). What this section adds is only WHEN to use it on the
+archiver's own behalf.
+
+**On sighting.** An archiver that hears `serve:archive` from a station it
+has not heard for a while -- back in radio range, or just powered on --
+asks that station for the window it missed:
+
+```
+t:command f:X3ARC1 d:X3ARC2 ts:2026-08-20_08:30:00 cmd:history since:2026-08-20_06:12:44 sig:<60 characters>
+```
+
+`since:` is the timestamp of the newest packet the asker already holds --
+everything after that is exactly the hole. The peer re-airs its spool for
+that window under its own section 31 serving budget, on the bearer the ask
+arrived on. The replayed packets are ORIGINALS: each carries its author's
+signature and verifies (or fails) on its own, and each is heard on the air
+like any other packet -- which is what keeps section 36.9's line intact.
+Nothing is imported; the returning station simply gets to hear what the
+air said while it was not listening. Both archives converge on the union
+of what either heard, deduplicated by the section 5 identifier.
+
+Discipline, so a meeting is not a storm: ask once per peer per absence (a
+cooldown of at least ten minutes); do not ask without a synced clock (a
+`since:` from a wrong clock asks for the wrong window); and a station with
+nothing missing asks for nothing -- an empty reply costs the peer its
+budget all the same.
+
+### 36.11 When the store is full
+
+An archiver's capacity is whatever its operator gave it, and when the
+store is full something must go. Section 31.3 stands: retention belongs to
+the station, and nothing here is an obligation. What follows is the
+DEFAULT the reference stations ship with, because a default chosen badly
+deletes somebody's mail to keep a stranger's chatter. What goes is decided
+by class first and age second -- **within a class the oldest goes
+first**, and no packet outlives its own `until:`.
+
+Discarded first, kept longest last:
+
+1. **The spool** -- ordinary heard traffic. It is the bulkiest class and
+   the cheapest to lose: any peer's spool overlaps it, and section 36.10
+   refills holes.
+2. **Custody mail** -- store-and-forward held for stations that did NOT
+   name this archiver: mail picked up as a favour (section 13.3), and
+   packets carried toward another place. Losing it costs a delivery
+   somebody else may still make.
+3. **Declared mail** -- mail for callsigns whose `t:mailbox hold:` names
+   THIS archiver (section 13.12). Those recipients chose this station
+   deliberately and check it first; it is the last thing an archiver may
+   drop, and inside its `until:` it should never be.
+
+The classes read straight off the packets: `d:` plus a `hold:` declaration
+naming this station is class 3, `d:` without one is class 2, everything
+else is class 1. An archiver that cannot take new mail without touching
+class 3 refuses the mail out loud instead -- `code:429` and, when it can,
+`m:try` naming a peer with room (section 31.3).
 
 ---
 
@@ -7108,12 +7174,12 @@ No indexer holds the whole network, and any indexer can point across it.
 | Direct, group and broadcast messages | implemented |
 | Replies and reactions | implemented |
 | Receipts and carrier release | implemented, for receipts that were asked for with `q:` |
-| Section 36.7, an indexer holding mail | **specified, not implemented** as an indexer role, but the parts are live elsewhere: `MeshStore` already parks a frame for an absent station and releases it on delivery, and the LXMF propagation mailbox already holds what could not be pushed and serves it when the recipient pulls. What is missing is an indexer being a station's declared `hold:` and telling a recipient that something is waiting |
-| Section 36, publishing to chosen indexers | **specified, not implemented.** Every piece it is built from exists -- the signed-record discipline, the append-only log with an (epoch, seq) cursor, indexer-to-indexer catch-up and indexers as the DHT's anchors are all live for FILES (`files/dht/`, `social/relay_node.dart`) -- but nothing yet keeps a publication log, pushes packets to a chosen indexer, or answers a query from their fields. The section deliberately adds no packet type and no key, so there is nothing on the wire to implement: the work is all plumbing |
-| Section 36.1, gateway reachability publications (`observation`/`identity` to an indexer) | **specified, not implemented** as a push; the raw material is live -- every phone beacons `hears:` and the ESP32 digipeats -- but no gateway publishes its observation to an indexer and no indexer answers for one |
+| Section 36.7, an archiver holding mail | **specified, not implemented** as an archiver role, but the parts are live elsewhere: `MeshStore` already parks a frame for an absent station and releases it on delivery, and the LXMF propagation mailbox already holds what could not be pushed and serves it when the recipient pulls. What is missing is an archiver being a station's declared `hold:` and telling a recipient that something is waiting |
+| Section 36, publishing to chosen archivers | **specified, not implemented.** Every piece it is built from exists -- the signed-record discipline, the append-only log with an (epoch, seq) cursor, archiver-to-archiver catch-up and archivers as the DHT's anchors are all live for FILES (`files/dht/`, `social/relay_node.dart`) -- but nothing yet keeps a publication log, pushes packets to a chosen archiver, or answers a query from their fields. The section deliberately adds no packet type and no key, so there is nothing on the wire to implement: the work is all plumbing |
+| Section 36.1, gateway reachability publications (`observation`/`identity` to an archiver) | **specified, not implemented** as a push; the raw material is live -- every phone beacons `hears:` and the ESP32 digipeats -- but no gateway publishes its observation to an archiver and no archiver answers for one |
 | Section 36.6, `only:` matching inside list fields | **partly implemented**: the shipped history responder matches `only:` against author and addressee (`xprs_archive.dart` query); `hears:`/`hold:`/`via:`/`grant:` containment is not searched yet |
 | Section 36.8, sealed-mail release to a hearing gateway | **specified, not implemented**; the nearest live relatives are the chat iGate mailbox (mail pulled from APRS-IS by an in-range station) and MeshStore custody, neither of which is driven by a published `hears:` claim |
-| Section 36.9, `serve:index` and the XDIR1 directory exchange | **specified, not implemented**; the philosophy already ships for files -- `pointer_sync.dart` gossips signed ADDRESSES between file-indexers and re-verifies on merge, never copying content -- but no station publishes a callsign directory or answers a miss with `m:try` |
+| Section 36.9, `serve:archive` and the XDIR1 directory exchange | **specified, not implemented**; the philosophy already ships for files -- `pointer_sync.dart` gossips signed ADDRESSES between file-archivers and re-verifies on merge, never copying content -- but no station publishes a callsign directory or answers a miss with `m:try` |
 | Section 9.2.1, redacted packets (`xr:`) | **specified, not implemented**; the sealed-body `x:` machinery is live, the partial-redaction profile is not -- no composer parses `((...))` and nothing derives the slow key yet |
 | Section 23.7, working-channel invitations | **specified, not implemented** as packets; the dance itself ships in binary for one pair of bearers -- the WiFi-Direct negotiation (BLE subtype `0x57` ADVERT/REQ/OFFER, `docs/ble5.md`) coordinates exactly this move from the shared advert channel to a private fast lane -- and 23.7 is that handshake generalised to every bearer, in text, signed |
 | Section 3.1, one person on several devices | **specified, not implemented.** Nothing numbers a device today: a station wears its bare callsign, and the chat wapp matches `d:` against that alone. The pieces the rule needs are already on the air -- a beacon carries `f:` and `lx:`, so a device can see a sibling and tell it apart -- but no code adopts a suffix, prefers the conventional number for its `type:`, or refuses a command addressed to a person |
@@ -7159,7 +7225,7 @@ No indexer holds the whole network, and any indexer can point across it.
 | Listings (`XFL1`), folders as snapshots | **specified, not implemented** in this format; the shipped folders lane keeps piece hashes as a headerless binary blob and syncs live folders by signed op-log -- the XFL1 text listing is the packet-layer snapshot form |
 | Inline files in `b:` | **specified, not implemented**; nothing splits or reassembles `b:` yet |
 | Deterministic torrents, `ih:` derivable | **implemented** (`lib/services/torrent_service.dart` builds byte-identical torrents from content, so every holder derives one infohash) |
-| `serve:history` | **implemented**: the spool is on by default and the discovery beacon says so; turning the preference off drops the claim and the answers together |
+| `serve:archive` | **implemented**: the spool is on by default and the discovery beacon says so; turning the preference off drops the claim and the answers together |
 | Section 24.4, one port for Reticulum and XPRS | **implemented** on the TCP hub listener: port 4242 answers HDLC-framed Reticulum and line-oriented XPRS on one socket, told apart by the first byte |
 | Retention policy, and keeping by worth rather than by age | deliberately unspecified (section 31.3); the shipping custody store bounds itself at 100 MB or 7 days and evicts `ORDER BY urg, ts`, which is exactly the kind of local decision this format leaves alone |
 | Paged replies, `code:206` | **implemented** by the history responder: twelve packets a page over the air, the probe row deciding 206 against 200, and the requester continuing by moving `until:` |
