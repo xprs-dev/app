@@ -474,12 +474,12 @@ class MeshService {
           envelope.with_('lifetime', xprsFmtDuration(_lifeBaseSec + upSec));
     }
 
-    // `serve:history` (section 24): this station keeps a spool and answers
+    // `serve:archive` (section 24): this station keeps a spool and answers
     // cmd:history. The claim is "ask me", never a depth (31.3). Before the
     // neighbour fit, so its bytes count against the advert budget.
     if ((PreferencesService.instanceSync?.xprsServeHistory ?? true) &&
         XprsArchive.instance.ready) {
-      envelope = envelope.with_('serve', 'history');
+      envelope = envelope.with_('serve', 'archive');
     }
 
     // Most relevant first, and this station's idea of relevant (section
@@ -573,7 +573,7 @@ class MeshService {
     }
     if ((PreferencesService.instanceSync?.xprsServeHistory ?? true) &&
         XprsArchive.instance.ready) {
-      envelope = envelope.with_('serve', 'history');
+      envelope = envelope.with_('serve', 'archive');
     }
 
     // Leave room for the signature the fit cannot know about: ` sig:` plus 60

@@ -323,7 +323,7 @@ class FunctionalityRegistry {
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef(
           'hal_xprs_history',
-          'The persistent spool of heard packets (XPRS \u00a724 serve:history), '
+          'The persistent spool of heard packets (XPRS \u00a724 serve:archive), '
           'newest first. Query JSON {since,until,only,types,limit} \u2014 '
           'since/until are XPRS timestamps, only matches sender or addressee, '
           'types is a list of packet types to keep \u2014 returns '

@@ -2,7 +2,7 @@
  * xprs_archive — the spool of what this station has heard.
  *
  * docs/XPRS.md section 31.3 leaves retention to the station, section 24 names
- * the role (`serve:history` "keeps a spool of what it has heard, and re-airs
+ * the role (`serve:archive` "keeps a spool of what it has heard, and re-airs
  * it on cmd:history"), and until now no station kept one: the monitor's ring
  * forgets after 200 packets and a restart forgets everything. This is the
  * missing disk. Bounded — the caps are ours to pick and to change — and on by

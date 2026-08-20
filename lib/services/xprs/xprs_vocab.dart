@@ -138,13 +138,11 @@ const Set<String> kXprsBearers = {
 /// word would be a promise nobody defined.
 const Set<String> kXprsServices = {
   'relay',
-  'mailbox',
+  'archive',
   'internet',
   'aprs',
   'nostr',
   'files',
-  'history',
-  'index',
   'time',
   'weather',
   'wifi',
