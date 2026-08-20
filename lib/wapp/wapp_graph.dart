@@ -873,31 +873,61 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // device count is the host's unfiltered `online` (heard within the online
   // window); the hub count is how many bootstrap hubs we currently hold a link
   // to. Tapping opens the bootstrap-hubs panel.
+  // ── Who is out there (top-right) ──
+  //
+  // Two numbers, because a callsign only has two kinds worth counting on a
+  // graph: X1 is a person and X3 is a station or unattended equipment
+  // (section 3). This used to show four -- peers, hubs, on air, devices --
+  // and two of them were routinely the same number, which made the badge look
+  // like it was reporting a fault rather than a network.
+  //
+  // Hubs left with them. They are still drawn on the canvas and still
+  // managed, from the toolbar's own Bootstrap-hubs button; they were never
+  // XPRS devices and counting infrastructure beside people was part of what
+  // made the row hard to read.
   Widget _buildReachBadge() {
-    // ONE RULE: every number here is the LENGTH OF THE LIST IT OPENS.
-    //
-    // Three tap targets, three populations, and they are genuinely different
-    // questions -- what this station has heard announce (peers), what it is
-    // configured to dial (hubs), and what is on the canvas (XPRS devices).
-    // Each count is therefore computed from the same source as its own panel
-    // body, a few lines below, and from nothing else.
-    //
-    // They used to come from RnsService.reachability() instead, which counts
-    // the Reticulum announce registry. XPRS stations heard over the AIR are
-    // not in that registry -- XprsMonitor holds them -- so the badge read
-    // "0 devices" directly above a list of five of them. A counter that
-    // disagrees with the list one tap away is worse than no counter.
-    //
-    // The launcher's status bar still uses reachability(), and that is right:
-    // it answers "what can I reach", not "what am I looking at".
-    final geo = _dedupPeers(
-        _allNodes.where((n) => n.kind != 'self' && n.xprs).toList()).length;
-    final online = _dedupPeers(_otherDevices.toList()).length;
-    final hubs = _hubList.length;
-    // XPRS stations heard over the air right now (XprsMonitor's own staleness
-    // window). A count, not a tap target: the stations are already on the
-    // canvas as nodes — this line says how many of the orbs are that kind.
-    final xprs = (XprsMonitor.instance..sweep()).stations.length;
+    var users = 0, stations = 0, other = 0;
+    for (final n in _allNodes) {
+      if (n.kind == 'self') continue;
+      final call =
+          ((n.meta['callsign'] ?? n.label) as Object).toString().toUpperCase();
+      if (call.startsWith('X1')) {
+        users++;
+      } else if (call.startsWith('X3')) {
+        stations++;
+      } else {
+        // X4 controlled devices, X5 groups, and any plain Reticulum peer that
+        // appears when the XPRS filter is switched off. Counted rather than
+        // dropped: a node on the canvas that no number accounts for is the
+        // bug this badge just had.
+        other++;
+      }
+    }
+    Widget item(IconData icon, int n, String one, String many, Color c,
+        {bool arrow = false}) {
+      return InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => setState(() => _panel = _Panel.xprsDevices),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 15, color: c),
+            const SizedBox(width: 6),
+            Text('$n',
+                style: const TextStyle(
+                    color: _gFg, fontSize: 15, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 4),
+            Text(n == 1 ? one : many,
+                style: const TextStyle(color: _gMuted, fontSize: 12)),
+            if (arrow) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right, size: 15, color: _gMuted),
+            ],
+          ]),
+        ),
+      );
+    }
+
     return Positioned(
       top: 54,
       right: 10,
@@ -909,113 +939,19 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: _gBorder),
           ),
-          // Positioned has no width; IntrinsicWidth bounds the column to its
-          // widest line so the stretch + Divider can lay out.
           child: IntrinsicWidth(
-            child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Line 1 — two separate tap targets: "devices" (other Reticulum)
-              // and "hubs", each opening its OWN list.
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                InkWell(
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(8)),
-                  onTap: () => setState(() => _panel = _Panel.devices),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 7, 6, 7),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.lan_outlined, size: 15, color: _gSelf),
-                      const SizedBox(width: 6),
-                      Text('$online',
-                          style: const TextStyle(
-                              color: _gFg,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(width: 4),
-                      // NOT "devices": these are other people's Reticulum peers
-                      // (Sideband, NomadNet, plain LXMF), not XPRS devices.
-                      // Calling both "devices" is what made this badge and the
-                      // launcher look like they were contradicting each other.
-                      Text(online == 1 ? 'peer' : 'peers',
-                          style: const TextStyle(color: _gMuted, fontSize: 12)),
-                    ]),
-                  ),
-                ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              item(Icons.person_outline, users, 'user', 'users', _gSelf),
+              Container(width: 1, height: 20, color: _gBorder),
+              item(Icons.podcasts_outlined, stations, 'station', 'stations',
+                  _gGeo,
+                  arrow: other == 0),
+              if (other > 0) ...[
                 Container(width: 1, height: 20, color: _gBorder),
-                InkWell(
-                  borderRadius:
-                      const BorderRadius.only(topRight: Radius.circular(8)),
-                  onTap: () => setState(() => _panel = _Panel.hubs),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 7, 10, 7),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.dns_outlined, size: 14, color: _gHub),
-                      const SizedBox(width: 5),
-                      Text('$hubs',
-                          style: const TextStyle(
-                              color: _gFg,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(width: 4),
-                      Text(hubs == 1 ? 'hub' : 'hubs',
-                          style: const TextStyle(color: _gMuted, fontSize: 12)),
-                    ]),
-                  ),
-                ),
-                if (xprs > 0) ...[
-                  Container(width: 1, height: 20, color: _gBorder),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 7, 10, 7),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.podcasts_outlined,
-                          size: 14, color: _gSelf),
-                      const SizedBox(width: 5),
-                      Text('$xprs',
-                          style: const TextStyle(
-                              color: _gFg,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(width: 4),
-                      // "on air", not "xprs": the row below counts a
-                      // DIFFERENT population (devices running this app) and
-                      // both said XPRS after the rebrand -- which made a
-                      // correct legend read as a bug, stations on the canvas
-                      // against a zero beside them.
-                      const Text('on air',
-                          style: TextStyle(color: _gMuted, fontSize: 12)),
-                    ]),
-                  ),
-                ],
-              ]),
-              const Divider(height: 1, thickness: 1, color: _gBorder),
-              // Line 2 — xprs-reachable devices → list + 1:1 messaging.
-              InkWell(
-                borderRadius:
-                    const BorderRadius.vertical(bottom: Radius.circular(8)),
-                onTap: () => setState(() => _panel = _Panel.xprsDevices),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.hub_outlined, size: 15, color: _gGeo),
-                    const SizedBox(width: 6),
-                    Text('$geo',
-                        style: const TextStyle(
-                            color: _gFg,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700)),
-                    const SizedBox(width: 4),
-                    const Text('devices',
-                        style: TextStyle(color: _gMuted, fontSize: 12)),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.chevron_right, size: 15, color: _gMuted),
-                  ]),
-                ),
-              ),
-            ],
-          ),
+                item(Icons.more_horiz, other, 'other', 'other', _gMuted,
+                    arrow: true),
+              ],
+            ]),
           ),
         ),
       ),
