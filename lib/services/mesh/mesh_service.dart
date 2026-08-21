@@ -183,7 +183,10 @@ class MeshService {
           ..init(wappsDataStorage(prefs)
               .getAbsolutePath('xprs_archive.sqlite3'));
         XprsHistoryServer.instance.install();
-    XprsIngest.onResult = XprsCatchup.instance.onResult;
+        XprsIngest.onResult = XprsCatchup.instance.onResult;
+        // Poll every station in reach once a minute, off the native heartbeat
+        // so it survives a pocket (docs/performance.md section 8.2).
+        XprsCatchup.instance.start(cs);
         MeshBulkSpool.instance.init(
             wappsDataStorage(prefs).getAbsolutePath('mesh/bulk'),
             MediaArchive.forDirectory(
@@ -237,9 +240,6 @@ class MeshService {
     var sweepTick = 0;
     _sweepTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (_table?.sweep() ?? false) revision++;
-      // The pocket device polls its archivers (XPRS 36.10.1). The poller
-      // enforces its own ten-minute period; this is just the heartbeat.
-      unawaited(XprsCatchup.instance.tick(_table?.selfCallsign ?? ''));
       if (++sweepTick % 10 == 0) {
         MeshStore.instance.sweep(); // TTL + quota
         MeshBulkSpool.instance.sweep();

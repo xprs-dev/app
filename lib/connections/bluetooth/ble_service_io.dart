@@ -188,9 +188,10 @@ class BleService {
       if (connected) {
         _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
         _dbg('GATT link up (client) to ${_gatt?.peerId}');
-        // Keep the BLE5 scan paused while the link is up so the transfer holds
-        // (extended scan vs an active connection contend on one radio).
-        unawaited(Ble5Bus.instance.stopScan());
+        // The extended scan is NOT paused for a GATT link. docs/ble5.md section 4:
+        // "The scan is never suspended" — pausing it was measured as the
+        // difference between 10 of 10 and 0 of 10 messages delivered. The legacy
+        // CentralManager discovery below is a separate scan and still yields.
         _flushPendingGatt();
         MeshSessionManager.instance.onLinkUp(serverSide: false);
       } else {
@@ -212,7 +213,10 @@ class BleService {
       final n = _gattServer?.clientIds.length ?? 0;
       if (n > 0) {
         _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
-        unawaited(Ble5Bus.instance.stopScan()); // free the radio for the transfer
+        // The extended scan is NOT paused for a GATT link. docs/ble5.md section 4:
+        // "The scan is never suspended" — pausing it was measured as the
+        // difference between 10 of 10 and 0 of 10 messages delivered. The legacy
+        // CentralManager discovery below is a separate scan and still yields.
         MeshSessionManager.instance.onLinkUp(serverSide: true);
       } else {
         MeshSessionManager.instance.onLinkDown(serverSide: true);
@@ -646,7 +650,10 @@ class BleService {
     _ngClientUp = true;
     _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
     _dbg('native GATT client link up to $_ngClientPeer');
-    unawaited(Ble5Bus.instance.stopScan()); // quiet the extended scan during xfer
+    // Extended scan stays up: docs/ble5.md section 4, "The scan is never
+    // suspended". Stopping it here is what left the phone deaf — Ble5Bus.stopScan
+    // tore down the EventChannel subscription, the native sink went null, and
+    // nothing re-armed it because both resume paths were gated on _scanRefs.
     _applyScan();
     _flushPendingGatt();
     _wireMeshHooks();
@@ -705,7 +712,10 @@ class BleService {
     _ngServerCentral = address;
     _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
     _dbg('native GATT server: central $address connected');
-    unawaited(Ble5Bus.instance.stopScan()); // quiet extended scan during xfer
+    // Extended scan stays up: docs/ble5.md section 4, "The scan is never
+    // suspended". Stopping it here is what left the phone deaf — Ble5Bus.stopScan
+    // tore down the EventChannel subscription, the native sink went null, and
+    // nothing re-armed it because both resume paths were gated on _scanRefs.
     _applyScan();
     _wireMeshHooks();
     _flushPendingGatt(); // a peer dialling US is just as good a route
@@ -722,6 +732,37 @@ class BleService {
 
   // One inbound single-frame APRS broadcast over BLE5. Dedup by payload hash
   // (the sender re-airs the same bytes for its TTL) and deliver once to wapps.
+  // Inbound accounting, drained once a minute by _rxSummaryTick.
+  int _rxAprsFrames = 0;
+  int _rxAprsBytes = 0;
+  int _rxSummaryTickMs = 0;
+
+  /// One line a minute describing what the radio actually heard, and where the
+  /// adverts that did not make it through went. The composition is the
+  /// diagnosis: rxNoSink separates "deaf" from "empty room", which is the
+  /// distinction this whole path lacked.
+  void _rxSummaryTick() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_rxSummaryTickMs == 0) _rxSummaryTickMs = now;
+    if (now - _rxSummaryTickMs < 60000) return;
+    _rxSummaryTickMs = now;
+    final r = _radioSnapshot;
+    final frames = _rxAprsFrames;
+    final bytes = _rxAprsBytes;
+    _rxAprsFrames = 0;
+    _rxAprsBytes = 0;
+    if (frames == 0 && (r['rxEmitted'] as int? ?? 0) == 0 &&
+        (r['scanResults'] as int? ?? 0) == 0) {
+      return; // nothing heard and nothing to say — don't spend a ring line
+    }
+    LogService.instance.add(
+      'perf: ble5-rx aprs=$frames/${bytes}B emitted=${r['rxEmitted']} '
+      'adverts=${r['scanResults']} noSink=${r['rxNoSink']} '
+      'marker=${r['rxMarker']} dedup=${r['rxDedup']} '
+      'scanning=${r['scanning']}',
+    );
+  }
+
   void _onBle5Aprs(Ble5Frame f) {
     if (f.data.isEmpty || _inbound.isClosed) return;
     final key = _hashHex(f.data);
@@ -730,11 +771,14 @@ class BleService {
     if (seen != null && now.difference(seen) < kBleBcastDedup) return;
     _ble5Seen[key] = now;
     MeshService.instance.noteChannelActivity(); // politeness load meter
-    // Always logged (post-dedup = once per unique frame, low rate): the one
-    // line that proves whether a peer's APRS frame reached this phone at all —
-    // the exact visibility we lacked when dongle messages vanished en route.
-    LogService.instance
-        .add('BLE5 rx aprs ${f.data.length}B rssi=${f.rssi}');
+    // Counted always, logged per frame only under ble.debug. This line was
+    // written when the receive path was dead, so "once per unique frame" was
+    // zero lines an hour; with the scan actually up near a few stations it is a
+    // firehose into a 2000-line ring (docs/performance.md section 3.3). The
+    // per-minute summary in _rxSummaryTick carries the same proof.
+    _rxAprsFrames++;
+    _rxAprsBytes += f.data.length;
+    _dbg('BLE5 rx aprs ${f.data.length}B rssi=${f.rssi}');
     // Mesh custody tap: overheard ?ACKs purge, our 1:1s feed the have-bloom,
     // others' 1:1s get parked for GATT delivery (docs/mesh.md §6).
     MeshCustodyDelegate.onAirFrame(f.data, outbound: false);
@@ -900,7 +944,12 @@ class BleService {
 
   // Resume the shared BLE5 extended scan after a GATT connect/transfer ends.
   void _resumeBle5Scan() {
-    if (_ble5 && _scanRefs > 0) unawaited(Ble5Bus.instance.startScan());
+    // NOT gated on _scanRefs. That counter belongs to the legacy CentralManager
+    // discovery, which wapps take and release; the BLE5 broadcast lane is core —
+    // it carries the mesh, Reticulum and every XPRS beacon, and it is not a
+    // wapp-owned resource. Gating it here meant that once the refs hit zero (a
+    // wapp engine restarting is enough) the extended scan could never come back.
+    if (_ble5) unawaited(Ble5Bus.instance.startScan());
   }
 
   /// Periodic broadcast housekeeping: sweep stale partials/dedup, then emit a
@@ -1043,6 +1092,28 @@ class BleService {
     _lastServiceTickMs = DateTime.now().millisecondsSinceEpoch;
     _bcastTick();
     _scanWatchdog();
+    _refreshRadioSnapshot();
+    _rxSummaryTick();
+  }
+
+  /// The native radio counters, refreshed on the 2 s tick and cached.
+  ///
+  /// gattStatus() is synchronous and has many callers, and radioStatus() is a
+  /// platform-channel round trip — so the snapshot is pulled here, on a tick
+  /// that already exists, and read from the cache. docs/ble5.md section 6 has
+  /// claimed these were surfaced for a long time; they were not, and that is
+  /// why a deaf radio and an empty room looked identical.
+  Map<String, dynamic> _radioSnapshot = const {};
+  bool _radioSnapshotBusy = false;
+
+  void _refreshRadioSnapshot() {
+    if (!_ble5 || _radioSnapshotBusy) return;
+    _radioSnapshotBusy = true;
+    unawaited(Ble5Bus.instance.radioStatus().then((m) {
+      _radioSnapshot = m;
+    }).catchError((_) {}).whenComplete(() {
+      _radioSnapshotBusy = false;
+    }));
   }
 
   /// The Dart fallback: skipped while the service tick is doing the work, so a
@@ -1052,6 +1123,8 @@ class BleService {
     if (_lastServiceTickMs != 0 && age < 6000) return;
     _bcastTick();
     _scanWatchdog();
+    _refreshRadioSnapshot();
+    _rxSummaryTick();
   }
 
   /// Re-arm anything the system stopped behind our back. Android kills a long
@@ -1059,9 +1132,13 @@ class BleService {
   /// result ever arrives again — and a device that stops scanning stops hearing
   /// its neighbour entirely.
   void _scanWatchdog() {
-    if (_scanRefs <= 0) return;
+    // The BLE5 scan is re-armed unconditionally — see _resumeBle5Scan for why
+    // _scanRefs must not gate it. This runs off the native BgService heartbeat
+    // (_onServiceTick), so it keeps healing with the screen off.
     if (_ble5) unawaited(Ble5Bus.instance.startScan()); // no-op when already on
-    if (_central != null && !_scanning) unawaited(_applyScan());
+    // The legacy discovery scan IS ref-counted: nobody asked for it, nobody
+    // pays for it.
+    if (_scanRefs > 0 && _central != null && !_scanning) unawaited(_applyScan());
   }
 
   /// Hold the foreground service for as long as BLE is in use, so the radio
@@ -1343,6 +1420,15 @@ class BleService {
         // What the radio can actually carry, one request away instead of a
         // stack dump away. The whole BLE story turned on this number.
         'maxPayload': _ble5Adverts ? Ble5Bus.instance.maxPayload : kBleBcastMax,
+        // Reception, from the radio itself. rxNoSink > 0 means adverts arrived
+        // and Dart was not listening; scanning=false with wantScan=true means
+        // the native scan is refusing to register. Without these two the only
+        // symptom of either is "nothing ever arrives".
+        ..._radioSnapshot,
+        'scanRefs': _scanRefs,
+        'wantScan': Ble5Bus.instance.wantScan,
+        'busScanning': Ble5Bus.instance.scanning,
+        'msSinceLastFrame': Ble5Bus.instance.msSinceLastFrame,
         'advertLegacy': _advertLegacy,
         'advertFailures': Ble5Bus.instance.advertFailures,
         if (Ble5Bus.instance.advertLastError != null)

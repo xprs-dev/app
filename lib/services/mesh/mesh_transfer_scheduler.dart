@@ -17,6 +17,7 @@
  */
 import 'dart:async';
 
+import '../xprs/xprs_monitor.dart';
 import '../log_service.dart';
 import 'mesh_bulk_spool.dart';
 import 'mesh_beacon.dart';
@@ -243,10 +244,26 @@ class MeshTransferScheduler {
       _decide('idle: low battery — not pulling for others');
       return;
     }
+    // Stations that told us they hold mail, from EITHER source: the binary mesh
+    // beacon's pendingMsgs (BLE neighbours only) or an XPRS beacon's `mail:N`,
+    // which arrives on any bearer and until now was parsed, displayed, and
+    // acted on by nothing. A station shouting "I hold 7 messages" over LAN was
+    // simply ignored.
+    final holders = <String, int>{};
+    for (final st in XprsMonitor.instance.stations.values) {
+      final n = st.mail ?? 0;
+      if (n <= 0) continue;
+      holders[st.callsign.toUpperCase()] = n;
+    }
+
     final advertisers = <String>[];
     if (table != null) {
       for (final n in table.neighbors.values) {
-        if (n.pendingMsgs == 0 && n.pendingBulk == 0) continue;
+        if (n.pendingMsgs == 0 && n.pendingBulk == 0) {
+          // Not advertising over the mesh beacon — but it may have said so in
+          // an XPRS beacon on another bearer.
+          if (!holders.containsKey(n.callsign.toUpperCase())) continue;
+        }
         final peer = n.callsign.toUpperCase();
         advertisers.add(
             '$peer(m${n.pendingMsgs}/b${n.pendingBulk}'
@@ -268,6 +285,28 @@ class MeshTransferScheduler {
         return;
       }
     }
+    // A holder we can dial that is not in the mesh table at all — heard over
+    // LAN, or its binary beacon never landed. The table-driven loop above can
+    // never reach it, and it is exactly the station holding our mail.
+    for (final entry in holders.entries) {
+      final peer = entry.key;
+      if (table?.neighbors.containsKey(peer) ?? false) continue;
+      advertisers.add('$peer(mail${entry.value}'
+          '${dialable.containsKey(peer) ? "" : ",undialable"}'
+          '${blocked(peer) ? ",backoff" : ""})');
+      if (!dialable.containsKey(peer) || blocked(peer)) continue;
+      if (_pendingSeen[peer] != entry.value) {
+        _pendingSeen[peer] = entry.value;
+        _emptyVisits[peer] = 0;
+      }
+      final visited = _pendingVisited[peer];
+      if (visited != null && now.difference(visited) < _quietFor(peer)) continue;
+      _pendingVisited[peer] = now;
+      _emptyVisits[peer] = (_emptyVisits[peer] ?? 0) + 1;
+      _dialTo(peer, dial, 'station advertises mail:${entry.value}');
+      return;
+    }
+
     final work = havePendingMsgs || havePendingBulk || advertisers.isNotEmpty;
     _decide(advertisers.isEmpty
         ? 'idle: no work (own pending: msgs=$havePendingMsgs bulk=$havePendingBulk)'

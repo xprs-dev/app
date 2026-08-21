@@ -88,8 +88,13 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         // So the beacon airs in a short window and the rest of the minute is
         // listening. Peers that want to move bytes upgrade to a GATT link, which
         // is acknowledged and does not depend on catching an advert.
-        private const val ADV_WINDOW_MS = 10_000L
-        private const val ADV_PERIOD_MS = 30_000L
+        //
+        // 5 s in 60 is what docs/ble5.md section 1 specifies and what the rest of
+        // the mesh is tuned against. The code had drifted to 10 s in 30 — a third
+        // of the time on air instead of a twelfth, so a third of the time deaf,
+        // paid by every device in earshot as well as this one.
+        private const val ADV_WINDOW_MS = 5_000L
+        private const val ADV_PERIOD_MS = 60_000L
 
         // enableAdvertising takes its duration in 10 ms units.
         private const val ADV_WINDOW_UNITS = (ADV_WINDOW_MS / 10).toInt()
@@ -189,6 +194,17 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     @Volatile private var advLastError: String? = null
     @Volatile private var lastScanResultAt = 0L
 
+    // Where an inbound advert died. Every one of these branches used to return
+    // silently, so "the radio hears nothing" and "the radio hears and we throw
+    // it away" produced identical diagnostics — and the second one shipped.
+    // Counters only: onScanResult runs on the binder thread for EVERY advert in
+    // the room, so nothing on that path may log, allocate or build a string.
+    private val rxNoSink = java.util.concurrent.atomic.AtomicLong(0)
+    private val rxNoMfg = java.util.concurrent.atomic.AtomicLong(0)
+    private val rxMarker = java.util.concurrent.atomic.AtomicLong(0)
+    private val rxDedup = java.util.concurrent.atomic.AtomicLong(0)
+    private val rxEmitted = java.util.concurrent.atomic.AtomicLong(0)
+
     // ── GATT server (native) ────────────────────────────────────────────────
     private var gattServer: BluetoothGattServer? = null
     private var serverNotifyChar: BluetoothGattCharacteristic? = null
@@ -211,6 +227,11 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "supported" -> result.success(isSupported())
+                // Live adapter state, deliberately NOT cached. `supported` is a
+                // controller CAPABILITY and is cached forever; callers that used
+                // it to mean "the radio is usable right now" composed frames and
+                // dropped them with Bluetooth switched off.
+                "adapterOn" -> result.success(adapter?.isEnabled == true)
                 // Real per-frame payload cap for THIS controller: many chips
                 // report far less than the BLE5 spec max (e.g. 255 vs 1650),
                 // and an oversized frame is rejected, not truncated — the size
@@ -577,7 +598,14 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     private fun startScan(): Boolean {
         if (disposed) return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
-        val s = adapter?.bluetoothLeScanner ?: return false
+        // Both of these used to return false with no line anywhere, which is
+        // indistinguishable from "scanning fine but the air is empty". The
+        // scanner is null whenever the adapter is off.
+        val s = adapter?.bluetoothLeScanner
+        if (s == null) {
+            android.util.Log.w(TAG, "startScan: no LE scanner (adapter off?)")
+            return false
+        }
         if (scanCallback != null) return true // already scanning
         val filter = ScanFilter.Builder()
             .setManufacturerData(COMPANY_ID, byteArrayOf())
@@ -609,10 +637,13 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
                 // refused or starved by the system, not that nobody is around.
                 scanResults.incrementAndGet()
                 lastScanResultAt = System.currentTimeMillis()
-                val sink = events ?: return
+                val sink = events
+                if (sink == null) { rxNoSink.incrementAndGet(); return }
                 val mfg = result?.scanRecord?.getManufacturerSpecificData(COMPANY_ID)
-                    ?: return
-                if (mfg.size < 2 || mfg[0] != MARKER) return
+                if (mfg == null) { rxNoMfg.incrementAndGet(); return }
+                if (mfg.size < 2 || mfg[0] != MARKER) {
+                    rxMarker.incrementAndGet(); return
+                }
                 val subtype = mfg[1].toInt() and 0xFF
                 val payload = mfg.copyOfRange(2, mfg.size)
                 val addr = result.device?.address ?: ""
@@ -620,8 +651,10 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
                 val now = System.currentTimeMillis()
                 lastScanResultMs = now
                 if (!shouldEmitScan("ext:$addr:$subtype:${payload.contentHashCode()}", now)) {
+                    rxDedup.incrementAndGet()
                     return
                 }
+                rxEmitted.incrementAndGet()
                 ui.post {
                     if (disposed || events !== sink) return@post
                     try {
@@ -699,6 +732,15 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         "scanResults" to scanResults.get(),
         "lastScanResultAgeMs" to
             (if (lastScanResultAt == 0L) null else System.currentTimeMillis() - lastScanResultAt),
+        // Where the inbound adverts went. rxNoSink > 0 means the scan is alive
+        // and Dart stopped listening — the failure this instrumentation exists
+        // for. rxEmitted is the only one that reached Dart.
+        "rxEmitted" to rxEmitted.get(),
+        "rxNoSink" to rxNoSink.get(),
+        "rxNoMfg" to rxNoMfg.get(),
+        "rxMarker" to rxMarker.get(),
+        "rxDedup" to rxDedup.get(),
+        "scanning" to (scanCallback != null),
         "maxDataLen" to maxDataLen(),
     )
 

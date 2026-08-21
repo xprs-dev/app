@@ -295,16 +295,19 @@ class PreferencesService {
     await _prefs.setBool('xprs.serveHistory', v);
   }
 
-  // The pocket device polls its archivers (XPRS 36.10.1): on by default,
-  // every ten minutes -- section 31's known-caller budget is six an hour,
-  // and polling faster steals our own budget. The watermark is the end of
-  // the last window an archiver answered for, epoch seconds.
+  // The pocket device polls every station in reach (XPRS 36.10.1): on by
+  // default, once a minute. This is the battery knob for that poll -- raise it
+  // on a device that spends its life away from stations. One minute costs one
+  // small frame per station per hour-of-pocket times sixty, and nothing else;
+  // the expensive half (dialling a station to pull what it holds) is gated on
+  // the station saying it holds something. The watermark is the end of the last
+  // window a station answered for, epoch seconds.
   bool get xprsCatchup => _prefs.getBool('xprs.catchup') ?? true;
   Future<void> setXprsCatchup(bool v) async {
     await _prefs.setBool('xprs.catchup', v);
   }
 
-  int get xprsCatchupMinutes => _prefs.getInt('xprs.catchupMinutes') ?? 10;
+  int get xprsCatchupMinutes => _prefs.getInt('xprs.catchupMinutes') ?? 1;
   set xprsCatchupMinutes(int v) => _prefs.setInt('xprs.catchupMinutes', v);
 
   int get xprsCatchupWatermark => _prefs.getInt('xprs.catchupWatermark') ?? 0;

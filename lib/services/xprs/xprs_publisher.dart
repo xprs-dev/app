@@ -65,7 +65,12 @@ class _Ble5Bearer implements XprsBearer {
   @override
   bool get shortRange => true;
   @override
-  Future<bool> get active => Ble5Bus.instance.supported();
+  // Both halves matter: the controller must do extended advertising at all, and
+  // the radio must be on this second. supported() alone is a capability probe
+  // cached for the life of the process, so it kept reporting this bearer active
+  // with Bluetooth switched off — every ask composed, signed and dropped.
+  Future<bool> get active async =>
+      await Ble5Bus.instance.supported() && await Ble5Bus.instance.adapterOn();
   @override
   Future<bool> send(String wire, {required int part}) =>
       Ble5Bus.instance.advertiseFrame(
