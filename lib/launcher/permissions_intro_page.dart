@@ -257,11 +257,12 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
             ),
           ),
           const SizedBox(width: 8),
-          // Trailing state: informational rows are auto-satisfied; required
+          // Trailing state: informational rows are already available, required
           // rows show a green check when granted or a Grant button when not.
+          // Both read as "you have this", so both get the same green check —
+          // a grey one made the internet row look denied.
           if (item.info || granted)
-            Icon(Icons.check_circle,
-                size: 22, color: item.info ? cs.onSurfaceVariant : Colors.green)
+            const Icon(Icons.check_circle, size: 22, color: Colors.green)
           else
             TextButton(
               onPressed: _busy ? null : () => _grant(item),
