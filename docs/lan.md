@@ -50,9 +50,17 @@ fragmented.
 
 ## Not everybody at once
 
+> **The phone does not do any of this.** `lib/services/xprs/xprs_lan.dart`
+> states it plainly at the top of the file: it is an endpoint, not a relay —
+> no `via:` appending, no re-airing of somebody else's packet, no jitter timer,
+> no cancel-on-hearing, and no BLE↔LAN cross-relay in either direction. The
+> rest of this section describes what a relaying station (the T-Dongle) does
+> and what the phone would have to do to become one; it is not a description of
+> the app as it stands.
+
 Every station on a broadcast network hears the same packet at the same moment,
 and each one willing to relay it would transmit immediately. Section 13.2.1 says
-what to do instead, and this bearer implements it:
+what to do instead:
 
 | | |
 |---|---|

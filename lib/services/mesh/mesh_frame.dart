@@ -48,6 +48,18 @@ class MeshFrame {
 
   bool get isXprs => packet != null;
 
+  /// The frame view of a packet that has already been parsed. The ingest
+  /// funnel hands the courier a packet, not bytes, so re-encoding it just to
+  /// parse it again would be work for nothing — and would risk the two
+  /// disagreeing about the identifier.
+  factory MeshFrame.fromXprs(XprsPacket p) => MeshFrame(
+        from: p['f'] ?? '',
+        to: p['d'] ?? '',
+        id: xprsIdentifier(p),
+        body: p['x'] ?? p['m'] ?? '',
+        packet: p,
+      );
+
   /// Read [wire] as xprs, falling back to the compact frame.
   ///
   /// XPRS is tried first and the test is unambiguous: a compact frame always

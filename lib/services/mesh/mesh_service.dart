@@ -35,7 +35,9 @@ import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_sig.dart';
 import '../xprs/xprs_vocab.dart';
 import 'mesh_beacon.dart';
+import 'mesh_courier.dart';
 import 'mesh_custody.dart';
+import 'mesh_frame.dart';
 import 'mesh_bulk_spool.dart';
 import 'mesh_store.dart';
 import 'mesh_table.dart';
@@ -184,6 +186,20 @@ class MeshService {
               .getAbsolutePath('xprs_archive.sqlite3'));
         XprsHistoryServer.instance.install();
         XprsIngest.onResult = XprsCatchup.instance.onResult;
+        // A message addressed to us, heard on ANY bearer, goes to the courier
+        // for verification, unsealing and delivery to the inbox. Before this
+        // the only route ran through the BLE 0x41 custody tap, so anything a
+        // station replayed on 0x58 — which is every history replay — was
+        // archived and never seen again.
+        XprsIngest.onDeliver = (p, bearer) {
+          // Where a partial page stopped: a `206` continuation asks for what
+          // came BEFORE the oldest record the station managed to send.
+          final tsMs = xprsParseTs(p['ts']);
+          if (tsMs != null) {
+            XprsCatchup.instance.noteReplay(p['f'] ?? '', tsMs);
+          }
+          MeshCourier.instance.deliverXprs(MeshFrame.fromXprs(p), via: bearer);
+        };
         // Poll every station in reach once a minute, off the native heartbeat
         // so it survives a pocket (docs/performance.md section 8.2).
         XprsCatchup.instance.start(cs);

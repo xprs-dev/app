@@ -190,6 +190,12 @@ class XprsMonitor {
   /// Silently ignores a bearer outside [kBearers] — including `internet`. A
   /// caller that gets this wrong loses the sighting rather than putting a
   /// misleading one in front of somebody.
+  /// Test seam: forget every station. The monitor is a singleton, so without
+  /// this test 2 inherits test 1's air.
+  void debugReset() {
+    _stations.clear();
+  }
+
   void offer(
     XprsPacket p, {
     required String bearer,

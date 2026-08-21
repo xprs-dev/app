@@ -299,6 +299,23 @@ class MeshCourier {
     XprsIngest.heard(p,
         bearer: via == 'mesh' ? 'ble' : via,
         selfCallsign: MeshService.instance.tableCallsign);
+    return deliverXprs(f, via: via);
+  }
+
+  /// Deliver an XPRS packet already known to be addressed to us, WITHOUT
+  /// showing it to the ingest funnel first.
+  ///
+  /// The split exists because the funnel is now the thing that calls this.
+  /// [XprsIngest.heard] is the one surface every bearer reaches — BLE 0x58,
+  /// BLE 0x41, LAN UDP, TCP — and until now it archived a message addressed to
+  /// us and delivered nothing, because the only route to [RnsService.injectLxmf]
+  /// ran through the 0x41 handler's custody tap. A station replaying our mail
+  /// on 0x58, which is what every history replay is, dead-ended in the spool.
+  /// Calling [ingest] from the funnel would recurse, since [_ingestXprs] starts
+  /// by calling the funnel; this entry point is the same code with that first
+  /// step removed.
+  bool deliverXprs(MeshFrame f, {required String via}) {
+    final p = f.packet!;
     final senderNpub = _npubForCallsign(f.from);
 
     // A carried packet passed through hands we do not control. When we hold the

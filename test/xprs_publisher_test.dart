@@ -24,13 +24,19 @@ class _FakeBearer implements XprsBearer {
   @override
   Future<bool> get active async => up;
   @override
-  Future<bool> send(String wire, {required int part}) async {
+  /// The rotation slot the publisher chose, so a test can prove two asks to
+  /// two stations no longer share one advert key.
+  final List<String> slots = [];
+  @override
+  Future<bool> send(String wire, {required int part, String slot = 'status'}) async {
     sent.add(wire);
+    slots.add(slot);
     return true;
   }
 }
 
 void main() {
+  _identityAndSlots();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // No active profile in a unit test: the publisher must refuse politely.
@@ -102,5 +108,62 @@ void main() {
     // And it must NOT verify as a signature over any single part.
     final lastAlone = parts.last;
     expect(xprsVerify(lastAlone, pub), isNot(XprsSigState.verified));
+  });
+}
+
+void _identityAndSlots() {
+  // A station cannot check a single signature of ours until it has heard the
+  // key our callsign signs with, and until then it meters us as a stranger:
+  // two history replays an hour instead of six (section 31.2). The packet that
+  // fixes that is section 9.3, and it MUST be self-signed — both station
+  // firmwares drop one whose signature does not verify against the k: it
+  // carries, so an unsigned announcement binds nothing anywhere.
+  test('the identity announcement signs for the key it publishes', () {
+    final d = BigInt.parse(
+        '7b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff001',
+        radix: 16);
+    final q = (ECCurve_secp256k1().G * d)!;
+    final xHex = q.x!.toBigInteger()!.toRadixString(16).padLeft(64, '0');
+    final pub = Uint8List.fromList([
+      for (var i = 0; i < 64; i += 2)
+        int.parse(xHex.substring(i, i + 2), radix: 16)
+    ]);
+    const npub =
+        'npub1a67x63c0y4s79lwssfztkt9uryqlvmc2ylujaxdgfqjtu7vpc0xqtrdgfw';
+
+    final wire = XprsPublisher.instance.debugIdentityWire(
+        call: 'X1A67X', npub: npub, signingKey: d);
+    expect(wire, isNotNull);
+
+    final p = XprsPacket.parse(wire!)!;
+    expect(p.type, 'identity');
+    expect(p['f'], 'X1A67X');
+    expect(p['k'], npub);
+    expect(p.has('ts'), isTrue);
+    expect(xprsVerify(p, pub), XprsSigState.verified);
+
+    // 171 bytes in the spec; the smallest controller measured in
+    // docs/ble5.md section 3 carries 184, and an oversized advert is refused
+    // rather than truncated. No nick:, no room for one.
+    expect(p.fits, isTrue);
+    expect(wire.length, lessThanOrEqualTo(184));
+  });
+
+  // Re-registering an advert key REPLACES that rotation entry. Every publish
+  // used to share one key, so a sweep asking N stations back to back put only
+  // the last ask on air and took the user's status with it.
+  test('two asks to two stations occupy two advert slots', () async {
+    final b = _FakeBearer('ble5', shortRange: true);
+    XprsPublisher.instance.bearers = [b];
+
+    await XprsPublisher.instance
+        .publishWire('t:command f:X1SELF d:X3AAAA ts:x scope:local cmd:history');
+    await XprsPublisher.instance
+        .publishWire('t:command f:X1SELF d:X3BBBB ts:x scope:local cmd:history');
+
+    expect(b.sent, hasLength(2));
+    expect(b.slots, ['command:X3AAAA', 'command:X3BBBB']);
+    expect(b.slots.toSet(), hasLength(2),
+        reason: 'sharing one slot is what silently dropped every ask but one');
   });
 }

@@ -54,7 +54,14 @@ abstract class XprsBearer {
 
   /// Transmit one wire. [part] distinguishes the parts of a split packet so
   /// an advert-style bearer can rotate them under distinct keys.
-  Future<bool> send(String wire, {required int part});
+  ///
+  /// [slot] names WHAT is being aired ('status', 'ask:X3WWAJ', 'identity').
+  /// An advert-style bearer keys its rotation entry by it, and re-registering
+  /// a key REPLACES that entry's payload — so everything sharing one slot
+  /// clobbered everything else. A catch-up sweep asking N stations back to
+  /// back put only the LAST ask on air, and a status the user had just
+  /// published went with it.
+  Future<bool> send(String wire, {required int part, String slot = 'status'});
 }
 
 class _Ble5Bearer implements XprsBearer {
@@ -72,9 +79,9 @@ class _Ble5Bearer implements XprsBearer {
   Future<bool> get active async =>
       await Ble5Bus.instance.supported() && await Ble5Bus.instance.adapterOn();
   @override
-  Future<bool> send(String wire, {required int part}) =>
+  Future<bool> send(String wire, {required int part, String slot = 'status'}) =>
       Ble5Bus.instance.advertiseFrame(
-        'xprs-status:$part',
+        'xprs-$slot:$part',
         Ble5Subtype.xprs,
         Uint8List.fromList(utf8.encode(wire)),
         // Long enough to span a receiver's duty-cycled scan burst — the same
@@ -93,7 +100,7 @@ class _ReticulumBearer implements XprsBearer {
   @override
   Future<bool> get active async => RnsService.instance.isUp;
   @override
-  Future<bool> send(String wire, {required int part}) =>
+  Future<bool> send(String wire, {required int part, String slot = 'status'}) =>
       RnsService.instance.wappBroadcast(
           'xprs', Uint8List.fromList(utf8.encode(wire)));
 }
@@ -110,7 +117,7 @@ class _LanBearer implements XprsBearer {
   @override
   Future<bool> get active async => XprsLan.instance.up;
   @override
-  Future<bool> send(String wire, {required int part}) async =>
+  Future<bool> send(String wire, {required int part, String slot = 'status'}) async =>
       XprsLan.instance.send(wire);
 }
 
@@ -128,7 +135,7 @@ class _LoraBearer implements XprsBearer {
   Future<bool> get active async =>
       _lora.status == ConnectionStatus.available;
   @override
-  Future<bool> send(String wire, {required int part}) async => false;
+  Future<bool> send(String wire, {required int part, String slot = 'status'}) async => false;
 }
 
 class XprsPublisher {
@@ -277,11 +284,78 @@ class XprsPublisher {
     return report;
   }
 
+  /// Announce the key this callsign signs with (section 9.3).
+  ///
+  /// Until this existed no station could check a single signature of ours, so
+  /// every packet we sent read `unverified` and every station metered us as a
+  /// stranger — two history replays an hour instead of six (section 31.2).
+  ///
+  /// MUST be self-signed. The signature proves we hold the private half, which
+  /// is not circular (section 9.3): without one, anybody can rebroadcast our
+  /// callsign with our real key and whatever else they like attached. Both
+  /// station firmwares drop an identity whose signature does not verify
+  /// against the `k:` it carries, so an unsigned one binds nothing anywhere
+  /// and is not aired.
+  ///
+  /// Deliberately carries NO `scope:`, so it is global and rides every active
+  /// bearer. A key binding is not a local fact.
+  ///
+  /// `nick:` is deliberately omitted: the key-binding form is 171 bytes and
+  /// the smallest controller measured in docs/ble5.md section 3 carries 184,
+  /// where an oversized frame is refused rather than truncated.
+  Future<Map<String, String>> publishIdentity() async {
+    final profile = ProfileService.instance.activeProfile;
+    final call = (profile?.callsign ?? '').trim().toUpperCase();
+    final npub = (profile?.npub ?? '').trim();
+    if (call.isEmpty || !npub.startsWith('npub1')) return const {};
+
+    final now = DateTime.now().toUtc();
+    String two(int n) => n.toString().padLeft(2, '0');
+    final ts = '${now.year}-${two(now.month)}-${two(now.day)}_'
+        '${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
+
+    var p = XprsPacket.parse('t:identity f:$call ts:$ts k:$npub');
+    if (p == null) return const {};
+    final d = xprsProfileScalar();
+    if (d == null) {
+      LogService.instance.add(
+          'XPRS: identity NOT aired — no signing key (locked profile?), and '
+          'an unsigned identity binds nothing (9.3)');
+      return const {};
+    }
+    p = xprsSign(p, d);
+    if (!p.fits) return const {};
+    final wire = p.encode();
+
+    final report = <String, String>{};
+    String? carriedBy;
+    for (final b in bearers) {
+      if (!await b.active) {
+        report[b.name] = 'inactive';
+        continue;
+      }
+      final ok = await b.send(wire, part: 1, slot: 'identity');
+      report[b.name] = ok ? 'sent' : 'refused';
+      if (ok) carriedBy ??= b.archiveBearer;
+    }
+    // 'none' rather than skipping: a period where the identity reached nobody
+    // is a fact worth having in the spool.
+    XprsIngest.own(wire, bearer: carriedBy ?? 'none');
+    LogService.instance.add('XPRS: identity $call k:${npub.substring(0, 12)}… '
+        '— ${report.entries.map((e) => "${e.key}:${e.value}").join(", ")}');
+    return report;
+  }
+
   /// Publish one caller-composed wire (spec/API-HTTP.md send semantics):
   /// validate section 4 syntax, sign it when it speaks as this station and
   /// carries no sig, apply the scope rules, air on every active bearer and
   /// spool our own copy. The caller owns the content.
-  Future<Map<String, String>> publishWire(String wireIn) async {
+  ///
+  /// [slot] keeps concurrent publishes in separate advert rotation entries.
+  /// It defaults to the packet's own type and destination, so two asks to two
+  /// stations no longer overwrite each other and neither touches the status
+  /// slot. Pass one explicitly only to group wires deliberately.
+  Future<Map<String, String>> publishWire(String wireIn, {String? slot}) async {
     LogService.instance.add('XPRS: publishWire <- $wireIn');
     var p = XprsPacket.parse(wireIn.trim());
     if (p == null || !p.fits) {
@@ -299,6 +373,10 @@ class XprsPublisher {
     }
     final wire = p.encode();
     final local = xprsScope(p).scope != XprsScope.global;
+    // `<type>` alone would still collide across destinations, which is exactly
+    // the catch-up sweep's case: N asks, one slot, one survivor.
+    final dest = (p['d'] ?? '').toUpperCase();
+    final useSlot = slot ?? (dest.isEmpty ? p.type : '${p.type}:$dest');
 
     final report = <String, String>{};
     String? carriedBy;
@@ -311,7 +389,7 @@ class XprsPublisher {
         report[b.name] = 'inactive';
         continue;
       }
-      final ok = await b.send(wire, part: 1);
+      final ok = await b.send(wire, part: 1, slot: useSlot);
       report[b.name] = ok ? 'sent' : 'refused';
       if (ok) carriedBy ??= b.archiveBearer;
     }
@@ -322,6 +400,21 @@ class XprsPublisher {
     LogService.instance.add(
         'XPRS: ${p.type} wire — ${report.entries.map((e) => '${e.key}:${e.value}').join(', ')}');
     return report;
+  }
+
+  /// Test seam: the exact wire [publishIdentity] would air, with [signingKey]
+  /// standing in for the profile key (a unit test has no profile).
+  String? debugIdentityWire(
+      {required String call, required String npub, required BigInt signingKey, String? ts}) {
+    final now = DateTime.now().toUtc();
+    String two(int n) => n.toString().padLeft(2, '0');
+    final stamp = ts ??
+        '${now.year}-${two(now.month)}-${two(now.day)}_'
+            '${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
+    final p = XprsPacket.parse('t:identity f:$call ts:$stamp k:$npub');
+    if (p == null) return null;
+    final signed = xprsSign(p, signingKey);
+    return signed.fits ? signed.encode() : null;
   }
 
   /// Test seam: exactly the wires [publishStatus] would air for [head] and

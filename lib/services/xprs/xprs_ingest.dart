@@ -52,6 +52,12 @@ class XprsIngest {
   /// stays free of the node.
   static void Function(String callsign, String pubkeyHex)? onIdentity;
 
+  /// A `t:message` addressed to us, on any bearer. Set by MeshService to the
+  /// courier's delivery entry point, which verifies, unseals and hands it to
+  /// the ordinary inbox. Injected the same way as [onIdentity] so this file
+  /// stays free of the mesh.
+  static void Function(XprsPacket p, String bearer)? onDeliver;
+
   /// Packets refused off the Reticulum lane for want of a declaration —
   /// the observable that says the admission rule is alive.
   static int refusedRns = 0;
@@ -108,6 +114,22 @@ class XprsIngest {
     if (_archiveOn || forUs) {
       XprsArchive.instance
           .admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
+    }
+
+    // And DELIVER it. Knowing a message is ours and only filing it is what
+    // made a station's history replay invisible: the archive took it and
+    // nothing else ever looked. This is the bearer-agnostic place for that —
+    // every surface reaches this funnel, so BLE 0x58, BLE 0x41, LAN UDP and
+    // TCP are all covered by one call instead of a tap per transport.
+    //
+    // Cheap checks first: this runs for every inbound packet, and the
+    // verification behind it is a curve operation (docs/performance.md 4.2).
+    if (forUs && onDeliver != null && p.type == 'message') {
+      try {
+        onDeliver!(p, _archiveBearer(bearer));
+      } catch (e) {
+        LogService.instance.add('XPRS: delivery failed: $e');
+      }
     }
 
     try {

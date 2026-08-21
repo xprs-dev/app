@@ -31,6 +31,7 @@ import 'xprs_archive.dart';
 import 'xprs_id.dart';
 import 'xprs_ingest.dart';
 import 'xprs_packet.dart';
+import 'xprs_publisher.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
 
@@ -71,8 +72,17 @@ class XprsHistoryServer {
 
   void _onPacket(XprsPacket p,
       {required String selfBase, required String bearer}) {
-    if (p.type != 'command' || (p['cmd'] ?? '') != 'history') return;
+    if (p.type != 'command') return;
     if (_base(p['d'] ?? '') != selfBase) return;
+    // `q:identity` (section 18.1) asks for the key binding directly instead of
+    // waiting up to thirty minutes for the next announcement. Answering costs
+    // one advert and saves a peer half an hour of being unable to check a
+    // single signature of ours.
+    if ((p['q'] ?? '') == 'identity') {
+      unawaited(XprsPublisher.instance.publishIdentity());
+      return;
+    }
+    if ((p['cmd'] ?? '') != 'history') return;
     if (bearer == 'rns') {
       // No reply lane on the hub side yet; saying so beats silence in a log.
       rnsIgnored++;

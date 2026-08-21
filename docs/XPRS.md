@@ -7340,7 +7340,7 @@ class 3 refuses the mail out loud instead -- `code:429` and, when it can,
 | Long messages in parts | implemented |
 | Encryption and the sealed-body band rule | implemented |
 | Section 9.4.1, no self-generated callsign onto licensed spectrum | not implemented, and violated today: the ESP32 iGate computes an APRS-IS passcode for an `X3` callsign and states in `esp32/components/geogram_aprsis/aprsis.h` that no licence is needed for one |
-| Section 9.4.2, an issued callsign bound to a key by `t:identity` | not implemented; identity announcements are not built, and no user interface offers to enter a licensed callsign |
+| Section 9.4.2, an issued callsign bound to a key by `t:identity` | partly; the announcement is built and aired (9.3), but no user interface offers to enter a licensed callsign, so the binding is only ever for a derived one |
 | File references by content hash | **implemented**, in the base64url form this document now specifies (`MediaRef`); the older 64-hex form is still read |
 | Identity announcement | implemented |
 | `key:value` fields separated by spaces | **implemented** everywhere the device transmits: the beacon, carried mail, and the chat wapp since 0.4.38. The three-`0x1F`-field frame remains only as a fallback that is still read, and that chat still sends for its control frames |
@@ -7402,7 +7402,7 @@ class 3 refuses the mail out loud instead -- `code:429` and, when it can,
 | `q:sign` and signed receipts | not implemented |
 | Recurring windows, `site:`, `supply:`, `range:` | not implemented |
 | `t:challenge` and `t:response` | not implemented; no challenge exists, and a spoofed authority-issued callsign is currently undetectable |
-| Periodic `t:identity` | partly; a key is announced but not on a fixed period |
+| Periodic `t:identity` | implemented; self-signed, aired on every active bearer at start and every 30 minutes (18.1), and `q:identity` is answered directly |
 | `since:` and `until:` | not implemented; nothing in the current wire carries an event duration, and nothing expires on its own |
 | `type:` vehicle set | partly; the current wire carries a handful of symbols and none of the rail, air or cycle values |
 | Variable-length and authority-issued callsigns | not implemented; the current wire assumes the six-character `X1`/`X3` form |
