@@ -221,12 +221,20 @@ class XprsCatchup {
     // record it managed to send, rather than asking the same window again.
     final untilMs = _resume[archiver];
 
-    // `only:message` because the archive keeps EVERYTHING heard, beacons
-    // included, and a page is twelve records newest-first. Without this the
-    // whole page is `t:observation` presence chatter from a busy channel and
-    // the messages are below the fold — one metered replay spent on nothing.
+    // `kind:message` because the archive keeps EVERYTHING heard, beacons
+    // included, and a page is twelve records newest-first. Measured on the
+    // bench: the newest 200 records of a station's archive were 120 t:identity,
+    // 69 t:observation, 11 t:service and no messages at all, so an unfiltered
+    // page is twelve identity announcements and the conversation is below the
+    // fold — one metered replay spent on nothing.
+    //
+    // NOT `only:`. That is a CALLSIGN (section 36.6), and an earlier version of
+    // this line sent a type in it. Against a station that reads only: as a type
+    // it happened to work; against one that reads the spec it matched a callsign
+    // named MESSAGE, answered 404, and the watermark advanced as though the
+    // window were finished.
     final wire = StringBuffer('t:command f:$self d:$archiver ts:${_ts(now)} '
-        'scope:local cmd:history only:message since:${_ts(sinceSec * 1000)}');
+        'scope:local cmd:history kind:message since:${_ts(sinceSec * 1000)}');
     if (untilMs != null) wire.write(' until:${_ts(untilMs)}');
     final p = XprsPacket.parse(wire.toString());
     if (p == null || !p.fits) return;

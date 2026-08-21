@@ -70,6 +70,38 @@ class XprsHistoryServer {
     XprsIngest.onCommand = _onPacket;
   }
 
+  /// Why a replay is NOT reordered by relevance.
+  ///
+  /// A page is continued by narrowing `until:` to the oldest packet received
+  /// (25.2.1) -- there is no cursor. That only works while the page is
+  /// chronological: reorder it and the client's next `until:` skips everything
+  /// between the bands. So relevance is expressed by WHICH records are
+  /// eligible, not by their order.
+  ///
+  /// With no `kind:`, a radio replay serves conversation and leaves presence
+  /// and service chatter out. Measured on a bench station, the newest 200
+  /// records were 120 `t:identity`, 69 `t:observation`, 11 `t:service` and no
+  /// messages at all -- so an unfiltered page of twelve was twelve beacons,
+  /// every time, and the talking was never reached. A caller that genuinely
+  /// wants beacons asks for them by name with `kind:observation`.
+  ///
+  /// The packet types a `cmd:history` asked for, or null for every type.
+  ///
+  /// `kind:` names a type (section 25.2); `only:` names a CALLSIGN (36.6) and
+  /// is passed through separately. They are different questions, and answering
+  /// `only:` by matching a type name is what made `only:message` look like it
+  /// worked while `only:X5A3F2` matched nothing.
+  static List<String>? _kinds(XprsPacket p) {
+    final k = (p['kind'] ?? '').trim();
+    if (k.isEmpty) return null;
+    final types = k
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    return types.isEmpty ? null : types;
+  }
+
   void _onPacket(XprsPacket p,
       {required String selfBase, required String bearer}) {
     if (p.type != 'command') return;
@@ -128,6 +160,7 @@ class XprsHistoryServer {
         sinceMs: sinceMs,
         untilMs: untilMs,
         only: p['only'],
+        types: _kinds(p) ?? XprsArchive.kXprsTalk.toList(),
         limit: pageSize + 1);
     answered++;
 
@@ -242,6 +275,7 @@ class XprsHistoryServer {
         sinceMs: xprsParseTs(cmd['since']),
         untilMs: xprsParseTs(cmd['until']) ?? (now + 1),
         only: cmd['only'],
+        types: _kinds(cmd) ?? XprsArchive.kXprsTalk.toList(),
         limit: inlinePageSize + 1);
     answered++;
     if (rows.isEmpty) {

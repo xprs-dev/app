@@ -93,12 +93,15 @@ void main() {
     expect(aired, hasLength(2), reason: 'count: moved — ask');
   });
 
-  test('the ask is for messages, not for the whole archive', () async {
+  // `only:` is a CALLSIGN (36.6). Sending a type in it matched a station named
+  // MESSAGE, which answers 404 — and 404 counts as "window done".
+  test('the ask names a type in kind:, never in only:', () async {
     _beacon(now, count: 3);
     await XprsCatchup.instance.tick(_self);
-    expect(aired.single, contains('only:message'));
+    expect(aired.single, contains('kind:message'));
     expect(aired.single, contains('cmd:history'));
     expect(aired.single, contains('d:$_station'));
+    expect(aired.single, isNot(contains('only:')));
   });
 
   test('206 resumes with until: and does NOT advance the watermark', () async {

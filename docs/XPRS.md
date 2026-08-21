@@ -505,7 +505,7 @@ a message may contain spaces, colons, URLs and any punctuation.
 | `for` | `qty` | how long each window lasts |
 | `at` | `clock` | time of day a cycle is anchored to, UTC |
 | `seq` | `int` | position of this point within that track |
-| `kind` | `enum` | nature of an event, values per packet type (sections 15, 16) |
+| `kind` | `enum` | nature of an event, values per packet type (sections 15, 16); in `cmd:history` the packet TYPE being asked for (section 25.2) |
 | `sev` | `enum` | severity of a warning (section 16) |
 | `rad` | `qty` | radius of the area affected or asked about (sections 16, 17, 28) |
 | `since` | `time` | when the condition started, or will start |
@@ -4851,6 +4851,22 @@ were away.
 else. `only:` narrows the replay to one callsign or one group, which on a slow
 bearer is the difference between a useful answer and an unusable one.
 
+`kind:` narrows it to one packet type, named by the `t:` value it matches:
+
+```
+159  t:command f:X1BOA3 d:X3RLY7 ts:2026-08-08_14:26:40 cmd:history since:2026-08-04_00:00:00 kind:message sig:<60 characters>
+```
+
+**`only:` and `kind:` are different questions and neither substitutes for the
+other.** `only:` asks whose traffic; `kind:` asks what kind. An archiver keeps
+everything it hears, and on a channel where presence beacons outnumber
+conversation -- which is every channel -- a page of the newest twelve packets
+is twelve beacons. Without `kind:` the asker has no way to say it wanted the
+talking. An implementation that answers `only:` by matching a TYPE name has
+merged the two, and then `only:X5A3F2` matches nothing while `only:message`
+appears to work: the bug looks like a feature until the day somebody asks the
+question `only:` is actually for. Absent, `kind:` matches every type.
+
 **A standard command carries its parameters in the keys the format already
 has**, not in `arg:`. `arg:` is positional, and design rule 1 says there are no
 positional fields; it stays for operator commands, where this document has no
@@ -6311,7 +6327,7 @@ packet **250 bytes**, on every transport.
 | `for` | `qty` | how long each window lasts |
 | `at` | `clock` | time of day a cycle is anchored to, UTC |
 | `seq` | `int` | position of this point within that track |
-| `kind` | `enum` | nature of an event, values per packet type (sections 15, 16) |
+| `kind` | `enum` | nature of an event, values per packet type (sections 15, 16); in `cmd:history` the packet TYPE being asked for (section 25.2) |
 | `sev` | `enum` | severity of a warning (section 16) |
 | `rad` | `qty` | radius of the area affected or asked about (sections 16, 17, 28) |
 | `since` | `time` | when the condition started, or will start |
@@ -7024,7 +7040,8 @@ and cannot drift from the format it queries.
 One reading rule makes the reachability question askable without any new
 word: **`only:` matches a callsign wherever the packet carries it** -- as
 author, as addressee, or inside a list field (`hears:`, `hold:`, `via:`,
-`grant:`). "Everything about X1BOA3" naturally includes the gateway
+`grant:`). It is a callsign and never a type; section 25.2's `kind:` is the
+field that names a type, and the two combine rather than compete. "Everything about X1BOA3" naturally includes the gateway
 observations that list it as heard, which is the answer to "where can X1BOA3
 be reached". Worked, against an archiver:
 

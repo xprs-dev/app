@@ -406,12 +406,20 @@ class XprsArchive {
   /// a `cmd:history` replay airs them in (§25.2.1). [only] matches sender or
   /// addressee. One row past [limit] is never returned; the responder asks
   /// for limit+1 itself to learn whether more exists.
+  /// What counts as conversation: the default a radio replay serves when the
+  /// asker named no `kind:`. A person catching up wants what was SAID, and a
+  /// twelve-record page spent on presence beacons reaches none of it.
+  static const Set<String> kXprsTalk = {
+    'message', 'reaction', 'blog', 'event', 'warning', 'sos', 'info', 'status',
+  };
+
   List<Map<String, dynamic>> query({
     int? sinceMs,
     int? untilMs,
     String? only,
     List<String>? types,
     int limit = 200,
+    String? rankFor,
   }) {
     final db = _db;
     if (db == null) return const [];
@@ -439,10 +447,33 @@ class XprsArchive {
         ..add(c)
         ..add(c);
     }
+    // Relevance bands, newest-first WITHIN each band (25.2.1 keeps newest
+    // first; this only decides which newest).
+    //
+    // Measured on a bench station: the newest 200 records were 120 t:identity,
+    // 69 t:observation, 11 t:service and no messages, so a strictly
+    // chronological page of twelve is twelve beacons and the conversation is
+    // never reached. Ordering by band first costs one CASE and uses the
+    // (toc,pts) and (fromc,pts) indexes that already exist.
+    var order = 'pts DESC';
+    if (rankFor != null && rankFor.trim().isNotEmpty) {
+      final me = _base(rankFor);
+      final talk = kXprsTalk.map((t) => "'$t'").join(',');
+      order = 'CASE '
+          // 1. their own mail, either direction
+          'WHEN toc=? OR fromc=? THEN 0 '
+          // 2. what was said locally
+          'WHEN type IN ($talk) THEN 1 '
+          // 3. presence and service chatter, which a short page rarely reaches
+          'ELSE 2 END, pts DESC';
+      args
+        ..add(me)
+        ..add(me);
+    }
     args.add(limit.clamp(1, 1000));
     final rows = db.select(
         'SELECT id,ts,pts,type,fromc,toc,bearer,rssi,mine,own,sig,heard,wire '
-        'FROM packets WHERE $where ORDER BY pts DESC LIMIT ?',
+        'FROM packets WHERE $where ORDER BY $order LIMIT ?',
         args);
     return [
       for (final r in rows)
