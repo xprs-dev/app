@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../platform/platform.dart' as platform;
@@ -310,9 +311,37 @@ class PreferencesService {
   int get xprsCatchupMinutes => _prefs.getInt('xprs.catchupMinutes') ?? 1;
   set xprsCatchupMinutes(int v) => _prefs.setInt('xprs.catchupMinutes', v);
 
+  /// The seed mark, and the floor for a station never asked before. Kept as an
+  /// int for the devices that already have one written.
   int get xprsCatchupWatermark => _prefs.getInt('xprs.catchupWatermark') ?? 0;
   set xprsCatchupWatermark(int v) =>
       _prefs.setInt('xprs.catchupWatermark', v);
+
+  /// Per-station catch-up marks: base callsign -> epoch seconds of the end of
+  /// the last window that station answered for.
+  ///
+  /// One shared mark was wrong, and visibly so on the bench: an archiver
+  /// holding nothing answers `404`, which IS an answer, so it advanced the mark
+  /// for everybody -- and the station next door that held a week of traffic was
+  /// then asked only for what came after it. An empty peer must not narrow the
+  /// window on a full one, so each keeps its own.
+  Map<String, int> get xprsCatchupMarks {
+    final raw = _prefs.getString('xprs.catchupMarks');
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final m = jsonDecode(raw);
+      if (m is! Map) return {};
+      return {
+        for (final e in m.entries)
+          if (e.value is int) e.key.toString(): e.value as int,
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  set xprsCatchupMarks(Map<String, int> v) =>
+      _prefs.setString('xprs.catchupMarks', jsonEncode(v));
 
   // Stated by the user (-1 = not stated; we then use what we can see, and we
   // never guess "solar" for anybody).

@@ -106,7 +106,7 @@ void main() {
 
   test('206 resumes with until: and does NOT advance the watermark', () async {
     final prefs = PreferencesService.instanceSync!;
-    final before = prefs.xprsCatchupWatermark;
+    final before = prefs.xprsCatchupMarks[_station] ?? prefs.xprsCatchupWatermark;
 
     _beacon(now, count: 3);
     await XprsCatchup.instance.tick(_self);
@@ -117,7 +117,8 @@ void main() {
     XprsCatchup.instance.onResult(XprsPacket.parse(
         't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
 
-    expect(prefs.xprsCatchupWatermark, before,
+    expect(prefs.xprsCatchupMarks[_station] ?? prefs.xprsCatchupWatermark,
+        before,
         reason: 'a partial page does not finish the window');
 
     // The next sweep continues from where the page stopped, even though the
@@ -129,9 +130,73 @@ void main() {
     expect(aired.last, contains('until:'));
   });
 
-  test('200 finishes the window and advances the watermark', () async {
+  // Over BLE a station publishes no count:/mail: -- those ride the
+  // serve:archive announcement, which the firmware sends on ESP-NOW and the LAN
+  // only. Suppressing on an unchanged "-1/-1" made the first ask the last one
+  // forever, while the station filled up unread.
+  test('a station that advertises no archive size is re-asked on a period',
+      () async {
+    final p = XprsPacket.parse(
+        't:observation f:$_station link:ble peers:4'); // no count:, no mail:
+    void blindBeacon(int at) => XprsMonitor.instance
+        .offer(p!, bearer: 'ble', selfCallsign: _self, rssi: -50, nowMs: at);
+
+    blindBeacon(now);
+    await XprsCatchup.instance.tick(_self);
+    expect(aired, hasLength(1), reason: 'a new station is always news');
+
+    // Well inside the blind period: silence, or this becomes a flood.
+    now += const Duration(minutes: 4).inMilliseconds;
+    blindBeacon(now);
+    await XprsCatchup.instance.tick(_self);
+    expect(aired, hasLength(1),
+        reason: 'no signal is not a licence to ask constantly');
+
+    // Past it: ask again, because time is the only signal this bearer gives.
+    now += const Duration(minutes: 7).inMilliseconds;
+    blindBeacon(now);
+    await XprsCatchup.instance.tick(_self);
+    expect(aired, hasLength(2), reason: 'a blind station must not go unasked');
+  });
+
+  // An archiver holding nothing answers 404, which IS an answer. With one
+  // shared mark it advanced the window for every other station too, so the
+  // peer next door holding a week of traffic was asked only for what came
+  // after the empty one replied.
+  test('an empty station does not narrow the window on a full one', () async {
+    const other = 'X3OTHER';
+    final pOther = XprsPacket.parse(
+        't:observation f:$other link:ble peers:1 serve:archive count:9');
+    XprsMonitor.instance.offer(pOther!,
+        bearer: 'ble', selfCallsign: _self, rssi: -50, nowMs: now);
+    _beacon(now, count: 3);
+
+    await XprsCatchup.instance.tick(_self);
+    expect(aired, hasLength(2), reason: 'both stations are new');
+
+    final askOther = XprsPacket.parse(
+        aired.firstWhere((w) => w.contains('d:$other')))!;
+    final sinceBefore = XprsPacket.parse(
+        aired.firstWhere((w) => w.contains('d:$_station')))!['since'];
+
+    // The other station holds nothing for us.
+    XprsCatchup.instance.onResult(XprsPacket.parse(
+        't:result f:$other d:$_self ts:x r:${xprsIdentifier(askOther)} '
+        'code:404')!);
+
+    // Our full station is asked again and must still start where it did.
+    now += const Duration(minutes: 12).inMilliseconds;
+    _beacon(now, count: 4);
+    aired.clear();
+    await XprsCatchup.instance.tick(_self);
+    final reAsk = aired.firstWhere((w) => w.contains('d:$_station'));
+    expect(XprsPacket.parse(reAsk)!['since'], sinceBefore,
+        reason: "another station's 404 must not move this one's window");
+  });
+
+  test('200 finishes the window and advances that station\'s mark', () async {
     final prefs = PreferencesService.instanceSync!;
-    final before = prefs.xprsCatchupWatermark;
+    final before = prefs.xprsCatchupMarks[_station] ?? prefs.xprsCatchupWatermark;
 
     _beacon(now, count: 3);
     await XprsCatchup.instance.tick(_self);
@@ -139,12 +204,13 @@ void main() {
 
     XprsCatchup.instance.onResult(XprsPacket.parse(
         't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:200')!);
-    expect(prefs.xprsCatchupWatermark, greaterThan(before));
+    expect(prefs.xprsCatchupMarks[_station], greaterThan(before),
+        reason: 'the mark belongs to the station that answered');
   });
 
   test('429 answers nothing: the window stays open', () async {
     final prefs = PreferencesService.instanceSync!;
-    final before = prefs.xprsCatchupWatermark;
+    final before = prefs.xprsCatchupMarks[_station] ?? prefs.xprsCatchupWatermark;
 
     _beacon(now, count: 3);
     await XprsCatchup.instance.tick(_self);
@@ -152,6 +218,7 @@ void main() {
 
     XprsCatchup.instance.onResult(XprsPacket.parse(
         't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:429')!);
-    expect(prefs.xprsCatchupWatermark, before);
+    expect(prefs.xprsCatchupMarks[_station] ?? prefs.xprsCatchupWatermark,
+        before);
   });
 }

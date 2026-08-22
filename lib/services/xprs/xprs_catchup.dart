@@ -68,6 +68,27 @@ class XprsCatchup {
   int get watermarkSec =>
       PreferencesService.instanceSync?.xprsCatchupWatermark ?? 0;
 
+  /// How many stations we remember a mark for. Evicted oldest-mark-first, so a
+  /// busy channel cannot grow this without bound.
+  static const int _marksMax = 32;
+
+  /// This station's own mark, or the shared seed for one never asked before.
+  int _markFor(String station, PreferencesService prefs) =>
+      prefs.xprsCatchupMarks[station] ?? prefs.xprsCatchupWatermark;
+
+  void _setMark(String station, int sec, PreferencesService prefs) {
+    final marks = prefs.xprsCatchupMarks;
+    if (marks.length >= _marksMax && !marks.containsKey(station)) {
+      var oldest = marks.keys.first;
+      for (final e in marks.entries) {
+        if (e.value < marks[oldest]!) oldest = e.key;
+      }
+      marks.remove(oldest);
+    }
+    marks[station] = sec;
+    prefs.xprsCatchupMarks = marks;
+  }
+
   // ── Cadence ───────────────────────────────────────────────────────────────
   //
   // Driven from BgService's 2 s native heartbeat, NOT a Dart Timer.periodic: a
@@ -86,6 +107,14 @@ class XprsCatchup {
   /// each period matters — a station dedups an identical wire by its
   /// identifier, so re-airing the same bytes is not a second chance.
   static const Duration identityEvery = Duration(minutes: 30);
+
+  /// How often to re-ask a station that advertises no archive size.
+  ///
+  /// Ten minutes is section 36.10.1's own catch-up cadence and it lands exactly
+  /// on section 31.2's ceiling for a caller whose key the station knows -- six
+  /// replays an hour. We publish `t:identity` on every bearer, so we are that
+  /// caller rather than a stranger metered at two.
+  static const Duration blindPeriod = Duration(minutes: 10);
   int _identityAtMs = 0;
 
   /// Begin polling for [selfCallsign]. Fires once immediately, then settles
@@ -192,7 +221,25 @@ class XprsCatchup {
       final news = '${st.count ?? -1}/${st.mail ?? -1}';
       final seen = _newsSeen[base];
       final unfinished = _resume.containsKey(base);
-      if (seen == news && !unfinished) continue; // nothing new, ask nothing
+      // A station that publishes NEITHER count: nor mail: has told us nothing
+      // to compare, and over BLE that is every station: the numbers ride the
+      // `serve:archive` announcement, which the firmware sends on ESP-NOW and
+      // the LAN and not on the air a phone listens to. Suppressing on an
+      // unchanged "-1/-1" meant the first ask was also the last one, forever,
+      // while the station quietly filled up.
+      //
+      // With no signal, time is the only honest one. Ask on a period instead
+      // of going silent -- and keep the period at the section 31.2 ceiling so
+      // "we cannot tell" never becomes "ask constantly".
+      final blind = st.count == null && st.mail == null;
+      if (!blind && seen == news && !unfinished) continue; // nothing new
+      if (blind && !unfinished) {
+        final since = now - (_askedAtMs[base] ?? 0);
+        if (_askedAtMs.containsKey(base) &&
+            since < blindPeriod.inMilliseconds) {
+          continue;
+        }
+      }
       // Floor: even with news every minute, one ask per station per period
       // keeps us inside the station's hourly budget.
       final last = _askedAtMs[base] ?? 0;
@@ -212,8 +259,9 @@ class XprsCatchup {
 
   Future<void> _ask(String self, String archiver, int now,
       PreferencesService prefs) async {
-    // since: = the watermark, floored at a week (36.10.1 rule 4).
-    var sinceSec = prefs.xprsCatchupWatermark;
+    // since: = THIS station's mark, floored at a week (36.10.1 rule 4). Not a
+    // shared one: see PreferencesService.xprsCatchupMarks.
+    var sinceSec = _markFor(archiver, prefs);
     final floorSec = (now - maxWindow.inMilliseconds) ~/ 1000;
     if (sinceSec < floorSec) sinceSec = floorSec;
 
@@ -291,10 +339,8 @@ class XprsCatchup {
     _oldestReplayMs.remove(ask.station);
     if (ask.partial) return;
     final sec = ask.atMs ~/ 1000;
-    if (sec > prefs.xprsCatchupWatermark) {
-      prefs.xprsCatchupWatermark = sec;
-      LogService.instance
-          .add('XPRS catch-up: watermark -> ${_ts(ask.atMs)} (code:$code)');
+    if (sec > _markFor(ask.station, prefs)) {
+      _setMark(ask.station, sec, prefs);
     }
   }
 
