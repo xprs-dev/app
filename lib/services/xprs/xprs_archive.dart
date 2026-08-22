@@ -161,6 +161,11 @@ class XprsArchive {
 
   /// Record a heard packet. O(1): RAM append, nothing else — this sits on the
   /// radio receive path. [own] marks our own publication at transmit time.
+  /// Test seam: every packet this archive accepted, in order. The retention
+  /// policy lives in XprsIngest and the only honest way to test it is to watch
+  /// what actually arrives here.
+  void Function(XprsPacket p)? debugOnAdmit;
+
   void admit(
     XprsPacket p, {
     required String bearer,
@@ -168,6 +173,7 @@ class XprsArchive {
     bool own = false,
     int? nowMs,
   }) {
+    debugOnAdmit?.call(p);
     if (_db == null) return;
     if (kXprsNeverArchived.contains(p.type)) return;
     if ((p['f'] ?? '').trim().isEmpty) return;

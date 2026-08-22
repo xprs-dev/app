@@ -75,6 +75,27 @@ class XprsIngest {
   static String _archiveBearer(String bearer) =>
       (bearer == 'mesh' || bearer == 'custody') ? 'ble' : bearer;
 
+  /// Presence: true of a packet that says somebody is there and nothing else.
+  ///
+  /// These repeat forever by design -- that is what makes them presence -- so
+  /// on a pocket device they are the whole storage cost and none of the value.
+  /// They still reach XprsMonitor, which is what the graph, the Traffic screen
+  /// and the station list read, so nothing on screen depends on spooling them.
+  static bool _isPresence(String type) =>
+      type == 'observation' || type == 'identity' || type == 'service';
+
+  /// Whether this packet is worth the write.
+  ///
+  /// The responder already answers a `cmd:history` from XprsArchive.kXprsTalk
+  /// when the asker names no `kind:` -- so without this the archive was
+  /// storing, pruning and paying for rows the station had already decided it
+  /// would never serve.
+  static bool _worthKeeping(XprsPacket p, {required bool forUs}) {
+    if (forUs) return true; // our own mail, whatever shape it takes
+    if (!_isPresence(p.type)) return true; // conversation, always
+    return PreferencesService.instanceSync?.xprsKeepChatter ?? false;
+  }
+
   static bool get _archiveOn =>
       PreferencesService.instanceSync?.xprsArchive ?? true;
 
@@ -111,7 +132,7 @@ class XprsIngest {
     // addressed to us is our own mail and is kept either way.
     final forUs = _base(p['d'] ?? '').isNotEmpty &&
         _base(p['d'] ?? '') == _base(selfCallsign);
-    if (_archiveOn || forUs) {
+    if ((_archiveOn || forUs) && _worthKeeping(p, forUs: forUs)) {
       XprsArchive.instance
           .admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
     }
@@ -211,6 +232,12 @@ class XprsIngest {
   static void own(String wire, {required String bearer}) {
     final p = XprsPacket.parse(wire);
     if (p == null) return;
+    // Our own log stays complete for everything a `cmd:history` asked of US
+    // could replay -- section 36.5, and the reason this ignores the indexer
+    // preference. Our own PRESENCE is the exception: nobody has ever asked a
+    // phone to replay its own beacons, and on the bench they were 139 of the
+    // newest 200 rows in this device's archive.
+    if (!_worthKeeping(p, forUs: false)) return;
     XprsArchive.instance
         .admit(p, bearer: _archiveBearer(bearer), own: true);
   }

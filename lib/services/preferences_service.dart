@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../platform/platform.dart' as platform;
@@ -274,6 +275,35 @@ class PreferencesService {
   // spool nobody keeps is a network nobody can catch up on — and bounded,
   // because the caps are ours to pick (31.3). Device-level: they describe
   // the station.
+  /// Whether this device spools ROUTINE PRESENCE -- `t:observation`,
+  /// `t:identity`, `t:service` -- as well as conversation.
+  ///
+  /// Off by default on a pocket device, and the numbers are why: measured on a
+  /// phone with two stations in earshot, 89% of everything it stored was
+  /// presence chatter and 3% was messages, at roughly twenty thousand sqlite
+  /// writes an hour for rows nothing ever reads. The live view does not need
+  /// them either -- the mesh graph, the Traffic screen and the station list all
+  /// read XprsMonitor, which is RAM.
+  ///
+  /// It is not simply "off", because a desktop acting as an archiver for other
+  /// people genuinely wants the spool: that is what a `cmd:history` about
+  /// somebody's whereabouts is answered from. [xprsArchive] says whether to
+  /// index other people at all; this says whether their presence counts as
+  /// worth indexing.
+  bool get xprsKeepChatter =>
+      _prefs.getBool('xprs.keepChatter') ?? !_isPocketDevice;
+  Future<void> setXprsKeepChatter(bool v) async {
+    await _prefs.setBool('xprs.keepChatter', v);
+  }
+
+  static bool get _isPocketDevice {
+    try {
+      return Platform.isAndroid || Platform.isIOS;
+    } catch (_) {
+      return false; // web and tests: behave like a desktop
+    }
+  }
+
   bool get xprsArchive => _prefs.getBool('xprs.archive') ?? true;
   Future<void> setXprsArchive(bool v) async {
     await _prefs.setBool('xprs.archive', v);
