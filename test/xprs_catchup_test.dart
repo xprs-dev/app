@@ -163,6 +163,33 @@ void main() {
   // shared mark it advanced the window for every other station too, so the
   // peer next door holding a week of traffic was asked only for what came
   // after the empty one replied.
+  // The backstop must not be switchable-off by state going stale.
+  //
+  // A phone that spends twenty minutes on WiFi learns a station's count: over
+  // the LAN, then goes back to BLE where nothing can ever refresh it. If the
+  // periodic ask is conditional on "this station never published a count", it
+  // switches itself off at that moment and the comparison goes on succeeding
+  // against a number frozen in the past. Stale knowledge is worse than none,
+  // because it looks like knowledge.
+  test('a station whose count went stale is still asked on the period',
+      () async {
+    _beacon(now, count: 7); // learned once, e.g. over another bearer
+    await XprsCatchup.instance.tick(_self);
+    expect(aired, hasLength(1));
+
+    // The count never moves again -- nothing on this bearer can refresh it.
+    now += const Duration(minutes: 4).inMilliseconds;
+    _beacon(now, count: 7);
+    await XprsCatchup.instance.tick(_self);
+    expect(aired, hasLength(1), reason: 'inside the period, stay quiet');
+
+    now += const Duration(minutes: 7).inMilliseconds;
+    _beacon(now, count: 7);
+    await XprsCatchup.instance.tick(_self);
+    expect(aired, hasLength(2),
+        reason: 'a frozen count must not silence the poller for good');
+  });
+
   test('an empty station does not narrow the window on a full one', () async {
     const other = 'X3OTHER';
     final pOther = XprsPacket.parse(

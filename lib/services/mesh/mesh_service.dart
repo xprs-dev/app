@@ -714,6 +714,10 @@ class MeshService {
     return jsonEncode({
       'running': _running,
       'callsign': t?.selfCallsign ?? '',
+      // What the catch-up poller last did. A sweep that asks nobody logs
+      // nothing, so without this a stalled poller and a quiet one are the same
+      // from outside -- which is exactly the confusion this cost once.
+      'catchup': XprsCatchup.instance.statusJson(),
       'advertising': _canAdvertise,
       'class': _deviceClass().label,
       'powered': _powered,

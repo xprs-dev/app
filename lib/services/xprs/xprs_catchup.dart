@@ -108,13 +108,13 @@ class XprsCatchup {
   /// identifier, so re-airing the same bytes is not a second chance.
   static const Duration identityEvery = Duration(minutes: 30);
 
-  /// How often to re-ask a station that advertises no archive size.
+  /// The longest this device will go without asking a station it can hear.
   ///
   /// Ten minutes is section 36.10.1's own catch-up cadence and it lands exactly
   /// on section 31.2's ceiling for a caller whose key the station knows -- six
   /// replays an hour. We publish `t:identity` on every bearer, so we are that
   /// caller rather than a stranger metered at two.
-  static const Duration blindPeriod = Duration(minutes: 10);
+  static const Duration askAtLeastEvery = Duration(minutes: 10);
   int _identityAtMs = 0;
 
   /// Begin polling for [selfCallsign]. Fires once immediately, then settles
@@ -150,6 +150,19 @@ class XprsCatchup {
     _ticking = true;
     unawaited(tick(_selfCallsign).whenComplete(() => _ticking = false));
   }
+
+  /// When the last sweep ran, how many stations it could see, and when each
+  /// was last asked. Reported by /api/status; never logged.
+  int _lastSweepMs = 0;
+  int _lastSweepSeen = 0;
+  Map<String, dynamic> statusJson() => {
+        'lastSweepAgoMs': _lastSweepMs == 0 ? null : nowMs() - _lastSweepMs,
+        'stationsSeen': _lastSweepSeen,
+        'askedAgoMs': {
+          for (final e in _askedAtMs.entries) e.key: nowMs() - e.value,
+        },
+        'resuming': _resume.keys.toList(),
+      };
 
   /// Test seam: forget every station's news, ask history and pending page.
   /// Singleton, same reason as XprsMonitor.debugReset.
@@ -207,7 +220,8 @@ class XprsCatchup {
         .directlyHeard(nowMs: now)
         .map((c) => XprsMonitor.instance.stations[c])
         .whereType<XprsStation>()
-        .where((s) => _base(s.callsign) != selfBase);
+        .where((s) => _base(s.callsign) != selfBase)
+        .toList(growable: false); // iterated twice: the sweep and its count
 
     final asked = <String>[];
     for (final st in fresh) {
@@ -221,25 +235,25 @@ class XprsCatchup {
       final news = '${st.count ?? -1}/${st.mail ?? -1}';
       final seen = _newsSeen[base];
       final unfinished = _resume.containsKey(base);
-      // A station that publishes NEITHER count: nor mail: has told us nothing
-      // to compare, and over BLE that is every station: the numbers ride the
-      // `serve:archive` announcement, which the firmware sends on ESP-NOW and
-      // the LAN and not on the air a phone listens to. Suppressing on an
-      // unchanged "-1/-1" meant the first ask was also the last one, forever,
-      // while the station quietly filled up.
+      final quietFor = now - (_askedAtMs[base] ?? 0);
+      final overdue = !_askedAtMs.containsKey(base) ||
+          quietFor >= askAtLeastEvery.inMilliseconds;
+
+      // The news check ACCELERATES the ask; it must never be the only thing
+      // that permits one. A station whose count: we can see is asked the
+      // moment it moves; every station is asked at least once a period
+      // whatever we think we know.
       //
-      // With no signal, time is the only honest one. Ask on a period instead
-      // of going silent -- and keep the period at the section 31.2 ceiling so
-      // "we cannot tell" never becomes "ask constantly".
-      final blind = st.count == null && st.mail == null;
-      if (!blind && seen == news && !unfinished) continue; // nothing new
-      if (blind && !unfinished) {
-        final since = now - (_askedAtMs[base] ?? 0);
-        if (_askedAtMs.containsKey(base) &&
-            since < blindPeriod.inMilliseconds) {
-          continue;
-        }
-      }
+      // The first version of this made the fallback conditional on the station
+      // never having published a count, and that was subtly wrong in exactly
+      // the way that matters here: the phone spent twenty minutes on WiFi,
+      // learned a count over the LAN, and then went back to BLE where nothing
+      // can ever refresh it. `count` was no longer null, so the fallback
+      // switched itself off, and the comparison went on succeeding against a
+      // number frozen in the past. Stale knowledge is worse than none, because
+      // it looks like knowledge. A backstop that is always armed cannot be
+      // reasoned out of existence by state going stale.
+      if (!overdue && (seen == news) && !unfinished) continue;
       // Floor: even with news every minute, one ask per station per period
       // keeps us inside the station's hourly budget.
       final last = _askedAtMs[base] ?? 0;
@@ -255,6 +269,13 @@ class XprsCatchup {
       LogService.instance.add('XPRS: polled ${asked.length} station(s) — '
           '${asked.join(", ")}');
     }
+    // Silence and "not running" looked identical from outside, which cost an
+    // afternoon: a sweep that considers stations and asks none logs nothing,
+    // so a stalled poller and a quiet one read the same. This is state, not a
+    // log line -- /api/status can answer "when did you last try" without
+    // spending a ring entry every thirty seconds.
+    _lastSweepMs = now;
+    _lastSweepSeen = fresh.length;
   }
 
   Future<void> _ask(String self, String archiver, int now,
