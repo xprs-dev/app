@@ -514,7 +514,7 @@ a message may contain spaces, colons, URLs and any punctuation.
 | `file` | `ref` | content hash and type of a referenced file |
 | `name` | `label` | filename, when the extension is not enough (section 6.7.1) |
 | `ph` | `ref` | content hash of a file's piece list (section 6.7.2) |
-| `count` | `int` | how many files a folder listing holds (section 6.7.3) |
+| `count` | `int` | on `t:file kind:folder`, how many files a listing holds (6.7.3); on an archiver's `serve:archive` announcement, how many RECORDS it holds -- never how many callsigns (24.0.1) |
 | `b` | `b64` | a small file's bytes, inline (section 6.7.4) |
 | `ih` | `label` | BitTorrent infohash, 40 hexadecimal characters (section 6.7.5) |
 | `have` | `label` | what a station holds of a file: `full`, a bitfield, or a fraction (section 7.1) |
@@ -4671,6 +4671,46 @@ t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,archive ts:2026-08-08_14:26:4
 | `wifi` | offers network access to people nearby |
 | `other` | something not in this list, described in `m:` |
 
+### 24.0.1 `count:` on an archiver's announcement
+
+An archiver states how much it is holding:
+
+```
+117  t:service f:X3P7QK serve:archive count:1234 fw:1.4.2 sig:<60 characters>
+```
+
+**`count:` is the number of RECORDS the archive holds, not the number of
+callsigns it has heard from.** The distinction is the whole value of the field.
+
+A listener uses `count:` to decide whether asking is worth it. Section 36.10.1's
+pocket device cannot afford a `cmd:history` per period on the chance that
+something arrived -- a replay is metered (section 31.2), and one spent to be
+told "nothing changed" is one not available when something did. So it remembers
+the last `count:` it saw from each archiver and asks only when the number moves.
+
+Counting callsigns breaks that, and breaks it silently. An archiver that has
+heard from six stations for a month reports `count:6` however much those six
+say, so a listener watching it sees a number that never changes and concludes
+there is nothing to fetch -- while the archive fills up behind it. The failure
+looks like a working poller, which is the worst kind.
+
+A record count is not required to be exact, and an archiver that evicts under
+section 36.11 will see it fall. What is required is that it MOVES when the
+archive takes something new, because that movement is the signal. An archiver
+that cannot cheaply produce one omits `count:` rather than publishing a
+constant: a listener that sees no `count:` falls back to asking on a period,
+which is slower but honest, and one that sees a frozen number does not.
+
+**A listener must not treat `count:` as knowledge that survives.** It is a
+reading, and readings go stale -- particularly across a change of bearer, where
+the announcement carrying it may not travel. Stale knowledge is worse than none
+because it looks like knowledge, so `count:` may only ever bring an ask
+FORWARD; it may never be the reason one is skipped indefinitely. Section
+36.10.1's period remains the backstop whatever `count:` says or fails to say.
+
+(`count:` also appears on `t:file kind:folder`, where it is the number of files
+in a listing, section 6.7.3. The packet type says which is meant.)
+
 A station with a position and a power source says so, because both decide
 whether it is worth routing through:
 
@@ -6336,7 +6376,7 @@ packet **250 bytes**, on every transport.
 | `file` | `ref` | content hash and type of a referenced file |
 | `name` | `label` | filename, when the extension is not enough (section 6.7.1) |
 | `ph` | `ref` | content hash of a file's piece list (section 6.7.2) |
-| `count` | `int` | how many files a folder listing holds (section 6.7.3) |
+| `count` | `int` | on `t:file kind:folder`, how many files a listing holds (6.7.3); on an archiver's `serve:archive` announcement, how many RECORDS it holds -- never how many callsigns (24.0.1) |
 | `b` | `b64` | a small file's bytes, inline (section 6.7.4) |
 | `ih` | `label` | BitTorrent infohash, 40 hexadecimal characters (section 6.7.5) |
 | `have` | `label` | what a station holds of a file: `full`, a bitfield, or a fraction (section 7.1) |
@@ -7262,8 +7302,12 @@ device cannot: it sleeps in a pocket, wakes on a desk, crosses town, and
 has no idea which of those was an absence worth naming. So it does not
 track absences at all -- it keeps a WATERMARK and polls.
 
-The watermark is one persisted timestamp: the end of the last window an
-archiver answered for. The poll is the same ask as any meeting:
+The watermark is a persisted timestamp PER ARCHIVER: the end of the last window
+that archiver answered for. Not one shared mark -- an archiver holding nothing
+answers `code:404`, which is an answer and advances the mark, so a shared one
+lets an empty peer narrow the window on a full one standing beside it. The
+device then never asks the full peer for anything older, and nothing anywhere
+reports that it stopped. The poll is the same ask as any meeting:
 
 ```
 165  t:command f:X1QZ3N d:X3ARC1 ts:2026-08-20_09:30:00 scope:local cmd:history since:2026-08-20_09:20:00 sig:<60 characters>
@@ -7280,10 +7324,18 @@ The cycle:
 2. To each, at most one ask per period, it sends `cmd:history since:` the
    watermark. A fresh install has no watermark and asks for nothing; it
    sets the watermark to now and starts keeping.
-3. The watermark advances to the ask's own `ts:` when the archiver
-   answers `code:200` or `code:206` -- or `code:404` (nothing held is an
-   answer). It does NOT advance on `code:429` or on silence, so an
-   unanswered window is simply asked for again next period.
+3. THAT archiver's watermark advances to the ask's own `ts:` when it
+   answers `code:200` -- or `code:404` (nothing held is an answer). It does
+   NOT advance on `code:429` or on silence, so an unanswered window is simply
+   asked for again next period, and it does not advance on `code:206`, which
+   closes a page rather than the window (section 25.2.1).
+3a. An archiver's `count:` (section 24.0.1) may bring the next ask FORWARD --
+   the number moved, so there is something to fetch and the period need not be
+   waited out. It may never postpone one indefinitely: the period in step 1 is
+   a backstop that is always armed, because a `count:` can be absent on the
+   bearer in use, or stale from one no longer in use, and a device that lets a
+   frozen number silence its poller stops fetching while continuing to look
+   healthy.
 4. The window an ask may claim is bounded to seven days. A device that
    was away longer asks for the last week; anything older is fetched
    deliberately, not by a background poll.

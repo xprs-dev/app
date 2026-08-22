@@ -18,6 +18,7 @@ import 'package:aurora/services/xprs/xprs_packet.dart';
 const _self = 'X1A67X';
 
 void main() {
+  _countSemantics();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late List<String> admitted;
@@ -77,5 +78,33 @@ void main() {
     heard('t:observation f:X3R8XX link:ble peers:4');
     expect(XprsMonitor.instance.stations.containsKey('X3R8XX'), isTrue,
         reason: 'the graph and the station list read the monitor, not sqlite');
+  });
+}
+
+// `count:` means records on an archiver's announcement and files on a folder
+// listing (XPRS.md 24.0.1 and 6.7.3). Reading the second as the first would
+// have a folder announcement move a station's news counter and trigger a
+// metered history replay for nothing.
+void _countSemantics() {
+  test('count: is read from an archive announcement, not a folder listing', () {
+    const call = 'X3ARC1';
+    XprsMonitor.instance.offer(
+        XprsPacket.parse('t:service f:$call serve:archive count:1234')!,
+        bearer: 'ble', selfCallsign: _self);
+    expect(XprsMonitor.instance.stations[call]?.count, 1234);
+
+    XprsMonitor.instance.offer(
+        XprsPacket.parse('t:file f:$call kind:folder count:34 file:abc.xfl')!,
+        bearer: 'ble', selfCallsign: _self);
+    expect(XprsMonitor.instance.stations[call]?.count, 1234,
+        reason: 'a folder listing is not an archive size');
+  });
+
+  test('a station that says nothing has a null count, which is not zero', () {
+    const call = 'X3QUIET';
+    XprsMonitor.instance.offer(
+        XprsPacket.parse('t:observation f:$call link:ble peers:2')!,
+        bearer: 'ble', selfCallsign: _self);
+    expect(XprsMonitor.instance.stations[call]?.count, isNull);
   });
 }

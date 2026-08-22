@@ -126,7 +126,18 @@ class XprsStation {
   /// on the wire, unit included -- `14.2C`, not `14.2`.
   final Map<String, String> readings = {};
 
-  /// An indexer's `count:` — how many callsigns it is archiving (section 36.9).
+  /// An archiver's `count:` — how many RECORDS it holds (section 24.0.1).
+  ///
+  /// Not callsigns. The distinction is the whole value of the field: a poller
+  /// remembers this number and asks for history when it moves, and a count of
+  /// senders does not move when six known stations say six new things. This
+  /// doc used to say callsigns, which is what section 36.9's *directory* is
+  /// about, and the two are different questions.
+  ///
+  /// Null means the station has not said. That is a real answer and not the
+  /// same as zero: a station that cannot cheaply produce a record count omits
+  /// the field rather than publishing a constant, and a poller that sees
+  /// nothing falls back to its period.
   int? count;
 
   /// Who it says it hears directly (section 10.6.3). Finding our own callsign
@@ -249,7 +260,13 @@ class XprsMonitor {
     // service advertisement states them, an ordinary message states neither,
     // and a message must not erase what the advertisement said.
     if (p.has('serve')) st.services = xprsServices(p);
-    if (p.has('count')) st.count = int.tryParse(p['count'] ?? '');
+    // Only from a packet where `count:` means the archive size. On
+    // `t:file kind:folder` it is the number of files in a listing (6.7.3), and
+    // reading that as an archive size would have a folder announcement move a
+    // station's news counter.
+    if (p.has('count') && p.type != 'file') {
+      st.count = int.tryParse(p['count'] ?? '');
+    }
     if (p.has('hears')) st.hears = xprsHears(p);
     // No `via:` means this arrived from the sender's own transmitter.
     if (!p.has('via')) st.lastDirectMs = now;
