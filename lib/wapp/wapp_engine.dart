@@ -1237,7 +1237,7 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
-    // Pin/unpin: keep a full copy of the folder and advertise it to the Indexers.
+    // Pin/unpin: keep a full copy of the folder and tell the directories.
     final halFolderPin = WasmFunction(
       (int idPtr, int idLen, int on) {
         if (idLen <= 0) return 0;
@@ -3356,7 +3356,7 @@ class WappEngine {
 
 
     // ── Mesh HAL (BLE street mesh, docs/mesh.md) ─────────────────────────────
-    // ── hal.node: the Indexer role, as something a person grants and revokes ──
+    // ── hal.node: the directory role, granted and revoked by a person ────────
     final halNodeStatus = WasmFunction(
       (int outPtr, int outCap) {
         if (outCap <= 0) return 0;

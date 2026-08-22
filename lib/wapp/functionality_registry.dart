@@ -253,12 +253,12 @@ class FunctionalityRegistry {
       ], ReturnDef('int', 'Bytes written, negated required size if too small')),
     ]),
     'hal.node': FunctionalityDef('hal.node',
-        'The Indexer role: what this device answers for, and at whose invitation', [
+        'The directory role: what this device answers for, and at whose invitation', [
       EndpointDef('hal_node_status',
-          'Node/Indexer status JSON (volunteer,serving,pointers,authors,syncPeers,hardware\u2026)', [],
+          'Directory status JSON (volunteer,serving,pointers,authors,syncPeers,hardware\u2026)', [],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef('hal_node_peers',
-          'Indexers and leaves this device knows, as people-widget sections', [],
+          'Directories and leaves this device knows, as people-widget sections', [],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef('hal_node_set_pref',
           'Set a node tunable "key=value" (volunteer=off|auto|always, topics=csv)', [
