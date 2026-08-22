@@ -23,14 +23,16 @@ class _FakeBearer implements XprsBearer {
   final List<String> sent = [];
   @override
   Future<bool> get active async => up;
-  @override
   /// The rotation slot the publisher chose, so a test can prove two asks to
   /// two stations no longer share one advert key.
   final List<String> slots = [];
+  final List<Duration?> ttls = [];
   @override
-  Future<bool> send(String wire, {required int part, String slot = 'status'}) async {
+  Future<bool> send(String wire,
+      {required int part, String slot = 'status', Duration? ttl}) async {
     sent.add(wire);
     slots.add(slot);
+    ttls.add(ttl);
     return true;
   }
 }

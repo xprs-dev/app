@@ -23,7 +23,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import '../../connections/bluetooth/ble5_bus.dart';
 import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
@@ -292,12 +291,27 @@ class XprsHistoryServer {
     ];
   }
 
+  /// Put one wire of the answer on air.
+  ///
+  /// EVERY bearer, not Bluetooth. This called Ble5Bus directly, which made
+  /// the archive role a Bluetooth feature by accident: a station that asked
+  /// over the LAN, ESP-NOW or a LoRa link got its 202 and its records aired
+  /// on a radio it was not listening to, and heard silence. Measured on the
+  /// bench -- a LAN asker saw the phone's own catch-up questions arrive over
+  /// UDP while every answer it sent went out on BLE alone.
+  ///
+  /// The publisher is the one place that knows what this device can transmit
+  /// on, which is also what docs/architecture.md means by transports being
+  /// core: a service decides WHAT to say, never which radio carries it.
+  /// [verbatim] because a replayed record is the author's packet, not ours.
   Future<bool> _air(String key, String wire, Duration ttl) {
-    final bytes = Uint8List.fromList(utf8.encode(wire));
     final tx = txOverride;
-    if (tx != null) return tx(key, bytes, ttl);
-    return Ble5Bus.instance
-        .advertiseFrame(key, Ble5Subtype.xprs, bytes, ttl: ttl);
+    if (tx != null) {
+      return tx(key, Uint8List.fromList(utf8.encode(wire)), ttl);
+    }
+    return XprsPublisher.instance
+        .publishWire(wire, slot: key, ttl: ttl, verbatim: true)
+        .then((r) => r.values.any((v) => v == 'sent'));
   }
 
   /// The person, with any device suffix removed: `X1ABCD-1` -> `X1ABCD`

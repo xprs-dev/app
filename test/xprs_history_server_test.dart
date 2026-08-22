@@ -6,13 +6,13 @@
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:aurora/services/xprs/xprs_archive.dart';
 import 'package:aurora/services/xprs/xprs_history_server.dart';
 import 'package:aurora/services/xprs/xprs_id.dart';
 import 'package:aurora/services/xprs/xprs_ingest.dart';
 import 'package:aurora/services/xprs/xprs_packet.dart';
+import 'package:aurora/services/xprs/xprs_publisher.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
@@ -21,6 +21,30 @@ final BigInt _d =
     BigInt.parse('1234567890abcdef1234567890abcdef', radix: 16);
 
 XprsPacket _p(String wire) => XprsPacket.parse(wire)!;
+
+/// A bearer that only records. Two of these stand in for "this device has
+/// more than one radio", which is the whole point of the test below.
+class _RecordingBearer implements XprsBearer {
+  _RecordingBearer(this.name);
+  @override
+  final String name;
+  @override
+  String get archiveBearer => name;
+  @override
+  bool get shortRange => true;
+  @override
+  Future<bool> get active async => true;
+  final List<String> sent = [];
+  final List<Duration?> ttls = [];
+  @override
+  Future<bool> send(String wire,
+      {required int part, String slot = 'status', Duration? ttl}) async {
+    sent.add(wire);
+    ttls.add(ttl);
+    return true;
+  }
+}
+
 
 void main() {
   late Directory tmp;
@@ -228,6 +252,79 @@ void main() {
           if (r['d'] == 'X1SELF') r['code']
       ];
       expect(codes.where((c) => c == '202'), hasLength(4));
+    });
+  });
+
+  // The bug this pins: _air used to call Ble5Bus directly, so a station that
+  // asked over the LAN got its answer aired on Bluetooth and heard nothing.
+  // Every other test here installs txOverride, which replaces exactly the
+  // code that was wrong -- so the whole suite passed while the archive role
+  // only worked on one radio. This one lets the real path run.
+  group('the answer goes out on every bearer, not just Bluetooth', () {
+    late _RecordingBearer ble;
+    late _RecordingBearer lan;
+    late List<XprsBearer> saved;
+
+    setUp(() {
+      srv.txOverride = null;               // let _air do its real work
+      saved = XprsPublisher.instance.bearers;
+      ble = _RecordingBearer('ble5');
+      lan = _RecordingBearer('lan');
+      XprsPublisher.instance.bearers = [ble, lan];
+    });
+
+    tearDown(() => XprsPublisher.instance.bearers = saved);
+
+    test('202 and the replayed records reach both bearers', () async {
+      seed(2);
+      ask('t:command f:X1BBB d:X1SELF cmd:history '
+          'ts:2026-08-13_12:00:00 since:2026-08-13_09:00:00');
+      // The 202 is composed and aired without awaiting; give the bearer
+      // probes (each an async `active`) a turn before looking.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(ble.sent, isNotEmpty, reason: 'Bluetooth heard the answer');
+      expect(lan.sent, isNotEmpty,
+          reason: 'the LAN asker must hear it too — this is the regression');
+      expect(lan.sent.first, contains('code:202'));
+      expect(lan.sent.first, equals(ble.sent.first));
+
+      // ...and the records that follow, not only the control packet.
+      await Future<void>.delayed(
+          XprsHistoryServer.interPacket + const Duration(milliseconds: 200));
+      expect(lan.sent.length, greaterThan(1));
+      expect(lan.sent[1], contains('packet number'));
+
+      // A paced replay must not hold an advert slot for the advertiser's
+      // 120 s default: the caller's ttl has to survive the trip.
+      expect(ble.ttls.first, isNotNull);
+      expect(ble.ttls.first!.inSeconds, lessThan(60));
+    });
+
+    test('a replayed record keeps the author\'s bytes and is not refiled',
+        () async {
+      seed(1, from: 'X1AAA');
+      final stored = a
+          .query(limit: 50)
+          .firstWhere((r) => (r['wire'] as String).contains('packet number'));
+      ask('t:command f:X1BBB d:X1SELF cmd:history '
+          'ts:2026-08-13_12:00:00 since:2026-08-13_09:00:00');
+      await Future<void>.delayed(
+          XprsHistoryServer.interPacket + const Duration(milliseconds: 250));
+
+      final record = lan.sent.firstWhere((w) => w.contains('packet number'));
+      // Byte for byte: no signature added, so the identifier still matches
+      // the row the asker will page against with until: (25.2.1, 36.2).
+      expect(record, equals(stored['wire']));
+      expect(record, contains('f:X1AAA'));
+      // Re-airing another station's packet must not file a second copy of it
+      // under our own name.
+      final copies = a
+          .query(limit: 50)
+          .where((r) => r['wire'] == record)
+          .toList();
+      expect(copies, hasLength(1));
+      expect(copies.single['own'], isFalse);
     });
   });
 }

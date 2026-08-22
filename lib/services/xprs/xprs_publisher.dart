@@ -61,7 +61,15 @@ abstract class XprsBearer {
   /// clobbered everything else. A catch-up sweep asking N stations back to
   /// back put only the LAST ask on air, and a status the user had just
   /// published went with it.
-  Future<bool> send(String wire, {required int part, String slot = 'status'});
+  /// [ttl] is how long an advert-style bearer should keep the frame on air.
+  /// Only such a bearer has any use for it -- a datagram is sent once and is
+  /// gone -- so it is optional and each bearer falls back to its own default.
+  /// It exists because a replayed history page is twelve frames paced 1.5 s
+  /// apart: at the advertiser's 120 s default they would all still be on air
+  /// long after the page ended, holding twelve rotation slots against
+  /// everything else this station has to say.
+  Future<bool> send(String wire,
+      {required int part, String slot = 'status', Duration? ttl});
 }
 
 class _Ble5Bearer implements XprsBearer {
@@ -79,14 +87,16 @@ class _Ble5Bearer implements XprsBearer {
   Future<bool> get active async =>
       await Ble5Bus.instance.supported() && await Ble5Bus.instance.adapterOn();
   @override
-  Future<bool> send(String wire, {required int part, String slot = 'status'}) =>
+  Future<bool> send(String wire,
+          {required int part, String slot = 'status', Duration? ttl}) =>
       Ble5Bus.instance.advertiseFrame(
         'xprs-$slot:$part',
         Ble5Subtype.xprs,
         Uint8List.fromList(utf8.encode(wire)),
         // Long enough to span a receiver's duty-cycled scan burst — the same
-        // rationale hal_ble_advertise documents for its 120 s.
-        ttl: const Duration(seconds: 120),
+        // rationale hal_ble_advertise documents for its 120 s. A caller that
+        // knows better (a paced replay) says so.
+        ttl: ttl ?? const Duration(seconds: 120),
       );
 }
 
@@ -100,7 +110,8 @@ class _ReticulumBearer implements XprsBearer {
   @override
   Future<bool> get active async => RnsService.instance.isUp;
   @override
-  Future<bool> send(String wire, {required int part, String slot = 'status'}) =>
+  Future<bool> send(String wire,
+          {required int part, String slot = 'status', Duration? ttl}) =>
       RnsService.instance.wappBroadcast(
           'xprs', Uint8List.fromList(utf8.encode(wire)));
 }
@@ -117,7 +128,8 @@ class _LanBearer implements XprsBearer {
   @override
   Future<bool> get active async => XprsLan.instance.up;
   @override
-  Future<bool> send(String wire, {required int part, String slot = 'status'}) async =>
+  Future<bool> send(String wire,
+          {required int part, String slot = 'status', Duration? ttl}) async =>
       XprsLan.instance.send(wire);
 }
 
@@ -135,7 +147,9 @@ class _LoraBearer implements XprsBearer {
   Future<bool> get active async =>
       _lora.status == ConnectionStatus.available;
   @override
-  Future<bool> send(String wire, {required int part, String slot = 'status'}) async => false;
+  Future<bool> send(String wire,
+          {required int part, String slot = 'status', Duration? ttl}) async =>
+      false;
 }
 
 class XprsPublisher {
@@ -355,7 +369,20 @@ class XprsPublisher {
   /// It defaults to the packet's own type and destination, so two asks to two
   /// stations no longer overwrite each other and neither touches the status
   /// slot. Pass one explicitly only to group wires deliberately.
-  Future<Map<String, String>> publishWire(String wireIn, {String? slot}) async {
+  /// Put one caller-composed wire on every bearer that will take it.
+  ///
+  /// [verbatim] is for a wire this station did not write: a history replay
+  /// re-airs the AUTHOR's packet, byte for byte, with the author's own
+  /// signature (25.2.1, 36.2). Two things that are right for our own words
+  /// are wrong for someone else's, and both are skipped:
+  ///   - signing. The wire's identifier is derived from its bytes, so adding
+  ///     a signature to a stored record renames it, and the asker's `until:`
+  ///     continuation would then be paging a record nobody else has.
+  ///   - filing it as ours. It is already in the spool as something we HEARD;
+  ///     re-entering it through [XprsIngest.own] would claim authorship of
+  ///     another station's packet.
+  Future<Map<String, String>> publishWire(String wireIn,
+      {String? slot, Duration? ttl, bool verbatim = false}) async {
     LogService.instance.add('XPRS: publishWire <- $wireIn');
     var p = XprsPacket.parse(wireIn.trim());
     if (p == null || !p.fits) {
@@ -365,7 +392,8 @@ class XprsPublisher {
     final call =
         (ProfileService.instance.activeProfile?.callsign ?? '').trim();
     final from = (p['f'] ?? '').toUpperCase();
-    if (call.isNotEmpty &&
+    if (!verbatim &&
+        call.isNotEmpty &&
         from.split('-').first == call.toUpperCase().split('-').first &&
         !p.has('sig')) {
       final d = xprsProfileScalar();
@@ -389,11 +417,13 @@ class XprsPublisher {
         report[b.name] = 'inactive';
         continue;
       }
-      final ok = await b.send(wire, part: 1, slot: useSlot);
+      final ok = await b.send(wire, part: 1, slot: useSlot, ttl: ttl);
       report[b.name] = ok ? 'sent' : 'refused';
       if (ok) carriedBy ??= b.archiveBearer;
     }
-    if (carriedBy != null) XprsIngest.own(wire, bearer: carriedBy);
+    if (!verbatim && carriedBy != null) {
+      XprsIngest.own(wire, bearer: carriedBy);
+    }
     published++;
     // One line per caller-composed wire: which bearers took it. A wire that
     // silently reached nobody is the failure mode that costs a day.
