@@ -4660,7 +4660,7 @@ t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,archive ts:2026-08-08_14:26:4
 | Word | The station |
 |---|---|
 | `relay` | repeats packets it hears |
-| `archive` | an archiver (section 36): keeps a spool of what it hears and re-airs it on `cmd:history`, archives its depositors' publications and answers queries, holds mail for stations that named it (or for anyone, as it pleases), and publishes its directory (section 36.9) |
+| `archive` | an archiver (section 36): keeps a spool of what it hears and re-airs it on `cmd:history`, archives its depositors' publications and answers queries, holds mail for stations that named it (or for anyone, as it pleases), and publishes its directory of who-keeps-what (section 36.9). One word covers all of it -- there is no separate service for the pointer half or the storage half, and the offer is the same on every bearer the station has (section 36.0) |
 | `internet` | gateways to the internet |
 | `aprs` | gateways to APRS-IS |
 | `nostr` | runs a NOSTR relay |
@@ -6959,6 +6959,83 @@ carries mail, bridges bearers, and announces `serve:archive` so others can
 lean on it. Between the two is every intermediate an operator cares to
 configure; the grammar is the same at both ends.
 
+### 36.0 One role, and it does not change with the bearer
+
+**One role, one word.** `serve:archive` covers everything an archiver does:
+keeping packets and answering for them (sections 36.1 to 36.6), holding mail
+for stations that are not here (section 36.7), and publishing the directory of
+who keeps what (section 36.9). There is no second service word for the pointer
+half and no third for the storage half. A station that keeps only pointers and
+a station that keeps every byte it hears announce the same `serve:archive` and
+differ in what they answer, not in what they are -- which is the only
+distinction a reader can act on anyway, because it finds out by asking.
+
+An operator's interface may still present the offers separately, and should:
+holding somebody's files and remembering where their files are cost very
+different things, and either may be granted without the other. That is a
+question of consent, and it stops at the edge of the device. On the air, one
+word.
+
+**The role does not change with the bearer.** A `cmd:history` that arrives
+over Bluetooth, over a local network, over ESP-NOW, over LoRa or over the
+internet is answered the same way: the same records for the same window, the
+same `code:202` / `code:200` / `code:206` / `code:404` / `code:429`, the same
+paging, the same budgets (section 31.2), the same signatures. A bearer decides
+how bytes travel. It never decides what a station will do for you, and an
+archiver that behaves differently on one is not a faster or slower archiver, it
+is a broken one.
+
+This is written down because getting it wrong is invisible. An implementation
+that answers on one bearer only still beacons `serve:archive`, still archives
+everything it hears, and still asks its own questions correctly on every
+bearer it has -- so it looks healthy from the inside, and its logs record no
+error, because nothing was refused. Every asker on any other bearer simply
+hears silence. The answer was composed, signed, and put on a radio nobody in
+the conversation was listening to.
+
+**Announcing is not addressing.** `serve:archive` heard on one bearer is an
+offer on all of them. A reader that hears the announcement over the LAN and
+asks over LoRa is owed the same answer, and an archiver may not treat the
+bearer an announcement was heard on as the bearer it serves.
+
+**The one place a bearer legitimately decides anything** is choosing among
+several paths to the SAME station. An archiver with more than one way to reach
+its asker picks one: the path with the highest usable bandwidth among those it
+has recent evidence are working, because the whole answer arrives soonest and
+a page interrupted halfway is a page asked for again. Reliability outranks raw
+speed -- a fast path that has not carried anything lately is a guess, and a
+slower one that answered a minute ago is knowledge.
+
+Which makes the bearer an ask ARRIVED on a sound default, and the reason is
+worth stating so it is not mistaken for the rule this section rejects: that
+bearer just carried a packet from precisely the station now waiting for an
+answer, which is the freshest evidence of a working path anyone can have.
+Answering there is a path choice made on evidence. What it must not become is
+a constraint -- if the archiver knows a better path to that same station, it
+uses it, and if the arrival bearer cannot carry the answer it does not give
+up.
+
+Where a station cannot tell which path reaches the asker -- the ordinary case
+on a broadcast bearer, where nobody has a per-peer path at all -- it answers
+on every bearer it can transmit on. Duplicates cost airtime and nothing else:
+a replayed packet deduplicates on the section 5 identifier, so the reader sees
+one copy however many arrived. On an expensive bearer that cost is real, and
+an archiver may hold back a page it has already sent somewhere faster; it may
+never hold back the control packets, because a `code:404` or `code:429` that
+does not arrive is indistinguishable from a station that is simply not there.
+
+So the failure this section names is narrower than "answered on one bearer",
+and worth stating exactly: it is a station that serves on a bearer of its own
+choosing rather than one that reaches the asker. That is what makes it
+invisible -- the choice is made once, in code, and thereafter every answer
+goes out somewhere consistent, plausible, and unrelated to who asked.
+
+None of this is `scope:local` (section 13.11.1). Scope says how far a packet
+may travel and therefore which bearers may carry it, and it constrains the
+archiver's answer exactly as it constrains anything else. It is a property of
+the packet, decided by its author. What this section forbids is a station
+narrowing its own service to one bearer of its own accord.
+
 ### 36.1 What a publication is
 
 An archiver holds two different things, and the difference is `d:`.
@@ -7281,8 +7358,10 @@ useless for this: by the time the peer is sighted, fresh traffic has
 pushed it past the very window the absence made, and the ask would ask
 for nothing. Overlap is harmless -- replayed packets deduplicate on the
 section 5 identifier. The peer re-airs its spool for
-that window under its own section 31 serving budget, on the bearer the ask
-arrived on. The replayed packets are ORIGINALS: each carries its author's
+that window under its own section 31 serving budget, on whichever path
+section 36.0 selects -- usually the bearer the ask arrived on, which is the
+freshest evidence of a path to the asker, but never that bearer merely because
+it is the one the code happens to reach for. The replayed packets are ORIGINALS: each carries its author's
 signature and verifies (or fails) on its own, and each is heard on the air
 like any other packet -- which is what keeps section 36.9's line intact.
 Nothing is imported; the returning station simply gets to hear what the
