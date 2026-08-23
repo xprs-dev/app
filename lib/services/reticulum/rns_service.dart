@@ -3442,6 +3442,12 @@ class RnsService {
       // services exist — a failed connect is just retried, no rebuild/rescan. ──
       switch (mode) {
         case 'tcpserver':
+          // A node that accepts clients IS a transport for them: without
+          // this, two stations dialled into the same server could not hear
+          // each other's announces at all -- each ESP32 archiver announced
+          // serve:archive into a socket and nobody else ever learned it.
+          // transportId is what tags the rebroadcast as HEADER_2, per RNS.
+          _transport!.transportId = _id!.hash;
           _server = RnsTcpServerInterface(
             port: port,
             transport: _transport!,
