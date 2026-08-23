@@ -3518,6 +3518,11 @@ handing mail to a station that stopped carrying it a year ago gets silence.
 **A mailbox declaration must be signed, and a receiver that cannot verify one
 must not act on it.**
 
+A declaration is CONSUMED, not only displayed: an archiver must be able to
+answer "who holds for X1QZ3N" from the declarations it verified (the reverse
+of the lookup it does for itself), because section 36.8.1 routes held mail by
+exactly that answer, in `hold:`'s order of preference.
+
 This is the one packet in the format where forgery pays directly. Anyone who can
 publish `t:mailbox f:X1QZ3N hold:<attacker>` collects that station's incoming
 mail from every polite sender, and the sender believes it delivered. Signing is
@@ -4661,6 +4666,7 @@ t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,archive ts:2026-08-08_14:26:4
 |---|---|
 | `relay` | repeats packets it hears |
 | `archive` | an archiver (section 36): keeps a spool of what it hears and re-airs it on `cmd:history`, archives its depositors' publications and answers queries, holds mail for stations that named it (or for anyone, as it pleases), and publishes its directory of who-keeps-what (section 36.9). One word covers all of it -- there is no separate service for the pointer half or the storage half, and the offer is the same on every bearer the station has (section 36.0) |
+| `super` | a super-archiver (section 36.9.4): the archive role at server scale -- gossip for every callsign it can learn of, budgets orders of magnitude above the reference numbers. Announced beside `archive`, never instead of it |
 | `internet` | gateways to the internet |
 | `aprs` | gateways to APRS-IS |
 | `nostr` | runs a NOSTR relay |
@@ -7273,6 +7279,45 @@ message. The gateway was trusted with nothing but ciphertext and effort:
 an iGate useful for what it hears and carries, with no need to read what
 it moves.
 
+### 36.8.1 The return leg, automated
+
+Section 36.8 built the last mile by hand: somebody had to ask. This section
+removes the hand. Two behaviours, one MUST and one MAY, and together they are
+what makes a deposited message ARRIVE rather than wait to be collected.
+
+**A station holding mail for X delivers it the moment it hears X.** Directly
+(section 10.6.3's sense -- no `via:`), on any bearer; the attempt goes out on
+the bearer X was heard on, which is the freshest possible evidence of a
+working path (section 36.0). This is not a poll and must not be built as one:
+the trigger is the packet from X itself, because a station that checks every
+ten seconds spends its battery asking a question the air already answered.
+Retries back off; a verified `t:receipt` (section 13.7.1) ends them and
+releases the held copy -- and every OTHER holder that hears the receipt
+releases its copy too, which is how a chain of custodians drains instead of
+delivering twice. Airtime spent on delivery attempts is metered under
+section 31 like everything else.
+
+**A station holding mail for X may hand it toward where X actually is.**
+The choice of where, in order:
+
+1. X's own declaration (section 13.12) -- the recipient's word beats every
+   observation. This is the first time `hold:`'s preference order is
+   consumed rather than merely stored, and it is consulted first.
+2. The gateway whose gossip entry for X is freshest (section 36.9.4) --
+   a station that heard X five minutes ago on LoRa is one hop from
+   delivering, whatever continent this holder is on.
+
+The hand-off is CUSTODY (section 13.3), not archiver-to-archiver content
+sync -- the author's packet travels byte for byte with the author's
+signature, `via:` gains the holder's callsign, the section 13.1 budget and
+the section 13.2 loop check apply, and section 36.8's disclosure rule
+stands: sealed mail moves on the strength of its seal; clear mail moves
+only toward a declared holder or the recipient itself. **Once per holder**:
+a station forwards a given packet one time, and a forward that comes back
+(the `via:` list says so) is not forwarded again. What this buys over
+waiting: the mail migrates toward the recipient's radio horizon while both
+parties sleep, which is the whole difference between a mailbox and a pile.
+
 ### 36.9 Archivers among themselves
 
 **An archiver never accepts content from another archiver.** This rule keeps
@@ -7352,6 +7397,9 @@ Four things cross, and each answers a different question:
 | the directory file (section 36.9) | which callsigns deposit where, and **when each was last heard** |
 | the archiver's own `t:observation`, with `hears:` | which stations are physically at its ear right now, and how fresh that claim is |
 | `t:mailbox hold:` declarations, verbatim | which stations chose which archiver to hold their mail |
+
+Together the last three ARE the gossip of section 36.9.4 -- reachability,
+carried by packets that already existed.
 
 The last three are how the federation answers its three standing questions --
 where is X1BOA3 reachable, who archives X1BOA3, where does X1BOA3's mail rest
@@ -7433,6 +7481,102 @@ publications for those kinds and nothing else.
 Mail takes no part in this. A packet carrying `d:` is section 36.7's business
 however it travels, and a neighbourhood replay serves publications --
 undirected packets -- by construction.
+
+### 36.9.4 Gossip: who was heard where
+
+The exchanges of this section have a collective name, because implementations
+kept building fragments of it without seeing the whole: **gossip**. Archivers
+never sync content -- that rule opened this section and stands. What they
+gossip is REACHABILITY: which callsign was heard, by which station, on which
+bearer, when. Every archiver keeps its own bounded table of it, built from
+what it overheard and what its peers passed on, and the network's answer to
+"where can X be reached" is the sum of many small tables rather than one
+central one. That is the load-bearing difference from APRS-IS, whose central
+servers hold the only copy of exactly this knowledge.
+
+Gossip rides packets this document already has -- a signed `t:observation`
+with `hears:` (10.6.3), a signed `t:mailbox` (13.12), a `t:service`
+announcement (24) -- passed on verbatim under section 36.1's rule. There is
+no gossip packet type, because a new envelope for old facts would be a second
+schema to drift.
+
+**The three layers.** What is known about a callsign divides by durability,
+and the division is what keeps the table small and the routing honest.
+Consulted in this order:
+
+| layer | holds | fed by | expires |
+|---|---|---|---|
+| **L1 -- declared** | the callsign's own `hold:` list, in its order | its own signed `t:mailbox` | its own `until:` |
+| **L2 -- visit history** | the last K distinct archivers that heard the callsign DIRECTLY on a short-range bearer; per entry: archiver, first heard, last heard | radio truth only (below) | **never** -- the ring evicts the oldest distinct archiver when a new one appears. K is 100 for the reference station classes |
+| **L3 -- live sightings** | the freshest (gateway, bearer, time) claims, at most G per callsign (reference G = 8) | any verified sighting, internet included | a TTL (reference 24 hours) -- a sighting is a reading, and section 24.0.1 already said what stale readings are worth |
+
+L1 is the recipient's word and beats everything. L3 answers "deliver NOW".
+L2 answers a question neither can: "where does this callsign tend to
+surface" -- the marina a boat checks in at, the repeater a commuter passes
+-- which is precisely the knowledge that routes a message deposited months
+after the last sighting. It is the one layer allowed to live forever,
+because it is small (K entries per callsign), slow-moving, and irreplaceable.
+
+**Validity: gossip is a claims market, priced.** Every entry is credited to
+the station that SIGNED the packet it came from. Unsigned observations feed
+nothing beyond the local air view; forged ones are dropped by the existing
+verification. `hears:` keeps its 10.6.3 character -- it informs a route and
+never compels one. Then three walls:
+
+- **L2 admits radio truth only**: this archiver's own direct hearing, or a
+  verified observation whose `link:` names a short-range bearer. No packet
+  that travelled only the internet writes the durable layer -- poisoning
+  the visit map requires transmitting on the air somewhere, with a signed
+  identity, inside radio range of a station that keeps records.
+- **Per-signer quota**: one observer's gossip is accepted at the rate its
+  own adverts arrive (section 31's metering applied to ingestion); a signer
+  exceeding it is a signer to stop crediting.
+- **Byte budget with eviction**: the whole table lives under a cap sized to
+  the station class (below), and when full, L3 evicts stalest-first before
+  L2 evicts anything.
+
+What spam buys after all three walls is what a false `hears:` always bought
+(10.6.3): one wasted redirect per reader, never a delivery -- the mail's own
+signatures and receipts decide those.
+
+**The arithmetic, so budgets are designed rather than discovered.** An entry
+packs into about 20 bytes (two callsigns at up to seven characters, a
+timestamp, a bearer, flags). A full K=100 visit ring is ~2 KB per callsign.
+A pocket or desktop node's reference table cap is 5 MB -- room for the
+visit history of ~2,500 callsigns, which is a town. Stations below that
+class do not try (next paragraph); stations above it raise the cap.
+
+**Need-to-know, not replication.** A station keeps gossip in proportion to
+its duties. An ESP32 archiver does not track the active callsigns of a
+planet: it keeps the L1 declarations that name it, its own direct-heard
+rings, and L2/L3 rows only for callsigns it is currently holding mail for
+-- a few kilobytes. Everything else it resolves when a duty arrives, by
+asking a bigger archiver -- and that ask is machinery this document already
+built: `cmd:history only:X1BOA3 kind:observation` (36.6) replays the signed
+sightings the bigger station holds, which the asker verifies and caches
+into its own L3. Bulk gossip is the history replay; it needs no new verb.
+(The XDIR census file earlier in this section remains the bulk form for a
+station that can serve files; a station that cannot omits the `file:`
+reference from its announcement and the ask-form above carries the load.)
+
+**Archiver classes, and the super-archiver.** One role -- section 36.0 --
+at three scales, and the scale is announced so an asker can pick:
+
+| class | announces | keeps | serves |
+|---|---|---|---|
+| pocket archiver | `serve:archive` | own log, held mail, need-to-know gossip | section 31 reference budgets |
+| station archiver | `serve:archive` | its neighbourhood's spool and visit map | section 31 reference budgets |
+| **super-archiver** | `serve:archive,super` | gossip for every active callsign it can learn of, deep spool, no need-to-know cap | orders of magnitude above the reference budgets -- thousands of asks a minute is the design point |
+
+A super-archiver is a full server wherever always-on storage and reach
+live: a machine on the internet, and nothing in this section stops the same
+role running on a satellite or a store beyond Earth -- every hop here is
+store-and-forward, and store-and-forward does not care how long the light
+takes. Humble stations ask super-archivers what their own gossip does not
+know, the way 13.12.1 already falls back to `serve:archive`; discovery is
+the ordinary service discovery of this section. `super` is a claim like
+every other `serve:` word: it invites asks and compels nothing, and a
+super-archiver that answers like a pocket one simply stops being asked.
 
 ### 36.10 Two archivers meet
 
@@ -7553,6 +7697,48 @@ else is class 1. An archiver that cannot take new mail without touching
 class 3 refuses the mail out loud instead -- `code:429` and, when it can,
 `m:try` naming a peer with room (section 31.3).
 
+### 36.12 Reaching a callsign from anywhere
+
+Everything this section built now composes into the sentence APRS operators
+have wanted said about a modern network: **a message handed to any archiver,
+from anywhere, reaches the callsign it names -- wherever that callsign last
+touched a radio.** The pieces, in the order a message meets them:
+
+1. **Deposit.** A sender -- a phone on another continent, a script on a
+   server, a station three bearers away -- hands `t:message d:X1BOA3` to
+   any archiver it can reach (36.3, 36.7). The archiver holds it: this is
+   already mail, already bounded by `until:`, already released by receipt.
+2. **Consult.** The holder consults its gossip for X1BOA3 (36.9.4):
+   the recipient's own declaration first, the freshest live sighting
+   second, the visit history third. A holder whose table has nothing asks
+   a super-archiver, exactly as a small station always could.
+3. **Forward.** The held wire moves as custody toward the named gateway or
+   declared mailbox (36.8.1) -- signed by its author, `via:` growing,
+   loop-checked, once per holder. It can cross the internet on one hop and
+   a LoRa hill on the next; every hop is a holder, so nothing is lost to a
+   link that is down today.
+4. **Deliver.** The gateway that actually hears X1BOA3 releases the mail
+   the moment it does (36.8.1), on the radio it heard it on. The receipt
+   (13.7) walks back through every holder and clears them all.
+
+The APRS-IS comparison, drawn once and plainly. An igate is here any
+archiver with a radio -- and unlike an igate it holds mail rather than
+forwarding into the void. The central servers are replaced by gossip among
+archivers, with super-archivers as the deep memory for whoever wants one --
+but no single table anyone must trust, fund, or keep alive. Last-heard
+routing is the same idea APRS-IS proved for decades, done here with signed
+claims instead of trusted servers. And absence, which loses an APRS message,
+merely delays an XPRS one: every hop stores, so the system tolerates a
+recipient asleep for a night or a link that is a satellite pass -- the same
+property, at the scale of a pocket or of the solar system.
+
+What this section does NOT promise: delivery to a callsign nobody has ever
+heard (gossip cannot know it -- though a declaration can pre-position its
+mailbox), secrecy of the envelope (36.7 said what stays visible and why),
+or that any station carry anything against its own budgets (31.3 stands
+everywhere). The promise is narrower and worth having: if the callsign
+touches the network anywhere its gossip reaches, the mail finds it.
+
 ---
 
 ## 37. Implementation status
@@ -7565,6 +7751,9 @@ class 3 refuses the mail out loud instead -- `code:429` and, when it can,
 | Section 9.1 signatures, and surviving a relay | **implemented**; `test/xprs_sig_test.dart` signs, relays three hops and re-verifies |
 | Section 13.1 relay budget, 13.2 loop check | **implemented** in the codec (`xprsMayRelay`, `xprsWouldLoop`); nothing transmits `via:` yet, so nothing calls them on the air |
 | Section 13.11.3, `scope:local` is never carried | **implemented**; refused at custody admission in `MeshCustodyDelegate` |
+| Section 36.8.1 automated return leg (release on hearing, forward toward gossip) | specified in this revision; T-Dongle firmware already implements release-on-hearing and receipt purge (`blemesh_scf_*`), the Flutter node and shared ESP32 app follow |
+| Section 36.9.4 gossip (layers, budgets, super-archivers) | specified in this revision; implementations follow |
+| Section 36.12 reaching a callsign from anywhere | specified in this revision; composes the above |
 | Callsigns, signatures, verification | implemented |
 | Signing by default on every packet type | not implemented; signing exists and is opt-in |
 | Direct, group and broadcast messages | implemented |
