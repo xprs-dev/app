@@ -505,7 +505,7 @@ a message may contain spaces, colons, URLs and any punctuation.
 | `for` | `qty` | how long each window lasts |
 | `at` | `clock` | time of day a cycle is anchored to, UTC |
 | `seq` | `int` | position of this point within that track |
-| `kind` | `enum` | nature of an event, values per packet type (sections 15, 16); in `cmd:history` the packet TYPE being asked for (section 25.2) |
+| `kind` | `enum` | nature of an event, values per packet type (sections 15, 16); in `cmd:history` the packet type asked for, or a comma-separated list of them (section 25.2) |
 | `sev` | `enum` | severity of a warning (section 16) |
 | `rad` | `qty` | radius of the area affected or asked about (sections 16, 17, 28) |
 | `since` | `time` | when the condition started, or will start |
@@ -4891,7 +4891,7 @@ were away.
 else. `only:` narrows the replay to one callsign or one group, which on a slow
 bearer is the difference between a useful answer and an unusable one.
 
-`kind:` narrows it to one packet type, named by the `t:` value it matches:
+`kind:` narrows it to the packet types it names -- one, or a comma-separated list -- each named by the `t:` value it matches:
 
 ```
 159  t:command f:X1BOA3 d:X3RLY7 ts:2026-08-08_14:26:40 cmd:history since:2026-08-04_00:00:00 kind:message sig:<60 characters>
@@ -6367,7 +6367,7 @@ packet **250 bytes**, on every transport.
 | `for` | `qty` | how long each window lasts |
 | `at` | `clock` | time of day a cycle is anchored to, UTC |
 | `seq` | `int` | position of this point within that track |
-| `kind` | `enum` | nature of an event, values per packet type (sections 15, 16); in `cmd:history` the packet TYPE being asked for (section 25.2) |
+| `kind` | `enum` | nature of an event, values per packet type (sections 15, 16); in `cmd:history` the packet type asked for, or a comma-separated list of them (section 25.2) |
 | `sev` | `enum` | severity of a warning (section 16) |
 | `rad` | `qty` | radius of the area affected or asked about (sections 16, 17, 28) |
 | `since` | `time` | when the condition started, or will start |
@@ -7304,7 +7304,7 @@ fetched with `cmd:file`, verified against its reference like anything else.
 184  t:service f:X3ARC1 serve:archive count:212 file:qA7dTf2mWx9bK4pZcV0yLuJ3gRhN8sE5iDoQ6vXaB1M.xdir ts:2026-08-17_15:00:00 sig:<60 characters>
 ```
 
-`count:` says how many callsigns before anyone fetches anything. The
+`count:` on the announcement stays what section 24.0.1 made it -- records held, never callsigns; how many callsigns the directory lists is learned by fetching the directory. The
 economics are section 36.2's, applied between archivers: a line costs about
 28 bytes, ten thousand callsigns cost about 280 kB, and an UNCHANGED
 directory has an unchanged hash -- so polling a quiet peer costs a
@@ -7317,11 +7317,14 @@ buys its author one wasted redirect per reader and nothing else, because the
 content a reader is redirected to still answers or fails on its own
 signatures.
 
-**Discovery needs nothing new.** A station finds an archiver three ways:
+**Discovery needs nothing new.** A station finds an archiver four ways:
 `serve:archive` heard in a beacon or a `t:service` on the air; another
 archiver's copy of that same signed announcement -- `service` is already a
-publication type, and section 36.2 makes passing it on verbatim safe; and
-the redirect, which is how the federation answers a miss:
+publication type, and section 36.2 makes passing it on verbatim safe; asking
+any archiver already found for the announcements it holds -- `cmd:history
+kind:service` replays every `t:service` in its spool, which turns one known
+archiver into a directory of the services around it; and the redirect, which
+is how the federation answers a miss:
 
 ```
 152  t:result f:X3ARC1 d:X1QZ3N ts:2026-08-17_15:04:10 r:5fd021 code:404 sig:<60 characters> m:try X3ARC2,X3ARC7
@@ -7336,6 +7339,100 @@ how content crosses the line this section drew.
 The result is a federation of small archives, each vouching only for what
 its operator chose to keep, joined by directories that say who keeps what.
 No archiver holds the whole network, and any archiver can point across it.
+
+### 36.9.1 What crosses between archivers
+
+Everything archivers exchange is a **signed original**, verifiable against its
+author's key rather than against the peer that handed it over (section 36.2).
+Four things cross, and each answers a different question:
+
+| What crosses | The question it answers |
+|---|---|
+| a `t:service` announcement, verbatim | who offers what -- how an archiver is found at all |
+| the directory file (section 36.9) | which callsigns deposit where, and **when each was last heard** |
+| the archiver's own `t:observation`, with `hears:` | which stations are physically at its ear right now, and how fresh that claim is |
+| `t:mailbox hold:` declarations, verbatim | which stations chose which archiver to hold their mail |
+
+The last three are how the federation answers its three standing questions --
+where is X1BOA3 reachable, who archives X1BOA3, where does X1BOA3's mail rest
+-- without any archiver vouching for another. Each answer is a packet its
+author signed, so a peer relaying it can neither forge nor retarget it, and a
+reader weighs its `ts:` for itself.
+
+**What does not cross is the store.** Archivers do not synchronise message
+archives with each other -- that is section 36.9's first rule, and the
+directory exists precisely so they do not have to. The one temporal fact that
+DOES flow is the last-heard timestamp riding each directory line: "X1BOA3,
+last heard 2026-08-17_14:02:36" is knowledge worth spreading; the packets
+X1BOA3 aired stay where an operator chose to admit them. And mail never
+crosses at all: a held message leaves an archiver toward its recipient, a
+declared holder, or a `hears:` gateway (sections 36.7, 36.8) -- never toward
+a peer archiver as such.
+
+### 36.9.2 The archiver is the seeder
+
+Publications carry `file:` references (section 6.7); the bytes behind a
+reference live wherever somebody chose to keep them. For those bytes the
+archiver plays the part a seeder plays in a torrent swarm: it holds a full
+verified copy, says so when asked, and serves it without involving the
+author.
+
+The mechanics already exist, and this section adds none. `q:have` (section
+7.1) asks whether the bytes are held and is answered with `have:full`, a
+bitfield, or a fraction; `cmd:file` fetches them, `off:` resumes a dead
+transfer; `cmd:put` deposits them under a stated `size:` and `until:`; an
+`ih:` reference (section 6.7.5) lets the same copy seed a BitTorrent swarm
+where one exists. A station doing this announces `serve:files` beside
+`serve:archive` -- the words stay separate because a pure file host with no
+packet spool is a real station, but on an archiver the two halves reinforce:
+the spool holds the announcement that names the file, and the file store
+holds the bytes the announcement points to.
+
+Admission follows section 36.3, not the swarm: an archiver seeds what its
+depositors published and what its operator pinned, under its own quotas, and
+bulk-importing a peer's file store is the same mistake as bulk-importing its
+spool. A reader that gets `q:have` answers from several holders fetches from
+the best-placed one and verifies against the reference either way -- the
+holder vouches for nothing but bandwidth.
+
+The directory file of section 36.9 is itself served this way, which is the
+arrangement eating its own cooking: fetching a peer's directory IS a
+`cmd:file` against a seeder.
+
+### 36.9.3 Neighbours: redundancy for an area
+
+Most of what a community publishes is about a PLACE -- `info`, `warning`,
+`event`, `status`, `blog`, and the undirected `message` traffic of a town
+channel. A reader asks whichever archiver is reachable, and a neighbourhood
+whose only archiver went dark loses its own noticeboard. So two archivers
+that are placed near each other MAY keep each other's community publications
+alive, deliberately and within bounds:
+
+- **Nearby is declared, then measured.** Both stations carry `pos:` on their
+  announcements; each computes the distance itself. The reference threshold
+  is 25 km, and an operator tunes it to the terrain -- the point is a shared
+  audience, not a number.
+- **Opt-in.** Redundancy is an operator's choice, like every other cost in
+  this section. Nothing obliges an archiver to mirror its neighbour.
+- **Community kinds only.** The standing ask names them:
+
+```
+t:command f:X3ARC1 d:X3ARC2 ts:2026-08-20_08:30:00 cmd:history kind:info,warning,event,status,blog,message since:2026-08-20_06:12:44 sig:<60 characters>
+```
+
+The mechanism is section 36.10's meeting with a `kind:` filter, on section
+36.10.1's per-peer watermark, under section 31.2's budgets -- a standing
+catch-up, not a new protocol. The peer re-airs ORIGINALS, each verifying on
+its author's own signature, and they enter the asker's store through its own
+admission like anything else heard on the air; section 36.9's line is not
+crossed, because nothing is imported on the peer's authority. Replayed
+packets deduplicate on the section 5 identifier and expire on their own
+`until:`, so the two stores converge on the union of both neighbourhoods'
+publications for those kinds and nothing else.
+
+Mail takes no part in this. A packet carrying `d:` is section 36.7's business
+however it travels, and a neighbourhood replay serves publications --
+undirected packets -- by construction.
 
 ### 36.10 Two archivers meet
 
