@@ -143,7 +143,7 @@ Future<void> _boot() async {
   _bootFinished = true;
 
   // The shared-package Blossom server logs through this injectable sink
-  // (it no longer knows aurora's LogService directly).
+  // (it no longer knows the app's LogService directly).
   BlossomServer.log = (m) => LogService.instance.add(m);
 
   // Resolve the writable storage root for this platform before any boot
@@ -221,7 +221,7 @@ Future<void> _boot() async {
       await ProfileService.instance.load();
       // On a fresh install (no profiles) the launcher shows the WelcomePage
       // first-run flow — vanity callsign generator + a nickname the USER
-      // chooses. We do NOT silently mint a default 'aurora' identity. The
+      // chooses. We do NOT silently mint a default identity. The
       // active profile is seeded with the default wapps once it exists (see
       // the seed gate in launcher_app).
 

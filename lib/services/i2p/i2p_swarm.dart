@@ -169,7 +169,7 @@ class SwarmStore {
   /// (so we can both write downloaded pieces and read them back to serve);
   /// truncate() pre-allocates the file so pieces can be written at any offset.
   static Future<SwarmStore> open(TorrentManifest manifest, Directory baseDir) async {
-    final dir = Directory('${baseDir.path}/aurora_swarm/${_hex(manifest.fileSha)}');
+    final dir = Directory('${baseDir.path}/xprs_swarm/${_hex(manifest.fileSha)}');
     await dir.create(recursive: true);
     final raf = await File('${dir.path}/data').open(mode: FileMode.write);
     if (manifest.totalLen > 0) await raf.truncate(manifest.totalLen);

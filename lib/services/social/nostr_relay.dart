@@ -2,7 +2,7 @@
 // source of truth; the implementation lives in reticulum-dart). Thin shim so
 // the app's relative imports keep working.
 //
-// The relay pipeline runs on a background isolate: aurora talks to [NostrClient]
+// The relay pipeline runs on a background isolate: the app talks to [NostrClient]
 // (a main-isolate proxy), never the hub directly.
 export 'package:reticulum/src/services/social/nostr_engine.dart'
     show NostrClient;

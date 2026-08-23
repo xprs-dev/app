@@ -3,7 +3,7 @@
  *
  * Releases are published into signed Reticulum mutable folders (see
  * update_service.dart): each per-platform binary is a content-addressed folder
- * entry named `aurora-<version>-<platform>`. releasesFromFolder() turns a
+ * entry named `xprs-<version>-<platform>` (legacy `aurora-*`). releasesFromFolder() turns a
  * browsed folder's entries into the ReleaseInfo/ReleaseAsset shapes below;
  * assetFor() then resolves the right artifact for the running platform exactly
  * as before. Pure Dart on purpose (no Flutter) so the adapter is testable and
@@ -85,7 +85,7 @@ class ReleaseInfo {
   ///     "version": "1.2.3", "tagName": "v1.2.3",
   ///     "name": "...", "body": "...notes...",
   ///     "publishedAt": "2026-06-09T12:00:00Z", "prerelease": false,
-  ///     "assets": [ {"name": "aurora.apk", "url": "v1.2.3/aurora.apk",
+  ///     "assets": [ {"name": "xprs.apk", "url": "v1.2.3/xprs.apk",
   ///                  "size": 12345, "sha256": "abc…"}, ... ]
   ///   }
   /// `size` and `sha256` are optional but recommended: the downloader verifies
@@ -206,8 +206,8 @@ const List<String> _kArtifactSuffixes = [
   '.dmg',
 ];
 
-/// Extract the semver version from an `aurora-<version>-<platform>` artifact
-/// name, or null when the name isn't a recognised aurora artifact. The version
+/// Extract the semver version from an `xprs-<version>-<platform>` artifact
+/// name (legacy `aurora-*` still parses), or null when unrecognised. The version
 /// may itself contain '-' (e.g. `1.0.3-beta.4`), which is exactly the channel
 /// signal `isPrerelease` reads.
 String? versionFromAssetName(String name) {

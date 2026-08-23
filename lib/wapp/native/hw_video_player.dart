@@ -132,7 +132,7 @@ class _HwVideoPlayerState extends State<HwVideoPlayer> {
   Future<void> _start() async {
     try {
       _log('hw start .${widget.ext} ${widget.mediaBytes.length} B');
-      final dir = await Directory.systemTemp.createTemp('aurora_hwvid_');
+      final dir = await Directory.systemTemp.createTemp('xprs_hwvid_');
       _tempDir = dir;
       final f = File('${dir.path}/v.${widget.ext}');
       await f.writeAsBytes(widget.mediaBytes, flush: true);

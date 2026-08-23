@@ -5,7 +5,7 @@
  *
  * Layout under the user home:
  *
- *   ~/.local/share/aurora/
+ *   ~/.local/share/xprs/
  *     profiles.json             ← ProfileService state (list + active id)
  *     devices/<id>/
  *       wapps/<wapp-id>/        ← installed wapp packages (manifest, app.wasm, screens…)
@@ -16,14 +16,11 @@
  * resolves through the active ProfileService profile, so switching
  * profiles switches which `wapps/` and `data/` folders the launcher sees.
  *
- * IMPORTANT: the on-disk root is the LEGACY name ~/.local/share/aurora —
- * NOT ~/.local/share/xprs. That other dir belongs to the separate, older
- * XPRS app and holds a user's real data; this app must never read, write,
- * or delete there. (The old iwi fork wrongly pointed here at that dir;
- * that is fixed.) The product is called XPRS everywhere a person reads;
- * the directory keeps its old name because installed devices already
- * store their profiles under it, and moving it is a migration with that
- * collision to resolve first.
+ * The root is ~/.local/share/xprs. It was ~/.local/share/aurora until
+ * 2026-08-23; the old separate XPRS app that once owned the xprs dir is
+ * gone, Max ported this machine's data by hand, and other devices start
+ * fresh rather than migrate -- his call, so no legacy-dir fallback code
+ * exists here on purpose.
  */
 
 import 'package:path_provider/path_provider.dart';
@@ -35,7 +32,7 @@ import 'profile_storage.dart';
 import 'profile_storage_factory.dart';
 
 // Resolved once at boot by [initStorageRoot]. On desktop this is
-// ~/.local/share/aurora; on Android/iOS there is no $HOME and only the app
+// ~/.local/share/xprs; on Android/iOS there is no $HOME and only the app
 // sandbox is writable, so it is the application support directory.
 String? _resolvedBase;
 
@@ -47,21 +44,21 @@ Future<void> initStorageRoot() async {
   if (os == 'android' || os == 'ios') {
     try {
       final dir = await getApplicationSupportDirectory();
-      _resolvedBase = '${dir.path}/aurora';
+      _resolvedBase = '${dir.path}/xprs';
       return;
     } catch (_) {
       // Fall through to the home-relative default.
     }
   }
   final home = platform.homeDir() ?? '/tmp';
-  _resolvedBase = '$home/.local/share/aurora';
+  _resolvedBase = '$home/.local/share/xprs';
 }
 
 String _xprsBaseDir() {
   if (_resolvedBase != null) return _resolvedBase!;
   // Fallback if initStorageRoot() hasn't run yet (desktop layout).
   final home = platform.homeDir() ?? '/tmp';
-  return '$home/.local/share/aurora';
+  return '$home/.local/share/xprs';
 }
 
 /// Root storage — everything the XPRS launcher persists lives under this.
@@ -114,7 +111,7 @@ ProfileStorage wappPackageStorage(String wappDir) =>
     makeFilesystemStorage(wappDir);
 
 /// Storage for the built-in wapp editor (App Creator) package. Lives at the
-/// aurora root under `editor/app-creator/` — NOT under a profile's installed
+/// XPRS root under `editor/app-creator/` — NOT under a profile's installed
 /// `wapps/`, so it is never scanned for the launcher grid. It is the same for
 /// every profile, so it sits at the root rather than per-device. Installed
 /// from bundled assets on boot (see lib/editor/editor_install.dart) and opened

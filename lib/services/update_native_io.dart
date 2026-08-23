@@ -171,11 +171,11 @@ class UpdateNative {
 
   static Future<void> _applyLinux(String tarGzPath) async {
     final appDir = File(Platform.resolvedExecutable).parent.path;
-    final stage = Directory('$appDir/.aurora-update');
+    final stage = Directory('$appDir/.xprs-update');
     if (await stage.exists()) await stage.delete(recursive: true);
     await stage.create(recursive: true);
 
-    // Extract tar.gz (top-level: aurora, data/, lib/).
+    // Extract tar.gz (top-level: xprs, data/, lib/).
     final bytes = await File(tarGzPath).readAsBytes();
     final tar = TarDecoder().decodeBytes(GZipDecoder().decodeBytes(bytes));
     for (final f in tar) {
@@ -195,12 +195,12 @@ class UpdateNative {
 set -e
 APPDIR="\$1"; STAGE="\$2"; PID="\$3"
 for i in \$(seq 1 60); do kill -0 "\$PID" 2>/dev/null || break; sleep 0.5; done
-cp -f "\$STAGE/aurora" "\$APPDIR/aurora" 2>/dev/null || true
+cp -f "\$STAGE/xprs" "\$APPDIR/xprs" 2>/dev/null || true
 [ -d "\$STAGE/data" ] && cp -rf "\$STAGE/data" "\$APPDIR/" || true
 [ -d "\$STAGE/lib" ] && cp -rf "\$STAGE/lib" "\$APPDIR/" || true
-chmod +x "\$APPDIR/aurora" 2>/dev/null || true
+chmod +x "\$APPDIR/xprs" 2>/dev/null || true
 rm -rf "\$STAGE"
-nohup "\$APPDIR/aurora" >/dev/null 2>&1 &
+nohup "\$APPDIR/xprs" >/dev/null 2>&1 &
 ''');
     await Process.run('chmod', ['+x', script.path]);
     await Process.start(

@@ -46,12 +46,12 @@ echo "Building Flutter Linux bundle ($MODE)..."
 # Architecture dir (x64/arm64) is chosen by Flutter; glob for whichever
 # one this build produced.
 BINARY=""
-for cand in "$SCRIPT_DIR"/build/linux/*/"$MODE"/bundle/aurora; do
+for cand in "$SCRIPT_DIR"/build/linux/*/"$MODE"/bundle/xprs; do
     [ -x "$cand" ] && BINARY="$cand" && break
 done
 
 if [ -z "$BINARY" ]; then
-    echo "Error: could not find the compiled 'aurora' binary under"
+    echo "Error: could not find the compiled 'xprs' binary under"
     echo "       build/linux/*/$MODE/bundle/"
     exit 1
 fi
@@ -64,5 +64,5 @@ fi
 
 # ── Launch ───────────────────────────────────────────────────────────
 # Run from the project root so the wapp scan finds ../wapps.
-echo "Launching aurora..."
+echo "Launching XPRS..."
 exec "$BINARY"

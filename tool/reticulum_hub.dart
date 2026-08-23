@@ -4,7 +4,7 @@
 //
 // Acts as a TCP-server transport hub: phones connect in (via `adb reverse
 // tcp:4242 tcp:4242`), and the hub relays announces between them and itself, so
-// all three nodes can talk. It announces "aurora.chat" with app_data text and
+// all three nodes can talk. It announces "xprs.chat" with app_data text and
 // prints inbound chat messages.
 //
 //   dart run tool/reticulum_hub.dart [port]
@@ -24,7 +24,7 @@ Future<void> main(List<String> args) async {
   final transport =
       RnsTransport(transportId: id.hash, log: (m) => print('  [transport] $m'));
   print('HUB_IDENTITY ${id.hexHash}');
-  print('HUB_DEST ${_hx(RnsDestination.hash(id, "aurora", ["chat"]))}');
+  print('HUB_DEST ${_hx(RnsDestination.hash(id, "xprs", ["chat"]))}');
 
   Future<void> onPacket(Uint8List raw, String via) async {
     final p = RnsPacket.parse(raw);
@@ -46,7 +46,7 @@ Future<void> main(List<String> args) async {
   print('HUB listening on 0.0.0.0:$port');
 
   Future<void> announce(String text) async {
-    final pkt = await RnsAnnounceBuilder.build(id, 'aurora', ['chat'],
+    final pkt = await RnsAnnounceBuilder.build(id, 'xprs', ['chat'],
         appData: Uint8List.fromList(utf8.encode(text)));
     transport.sendOnAll(pkt.pack());
     print('HUB_TX announced "$text" (conns=${server.connectionCount})');

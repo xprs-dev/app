@@ -46,7 +46,7 @@ into whatever they are doing. Use a private X server instead:
 
 ```sh
 Xvfb :99 -screen 0 1400x900x24 &                            # once
-DISPLAY=:99 ./build/linux/x64/release/bundle/aurora &        # the app
+DISPLAY=:99 ./build/linux/x64/release/bundle/xprs &        # the app
 DISPLAY=:99 xdotool search --class radio.xprs.app      # find its window
 DISPLAY=:99 xdotool mousemove --window <id> X Y click 1      # drive it
 import -display :99 -window root shot.png                    # screenshot

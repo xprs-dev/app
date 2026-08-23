@@ -281,7 +281,7 @@ class ProfileService {
   }
 
   /// Absolute path to the active profile's per-profile storage root
-  /// (i.e. `<aurora root>/devices/<id>/`). Called from
+  /// (i.e. `<xprs root>/devices/<id>/`). Called from
   /// storage_paths.dart when resolving apps/ and wapps/ per profile.
   /// Returns null when there is no active profile.
   ProfileStorage? activeProfileStorage() {

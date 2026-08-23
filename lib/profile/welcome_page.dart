@@ -694,7 +694,7 @@ class _WelcomePageState extends State<WelcomePage> {
                             Expanded(
                               child: Text(
                                 'Your profile lives at '
-                                '~/.local/share/aurora/devices/<id>/. '
+                                '~/.local/share/xprs/devices/<id>/. '
                                 'Back it up by copying the folder. Your '
                                 'nsec is stored inside profiles.json — keep '
                                 'it secret.',

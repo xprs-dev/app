@@ -44,6 +44,11 @@ class DeviceKeyStore {
   bool get _useKeychain =>
       platform.platformName() == 'android' || platform.platformName() == 'ios';
 
+  // 'aurora.' here is a FROZEN keystore namespace, not the product's name
+  // (the product is XPRS): installed devices already hold their device
+  // passwords and key caches under these ids, and renaming them locks every
+  // existing encrypted profile out of its own keys. Same class of constant
+  // as profile_crypto's HKDF info strings, and frozen for the same reason.
   String _devicePasswordKey(String profileId) => 'aurora.devicepw.$profileId';
   String _cacheKey(String profileId) => 'aurora.keycache.$profileId';
 

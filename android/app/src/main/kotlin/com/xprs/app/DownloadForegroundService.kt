@@ -50,6 +50,7 @@ class DownloadForegroundService : Service() {
                     },
                 )
                 nm.deleteNotificationChannel("aurora_download")
+                nm.deleteNotificationChannel("aurora_updates")
             }
         }
         val b = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -67,9 +68,10 @@ class DownloadForegroundService : Service() {
     }
 
     companion object {
-        // Renamed from "aurora_download": channel settings are immutable once
+        // Renamed from "aurora_download" and then "aurora_updates" (the product
+        // is XPRS): channel settings are immutable once
         // created, and the old channel could badge the launcher icon.
-        private const val CHANNEL_ID = "aurora_updates"
+        private const val CHANNEL_ID = "xprs_updates"
         private const val NOTIF_ID = 7002
 
         fun start(context: Context, text: String) {

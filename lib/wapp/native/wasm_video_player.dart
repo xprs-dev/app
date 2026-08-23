@@ -135,7 +135,7 @@ class WasmVideoThumbnailer {
     final manifest = matches.first.manifest;
     final dirPath = manifest.dirPath;
 
-    final dir = await Directory.systemTemp.createTemp('aurora_thumb_');
+    final dir = await Directory.systemTemp.createTemp('xprs_thumb_');
     final f = File('${dir.path}/v.$ext');
     await f.writeAsBytes(media, flush: true);
 
@@ -410,7 +410,7 @@ class _WasmVideoPlayerState extends State<WasmVideoPlayer> {
       // Compile (or reuse) the decoder module BEFORE anything else — on
       // phones this is the dominant cost the first time (seconds).
       final module = await WappModuleCache.compile(dirPath, wasm);
-      final dir = await Directory.systemTemp.createTemp('aurora_vid_');
+      final dir = await Directory.systemTemp.createTemp('xprs_vid_');
       final f = File('${dir.path}/v.${widget.ext}');
       await f.writeAsBytes(widget.mediaBytes, flush: true);
 

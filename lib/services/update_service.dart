@@ -7,7 +7,7 @@
  *   stable -> the stable folder npub  (only non-prerelease releases)
  *   beta   -> the beta folder npub    (all releases)
  * Each release's per-platform binaries are packed into the folder as
- * content-addressed entries named `aurora-<version>-<platform>` (see
+ * content-addressed entries named `xprs-<version>-<platform>` (see
  * update_models.versionFromAssetName). The app browses the channel folder
  * (signature-verified by reduceFolder, so only the folder owner can publish a
  * binary), compares the running version (lib/version.dart kAppVersion) with

@@ -1,5 +1,5 @@
 // Disk-cached map tiles (native/desktop). A tile is fetched once, written to
-// ~/.local/share/aurora/cache/tiles, and served from disk afterwards — so the
+// ~/.local/share/xprs/cache/tiles, and served from disk afterwards — so the
 // map keeps working off-grid once an area has been viewed. Integrates with
 // Flutter's in-memory ImageCache via the ImageProvider key, so panning back to
 // a recent tile is instant and re-opening the app reads from disk, not the net.
@@ -19,7 +19,7 @@ String _cacheDir() {
   final home = Platform.environment['HOME'] ??
       Platform.environment['USERPROFILE'] ??
       Directory.systemTemp.path;
-  return '$home/.local/share/aurora/cache/tiles';
+  return '$home/.local/share/xprs/cache/tiles';
 }
 
 class _DiskTile extends ImageProvider<_DiskTile> {

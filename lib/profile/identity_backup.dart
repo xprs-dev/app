@@ -8,11 +8,11 @@
  *
  * This service mirrors the identity-only subset of every profile to a location
  * that SURVIVES uninstall:
- *   - Android: /storage/emulated/0/Aurora/identity-backup.json (public storage,
+ *   - Android: /storage/emulated/0/XPRS/identity-backup.json (public storage,
  *     reachable via MANAGE_EXTERNAL_STORAGE — the same access the disk-folder
  *     picker uses). Android keeps this when the app is removed.
- *   - Desktop: $HOME/.config/aurora/identity-backup.json (deliberately OUTSIDE
- *     ~/.local/share/aurora so wiping app data doesn't take the backup with it).
+ *   - Desktop: $HOME/.config/xprs/identity-backup.json (deliberately OUTSIDE
+ *     ~/.local/share/xprs so wiping app data doesn't take the backup with it).
  *
  * The backup is plaintext by default (always restorable, zero friction). If the
  * user sets a passphrase it is AES-256-GCM encrypted with a PBKDF2-HMAC-SHA256
@@ -86,7 +86,7 @@ class IdentityBackup {
       }
       for (final root in const ['/storage/emulated/0', '/sdcard']) {
         if (!await Directory(root).exists()) continue;
-        final d = Directory('$root/Aurora');
+        final d = Directory('$root/XPRS');
         if (await d.exists()) return d.path;
         if (create) {
           try {
@@ -101,7 +101,7 @@ class IdentityBackup {
     }
     final home = platform.homeDir();
     if (home == null || home.isEmpty) return null;
-    final d = Directory('$home/.config/aurora');
+    final d = Directory('$home/.config/xprs');
     if (create && !await d.exists()) {
       try {
         await d.create(recursive: true);

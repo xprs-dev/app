@@ -100,7 +100,7 @@ class _Leaf {
 Future<void> main(List<String> args) async {
   final port = args.isNotEmpty ? int.parse(args[0]) : 5252;
   final size = args.length > 1 ? int.parse(args[1]) : 150000;
-  final cfg = '/tmp/rnsd_aurora_test';
+  final cfg = '/tmp/rnsd_xprs_test';
   final file = Uint8List(size);
   for (var i = 0; i < size; i++) {
     file[i] = (i * 53 + 9) & 0xff;

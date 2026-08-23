@@ -82,7 +82,7 @@ class _ProjectEntry {
   final String description;
 
   /// Absolute path to the wapp's package directory. For user
-  /// installs that's `~/.local/share/aurora/devices/<id>/apps/<folder>/`;
+  /// installs that's `~/.local/share/xprs/devices/<id>/apps/<folder>/`;
   /// for built-ins it's `<cwd>/wapps/<folder>/` (or an ancestor).
   /// `_loadProject` reads manifest + home.ui.json + app.wasm from
   /// here.

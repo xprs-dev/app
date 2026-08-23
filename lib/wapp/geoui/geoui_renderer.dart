@@ -176,7 +176,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
     // overflow icon button that opens a popup of its action children.
     if (group.type == 'menu') return _renderMenuGroup(group);
     // Spec §14.2 — a `<group $type="header-actions">`. The canonical
-    // home is the host AppBar; aurora renders them inline as a compact
+    // home is the host AppBar; the app renders them inline as a compact
     // action row (keeps them visible without an AppBar round-trip).
     if (group.type == 'header-actions') return _renderHeaderActions(group);
 

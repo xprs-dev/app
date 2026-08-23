@@ -122,7 +122,7 @@ class _NativeProcessVideoPlayerState extends State<NativeProcessVideoPlayer> {
         'native start .${widget.ext} ${widget.mediaBytes.length} B '
         'bin=${widget.binaryPath.split(Platform.pathSeparator).last}',
       );
-      final dir = await Directory.systemTemp.createTemp('aurora_natvid_');
+      final dir = await Directory.systemTemp.createTemp('xprs_natvid_');
       _tempDir = dir;
       final f = File('${dir.path}/v.${widget.ext}');
       await f.writeAsBytes(widget.mediaBytes, flush: true);

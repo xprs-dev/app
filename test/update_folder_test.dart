@@ -27,7 +27,7 @@ void main() {
       expect(versionFromAssetName('aurora-1.0.3-beta.4-setup.exe'),
           '1.0.3-beta.4');
     });
-    test('rejects non-aurora / unknown artifacts', () {
+    test('rejects unrecognised artifact names', () {
       expect(versionFromAssetName('readme.txt'), isNull);
       expect(versionFromAssetName('aurora-1.0.3.weird'), isNull);
       expect(versionFromAssetName('something-1.0.3.apk'), isNull);
@@ -118,7 +118,7 @@ void main() {
     expect(releasesFromFolder(forged), isEmpty);
   });
 
-  test('non-aurora files in the folder are ignored', () {
+  test('files with foreign names in the folder are ignored', () {
     final master = NostrCrypto.generateKeyPair();
     final state = browsedFolder(master, [
       [sha('a'), 'README.md'],

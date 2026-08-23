@@ -27,7 +27,7 @@ import androidx.media.app.NotificationCompat.MediaStyle
  * its existing playpause/next/prev commands.
  */
 object MediaController {
-    private const val CHANNEL_ID = "aurora_media"
+    private const val CHANNEL_ID = "xprs_media"
     private const val NOTIF_ID = 7002
     const val ACTION = "com.xprs.app.MEDIA_ACTION"
 
@@ -179,6 +179,9 @@ object MediaController {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+            // The channel used to be "aurora_media"; settings are immutable
+            // once created, so the old id is deleted and the XPRS one made.
+            nm.deleteNotificationChannel("aurora_media")
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Now playing", NotificationManager.IMPORTANCE_LOW)
                     .apply { setShowBadge(false) },
