@@ -29,6 +29,7 @@ import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
 import 'xprs_archive.dart';
+import 'xprs_gossip.dart';
 import 'xprs_monitor.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
@@ -51,6 +52,17 @@ class XprsIngest {
   /// announce does. Same reasoning as [XprsArchive.keyResolver]: this file
   /// stays free of the node.
   static void Function(String callsign, String pubkeyHex)? onIdentity;
+
+  /// A station heard DIRECTLY (no `via:`), on a bearer a radio person would
+  /// recognise. Set by MeshService to the release-on-hearing trigger of
+  /// section 36.8.1 -- the receiver throttles and checks for held mail; this
+  /// funnel only reports the fact.
+  static void Function(String callsign, String bearer)? onDirectHeard;
+
+  /// A `t:message` for a THIRD party, off the Reticulum lane -- somebody is
+  /// handing this station mail to hold (36.7) or to move along (36.8.1).
+  /// Set by MeshService to the custody park + forwarder.
+  static void Function(String wire, String target)? onCarry;
 
   /// A `t:message` addressed to us, on any bearer. Set by MeshService to the
   /// courier's delivery entry point, which verifies, unseals and hands it to
@@ -120,6 +132,34 @@ class XprsIngest {
     // A mailbox declaration heard on the street counts exactly like one that
     // arrived over a hub: the author is saying where their mail may rest.
     if (p.type == 'mailbox') XprsArchive.instance.recordMailboxDecl(p);
+
+    // ── Gossip feeds (36.9.4) + the 36.8.1 release trigger ──────────────
+    // Cheap checks first (performance.md 4.2): everything below is a map
+    // lookup or an indexed upsert; the one curve operation is gated on a
+    // hears: list actually being present AND the signer's key being known.
+    if (!p.has('via')) {
+      final gb = _archiveBearer(bearer);
+      XprsGossip.instance.noteDirect(from, self, bearer: gb);
+      try {
+        onDirectHeard?.call(from, gb);
+      } catch (e) {
+        LogService.instance.add('XPRS: direct-heard hook failed: $e');
+      }
+      if (p.type == 'observation' && p.has('hears')) {
+        final hears = (p['hears'] ?? '')
+            .split(',')
+            .map((c) => c.trim().toUpperCase())
+            .where((c) => c.isNotEmpty)
+            .toList();
+        if (hears.isNotEmpty) {
+          final verified = p.has('sig') &&
+              xprsVerify(p, XprsArchive.instance.keyResolver?.call(from)) ==
+                  XprsSigState.verified;
+          XprsGossip.instance.noteHears(from, hears,
+              link: p['link'] ?? gb, verified: verified);
+        }
+      }
+    }
 
     // `t:identity` (section 9.3) is a station publishing the key its callsign
     // signs with, and it is the only way to LEARN that binding off the air.
@@ -302,6 +342,17 @@ class XprsIngest {
     if (toC.isNotEmpty && toC == self) {
       XprsArchive.instance.admit(p, bearer: 'rns');
       return;
+    }
+
+    // Mail for a third party: the custody question, not the archive one.
+    // The park-or-not decision (budgets, quotas, 31.3) belongs to the
+    // receiver; this lane only reports that mail arrived seeking a holder.
+    if (p.type == 'message' && toC.isNotEmpty && toC != self) {
+      try {
+        onCarry?.call(p.encode(), toC);
+      } catch (e) {
+        LogService.instance.add('XPRS: rns carry hook failed: $e');
+      }
     }
 
     if (!_archiveOn) return;

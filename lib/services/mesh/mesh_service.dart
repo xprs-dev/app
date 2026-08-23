@@ -29,6 +29,11 @@ import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_catchup.dart';
 import '../xprs/xprs_history_server.dart';
 import '../xprs/xprs_ingest.dart';
+import '../xprs/xprs_gossip.dart';
+import '../xprs/xprs_publisher.dart';
+import '../xprs/xprs_forwarder.dart';
+import '../../util/nostr_crypto.dart';
+import 'mesh_transfer_scheduler.dart';
 import '../xprs/xprs_lan.dart';
 import '../xprs/xprs_monitor.dart';
 import '../xprs/xprs_packet.dart';
@@ -185,6 +190,28 @@ class MeshService {
           ..init(wappsDataStorage(prefs)
               .getAbsolutePath('xprs_archive.sqlite3'));
         XprsHistoryServer.instance.install();
+        XprsGossip.instance
+            .init(wappsDataStorage(prefs).getAbsolutePath('xprs_gossip.sqlite3'));
+        if (prefs.xprsSuperArchiver) {
+          // The super budget (36.9.4): the table stops being pocket-sized.
+          XprsGossip.instance.maxBytes = 256 * 1024 * 1024;
+        }
+        // 36.8.1: deliver the moment the recipient is heard. The funnel
+        // reports every direct hearing; this receiver throttles per
+        // callsign, checks for held mail, and fires the right lane --
+        // the session scheduler for BLE peers, a verbatim re-air for
+        // bearers with no session (LAN, rns).
+        XprsIngest.onDirectHeard = _onDirectHeard;
+        // Mail for a third party off the rns lane: park it exactly as the
+        // radio lanes do (custody, 36.7), then let 36.8.1 move it toward
+        // the recipient's declared mailbox or freshest gossip gateway.
+        XprsIngest.onCarry = (wire, target) {
+          MeshCustodyDelegate.onAirFrame(
+              Uint8List.fromList(utf8.encode(wire)),
+              outbound: false);
+          unawaited(XprsForwarder.instance.maybeForward(target, wire,
+              selfBase: NostrCrypto.bareCallsign(tableCallsign)));
+        };
         XprsIngest.onResult = XprsCatchup.instance.onResult;
         // A message addressed to us, heard on ANY bearer, goes to the courier
         // for verification, unsealing and delivery to the inbox. Before this
@@ -500,7 +527,12 @@ class MeshService {
     // neighbour fit, so its bytes count against the advert budget.
     if ((PreferencesService.instanceSync?.xprsServeHistory ?? true) &&
         XprsArchive.instance.ready) {
-      envelope = envelope.with_('serve', 'archive');
+      // `super` beside `archive`, never instead of it (24, 36.9.4).
+      envelope = envelope.with_(
+          'serve',
+          (PreferencesService.instanceSync?.xprsSuperArchiver ?? false)
+              ? 'archive,super'
+              : 'archive');
     }
 
     // Most relevant first, and this station's idea of relevant (section
@@ -594,7 +626,12 @@ class MeshService {
     }
     if ((PreferencesService.instanceSync?.xprsServeHistory ?? true) &&
         XprsArchive.instance.ready) {
-      envelope = envelope.with_('serve', 'archive');
+      // `super` beside `archive`, never instead of it (24, 36.9.4).
+      envelope = envelope.with_(
+          'serve',
+          (PreferencesService.instanceSync?.xprsSuperArchiver ?? false)
+              ? 'archive,super'
+              : 'archive');
     }
 
     // Leave room for the signature the fit cannot know about: ` sig:` plus 60
@@ -738,6 +775,47 @@ class MeshService {
       // rolling log that holds twenty minutes on a busy device.
       ...MeshCustodyCounters.toJson(),
     });
+  }
+
+  /// 36.8.1's release-on-hearing, throttled: one attempt per callsign per
+  /// half minute however chatty their beacons.
+  final Map<String, int> _releaseTriedMs = {};
+
+  void _onDirectHeard(String callsign, String bearer) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _releaseTriedMs[callsign] ?? 0;
+    if (now - last < 30000) return;
+    final pending =
+        MeshStore.instance.pendingFor(callsign, _table, max: 4,
+            selfCallsign: tableCallsign);
+    if (pending.isEmpty) return;
+    _releaseTriedMs[callsign] = now;
+    if (_releaseTriedMs.length > 256) {
+      _releaseTriedMs.remove(_releaseTriedMs.keys.first);
+    }
+    LogService.instance.add(
+        'Mesh: $callsign heard on $bearer with ${pending.length} held — '
+        'releasing (36.8.1)');
+    if (bearer == 'ble') {
+      // The session lane: clear the backoff and decide now.
+      MeshTransferScheduler.instance.pokeFor(callsign);
+      return;
+    }
+    // No session lane on this bearer: re-air the held wires verbatim, paced,
+    // under the publisher's budgets. The receipt (13.7) is what marks them
+    // done -- an aired copy is an attempt, not a delivery.
+    unawaited(() async {
+      for (final m in pending) {
+        // The stored wire is bytes; the publisher speaks text wires. A held
+        // frame that is not UTF-8 XPRS (a binary custody blob) stays on the
+        // session lane and is skipped here.
+        final wire = utf8.decode(m.wire, allowMalformed: true);
+        if (!wire.startsWith('t:')) continue;
+        await XprsPublisher.instance
+            .publishWire(wire, verbatim: true, slot: 'release:${m.key}');
+        await Future<void>.delayed(const Duration(milliseconds: 1500));
+      }
+    }());
   }
 
   // ── facade for the wapp layer ─────────────────────────────────────────────

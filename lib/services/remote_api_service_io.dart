@@ -13,6 +13,7 @@ import 'dart:typed_data';
 import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_publisher.dart';
+import 'xprs/xprs_gossip.dart';
 import 'xprs/xprs_packet.dart';
 import 'xprs/xprs_vocab.dart';
 
@@ -936,6 +937,27 @@ class RemoteApiService {
           'bytes': p.byteLength,
           'bearers': report,
           'wire': p.encode(),
+        });
+      }
+      // Where can a callsign be reached (36.9.4 gossip + 13.12): the
+      // internet sender's question, answered in layers.
+      if (req.method == 'GET' && path == '/api/xprs/whois') {
+        final call = (req.uri.queryParameters['call'] ?? '')
+            .trim()
+            .toUpperCase();
+        if (call.isEmpty) {
+          return _json(res, {'ok': false, 'error': 'need call='},
+              status: HttpStatus.badRequest);
+        }
+        return _json(res, {
+          'ok': true,
+          'call': call,
+          'declared': XprsArchive.instance.holdersFor(call),
+          'sightings': [
+            for (final s in XprsGossip.instance.whereIs(call))
+              {'gateway': s.gateway, 'bearer': s.bearer, 'ts': s.tsMs},
+          ],
+          'gossip': XprsGossip.instance.statusJson(),
         });
       }
       // The heard-traffic spool, for headless validation: what this station

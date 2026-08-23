@@ -322,6 +322,12 @@ class PreferencesService {
   set xprsMailboxHold(String v) => _prefs.setString('xprs.mailboxHold', v);
 
   bool get xprsServeHistory => _prefs.getBool('xprs.serveHistory') ?? true;
+
+  /// Super-archiver mode (XPRS.md 36.9.4): gossip for every callsign, no
+  /// need-to-know cap, raised budgets, `serve:archive,super` on the air.
+  /// Off by default — this is a deliberate offer for a server-class node.
+  bool get xprsSuperArchiver => _prefs.getBool('xprs.superArchiver') ?? false;
+  set xprsSuperArchiver(bool v) => _prefs.setBool('xprs.superArchiver', v);
   Future<void> setXprsServeHistory(bool v) async {
     await _prefs.setBool('xprs.serveHistory', v);
   }

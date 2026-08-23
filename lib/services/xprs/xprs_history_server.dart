@@ -27,6 +27,7 @@ import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
 import 'xprs_archive.dart';
+import 'xprs_gossip.dart';
 import 'xprs_id.dart';
 import 'xprs_ingest.dart';
 import 'xprs_packet.dart';
@@ -166,7 +167,14 @@ class XprsHistoryServer {
       // debugging a silent replay needs to see.
       LogService.instance
           .add('XPRS: history for $from — nothing held in that window (404)');
-      _airControl(selfBase, from, cmdId, 404);
+      // A miss is not a dead end (36.9): when the ask named a callsign and
+      // gossip knows who HAS heard it, the 404 carries `m:try` naming them.
+      final asked = _base(p['only'] ?? '');
+      final tries = asked.isEmpty
+          ? const <String>[]
+          : XprsGossip.instance.tryCandidates(asked, selfBase: selfBase);
+      _airControl(selfBase, from, cmdId, 404,
+          m: tries.isEmpty ? null : 'try ${tries.join(',')}');
       return;
     }
     // A new ask from the requester whose replay is running supersedes it
@@ -208,14 +216,22 @@ class XprsHistoryServer {
   }
 
   bool _budgetAllows(String from, int now) {
+    // A super-archiver (36.9.4) exists to be leaned on: thousands of asks a
+    // minute is its design point, so the reference budgets scale rather
+    // than apply.
+    final superScale =
+        (PreferencesService.instanceSync?.xprsSuperArchiver ?? false)
+            ? 1000
+            : 1;
     void trim(List<int> l) => l.removeWhere((t) => now - t > 3600000);
     trim(_asksGlobal);
     final mine = _asksBy.putIfAbsent(from, () => []);
     trim(mine);
-    if (_asksGlobal.length >= globalPerHour) return false;
+    if (_asksGlobal.length >= globalPerHour * superScale) return false;
     final known = XprsArchive.instance.hasActiveDecl(from, nowMs: now) ||
         XprsArchive.instance.keyResolver?.call(from) != null;
-    return mine.length < (known ? knownPerHour : strangerPerHour);
+    return mine.length <
+        (known ? knownPerHour : strangerPerHour) * superScale;
   }
 
   void _recordAsk(String from, int now) {
@@ -223,20 +239,22 @@ class XprsHistoryServer {
     _asksBy.putIfAbsent(from, () => []).add(now);
   }
 
-  void _airControl(String self, String to, String cmdId, int code) {
-    final p = _result(self, to, cmdId, code);
+  void _airControl(String self, String to, String cmdId, int code,
+      {String? m}) {
+    final p = _result(self, to, cmdId, code, m: m);
     if (p == null) return;
     unawaited(
         _air('xprs-hist:c$code', p.encode(), const Duration(seconds: 30)));
   }
 
-  XprsPacket? _result(String self, String to, String cmdId, int code) {
+  XprsPacket? _result(String self, String to, String cmdId, int code,
+      {String? m}) {
     final now = DateTime.now().toUtc();
     String two(int n) => n.toString().padLeft(2, '0');
     final ts = '${now.year}-${two(now.month)}-${two(now.day)}_'
         '${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
-    var p = XprsPacket.parse(
-        't:result f:$self d:$to ts:$ts r:$cmdId code:$code');
+    var p = XprsPacket.parse('t:result f:$self d:$to ts:$ts r:$cmdId '
+        'code:$code${m == null ? '' : ' m:$m'}');
     if (p == null) return null;
     final d = signingKey();
     if (d != null) p = xprsSign(p, d);

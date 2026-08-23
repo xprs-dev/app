@@ -370,7 +370,11 @@ class XprsArchive {
         .where((c) => c.isNotEmpty)
         .toList();
     final pos = hold.indexOf(_selfBase);
-    if (pos < 0) return false;
+    // A declaration NOT naming us is still recorded (pos -1): section 36.8.1
+    // routes held mail by "who holds for X", and an archiver that only
+    // remembered its own appointments could never answer it. The return
+    // value keeps its old meaning -- "named us" -- because ingest admission
+    // rides on it.
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
     db.execute(
         'INSERT OR REPLACE INTO mailbox_decl(id,fromc,pos,since,until,ts,wire) '
@@ -384,7 +388,29 @@ class XprsArchive {
           xprsParseTs(p['ts']) ?? now,
           p.encode(),
         ]);
-    return true;
+    return pos >= 0;
+  }
+
+  /// L1 of the gossip layers (36.9.4): who [baseCallsign] declared as its
+  /// mailboxes, in the declaration's own order of preference (13.12). The
+  /// narrowest active window wins (13.12.1); windowed beats open-ended.
+  List<String> holdersFor(String baseCallsign, {int? nowMs}) {
+    final db = _db;
+    if (db == null) return const [];
+    final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    final rows = db.select(
+        'SELECT wire FROM mailbox_decl WHERE fromc=? '
+        'AND (since IS NULL OR since<=?) AND (until IS NULL OR until>=?) '
+        'ORDER BY (until IS NULL) ASC, ts DESC LIMIT 1',
+        [_base(baseCallsign), now, now]);
+    if (rows.isEmpty) return const [];
+    final p = XprsPacket.parse(rows.first['wire'] as String);
+    if (p == null) return const [];
+    return (p['hold'] ?? '')
+        .split(',')
+        .map(_base)
+        .where((c) => c.isNotEmpty)
+        .toList();
   }
 
   /// Whether [baseCallsign] currently has an active declaration naming us —
@@ -393,8 +419,11 @@ class XprsArchive {
     final db = _db;
     if (db == null) return false;
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    // pos>=0: only declarations that NAME US are an admission ticket --
+    // the table now also holds everyone else's declarations for routing
+    // (holdersFor above), and those must not open the door.
     return db.select(
-        'SELECT 1 FROM mailbox_decl WHERE fromc=? '
+        'SELECT 1 FROM mailbox_decl WHERE fromc=? AND pos>=0 '
         'AND (since IS NULL OR since<=?) AND (until IS NULL OR until>=?) '
         'LIMIT 1',
         [_base(baseCallsign), now, now]).isNotEmpty;

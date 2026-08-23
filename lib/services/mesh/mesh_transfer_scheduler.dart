@@ -144,6 +144,17 @@ class MeshTransferScheduler {
 
   DateTime? _starvedSince;
 
+  /// 36.8.1's release trigger: the recipient was just heard, so run the
+  /// decision NOW instead of waiting out the periodic tick. Clearing the
+  /// peer's backoff is the point -- the backoff said "nobody answered",
+  /// and a fresh packet from the peer is the counter-evidence.
+  void pokeFor(String callsign) {
+    final c = callsign.toUpperCase();
+    _nextTry.remove(c);
+    _backoff.remove(c);
+    _onTick();
+  }
+
   void _onTick() {
     final mgr = MeshSessionManager.instance;
     final hooks = mgr.hooks;
