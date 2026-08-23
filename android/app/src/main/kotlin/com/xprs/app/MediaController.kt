@@ -38,7 +38,7 @@ object MediaController {
 
     fun sendAction(action: String) {
         try {
-            (AuroraApplication.bgChannel ?: MainActivity.channel)
+            (XprsApplication.bgChannel ?: MainActivity.channel)
                 ?.invokeMethod("media.action", mapOf("action" to action))
         } catch (_: Throwable) {
         }

@@ -13,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reticulum/src/services/social/archiver_policy.dart';
 import 'package:reticulum/src/services/social/retention_tier.dart';
 
-import 'package:aurora/services/social/archiver_service.dart';
+import 'package:xprs/services/social/archiver_service.dart';
 
 void main() {
   test('a direct link is recognised for what it is', () {

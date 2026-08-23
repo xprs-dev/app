@@ -9,7 +9,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:aurora/services/reticulum/rns_service.dart';
+import 'package:xprs/services/reticulum/rns_service.dart';
 
 void main() {
   const sha =

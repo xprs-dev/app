@@ -3,7 +3,7 @@
  * your secret key". Until now those were the same sentence.
  *
  * A user with a real NOSTR identity keeps it in Amber or a bunker precisely so
- * that applications never see it, and Aurora currently demands the opposite: the
+ * that applications never see it, and XPRS currently demands the opposite: the
  * only way in is to paste an nsec, which then sits in clear text in
  * profiles.json. This interface is what lets the key live somewhere else.
  *

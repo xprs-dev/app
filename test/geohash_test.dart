@@ -1,4 +1,4 @@
-import 'package:aurora/util/geohash.dart';
+import 'package:xprs/util/geohash.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

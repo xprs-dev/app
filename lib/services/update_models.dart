@@ -148,11 +148,11 @@ class ReleaseInfo {
   }
 
   /// The asset to download for [platform], or null if this release has none.
-  /// Prefers the canonical `aurora-*` names but falls back to extension match.
+  /// Suffix-matched, so both `xprs-*` and legacy `aurora-*` names qualify.
   ///
   /// [androidAbis] is the device's supported ABIs in preference order
   /// (Build.SUPPORTED_ABIS): when set, the matching per-ABI split APK
-  /// (`aurora-<ver>-android-<abi>.apk`) is chosen; otherwise (or if no split
+  /// (`…-<ver>-android-<abi>.apk`) is chosen; otherwise (or if no split
   /// matches) it falls back to any non-debug `.apk` (e.g. a universal build).
   ReleaseAsset? assetFor(UpdatePlatform platform,
       {List<String> androidAbis = const []}) {
@@ -211,9 +211,20 @@ const List<String> _kArtifactSuffixes = [
 /// may itself contain '-' (e.g. `1.0.3-beta.4`), which is exactly the channel
 /// signal `isPrerelease` reads.
 String? versionFromAssetName(String name) {
+  // The product is XPRS; releases used to be published as `aurora-*` and a
+  // station updating FROM an old release folder must still recognise them.
+  // New releases say `xprs-*`; both parse, the prefix decides nothing else.
   const prefix = 'aurora-';
-  if (!name.startsWith(prefix)) return null;
-  var rest = name.substring(prefix.length);
+  const prefixNew = 'xprs-';
+  final String rest0;
+  if (name.startsWith(prefixNew)) {
+    rest0 = name.substring(prefixNew.length);
+  } else if (name.startsWith(prefix)) {
+    rest0 = name.substring(prefix.length);
+  } else {
+    return null;
+  }
+  var rest = rest0;
   for (final suf in _kArtifactSuffixes) {
     if (rest.endsWith(suf) && rest.length > suf.length) {
       return rest.substring(0, rest.length - suf.length);

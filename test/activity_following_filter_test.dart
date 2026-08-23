@@ -1,4 +1,4 @@
-import 'package:aurora/wapp/geoui/widgets/activity_feed.dart';
+import 'package:xprs/wapp/geoui/widgets/activity_feed.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 String _key(String seed) => seed.padRight(64, '0').substring(0, 64);

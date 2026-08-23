@@ -24,7 +24,7 @@ import java.io.File
 class MainActivity : FlutterFragmentActivity() {
     companion object {
         // Held so the foreground service can ping Dart ('onTick') even while
-        // the activity is backgrounded. Mirrors AuroraApplication.bgChannel.
+        // the activity is backgrounded. Mirrors XprsApplication.bgChannel.
         var channel: MethodChannel? = null
         private const val UPDATE_CHANNEL = "com.xprs.app/updates"
         private const val LINKS_CHANNEL = "com.xprs.app/links"
@@ -112,8 +112,8 @@ class MainActivity : FlutterFragmentActivity() {
      * that one and let the framework build a fresh engine instead.
      */
     override fun provideFlutterEngine(context: Context): FlutterEngine? {
-        (application as? AuroraApplication)?.discardDeadEngine()
-        return FlutterEngineCache.getInstance().get(AuroraApplication.ENGINE_ID)
+        (application as? XprsApplication)?.discardDeadEngine()
+        return FlutterEngineCache.getInstance().get(XprsApplication.ENGINE_ID)
     }
 
     override fun shouldDestroyEngineWithHost(): Boolean = false
@@ -123,7 +123,7 @@ class MainActivity : FlutterFragmentActivity() {
         // was created — calling super again double-registers and can spawn a 2nd
         // engine. Only register for a fresh engine.
         val isPreWarmed =
-            FlutterEngineCache.getInstance().get(AuroraApplication.ENGINE_ID) === flutterEngine
+            FlutterEngineCache.getInstance().get(XprsApplication.ENGINE_ID) === flutterEngine
         if (!isPreWarmed) {
             super.configureFlutterEngine(flutterEngine)
         }
@@ -131,8 +131,8 @@ class MainActivity : FlutterFragmentActivity() {
         // Bind process-wide native bridges once per engine. This includes the
         // bg_service channel plus BLE/WiFi transports used by the background
         // service; the Activity only attaches UI to this shared engine.
-        (application as? AuroraApplication)?.rememberFlutterEngine(flutterEngine)
-        channel = AuroraApplication.bgChannel
+        (application as? XprsApplication)?.rememberFlutterEngine(flutterEngine)
+        channel = XprsApplication.bgChannel
 
         // Update Center channel: APK install + download foreground service.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, UPDATE_CHANNEL)

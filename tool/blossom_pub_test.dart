@@ -9,8 +9,8 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' show sha256;
 
-import 'package:aurora/util/nostr_crypto.dart';
-import 'package:aurora/util/nostr_event.dart';
+import 'package:xprs/util/nostr_crypto.dart';
+import 'package:xprs/util/nostr_event.dart';
 
 const servers = [
   'https://blossom.band',

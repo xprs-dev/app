@@ -8,11 +8,11 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/reticulum/rns_packet.dart';
-import 'package:aurora/services/files/dht/provider_record.dart';
-import 'package:aurora/services/files/file_node.dart';
-import 'package:aurora/services/files/file_transfer.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/rns_packet.dart';
+import 'package:xprs/services/files/dht/provider_record.dart';
+import 'package:xprs/services/files/file_node.dart';
+import 'package:xprs/services/files/file_transfer.dart';
 
 void _expect(bool c, String what) {
   if (!c) {

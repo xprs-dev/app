@@ -9,7 +9,7 @@
 
 import 'dart:convert';
 
-import 'package:aurora/services/folders/folder_meta.dart';
+import 'package:xprs/services/folders/folder_meta.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

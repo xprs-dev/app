@@ -7,12 +7,12 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
-import 'package:aurora/services/xprs/xprs_archive.dart';
-import 'package:aurora/services/xprs/xprs_history_server.dart';
-import 'package:aurora/services/xprs/xprs_id.dart';
-import 'package:aurora/services/xprs/xprs_ingest.dart';
-import 'package:aurora/services/xprs/xprs_packet.dart';
-import 'package:aurora/services/xprs/xprs_publisher.dart';
+import 'package:xprs/services/xprs/xprs_archive.dart';
+import 'package:xprs/services/xprs/xprs_history_server.dart';
+import 'package:xprs/services/xprs/xprs_id.dart';
+import 'package:xprs/services/xprs/xprs_ingest.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/xprs/xprs_publisher.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';

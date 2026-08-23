@@ -17,10 +17,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 
-import 'package:aurora/profile/profile_crypto.dart';
-import 'package:aurora/profile/profile_db.dart';
-import 'package:aurora/profile/profile_encryption.dart';
-import 'package:aurora/profile/profile_service.dart';
+import 'package:xprs/profile/profile_crypto.dart';
+import 'package:xprs/profile/profile_db.dart';
+import 'package:xprs/profile/profile_encryption.dart';
+import 'package:xprs/profile/profile_service.dart';
 
 void main() {
   final isolated = Platform.environment['AURORA_TEST_HOME'] == '1';

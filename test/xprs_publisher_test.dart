@@ -6,9 +6,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:aurora/services/xprs/xprs_packet.dart';
-import 'package:aurora/services/xprs/xprs_publisher.dart';
-import 'package:aurora/services/xprs/xprs_sig.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/xprs/xprs_publisher.dart';
+import 'package:xprs/services/xprs/xprs_sig.dart';
 import 'package:pointycastle/ecc/curves/secp256k1.dart';
 
 class _FakeBearer implements XprsBearer {

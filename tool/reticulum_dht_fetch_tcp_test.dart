@@ -11,15 +11,15 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 
-import 'package:aurora/services/reticulum/rns_announce.dart';
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/reticulum/rns_packet.dart';
-import 'package:aurora/services/reticulum/rns_tcp_interface.dart';
-import 'package:aurora/services/reticulum/rns_tcp_server_interface.dart';
-import 'package:aurora/services/reticulum/rns_transport.dart';
-import 'package:aurora/services/files/dht/provider_record.dart';
-import 'package:aurora/services/files/file_node.dart';
-import 'package:aurora/services/files/file_transfer.dart';
+import 'package:xprs/services/reticulum/rns_announce.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/rns_packet.dart';
+import 'package:xprs/services/reticulum/rns_tcp_interface.dart';
+import 'package:xprs/services/reticulum/rns_tcp_server_interface.dart';
+import 'package:xprs/services/reticulum/rns_transport.dart';
+import 'package:xprs/services/files/dht/provider_record.dart';
+import 'package:xprs/services/files/file_node.dart';
+import 'package:xprs/services/files/file_transfer.dart';
 
 String _hx(List<int> b) => b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
 

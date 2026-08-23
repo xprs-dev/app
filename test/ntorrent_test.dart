@@ -9,7 +9,7 @@
 
 import 'dart:typed_data';
 
-import 'package:aurora/services/folders/ntorrent.dart';
+import 'package:xprs/services/folders/ntorrent.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _folderId =

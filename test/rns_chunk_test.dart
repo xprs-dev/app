@@ -7,7 +7,7 @@
 // go over, and an announce that never leaves is a device nobody can find.
 import 'dart:typed_data';
 
-import 'package:aurora/connections/bluetooth/rns_chunk.dart';
+import 'package:xprs/connections/bluetooth/rns_chunk.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Uint8List packet(int n, {int seed = 0}) =>

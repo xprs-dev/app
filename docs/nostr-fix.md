@@ -12,7 +12,7 @@ curation policy, or unrelated wapps as part of this work.
 
 ## Observed Failure
 
-The failure was reproduced on the C61 with Aurora versionCode `36043`:
+The failure was reproduced on the C61 with XPRS versionCode `36043`:
 
 - An automatic batch completed at `12:02:29`, delivering seven notes. Its
   newest note was already 229 seconds old.

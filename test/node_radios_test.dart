@@ -12,8 +12,8 @@ import 'package:reticulum/src/services/social/listening_schedule.dart';
 import 'package:reticulum/src/services/social/node_profile.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:aurora/services/preferences_service.dart';
-import 'package:aurora/services/social/node_profile_service.dart';
+import 'package:xprs/services/preferences_service.dart';
+import 'package:xprs/services/social/node_profile_service.dart';
 
 void main() {
   setUp(() async {

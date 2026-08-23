@@ -10,13 +10,13 @@ import 'dart:typed_data';
 
 import 'dart:convert';
 
-import 'package:aurora/services/xprs/xprs_archive.dart';
-import 'package:aurora/services/xprs/xprs_id.dart';
-import 'package:aurora/services/xprs/xprs_ingest.dart';
-import 'package:aurora/services/xprs/xprs_monitor.dart';
-import 'package:aurora/services/xprs/xprs_packet.dart';
-import 'package:aurora/services/xprs/xprs_sig.dart';
-import 'package:aurora/services/xprs/xprs_vocab.dart';
+import 'package:xprs/services/xprs/xprs_archive.dart';
+import 'package:xprs/services/xprs/xprs_id.dart';
+import 'package:xprs/services/xprs/xprs_ingest.dart';
+import 'package:xprs/services/xprs/xprs_monitor.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/xprs/xprs_sig.dart';
+import 'package:xprs/services/xprs/xprs_vocab.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pointycastle/ecc/curves/secp256k1.dart';
 import 'package:sqlite3/open.dart';

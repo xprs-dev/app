@@ -4,9 +4,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
-import 'package:aurora/profile/profile_storage_io.dart';
-import 'package:aurora/util/media_archive.dart';
-import 'package:aurora/util/media_ref.dart';
+import 'package:xprs/profile/profile_storage_io.dart';
+import 'package:xprs/util/media_archive.dart';
+import 'package:xprs/util/media_ref.dart';
 
 void main() {
   // The app bundles SQLite via sqlite3_flutter_libs; the test VM only has the

@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aurora/profile/profile_crypto.dart';
+import 'package:xprs/profile/profile_crypto.dart';
 
 void main() {
   // A fixed test identity (not a real key).

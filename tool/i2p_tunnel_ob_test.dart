@@ -7,10 +7,10 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:aurora/services/i2p/i2p_ntcp2.dart';
-import 'package:aurora/services/i2p/i2p_router.dart';
-import 'package:aurora/services/i2p/i2p_structures.dart';
-import 'package:aurora/services/i2p/i2p_tunnel_build.dart';
+import 'package:xprs/services/i2p/i2p_ntcp2.dart';
+import 'package:xprs/services/i2p/i2p_router.dart';
+import 'package:xprs/services/i2p/i2p_structures.dart';
+import 'package:xprs/services/i2p/i2p_tunnel_build.dart';
 
 String hx(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();

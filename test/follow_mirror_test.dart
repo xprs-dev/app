@@ -3,7 +3,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aurora/services/social/direct_follow_resolver.dart';
+import 'package:xprs/services/social/direct_follow_resolver.dart';
 
 String _key(String seed) => seed.padRight(64, '0').substring(0, 64);
 

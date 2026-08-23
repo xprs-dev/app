@@ -9,9 +9,9 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/reticulum/lxmf/lxmf.dart';
-import 'package:aurora/services/reticulum/lxmf/lxmf_message.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/lxmf/lxmf.dart';
+import 'package:xprs/services/reticulum/lxmf/lxmf_message.dart';
 
 const _py = '/home/brito/.platformio/penv/bin/python3';
 const _xcheck = 'tool/lxmf_xcheck.py';

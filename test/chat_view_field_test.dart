@@ -4,8 +4,8 @@
 // Both halves shipped broken on a 1:1 conversation — the heart did nothing at
 // all, and a reply rendered its wire marker verbatim, as a bubble reading
 // "+9eb53a4af55e5da04cdcc44842502041e8d5e2460f123358c31a17f8a31993dd OK".
-import 'package:aurora/wapp/geoui/conversation_store.dart';
-import 'package:aurora/wapp/geoui/widgets/chat_view_field.dart';
+import 'package:xprs/wapp/geoui/conversation_store.dart';
+import 'package:xprs/wapp/geoui/widgets/chat_view_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -1,9 +1,9 @@
 /*
  * Custodian scoring tests (docs/mesh.md §6, M3).
  */
-import 'package:aurora/services/mesh/mesh_beacon.dart';
-import 'package:aurora/services/mesh/mesh_custodian.dart';
-import 'package:aurora/services/mesh/mesh_table.dart';
+import 'package:xprs/services/mesh/mesh_beacon.dart';
+import 'package:xprs/services/mesh/mesh_custodian.dart';
+import 'package:xprs/services/mesh/mesh_table.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 MeshBeacon _b(String cs,

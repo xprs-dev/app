@@ -10,9 +10,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/reticulum/rns_auto_interface.dart';
-import 'package:aurora/services/reticulum/rns_crypto.dart';
-import 'package:aurora/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/rns_auto_interface.dart';
+import 'package:xprs/services/reticulum/rns_crypto.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
 
 var _pass = 0, _fail = 0;
 void check(String name, bool ok, [String extra = '']) {

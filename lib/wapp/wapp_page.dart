@@ -3546,7 +3546,7 @@ class _WappPageState extends State<WappPage>
   // A WhatsApp/Telegram-style picker: search a known contact (any conversation
   // we already have — DMs and group rooms) or type a fresh callsign / #group,
   // then re-send the message's text there. Forwarding reuses the normal send
-  // path (no wire marker, so non-Aurora stations read it cleanly).
+  // path (no wire marker, so non-XPRS stations read it cleanly).
   void _showForwardPanel(
     String field,
     ConversationStore store,

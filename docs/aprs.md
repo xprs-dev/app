@@ -19,9 +19,9 @@ wapp ([`wapps/chat/`](../../wapps/chat/): `chat.c`, `main.c`).
   licensed‑callsign opt‑in: the user must enter an authority‑assigned callsign
   (auto‑generated X1/X3 callsigns are rejected) and the matching numeric
   passcode, which is verified against `aprs_passcode(call)` before the switch
-  takes effect. Without this opt‑in Aurora never connects to APRS‑IS;
+  takes effect. Without this opt‑in XPRS never connects to APRS‑IS;
   messaging runs over Reticulum (primary) and Bluetooth.
-- **Server‑side filter (`g/` + `b/`):** on login Aurora sends a filter built by
+- **Server‑side filter (`g/` + `b/`):** on login XPRS sends a filter built by
   `build_gfilter` so the server only pushes relevant traffic:
   - `g/<own-call>` — messages addressed to us,
   - `g/<own-call>/<heard-call>…` — messages addressed to **Bluetooth stations we
@@ -37,7 +37,7 @@ wapp ([`wapps/chat/`](../../wapps/chat/): `chat.c`, `main.c`).
 
 ## 2. TNC2 frame format (`aprs.c`)
 
-Aurora reads and writes standard TNC2 text frames:
+XPRS reads and writes standard TNC2 text frames:
 
 ```
 SRCCALL>APRS,<path>:<payload>

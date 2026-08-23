@@ -3,11 +3,11 @@
 > Status: approved (2026-07-13), implementing. The seam (`NostrSigner` +
 > `LocalSigner`) has landed; nothing else is wired up yet.
 > Goal: **let the key live somewhere else.** A user logs in with the account that
-> already exists in their signer, and Aurora never possesses the private key.
+> already exists in their signer, and XPRS never possesses the private key.
 
 ## 1. Why
 
-The only way into Aurora is to hand it your secret: `WelcomePage` offers "paste
+The only way into XPRS is to hand it your secret: `WelcomePage` offers "paste
 your nsec1…" (`lib/profile/welcome_page.dart:306`), and the app then holds it
 (encrypted at rest since the profile-storage work, but still *possessed*). Anyone
 with a real NOSTR identity keeps it in Amber or a bunker for exactly the reason
@@ -30,7 +30,7 @@ transport (Reticulum) where that is nothing. Chat has been RNS-primary since
 `chat v0.2.109`.
 
 **Consequence: no device key, no cross-certification event, no new protocol, no
-peer migration.** Aurora becomes an ordinary NOSTR client that happens to run over
+peer migration.** XPRS becomes an ordinary NOSTR client that happens to run over
 Reticulum, and a signer can do everything an identity needs to do.
 
 ### The two things that still need a local secret

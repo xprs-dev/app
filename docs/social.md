@@ -317,7 +317,7 @@ poller), Reticulum NOSTR is already isolate-safe and lives on the MAIN isolate.
   peers return. Instead `nomadnetFetch` filters on `tags:{z:[rns]}`. Every leg
   honours it in its NIP-01 filter — the local `store.query`, a host responder
   (`relay_node.dart` keeps the querier's `tags`), and a self-scoped leaf. Public
-  wss posts never carry `z=rns`, so the feed is strictly Aurora-over-Reticulum:
+  wss posts never carry `z=rns`, so the feed is strictly XPRS-over-Reticulum:
   our own native notes + peers' own native notes, zero internet firehose.
 
 **Validation is CROSS-DEVICE, over Reticulum only.** In this initial

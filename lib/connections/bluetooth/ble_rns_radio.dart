@@ -1,4 +1,4 @@
-// On-device binding of the RNS BLE interface to Aurora's shared [BleService].
+// On-device binding of the RNS BLE interface to XPRS's shared [BleService].
 //
 // BleService.enqueueAdvert already does the size routing we want: payloads up to
 // kBleBcastMax go out connectionless as a chunked broadcast-parcel (every device

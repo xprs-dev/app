@@ -1,8 +1,8 @@
 // Phase 0: reseed from the live I2P network and parse RouterInfos, reporting how
 // many usable NTCP2 routers (host, port, static key s, IV i) we found.
 //   dart run tool/i2p_reseed_test.dart
-import 'package:aurora/services/i2p/i2p_reseed.dart';
-import 'package:aurora/services/i2p/i2p_structures.dart';
+import 'package:xprs/services/i2p/i2p_reseed.dart';
+import 'package:xprs/services/i2p/i2p_structures.dart';
 
 String hx(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();

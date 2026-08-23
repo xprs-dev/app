@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aurora/connections/bluetooth/ble_reassembler.dart';
+import 'package:xprs/connections/bluetooth/ble_reassembler.dart';
 
 // Build the chunk advert manufacturer-data bytes (company id already stripped,
 // matching what the scan API hands us). Frame format includes the 1-byte sender

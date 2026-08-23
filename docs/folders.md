@@ -1,6 +1,6 @@
 # Shared folders over Reticulum
 
-Aurora shares directories of files between devices as **mutable folders**: an
+XPRS shares directories of files between devices as **mutable folders**: an
 IPNS-like, key-addressed directory whose contents are a signed, append-only log
 of NOSTR events pointing at immutable, content-addressed (SHA-256) files. Any
 number of devices can re-host and seed a folder torrent-style. This doc is the

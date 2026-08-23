@@ -1,7 +1,7 @@
 /*
  * The connection abstraction.
  *
- * Aurora hides the underlying transport from wapps. A wapp never opens a
+ * XPRS hides the underlying transport from wapps. A wapp never opens a
  * socket or knows whether bytes leave over the internet, the LAN,
  * Bluetooth, LoRa or USB — it only reasons about a connection's
  * *characteristics*: how fast it is, whether delivery is immediate or

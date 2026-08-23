@@ -9,7 +9,7 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/reticulum/wapp_mailbox.dart';
+import 'package:xprs/services/reticulum/wapp_mailbox.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 

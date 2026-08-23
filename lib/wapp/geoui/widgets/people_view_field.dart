@@ -1,4 +1,4 @@
-/* Aurora · GeoUI people list ($type:"people")
+/* XPRS · GeoUI people list ($type:"people")
  *
  * PeopleViewField — a social-network style people list: segmented sections
  * (e.g. Following | Followers), one row per person with an avatar, title,

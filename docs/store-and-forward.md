@@ -59,7 +59,7 @@ t:message f:FROM d:TO ts:2026-08-08_14:26:40 sig:<60> m:body
 t:message f:FROM d:TO ts:2026-08-08_14:26:40 x:<sealed> sig:<60>
 ```
 
-**Aurora emits XPRS** ([XPRS.md](XPRS.md)). It still *reads* the compact frame
+**XPRS emits XPRS** ([XPRS.md](XPRS.md)). It still *reads* the compact frame
 below, because the chat wapp and the ESP32 dongle both still emit one and
 custody sees every advert on the air:
 

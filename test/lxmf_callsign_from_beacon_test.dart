@@ -11,8 +11,8 @@
  * throwing the name away, forwarding only the address so a path could be
  * requested. This pins the pairing that fixes it.
  */
-import 'package:aurora/services/reticulum/rns_service.dart';
-import 'package:aurora/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/reticulum/rns_service.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

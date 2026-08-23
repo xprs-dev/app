@@ -3,9 +3,9 @@
 // expected (charger + Wi-Fi => unlimited; cellular => off unless allowed; etc.).
 //
 //   dart run tool/reticulum_capacity_test.dart
-import 'package:aurora/services/files/capacity_policy.dart';
-import 'package:aurora/services/files/dht/provider_record.dart';
-import 'package:aurora/services/files/serve_quota.dart';
+import 'package:xprs/services/files/capacity_policy.dart';
+import 'package:xprs/services/files/dht/provider_record.dart';
+import 'package:xprs/services/files/serve_quota.dart';
 
 void _expect(bool c, String what) {
   if (!c) {

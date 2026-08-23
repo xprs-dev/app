@@ -8,9 +8,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
-import 'package:aurora/profile/profile_storage_io.dart';
-import 'package:aurora/services/blossom_server.dart';
-import 'package:aurora/util/media_archive.dart';
+import 'package:xprs/profile/profile_storage_io.dart';
+import 'package:xprs/services/blossom_server.dart';
+import 'package:xprs/util/media_archive.dart';
 
 void main() {
   setUpAll(() {

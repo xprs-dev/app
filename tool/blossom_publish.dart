@@ -9,8 +9,8 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' show sha256;
 
-import 'package:aurora/util/nostr_crypto.dart';
-import 'package:aurora/util/nostr_event.dart';
+import 'package:xprs/util/nostr_crypto.dart';
+import 'package:xprs/util/nostr_event.dart';
 
 // Mirror of BlossomServer.publicServers (kept Flutter-free for `dart run`).
 const publicServers = ['https://blossom.primal.net', 'https://nostr.download'];

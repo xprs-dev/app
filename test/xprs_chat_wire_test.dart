@@ -6,9 +6,9 @@
 // mean anything — a wapp that agreed only with itself would keep working while
 // every other station on the device saw nothing.
 
-import 'package:aurora/services/xprs/xprs_id.dart';
-import 'package:aurora/services/xprs/xprs_packet.dart';
-import 'package:aurora/services/xprs/xprs_vocab.dart';
+import 'package:xprs/services/xprs/xprs_id.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/xprs/xprs_vocab.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Verbatim output of `xprs_pack`, one per thing chat routes on. Kept as

@@ -10,7 +10,7 @@
 /// /api/log which binary is actually running on the device (a stale reinstall
 /// would still report the old tag). Surfaced in RemoteApiService /api/status
 /// and logged at startup in main().
-const String kAuroraBuildTag = 'msgorigin-20260607a';
+const String kXprsBuildTag = 'msgorigin-20260607a';
 
 /// Process-wide recent-log buffer.
 class LogService {

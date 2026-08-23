@@ -7,6 +7,11 @@
  *   salt      = random 16 B, stored plaintext in keyslot + nsec envelope
  *   KEK_pw    = Argon2id(password, salt, t=3, m=64 MiB, p=1) -> 32 B
  *   nsec_ct   = AES-256-GCM(KEK_pw, nsec)          -> profiles.json entry
+ * The "aurora-" in the HKDF info strings below is a FROZEN cryptographic
+ * domain separator, not the product's name (the product is XPRS). Every
+ * encrypted profile in the field derived its keys through these exact bytes;
+ * renaming them would render every one of them undecryptable. They stay.
+ *
  *   KEK       = HKDF-SHA256(KEK_pw || nsecBytes, salt, "aurora-profile-kek-v1")
  *   PMK       = random 32 B profile master key (generated once at enable)
  *   pmk_ct    = AES-256-GCM(KEK, PMK)              -> devices/<id>/keyslot.json

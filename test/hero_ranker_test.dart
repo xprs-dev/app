@@ -11,8 +11,8 @@
  * several angles here.
  */
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aurora/services/hero/hero_item.dart';
-import 'package:aurora/services/hero/hero_ranker.dart';
+import 'package:xprs/services/hero/hero_item.dart';
+import 'package:xprs/services/hero/hero_ranker.dart';
 
 final _now = DateTime(2026, 7, 12, 12, 0);
 

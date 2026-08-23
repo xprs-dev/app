@@ -1,5 +1,5 @@
 /*
- * lib/connections/ — Aurora's transport subsystem.
+ * lib/connections/ — XPRS's transport subsystem.
  *
  * The single home for connection code: the capability model wapps reason
  * about, the registry of known transports, the transports themselves

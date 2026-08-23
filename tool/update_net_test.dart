@@ -22,18 +22,18 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 
-import 'package:aurora/services/folders/folder_keystore.dart';
-import 'package:aurora/services/folders/folder_service.dart';
-import 'package:aurora/services/reticulum/rns_announce.dart';
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/reticulum/rns_packet.dart';
-import 'package:aurora/services/reticulum/rns_tcp_interface.dart';
-import 'package:aurora/services/reticulum/rns_transport.dart';
-import 'package:aurora/services/social/relay_event_store.dart';
-import 'package:aurora/services/social/relay_node.dart';
-import 'package:aurora/services/files/file_node.dart';
-import 'package:aurora/services/files/file_transfer.dart';
-import 'package:aurora/services/update_models.dart';
+import 'package:xprs/services/folders/folder_keystore.dart';
+import 'package:xprs/services/folders/folder_service.dart';
+import 'package:xprs/services/reticulum/rns_announce.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/rns_packet.dart';
+import 'package:xprs/services/reticulum/rns_tcp_interface.dart';
+import 'package:xprs/services/reticulum/rns_transport.dart';
+import 'package:xprs/services/social/relay_event_store.dart';
+import 'package:xprs/services/social/relay_node.dart';
+import 'package:xprs/services/files/file_node.dart';
+import 'package:xprs/services/files/file_transfer.dart';
+import 'package:xprs/services/update_models.dart';
 
 import 'sqlite_loader.dart';
 

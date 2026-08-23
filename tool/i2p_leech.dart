@@ -10,8 +10,8 @@
 //   dart run tool/i2p_leech.dart <b32> <sha256hex>
 import 'dart:typed_data';
 
-import 'package:aurora/services/i2p/i2p_crypto.dart';
-import 'package:aurora/services/i2p/i2p_node.dart';
+import 'package:xprs/services/i2p/i2p_crypto.dart';
+import 'package:xprs/services/i2p/i2p_node.dart';
 
 String hx(List<int> b) => b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
 Uint8List unhex(String s) => Uint8List.fromList([

@@ -1,11 +1,11 @@
 # Launcher revamp
 
-Plan for restyling Aurora's home screen after the launcher in the `gnpa` repo
+Plan for restyling XPRS's home screen after the launcher in the `gnpa` repo
 (`gnpa/lib/app.dart`, read-only reference).
 
 ## Context
 
-Aurora's home screen (`lib/launcher/launcher_page.dart:288`) is a bare
+XPRS's home screen (`lib/launcher/launcher_page.dart:288`) is a bare
 `Scaffold`: an `AppBar` holding the profile switcher and a settings button, over
 a flat `GridView` of wapp icons. It surfaces none of what the node actually
 knows — whether it's on the internet or BLE-only, what notifications arrived,

@@ -18,9 +18,9 @@ import io.flutter.plugin.common.MethodChannel
  * event notifications.
  *
  * The same channel logic is used whether the Flutter engine was created by the
- * Activity (normal launch) or headlessly by [AuroraApplication] at boot, so the
+ * Activity (normal launch) or headlessly by [XprsApplication] at boot, so the
  * background service behaves identically in both cases. The resulting channel is
- * published on [AuroraApplication.bgChannel] so [BgService] can drive `onTick`
+ * published on [XprsApplication.bgChannel] so [BgService] can drive `onTick`
  * (and any other native -> Dart pings) without needing an Activity.
  */
 object BgBridge {
@@ -43,7 +43,7 @@ object BgBridge {
                 // Dart reached its first runApp on this engine, so a view may be
                 // attached to it. Sent by every engine, headless or not.
                 "dartReady" -> {
-                    AuroraApplication.dartReady = true
+                    XprsApplication.dartReady = true
                     result.success(true)
                 }
                 "start" -> {
@@ -95,7 +95,7 @@ object BgBridge {
                 else -> result.notImplemented()
             }
         }
-        AuroraApplication.bgChannel = ch
+        XprsApplication.bgChannel = ch
         Log.d(TAG, "bg_service channel attached")
     }
 

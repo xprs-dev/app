@@ -3,8 +3,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
-import 'package:aurora/profile/profile_storage_io.dart';
-import 'package:aurora/wapp/geoui/geo_chat_archive.dart';
+import 'package:xprs/profile/profile_storage_io.dart';
+import 'package:xprs/wapp/geoui/geo_chat_archive.dart';
 
 void main() {
   // The app bundles SQLite via sqlite3_flutter_libs; the test VM only has the

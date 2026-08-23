@@ -1,7 +1,7 @@
 # Chat wapp
 
-The **Chat** wapp is Aurora's governed group-chat client: a Discord-like surface
-over NOSTR, federating to any standard relay and riding Aurora's transports
+The **Chat** wapp is XPRS's governed group-chat client: a Discord-like surface
+over NOSTR, federating to any standard relay and riding XPRS's transports
 (Reticulum mesh first, Bluetooth for off-grid, APRS as legacy). A **main room**
 everyone shares, **user-created sub-rooms** that a moderator must approve,
 **npub-based admins/mods** with subtree-scoped authority, and a **global
@@ -16,20 +16,20 @@ for the whole picture and the state of play.
 
 - **Source of truth for code:** `xprs-dev/wapps` repo, folder `chat/` (`main.c`,
   `room.c`/`room.h`, `chat.c`, `ble.c`, `screens/home.ui.json`, `manifest.json`).
-  Aurora only carries a bundled copy at `assets/wapps/chat.wapp`.
+  XPRS only carries a bundled copy at `assets/wapps/chat.wapp`.
 - **Current version:** `0.2.117`.
 
 ---
 
 ## 1. Architecture
 
-Aurora is a generic Flutter **host** that runs WebAssembly **wapps**. The host
+XPRS is a generic Flutter **host** that runs WebAssembly **wapps**. The host
 never contains app-specific logic; the Chat wapp is portable C compiled to
 `wasm32-wasi`, driven entirely through the host's HAL message bus.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Aurora host (Flutter, generic)                          │
+│ XPRS host (Flutter, generic)                          │
 │  • GeoUI: $type widget dispatch (wapp_page.dart)        │
 │  • rooms_field.dart  ← Discord layout (rail/chat/members)│
 │  • ConversationStore + chat_view_field.dart (bubbles)   │
@@ -69,7 +69,7 @@ by data. It knows nothing about NIP-72. All chat semantics live in the wapp.
 
 ## 2. Transports
 
-Chat messages are NOSTR events; they travel by whatever Aurora has:
+Chat messages are NOSTR events; they travel by whatever XPRS has:
 
 - **Reticulum (RNS) — primary everywhere.** Room defs, ops, proposals, approvals
   and messages federate as NOSTR events over the mesh (same path the Social wapp

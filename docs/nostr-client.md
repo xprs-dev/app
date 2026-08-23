@@ -1,6 +1,6 @@
 # NOSTR client — transport-abstract relays
 
-Aurora ships a normal NOSTR client (the **NOSTR** wapp) that reads kind-1 notes
+XPRS ships a normal NOSTR client (the **NOSTR** wapp) that reads kind-1 notes
 from the accounts you follow and posts your own. What makes it different from a
 stock client: a **relay is not tied to the internet**. Each relay's URI scheme
 picks the transport, and the wapp never knows which one a relay uses.
@@ -29,7 +29,7 @@ Code: `reticulum-dart/lib/src/services/social/nostr_*.dart`
 ## The device is itself a relay + Blossom server
 
 - **Reticulum relay**: `RelayNode` already answers NOSTR queries over RNS links,
-  so other Aurora devices reach this device as an `rns://<idhash>` relay.
+  so other XPRS devices reach this device as an `rns://<idhash>` relay.
 - **wss:// relay**: `NostrWsServer` (an `HttpServer` that upgrades WebSockets,
   serving/ingesting the local store, + a NIP-11 document) lets ANY stock NOSTR
   app on the LAN use this device as a `wss://` relay. Events arriving over the
@@ -122,6 +122,6 @@ codec, and the hub routing/merge are unit-tested
 - Live: open the NOSTR wapp → top-right menu → **NOSTR servers** → rows show the
   default relays turning "connected"; follow a known npub → its notes appear in
   the Feed; post a note → it shows in the feed and is fetchable from
-  relay.damus.io by a stock client. Point a relay at another Aurora device's
+  relay.damus.io by a stock client. Point a relay at another XPRS device's
   `rns://<idhash>` (or `wss://<lan-ip>:4848`) to exercise the mesh / local-server
   transports.

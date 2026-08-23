@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aurora/util/media_ref.dart';
+import 'package:xprs/util/media_ref.dart';
 
 void main() {
   // A syntactically valid 43-char base64url hash for fixtures.

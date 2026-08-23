@@ -11,12 +11,12 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/folders/disk_folder.dart';
-import 'package:aurora/services/folders/disk_folder_manager.dart';
-import 'package:aurora/services/folders/folder_keystore.dart';
-import 'package:aurora/services/folders/folder_service.dart';
-import 'package:aurora/services/folders/folder_state.dart';
-import 'package:aurora/util/nostr_event.dart';
+import 'package:xprs/services/folders/disk_folder.dart';
+import 'package:xprs/services/folders/disk_folder_manager.dart';
+import 'package:xprs/services/folders/folder_keystore.dart';
+import 'package:xprs/services/folders/folder_service.dart';
+import 'package:xprs/services/folders/folder_state.dart';
+import 'package:xprs/util/nostr_event.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

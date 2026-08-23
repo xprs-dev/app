@@ -13,10 +13,10 @@ import 'dart:typed_data';
 import 'package:bluez/bluez.dart';
 import 'package:dbus/dbus.dart';
 
-import 'package:aurora/services/reticulum/rns_announce.dart';
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/reticulum/rns_packet.dart';
-import 'package:aurora/services/reticulum/rns_transport.dart';
+import 'package:xprs/services/reticulum/rns_announce.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/rns_packet.dart';
+import 'package:xprs/services/reticulum/rns_transport.dart';
 
 const int _company = 0xFFFF;
 const int _marker = 0x3E;

@@ -24,7 +24,7 @@ face on top of them.
 
 ## 1. The one difference from BitTorrent
 
-| BitTorrent | Aurora torrents |
+| BitTorrent | XPRS torrents |
 |---|---|
 | Info hash = SHA-1 of the metadata | **Folder id = an npub** (secp256k1 public key) |
 | Changing a file changes the info hash → a new torrent | The npub **never changes**; the contents change under it |
@@ -582,7 +582,7 @@ Covered by `test/folder_listing_sync_test.dart` and `test/folder_meta_test.dart`
 ## 13. The download library: real files, organized
 
 Downloaded torrents are **real files on disk** under a **download folder** the
-user picks (default `<external storage>/Aurora/Torrents`), indexed
+user picks (default `<external storage>/XPRS/Torrents`), indexed
 content-addressed and served straight from those files — the same
 `DiskFolderSource` that backs owned folders, with **no second copy** in the
 archive. So a download is browsable in a file manager, survives an uninstall, and

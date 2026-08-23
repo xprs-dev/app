@@ -1,4 +1,4 @@
-# Aurora architecture
+# XPRS architecture
 
 This is the governing document. Where another document, a comment or a habit
 disagrees with it, this document takes precedence.

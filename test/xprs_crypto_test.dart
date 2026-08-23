@@ -5,8 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hex/hex.dart';
 import 'package:crypto/crypto.dart';
 
-import 'package:aurora/util/xprs_crypto.dart';
-import 'package:aurora/util/nostr_crypto.dart';
+import 'package:xprs/util/xprs_crypto.dart';
+import 'package:xprs/util/nostr_crypto.dart';
 
 Uint8List _digest(String s) =>
     Uint8List.fromList(sha256.convert(utf8.encode(s)).bytes);

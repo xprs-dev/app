@@ -11,11 +11,11 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:aurora/services/reticulum/rns_announce.dart';
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/reticulum/rns_packet.dart';
-import 'package:aurora/services/reticulum/rns_tcp_server_interface.dart';
-import 'package:aurora/services/reticulum/rns_transport.dart';
+import 'package:xprs/services/reticulum/rns_announce.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/rns_packet.dart';
+import 'package:xprs/services/reticulum/rns_tcp_server_interface.dart';
+import 'package:xprs/services/reticulum/rns_transport.dart';
 
 Future<void> main(List<String> args) async {
   final port = args.isNotEmpty ? int.parse(args[0]) : 4242;

@@ -116,7 +116,7 @@ class PreferencesService {
   bool get bleDebug => _prefs.getBool('ble.debug') ?? false;
   set bleDebug(bool v) => _prefs.setBool('ble.debug', v);
 
-  // Auto-pair: when two Aurora devices discover each other, automatically open a
+  // Auto-pair: when two XPRS devices discover each other, automatically open a
   // GATT link (no manual pairing) for larger point-to-point transfers (e.g.
   // binary files / RNS resources). The link is transient — it idles out so the
   // connectionless broadcast (APRS, RNS announces) resumes. On by default.

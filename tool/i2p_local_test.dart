@@ -5,10 +5,10 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/i2p/i2p_i2np.dart';
-import 'package:aurora/services/i2p/i2p_ntcp2.dart';
-import 'package:aurora/services/i2p/i2p_router.dart';
-import 'package:aurora/services/i2p/i2p_structures.dart';
+import 'package:xprs/services/i2p/i2p_i2np.dart';
+import 'package:xprs/services/i2p/i2p_ntcp2.dart';
+import 'package:xprs/services/i2p/i2p_router.dart';
+import 'package:xprs/services/i2p/i2p_structures.dart';
 
 Future<void> main(List<String> args) async {
   final path = args.isNotEmpty ? args[0] : '/tmp/i2pd-data/router.info';

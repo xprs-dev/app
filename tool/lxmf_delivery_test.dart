@@ -8,14 +8,14 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/reticulum/rns_announce.dart';
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/reticulum/rns_packet.dart';
-import 'package:aurora/services/reticulum/rns_tcp_interface.dart';
-import 'package:aurora/services/reticulum/rns_transport.dart';
-import 'package:aurora/services/reticulum/lxmf/lxmf.dart';
-import 'package:aurora/services/reticulum/lxmf/lxmf_message.dart';
-import 'package:aurora/services/reticulum/lxmf/lxmf_router.dart';
+import 'package:xprs/services/reticulum/rns_announce.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/rns_packet.dart';
+import 'package:xprs/services/reticulum/rns_tcp_interface.dart';
+import 'package:xprs/services/reticulum/rns_transport.dart';
+import 'package:xprs/services/reticulum/lxmf/lxmf.dart';
+import 'package:xprs/services/reticulum/lxmf/lxmf_message.dart';
+import 'package:xprs/services/reticulum/lxmf/lxmf_router.dart';
 
 String _hx(List<int> b) => b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
 const _rnsd = '/home/brito/.platformio/penv/bin/rnsd';

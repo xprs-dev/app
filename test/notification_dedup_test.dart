@@ -8,8 +8,8 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:aurora/services/announced_tags_store.dart';
-import 'package:aurora/services/notification_service.dart';
+import 'package:xprs/services/announced_tags_store.dart';
+import 'package:xprs/services/notification_service.dart';
 
 void main() {
   setUp(() {

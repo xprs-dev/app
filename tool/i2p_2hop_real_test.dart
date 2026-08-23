@@ -3,7 +3,7 @@
 // and look it back up — confirming both hops accepted the build (multi-record
 // build + reply de-layering) and the lease (gateway = hop1) is retrievable.
 //   dart run tool/i2p_2hop_real_test.dart
-import 'package:aurora/services/i2p/i2p_node.dart';
+import 'package:xprs/services/i2p/i2p_node.dart';
 
 Future<void> main() async {
   final n = I2pNode(netId: 2, log: (m) => print(m));

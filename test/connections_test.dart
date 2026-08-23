@@ -3,9 +3,9 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:aurora/connections/connections.dart';
-import 'package:aurora/connections/hal/connection_functionalities.dart';
-import 'package:aurora/wapp/functionality_registry.dart';
+import 'package:xprs/connections/connections.dart';
+import 'package:xprs/connections/hal/connection_functionalities.dart';
+import 'package:xprs/wapp/functionality_registry.dart';
 
 void main() {
   group('ConnectionCapabilities', () {

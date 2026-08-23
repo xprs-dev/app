@@ -13,7 +13,7 @@
 
 import 'dart:typed_data';
 
-import 'package:aurora/connections/bluetooth/ble_rns_radio.dart';
+import 'package:xprs/connections/bluetooth/ble_rns_radio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reticulum/reticulum.dart' show RnsCrypto, RnsDestination;
 

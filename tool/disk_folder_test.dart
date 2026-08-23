@@ -7,9 +7,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
-import 'package:aurora/services/files/composite_file_source.dart';
-import 'package:aurora/services/files/file_transfer.dart' show EmptyFileSource;
-import 'package:aurora/services/folders/disk_folder.dart';
+import 'package:xprs/services/files/composite_file_source.dart';
+import 'package:xprs/services/files/file_transfer.dart' show EmptyFileSource;
+import 'package:xprs/services/folders/disk_folder.dart';
 
 int _pass = 0, _fail = 0;
 void check(String name, bool ok) {

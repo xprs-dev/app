@@ -20,7 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 // Compile-time proof that both platform implementations carry the API. If
 // either drops a symbol, this file stops compiling.
-import 'package:aurora/platform/platform.dart'
+import 'package:xprs/platform/platform.dart'
     show hasImplicitView, signalDartReady;
 
 void main() {
@@ -88,7 +88,7 @@ void main() {
 
   test('readiness is reset when a new headless engine is created', () {
     final app = File(
-      'android/app/src/main/kotlin/com/xprs/app/AuroraApplication.kt',
+      'android/app/src/main/kotlin/com/xprs/app/XprsApplication.kt',
     ).readAsStringSync();
     expect(app, contains('dartReady = false'),
         reason: 'a stale true from a previous engine would wave the dead one '

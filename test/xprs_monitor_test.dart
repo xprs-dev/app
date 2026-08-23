@@ -7,8 +7,8 @@
 
 import 'dart:convert';
 
-import 'package:aurora/services/xprs/xprs_monitor.dart';
-import 'package:aurora/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/xprs/xprs_monitor.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 XprsPacket p(String wire) => XprsPacket.parse(wire)!;

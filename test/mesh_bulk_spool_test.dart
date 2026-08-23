@@ -6,10 +6,10 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/mesh/mesh_bulk_spool.dart';
-import 'package:aurora/services/mesh/mesh_session.dart';
-import 'package:aurora/services/mesh/mesh_store.dart';
-import 'package:aurora/util/media_archive.dart';
+import 'package:xprs/services/mesh/mesh_bulk_spool.dart';
+import 'package:xprs/services/mesh/mesh_session.dart';
+import 'package:xprs/services/mesh/mesh_store.dart';
+import 'package:xprs/util/media_archive.dart';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';

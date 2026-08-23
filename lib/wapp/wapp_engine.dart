@@ -1432,7 +1432,7 @@ class WappEngine {
       results: [ValueTy.i32],
     );
     // Routine LAN Blossom scan (driven by the Files wapp on a timer): probe the
-    // local network for Aurora Blossom servers and refresh the cached directory.
+    // local network for XPRS Blossom servers and refresh the cached directory.
     // Media resolution then queries those KNOWN servers for a hash without
     // re-scanning. Returns the current reachable-server count; writes their
     // base URLs as a JSON array to [out]. Fire-and-forget scan (re-entrant-safe).
@@ -1989,7 +1989,7 @@ class WappEngine {
           ..autoUncompress = false;
         client.getUrl(uri).then((req) {
           req.headers.set('Icy-MetaData', '1');
-          req.headers.set('User-Agent', 'Aurora/1.0');
+          req.headers.set('User-Agent', 'XPRS/1.0');
           return req.close();
         }).then((resp) {
           final mi = resp.headers.value('icy-metaint');

@@ -1,5 +1,5 @@
 /*
- * I2pService — Aurora-facing singleton that owns the I2P node, which runs in a
+ * I2pService — XPRS-facing singleton that owns the I2P node, which runs in a
  * dedicated background ISOLATE (I2pWorker) so its crypto/network never starves
  * the UI isolate. It serves content out of the shared MediaArchive by sha256
  * (bridged from the worker), keeps a callsign -> I2P destination registry (from

@@ -11,17 +11,17 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 
-import 'package:aurora/profile/profile_storage_io.dart';
-import 'package:aurora/services/files/composite_file_source.dart';
-import 'package:aurora/services/files/file_node.dart';
-import 'package:aurora/services/files/file_transfer.dart';
-import 'package:aurora/services/files/media_file_source.dart';
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/reticulum/rns_packet.dart';
-import 'package:aurora/services/social/host_retention_policy.dart';
-import 'package:aurora/services/social/retention_tier.dart';
-import 'package:aurora/util/media_archive.dart';
-import 'package:aurora/util/nostr_crypto.dart';
+import 'package:xprs/profile/profile_storage_io.dart';
+import 'package:xprs/services/files/composite_file_source.dart';
+import 'package:xprs/services/files/file_node.dart';
+import 'package:xprs/services/files/file_transfer.dart';
+import 'package:xprs/services/files/media_file_source.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/rns_packet.dart';
+import 'package:xprs/services/social/host_retention_policy.dart';
+import 'package:xprs/services/social/retention_tier.dart';
+import 'package:xprs/util/media_archive.dart';
+import 'package:xprs/util/nostr_crypto.dart';
 
 String _hex(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();

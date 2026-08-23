@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:aurora/services/i2p/i2p_structures.dart';
+import 'package:xprs/services/i2p/i2p_structures.dart';
 String hx(List<int> b)=>b.map((x)=>x.toRadixString(16).padLeft(2,'0')).join();
 void main(List<String> a) {
   final ri = parseRouterInfo(File(a[0]).readAsBytesSync())!;

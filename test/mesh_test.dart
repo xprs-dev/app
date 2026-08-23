@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aurora/services/mesh/mesh_beacon.dart';
-import 'package:aurora/services/mesh/mesh_table.dart';
+import 'package:xprs/services/mesh/mesh_beacon.dart';
+import 'package:xprs/services/mesh/mesh_table.dart';
 
 void main() {
   group('MeshBeacon codec', () {

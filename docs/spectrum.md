@@ -593,7 +593,7 @@ rooted device and, on recent Qualcomm parts, driver patches that override servic
 capabilities and bypass firmware filters. Work continues on several chipsets, but
 none of it is something an application can rely on.
 
-Aurora is primarily an Android application. A bearer that requires root is not a
+XPRS is primarily an Android application. A bearer that requires root is not a
 bearer, it is a laboratory.
 
 ### 9.3 The plan

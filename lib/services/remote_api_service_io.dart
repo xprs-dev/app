@@ -1,5 +1,5 @@
 /*
- * Native (dart:io) implementation of the Aurora remote-control HTTP API.
+ * Native (dart:io) implementation of the XPRS remote-control HTTP API.
  * See remote_api_service.dart for the endpoint contract. Modelled on
  * xprs's LogApiService: binds InternetAddress.anyIPv4:<port>, dispatches
  * the /api/ paths, CORS-open, JSON in/out.
@@ -477,7 +477,7 @@ class RemoteApiService {
         // Announce our callsign so peers/repeaters can show a human name (the
         // announce app_data is plaintext; this is a public presence beacon).
         final cs = (ProfileService.instance.activeProfile?.callsign ?? '').trim();
-        final name = cs.isNotEmpty ? cs : 'aurora';
+        final name = cs.isNotEmpty ? cs : 'xprs';
         // Serve content we already hold (received media, imports) over RNS.
         final arch = _mediaArchive();
         if (arch != null) {
@@ -1205,8 +1205,8 @@ class RemoteApiService {
       mesh = {'error': '$e'};
     }
     return {
-      'app': 'aurora',
-      'build': kAuroraBuildTag,
+      'app': 'xprs',
+      'build': kXprsBuildTag,
       // Wedge forensics: the Dart VM service URI (with its auth token) is the
       // only way to pull live isolate stacks/heaps from a stuck app, and it is
       // useless if you can't find it — it scrolls out of the log ring within

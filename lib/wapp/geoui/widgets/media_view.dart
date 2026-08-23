@@ -1,4 +1,4 @@
-/* Aurora · GeoUI media widgets (XPRS.md section 16 media references)
+/* XPRS · GeoUI media widgets (XPRS.md section 16 media references)
  *
  * Reusable, wapp-agnostic rendering for `file:<sha256>.<ext>` tokens:
  *

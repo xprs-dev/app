@@ -2,7 +2,7 @@
 // announces relayer-less, so the scene groups them behind the direct node of
 // the tcp connection they arrived on. These invariants keep the overview at
 // "self + one orb per uplink + true local peers" no matter how big the flood.
-import 'package:aurora/wapp/wapp_graph_scene.dart';
+import 'package:xprs/wapp/wapp_graph_scene.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 RnsGraphNode node(

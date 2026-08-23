@@ -2,7 +2,7 @@
  * Deep links — Android only (for now).
  *
  * Tapping a https://xprs.dev/circle/<key> link (or the xprs://circle/<key>
- * fallback) opens Aurora straight on the circles wapp's "apply to join" flow.
+ * fallback) opens XPRS straight on the circles wapp's "apply to join" flow.
  * MainActivity captures the launch URI and pushes later ones over the
  * `com.xprs.app/links` method channel; we resolve the circles wapp and
  * push its WappPage with an `apply_url` initial command carrying the full link.

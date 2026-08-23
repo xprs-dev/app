@@ -10,10 +10,10 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 
-import 'package:aurora/profile/profile_crypto.dart';
-import 'package:aurora/profile/profile_db.dart';
-import 'package:aurora/profile/profile_storage_encrypted.dart';
-import 'package:aurora/profile/secure_file.dart';
+import 'package:xprs/profile/profile_crypto.dart';
+import 'package:xprs/profile/profile_db.dart';
+import 'package:xprs/profile/profile_storage_encrypted.dart';
+import 'package:xprs/profile/secure_file.dart';
 
 const _nsec =
     'nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5';

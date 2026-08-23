@@ -10,7 +10,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:aurora/services/social/email_resolve_service.dart';
+import 'package:xprs/services/social/email_resolve_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<bool> _online() async {

@@ -2,7 +2,7 @@
  * MeshTransferScheduler gate-state tests — the one mesh component that had
  * none, and where every silent stall of 2026-07-03 lived.
  */
-import 'package:aurora/services/mesh/mesh_transfer_scheduler.dart';
+import 'package:xprs/services/mesh/mesh_transfer_scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

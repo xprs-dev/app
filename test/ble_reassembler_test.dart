@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aurora/connections/bluetooth/ble_reassembler.dart';
+import 'package:xprs/connections/bluetooth/ble_reassembler.dart';
 
 Uint8List b(List<int> x) => Uint8List.fromList(x);
 

@@ -18,9 +18,9 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:aurora/services/xprs/xprs_id.dart';
-import 'package:aurora/services/xprs/xprs_packet.dart';
-import 'package:aurora/services/xprs/xprs_vocab.dart';
+import 'package:xprs/services/xprs/xprs_id.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/xprs/xprs_vocab.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 List<Map<String, dynamic>> _corpus() {

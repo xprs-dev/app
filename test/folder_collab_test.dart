@@ -7,10 +7,10 @@
 //   flutter test test/folder_collab_test.dart
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:aurora/services/folders/folder_event.dart';
-import 'package:aurora/services/folders/folder_state.dart';
-import 'package:aurora/util/nostr_crypto.dart';
-import 'package:aurora/util/nostr_event.dart';
+import 'package:xprs/services/folders/folder_event.dart';
+import 'package:xprs/services/folders/folder_state.dart';
+import 'package:xprs/util/nostr_crypto.dart';
+import 'package:xprs/util/nostr_event.dart';
 
 void main() {
   String sha(String c) => c * 64; // 64-hex content hash

@@ -6,10 +6,10 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/i2p/i2p_crypto.dart';
-import 'package:aurora/services/i2p/i2p_node.dart';
-import 'package:aurora/services/i2p/i2p_structures.dart';
-import 'package:aurora/services/i2p/i2p_worker.dart';
+import 'package:xprs/services/i2p/i2p_crypto.dart';
+import 'package:xprs/services/i2p/i2p_node.dart';
+import 'package:xprs/services/i2p/i2p_structures.dart';
+import 'package:xprs/services/i2p/i2p_worker.dart';
 
 String hx(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();

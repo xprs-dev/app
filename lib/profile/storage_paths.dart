@@ -16,11 +16,14 @@
  * resolves through the active ProfileService profile, so switching
  * profiles switches which `wapps/` and `data/` folders the launcher sees.
  *
- * IMPORTANT: aurora stores under ~/.local/share/aurora — NOT
- * ~/.local/share/xprs. The XPRS dir belongs to the separate, real
- * XPRS app and holds the user's real data; aurora must never read,
- * write, or delete there. (The old iwi fork wrongly pointed here at
- * xprs's dir; that is fixed.)
+ * IMPORTANT: the on-disk root is the LEGACY name ~/.local/share/aurora —
+ * NOT ~/.local/share/xprs. That other dir belongs to the separate, older
+ * XPRS app and holds a user's real data; this app must never read, write,
+ * or delete there. (The old iwi fork wrongly pointed here at that dir;
+ * that is fixed.) The product is called XPRS everywhere a person reads;
+ * the directory keeps its old name because installed devices already
+ * store their profiles under it, and moving it is a migration with that
+ * collision to resolve first.
  */
 
 import 'package:path_provider/path_provider.dart';

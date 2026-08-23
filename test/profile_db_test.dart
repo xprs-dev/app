@@ -15,8 +15,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 import 'package:sqlite3/sqlite3.dart';
 
-import 'package:aurora/profile/profile_crypto.dart';
-import 'package:aurora/profile/profile_db.dart';
+import 'package:xprs/profile/profile_crypto.dart';
+import 'package:xprs/profile/profile_db.dart';
 
 const _nsec =
     'nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5';

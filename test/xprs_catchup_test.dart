@@ -13,12 +13,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:aurora/services/preferences_service.dart';
-import 'package:aurora/services/xprs/xprs_catchup.dart';
-import 'package:aurora/services/xprs/xprs_publisher.dart';
-import 'package:aurora/services/xprs/xprs_monitor.dart';
-import 'package:aurora/services/xprs/xprs_id.dart';
-import 'package:aurora/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/preferences_service.dart';
+import 'package:xprs/services/xprs/xprs_catchup.dart';
+import 'package:xprs/services/xprs/xprs_publisher.dart';
+import 'package:xprs/services/xprs/xprs_monitor.dart';
+import 'package:xprs/services/xprs/xprs_id.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
 
 /// A short-range bearer that is up. Without one the poller correctly refuses
 /// to ask anything at all, and every test below would pass for the wrong

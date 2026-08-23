@@ -1,5 +1,5 @@
 /*
- * Swarm layer: BitTorrent-style collective download over the Aurora I2P node.
+ * Swarm layer: BitTorrent-style collective download over the XPRS I2P node.
  *
  * Motivation: a single I2NP Data message is capped at 65535 bytes, so any file
  * over ~64 KiB cannot be moved as one datagram — it must be split into pieces.
@@ -11,7 +11,7 @@
  * We adopt the I2P BitTorrent design decisions that matter (peers identified by
  * their 32-byte destination hash — which the provider DHT already uses — and
  * PEX-style provider sharing) but ride on our own datagram transport rather than
- * the I2P streaming library, since only Aurora devices ever share Aurora content
+ * the I2P streaming library, since only XPRS devices ever share XPRS content
  * (no need to interoperate with the global I2P torrent swarm).
  *
  * Manifest (deterministic from the file, content-addressed by the file's own

@@ -87,7 +87,7 @@ Future<void> _boot() async {
     flutterDebugPrint(message, wrapWidth: wrapWidth);
   };
   // Proof-of-binary marker — verify via /api/status "build" or /api/log.
-  LogService.instance.add('Aurora started — build $kAuroraBuildTag');
+  LogService.instance.add('XPRS started — build $kXprsBuildTag');
 
   // Wedge forensics. Two permanent probes, both cheap:
   //  1. The Dart VM service URI (debug/profile builds) — when the app freezes,
@@ -428,7 +428,7 @@ Future<void> _boot() async {
   // circles "apply to join" flow. Needs the navigator live (after runApp).
   unawaited(DeepLinkService.instance.start());
 
-  // Check GitHub for a newer XPRS Aurora release and, if found, surface one
+  // Check GitHub for a newer XPRS XPRS release and, if found, surface one
   // notification (Settings → Updates does the install). Best-effort, off web.
   unawaited(UpdateService.instance.backgroundCheck());
 }

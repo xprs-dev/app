@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aurora/util/time_ago.dart';
-import 'package:aurora/wapp/geoui/widgets/activity_feed.dart' show activityTimeLabel;
+import 'package:xprs/util/time_ago.dart';
+import 'package:xprs/wapp/geoui/widgets/activity_feed.dart' show activityTimeLabel;
 
 void main() {
   final now = DateTime(2026, 7, 12, 12, 0);

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:aurora/util/blurhash.dart';
-import 'package:aurora/util/nostr_imeta.dart';
+import 'package:xprs/util/blurhash.dart';
+import 'package:xprs/util/nostr_imeta.dart';
 
 void main() {
   group('blurhash', () {

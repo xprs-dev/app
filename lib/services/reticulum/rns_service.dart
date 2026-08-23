@@ -120,7 +120,7 @@ import 'rns_tcp_server_interface.dart';
 import 'rns_transport.dart';
 import 'wapp_mailbox.dart';
 
-// Our Reticulum destination namespace is "xprs" (the platform); Aurora is one
+// Our Reticulum destination namespace is "xprs" (the platform); XPRS is one
 // branch of it. All overlay services share it: xprs/chat, xprs/files,
 // xprs/dht, xprs/relay. (LXMF stays the standard lxmf/delivery for
 // interop with Sideband/NomadNet.)
@@ -202,7 +202,7 @@ class RnsService {
   // before a bulk fetch when the peer's best path is BLE. Null = no coordinator
   // (rns_service keeps zero wifi_direct imports).
   Future<bool> Function(String destHex)? onWantFastPath;
-  // Fixed UDP port every Aurora node broadcasts/listens on for LAN auto-peering.
+  // Fixed UDP port every XPRS node broadcasts/listens on for LAN auto-peering.
   static const int _lanDiscoveryPort = 42671;
 
   // Content-addressed file sharing over this node. The serve source is pluggable
@@ -2624,7 +2624,7 @@ class RnsService {
           _onValidatedAnnounce(ann, hops, via);
         };
         // Never let the public-hub announce flood drown out OUR overlay's
-        // announces: register the name_hashes of every Aurora destination so the
+        // announces: register the name_hashes of every XPRS destination so the
         // transport's per-second verify budget always processes them. Without
         // this, peers fail to discover each other (no media fetch / FEED backfill)
         // on busy hubs. The name_hash is constant per app+aspects.
@@ -3160,7 +3160,7 @@ class RnsService {
                   storePath: feedPath,
                   persistPath: '${base}nostr_relays.json',
                   selfPubHex: selfPubHex,
-                  // The sqlite3 loader override is PER-ISOLATE. Aurora bundles
+                  // The sqlite3 loader override is PER-ISOLATE. XPRS bundles
                   // SQLCipher (encrypted profiles), so without this the engine
                   // isolate looked for a libsqlite3.so the app does not ship,
                   // threw, and the entire NOSTR pipeline — internet relays
@@ -3522,7 +3522,7 @@ class RnsService {
         }
       }
 
-      // LAN auto-peering: a UDP broadcast interface so co-located Aurora
+      // LAN auto-peering: a UDP broadcast interface so co-located XPRS
       // devices (same Wi-Fi/LAN) discover each other and exchange announces +
       // links DIRECTLY — without depending on the public hub to cross-forward
       // between its clients (which it doesn't). This is what makes media fetch
@@ -4121,8 +4121,8 @@ class RnsService {
       } catch (_) {}
       return;
     }
-    // Learn the peer as a DHT contact from ANY of its Aurora-app announces (dht
-    // OR files; the chat announce below adds it too). Every Aurora node runs the
+    // Learn the peer as a DHT contact from ANY of its XPRS-app announces (dht
+    // OR files; the chat announce below adds it too). Every XPRS node runs the
     // DHT, and a contact's DHT id is derived from its IDENTITY regardless of
     // which aspect we heard — so keying overlay membership off ONLY the dedicated
     // "xprs/dht" announce was fragile: the public hubs rate-limit announce
@@ -4130,7 +4130,7 @@ class RnsService {
     // node's files/chat announces get through (observed live: a peer's chat
     // announce arrived but its dht announce never did, so it never joined the
     // overlay and folder discovery failed). Matching any "xprs" dest is still
-    // a cryptographic identity↔name proof, so non-Aurora identities
+    // a cryptographic identity↔name proof, so non-XPRS identities
     // (Sideband/NomadNet/rnsd) — which never announce a "xprs" dest — are
     // still never added; lookups don't waste rounds on nodes that can't answer.
     final dhtHash = RnsDestination.hash(ann.identity, _app, _aspectsDht);
@@ -4177,7 +4177,7 @@ class RnsService {
     // XOR-closest provider nodes are reference nodes that ignore our overlay).
     final chatHash = RnsDestination.hash(ann.identity, _app, _aspects);
     if (RnsCrypto.constantTimeEquals(ann.destHash, chatHash)) {
-      // A chat announce is also proof of an Aurora node → DHT overlay member
+      // A chat announce is also proof of an XPRS node → DHT overlay member
       // (its dedicated dht announce may have been dropped in the hubs' announce
       // budget). This is the announce most reliably propagated, so it is the key
       // one for overlay convergence.
@@ -5747,7 +5747,7 @@ class RnsService {
     if (t.isEmpty || pub == null || priv == null) return null;
     final tags = <List<String>>[];
     // Reticulum-native marker (§Nomadnet): a single-letter indexed tag so a
-    // relay REQ can filter to ONLY posts an Aurora device published over the
+    // relay REQ can filter to ONLY posts an XPRS device published over the
     // mesh. Internet posts fetched from public wss relays never carry it, so
     // the Nomadnet feed stays strictly free of the internet firehose regardless
     // of whether the answering peer serves as a host or a self-scoped leaf.
@@ -6015,7 +6015,7 @@ class RnsService {
     // hold internet-mirrored posts, and a host answers the WHOLE store, so an
     // author scope alone can't keep the internet out. Every leg (local, host,
     // self-scoped leaf) honours the tag in its NIP-01 filter, so the result is
-    // strictly Aurora-over-Reticulum posts: our own + peers' own native notes.
+    // strictly XPRS-over-Reticulum posts: our own + peers' own native notes.
     final byId = await _fanOutQuery(
       NostrFilter(
         kinds: const [1],
@@ -9237,12 +9237,12 @@ class RnsService {
     try {
       if (Platform.isAndroid) {
         for (final r in const ['/storage/emulated/0', '/sdcard']) {
-          if (Directory(r).existsSync()) return '$r/Aurora/Torrents';
+          if (Directory(r).existsSync()) return '$r/XPRS/Torrents';
         }
         return null;
       }
       final home = Platform.environment['HOME'];
-      if (home != null && home.isNotEmpty) return '$home/Aurora/Torrents';
+      if (home != null && home.isNotEmpty) return '$home/XPRS/Torrents';
     } catch (_) {}
     return null;
   }

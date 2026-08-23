@@ -11,7 +11,7 @@
  */
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reticulum/reticulum.dart';
-import 'package:aurora/services/nostr/nostr_signer.dart';
+import 'package:xprs/services/nostr/nostr_signer.dart';
 
 const _privHex =
     '00b1c3d5e7f9a1b3c5d7e9fb0d1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b';

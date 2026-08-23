@@ -628,7 +628,7 @@ extension _WappEditor on _WappPageState {
       NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
         title: 'Editor not available',
-        body: 'The built-in wapp editor failed to install. Restart aurora.',
+        body: 'The built-in wapp editor failed to install. Restart XPRS.',
         source: 'host:launcher',
       ));
       return;

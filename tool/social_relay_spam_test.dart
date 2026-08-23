@@ -4,11 +4,11 @@
 //   dart run tool/social_relay_spam_test.dart
 import 'dart:io';
 
-import 'package:aurora/services/social/file_meta.dart';
-import 'package:aurora/services/social/relay_event_store.dart' show kKindFileMetadata;
-import 'package:aurora/services/social/spam.dart';
-import 'package:aurora/util/nostr_crypto.dart';
-import 'package:aurora/util/nostr_event.dart';
+import 'package:xprs/services/social/file_meta.dart';
+import 'package:xprs/services/social/relay_event_store.dart' show kKindFileMetadata;
+import 'package:xprs/services/social/spam.dart';
+import 'package:xprs/util/nostr_crypto.dart';
+import 'package:xprs/util/nostr_event.dart';
 
 int _pass = 0, _fail = 0;
 void check(String name, bool ok) {

@@ -5,11 +5,11 @@
 //   dart run tool/reticulum_ble_sim_test.dart
 import 'dart:typed_data';
 
-import 'package:aurora/services/reticulum/rns_announce.dart';
-import 'package:aurora/services/reticulum/rns_ble_interface.dart';
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/reticulum/rns_packet.dart';
-import 'package:aurora/services/reticulum/rns_transport.dart';
+import 'package:xprs/services/reticulum/rns_announce.dart';
+import 'package:xprs/services/reticulum/rns_ble_interface.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/rns_packet.dart';
+import 'package:xprs/services/reticulum/rns_transport.dart';
 
 /// A shared broadcast medium: every aired frame is delivered to all OTHER radios
 /// (as a real BLE advertisement is heard by every scanner in range).

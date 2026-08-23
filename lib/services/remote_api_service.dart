@@ -1,5 +1,5 @@
 /*
- * Remote-control HTTP API for the Aurora app.
+ * Remote-control HTTP API for the XPRS app.
  *
  * Opens a small JSON HTTP server (default port 3456 — the standard xprs
  * device-API port) so the app can be driven and inspected remotely:

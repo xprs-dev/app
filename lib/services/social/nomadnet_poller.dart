@@ -247,7 +247,7 @@ Map<String, dynamic>? _reactionOf(NostrEvent ev) {
 /// `mid` so the later poll dedups against it instead of duplicating.
 Map<String, dynamic> nomadnetRow(NostrEvent ev) {
   final pub = ev.pubkey.toLowerCase();
-  // Reply parent: aurora uses a 'parent' tag; standard NOSTR uses 'e'.
+  // Reply parent: XPRS uses a 'parent' tag; standard NOSTR uses 'e'.
   var parent = '';
   for (final t in ev.tags) {
     if (t.length >= 2 && t[0] == 'parent') {

@@ -88,7 +88,7 @@
         android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="XPRS"
-        android:name=".AuroraApplication"
+        android:name=".XprsApplication"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

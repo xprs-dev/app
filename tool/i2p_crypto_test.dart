@@ -3,7 +3,7 @@
 // correct, not merely runnable.   dart run tool/i2p_crypto_test.dart
 import 'dart:typed_data';
 
-import 'package:aurora/services/i2p/i2p_crypto.dart';
+import 'package:xprs/services/i2p/i2p_crypto.dart';
 
 Uint8List hex(String s) {
   final out = Uint8List(s.length ~/ 2);

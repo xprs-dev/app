@@ -6,10 +6,10 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/mesh/mesh_beacon.dart';
-import 'package:aurora/services/mesh/mesh_bloom.dart';
-import 'package:aurora/services/mesh/mesh_store.dart';
-import 'package:aurora/services/mesh/mesh_table.dart';
+import 'package:xprs/services/mesh/mesh_beacon.dart';
+import 'package:xprs/services/mesh/mesh_bloom.dart';
+import 'package:xprs/services/mesh/mesh_store.dart';
+import 'package:xprs/services/mesh/mesh_table.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 

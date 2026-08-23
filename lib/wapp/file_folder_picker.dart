@@ -331,7 +331,7 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                  'Aurora needs "All files access" to browse your storage.',
+                  'XPRS needs "All files access" to browse your storage.',
                   textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton(

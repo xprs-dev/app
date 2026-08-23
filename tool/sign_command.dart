@@ -25,8 +25,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/util/nostr_crypto.dart';
-import 'package:aurora/util/xprs_crypto.dart';
+import 'package:xprs/util/nostr_crypto.dart';
+import 'package:xprs/util/xprs_crypto.dart';
 import 'package:hex/hex.dart';
 
 String _arg(List<String> a, String n, {String? or}) {

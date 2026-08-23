@@ -1,6 +1,6 @@
 part of 'launcher.dart';
 
-/// First-run Android intro: explains and REQUESTS every permission Aurora
+/// First-run Android intro: explains and REQUESTS every permission XPRS
 /// needs, showing each one's live granted/missing state. The user cannot
 /// continue to profile creation until all required permissions are granted —
 /// so nothing surfaces a late prompt after a profile exists. Skipped on

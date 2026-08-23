@@ -6,7 +6,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/i2p/i2p_tunnel_data.dart';
+import 'package:xprs/services/i2p/i2p_tunnel_data.dart';
 
 var _pass = 0, _fail = 0;
 void ok(bool c, String m) {

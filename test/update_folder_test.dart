@@ -7,11 +7,11 @@
 //   flutter test test/update_folder_test.dart
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:aurora/services/folders/folder_event.dart';
-import 'package:aurora/services/folders/folder_state.dart';
-import 'package:aurora/services/update_models.dart';
-import 'package:aurora/util/nostr_crypto.dart';
-import 'package:aurora/util/nostr_event.dart';
+import 'package:xprs/services/folders/folder_event.dart';
+import 'package:xprs/services/folders/folder_state.dart';
+import 'package:xprs/services/update_models.dart';
+import 'package:xprs/util/nostr_crypto.dart';
+import 'package:xprs/util/nostr_event.dart';
 
 void main() {
   group('versionFromAssetName', () {

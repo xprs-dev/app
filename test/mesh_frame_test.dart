@@ -9,9 +9,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:aurora/services/mesh/mesh_frame.dart';
-import 'package:aurora/services/xprs/xprs_id.dart';
-import 'package:aurora/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/mesh/mesh_frame.dart';
+import 'package:xprs/services/xprs/xprs_id.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Uint8List bytes(String s) => Uint8List.fromList(utf8.encode(s));

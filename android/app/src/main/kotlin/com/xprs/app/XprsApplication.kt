@@ -16,13 +16,13 @@ import io.flutter.plugin.common.MethodChannel
  * app, [MainActivity] reuses this same cached engine instead of spawning a second
  * isolate (which would double the BLE stack and memory).
  */
-class AuroraApplication : Application() {
+class XprsApplication : Application() {
     companion object {
         const val ENGINE_ID = "aurora_engine"
-        private const val TAG = "AuroraApplication"
+        private const val TAG = "XprsApplication"
 
         @Volatile
-        var instance: AuroraApplication? = null
+        var instance: XprsApplication? = null
 
         /**
          * The bg_service channel bound to whichever engine is live (headless or

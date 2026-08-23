@@ -1,6 +1,6 @@
 # Performance
 
-How Aurora burns CPU and memory, what we fixed, how to measure it, and what is
+How XPRS burns CPU and memory, what we fixed, how to measure it, and what is
 still on the table. Written after a day that started with the app frozen solid
 for hours on a phone and ended with it idling at 8% of a core.
 
@@ -12,7 +12,7 @@ nonsense** — see [Measurement discipline](#measurement-discipline).
 
 ## 1. The architecture, in CPU terms
 
-Aurora runs a full Reticulum node, a NOSTR relay/engine, a BLE mesh and a WASM
+XPRS runs a full Reticulum node, a NOSTR relay/engine, a BLE mesh and a WASM
 wapp runtime inside a Flutter app. Almost all of that used to sit on the **UI
 isolate**. It doesn't any more:
 
@@ -653,7 +653,7 @@ Dart timers or on the Activity being alive. The stack that already solves this:
   start or stop the service directly.
 - **Headless from boot.** `BootReceiver` (gated on the `flutter.autoStartOnBoot`
   pref, kept in sync by `syncBootAutostart()`) → `BgService.startFromBoot` →
-  `AuroraApplication.ensureFlutterEngine()` runs Dart `main()` with **no Activity**.
+  `XprsApplication.ensureFlutterEngine()` runs Dart `main()` with **no Activity**.
   One cached engine (`ENGINE_ID = "aurora_engine"`) is reused by the Activity when
   the UI opens (`MainActivity.provideFlutterEngine`, `shouldDestroyEngineWithHost() =
   false`) so opening the app never spawns a second isolate / second BLE stack.

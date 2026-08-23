@@ -36,7 +36,7 @@ class BgService : Service() {
             try {
                 // Prefer the shared channel (set whether the engine is headless
                 // from boot or owned by the Activity); fall back to the Activity's.
-                (AuroraApplication.bgChannel ?: MainActivity.channel)
+                (XprsApplication.bgChannel ?: MainActivity.channel)
                     ?.invokeMethod("onTick", null)
             } catch (_: Throwable) {
             }
@@ -52,7 +52,7 @@ class BgService : Service() {
 
         // There may be no Activity (boot/system restart), so make sure a cached
         // Flutter engine exists and has the native BLE/WiFi bridges attached.
-        AuroraApplication.instance?.ensureFlutterEngine()
+        XprsApplication.instance?.ensureFlutterEngine()
         if (wakeLock == null) {
             val pm = getSystemService(POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "aurora:bg")

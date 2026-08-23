@@ -11,11 +11,11 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/reticulum/rns_link.dart';
-import 'package:aurora/services/reticulum/rns_packet.dart';
-import 'package:aurora/services/reticulum/rns_resource.dart';
-import 'package:aurora/services/reticulum/rns_resource_receiver.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/rns_link.dart';
+import 'package:xprs/services/reticulum/rns_packet.dart';
+import 'package:xprs/services/reticulum/rns_resource.dart';
+import 'package:xprs/services/reticulum/rns_resource_receiver.dart';
 
 const _app = 'aurora';
 const _aspects = ['files'];

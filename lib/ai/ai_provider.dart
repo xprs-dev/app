@@ -1,7 +1,7 @@
 /*
  * AiProvider — the abstraction over chat backends.
  *
- * Aurora talks to whatever model the user configured (offline Ollama, online
+ * XPRS talks to whatever model the user configured (offline Ollama, online
  * OpenAI/Anthropic, and — later — an on-device built-in model) through this
  * one interface. Adding a backend means implementing AiProvider and listing
  * it in ai_providers.dart; nothing else in the app needs to know the wire

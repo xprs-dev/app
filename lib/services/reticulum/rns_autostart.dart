@@ -100,7 +100,7 @@ Future<void> ensureRnsAutostart() async {
     // Announce our callsign so peers/repeaters can show a human name (plaintext
     // presence beacon, same as the manual start path).
     final cs = (ProfileService.instance.activeProfile?.callsign ?? '').trim();
-    final name = cs.isNotEmpty ? cs : 'aurora';
+    final name = cs.isNotEmpty ? cs : 'xprs';
 
     for (final entry in servers) {
       final hp = _parseHostPort(entry);

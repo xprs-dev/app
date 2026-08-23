@@ -35,8 +35,8 @@ import 'package:hex/hex.dart';
 // Run from inside the flutter checkout so these resolve; the whole point is
 // that this uses the SAME implementation the app and the device agree on
 // (common/geogram_xprssig/test_xprssig_host.c cross-checks the C side).
-import 'package:aurora/util/nostr_crypto.dart';
-import 'package:aurora/util/xprs_crypto.dart';
+import 'package:xprs/util/nostr_crypto.dart';
+import 'package:xprs/util/xprs_crypto.dart';
 
 String _arg(List<String> a, String name, {String? fallback}) {
   final i = a.indexOf('--$name');

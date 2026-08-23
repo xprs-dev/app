@@ -1,8 +1,8 @@
 import 'dart:ffi';
 import 'dart:io';
 
-import 'package:aurora/profile/profile_storage_io.dart';
-import 'package:aurora/wapp/geoui/activity_archive.dart';
+import 'package:xprs/profile/profile_storage_io.dart';
+import 'package:xprs/wapp/geoui/activity_archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 

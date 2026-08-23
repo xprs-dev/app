@@ -28,7 +28,7 @@ class _AppDrawer extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      profile?.displayName ?? 'Aurora',
+                      profile?.displayName ?? 'XPRS',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -46,7 +46,7 @@ class _AppDrawer extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.info_outline),
-              title: Text('Aurora $kAppVersion+$kBuildNumber'),
+              title: Text('XPRS $kAppVersion+$kBuildNumber'),
             ),
           ],
         ),

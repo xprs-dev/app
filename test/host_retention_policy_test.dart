@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aurora/services/social/retention_tier.dart';
-import 'package:aurora/services/social/host_retention_policy.dart';
+import 'package:xprs/services/social/retention_tier.dart';
+import 'package:xprs/services/social/host_retention_policy.dart';
 
 void main() {
   const gb = 1 << 30;

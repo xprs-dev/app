@@ -2,7 +2,7 @@
  * FolderRelay — peer-to-peer folder discovery by key, no indexer required.
  *
  * A folder's state is signed NOSTR events. Discovery reuses the SAME mechanism
- * Aurora uses to find files by sha256: every device that holds a folder publishes
+ * XPRS uses to find files by sha256: every device that holds a folder publishes
  * a DHT provider record keyed by the folder's public key; a peer with only that
  * key resolves providers via the DHT and queries them directly for the events.
  * Anyone who browses caches the events locally and auto-seeds, so any device can

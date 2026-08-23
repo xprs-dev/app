@@ -9,11 +9,11 @@
 
 import 'dart:typed_data';
 
-import 'package:aurora/services/xprs/xprs_id.dart';
-import 'package:aurora/services/xprs/xprs_packet.dart';
-import 'package:aurora/services/xprs/xprs_sig.dart';
-import 'package:aurora/services/xprs/xprs_vocab.dart';
-import 'package:aurora/util/nostr_crypto.dart';
+import 'package:xprs/services/xprs/xprs_id.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/xprs/xprs_sig.dart';
+import 'package:xprs/services/xprs/xprs_vocab.dart';
+import 'package:xprs/util/nostr_crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hex/hex.dart';
 

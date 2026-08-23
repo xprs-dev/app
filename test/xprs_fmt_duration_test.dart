@@ -3,7 +3,7 @@
 // stations describe themselves in the same units.
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:aurora/services/xprs/xprs_vocab.dart';
+import 'package:xprs/services/xprs/xprs_vocab.dart';
 
 void main() {
   test('xprsFmtDuration picks the unit the reading deserves', () {

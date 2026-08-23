@@ -3,11 +3,11 @@
 // DatabaseSearchReply. Proves the pure-Dart NTCP2 stack interoperates with the
 // real I2P network.
 //   dart run tool/i2p_ntcp2_test.dart
-import 'package:aurora/services/i2p/i2p_i2np.dart';
-import 'package:aurora/services/i2p/i2p_ntcp2.dart';
-import 'package:aurora/services/i2p/i2p_reseed.dart';
-import 'package:aurora/services/i2p/i2p_router.dart';
-import 'package:aurora/services/i2p/i2p_structures.dart';
+import 'package:xprs/services/i2p/i2p_i2np.dart';
+import 'package:xprs/services/i2p/i2p_ntcp2.dart';
+import 'package:xprs/services/i2p/i2p_reseed.dart';
+import 'package:xprs/services/i2p/i2p_router.dart';
+import 'package:xprs/services/i2p/i2p_structures.dart';
 
 Future<void> main() async {
   print('=== I2P NTCP2 handshake gate ===');

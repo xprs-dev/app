@@ -1,7 +1,7 @@
 # Synced folders (multi-writer) and cross-device sync
 
 A **collab** folder (`FolderShareType.collab`) is a shared folder that *every
-member can write to*, not just the owner. It is the mechanism Aurora uses to
+member can write to*, not just the owner. It is the mechanism XPRS uses to
 keep the same set of files in sync across many people — and across the several
 devices of a single account.
 

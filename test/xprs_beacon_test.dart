@@ -7,8 +7,8 @@
 
 import 'dart:convert';
 
-import 'package:aurora/services/xprs/xprs_packet.dart';
-import 'package:aurora/services/xprs/xprs_vocab.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/xprs/xprs_vocab.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The two advert ceilings measured on real hardware (docs/ble5.md).

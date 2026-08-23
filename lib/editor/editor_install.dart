@@ -3,7 +3,7 @@
  *
  * The editor used to be seeded as a normal grid wapp from the sibling
  * xprs/wapps repo. It is now bundled under assets/editor/app-creator/ and
- * written to its own storage location (editorWappStorage(), at the aurora
+ * written to its own storage location (editorWappStorage(), at the XPRS
  * root, outside any profile's installed `wapps/`) so it never shows in the
  * launcher grid and is reachable only through the per-wapp Edit action.
  *

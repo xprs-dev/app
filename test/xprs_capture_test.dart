@@ -26,7 +26,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:crypto/crypto.dart';
 
-import 'package:aurora/util/xprs_crypto.dart';
+import 'package:xprs/util/xprs_crypto.dart';
 
 void main() {
   // Captured on APRS-IS:

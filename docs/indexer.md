@@ -181,7 +181,7 @@ here, what did I miss".
 
 ---
 
-# The Flutter implementation (Aurora)
+# The Flutter implementation (XPRS)
 
 ## `XprsArchive` — `lib/services/xprs/xprs_archive.dart`
 

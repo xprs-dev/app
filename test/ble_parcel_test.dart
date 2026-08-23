@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aurora/connections/bluetooth/ble_parcel.dart';
+import 'package:xprs/connections/bluetooth/ble_parcel.dart';
 
 // Reassemble the way a receiver does: parcel 0 is the header, the rest data.
 Uint8List? roundTrip(BLEOutgoingMessage msg) {

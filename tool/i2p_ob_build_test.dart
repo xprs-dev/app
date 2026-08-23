@@ -8,10 +8,10 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/i2p/i2p_ntcp2.dart';
-import 'package:aurora/services/i2p/i2p_router.dart';
-import 'package:aurora/services/i2p/i2p_structures.dart';
-import 'package:aurora/services/i2p/i2p_tunnel_build.dart';
+import 'package:xprs/services/i2p/i2p_ntcp2.dart';
+import 'package:xprs/services/i2p/i2p_router.dart';
+import 'package:xprs/services/i2p/i2p_structures.dart';
+import 'package:xprs/services/i2p/i2p_tunnel_build.dart';
 
 Future<void> main() async {
   final ri = parseRouterInfo(await File('/tmp/i2pd-data/router.info').readAsBytes())!;

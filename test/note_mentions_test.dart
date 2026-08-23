@@ -9,7 +9,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reticulum/reticulum.dart' show NostrCrypto;
 
-import 'package:aurora/services/social/note_text.dart';
+import 'package:xprs/services/social/note_text.dart';
 
 void main() {
   final kp = NostrCrypto.generateKeyPair();

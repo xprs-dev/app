@@ -4,11 +4,11 @@
 //   dart run tool/social_relay_role_test.dart
 import 'dart:io';
 
-import 'package:aurora/services/files/capacity_policy.dart';
-import 'package:aurora/services/files/dht/provider_record.dart'
+import 'package:xprs/services/files/capacity_policy.dart';
+import 'package:xprs/services/files/dht/provider_record.dart'
     show kCapHomeFiber, kCapHomeWifi;
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/social/relay_role.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/social/relay_role.dart';
 
 int _pass = 0, _fail = 0;
 void check(String name, bool ok) {

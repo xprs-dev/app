@@ -5,11 +5,11 @@
 //   dart run tool/reticulum_dht_test.dart [nodes]
 import 'dart:typed_data';
 
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/files/dht/dht_core.dart';
-import 'package:aurora/services/files/dht/dht_message.dart';
-import 'package:aurora/services/files/dht/dht_node.dart';
-import 'package:aurora/services/files/dht/provider_record.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/files/dht/dht_core.dart';
+import 'package:xprs/services/files/dht/dht_message.dart';
+import 'package:xprs/services/files/dht/dht_node.dart';
+import 'package:xprs/services/files/dht/provider_record.dart';
 
 void _expect(bool c, String what) {
   if (!c) {

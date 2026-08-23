@@ -7,9 +7,9 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/social/relay_event_store.dart';
-import 'package:aurora/util/nostr_crypto.dart';
-import 'package:aurora/util/nostr_event.dart';
+import 'package:xprs/services/social/relay_event_store.dart';
+import 'package:xprs/util/nostr_crypto.dart';
+import 'package:xprs/util/nostr_event.dart';
 
 import 'sqlite_loader.dart';
 

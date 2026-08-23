@@ -5,9 +5,9 @@
 //   dart run tool/folder_model_test.dart
 import 'dart:io';
 
-import 'package:aurora/services/folders/folder_event.dart';
-import 'package:aurora/services/folders/folder_state.dart';
-import 'package:aurora/util/nostr_crypto.dart';
+import 'package:xprs/services/folders/folder_event.dart';
+import 'package:xprs/services/folders/folder_state.dart';
+import 'package:xprs/util/nostr_crypto.dart';
 
 int _pass = 0, _fail = 0;
 void check(String name, bool ok) {

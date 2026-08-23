@@ -3,8 +3,8 @@
 import 'dart:ffi';
 import 'dart:io';
 
-import 'package:aurora/wapp/geoui/conversation_db.dart';
-import 'package:aurora/wapp/geoui/conversation_store.dart';
+import 'package:xprs/wapp/geoui/conversation_db.dart';
+import 'package:xprs/wapp/geoui/conversation_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 import 'package:sqlite3/sqlite3.dart';

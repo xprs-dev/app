@@ -864,7 +864,7 @@ class BleService {
         }
       } else {
         // Presence beacon ([0x3E, deviceId 1..15, callsign…]): a connectable
-        // Aurora peer. Consider auto-pairing a GATT link for larger transfers.
+        // XPRS peer. Consider auto-pairing a GATT link for larger transfers.
         if (d.length >= 3 && d[0] == kBleMarker && d[1] >= 1 && d[1] <= 15) {
           // Remember this connectable peer so a later queued payload can dial it
           // even though Android won't report it again for a while.
@@ -898,7 +898,7 @@ class BleService {
   }
 
   /// Auto-pair: when we have a large payload waiting (and no link yet), open a
-  /// GATT link to the most recently discovered Aurora peer with NO manual
+  /// GATT link to the most recently discovered XPRS peer with NO manual
   /// pairing. The SENDER (the side with data) initiates; the receiver stays a
   /// passive server, so the two don't both connect. On-demand only — when
   /// nothing is queued we stay in broadcast mode, and [_bcastTick] drops the
@@ -1316,7 +1316,7 @@ class BleService {
   // peer, then [_flushPendingGatt] sends them. Bounded so a peer that never
   // appears can't grow this unbounded.
   final List<Uint8List> _pendingGatt = [];
-  // Most recently discovered connectable Aurora peer. Android dedups scan
+  // Most recently discovered connectable XPRS peer. Android dedups scan
   // results (a peer is reported once, then suppressed), so we remember the last
   // one and dial it when data is queued — not only on a fresh discovery event.
   Peripheral? _lastPeer;

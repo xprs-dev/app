@@ -3,7 +3,7 @@
 // A like used to be a number that moved on a screen nobody was looking at —
 // the recipient was never told. The store is what knows whose message a vote
 // names, so it reports the ones worth surfacing and the callers notify.
-import 'package:aurora/wapp/geoui/conversation_store.dart';
+import 'package:xprs/wapp/geoui/conversation_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

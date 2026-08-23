@@ -2,7 +2,7 @@
  * WappFileAssociations — answers "which wapps can open this file?".
  *
  * Wapps declare handlers under `provides.file_handlers` in their
- * manifest (see [WappFileHandler]). Aurora's launcher already scans
+ * manifest (see [WappFileHandler]). XPRS's launcher already scans
  * every installed + built-in wapp and registers each manifest with the
  * [FunctionalityRegistry], so this service reads handlers straight from
  * `FunctionalityRegistry.allManifests` — no second folder scan.

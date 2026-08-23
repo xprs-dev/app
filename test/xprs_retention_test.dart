@@ -9,11 +9,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:aurora/services/preferences_service.dart';
-import 'package:aurora/services/xprs/xprs_archive.dart';
-import 'package:aurora/services/xprs/xprs_ingest.dart';
-import 'package:aurora/services/xprs/xprs_monitor.dart';
-import 'package:aurora/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/preferences_service.dart';
+import 'package:xprs/services/xprs/xprs_archive.dart';
+import 'package:xprs/services/xprs/xprs_ingest.dart';
+import 'package:xprs/services/xprs/xprs_monitor.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
 
 const _self = 'X1A67X';
 

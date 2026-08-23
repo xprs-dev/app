@@ -1,6 +1,6 @@
 # BLE transport — off‑grid messaging and file links
 
-Bluetooth Low Energy is Aurora's **off‑grid** transport: it works with no
+Bluetooth Low Energy is XPRS's **off‑grid** transport: it works with no
 internet, no cell signal, and no infrastructure. It is used two very different
 ways depending on payload size, and a **size router** picks between them:
 
@@ -32,7 +32,7 @@ ones, so the same router serves both the APRS chat and the RNS overlay.
 ## 2. Compact APRS frame (broadcast path)
 
 A legacy BLE advertisement holds only ~31 bytes, far less than a TNC2 frame, so
-over BLE Aurora uses a **compact** form (`ble_pack` in `main.c`):
+over BLE XPRS uses a **compact** form (`ble_pack` in `main.c`):
 
 ```
 <from>\x1f<to>\x1f<text>          (\x1f = 0x1F unit separator)
@@ -95,7 +95,7 @@ An ESP32‑S3 "T‑Dongle" runs a full BLE5 Reticulum node (xprs-esp32,
 on‑device crypto: it transmits signed announces that phones accept, receives, and
 can act as a blind relay — forwarding encrypted traffic it can't read, with its
 screen used only as a metadata status dashboard. On the APRS side it can receive
-Aurora's APRS‑over‑BLE and show it on a rolling chat, and persist APRS to a
+XPRS's APRS‑over‑BLE and show it on a rolling chat, and persist APRS to a
 microSD message store queryable over HTTP/BLE.
 
 ---

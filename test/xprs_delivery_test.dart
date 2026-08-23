@@ -9,9 +9,9 @@
 // bearer-agnostically: whatever carried the packet, it is delivered.
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:aurora/services/xprs/xprs_ingest.dart';
-import 'package:aurora/services/xprs/xprs_monitor.dart';
-import 'package:aurora/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/xprs/xprs_ingest.dart';
+import 'package:xprs/services/xprs/xprs_monitor.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
 
 const _self = 'X1A67X';
 

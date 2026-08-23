@@ -5,10 +5,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 
-import 'package:aurora/profile/profile_storage.dart';
-import 'package:aurora/profile/profile_storage_io.dart';
-import 'package:aurora/wapp/coin/atm_host_bridge.dart';
-import 'package:aurora/wapp/coin/coin_host_bridge.dart';
+import 'package:xprs/profile/profile_storage.dart';
+import 'package:xprs/profile/profile_storage_io.dart';
+import 'package:xprs/wapp/coin/atm_host_bridge.dart';
+import 'package:xprs/wapp/coin/coin_host_bridge.dart';
 import 'package:reticulum/reticulum.dart';
 
 void main() {

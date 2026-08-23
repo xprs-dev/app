@@ -160,7 +160,7 @@ $uiJson
 ''';
 
   static const _defaultSystemPrompt = '''
-You are the assistant inside Aurora's wapp editor. A "wapp" is a small app written in C (compiled to WebAssembly) whose screens are described declaratively in a GeoUI file, home.ui.json. The C `main.c` implements module_init/module_tick/module_handle_event against the XPRS HAL; home.ui.json is a JSON array of screen blocks (\$:"screen") containing groups, fields and actions.
+You are the assistant inside XPRS's wapp editor. A "wapp" is a small app written in C (compiled to WebAssembly) whose screens are described declaratively in a GeoUI file, home.ui.json. The C `main.c` implements module_init/module_tick/module_handle_event against the XPRS HAL; home.ui.json is a JSON array of screen blocks (\$:"screen") containing groups, fields and actions.
 
 Help the user change the wapp. Be concise.
 

@@ -5,8 +5,8 @@
 // all along is not. Getting the second half wrong badges the whole grid on a
 // fresh install, which trains the user to ignore the badge.
 
-import 'package:aurora/services/new_wapp_tracker.dart';
-import 'package:aurora/services/preferences_service.dart';
+import 'package:xprs/services/new_wapp_tracker.dart';
+import 'package:xprs/services/preferences_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -8,11 +8,11 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:aurora/services/reticulum/rns_announce.dart';
-import 'package:aurora/services/reticulum/rns_identity.dart';
-import 'package:aurora/services/reticulum/rns_packet.dart';
-import 'package:aurora/services/reticulum/rns_transport.dart';
-import 'package:aurora/services/reticulum/rns_udp_interface.dart';
+import 'package:xprs/services/reticulum/rns_announce.dart';
+import 'package:xprs/services/reticulum/rns_identity.dart';
+import 'package:xprs/services/reticulum/rns_packet.dart';
+import 'package:xprs/services/reticulum/rns_transport.dart';
+import 'package:xprs/services/reticulum/rns_udp_interface.dart';
 
 const _app = 'aurora';
 const _aspects = ['test'];

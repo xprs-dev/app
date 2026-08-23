@@ -5,12 +5,12 @@
 //   dart run tool/folder_service_test.dart
 import 'dart:io';
 
-import 'package:aurora/services/folders/folder_event.dart';
-import 'package:aurora/services/folders/folder_keystore.dart';
-import 'package:aurora/services/folders/folder_service.dart';
-import 'package:aurora/services/social/relay_event_store.dart';
-import 'package:aurora/util/nostr_crypto.dart';
-import 'package:aurora/util/nostr_event.dart';
+import 'package:xprs/services/folders/folder_event.dart';
+import 'package:xprs/services/folders/folder_keystore.dart';
+import 'package:xprs/services/folders/folder_service.dart';
+import 'package:xprs/services/social/relay_event_store.dart';
+import 'package:xprs/util/nostr_crypto.dart';
+import 'package:xprs/util/nostr_event.dart';
 
 import 'sqlite_loader.dart';
 

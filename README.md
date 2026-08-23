@@ -278,7 +278,7 @@ covers your area before you touch it. They are the rules, not just notes.
   screenshot that shows it working. It also covers keeping honest status messages
   going and chasing a reported bug through the whole flow instead of stopping at the
   first thing that breaks.
-- **[Performance](docs/performance.md)** covers where Aurora spends CPU and memory,
+- **[Performance](docs/performance.md)** covers where XPRS spends CPU and memory,
   what got fixed and how it was measured, and in section 8 the rules for adding work
   without making it worse: keep heavy work off the UI thread, survive a suspended
   Android phone with the foreground service and native heartbeat, reuse the

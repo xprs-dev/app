@@ -7,8 +7,8 @@
  */
 import 'dart:typed_data';
 
-import 'package:aurora/services/mesh/mesh_bloom.dart';
-import 'package:aurora/services/mesh/mesh_session.dart';
+import 'package:xprs/services/mesh/mesh_bloom.dart';
+import 'package:xprs/services/mesh/mesh_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 String hex(Uint8List d) =>

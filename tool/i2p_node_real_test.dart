@@ -3,7 +3,7 @@
 // real router, publishes its LeaseSet2, then looks its own LeaseSet back up
 // from the floodfill. Proves the node interoperates on the real net.
 //   dart run tool/i2p_node_real_test.dart
-import 'package:aurora/services/i2p/i2p_node.dart';
+import 'package:xprs/services/i2p/i2p_node.dart';
 
 Future<void> main() async {
   final n = I2pNode(netId: 2, log: (m) => print(m));

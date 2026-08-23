@@ -1,5 +1,5 @@
 /*
- * Aurora launcher library.
+ * XPRS launcher library.
  *
  * All launcher-facing source lives here, split into `part` files so the
  * many private widgets stay library-private while each concern sits in

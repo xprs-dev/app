@@ -186,7 +186,7 @@ they blocked circles datagrams from crossing device-to-device:
    destination) was dropped amid the flood and never delivered. → **Fixed:** add
    the wapp name-hash to `priorityAnnounceNames` (`rns_service.dart`).
 5. **A phone tried to relay the whole public mesh → 100% CPU / ANR.** Every
-   Aurora node ran as a TRANSPORT node (`transportId = own id`), rebroadcasting
+   XPRS node ran as a TRANSPORT node (`transportId = own id`), rebroadcasting
    every inbound announce onto every other hub interface — thousands of sends/s
    on a phone connected to 5 hubs, which pegged a core (especially after a
    network change) and starved the UI + wapp ticks. → **Fixed:** added an

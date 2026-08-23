@@ -1,5 +1,5 @@
 /*
- * Pure-Dart cryptographic primitives for the Aurora I2P node (Phase 0).
+ * Pure-Dart cryptographic primitives for the XPRS I2P node (Phase 0).
  *
  * I2P (modern, NTCP2 + ECIES-X25519) needs: X25519 ECDH, Ed25519 signatures,
  * ChaCha20-Poly1305 AEAD, HKDF-SHA256, SHA-256, SipHash-2-4 (NTCP2 frame-length

@@ -8,7 +8,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aurora/services/hero/hero_inbox.dart';
+import 'package:xprs/services/hero/hero_inbox.dart';
 
 Map<String, dynamic> _publish(List<Map<String, dynamic>> items,
         {bool? replace}) =>
