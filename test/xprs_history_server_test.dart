@@ -100,6 +100,10 @@ void main() {
   void ask(String wire) => XprsIngest.heard(_p(wire),
       bearer: 'ble', selfCallsign: 'X1SELF', rssi: -60);
 
+  /// The same command arriving off the Reticulum hub lane.
+  void ask2(String wire) => XprsIngest.heard(_p(wire),
+      bearer: 'rns', selfCallsign: 'X1SELF', rssi: 0);
+
   List<XprsPacket> results() => [
         for (final e in aired)
           if (e.$1.startsWith('xprs-hist:c')) _p(e.$2)
@@ -299,6 +303,20 @@ void main() {
       // 120 s default: the caller's ttl has to survive the trip.
       expect(ble.ttls.first, isNotNull);
       expect(ble.ttls.first!.inSeconds, lessThan(60));
+    });
+
+    test('an ask off the internet lane is served like any other (36.0)',
+        () async {
+      // The bug this pins: bearer 'rns' used to be refused outright -- the
+      // guard predated the bearer-abstract _air, so an archiver on the hubs
+      // beaconed serve:archive and answered nothing across the internet.
+      seed(2);
+      ask2('t:command f:X1BBB d:X1SELF cmd:history '
+          'ts:2026-08-13_12:00:00 since:2026-08-13_09:00:00');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(lan.sent, isNotEmpty,
+          reason: 'the rns ask must be answered, not counted and dropped');
+      expect(lan.sent.first, contains('code:202'));
     });
 
     test('a replayed record keeps the author\'s bytes and is not refiled',

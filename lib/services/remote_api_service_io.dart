@@ -10,13 +10,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../connections/bluetooth/ble5_bus.dart';
 import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_ingest.dart';
-import 'xprs/xprs_lan.dart';
 import 'xprs/xprs_publisher.dart';
 import 'xprs/xprs_packet.dart';
-import 'xprs/xprs_sig.dart';
 import 'xprs/xprs_vocab.dart';
 
 import 'package:flutter/material.dart';
@@ -930,18 +927,14 @@ class RemoteApiService {
           return _json(res, {'ok': false, 'error': 'malformed or too long'},
               status: HttpStatus.badRequest);
         }
-        final aired = await Ble5Bus.instance.advertiseFrame(
-            'xprs-send', Ble5Subtype.xprs,
-            Uint8List.fromList(utf8.encode(p.encode())),
-            ttl: const Duration(seconds: 60));
-        // A wire this station aired belongs in its own spool (§36.5) — the
-        // publisher archives its sends, and this test hook must match, or a
-        // cmd:history asked of the author cannot replay the author.
-        XprsIngest.own(p.encode(), bearer: aired ? 'ble' : 'none');
+        // Through the publisher: every bearer this station has, not a radio
+        // this endpoint happens to name (36.0). The publisher also signs and
+        // files the wire in our own spool (36.5).
+        final report = await XprsPublisher.instance.publishWire(p.encode());
         return _json(res, {
-          'ok': aired,
+          'ok': report.values.any((v) => v == 'sent'),
           'bytes': p.byteLength,
-          'subtype': '0x58',
+          'bearers': report,
           'wire': p.encode(),
         });
       }
@@ -988,16 +981,15 @@ class RemoteApiService {
           return _json(res, {'ok': false, 'error': 'malformed or too long'},
               status: HttpStatus.badRequest);
         }
-        final d = xprsProfileScalar();
-        if (d != null) p = xprsSign(p, d);
-        final aired = await Ble5Bus.instance.advertiseFrame(
-            'xprs-ask', Ble5Subtype.xprs,
-            Uint8List.fromList(utf8.encode(p.encode())),
-            ttl: const Duration(seconds: 60));
-        // The LAN lane too: an indexer on the bench (an ESP32 on this
-        // network) hears UDP 4242, not our BLE adverts.
-        final lanAired = XprsLan.instance.send(p.encode());
-        return _json(res, {'ok': aired || lanAired, 'wire': p.encode()});
+        // The publisher signs (our own wire, no sig: yet) and airs on every
+        // bearer -- BLE for the bench, LAN for an ESP32 on this network, and
+        // the reticulum hub lane for an archiver across the internet (36.0).
+        final report = await XprsPublisher.instance.publishWire(p.encode());
+        return _json(res, {
+          'ok': report.values.any((v) => v == 'sent'),
+          'bearers': report,
+          'wire': p.encode(),
+        });
       }
       // Declare this station's favorite indexers (XPRS 13.12): persists the
       // hold list and airs the signed t:mailbox on every bearer now.

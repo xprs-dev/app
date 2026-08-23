@@ -55,7 +55,7 @@ class XprsHistoryServer {
   Future<bool> Function(String key, Uint8List bytes, Duration ttl)? txOverride;
   BigInt? Function() signingKey = xprsProfileScalar;
 
-  int answered = 0, refused429 = 0, rnsIgnored = 0;
+  int answered = 0, refused429 = 0;
 
   final Map<String, int> _answeredIds = {};
   final Map<String, List<int>> _asksBy = {};
@@ -114,11 +114,9 @@ class XprsHistoryServer {
       return;
     }
     if ((p['cmd'] ?? '') != 'history') return;
-    if (bearer == 'rns') {
-      // No reply lane on the hub side yet; saying so beats silence in a log.
-      rnsIgnored++;
-      return;
-    }
+    // The rns lane is served like every other (36.0). The refusal that used
+    // to sit here guarded a reply lane that did not exist; _air now goes
+    // through the publisher, whose reticulum bearer IS that lane.
     if (!(PreferencesService.instanceSync?.xprsServeHistory ?? true)) return;
     final archive = XprsArchive.instance;
     if (!archive.ready) return;
@@ -329,6 +327,5 @@ class XprsHistoryServer {
     _chainFor = null;
     answered = 0;
     refused429 = 0;
-    rnsIgnored = 0;
   }
 }

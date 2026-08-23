@@ -255,6 +255,36 @@ class XprsIngest {
     final fromC = _base(p['f'] ?? '');
     if (fromC.isEmpty || (self.isNotEmpty && fromC == self)) return;
 
+    // The hub lane serves too (docs/XPRS.md 36.0: the archiver role does not
+    // change with the bearer). Commands and results route to the same hooks
+    // every radio feeds -- until they did, a cmd:history that crossed the
+    // internet was at best archived and never answered, and the server's
+    // "refuse rns" counter guarded a path nothing reached. The DECLARATION
+    // gate below is deliberately untouched: it governs what this station
+    // spools off the internet, not what it will say.
+    if (self.isNotEmpty) {
+      if (p.type == 'command') {
+        try {
+          onCommand?.call(p, selfBase: self, bearer: 'rns');
+        } catch (e) {
+          LogService.instance.add('XPRS: rns command handling failed: $e');
+        }
+      } else if (p.type == 'result') {
+        try {
+          onResult?.call(p);
+        } catch (e) {
+          LogService.instance.add('XPRS: rns result handling failed: $e');
+        }
+      }
+    }
+
+    // `t:identity` binds callsign to key (9.3), and it is a publication a
+    // gateway passes verbatim (36.1). Without this the internet lane could
+    // never verify anything: a mailbox declaration arriving over the hubs
+    // was refused for want of a key that had also arrived over the hubs --
+    // two strangers meeting on the internet could not bootstrap at all.
+    if (p.type == 'identity') _bindIdentity(fromC, p);
+
     if (p.type == 'mailbox') {
       // Acting on it requires a verified signature (13.12); recordMailboxDecl
       // enforces that. A declaration naming us is itself worth keeping.
