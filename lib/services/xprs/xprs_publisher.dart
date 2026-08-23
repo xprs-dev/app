@@ -111,9 +111,32 @@ class _ReticulumBearer implements XprsBearer {
   Future<bool> get active async => RnsService.instance.isUp;
   @override
   Future<bool> send(String wire,
-          {required int part, String slot = 'status', Duration? ttl}) =>
-      RnsService.instance.wappBroadcast(
-          'xprs', Uint8List.fromList(utf8.encode(wire)));
+      {required int part, String slot = 'status', Duration? ttl}) async {
+    // A wire addressed to one station rides the LXMF lane when the network
+    // can name that station. The distinction is not cosmetic: wappBroadcast
+    // is an ANNOUNCE, and the public community hubs do not cross-forward
+    // announces between their own clients -- measured on the bench, every
+    // announce between two hub-connected instances arrived by the RNS LAN
+    // interface and none by the hub. Links are what the hubs actually
+    // forward, LXMF rides links, and it adds store-and-forward for a peer
+    // that is away. So a cmd:history, its t:result, and any other d: wire
+    // take the addressed lane, which is also section 36.0's path rule --
+    // the most reliable path that reaches the asker. Undirected publications
+    // keep the broadcast: whoever is in announce reach hears them.
+    final bytes = Uint8List.fromList(utf8.encode(wire));
+    final dest = XprsPacket.parse(wire)?['d']?.trim() ?? '';
+    if (dest.isNotEmpty) {
+      final hex = RnsService.instance.lxmfDestForCallsign(dest);
+      if (hex.isNotEmpty) {
+        // True = delivered on a link; false ALSO covers "stored with a
+        // relay for later", which for mail is success -- but the return
+        // cannot tell that apart from failure, so the report stays honest
+        // and pessimistic.
+        return RnsService.instance.wappSendTo('xprs', hex, bytes);
+      }
+    }
+    return RnsService.instance.wappBroadcast('xprs', bytes);
+  }
 }
 
 class _LanBearer implements XprsBearer {

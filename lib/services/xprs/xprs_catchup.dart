@@ -177,12 +177,23 @@ class XprsCatchup {
 
   /// Announce which key this callsign signs with, on every active bearer.
   /// Section 18.1. Stamped so [start] and the heartbeat share one clock.
+  ///
+  /// Stamped only when a bearer actually TOOK it. The first tick after boot
+  /// reliably beats the radios: on the bench the identity aired into
+  /// "ble5:inactive, lan:inactive, reticulum:inactive, lora:inactive" and the
+  /// next attempt was thirty minutes out -- half an hour during which nobody
+  /// who had not met this station could verify a thing it signed, its mailbox
+  /// declaration included. An airing nothing carried is not an airing.
   Future<void> _airIdentity() async {
     _identityAtMs = nowMs();
     try {
-      await XprsPublisher.instance.publishIdentity();
+      final report = await XprsPublisher.instance.publishIdentity();
+      if (!report.values.any((v) => v == 'sent')) {
+        _identityAtMs = 0; // nothing took it: retry on the next tick
+      }
     } catch (e) {
       LogService.instance.add('XPRS: identity airing failed: $e');
+      _identityAtMs = 0;
     }
   }
 
