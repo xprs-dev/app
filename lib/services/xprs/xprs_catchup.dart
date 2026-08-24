@@ -215,7 +215,6 @@ class XprsCatchup {
       return;
     }
 
-    // Nothing to ask on when no short-range bearer is up.
     var anyLocal = false;
     for (final b in XprsPublisher.instance.bearers) {
       if (b.shortRange && await b.active) {
@@ -223,21 +222,50 @@ class XprsCatchup {
         break;
       }
     }
-    if (!anyLocal) return;
 
     // Every station in DIRECT reach (no via:), fresh within the monitor's own
     // staleness window — a list is a claim about now. No serve:archive filter:
     // any station in earshot may be holding something for us.
     final selfBase = _base(selfCallsign);
-    final fresh = XprsMonitor.instance
-        .directlyHeard(nowMs: now)
-        .map((c) => XprsMonitor.instance.stations[c])
-        .whereType<XprsStation>()
-        .where((s) => _base(s.callsign) != selfBase)
-        .toList(growable: false); // iterated twice: the sweep and its count
+    final fresh = anyLocal
+        ? (XprsMonitor.instance
+            .directlyHeard(nowMs: now)
+            .map((c) => XprsMonitor.instance.stations[c])
+            .whereType<XprsStation>()
+            .where((s) => _base(s.callsign) != selfBase)
+            .toList(growable: false))
+        : const <XprsStation>[];
+
+    // ── The super-archivers (36.9.4) ────────────────────────────────────
+    // A station in earshot holds what IT heard, which is the neighbourhood.
+    // Global chat is not a neighbourhood: it is everything everybody said,
+    // and the place that holds all of it is a super-archiver on the internet
+    // (36.9.4's deep memory). It is asked whether or not any radio is up --
+    // that is the whole point of it -- and it is asked the same metered
+    // question, on the addressed lane, which is the one the public hubs
+    // actually carry (36.12.1).
+    //
+    // Without this the sweep returned early on a phone with no short-range
+    // bearer, and even with one it only ever asked stations it could HEAR --
+    // so a network reachable only over the internet was never asked anything,
+    // and Global chat arrived from nowhere.
+    final supers = <String>[];
+    for (final c in prefs.xprsSuperArchivers) {
+      final base = _base(c);
+      if (base.isEmpty || base == selfBase) continue;
+      if (fresh.any((s) => _base(s.callsign) == base)) continue; // heard: above
+      if (!supers.contains(base)) supers.add(base);
+    }
+    if (fresh.isEmpty && supers.isEmpty) return;
 
     final asked = <String>[];
-    for (final st in fresh) {
+    for (final st in [
+      ...fresh,
+      // A super-archiver we have never heard on the air has no station record
+      // and so no count:/mail: to compare -- which the news check below reads
+      // as "no news", leaving the every-period backstop to carry it.
+      for (final c in supers) XprsStation(c, 'rns', now),
+    ]) {
       final base = _base(st.callsign);
       // THE NEWS CHECK, and it costs nothing on air: the station's own beacon
       // already says how much it holds (`count:`) and how much mail it is

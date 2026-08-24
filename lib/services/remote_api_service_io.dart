@@ -975,8 +975,21 @@ class RemoteApiService {
                 .where((e) => e.isNotEmpty)
                 .toList() ??
             const <String>[];
-        PreferencesService.instanceSync?.xprsSuperArchivers = list;
-        return _json(res, {'ok': true, 'supers': list});
+        final prefs = PreferencesService.instanceSync;
+        if (data.containsKey('supers')) prefs?.xprsSuperArchivers = list;
+        // {"be": true} — BE one. A super-archiver keeps every callsign's
+        // gossip and every public wire, announces `serve:archive,super`, and
+        // is what a station with no radio in earshot asks for Global chat
+        // (36.9.4). Somebody on the internet has to be one or there is
+        // nowhere for the rest to pull from.
+        if (data.containsKey('be')) {
+          prefs?.xprsSuperArchiver = data['be'] == true;
+        }
+        return _json(res, {
+          'ok': true,
+          'supers': prefs?.xprsSuperArchivers ?? const <String>[],
+          'be': prefs?.xprsSuperArchiver ?? false,
+        });
       }
       // Where can a callsign be reached (36.9.4 gossip + 13.12): the
       // internet sender's question, answered in layers.
