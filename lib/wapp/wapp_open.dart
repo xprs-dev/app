@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../profile/storage_paths.dart';
 import '../services/log_service.dart';
+import '../services/wapp_unread_service.dart';
 import 'wapp_page.dart';
 
 /// Open the wapp installed at `wapps/<folder>` in the active profile.
@@ -43,6 +44,11 @@ Future<bool> openWappByFolder(
       }
     }
   } catch (_) {}
+  // Opening the wapp IS the acknowledgement, whichever door was used. Only
+  // the launcher grid cleared the tile badge, so arriving from a notification
+  // tap or a deep link left it lit over a wapp the user was looking at. The
+  // wapp re-publishes its live count from its conversation stores once running.
+  WappUnreadService.instance.clearAll(folder);
   await navigator.push(MaterialPageRoute(
     builder: (_) => WappPage(
       wappDir: dir,

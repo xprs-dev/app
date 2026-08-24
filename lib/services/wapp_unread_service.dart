@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 
 /// Per-wapp unread counts that drive launcher badges. Counts are session-scoped
@@ -21,14 +23,32 @@ class WappUnreadService {
   int countFor(String wappId, {String? intent}) =>
       counts.value[_key(wappId, intent)] ?? 0;
 
+  /// What this wapp's tile should show.
+  ///
+  /// The base key and the intent keys are two VIEWS of the same unread, written
+  /// by two authorities -- the host's conversation stores write the base key,
+  /// the wapp's own `unread` message writes its intent key -- so adding them
+  /// counted the same messages twice (the mail tile read double whenever the
+  /// mail page was open). Take the larger instead: for a wapp that publishes
+  /// several genuinely distinct intents their sum is still the number, and for
+  /// two views of one total the answer is that total.
   int totalFor(String wappId) {
-    var total = counts.value[wappId] ?? 0;
+    final base = counts.value[wappId] ?? 0;
     final prefix = '$wappId#';
+    var intents = 0;
     for (final e in counts.value.entries) {
-      if (e.key.startsWith(prefix)) total += e.value;
+      if (e.key.startsWith(prefix)) intents += e.value;
     }
-    return total;
+    return math.max(base, intents);
   }
+
+  /// What a host icon dedicated to [intent] should show: the wapp's own count
+  /// for that intent, or -- when the wapp publishes no intent key at all -- the
+  /// wapp's total. The chat wapp never sends an `unread` message, so its
+  /// intent key is never written and reading it alone reported zero forever
+  /// while the host's conversation stores held the real number.
+  int badgeFor(String wappId, String intent) =>
+      counts.value[_key(wappId, intent)] ?? totalFor(wappId);
 
   /// Set the authoritative count for [wappId]; 0/negative clears it.
   void setCount(String wappId, int n, {String? intent}) {

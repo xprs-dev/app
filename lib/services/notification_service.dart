@@ -213,17 +213,23 @@ class NotificationService {
   /// every start (Social answers its inbox out of SQLite, Mail replays the
   /// relay backlog), so a process-lifetime guard would re-announce — and
   /// re-mark unread — everything the user already saw.
-  void show(XprsNotification n) {
+  ///
+  /// Returns whether the user was actually told: false when the tag was
+  /// already announced, and false when the notification was buffered until the
+  /// guard finishes loading. Callers that mirror a notification somewhere else
+  /// — a launcher badge, say — must not act on a suppressed duplicate: it told
+  /// the user nothing.
+  bool show(XprsNotification n) {
     final tag = n.tag;
     if (tag != null && tag.isNotEmpty) {
       final guard = AnnouncedTagsStore.instance;
       if (!guard.loaded) {
         _pending.add(n);
-        return;
+        return false;
       }
       // Already announced. Showing it again would tell the user something
       // happened when nothing did.
-      if (guard.contains(tag)) return;
+      if (guard.contains(tag)) return false;
       guard.add(tag);
     }
     history.add(n);
@@ -235,6 +241,7 @@ class NotificationService {
       if (!backend.handlesScope(n.scope)) continue;
       unawaited(backend.show(n).catchError((_) {}));
     }
+    return true;
   }
 
   /// Test helper — resets internal state so tests don't leak across

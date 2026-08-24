@@ -161,6 +161,47 @@ class BackgroundWappManager {
     }
   }
 
+  /// Mark every conversation of [wappName] read — the user's way out of a
+  /// badge whose conversation nothing on screen can show.
+  ///
+  /// Uses the live stores when the wapp is running (so the in-memory copy and
+  /// the file agree); otherwise opens its conversation database directly,
+  /// because a badge for a wapp that is not running is exactly the case that
+  /// needs the escape hatch.
+  Future<void> markAllRead(String wappName) async {
+    final svc = _running[wappName];
+    if (svc != null) {
+      svc.markAllRead();
+    } else {
+      final prefs = PreferencesService.instanceSync;
+      if (prefs != null) {
+        try {
+          final db = ConversationDb.open(wappDataStorageFor(prefs, wappName)
+              .getAbsolutePath('conversations.sqlite3'));
+          try {
+            for (final field in db.fields()) {
+              final store = ConversationStore()
+                ..db = null
+                ..dbField = field
+                ..loaded = false;
+              db.loadInto(field, store);
+              store
+                ..db = db
+                ..loaded = true;
+              store.markAllRead();
+            }
+          } finally {
+            db.close();
+          }
+        } catch (e) {
+          LogService.instance
+              .add('wapp $wappName: could not mark all read ($e)');
+        }
+      }
+    }
+    WappUnreadService.instance.clearAll(wappName);
+  }
+
   /// Inject a flat `{"command":…}` JSON into a running background wapp engine,
   /// pump it once, and process the resulting outbox (notifications etc.).
   /// Returns the engine's outbox for observation, or null if not running.
@@ -324,6 +365,43 @@ class _WappBackgroundService extends BackgroundService {
         ..db = _convDb
         ..loaded = true;
     }
+    // Publish what the disk already holds. Nothing else re-states an unread
+    // count after a restart, so the tile read zero until the wapp happened to
+    // say something -- while conversations.sqlite3 held the real number.
+    _syncBadge();
+  }
+
+  /// Zero the unread of every conversation this wapp holds.
+  void markAllRead() {
+    var changed = false;
+    for (final s in _convStores.values) {
+      if (s.markAllRead()) changed = true;
+    }
+    if (changed) _syncBadge();
+  }
+
+  /// Whether any of this wapp's conversation stores objects to notifying
+  /// about [convo]. A wapp with no stores has nothing to object with.
+  bool _mayNotifyFor(String? convo) {
+    if (convo == null || convo.isEmpty) return true;
+    for (final s in _convStores.values) {
+      if (!s.mayNotifyFor(convo)) return false;
+    }
+    return true;
+  }
+
+  /// The tile badge for this wapp: the unread its conversation stores hold.
+  ///
+  /// One authority. A fold over a handful of conversations, and setCount
+  /// early-returns when the value is unchanged, so a backlog replay does not
+  /// churn the notifier (docs/performance.md 4.2).
+  void _syncBadge() {
+    if (_convStores.isEmpty) return;
+    var total = 0;
+    for (final s in _convStores.values) {
+      total += s.totalUnread;
+    }
+    WappUnreadService.instance.setCount(name, total);
   }
 
   @override
@@ -470,6 +548,7 @@ class _WappBackgroundService extends BackgroundService {
             // headless engine must honour the same messages the page does.
             store.clear(data['id']?.toString());
         }
+        _syncBadge();
       } else if (type == 'social.note') {
         // A wapp posting one of OUR messages as a signed NOSTR note (a Chat
         // group post). The page handled this and headless did not, so a group
@@ -516,6 +595,11 @@ class _WappBackgroundService extends BackgroundService {
         // persists it, so it survives a restart too.
         HeroInbox.instance.handleMessage(name, data);
       } else if (type == 'notify') {
+        // A notification whose tap target the user cannot open is a dead
+        // end: dropped before it reaches the bell, the Android shade or the
+        // tile badge (see ConversationStore.mayNotifyFor).
+        final convo = data['convo']?.toString();
+        if (!_mayNotifyFor(convo)) continue;
         final levelStr = (data['level'] as String? ?? 'info').toLowerCase();
         final level = switch (levelStr) {
           'success' => NotificationLevel.success,
@@ -523,7 +607,7 @@ class _WappBackgroundService extends BackgroundService {
           'error' || 'err' => NotificationLevel.error,
           _ => NotificationLevel.info,
         };
-        NotificationService.instance.show(
+        final announced = NotificationService.instance.show(
           XprsNotification(
             level: level,
             title: data['title'] as String? ?? name,
@@ -535,13 +619,23 @@ class _WappBackgroundService extends BackgroundService {
           ),
         );
         // A background wapp can't render UI, so surface activity as an unread
-        // count on its launcher tile (e.g. the APRS app icon). Cleared/reset to
-        // the authoritative value when the user opens the wapp.
-        WappUnreadService.instance.add(
-          name,
-          1,
-          intent: data['intent']?.toString(),
-        );
+        // count on its launcher tile (e.g. the APRS app icon).
+        //
+        // Only when the user was actually TOLD: show() suppresses a tag it has
+        // already announced, and a suppressed duplicate must not badge -- wapps
+        // replay their backlog on every start, so this bumped the tile for old
+        // news, once per restart, with nothing to read at the other end.
+        //
+        // And only for a wapp with no conversation stores: one that has them
+        // already publishes an authoritative count through _syncBadge, and a
+        // +1 on top of it would count the same message twice.
+        if (announced && _convStores.isEmpty) {
+          WappUnreadService.instance.add(
+            name,
+            1,
+            intent: data['intent']?.toString(),
+          );
+        }
       }
       // ui.* and everything else: no UI in the background — ignore.
     }

@@ -908,6 +908,21 @@ class _AppIcon extends StatelessWidget {
               ],
             ),
           ),
+        // Only when there is something to clear. A conversation whose row no
+        // screen can render no longer badges at all, but a count the user has
+        // simply decided they are done with still needs a way out.
+        if (wappId != null &&
+            WappUnreadService.instance.totalFor(wappId!) > 0)
+          const PopupMenuItem(
+            value: 'markread',
+            child: Row(
+              children: [
+                Icon(Icons.mark_email_read_outlined, size: 18),
+                SizedBox(width: 10),
+                Text('Mark all read'),
+              ],
+            ),
+          ),
         if (canPin) ..._homePinMenuItems(prefs, wappId!),
         if (canAutostart)
           PopupMenuItem(
@@ -927,6 +942,9 @@ class _AppIcon extends StatelessWidget {
     );
     if (selected == 'open') onTap();
     if (selected == 'edit') onEdit?.call();
+    if (selected == 'markread' && wappId != null) {
+      await BackgroundWappManager.instance.markAllRead(wappId!);
+    }
     if (canPin) await _applyHomePinChoice(selected, wappId!, prefs);
     if (selected == 'autostart' && canAutostart) {
       final enable = !autostartOn;

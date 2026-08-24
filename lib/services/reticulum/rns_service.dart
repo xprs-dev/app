@@ -6380,7 +6380,6 @@ class RnsService {
   final Map<String, List<Map<String, dynamic>>> _lxmfConvos = {};
   final Map<String, String> _lxmfNames = {}; // destHex -> friendly label
   bool _lxmfDirLoaded = false;
-  final Set<String> _lxmfUnread = {}; // destHex with unseen incoming
   final List<void Function()> _lxmfListeners = [];
   void addLxmfListener(void Function() cb) => _lxmfListeners.add(cb);
   void removeLxmfListener(void Function() cb) => _lxmfListeners.remove(cb);
@@ -6409,14 +6408,11 @@ class RnsService {
         'name': _lxmfNames[id] ?? _shortId(id),
         'last': (last?['text'] ?? '').toString(),
         'ts': (last?['ts'] as int?) ?? 0,
-        'unread': _lxmfUnread.contains(id),
       });
     });
     out.sort((a, b) => (b['ts'] as int).compareTo(a['ts'] as int));
     return out;
   }
-
-  int get lxmfUnreadCount => _lxmfUnread.length;
 
   /// How many messages to [destHex] are still waiting to go out (direct push
   /// failed, retries pending). Drives the "waiting to deliver" strip in the
@@ -6432,10 +6428,6 @@ class RnsService {
     return n;
   }
 
-
-  void lxmfMarkRead(String peerHex) {
-    if (_lxmfUnread.remove(peerHex.toLowerCase())) _notifyLxmf();
-  }
 
   /// Remember, on disk, that this LXMF address belongs to this callsign. Called
   /// for every announce that carries both — a device we can name today is a
@@ -6503,7 +6495,6 @@ class RnsService {
       'ts': tsMs ?? DateTime.now().millisecondsSinceEpoch,
     });
     if (list.length > 500) list.removeRange(0, list.length - 500);
-    if (incoming) _lxmfUnread.add(k);
     _notifyLxmf();
   }
 

@@ -61,11 +61,6 @@ class _HomeHeader extends StatelessWidget implements PreferredSizeWidget {
             tooltip: 'Chat',
             wappId: BackgroundWappManager.folderName(chatWapp!.dirPath),
             intent: 'chat',
-            // LXMF direct messages land in the CHAT wapp's rail, so they count
-            // here. They used to light the Mail badge instead: you were told by
-            // one app about a message stored in another, and the message
-            // "never arrived".
-            includeLxmf: true,
             onPressed: onChat!,
           ),
         const SizedBox(width: 6),
@@ -74,12 +69,19 @@ class _HomeHeader extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-class _IntentBadgeIcon extends StatefulWidget {
+/// A host icon (Mail, Chat) badged with its wapp's unread count.
+///
+/// The count comes from ONE authority: the wapp's own unread, via
+/// [WappUnreadService.badgeFor]. It used to add `RnsService.lxmfUnreadCount`
+/// on top, which counted the same inbound DMs a second time -- the chat wapp
+/// files every accepted LXMF message into a `lxmf:<dest>` conversation, and
+/// that conversation's unread is the copy that is persisted and that clearing
+/// a conversation actually clears.
+class _IntentBadgeIcon extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final String wappId;
   final String intent;
-  final bool includeLxmf;
   final VoidCallback onPressed;
 
   const _IntentBadgeIcon({
@@ -88,66 +90,18 @@ class _IntentBadgeIcon extends StatefulWidget {
     required this.wappId,
     required this.intent,
     required this.onPressed,
-    this.includeLxmf = false,
   });
-
-  @override
-  State<_IntentBadgeIcon> createState() => _IntentBadgeIconState();
-}
-
-class _IntentBadgeIconState extends State<_IntentBadgeIcon> {
-  @override
-  void initState() {
-    super.initState();
-    if (widget.includeLxmf) {
-      RnsService.instance.addLxmfListener(_refresh);
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _IntentBadgeIcon oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.includeLxmf != widget.includeLxmf) {
-      if (oldWidget.includeLxmf) {
-        RnsService.instance.removeLxmfListener(_refresh);
-      }
-      if (widget.includeLxmf) {
-        RnsService.instance.addLxmfListener(_refresh);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    if (widget.includeLxmf) {
-      RnsService.instance.removeLxmfListener(_refresh);
-    }
-    super.dispose();
-  }
-
-  void _refresh() {
-    if (mounted) setState(() {});
-  }
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<Map<String, int>>(
       valueListenable: WappUnreadService.instance.counts,
-      builder: (context, _, child) {
-        final wappCount = WappUnreadService.instance.countFor(
-          widget.wappId,
-          intent: widget.intent,
-        );
-        final lxmf = widget.includeLxmf
-            ? RnsService.instance.lxmfUnreadCount
-            : 0;
-        return _BadgedActionIcon(
-          icon: widget.icon,
-          tooltip: widget.tooltip,
-          count: wappCount + lxmf,
-          onPressed: widget.onPressed,
-        );
-      },
+      builder: (context, _, child) => _BadgedActionIcon(
+        icon: icon,
+        tooltip: tooltip,
+        count: WappUnreadService.instance.badgeFor(wappId, intent),
+        onPressed: onPressed,
+      ),
     );
   }
 }

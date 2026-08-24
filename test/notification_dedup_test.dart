@@ -95,4 +95,44 @@ void main() {
     }
     expect(NotificationService.instance.history, hasLength(3));
   });
+
+  test('show() reports whether the user was actually told', () {
+    final n = XprsNotification(
+      level: NotificationLevel.info,
+      title: 'someone liked your post',
+      source: 'wapp:social',
+      tag: 'nostr:told-once',
+    );
+
+    // Anything mirroring a notification elsewhere -- a launcher badge -- has
+    // to know the difference. Bumping a badge for a suppressed replay is how
+    // a tile shows a 1 for news the user read weeks ago.
+    expect(NotificationService.instance.show(n), isTrue);
+    expect(NotificationService.instance.show(n), isFalse);
+  });
+
+  test('a buffered notification does not claim to have been shown', () {
+    AnnouncedTagsStore.instance.reset(); // guard not loaded: show() buffers
+    final n = XprsNotification(
+      level: NotificationLevel.info,
+      title: 'waiting for the guard',
+      source: 'wapp:social',
+      tag: 'nostr:buffered',
+    );
+
+    expect(NotificationService.instance.show(n), isFalse);
+    expect(NotificationService.instance.history, isEmpty);
+  });
+
+  test('an untagged notification always announces', () {
+    XprsNotification fresh() => XprsNotification(
+          level: NotificationLevel.error,
+          title: 'transient status',
+          source: 'host:tasks',
+        );
+
+    expect(NotificationService.instance.show(fresh()), isTrue);
+    expect(NotificationService.instance.show(fresh()), isTrue);
+    expect(NotificationService.instance.show(fresh()), isTrue);
+  });
 }
