@@ -136,6 +136,21 @@ This drives `WappUnreadService` (keyed by `wappId` and optional `intent`, e.g.
 `wappId#mail`). Use `unread` for "there are N things" ambient counts; use `notify`
 for "interrupt the user now".
 
+**The base key and the intent keys are two VIEWS of one wapp's unread**, not
+disjoint buckets — the host's conversation stores write the base key, the wapp's
+own `unread` message writes its intent key. `totalFor` therefore takes the
+larger of the two rather than adding them (adding made a tile read double), and
+a host icon reads `badgeFor(wappId, intent)`, which falls back to the wapp's
+total when that wapp publishes no intent key at all.
+
+**A badge must be a number the user can act on.** A conversation the host
+invented — one an inbound message created that the wapp never listed with
+`ui.convo.upsert`, so no screen can render it — does not reach the app-wide
+count, exactly like a `muted` one, and a `notify` naming it is dropped before it
+reaches the bell, the shade or the badge. A wapp declares what is visible by
+listing it; anything else asks for attention it cannot repay. A tile carrying a
+badge also offers **Mark all read** in its long-press menu.
+
 ## Raising a notification from a wapp
 
 Wapps are C programs compiled to WASM. They talk to the host by writing a JSON string to
@@ -225,7 +240,9 @@ notification. You often don't need to raise error notifications by hand — fire
   `NotificationStore.instance.unreadCount`. Opens the notification center.
 - **Notification center** — `NotificationsPage`: full-screen list, grouped by day
   (Today / Yesterday / date), filter chips for `all` / `wapp` / `host` and one per level.
-  Opening it marks all seen — which ALSO cancels the app's event notifications
+  Opening it marks all seen — and so does closing it, because anything that
+  arrived while it was open was recorded unseen under the user's eyes. Marking
+  seen ALSO cancels the app's event notifications
   in the Android shade (`platform.clearSystemNotifications()` → `BgBridge`
   `notify_clear`), so the shade and the launcher-icon dot always agree with
   the center. Rows are tappable by `source`: `wapp:<folder>` opens that wapp —
@@ -245,8 +262,17 @@ notification. You often don't need to raise error notifications by hand — fire
 - **In-memory history:** `NotificationService.history`, rolling, capped at 200. Not
   persisted (survives only the process).
 - **Persistent store:** `NotificationStore` writes to `notifications/history.jsonl` in the
-  active profile (cap 300), with a read cursor in `notifications/seen_ms.txt`. Reloads on
-  profile switch. Exposes `items` and `unreadCount` as `ValueNotifier`s.
+  active profile (cap 300). Reloads on profile switch. Exposes `items` and
+  `unreadCount` as `ValueNotifier`s.
+- **Read state is per ROW** (`seen`), not a "everything before this time" cursor.
+  A cursor has two moving operands: it advances when the list is opened, and a
+  row's timestamp advances whenever a replayed event is re-recorded — so an
+  already-read notification jumped back above the line and re-lit the bell. A
+  flag cannot be un-set by a replay. A row written before the field existed has
+  no `seen` and falls back to the legacy `notifications/seen_ms.txt` watermark,
+  which is still maintained. A replayed row also inherits its predecessor's
+  first-seen timestamp, so a repeat does not jump to "Today" — which makes
+  `history.jsonl` a second dedupe guard, independent of the tag file.
 - **Dedupe by `tag`:** `NotificationService.show` shows a given tag **once, ever, across
   restarts**. The announced set is persisted per profile by `AnnouncedTagsStore`
   (`notifications/announced.txt`, one tag per line, FIFO-capped at 4000): a replayed
@@ -255,7 +281,14 @@ notification. You often don't need to raise error notifications by hand — fire
   bypass the guard entirely (transient status/errors). Tagged notifications that arrive
   before the guard has loaded are buffered and re-run through it once it is ready.
   In the persistent store, a repeated `tag` **replaces** the earlier row rather than
-  stacking (the tag is used as the row id).
+  stacking (the tag is used as the row id), inheriting its `seen` flag and
+  first-seen time. `show()` returns whether the user was actually told, so
+  anything mirroring a notification elsewhere (a launcher badge) can skip a
+  suppressed duplicate. The announced set is written on a debounce that arms
+  once rather than restarting — a burst faster than 1/s used to postpone the
+  write forever, and a backlog replay is such a burst — and is flushed on the
+  app's lifecycle pause edge, since Android kills a backgrounded process
+  without warning.
 - **Clear vs guard:** `NotificationStore.clear()` empties the visible history but does
   NOT clear the announced set — otherwise Clear would re-arm announcement of everything
   that replays on the next start.
