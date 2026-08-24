@@ -29,10 +29,13 @@
  */
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:math' as math;
 
 import '../../wapp/android_foreground_service.dart';
+import '../hero/launcher_visibility.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
+import 'xprs_cadence.dart';
 import 'xprs_id.dart';
 import 'xprs_monitor.dart';
 import 'xprs_packet.dart';
@@ -66,6 +69,115 @@ class XprsCatchup {
   /// advances to that ts.
   final Map<String, _Ask> _pending = {};
   static const int _pendingMax = 8;
+
+  /// Per archiver, the interval it has earned, in ms. Persisted with the
+  /// watermarks: an in-memory-only cadence resets to "ask everybody now" on
+  /// every restart, which is exactly how a crash loop blows through a
+  /// station's hourly budget with nothing to stop it.
+  final Map<String, int> _intervalMs = {};
+
+  /// Per archiver, when it last gave us something new. Drives the ladder:
+  /// quiet for a week is an hour, quiet for three months is six hours.
+  final Map<String, int> _lastNewsMs = {};
+
+  /// Asks sent and not yet answered: archiver -> when we sent it.
+  final Map<String, int> _inFlight = {};
+
+  /// How long an unanswered ask blocks the next one. Long enough for a full
+  /// page to air (twelve records at the responder's pacing, plus slack), short
+  /// enough that a peer that simply went away does not mute us for a period.
+  static const Duration _inFlightGrace = Duration(seconds: 40);
+
+  /// Injected so the tests are deterministic; 0..1.
+  double Function() rand = math.Random().nextDouble;
+
+  bool _awaiting(String base, int now) {
+    final sent = _inFlight[base];
+    if (sent == null) return false;
+    if (now - sent > _inFlightGrace.inMilliseconds) {
+      _inFlight.remove(base);
+      return false;
+    }
+    return true;
+  }
+
+  /// Is anybody looking? A fast cadence with the screen off spends somebody's
+  /// battery on news no one is awake to read (docs/performance.md 6.5).
+  bool get _visible => LauncherVisibility.instance.visible.value;
+
+  /// What this peer will tolerate. Only a super-archiver's raised budgets
+  /// (36.9.4) can serve a fast caller; our own other devices are not metered
+  /// at all by the responder, so they count as fast too.
+  XprsPeerClass _classOf(String base, String selfCallsign) {
+    if (base == _base(selfCallsign)) return XprsPeerClass.fast;
+    final st = XprsMonitor.instance.stations[base];
+    final serves = st?.services ?? const <String>[];
+    return serves.contains('super') ? XprsPeerClass.fast : XprsPeerClass.ordinary;
+  }
+
+  /// The fastest this archiver may be asked, right now.
+  int _floorMsFor(String base, PreferencesService prefs) {
+    final peer = _classOf(base, _selfCallsign);
+    var floor = XprsCadence.floorFor(peer, visible: _visible).inMilliseconds;
+    // The operator's own knob still applies, in the direction that is always
+    // safe: xprsCatchupMinutes may make this station poll SLOWER than the
+    // section 36.10.1 floor, never faster. Somebody minding their battery can
+    // ask for less; nobody gets to ask an ordinary archiver for more than its
+    // six replays an hour.
+    final chosen = prefs.xprsCatchupMinutes * 60000;
+    if (peer == XprsPeerClass.ordinary && chosen > floor) floor = chosen;
+    return floor;
+  }
+
+  /// The interval this archiver has earned, clamped to the bounds that apply
+  /// right now (they move with visibility and with how long it has been quiet).
+  int _intervalFor(String base, PreferencesService prefs, int now) {
+    final stored = _intervalMs[base] ??
+        (prefs.xprsCatchupIntervals[base] ?? XprsCadence.initial.inMilliseconds);
+    _intervalMs[base] ??= stored;
+    final lastNews = _lastNewsMs[base] ?? prefs.xprsCatchupNews[base] ?? now;
+    final silent = Duration(milliseconds: now - lastNews);
+    final floor = _floorMsFor(base, prefs);
+    final ceiling = XprsCadence.ceilingFor(silent).inMilliseconds;
+    var ms = stored;
+    if (ms > ceiling) ms = ceiling;
+    if (ms < floor) ms = floor > ceiling ? ceiling : floor;
+    return XprsCadence.jitter(Duration(milliseconds: ms), rand()).inMilliseconds;
+  }
+
+  /// Fold an answer into this archiver's cadence and persist it.
+  void _noteAnswer(String base, XprsAnswer answer) {
+    final prefs = PreferencesService.instanceSync;
+    final now = nowMs();
+    _inFlight.remove(base);
+    if (answer == XprsAnswer.news) {
+      _lastNewsMs[base] = now;
+      prefs?.setXprsCatchupNews(base, now);
+    }
+    final silent = Duration(milliseconds: now - (_lastNewsMs[base] ?? now));
+    final current = Duration(
+        milliseconds: _intervalMs[base] ?? XprsCadence.initial.inMilliseconds);
+    final next = XprsCadence.next(
+      current: current,
+      answer: answer,
+      peer: _classOf(base, _selfCallsign),
+      visible: _visible,
+      silentFor: silent,
+    );
+    _intervalMs[base] = next.inMilliseconds;
+    prefs?.setXprsCatchupInterval(base, next.inMilliseconds);
+  }
+
+  /// The user opened a room: an event beats a clock. Ask this archiver now,
+  /// once, whatever the interval says -- the same escape hatch the mesh
+  /// scheduler has in pokeFor.
+  void pokeFor(String archiver) {
+    final base = _base(archiver);
+    if (base.isEmpty) return;
+    _askedAtMs.remove(base);
+    _inFlight.remove(base);
+    if (_selfCallsign.isNotEmpty) unawaited(tick(_selfCallsign));
+  }
 
   int get watermarkSec =>
       PreferencesService.instanceSync?.xprsCatchupWatermark ?? 0;
@@ -142,7 +254,13 @@ class XprsCatchup {
     final now = nowMs();
     // The 2 s heartbeat is shared; this poll only wants a minute of it. tick()
     // enforces the real per-station period on top.
-    if (now - _lastTickMs < 30000) return;
+    // The gate below used to be thirty seconds, which quietly made any
+    // interval under thirty seconds unreachable however busy a room was. The
+    // sweep body is a walk over the stations in reach and returns immediately
+    // for every one whose interval has not elapsed, so running it more often
+    // costs almost nothing; what it buys is that the fast tier is actually
+    // fast (docs/performance.md 4.2 -- cheap checks first, and this is one).
+    if (now - _lastTickMs < 5000) return;
     _lastTickMs = now;
     if (_ticking || _selfCallsign.isEmpty) return;
     if (now - _identityAtMs >= identityEvery.inMilliseconds) {
@@ -160,6 +278,11 @@ class XprsCatchup {
   Map<String, dynamic> statusJson() => {
         'lastSweepAgoMs': _lastSweepMs == 0 ? null : nowMs() - _lastSweepMs,
         'stationsSeen': _lastSweepSeen,
+        // What each archiver has earned, in seconds -- the observable that
+        // says whether the cadence is following the room or stuck.
+        'intervalS': {
+          for (final e in _intervalMs.entries) e.key: e.value ~/ 1000,
+        },
         'askedAgoMs': {
           for (final e in _askedAtMs.entries) e.key: nowMs() - e.value,
         },
@@ -174,6 +297,9 @@ class XprsCatchup {
     _resume.clear();
     _pending.clear();
     _oldestReplayMs.clear();
+    _intervalMs.clear();
+    _lastNewsMs.clear();
+    _inFlight.clear();
     _identityAtMs = 0;
   }
 
@@ -276,9 +402,14 @@ class XprsCatchup {
       final news = '${st.count ?? -1}/${st.mail ?? -1}';
       final seen = _newsSeen[base];
       final unfinished = _resume.containsKey(base);
+      // The interval this archiver has EARNED. One clock for everybody meant a
+      // room silent for three months cost the same metered replay as one with
+      // a conversation running; the cadence now follows what the archiver
+      // actually returns (xprs_cadence.dart), bounded below by what that peer
+      // permits and above by how long it has had nothing to say.
+      final wait = _intervalFor(base, prefs, now);
       final quietFor = now - (_askedAtMs[base] ?? 0);
-      final overdue = !_askedAtMs.containsKey(base) ||
-          quietFor >= askAtLeastEvery.inMilliseconds;
+      final overdue = !_askedAtMs.containsKey(base) || quietFor >= wait;
 
       // The news check ACCELERATES the ask; it must never be the only thing
       // that permits one. A station whose count: we can see is asked the
@@ -295,12 +426,20 @@ class XprsCatchup {
       // it looks like knowledge. A backstop that is always armed cannot be
       // reasoned out of existence by state going stale.
       if (!overdue && (seen == news) && !unfinished) continue;
-      // Floor: even with news every minute, one ask per station per period
-      // keeps us inside the station's hourly budget.
+      // News accelerates, but never past the floor: the floor is the peer's
+      // budget, and a count: that moves every minute does not buy us the right
+      // to ask an ordinary archiver every minute.
       final last = _askedAtMs[base] ?? 0;
-      if (now - last < periodMs) continue;
+      final floor = _floorMsFor(base, prefs);
+      if (last != 0 && now - last < floor) continue;
+      // An ask still waiting for its answer is not a reason to send another.
+      // One replay runs at a time on the responder, and a page takes about
+      // eighteen seconds to air -- a second ask lands mid-chain and is refused,
+      // which under a 429 costs the window rather than shortening it.
+      if (_awaiting(base, now)) continue;
       _newsSeen[base] = news;
       _askedAtMs[base] = now;
+      _inFlight[base] = now;
       await _ask(selfCallsign, base, now, prefs);
       asked.add(base);
     }
@@ -374,10 +513,30 @@ class XprsCatchup {
     final ask = _pending[r];
     if (ask == null) return;
     final code = int.tryParse(p['code'] ?? '') ?? 0;
-    // 200 done, 206 partial, 404 the archiver holds nothing. 429 does not
-    // answer the window and must leave everything as it was.
+
+    // 429 does not answer the window -- the mark stays exactly where it was --
+    // but it is NOT nothing, and treating it as silence is what made a refusal
+    // free. The archiver is the authority on how often it will answer, so its
+    // refusal is the one answer that must always slow this station down;
+    // without that, an over-eager poller asks, is refused, and asks again
+    // forever, with the window never advancing and the network looking quiet.
+    if (code == 429) {
+      _pending.remove(r);
+      _noteAnswer(ask.station, XprsAnswer.refused);
+      LogService.instance.add(
+          'XPRS catch-up: ${ask.station} refused (429) — backing off to '
+          '${_intervalMs[ask.station]! ~/ 1000}s');
+      return;
+    }
     if (code != 200 && code != 206 && code != 404) return;
     _pending.remove(r);
+
+    // What the answer was WORTH, which is the whole input to the cadence: an
+    // archiver that served rows is talking and is worth coming back to sooner;
+    // one that had nothing has just told us it can be left alone longer.
+    final served = _oldestReplayMs.containsKey(ask.station);
+    _noteAnswer(
+        ask.station, served ? XprsAnswer.news : XprsAnswer.quiet);
     final prefs = PreferencesService.instanceSync;
     if (prefs == null) return;
 
@@ -395,6 +554,11 @@ class XprsCatchup {
         _resume[ask.station] = ask.atMs;
       }
       _newsSeen.remove(ask.station); // there IS more; do not go quiet
+      // The peer SAID there is more. Waiting out an interval to be told again
+      // is how a backlog takes an afternoon to drain; the next ask is the
+      // continuation of this one, so it goes now. The chain-in-flight guard
+      // still applies, so this cannot outrun what the archiver can air.
+      _askedAtMs.remove(ask.station);
       LogService.instance.add(
           'XPRS catch-up: ${ask.station} 206 — resuming before '
           '${_ts(_resume[ask.station]!)}');

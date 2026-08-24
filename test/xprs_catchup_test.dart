@@ -61,6 +61,9 @@ void main() {
     await PreferencesService.instance();
     final prefs = PreferencesService.instanceSync!;
     prefs.xprsCatchupMinutes = 1;
+    // The ordinary floor is section 36.10.1's ten minutes whatever this knob
+    // says (it may only slow polling down), so the clock steps below are a
+    // period apart in the cadence that actually applies.
     // Non-zero, or the first tick just plants the mark and returns.
     prefs.xprsCatchupWatermark = now ~/ 1000 - 3600;
 
@@ -125,7 +128,7 @@ void main() {
 
     // The next sweep continues from where the page stopped, even though the
     // beacon still says the same count.
-    now += const Duration(minutes: 2).inMilliseconds;
+    now += const Duration(minutes: 5).inMilliseconds;
     _beacon(now, count: 3);
     await XprsCatchup.instance.tick(_self);
     expect(aired, hasLength(2), reason: 'an unfinished page is itself news');

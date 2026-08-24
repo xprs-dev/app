@@ -388,6 +388,58 @@ class PreferencesService {
   set xprsCatchupMarks(Map<String, int> v) =>
       _prefs.setString('xprs.catchupMarks', jsonEncode(v));
 
+  /// Per archiver, the poll interval it has earned (ms), and when it last had
+  /// something new to give us.
+  ///
+  /// Persisted for the same reason the watermarks are: a cadence that lives
+  /// only in memory resets to "ask everybody now" on every restart, so a
+  /// crash-looping app walks straight through a station's hourly budget
+  /// (section 31.2) with nothing local to stop it.
+  Map<String, int> get xprsCatchupIntervals => _intMap('xprs.catchupIntervals');
+  Map<String, int> get xprsCatchupNews => _intMap('xprs.catchupNews');
+
+  void setXprsCatchupInterval(String archiver, int ms) =>
+      _putCapped('xprs.catchupIntervals', archiver, ms);
+
+  void setXprsCatchupNews(String archiver, int atMs) =>
+      _putCapped('xprs.catchupNews', archiver, atMs);
+
+  Map<String, int> _intMap(String key) {
+    final raw = _prefs.getString(key);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final m = jsonDecode(raw);
+      if (m is! Map) return {};
+      return {
+        for (final e in m.entries)
+          if (e.value is int) e.key.toString(): e.value as int,
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Same 32-entry cap as the watermarks, evicting the smallest value first:
+  /// for an interval map that is the fastest-polled entry, which is the one we
+  /// can most afford to forget (it goes back to the polite default), and for
+  /// the news map it is the stalest.
+  void _putCapped(String key, String archiver, int value) {
+    final m = _intMap(key);
+    m[archiver] = value;
+    while (m.length > 32) {
+      var lowestKey = m.keys.first;
+      var lowest = m[lowestKey]!;
+      for (final e in m.entries) {
+        if (e.value < lowest) {
+          lowest = e.value;
+          lowestKey = e.key;
+        }
+      }
+      m.remove(lowestKey);
+    }
+    _prefs.setString(key, jsonEncode(m));
+  }
+
   // Stated by the user (-1 = not stated; we then use what we can see, and we
   // never guess "solar" for anybody).
   int get nodePower => _prefs.getInt('node.power') ?? -1;
