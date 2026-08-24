@@ -6,10 +6,12 @@
  * archiver answered for — and, on a slow cadence, asks every archiver in
  * direct reach for what came after it:
  *
- *   t:command f:<us> d:<archiver> ts:<now> scope:local cmd:history since:<watermark>
+ *   t:command f:<us> d:<archiver> ts:<now> cmd:history since:<watermark>
  *
- * scope:local pins the ask to the short-range bearers, which is where a
- * locally-reachable station by definition is. The watermark advances to the
+ * The ask is DIRECTED, so it reaches exactly one station on whatever lane can
+ * carry it -- including the internet, where a peer on another network is
+ * reachable and a scope:local ask (13.11.3) would have been refused before it
+ * left. The watermark advances to the
  * ask's own ts: only when the station answers 200/206/404; a 429 or silence
  * leaves it, and the same window is asked for again next period.
  *
@@ -313,8 +315,15 @@ class XprsCatchup {
     // it happened to work; against one that reads the spec it matched a callsign
     // named MESSAGE, answered 404, and the watermark advanced as though the
     // window were finished.
+    // NOT scope:local. It was, and that pinned the ask to the short-range
+    // bearers -- which is right for a station across the room and silently
+    // wrong for one across the internet: the reticulum bearer refuses a
+    // scope:local packet by design (13.11.3), so the peer was never actually
+    // asked and its Global chat never arrived. The ask is DIRECTED (d:), so
+    // it costs one packet to one station whichever lane carries it, and the
+    // answer comes back on the directed lane too (36.12.1).
     final wire = StringBuffer('t:command f:$self d:$archiver ts:${_ts(now)} '
-        'scope:local cmd:history kind:message since:${_ts(sinceSec * 1000)}');
+        'cmd:history kind:message since:${_ts(sinceSec * 1000)}');
     if (untilMs != null) wire.write(' until:${_ts(untilMs)}');
     final p = XprsPacket.parse(wire.toString());
     if (p == null || !p.fits) return;
