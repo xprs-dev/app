@@ -7568,6 +7568,13 @@ at three scales, and the scale is announced so an asker can pick:
 | station archiver | `serve:archive` | its neighbourhood's spool and visit map | section 31 reference budgets |
 | **super-archiver** | `serve:archive,super` | gossip for every active callsign it can learn of, deep spool, no need-to-know cap | orders of magnitude above the reference budgets -- thousands of asks a minute is the design point |
 
+A super-archiver is the role the network cannot do without, and 36.12.2 says
+why: on transports nobody owns, stations whose neighbours are all remote are
+invisible to each other until one archiver they can all address is holding
+the conversation. It is where public traffic is pushed and where it is pulled
+from -- not an optimisation of the broadcast, but the mechanism that replaces
+it once the broadcast stops crossing.
+
 A super-archiver is a full server wherever always-on storage and reach
 live: a machine on the internet, and nothing in this section stops the same
 role running on a satellite or a store beyond Earth -- every hop here is
@@ -7835,6 +7842,93 @@ working on transports nobody owns; on a better transport they are merely
 redundant, and redundancy over two lanes that deduplicate to one record is
 the cheapest insurance in this document.
 
+### 36.12.2 Public traffic across the internet: the archiver is the meeting place
+
+36.12 routes mail to ONE callsign. This section is the other half, and it
+took a working bench to find: **public traffic -- the broadcast that is
+addressed to everybody -- does not cross the internet by being broadcast.**
+It crosses because archivers hold it and other stations ask them for it.
+
+The failure is quiet and worth naming, because every part of it reports
+success. Two stations on different networks hear each other's announcements
+all day. Each publishes a `t:message` with no `d:`, the local bearers report
+`sent`, the packet is signed and archived at home -- and neither ever sees a
+word the other said. Nothing errors. There is nothing in either log to read.
+
+**Why: a broadcast is an announcement, and shared transports do not
+cross-forward announcements between their own clients** (36.12.1). The two
+guaranteed lanes are identity announcements and directed messages, and a
+public post is neither. So a station whose neighbours are all on the far side
+of the internet publishes into silence.
+
+The answer is the archiver, used as both a destination and a source:
+
+**Push what you publish to the archivers you chose.** 36.3 already says a
+station pushes to the indexers its operator chose, and 36.4 says when. Across
+the internet that push MUST be an addressed copy per chosen archiver -- one
+directed message each, which is a lane that crosses -- and not a reliance on
+the broadcast having reached them. A wire carrying a `d:` is mail and is
+excluded: it has its own custody path (36.7, 36.8.1).
+
+**Pull what everybody else published from the same place.** A station's
+catch-up (36.10.1) MUST include its configured archivers, and this is where
+implementations go wrong in two specific ways:
+
+- **Asking only stations it can HEAR.** A station in earshot holds what IT
+  heard, which is a neighbourhood. Public traffic is not a neighbourhood: it
+  is everything everybody said, and only an archiver that collects from many
+  stations holds that. An archiver is asked whether or not any radio is up --
+  a station with no radio in earshot has MORE need of it, not less.
+- **Marking the ask `scope:local`.** A local poll is a reasonable thing to
+  scope, and 13.11.3 says a `scope:local` packet is never carried -- so the
+  internet bearer refuses it before it leaves, and the archiver on the other
+  side of the world is listed, counted, and never actually asked. A catch-up
+  ask is DIRECTED: it reaches one named station, that station meters it
+  (31.2), and it needs no scope to stay cheap.
+
+**A super-archiver is what makes this work at all** (36.9.4). Somebody
+reachable over the internet has to hold everything, or there is nowhere for
+the rest to push to and nowhere to pull from. This is the one role the
+network cannot do without: stations with only radio neighbours are invisible
+to each other until one archiver they can all address is holding the
+conversation.
+
+**What an archiver admits off the internet.** 36.3's declaration rule -- a
+station archives an internet-borne packet only when its author declared this
+station as a mailbox -- guards against spooling other people's MAIL, and mail
+is exactly the case that carries a `d:`. It MUST NOT be applied to
+publications: a `t:status` (27), a `t:reaction` (6.5) and a `t:message` with
+no `d:` are written for everybody by definition, which is what makes them
+public in the first place. An archiver that refuses them is refusing to be an
+archiver of public traffic, and the room that reaches everyone reaches
+nobody.
+
+**Addressing is a prerequisite, and it fails silently.** All of the above is
+directed traffic, so it depends on turning a callsign into the transport's
+own address. When that lookup fails, an implementation naturally falls back
+to broadcasting -- and the fallback is the failure, dressed as a send. Two
+rules follow:
+
+- A station SHOULD publish its callsign as its display name on whatever
+  identity the transport announces, so a peer that has only ever heard the
+  announcement can still address it.
+- A resolver MUST read every name the transport offers, not the first one it
+  happens to parse. Implementations that resolve address-to-callsign for
+  display and callsign-to-address for sending tend to grow the two
+  independently; the second is the one that fails silently, so it is the one
+  that must be checked against the air.
+
+**Send on every lane that might work.** Where a transport offers more than
+one addressed mechanism, a directed wire MAY go out on all of them: they fail
+independently, and section 5's identifier makes the duplicate collapse into
+one record on arrival. Measured on the bench, two phones on different
+networks exchanged one addressed form happily while the other stayed silent
+between the same two endpoints.
+
+The whole of this section reduces to one sentence: **on a transport nobody
+owns, an archiver is not an optimisation of public traffic, it is the
+mechanism.**
+
 
 ---
 
@@ -7851,7 +7945,8 @@ the cheapest insurance in this document.
 | Section 36.8.1 automated return leg (release on hearing, forward toward gossip) | **implemented** on the Flutter node (funnel-triggered release, `XprsForwarder` with `via:` and the loop check) and in the shared ESP32 app (release-on-hearing off the seen funnel, paced re-air, receipt purge); the T-Dongle keeps its original `blemesh_scf_*` loop. Bench-validated end to end |
 | Section 36.9.4 gossip (layers, budgets, super-archivers) | **implemented** on the Flutter side (`xprs_gossip.dart`: L2/L3 tables, K/G caps, signer quotas, byte budget, the super-archiver mode and the miss-path ask) with DoS-probe unit tests; the shared ESP32 app keeps the need-to-know ring |
 | Section 36.12 reaching a callsign from anywhere | **implemented and bench-validated**: an internet sender on a foreign network reached a WiFi-less BLE-only pocket through deposit, gossip, forward and release-on-hearing, with signatures intact at every hop |
-| Section 36.12.1 constrained internet transports (directed replies, directed asks, deposit, sender-parks-own-mail) | **implemented** on the Flutter side; specified in this revision after being proven necessary on public hubs |
+| Section 36.12.1 constrained internet transports (directed replies, directed asks, deposit, sender-parks-own-mail) | **implemented** on the Flutter side; specified after being proven necessary on public hubs |
+| Section 36.12.2 public traffic across the internet (push to chosen archivers, pull from them, publications past the declaration rule, callsign-to-address resolution) | **implemented and bench-validated**: two phones on different networks, neither hearing the other's broadcasts, exchanged Global chat through one super-archiver -- push arrived in seconds, pull on the metering period |
 | Callsigns, signatures, verification | implemented |
 | Signing by default on every packet type | not implemented; signing exists and is opt-in |
 | Direct, group and broadcast messages | implemented |
