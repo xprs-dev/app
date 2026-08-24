@@ -2106,16 +2106,51 @@ class RnsService {
   }
 
   /// The LXMF delivery address of a callsign we have heard announce, or ''.
+  ///
+  /// Three places name the same person, and this used to read only the first:
+  ///
+  ///  1. `callsign` on an observed node -- set when the announce carried an
+  ///     XPRS app-data block we parsed.
+  ///  2. `lxmfName` -- an XPRS station announces its CALLSIGN as its LXMF
+  ///     display name, so a peer we know only through its LXMF announce is
+  ///     named there and nowhere else.
+  ///  3. The persisted LXMF directory (destHex -> label), which is what still
+  ///     knows a peer that has gone quiet since we last heard it.
+  ///
+  /// Matching (1) alone is why two stations on different networks could see
+  /// each other's announces all day and still not address each other: this
+  /// returned '', every directed packet fell back to a broadcast announce, and
+  /// the public hubs throttle those (36.12.1) -- so a cmd:history ask, its
+  /// replay, and Global chat with it, went nowhere. [lxmfPeerIdentity] above
+  /// already reads all three for the REVERSE direction; this is the same
+  /// lookup, the other way round.
   String lxmfDestForCallsign(String callsign) {
-    final want = callsign.trim().toUpperCase();
+    final want = _bareUpper(callsign);
     if (want.isEmpty) return '';
     for (final n in _observed.values) {
-      if ((n.callsign ?? '').trim().toUpperCase() != want) continue;
+      final named = _bareUpper(n.callsign ?? '') == want ||
+          _bareUpper(n.lxmfName ?? '') == want;
+      if (!named) continue;
       final d = _lxmfDestHexForPub(n.publicKeyHex);
       if (d.isNotEmpty) return d;
     }
+    // Off the air right now, or announced with no app-data we could parse.
+    if (!_lxmfDirLoaded) {
+      _lxmfDirLoaded = true;
+      _loadLxmfDirectory();
+    }
+    for (final e in _lxmfNames.entries) {
+      if (_bareUpper(e.value) == want && e.key.trim().isNotEmpty) {
+        return e.key.trim();
+      }
+    }
     return '';
   }
+
+  /// A callsign without its device suffix, upper-cased (section 3.1): the two
+  /// halves of one person's traffic must resolve to one address.
+  static String _bareUpper(String s) =>
+      NostrCrypto.bareCallsign(s.trim()).toUpperCase();
 
   /// Hand the wapps a message that reached us over a path Reticulum knows
   /// nothing about — carried by a custodian on the mesh (see MeshCourier).
