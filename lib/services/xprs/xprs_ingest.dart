@@ -105,7 +105,15 @@ class XprsIngest {
   static bool _worthKeeping(XprsPacket p, {required bool forUs}) {
     if (forUs) return true; // our own mail, whatever shape it takes
     if (!_isPresence(p.type)) return true; // conversation, always
-    return PreferencesService.instanceSync?.xprsKeepChatter ?? false;
+    final prefs = PreferencesService.instanceSync;
+    // A super-archiver's stock in trade IS the chatter: signed observations
+    // are the wires a `cmd:history kind:observation only:X` replay serves
+    // (36.9.4's bulk gossip). A super that discards them answers every such
+    // ask with a 404 by construction, whatever its gossip table knows —
+    // gossip stores digests, and a replay may only re-air original packets
+    // (36.1).
+    if (prefs?.xprsSuperArchiver ?? false) return true;
+    return prefs?.xprsKeepChatter ?? false;
   }
 
   static bool get _archiveOn =>
@@ -145,13 +153,19 @@ class XprsIngest {
       } catch (e) {
         LogService.instance.add('XPRS: direct-heard hook failed: $e');
       }
-      if (p.type == 'observation' && p.has('hears')) {
+      if (p.type == 'observation' &&
+          p.has('hears') &&
+          XprsGossip.instance.wouldAcceptHears(from)) {
         final hears = (p['hears'] ?? '')
             .split(',')
             .map((c) => c.trim().toUpperCase())
             .where((c) => c.isNotEmpty)
             .toList();
         if (hears.isNotEmpty) {
+          // The verify is the expensive step (a curve op, on this isolate)
+          // and wouldAcceptHears above has already said the quota will admit
+          // the claim — so it runs at most once per signer per quota window,
+          // not once per beacon (performance.md 4.2).
           final verified = p.has('sig') &&
               xprsVerify(p, XprsArchive.instance.keyResolver?.call(from)) ==
                   XprsSigState.verified;
@@ -325,6 +339,34 @@ class XprsIngest {
     // two strangers meeting on the internet could not bootstrap at all.
     if (p.type == 'identity') _bindIdentity(fromC, p);
 
+    // Gossip off the internet lane (36.9.4): a replayed observation arriving
+    // over the hubs is exactly the "asker verifies and caches into its own
+    // L3" step — the answer to a super-archiver ask lands HERE, not on any
+    // radio, and without this feed the ask was paid for and the answer
+    // discarded. noteHears' walls hold unchanged: an unverified claim feeds
+    // nothing, and L2 stays radio-truth-only because the packet's own
+    // `link:` decides — this lane's fallback is 'rns', which is not a
+    // short-range bearer, so an internet arrival with no radio claim can
+    // never write the durable layer.
+    if (p.type == 'observation' &&
+        p.has('hears') &&
+        XprsGossip.instance.wouldAcceptHears(fromC)) {
+      final hears = (p['hears'] ?? '')
+          .split(',')
+          .map((c) => c.trim().toUpperCase())
+          .where((c) => c.isNotEmpty)
+          .toList();
+      if (hears.isNotEmpty) {
+        // Quota peek first, verify second — same order as the radio lane,
+        // same reason (performance.md 4.2).
+        final verified = p.has('sig') &&
+            xprsVerify(p, XprsArchive.instance.keyResolver?.call(fromC)) ==
+                XprsSigState.verified;
+        XprsGossip.instance
+            .noteHears(fromC, hears, link: p['link'] ?? 'rns', verified: verified);
+      }
+    }
+
     if (p.type == 'mailbox') {
       // Acting on it requires a verified signature (13.12); recordMailboxDecl
       // enforces that. A declaration naming us is itself worth keeping.
@@ -357,7 +399,19 @@ class XprsIngest {
 
     if (!_archiveOn) return;
 
-    final admitted = XprsArchive.instance.hasActiveDecl(fromC) ||
+    // A super-archiver keeps the chatter (36.12.1): observations and
+    // identities are the wires its bulk-gossip replays serve, they are
+    // publications a gateway passes verbatim (36.1), and on a super they
+    // mostly ARRIVE over this lane — the boards dial in over Reticulum.
+    // The declaration rule below guards against spooling other people's
+    // MAIL off the internet; presence is not mail, and a super that
+    // refused it could never answer `kind:observation` about anyone.
+    final superKeeps = (PreferencesService.instanceSync?.xprsSuperArchiver ??
+            false) &&
+        (p.type == 'observation' || p.type == 'identity' || p.type == 'service');
+
+    final admitted = superKeeps ||
+        XprsArchive.instance.hasActiveDecl(fromC) ||
         (toC.isNotEmpty && XprsArchive.instance.hasActiveDecl(toC));
     if (!admitted) {
       refusedRns++;

@@ -785,14 +785,20 @@ class MeshService {
     final now = DateTime.now().millisecondsSinceEpoch;
     final last = _releaseTriedMs[callsign] ?? 0;
     if (now - last < 30000) return;
-    final pending =
-        MeshStore.instance.pendingFor(callsign, _table, max: 4,
-            selfCallsign: tableCallsign);
-    if (pending.isEmpty) return;
+    // Arm the throttle BEFORE the store probe, not only on a hit: this sits
+    // on the funnel, every beacon lands here, and pendingFor is a sqlite
+    // query on the main isolate. Armed only on a hit, the empty case — which
+    // is nearly every packet on a busy bench — paid that query per beacon,
+    // forever (docs/performance.md 4.2: a cheap call in a hot loop IS the
+    // drain).
     _releaseTriedMs[callsign] = now;
     if (_releaseTriedMs.length > 256) {
       _releaseTriedMs.remove(_releaseTriedMs.keys.first);
     }
+    final pending =
+        MeshStore.instance.pendingFor(callsign, _table, max: 4,
+            selfCallsign: tableCallsign);
+    if (pending.isEmpty) return;
     LogService.instance.add(
         'Mesh: $callsign heard on $bearer with ${pending.length} held — '
         'releasing (36.8.1)');

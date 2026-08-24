@@ -63,6 +63,7 @@ class XprsGossip {
   /// Per-signer ingestion meter (36.9.4: one observer's gossip at the rate
   /// its own adverts arrive). 30 s matches the fastest beacon cadence.
   final Map<String, int> _signerLastMs = {};
+  final Map<String, int> _directLastMs = {};
   static const int _signerIntervalMs = 30000;
   int _lastSweepMs = 0;
 
@@ -103,12 +104,37 @@ class XprsGossip {
     final db = _db;
     if (db == null || callsign.isEmpty || selfCallsign.isEmpty) return;
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    // This sits on the funnel: every beacon from every neighbour lands here,
+    // several a second on a busy bench, and each write below is two sqlite
+    // statements on this isolate. The table's answer does not change by the
+    // beacon — debounce identical sightings in RAM and pay the disk once a
+    // minute per (callsign, bearer) (performance.md 4.2: no timers, the
+    // check rides the insert).
+    final dk = '$callsign|$selfCallsign|$bearer';
+    final dl = _directLastMs[dk] ?? 0;
+    if (now - dl < 60000) return;
+    _directLastMs[dk] = now;
+    if (_directLastMs.length > 512) {
+      _directLastMs.remove(_directLastMs.keys.first);
+    }
     _noteLive(db, callsign, selfCallsign, bearer, now, selfCallsign);
     if (kShortRange.contains(bearer)) {
       _noteVisit(db, callsign, selfCallsign, bearer, now);
     }
     accepted++;
     _maybeSweep(db, now);
+  }
+
+  /// Cheap pre-check for the ingest hot path: would a `hears:` claim from
+  /// [observer] be admitted right now, or is it inside the per-signer quota
+  /// window? One map lookup, no mutation. Call it BEFORE paying the
+  /// signature verify — the verify is a curve operation on the calling
+  /// isolate, a station beacons its observation every few seconds, and the
+  /// quota admits one per interval anyway: verifying the ones the quota is
+  /// about to refuse was pure main-isolate heat (performance.md 4.2).
+  bool wouldAcceptHears(String observer, {int? nowMs}) {
+    final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    return now - (_signerLastMs[observer] ?? 0) >= _signerIntervalMs;
   }
 
   /// A verified observation from [observer] whose `hears:` lists callsigns it
@@ -291,6 +317,7 @@ class XprsGossip {
     _db?.execute('DELETE FROM gossip_visits');
     _db?.execute('DELETE FROM gossip_live');
     _signerLastMs.clear();
+    _directLastMs.clear();
     _lastSweepMs = 0;
     accepted = 0;
     refusedUnsigned = 0;
