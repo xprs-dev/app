@@ -26,6 +26,7 @@ import '../../connections/lora/lora_connection.dart';
 import '../../connections/connection.dart';
 import '../../profile/profile_service.dart';
 import '../log_service.dart';
+import '../preferences_service.dart';
 import '../reticulum/rns_service.dart';
 import 'xprs_ingest.dart';
 import 'xprs_lan.dart';
@@ -258,6 +259,32 @@ class XprsPublisher {
       }
       report[b.name] = ok ? 'sent' : 'refused';
       if (ok) carriedBy ??= b.archiveBearer;
+    }
+
+    // Push to the super-archivers this operator CHOSE (36.3, 36.4).
+    //
+    // A public wire goes out as a broadcast announce, and the community hubs
+    // do not cross-forward those between their own clients -- so a station
+    // whose neighbours are all on the far side of the internet published into
+    // silence. A super-archiver is the one place that holds everything
+    // everybody said (36.9.4), which is what makes Global chat global: every
+    // other station pulls it from there. Pushing is one addressed copy per
+    // configured super, on the lane the hubs do carry (36.12.1), and only for
+    // wires meant for everybody -- mail has a d: and its own custody path.
+    final supers =
+        PreferencesService.instanceSync?.xprsSuperArchivers ?? const <String>[];
+    if (supers.isNotEmpty) {
+      for (final w in wires) {
+        final p = XprsPacket.parse(w);
+        if (p == null || (p['d'] ?? '').trim().isNotEmpty) continue;
+        for (final call in supers) {
+          final hex = RnsService.instance.lxmfDestForCallsign(call);
+          if (hex.isEmpty) continue;
+          unawaited(RnsService.instance
+              .sendLxmf(destHex: hex, title: 'xprs', content: w)
+              .catchError((_) => false));
+        }
+      }
     }
 
     // Our own publication enters our own spool whether or not a radio took
