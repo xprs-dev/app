@@ -417,7 +417,18 @@ class XprsIngest {
     // internet, does not apply to them. Without this the launcher only ever
     // saw what the radio heard, and a station one hop away over a hub was
     // invisible.
-    final publication = p.type == 'status' || p.type == 'reaction';
+    // What a publication IS on this lane: something written for everybody.
+    // A status (27) and the reaction that judges it (6.5) always are, and so
+    // is a `t:message` with NO `d:` -- that is the broadcast chat every
+    // station is meant to read, the Global chat room in the chat wapp. The
+    // declaration rule exists to stop this station spooling other people's
+    // MAIL off the internet, and mail is precisely the case that HAS a `d:`;
+    // it is still gated, still routed through custody. Without this, two
+    // stations on different internet connections could see each other's
+    // presence and never each other's words.
+    final publication = p.type == 'status' ||
+        p.type == 'reaction' ||
+        (p.type == 'message' && toC.isEmpty);
 
     final admitted = superKeeps ||
         publication ||
