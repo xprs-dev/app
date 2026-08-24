@@ -128,6 +128,16 @@ class _ReticulumBearer implements XprsBearer {
     if (dest.isNotEmpty) {
       final hex = RnsService.instance.lxmfDestForCallsign(dest);
       if (hex.isNotEmpty) {
+        // Belt and braces, because these two lanes fail differently. The wapp
+        // datagram is cheap and usually right; LXMF rides a LINK, and links
+        // are what the public hubs actually forward between their own clients
+        // (36.12.1). Measured on the bench: two phones on different networks
+        // exchanged LXMF happily while the datagram lane stayed silent, so a
+        // cmd:history ask sent only on the datagram was never answered. Both
+        // copies carry the same section 5 identifier and collapse on arrival.
+        unawaited(RnsService.instance
+            .sendLxmf(destHex: hex, title: 'xprs', content: wire)
+            .catchError((_) => false));
         // True = delivered on a link; false ALSO covers "stored with a
         // relay for later", which for mail is success -- but the return
         // cannot tell that apart from failure, so the report stays honest

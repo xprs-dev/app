@@ -2954,6 +2954,21 @@ class RnsService {
             LogService.instance.add(
               'LXMF: from ${_hex(m.sourceHash)}: "${m.contentString}"',
             );
+            // An XPRS wire that travelled as an LXMF message enters the same
+            // funnel one that came off the wapp datagram lane does. The two
+            // lanes are not interchangeable in practice: between two phones on
+            // different networks the datagram lane goes quiet while LXMF --
+            // which rides a link, and links are what the public hubs actually
+            // forward (36.12.1) -- gets through. A directed ask sent on both
+            // arrives on whichever one is working, and the section 5 identifier
+            // collapses the duplicate.
+            final body = m.contentString;
+            if (body.startsWith('t:')) {
+              try {
+                XprsIngest.reticulum(
+                    _hex(m.sourceHash), Uint8List.fromList(utf8.encode(body)));
+              } catch (_) {}
+            }
           },
           log: (msg) => LogService.instance.add('RNS/lxmf: $msg'),
           // Wapp datagrams carry their own app-layer signature (verified inside the
