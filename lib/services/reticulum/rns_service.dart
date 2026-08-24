@@ -2929,6 +2929,23 @@ class RnsService {
             if (_lxmfSeenHashes.length > 1024) {
               _lxmfSeenHashes.remove(_lxmfSeenHashes.first);
             }
+            // An XPRS wire that travelled as an LXMF message is PROTOCOL, not
+            // correspondence: a cmd:history ask, the t:result that answers it,
+            // a status being pushed to an archiver. It goes to the XPRS funnel
+            // and stops there. It must never reach the LXMF inbox, because
+            // everything in that inbox is a message somebody wrote to you --
+            // the chat wapp files each one as a 1:1 bubble, so routine
+            // machinery started appearing in people's conversations as
+            // "t:result f:X10G3D d:...". A protocol packet the user can read
+            // is a bug whichever direction it travelled.
+            final xprsWire = m.contentString;
+            if (xprsWire.startsWith('t:')) {
+              try {
+                XprsIngest.reticulum(_hex(m.sourceHash),
+                    Uint8List.fromList(utf8.encode(xprsWire)));
+              } catch (_) {}
+              return;
+            }
             _lxmfInbox.add({
               'from': _hex(m.sourceHash),
               'title': m.titleString,
@@ -2954,21 +2971,7 @@ class RnsService {
             LogService.instance.add(
               'LXMF: from ${_hex(m.sourceHash)}: "${m.contentString}"',
             );
-            // An XPRS wire that travelled as an LXMF message enters the same
-            // funnel one that came off the wapp datagram lane does. The two
-            // lanes are not interchangeable in practice: between two phones on
-            // different networks the datagram lane goes quiet while LXMF --
-            // which rides a link, and links are what the public hubs actually
-            // forward (36.12.1) -- gets through. A directed ask sent on both
-            // arrives on whichever one is working, and the section 5 identifier
-            // collapses the duplicate.
-            final body = m.contentString;
-            if (body.startsWith('t:')) {
-              try {
-                XprsIngest.reticulum(
-                    _hex(m.sourceHash), Uint8List.fromList(utf8.encode(body)));
-              } catch (_) {}
-            }
+
           },
           log: (msg) => LogService.instance.add('RNS/lxmf: $msg'),
           // Wapp datagrams carry their own app-layer signature (verified inside the
