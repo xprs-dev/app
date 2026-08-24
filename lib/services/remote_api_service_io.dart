@@ -991,6 +991,12 @@ class RemoteApiService {
         return _json(res, {
           'ok': true,
           'call': call,
+          // The addressed lane, made visible. An empty string here is why a
+          // directed packet silently becomes a broadcast announce -- and the
+          // public hubs throttle those -- so "can I actually address this
+          // station" is the first question when a peer is heard but never
+          // answers (36.12.1).
+          'lxmfDest': RnsService.instance.lxmfDestForCallsign(call),
           'declared': XprsArchive.instance.holdersFor(call),
           'sightings': [
             for (final s in XprsGossip.instance.whereIs(call))
