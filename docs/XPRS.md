@@ -7669,10 +7669,78 @@ The cycle:
 
 Ten minutes is not arbitrary: section 31's reference serving budget
 answers a known caller six times an hour, and a ten-minute poll is
-exactly that ceiling. A device polling faster steals its own budget; a
+exactly that ceiling. It is the period for an ORDINARY archiver, and
+36.10.2 is what a station does with it once it can see which of its
+archivers are busy and which have been silent since spring. A device polling faster steals its own budget; a
 device polling slower merely learns the news later. Replayed packets
 deduplicate on the section 5 identifier, so a window asked twice costs
 airtime, never correctness.
+
+### 36.10.2 The poll adapts to what it finds
+
+36.10.1 gives every archiver the same clock. That is the right default and
+the wrong steady state: a room nobody has spoken in since spring costs the
+same metered replay as one with a conversation running, and the station
+paying for both is the archiver. A station SHOULD therefore keep a SEPARATE
+interval per archiver and move it according to what that archiver answers.
+
+The measurement is free, because the answer is already coming back:
+
+| the archiver answered | the interval |
+|---|---|
+| a page with records we did not have | halve it -- it is talking |
+| `code:206`, more held than served | ask the continuation IMMEDIATELY; a peer that says there is more should not be made to say it again next period |
+| `code:200` or `code:404` with nothing new | double it |
+| `code:429` | double it, and never faster than once a minute afterwards |
+| silence | leave it; silence is evidence about the path, not about the room |
+
+**The ceiling is how long that archiver has been quiet.** Reference values,
+counted from the last time it gave this station something new:
+
+| silent for | asked at most every |
+|---|---|
+| less than a week | 10 minutes (36.10.1's period) |
+| a week or more | 60 minutes |
+| three months or more | 6 hours |
+
+**The floor is what the peer permits, and it is not the caller's to choose.**
+Section 31.2's reference budget answers a known caller six times an hour,
+which is the whole reason 36.10.1's period is ten minutes. So:
+
+- An ordinary archiver is never asked faster than that period, however busy
+  the room gets. A station that polls one faster does not get more news; it
+  spends that archiver's cross-caller allowance, and the callers it starves
+  are its own neighbours.
+- A **super-archiver** (36.9.4) may be asked far faster, because raised
+  budgets are what a super-archiver IS -- reference floor **15 seconds**. Not
+  lower, and for a reason that has nothing to do with budgets: one replay
+  runs at a time and a page takes on the order of fifteen seconds to air, so
+  an ask sent faster than that arrives while the previous answer is still
+  being sent and is refused. A station MUST NOT have more than one
+  unanswered ask outstanding to the same archiver.
+- A station's own other devices (section 3.1) are not metered by the
+  responder at all and may be asked at the same fast floor.
+
+**`code:429` is the archiver's authority over the caller's cadence.** It is
+the one answer that must always slow a station down. Treating it as silence
+-- asking again on the same schedule, being refused again -- is a loop that
+never advances a watermark and looks from the outside like a quiet network.
+
+**Nobody awake, nobody polled fast.** A device whose screen is off and whose
+operator is not reading anything falls back to the quiet ladder whatever the
+room is doing. A fast tier exists to put words on a screen somebody is
+looking at; running it into a pocket spends battery and somebody else's
+serving budget to no end.
+
+**Spread the herd.** A station SHOULD jitter each interval by a small
+fraction (a tenth is enough). Many devices pulling one super-archiver on the
+same nominal period arrive together, and the load an archiver actually feels
+is the peak, not the average.
+
+Two properties make all of this safe to get wrong. A replayed packet
+deduplicates on its section 5 identifier, so an interval that is too short
+costs airtime and never correctness; and the watermark only advances on an
+answer, so an interval that is too long delays news and never loses it.
 
 ### 36.11 When the store is full
 
@@ -7946,6 +8014,7 @@ mechanism.**
 | Section 36.9.4 gossip (layers, budgets, super-archivers) | **implemented** on the Flutter side (`xprs_gossip.dart`: L2/L3 tables, K/G caps, signer quotas, byte budget, the super-archiver mode and the miss-path ask) with DoS-probe unit tests; the shared ESP32 app keeps the need-to-know ring |
 | Section 36.12 reaching a callsign from anywhere | **implemented and bench-validated**: an internet sender on a foreign network reached a WiFi-less BLE-only pocket through deposit, gossip, forward and release-on-hearing, with signatures intact at every hop |
 | Section 36.12.1 constrained internet transports (directed replies, directed asks, deposit, sender-parks-own-mail) | **implemented** on the Flutter side; specified after being proven necessary on public hubs |
+| Section 36.10.2 the poll adapts to what it finds (per-archiver interval, the quiet ladder, the peer's floor, 429 as authority) | **implemented** on the Flutter side, with the ladder as pure functions under unit test |
 | Section 36.12.2 public traffic across the internet (push to chosen archivers, pull from them, publications past the declaration rule, callsign-to-address resolution) | **implemented and bench-validated**: two phones on different networks, neither hearing the other's broadcasts, exchanged Global chat through one super-archiver -- push arrived in seconds, pull on the metering period |
 | Callsigns, signatures, verification | implemented |
 | Signing by default on every packet type | not implemented; signing exists and is opt-in |
