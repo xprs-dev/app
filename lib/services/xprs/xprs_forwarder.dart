@@ -19,6 +19,7 @@ import 'xprs_archive.dart';
 import 'xprs_gossip.dart';
 import 'xprs_id.dart';
 import 'xprs_packet.dart';
+import 'xprs_publisher.dart';
 import 'xprs_vocab.dart';
 
 class XprsForwarder {
@@ -66,19 +67,32 @@ class XprsForwarder {
       return null;
     }
 
-    // The directed lane: LXMF to the gateway when the network can name it.
-    final hex = RnsService.instance.lxmfDestForCallsign(gateway);
-    if (hex.isEmpty) return null; // radio custody lanes keep their own pace
-
     final carried = xprsAppendVia(p, selfBase);
     if (!carried.fits) return null; // a via: that no longer fits stays put
-    final ok = await RnsService.instance.wappSendTo(
-        'xprs', hex, Uint8List.fromList(utf8.encode(carried.encode())));
+    final wire2 = carried.encode();
+
+    // The directed lane first: LXMF to the gateway when the network can
+    // name it. An ESP32 gateway has no LXMF letterbox, so the fallback is
+    // the broadcast custody re-air -- every bearer, verbatim, the gateway
+    // hears it like any packet and holds it as the mail it is (36.11
+    // class 2). via: already carries us, so it cannot come back through.
+    var lane = 'broadcast';
+    var ok = false;
+    final hex = RnsService.instance.lxmfDestForCallsign(gateway);
+    if (hex.isNotEmpty) {
+      lane = 'lxmf';
+      ok = await RnsService.instance
+          .wappSendTo('xprs', hex, Uint8List.fromList(utf8.encode(wire2)));
+    } else {
+      final report = await XprsPublisher.instance
+          .publishWire(wire2, verbatim: true, slot: 'fwd:$id');
+      ok = report.values.any((v) => v == 'sent');
+    }
     _sent.add(id);
     if (_sent.length > 512) _sent.remove(_sent.first);
     if (ok) forwarded++;
     LogService.instance.add('XPRS: held mail for $target forwarded toward '
-        '$gateway (${ok ? "delivered" : "stored"}) — 36.8.1');
+        '$gateway over $lane (${ok ? "carried" : "kept"}) — 36.8.1');
     return gateway;
   }
 }
