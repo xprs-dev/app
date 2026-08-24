@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../profile/profile_service.dart';
 import '../profile/storage_paths.dart';
@@ -15,7 +15,7 @@ import '../profile/storage_paths.dart';
 /// One tag per line in notifications/announced.txt, oldest first. FIFO-capped:
 /// a tag that ages out of the cap can in principle announce once more, but the
 /// cap is far above the notification history (300) and the mail seen-ring.
-class AnnouncedTagsStore {
+class AnnouncedTagsStore with WidgetsBindingObserver {
   AnnouncedTagsStore._();
   static final AnnouncedTagsStore instance = AnnouncedTagsStore._();
 
@@ -39,8 +39,21 @@ class AnnouncedTagsStore {
   void init() {
     if (_initialised) return;
     _initialised = true;
+    // A tag that never reaches disk is a notification that announces itself
+    // again after the next start. Android freezes or kills a backgrounded
+    // process without warning, so the pause edge is the last chance to write.
+    // An observer, not a timer: it costs nothing while the app runs.
+    WidgetsBinding.instance.addObserver(this);
     ProfileService.instance.activeProfileNotifier.addListener(_reload);
     unawaited(_load());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) return;
+    _saveDebounce?.cancel();
+    _saveDebounce = null;
+    unawaited(_persist());
   }
 
   bool contains(String tag) => _tags.contains(tag);
@@ -51,13 +64,25 @@ class AnnouncedTagsStore {
     while (_tags.length > maxTags) {
       _tags.remove(_tags.first);
     }
-    _saveDebounce?.cancel();
-    _saveDebounce = Timer(const Duration(seconds: 1), () {
+    // Arm ONCE, never restart. Cancel-and-restart meant a burst arriving
+    // faster than one tag a second pushed the write forever -- and a backlog
+    // replay at startup is exactly such a burst, so the file that is supposed
+    // to stop the replay was the file the replay prevented from being written.
+    // Arming once bounds the loss at one second while keeping the write rate
+    // at <=1/s, which is the point of the debounce: _persist rewrites up to
+    // 4000 lines, and on an encrypted profile that is a re-encrypt.
+    _saveDebounce ??= Timer(const Duration(seconds: 1), () {
+      _saveDebounce = null;
       unawaited(_persist());
     });
   }
 
   void _reload() {
+    // An armed timer would fire AFTER the switch and _persist resolves the
+    // profile root at fire time -- writing this profile's tags into the next
+    // one. A bounded loss beats cross-profile contamination.
+    _saveDebounce?.cancel();
+    _saveDebounce = null;
     _loaded = false;
     _ready = Completer<void>();
     unawaited(_load());
@@ -102,6 +127,7 @@ class AnnouncedTagsStore {
     _saveDebounce?.cancel();
     _saveDebounce = null;
     _tags.clear();
+    if (_initialised) WidgetsBinding.instance.removeObserver(this);
     _initialised = false;
     _loaded = false;
     _ready = Completer<void>();

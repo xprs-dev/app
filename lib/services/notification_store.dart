@@ -21,6 +21,20 @@ class StoredNotification {
 
   final DateTime timestamp;
 
+  /// Whether the user has already seen this notification.
+  ///
+  /// Per ROW, deliberately, rather than one global "seen before this time"
+  /// watermark. The watermark had two moving operands: it moved forward when
+  /// the user read the list, and the row's timestamp moved forward whenever a
+  /// replayed event was re-recorded -- so an already-read notification jumped
+  /// back above the line and re-lit the bell. A flag cannot be un-set by a
+  /// replay, so a notification the user has seen stays seen.
+  ///
+  /// Null means "written by a build that predated this field": the loader
+  /// resolves those against the legacy watermark, so the first launch after
+  /// the upgrade shows exactly what the old build showed.
+  final bool? seen;
+
   const StoredNotification({
     required this.id,
     required this.level,
@@ -29,7 +43,20 @@ class StoredNotification {
     required this.source,
     this.convo,
     required this.timestamp,
+    this.seen,
   });
+
+  StoredNotification copyWith({bool? seen, DateTime? timestamp}) =>
+      StoredNotification(
+        id: id,
+        level: level,
+        title: title,
+        body: body,
+        source: source,
+        convo: convo,
+        timestamp: timestamp ?? this.timestamp,
+        seen: seen ?? this.seen,
+      );
 
   factory StoredNotification.fromJson(Map<String, dynamic> json) {
     return StoredNotification(
@@ -42,6 +69,7 @@ class StoredNotification {
       timestamp: DateTime.fromMillisecondsSinceEpoch(
         (json['timestamp'] as num?)?.toInt() ?? 0,
       ),
+      seen: json['seen'] as bool?,
     );
   }
 
@@ -60,6 +88,7 @@ class StoredNotification {
       source: n.source,
       convo: n.convo,
       timestamp: ts,
+      seen: false,
     );
   }
 
@@ -110,9 +139,27 @@ class NotificationStore {
   }
 
   Future<void> record(XprsNotification n) async {
-    final incoming = StoredNotification.fromNotification(n);
+    var incoming = StoredNotification.fromNotification(n);
     // Same id = same notification. Replace it in place instead of stacking
-    // another copy on top of it.
+    // another copy on top of it -- and carry the OLD row's seen flag and
+    // first-seen time onto the replacement. A repeat is not a new event: the
+    // wapps re-ingest their backlog on every start, so without this a replay
+    // both re-lights the bell and jumps the row to "Today". This makes
+    // history.jsonl a second, independent dedupe guard, which matters because
+    // the tag guard can lose a write (AnnouncedTagsStore's debounce).
+    StoredNotification? prior;
+    for (final e in items.value) {
+      if (e.id == incoming.id) {
+        prior = e;
+        break;
+      }
+    }
+    if (prior != null) {
+      incoming = incoming.copyWith(
+        seen: prior.seen ?? _legacySeen(prior),
+        timestamp: prior.timestamp,
+      );
+    }
     final next = [
       incoming,
       ...items.value.where((e) => e.id != incoming.id),
@@ -126,34 +173,47 @@ class NotificationStore {
 
   /// Mark everything from one source as read — the panel that owns those
   /// notifications was opened, so the bell must agree with it.
+  ///
+  /// Exact, per row. It used to drag the single global watermark forward to
+  /// this source's newest timestamp, which silently marked every OTHER
+  /// source's older notifications read too.
   Future<void> markSeenBySource(String source) async {
-    final newest = items.value
-        .where((e) => e.source == source)
-        .fold<int>(0, (m, e) {
-      final ms = e.timestamp.millisecondsSinceEpoch;
-      return ms > m ? ms : m;
-    });
-    if (newest == 0 || newest <= _seenMs) return;
-    _seenMs = newest;
+    await _markSeenWhere((n) => n.source == source);
+  }
+
+  Future<void> markAllSeen() async {
+    await _markSeenWhere((_) => true);
+    // Read in-app = read everywhere: drop the Android shade's event
+    // notifications (and with them the launcher-icon dot). One lifecycle —
+    // the shade must never disagree with the notification center.
+    unawaited(platform.clearSystemNotifications());
+  }
+
+  /// Flag every row matching [pick] as seen and persist. No-op when nothing
+  /// changes, so a second call (page open then page close) costs nothing.
+  Future<void> _markSeenWhere(bool Function(StoredNotification) pick) async {
+    var changed = false;
+    final next = <StoredNotification>[];
+    for (final n in items.value) {
+      if (n.seen != true && pick(n)) {
+        changed = true;
+        next.add(n.copyWith(seen: true));
+      } else {
+        next.add(n.seen == null ? n.copyWith(seen: _legacySeen(n)) : n);
+      }
+    }
+    // The watermark is still written so a downgrade, or a row this build has
+    // not rewritten yet, keeps behaving.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now > _seenMs) _seenMs = now;
+    if (!changed) return;
+    items.value = next;
     _recomputeUnread();
     try {
       final root = activeProfileRoot();
       await root.createDirectory('notifications');
       await root.writeString(_seenFile, '$_seenMs');
-    } catch (_) {}
-  }
-
-  Future<void> markAllSeen() async {
-    _seenMs = DateTime.now().millisecondsSinceEpoch;
-    unreadCount.value = 0;
-    // Read in-app = read everywhere: drop the Android shade's event
-    // notifications (and with them the launcher-icon dot). One lifecycle —
-    // the shade must never disagree with the notification center.
-    unawaited(platform.clearSystemNotifications());
-    try {
-      final root = activeProfileRoot();
-      await root.createDirectory('notifications');
-      await root.writeString(_seenFile, '$_seenMs');
+      await _persistItems(next);
     } catch (_) {}
   }
 
@@ -225,9 +285,14 @@ class NotificationStore {
     );
   }
 
+  /// A row written before the `seen` flag existed: fall back to the watermark
+  /// this build still maintains, so the upgrade shows what the old build did.
+  bool _legacySeen(StoredNotification n) =>
+      n.timestamp.millisecondsSinceEpoch <= _seenMs;
+
   void _recomputeUnread() {
     unreadCount.value = items.value
-        .where((n) => n.timestamp.millisecondsSinceEpoch > _seenMs)
+        .where((n) => !(n.seen ?? _legacySeen(n)))
         .length;
   }
 }

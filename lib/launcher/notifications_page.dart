@@ -34,6 +34,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   @override
+  void dispose() {
+    // Again on the way out: anything that ARRIVED while the page was open was
+    // recorded as unseen and pushed the bell back above zero while the user
+    // was looking straight at the row. Marking once on open cannot cover that.
+    // No-op when nothing changed, so the second call is free.
+    NotificationStore.instance.markAllSeen();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
