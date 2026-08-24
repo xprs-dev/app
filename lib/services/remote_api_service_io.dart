@@ -513,6 +513,19 @@ class RemoteApiService {
             .start(mode: mode, host: host, port: port, announceName: name);
         return _json(res, {'started': ok, ...RnsService.instance.status()});
       }
+      // Attach one more hub uplink to a running node -- what lets a
+      // tcpserver node (the door for local boards) also stand on the
+      // public mesh. Persists into the bootstrap list.
+      if (req.method == 'POST' && path == '/api/rns/uplink') {
+        final data = await _body(req);
+        final ep = (data['endpoint'] ?? '').toString().trim();
+        if (ep.isEmpty) {
+          return _json(res, {'ok': false, 'error': 'need endpoint host[:port]'},
+              status: HttpStatus.badRequest);
+        }
+        final ok = await RnsService.instance.addBootstrap(ep);
+        return _json(res, {'ok': ok, 'endpoint': ep});
+      }
       if (req.method == 'POST' && path == '/api/rns/announce') {
         // {"text":"hello"} — one-to-many announce of our chat destination.
         final data = await _body(req);
