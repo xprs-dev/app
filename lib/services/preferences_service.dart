@@ -328,6 +328,15 @@ class PreferencesService {
   /// Off by default — this is a deliberate offer for a server-class node.
   bool get xprsSuperArchiver => _prefs.getBool('xprs.superArchiver') ?? false;
   set xprsSuperArchiver(bool v) => _prefs.setBool('xprs.superArchiver', v);
+
+  /// Callsigns of super-archivers this station may lean on (36.9.4): asked
+  /// on a gossip miss, and used as the custody deposit hop when no gateway
+  /// resolves. Reached over the directed LXMF lane -- the one the public
+  /// hubs actually permit.
+  List<String> get xprsSuperArchivers =>
+      _prefs.getStringList('xprs.superArchivers') ?? const [];
+  set xprsSuperArchivers(List<String> v) =>
+      _prefs.setStringList('xprs.superArchivers', v);
   Future<void> setXprsServeHistory(bool v) async {
     await _prefs.setBool('xprs.serveHistory', v);
   }

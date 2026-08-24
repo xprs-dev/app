@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../log_service.dart';
+import '../preferences_service.dart';
 import '../reticulum/rns_service.dart';
 import 'xprs_archive.dart';
 import 'xprs_gossip.dart';
@@ -52,6 +53,8 @@ class XprsForwarder {
     }
 
     // Where X actually is: the recipient's word, then the freshest sighting.
+    final supers = PreferencesService.instanceSync?.xprsSuperArchivers ??
+        const <String>[];
     final candidates = <String>[
       ...XprsArchive.instance.holdersFor(target),
       for (final s in XprsGossip.instance.whereIs(target, max: 4)) s.gateway,
@@ -61,6 +64,22 @@ class XprsForwarder {
       if (g == selfBase || g == target || via.contains(g)) continue;
       gateway = g;
       break;
+    }
+    if (gateway == null) {
+      // Gossip knows nothing: ask a super-archiver (the answer feeds the
+      // next attempt), and meanwhile DEPOSIT the mail with one -- 36.12
+      // step 1, "hand it to any archiver" -- rather than sitting on it.
+      XprsGossip.instance.askSuper(target,
+          publish: (w) async =>
+              XprsPublisher.instance.publishWire(w, slot: 'ask:$target'),
+          superArchivers: supers,
+          selfBase: selfBase);
+      for (final sa in supers) {
+        final g = sa.trim().toUpperCase();
+        if (g.isEmpty || g == selfBase || via.contains(g)) continue;
+        gateway = g;
+        break;
+      }
     }
     if (gateway == null) {
       noRoute++;

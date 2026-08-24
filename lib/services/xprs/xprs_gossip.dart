@@ -24,6 +24,8 @@
  * an indexed upsert on an already-parsed packet. No timers -- the TTL sweep
  * piggybacks on inserts, at most once a minute.
  */
+import 'dart:async';
+
 import 'package:sqlite3/sqlite3.dart';
 
 import '../log_service.dart';
@@ -228,6 +230,45 @@ class XprsGossip {
     ].take(max).toList();
   }
 
+  /// The miss path of 36.9.4: gossip knows nothing of [call], so ask a
+  /// configured super-archiver -- over the directed lane, because the
+  /// public hubs throttle everything else. Throttled per callsign; the
+  /// answer flows back through the ordinary funnel and lands here.
+  final Map<String, int> _askedSuperMs = {};
+  int superAsks = 0;
+
+  void askSuper(String call,
+      {required Future<void> Function(String wire) publish,
+      required List<String> superArchivers,
+      required String selfBase,
+      int? nowMs}) {
+    if (superArchivers.isEmpty) return;
+    final c = call.trim().toUpperCase();
+    if (c.isEmpty || c == selfBase) return;
+    final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    if (now - (_askedSuperMs[c] ?? 0) < 600000) return; // 36.10.1 cadence
+    _askedSuperMs[c] = now;
+    if (_askedSuperMs.length > 128) _askedSuperMs.remove(_askedSuperMs.keys.first);
+    final t = DateTime.now().toUtc();
+    String two(int n) => n.toString().padLeft(2, '0');
+    final ts = '${t.year}-${two(t.month)}-${two(t.day)}_'
+        '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
+    final since = t.subtract(const Duration(days: 7));
+    final sinceS = '${since.year}-${two(since.month)}-${two(since.day)}_'
+        '${two(since.hour)}:${two(since.minute)}:${two(since.second)}';
+    for (final sa in superArchivers) {
+      final g = sa.trim().toUpperCase();
+      if (g.isEmpty || g == selfBase) continue;
+      // identity first in the kind list: the observation that answers the
+      // question verifies against a key that may ride the same page.
+      final wire = 't:command f:$selfBase d:$g ts:$ts cmd:history '
+          'kind:identity,observation only:$c since:$sinceS';
+      superAsks++;
+      unawaited(publish(wire));
+      break; // one super per miss per period
+    }
+  }
+
   Map<String, dynamic> statusJson() {
     final db = _db;
     return {
@@ -241,6 +282,7 @@ class XprsGossip {
       'accepted': accepted,
       'refusedUnsigned': refusedUnsigned,
       'refusedQuota': refusedQuota,
+      'superAsks': superAsks,
     };
   }
 

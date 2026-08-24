@@ -14,6 +14,8 @@ import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_publisher.dart';
 import 'xprs/xprs_gossip.dart';
+import 'mesh/mesh_custody.dart';
+import 'xprs/xprs_forwarder.dart';
 import 'xprs/xprs_packet.dart';
 import 'xprs/xprs_vocab.dart';
 
@@ -945,12 +947,36 @@ class RemoteApiService {
         // this endpoint happens to name (36.0). The publisher also signs and
         // files the wire in our own spool (36.5).
         final report = await XprsPublisher.instance.publishWire(p.encode());
+        // Mail is not fire-and-forget: park our own copy for custody
+        // (36.7) and let the forwarder move it toward where the recipient
+        // actually is (36.8.1) -- the airing above was an attempt, the
+        // receipt is what ends the obligation.
+        if (dest.isNotEmpty) {
+          final signed = XprsPublisher.instance.lastWire ?? p.encode();
+          MeshCustodyDelegate.onAirFrame(
+              Uint8List.fromList(utf8.encode(signed)),
+              outbound: true);
+          unawaited(XprsForwarder.instance.maybeForward(
+              NostrCrypto.bareCallsign(dest), signed,
+              selfBase: NostrCrypto.bareCallsign(self)));
+        }
         return _json(res, {
           'ok': report.values.any((v) => v == 'sent'),
           'bytes': p.byteLength,
           'bearers': report,
           'wire': p.encode(),
         });
+      }
+      // Configure the super-archivers this station leans on (36.9.4).
+      if (req.method == 'POST' && path == '/api/xprs/super') {
+        final data = await _body(req);
+        final list = (data['supers'] as List?)
+                ?.map((e) => e.toString().trim().toUpperCase())
+                .where((e) => e.isNotEmpty)
+                .toList() ??
+            const <String>[];
+        PreferencesService.instanceSync?.xprsSuperArchivers = list;
+        return _json(res, {'ok': true, 'supers': list});
       }
       // Where can a callsign be reached (36.9.4 gossip + 13.12): the
       // internet sender's question, answered in layers.

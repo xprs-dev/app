@@ -404,6 +404,12 @@ class XprsPublisher {
   ///   - filing it as ours. It is already in the spool as something we HEARD;
   ///     re-entering it through [XprsIngest.own] would claim authorship of
   ///     another station's packet.
+  /// The exact wire the last [publishWire] put on the bearers -- signed
+  /// when signing applied. For a caller that needs the same bytes for
+  /// custody (a parked copy must match what the air carries, or the
+  /// receipt's identifier will not).
+  String? lastWire;
+
   Future<Map<String, String>> publishWire(String wireIn,
       {String? slot, Duration? ttl, bool verbatim = false}) async {
     LogService.instance.add('XPRS: publishWire <- $wireIn');
@@ -423,6 +429,7 @@ class XprsPublisher {
       if (d != null) p = xprsSign(p, d);
     }
     final wire = p.encode();
+    lastWire = wire;
     final local = xprsScope(p).scope != XprsScope.global;
     // `<type>` alone would still collide across destinations, which is exactly
     // the catch-up sweep's case: N asks, one slot, one survivor.

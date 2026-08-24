@@ -28,6 +28,7 @@ import '../log_service.dart';
 import '../preferences_service.dart';
 import 'xprs_archive.dart';
 import 'xprs_gossip.dart';
+import '../reticulum/rns_service.dart';
 import 'xprs_id.dart';
 import 'xprs_ingest.dart';
 import 'xprs_packet.dart';
@@ -202,7 +203,8 @@ class XprsHistoryServer {
       if (i < page.length) {
         // The stored wire, byte for byte — the author's packet, the author's
         // signature (25.2.1, 36.2).
-        unawaited(_air('xprs-hist:$i', page[i], const Duration(seconds: 10)));
+        unawaited(_air('xprs-hist:$i', page[i], const Duration(seconds: 10),
+            to: from));
         i++;
         return;
       }
@@ -243,8 +245,8 @@ class XprsHistoryServer {
       {String? m}) {
     final p = _result(self, to, cmdId, code, m: m);
     if (p == null) return;
-    unawaited(
-        _air('xprs-hist:c$code', p.encode(), const Duration(seconds: 30)));
+    unawaited(_air('xprs-hist:c$code', p.encode(),
+        const Duration(seconds: 30), to: to));
   }
 
   XprsPacket? _result(String self, String to, String cmdId, int code,
@@ -320,10 +322,24 @@ class XprsHistoryServer {
   /// on, which is also what docs/architecture.md means by transports being
   /// core: a service decides WHAT to say, never which radio carries it.
   /// [verbatim] because a replayed record is the author's packet, not ours.
-  Future<bool> _air(String key, String wire, Duration ttl) {
+  Future<bool> _air(String key, String wire, Duration ttl, {String? to}) {
     final tx = txOverride;
     if (tx != null) {
       return tx(key, Uint8List.fromList(utf8.encode(wire)), ttl);
+    }
+    // The public hubs permit identity announces and messages and throttle
+    // the rest, so a replayed RECORD (no d: of its own) would die on the
+    // announce lane before reaching an internet asker. When the asker is
+    // known and the network can name it, every page rides the directed
+    // LXMF lane BESIDE the radio broadcast -- 36.0's path rule: the lane
+    // with evidence of reaching the asker. Duplicates dedup on the
+    // section 5 identifier.
+    if (to != null && to.isNotEmpty) {
+      final hex = RnsService.instance.lxmfDestForCallsign(to);
+      if (hex.isNotEmpty) {
+        unawaited(RnsService.instance
+            .wappSendTo('xprs', hex, Uint8List.fromList(utf8.encode(wire))));
+      }
     }
     return XprsPublisher.instance
         .publishWire(wire, slot: key, ttl: ttl, verbatim: true)
