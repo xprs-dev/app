@@ -10,7 +10,19 @@ part of 'launcher.dart';
 /// releases. Everything behind it is intact -- the wapp still ships in
 /// assets/, WappInstallerService and hal_http are untouched -- so putting it
 /// back is deleting one word from this set.
-const Set<String> _kHiddenWapps = {'maps', 'atm', 'wallet', 'install'};
+/// `torrents`, `mail` and `mp4player` are hidden for a different reason again:
+/// they work, they are simply not what this network is being used for right
+/// now. Nothing behind them is removed -- the wapps still ship in assets/ and
+/// still run if started -- so unhiding is deleting a word from this set.
+const Set<String> _kHiddenWapps = {
+  'maps',
+  'atm',
+  'wallet',
+  'install',
+  'torrents',
+  'mail',
+  'mp4player',
+};
 
 /// Outcome of the unmet-dependency dialog shown before launching a wapp.
 enum _DepAction { cancel, openAnyway }

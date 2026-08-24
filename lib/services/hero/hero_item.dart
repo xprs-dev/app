@@ -131,3 +131,6 @@ class HeroItem {
 }
 
 const String kHeroSourceNostr = 'nostr';
+
+/// Statuses heard over the XPRS network — the hero's live source.
+const String kHeroSourceXprsStatus = 'xprs-status';

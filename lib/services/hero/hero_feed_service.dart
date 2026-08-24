@@ -7,6 +7,7 @@ import 'hero_inbox.dart';
 import 'hero_item.dart';
 import 'hero_ranker.dart';
 import 'hero_source.dart';
+import 'xprs_status_hero_source.dart';
 import 'launcher_visibility.dart';
 import 'nostr_hero_source.dart';
 import 'welcome_hero_source.dart';
@@ -26,7 +27,12 @@ class HeroFeedService {
     const [],
   );
 
-  final List<HeroSource> _sources = [NostrHeroSource(), WappHeroSource()];
+  // NOSTR is deliberately NOT here. The hero showed posts pulled from the
+  // public internet, which says nothing about the network this device is
+  // actually on; what belongs on the launcher of a radio is what the radio
+  // heard. NostrHeroSource is left in the tree, unregistered, so putting it
+  // back is one word.
+  final List<HeroSource> _sources = [XprsStatusHeroSource(), WappHeroSource()];
 
   /// Fallback-only source (see [refresh]): never mixed with real content.
   final WelcomeHeroSource _welcome = WelcomeHeroSource();
@@ -54,7 +60,7 @@ class HeroFeedService {
 
   void setVisible(bool visible) {
     for (final source in _sources) {
-      if (source is NostrHeroSource) source.setActive(visible);
+      if (source is NostrHeroSource) source.setActive(visible);  // unregistered
     }
   }
 
