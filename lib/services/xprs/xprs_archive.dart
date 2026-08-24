@@ -477,8 +477,19 @@ class XprsArchive {
     }
     if (only != null && only.trim().isNotEmpty) {
       final c = _base(only);
-      where.write(' AND (fromc=? OR toc=?)');
+      // An observation ABOUT the named callsign has that callsign in its
+      // `hears:` list and someone else in `f:` — matching sender/addressee
+      // alone made `only:X kind:observation` (36.9.4's bulk-gossip ask, "the
+      // signed sightings this station holds about X") return nothing, ever.
+      // instr() over the wire is a scan, but one confined to observation
+      // rows already narrowed by the type filter and the time window; a
+      // substring hit beyond the hears: list adds at worst an extra record
+      // to a page, and a sighting informs routing, never compels it
+      // (10.6.3).
+      where.write(" AND (fromc=? OR toc=? OR "
+          "(type='observation' AND instr(wire, ?) > 0))");
       args
+        ..add(c)
         ..add(c)
         ..add(c);
     }

@@ -196,6 +196,30 @@ class XprsHistoryServer {
 
     final more = rows.length > pageSize;
     final page = [for (final r in rows.take(pageSize)) r['wire'] as String];
+    // The keys ride the same page (36.9.4): an observation about the asked
+    // callsign is signed by its OBSERVER, and an asker who has never met
+    // that observer cannot verify it — so a page of sightings without the
+    // observers' identities is a page of claims the asker must discard.
+    // Prepend the newest stored `t:identity` of every observation signer on
+    // the page, once each, before the observations they vouch for.
+    {
+      final signers = <String>{};
+      for (final r in rows.take(pageSize)) {
+        if (r['type'] == 'observation') {
+          final s = (r['from'] as String? ?? '').trim();
+          if (s.isNotEmpty && s != from) signers.add(s);
+        }
+      }
+      final ids = <String>[];
+      for (final s in signers) {
+        final id = archive.query(only: s, types: const ['identity'], limit: 1);
+        if (id.isNotEmpty) {
+          final w = id.first['wire'] as String;
+          if (!page.contains(w)) ids.add(w);
+        }
+      }
+      page.insertAll(0, ids);
+    }
     _airControl(selfBase, from, cmdId, 202);
     var i = 0;
     _chainFor = from;

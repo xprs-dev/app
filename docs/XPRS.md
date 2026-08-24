@@ -7739,6 +7739,103 @@ or that any station carry anything against its own budgets (31.3 stands
 everywhere). The promise is narrower and worth having: if the callsign
 touches the network anywhere its gossip reaches, the mail finds it.
 
+### 36.12.1 Constrained internet transports
+
+The chain above crosses the internet on shared transports run by strangers
+-- community Reticulum hubs, gateways with their own budgets and their own
+ideas about what is worth carrying. Operating experience is blunt: **a
+shared transport filters, and the subset that reliably crosses is small --
+identity announcements and directed messages.** Broadcast wapp data, bulk
+announces, anything addressed to nobody in particular may be dropped at any
+hop, silently, with no error to read. A design that works only on an
+unfiltered transport does not work; this section standardises how every
+exchange in 36.8--36.12 rides the lanes that actually cross.
+
+**The two guaranteed lanes.** What a constrained transport carries: (1) an
+identity announcement -- the transport's own currency, since without paths
+nothing routes; (2) a message directed at a named destination the transport
+has a path to. Everything an archiver needs to say across the internet MUST
+be expressible as one of those two, and every behaviour below is that rule
+applied to one exchange.
+
+**Asks are directed messages.** A station resolving a callsign across the
+internet -- the 36.9.4 miss path -- sends its ask as a directed packet to a
+NAMED archiver: `cmd:history kind:identity,observation only:X1BOA3` with
+`d:` naming a super-archiver it has chosen. It does not broadcast the
+question and hope; a broadcast question on a filtered transport is a
+question not asked. `kind:` lists `identity` first deliberately: the
+observations that answer the question verify against keys the asker may
+never have met, and the identities that carry those keys must land first.
+
+**Replies are directed messages too.** A station answering an ask that
+arrived over an internet transport MUST send every replayed record and
+every `t:result` on the directed lane to the asker, whether or not it also
+airs them locally (36.10's radio pacing stands for the local copy). A
+replayed record carries its AUTHOR's addressing, not the asker's -- on the
+announce lane it is exactly the broadcast a filtered hop drops, and an
+asker who got a 202 and then silence was served in every sense but the one
+that matters. The double lane costs nothing: both copies carry the same
+section 5 identifier, and receivers already deduplicate on it.
+
+**The keys ride the same page.** A page of sightings about X is signed by
+the stations that SAW X, not by X and not by the server. The responder
+prepends the newest `t:identity` it holds for each observer on the page,
+once each, before the observations they vouch for -- a page of claims the
+asker cannot verify is a page the asker must discard, and asking the
+internet for each key separately is the round trip this section exists to
+avoid.
+
+**`only:` matches the subject, not just the correspondents.** For
+observation records, `only:X` matches a sighting OF X -- an observation
+whose `hears:` lists X -- not merely packets X sent or received. An
+observation about X has the observer in `f:` and X only in `hears:`;
+matching sender and addressee alone made "the signed sightings this
+station holds about X" an empty set by construction. (For every other
+record type, `only:` keeps its 36.6 meaning: sender or addressee.)
+
+**No gateway resolved is not a dead end: deposit.** A holder whose gossip
+names no gateway for X MUST NOT fall back to broadcasting the mail into a
+filtered transport. It fires the miss-path ask (above) and, holding mail it
+cannot yet route, MAY deposit the held wire as custody with a
+super-archiver -- 36.12 step 1 again, one hop up: the super-archiver's
+gossip is the deepest available, and a deposit is a directed message that
+crosses. `via:` grows, the loop check applies, once per holder, as 36.8.1
+always said.
+
+**A sender is its own first holder.** A station sending `t:message d:X`
+parks its own signed wire for custody at the moment of sending, exactly as
+it would park a stranger's: an airing is an ATTEMPT, not a delivery, and
+the obligation ends at a verified receipt (13.7.1) -- not before. This is
+what makes the whole chain start: the sender's own forwarder consults
+gossip, asks on a miss, deposits toward a super-archiver, all with the
+sender's original bytes and signature.
+
+**A super-archiver keeps the chatter.** Signed observations are the wires
+a bulk-gossip replay serves; a super-archiver that discards presence
+records answers every `kind:observation` ask with an empty page, whatever
+its own gossip table knows -- gossip stores conclusions, and a replay may
+only re-air original packets (36.1, 36.2). `serve:archive,super` therefore
+implies retaining observation and identity wires under the raised budgets
+of 36.9.4, on every lane the internet included: the declaration rule (36.3)
+guards MAIL spooled on other people's behalf, and presence is not mail --
+on a super-archiver the sightings mostly arrive over the very transport
+that rule polices, because the boards that saw them dial in over it.
+
+**And still no inbound ports.** Nothing in this section opens a listener:
+every reach across the internet is an outbound dial to a transport, and a
+directed message crosses two NATs because the transport routes it, not
+because either end is reachable. A deployment instruction that begins
+"forward port" has misread this document.
+
+What is deliberately NOT constrained: a transport one operator controls end
+to end -- a private hub, a LAN, a point-to-point link -- carries whatever
+its operator pleases, and the broadcast forms elsewhere in this document
+remain correct there. The rules above are the floor that keeps the chain
+working on transports nobody owns; on a better transport they are merely
+redundant, and redundancy over two lanes that deduplicate to one record is
+the cheapest insurance in this document.
+
+
 ---
 
 ## 37. Implementation status
@@ -7751,9 +7848,10 @@ touches the network anywhere its gossip reaches, the mail finds it.
 | Section 9.1 signatures, and surviving a relay | **implemented**; `test/xprs_sig_test.dart` signs, relays three hops and re-verifies |
 | Section 13.1 relay budget, 13.2 loop check | **implemented** in the codec (`xprsMayRelay`, `xprsWouldLoop`); nothing transmits `via:` yet, so nothing calls them on the air |
 | Section 13.11.3, `scope:local` is never carried | **implemented**; refused at custody admission in `MeshCustodyDelegate` |
-| Section 36.8.1 automated return leg (release on hearing, forward toward gossip) | specified in this revision; T-Dongle firmware already implements release-on-hearing and receipt purge (`blemesh_scf_*`), the Flutter node and shared ESP32 app follow |
-| Section 36.9.4 gossip (layers, budgets, super-archivers) | specified in this revision; implementations follow |
-| Section 36.12 reaching a callsign from anywhere | specified in this revision; composes the above |
+| Section 36.8.1 automated return leg (release on hearing, forward toward gossip) | **implemented** on the Flutter node (funnel-triggered release, `XprsForwarder` with `via:` and the loop check) and in the shared ESP32 app (release-on-hearing off the seen funnel, paced re-air, receipt purge); the T-Dongle keeps its original `blemesh_scf_*` loop. Bench-validated end to end |
+| Section 36.9.4 gossip (layers, budgets, super-archivers) | **implemented** on the Flutter side (`xprs_gossip.dart`: L2/L3 tables, K/G caps, signer quotas, byte budget, the super-archiver mode and the miss-path ask) with DoS-probe unit tests; the shared ESP32 app keeps the need-to-know ring |
+| Section 36.12 reaching a callsign from anywhere | **implemented and bench-validated**: an internet sender on a foreign network reached a WiFi-less BLE-only pocket through deposit, gossip, forward and release-on-hearing, with signatures intact at every hop |
+| Section 36.12.1 constrained internet transports (directed replies, directed asks, deposit, sender-parks-own-mail) | **implemented** on the Flutter side; specified in this revision after being proven necessary on public hubs |
 | Callsigns, signatures, verification | implemented |
 | Signing by default on every packet type | not implemented; signing exists and is opt-in |
 | Direct, group and broadcast messages | implemented |
