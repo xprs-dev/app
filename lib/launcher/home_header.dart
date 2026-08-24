@@ -29,21 +29,13 @@ class _HomeHeader extends StatelessWidget implements PreferredSizeWidget {
         onPressed: onMenu,
       ),
       titleSpacing: 0,
+      // No connection dot here. A small glowing green circle beside the bell
+      // read as a badge ON the bell: you emptied your notifications and
+      // something was still lit. Connection state lives on the mesh tile and
+      // in Settings; it does not need a light next to the bell.
       title: const Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          _ProfileSwitcher(),
-          SizedBox(width: 10),
-          _ConnectionIndicator(),
-          // The connection dot belongs to the CALLSIGN on its left -- it says
-          // this station is online. Sitting flush against the bell on its
-          // right, a small glowing dot reads as a badge ON that bell, so a
-          // user who has just emptied their notifications still sees
-          // something lit and concludes the bell is broken. It is a real
-          // report; the gap is what separates "you are connected" from "you
-          // have unread".
-          SizedBox(width: 16),
-        ],
+        children: [_ProfileSwitcher()],
       ),
       actions: [
         ValueListenableBuilder<int>(

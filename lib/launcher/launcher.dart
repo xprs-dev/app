@@ -89,7 +89,6 @@ part 'launcher_page.dart';
 part 'settings_page.dart';
 part 'wapp_runner_page.dart';
 part 'home_header.dart';
-part 'connection_indicator.dart';
 part 'hero_carousel.dart';
 part 'quick_launch_row.dart';
 part 'home_modules.dart';
