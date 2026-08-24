@@ -410,7 +410,17 @@ class XprsIngest {
             false) &&
         (p.type == 'observation' || p.type == 'identity' || p.type == 'service');
 
+    // A status is this network's public post (section 27), and a reaction is
+    // how it earns its place (6.5). Both are PUBLICATIONS -- meant to be
+    // passed on and read by strangers -- so the declaration rule, which
+    // exists to stop this station spooling other people's MAIL off the
+    // internet, does not apply to them. Without this the launcher only ever
+    // saw what the radio heard, and a station one hop away over a hub was
+    // invisible.
+    final publication = p.type == 'status' || p.type == 'reaction';
+
     final admitted = superKeeps ||
+        publication ||
         XprsArchive.instance.hasActiveDecl(fromC) ||
         (toC.isNotEmpty && XprsArchive.instance.hasActiveDecl(toC));
     if (!admitted) {
