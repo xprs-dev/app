@@ -59,6 +59,19 @@ class ConversationItem {
   /// incoming message arrives.
   bool closed;
 
+  /// Declared: the wapp has listed this conversation as one of its own, by
+  /// sending `ui.convo.upsert` for it. False means the HOST invented the row
+  /// — [ConversationStore._ensure] creates one whenever a message arrives for
+  /// an unknown id, so an inbound message alone can mint a conversation the
+  /// wapp never lists and no screen can render. Those must not badge: a count
+  /// the user cannot open is a demand for attention with nowhere to go. Same
+  /// treatment as [muted] — it still shows on its own row if it ever becomes
+  /// visible, but it never propagates app-wide.
+  ///
+  /// Rows written before this field existed load as declared, so the upgrade
+  /// hides nothing that is already on screen.
+  bool declared;
+
   /// Private: a wapp-defined flag the wapp sets per conversation (e.g. APRS's
   /// "Reticulum-only" mode). Purely a display hint here — the host shows a lock
   /// indicator; the wapp owns the routing behaviour.
@@ -84,6 +97,7 @@ class ConversationItem {
     this.muted = false,
     this.closed = false,
     this.private = false,
+    this.declared = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -97,6 +111,7 @@ class ConversationItem {
         'muted': muted,
         'closed': closed,
         'private': private,
+        'declared': declared,
         'messages': messages,
       };
 
@@ -112,6 +127,8 @@ class ConversationItem {
       muted: j['muted'] == true,
       closed: j['closed'] == true,
       private: j['private'] == true,
+      // Absent = written before the flag existed = already on screen.
+      declared: j['declared'] == null || j['declared'] == true,
     );
     final msgs = j['messages'];
     if (msgs is List) {
@@ -192,6 +209,8 @@ class ConversationStore {
     final id = (d['id'] ?? '').toString();
     if (id.isEmpty) return;
     final it = _ensure(id);
+    // The wapp is listing it, so the user can reach it: it may badge.
+    it.declared = true;
     if (d.containsKey('title')) it.title = (d['title'] ?? '').toString();
     if (d.containsKey('subtitle')) it.subtitle = (d['subtitle'] ?? '').toString();
     if (d.containsKey('badge')) it.badge = (d['badge'] ?? '').toString();
@@ -488,6 +507,19 @@ class ConversationStore {
     }
   }
 
+  /// Zero every conversation's unread — the user's "I have seen all of it".
+  /// Returns whether anything changed.
+  bool markAllRead() {
+    var changed = false;
+    for (final it in items.values) {
+      if (it.unread == 0) continue;
+      it.unread = 0;
+      changed = true;
+      if (_wt) db!.upsertThread(dbField, it);
+    }
+    return changed;
+  }
+
   void clearUnread(String id) {
     final it = items[id];
     if (it == null || it.unread == 0) return;
@@ -508,13 +540,33 @@ class ConversationStore {
     }
   }
 
+  /// Whether a notification about conversation [id] is worth raising.
+  ///
+  /// A notification's whole purpose is to take the user somewhere. If the tap
+  /// target is a conversation they cannot open — one the wapp never listed —
+  /// or one they have muted, the notification is a dead end and is not shown.
+  /// An id this store has never heard of is allowed: the notification may be
+  /// the thing that creates the conversation.
+  bool mayNotifyFor(String? id) {
+    if (id == null || id.isEmpty) return true;
+    final it = items[id];
+    if (it == null) return true;
+    return it.declared && !it.muted;
+  }
+
   /// Total unread across all conversations — drives the Messages tab/app-icon
-  /// badge. Muted (and closed) conversations are excluded so they don't pull
-  /// app-wide attention; their count still shows on their own row.
+  /// badge. Muted, closed and undeclared conversations are excluded so they
+  /// don't pull app-wide attention; their count still shows on their own row.
+  ///
+  /// Undeclared is the same judgement as muted, applied to a row the wapp
+  /// never listed (see [ConversationItem.declared]): if the user cannot open
+  /// it, it must not ask for their attention.
   int get totalUnread => items.values.fold(
       0,
-      (sum, it) =>
-          sum + ((it.unread > 0 && !it.muted && !it.closed) ? it.unread : 0));
+      (sum, it) => sum +
+          ((it.unread > 0 && !it.muted && !it.closed && it.declared)
+              ? it.unread
+              : 0));
 
   static int _nowMs() => DateTime.now().millisecondsSinceEpoch;
 

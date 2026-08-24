@@ -2274,6 +2274,15 @@ class _WappPageState extends State<WappPage>
           );
         } else if (type == 'notify') {
           // New unified notification protocol.
+          // A notification whose tap target the user cannot open is a dead
+          // end: dropped before it reaches the bell, the Android shade or the
+          // tile badge (see ConversationStore.mayNotifyFor).
+          final convoId = data['convo']?.toString();
+          if (convoId != null &&
+              convoId.isNotEmpty &&
+              _convStores.values.any((s) => !s.mayNotifyFor(convoId))) {
+            continue;
+          }
           final levelStr = (data['level'] as String? ?? 'info').toLowerCase();
           final level = switch (levelStr) {
             'success' => NotificationLevel.success,
