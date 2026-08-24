@@ -110,6 +110,17 @@ class XprsCatchup {
   /// at all by the responder, so they count as fast too.
   XprsPeerClass _classOf(String base, String selfCallsign) {
     if (base == _base(selfCallsign)) return XprsPeerClass.fast;
+    // An archiver this operator NAMED as a super-archiver is one. The beacon
+    // is the other way to learn it, and it is the way that does not work
+    // here: a super reached only over the internet is never heard on a radio,
+    // so it has no station record and no `serve:` list to read. Requiring the
+    // beacon meant the one archiver everybody pulls Global chat from was the
+    // one archiver nobody could poll quickly.
+    final chosen =
+        PreferencesService.instanceSync?.xprsSuperArchivers ?? const <String>[];
+    for (final c in chosen) {
+      if (_base(c) == base) return XprsPeerClass.fast;
+    }
     final st = XprsMonitor.instance.stations[base];
     final serves = st?.services ?? const <String>[];
     return serves.contains('super') ? XprsPeerClass.fast : XprsPeerClass.ordinary;
