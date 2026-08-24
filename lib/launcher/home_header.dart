@@ -35,6 +35,14 @@ class _HomeHeader extends StatelessWidget implements PreferredSizeWidget {
           _ProfileSwitcher(),
           SizedBox(width: 10),
           _ConnectionIndicator(),
+          // The connection dot belongs to the CALLSIGN on its left -- it says
+          // this station is online. Sitting flush against the bell on its
+          // right, a small glowing dot reads as a badge ON that bell, so a
+          // user who has just emptied their notifications still sees
+          // something lit and concludes the bell is broken. It is a real
+          // report; the gap is what separates "you are connected" from "you
+          // have unread".
+          SizedBox(width: 16),
         ],
       ),
       actions: [
