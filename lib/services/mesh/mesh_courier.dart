@@ -61,6 +61,7 @@ import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_sig.dart';
 import 'mesh_custody.dart';
 import 'mesh_frame.dart';
+import 'mesh_store.dart';
 import 'mesh_service.dart';
 
 /// One message waiting to find out whether it needs a carrier.
@@ -114,6 +115,27 @@ class MeshCourier {
   /// dedup would: a message that reaches us twice (aired copy + custody
   /// handover) must appear once.
   final Set<String> _ingested = <String>{};
+
+  /// Has this message already been handed to the wapp, EVER (within the
+  /// store's ~24h received window)?
+  ///
+  /// The in-memory set alone was a process-lifetime guard over a persistent
+  /// stream: held mail is re-aired until a receipt ends custody, and the spool
+  /// replays across a restart, so the same message was ingested again after
+  /// every launch -- landing in the conversation a second time, bumping the
+  /// unread count and raising another notification for something the user had
+  /// already read. MeshStore's received_ams ring is the durable half, and is
+  /// already the "we have this one" record the beacon bloom is built from.
+  bool _alreadyDelivered(String key) =>
+      _ingested.contains(key) || MeshStore.instance.wasReceived(key);
+
+  /// Remember it only once it has actually reached the wapp. A packet held for
+  /// a key that has not arrived yet must stay deliverable.
+  void _noteDelivered(String key) {
+    _ingested.add(key);
+    if (_ingested.length > 512) _ingested.remove(_ingested.first);
+    MeshStore.instance.recordReceivedAm(key);
+  }
 
   /// Note a 1:1 the core just sent over LXMF. Cheap and unconditional — the
   /// pump decides, twenty seconds later, whether it needed a carrier.
@@ -352,8 +374,7 @@ class MeshCourier {
     // The identifier is the packet's own (section 5), so the copy that reached
     // us on air and the copy handed over in a session collapse onto one entry
     // without either of them carrying an id.
-    if (!_ingested.add('id:${f.id}')) return false;
-    if (_ingested.length > 512) _ingested.remove(_ingested.first);
+    if (_alreadyDelivered('id:${f.id}')) return false;
 
     // No `sd:` to trust: the sender's delivery address is derived from the key
     // they published, which cannot be forged without the private half.
@@ -363,9 +384,8 @@ class MeshCourier {
       // case for carried mail: it arrives precisely because the sender is
       // away. Dropping here lost the message forever (the custodian archived
       // its copy on our ack). Hold it and retry when the sender's announce
-      // returns; un-remember the id so a later custody redelivery can also
-      // retry instead of collapsing into the dedup.
-      _ingested.remove('id:${f.id}');
+      // returns. Nothing was remembered above, so a later custody redelivery
+      // can still retry instead of collapsing into the dedup.
       if (_unresolved.length < 32 &&
           !_unresolved.any((u) => u.id == f.id)) {
         _unresolved.add(_UnresolvedMail(f.id, f.from, body, via));
@@ -397,7 +417,7 @@ class MeshCourier {
       if (now.difference(u.since) > const Duration(hours: 24)) return true;
       final srcHex = RnsService.instance.lxmfDestForCallsign(u.from);
       if (srcHex.isEmpty) return false;
-      _ingested.add('id:${u.id}');
+      _noteDelivered('id:${u.id}');
       RnsService.instance
           .injectLxmf(sourceHex: srcHex, content: u.body, title: '', via: u.via);
       MeshCourierCounters.ingested++;
@@ -475,8 +495,8 @@ class MeshCourier {
     final key = am?.value.isNotEmpty == true
         ? 'am:${am!.value}'
         : 'c:${sha256.convert(utf8.encode('$from|$body'))}';
-    if (!_ingested.add(key)) return false;
-    if (_ingested.length > 512) _ingested.remove(_ingested.first);
+    if (_alreadyDelivered(key)) return false;
+    _noteDelivered(key);
 
     // Key the conversation by the sender's LXMF delivery address, so it lands
     // in the thread the user already has with that person rather than opening a
