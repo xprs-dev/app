@@ -124,11 +124,33 @@ Future<void> _showHomePinMenu(BuildContext context, _LauncherEntry entry) async 
   final box = Overlay.of(context).context.findRenderObject() as RenderBox;
   final target = context.findRenderObject() as RenderBox;
   final origin = target.localToGlobal(target.size.center(Offset.zero));
+  // Offered only when there is something to clear. A conversation no screen
+  // can render no longer badges at all, but a count the user has simply
+  // decided they are done with still needs a way out — and this row is where
+  // they are looking at the number.
+  final badged = WappUnreadService.instance.totalFor(wappId) > 0;
   final selected = await showMenu<String>(
     context: context,
     position: RelativeRect.fromRect(origin & const Size(1, 1), Offset.zero & box.size),
-    items: _homePinMenuItems(prefs, wappId),
+    items: [
+      if (badged)
+        const PopupMenuItem(
+          value: 'markread',
+          child: Row(
+            children: [
+              Icon(Icons.mark_email_read_outlined, size: 18),
+              SizedBox(width: 10),
+              Text('Mark all read'),
+            ],
+          ),
+        ),
+      ..._homePinMenuItems(prefs, wappId),
+    ],
   );
+  if (selected == 'markread') {
+    await BackgroundWappManager.instance.markAllRead(wappId);
+    return;
+  }
   await _applyHomePinChoice(selected, wappId, prefs);
 }
 
