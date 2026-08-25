@@ -112,4 +112,15 @@ void main() {
     expect(XprsCadence.jitter(const Duration(milliseconds: 200), 0.0).inMilliseconds,
         greaterThanOrEqualTo(1000));
   });
+
+  test('a room that goes silent climbs back to the ceiling', () {
+    // The bench case this was written for: the trickle stops, and every later
+    // answer is empty, so the interval must walk back up from the fast floor.
+    var d = XprsCadence.fastFloor;
+    for (var i = 0; i < 12; i++) {
+      d = _next(d, XprsAnswer.quiet);
+    }
+    expect(d, XprsCadence.ceilingFresh,
+        reason: 'nothing new means nothing to hurry for');
+  });
 }

@@ -33,6 +33,7 @@ import 'xprs_gossip.dart';
 import 'xprs_monitor.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
+import 'xprs_vocab.dart';
 
 class XprsIngest {
   XprsIngest._();
@@ -51,7 +52,7 @@ class XprsIngest {
   /// pull that returned rows from one that returned nothing -- the signal its
   /// cadence runs on, and one the delivery hook cannot give it, because a
   /// broadcast is addressed to nobody.
-  static void Function(String from)? onArchived;
+  static void Function(String from, int? tsMs)? onArchived;
 
   /// Set by RnsService, which owns the callsign→key map, so a `t:identity`
   /// heard on any bearer lands in the same place a key learned from an
@@ -196,7 +197,7 @@ class XprsIngest {
       XprsArchive.instance
           .admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
       try {
-        onArchived?.call(from);
+        onArchived?.call(from, xprsParseTs(p['ts']));
       } catch (_) {}
     }
 
@@ -456,7 +457,7 @@ class XprsIngest {
     }
     XprsArchive.instance.admit(p, bearer: 'rns');
     try {
-      onArchived?.call(fromC);
+      onArchived?.call(fromC, xprsParseTs(p['ts']));
     } catch (_) {}
   }
 }

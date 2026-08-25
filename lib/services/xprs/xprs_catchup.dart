@@ -609,11 +609,24 @@ class XprsCatchup {
   /// however busy the room was.
   final Map<String, bool> _sawRows = {};
 
-  /// A packet was archived from [from]. Only interesting while we are waiting
-  /// on that station: then it is the answer to our ask arriving.
-  void noteRow(String from) {
+  /// How old a packet must be to count as HISTORY rather than live traffic.
+  static const Duration _replayAge = Duration(minutes: 1);
+
+  /// A packet from [from], stamped [tsMs], was archived.
+  ///
+  /// Only rows that answer our ask count, and the timestamp is what tells them
+  /// apart: a replayed record keeps its AUTHOR's ts (36.2 -- the archiver
+  /// re-airs the original bytes), so history is old by definition while an
+  /// announce or a status this station is publishing right now is not. Without
+  /// that test every beacon from an archiver we happened to be waiting on
+  /// scored as news, and the cadence sat at its fast floor forever -- measured
+  /// on the bench: the room went silent and the interval stayed at fifteen
+  /// seconds for eight minutes.
+  void noteRow(String from, int? tsMs) {
     final base = _base(from);
     if (base.isEmpty || !_inFlight.containsKey(base)) return;
+    if (tsMs == null) return;
+    if (nowMs() - tsMs < _replayAge.inMilliseconds) return;
     _sawRows[base] = true;
   }
 
