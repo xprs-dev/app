@@ -312,6 +312,7 @@ class XprsCatchup {
     _lastNewsMs.clear();
     _inFlight.clear();
     _sawRows.clear();
+    _lastResumeMs.clear();
     _identityAtMs = 0;
   }
 
@@ -546,11 +547,22 @@ class XprsCatchup {
     // What the answer was WORTH, which is the whole input to the cadence: an
     // archiver that served rows is talking and is worth coming back to sooner;
     // one that had nothing has just told us it can be left alone longer.
-    // 206 says so in words -- more was held than was served -- and rows we
-    // archived while the ask was outstanding say it in evidence.
-    final served = code == 206 ||
-        (_sawRows.remove(ask.station) ?? false) ||
-        _oldestReplayMs.containsKey(ask.station);
+    // Rows we archived while the ask was outstanding, and -- for a 206 -- only
+    // if the window actually MOVED. A continuation that comes back to the same
+    // place has taught us nothing, however loudly it says there is more, and
+    // treating it as news is how a stuck resume loop pins the poller at its
+    // fast floor while the room is silent.
+    final sawRows = _sawRows.remove(ask.station) ?? false;
+    final reached = _oldestReplayMs[ask.station];
+    final progressed = code != 206 ||
+        reached == null ||
+        reached != _lastResumeMs[ask.station];
+    if (code == 206 && !progressed) {
+      LogService.instance.add(
+          'XPRS catch-up: ${ask.station} 206 made no progress at '
+          '${_ts(reached!)} — treating as quiet');
+    }
+    final served = sawRows && progressed;
     _noteAnswer(
         ask.station, served ? XprsAnswer.news : XprsAnswer.quiet);
     final prefs = PreferencesService.instanceSync;
@@ -575,6 +587,7 @@ class XprsCatchup {
       // continuation of this one, so it goes now. The chain-in-flight guard
       // still applies, so this cannot outrun what the archiver can air.
       _askedAtMs.remove(ask.station);
+      _lastResumeMs[ask.station] = _resume[ask.station];
       LogService.instance.add(
           'XPRS catch-up: ${ask.station} 206 — resuming before '
           '${_ts(_resume[ask.station]!)}');
@@ -608,6 +621,10 @@ class XprsCatchup {
   /// one that returned nothing, and the cadence sat pinned at its ceiling
   /// however busy the room was.
   final Map<String, bool> _sawRows = {};
+
+  /// Where the previous continuation for this station reached back to, so a
+  /// resume loop that stops moving can be recognised as one.
+  final Map<String, int?> _lastResumeMs = {};
 
   /// How old a packet must be to count as HISTORY rather than live traffic.
   static const Duration _replayAge = Duration(minutes: 1);
