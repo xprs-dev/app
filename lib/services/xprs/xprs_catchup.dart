@@ -628,6 +628,14 @@ class XprsCatchup {
     if (tsMs == null) return;
     if (nowMs() - tsMs < _replayAge.inMilliseconds) return;
     _sawRows[base] = true;
+    // Where this page reached back to, which is also what a 206 continuation
+    // must ask BEFORE. It was fed only from the delivery hook, and that hook
+    // never fires for a broadcast -- so for Global chat the oldest record was
+    // always unknown, the continuation fell back to the ask's own ts, and each
+    // 206 asked for the same window again. Measured on the bench: the resume
+    // mark walked FORWARD with the clock and the backlog never drained.
+    final oldest = _oldestReplayMs[base];
+    if (oldest == null || tsMs < oldest) _oldestReplayMs[base] = tsMs;
   }
 
   void noteReplay(String station, int tsMs) {
