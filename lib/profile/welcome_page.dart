@@ -16,6 +16,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:reticulum/reticulum.dart' as reticulum;
 
 import 'iwi_profile.dart';
 import 'identity_backup.dart';
@@ -114,12 +115,14 @@ class _WelcomePageState extends State<WelcomePage> {
   Future<void> _restoreFromBackup() async {
     // Android: the backup lives on public storage behind all-files-access.
     if (!await AndroidPermissionsService.instance.hasAllFilesAccess()) {
-      final ok =
-          await AndroidPermissionsService.instance.requestAllFilesAccess();
+      final ok = await AndroidPermissionsService.instance
+          .requestAllFilesAccess();
       if (!ok) {
         if (mounted) {
-          setState(() => _error =
-              'Storage access is needed to read the backup on this phone.');
+          setState(
+            () => _error =
+                'Storage access is needed to read the backup on this phone.',
+          );
         }
         return;
       }
@@ -166,7 +169,8 @@ class _WelcomePageState extends State<WelcomePage> {
             SimpleDialogOption(
               onPressed: () => Navigator.pop(ctx, id),
               child: Text(
-                  '${id.callsign}${id.nickname.isNotEmpty ? '  (${id.nickname})' : ''}'),
+                '${id.callsign}${id.nickname.isNotEmpty ? '  (${id.nickname})' : ''}',
+              ),
             ),
         ],
       ),
@@ -261,7 +265,6 @@ class _WelcomePageState extends State<WelcomePage> {
     super.dispose();
   }
 
-
   /// Open the full-screen generator and adopt whatever the user picked. The
   /// search runs on its own isolate inside that page, so it never competes with
   /// this screen for frames.
@@ -305,47 +308,109 @@ class _WelcomePageState extends State<WelcomePage> {
 
   Future<void> _importNsec() async {
     final controller = TextEditingController();
-    final nsec = await showDialog<String>(
+    // Both halves of a callsign are the holder's own choice (spec section 3):
+    // the prefix says what kind of holder this is -- X1 a person, X3 a station
+    // or unattended equipment -- and the length is "the holder's own choice,
+    // and four is the default". Fixed once, at import, because the callsign is
+    // how everyone who hears this device addresses and stores it.
+    var station = false;
+    var length = reticulum.NostrCrypto.kDefaultCallsignLength;
+    final result = await showDialog<(String, bool, int)>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Import existing profile'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Paste a Nostr private key (nsec1…) below. The matching '
-              'callsign and npub will be derived automatically.',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Import existing profile'),
+          // Scrollable: with the keyboard up there is barely a third of the
+          // screen left, and an AlertDialog clips its content rather than
+          // shrinking -- the prefix and length rows ended up underneath the
+          // action buttons.
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Paste a Nostr private key (nsec1…) below. The matching '
+                  'callsign and npub will be derived automatically.',
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: 'nsec1…',
+                    border: OutlineInputBorder(),
+                  ),
+                  obscureText: true,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Text('This is a'),
+                    const SizedBox(width: 10),
+                    DropdownButton<bool>(
+                      value: station,
+                      onChanged: (v) => setLocal(() => station = v ?? false),
+                      items: const [
+                        DropdownMenuItem(
+                          value: false,
+                          child: Text('person (X1)'),
+                        ),
+                        DropdownMenuItem(
+                          value: true,
+                          child: Text('station (X3)'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text('Callsign length'),
+                    const SizedBox(width: 10),
+                    DropdownButton<int>(
+                      value: length,
+                      onChanged: (v) => setLocal(
+                        () => length =
+                            v ?? reticulum.NostrCrypto.kDefaultCallsignLength,
+                      ),
+                      items: [
+                        for (
+                          var n = reticulum.NostrCrypto.kMinCallsignLength;
+                          n <= reticulum.NostrCrypto.kMaxCallsignLength;
+                          n++
+                        )
+                          DropdownMenuItem(value: n, child: Text('$n')),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(
-                hintText: 'nsec1…',
-                border: OutlineInputBorder(),
-              ),
-              obscureText: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(ctx, (controller.text.trim(), station, length)),
+              child: const Text('Import'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Import'),
-          ),
-        ],
       ),
     );
-    if (nsec == null || nsec.isEmpty) return;
+    if (result == null) return;
+    final (nsec, isStation, callsignLength) = result;
+    if (nsec.isEmpty) return;
     try {
       final profile = ProfileService.instance.buildFromNsec(
         nsec,
         nickname: _nicknameController.text.trim(),
+        station: isStation,
+        callsignLength: callsignLength,
       );
       setState(() {
         _previous = _preview;
@@ -389,8 +454,10 @@ class _WelcomePageState extends State<WelcomePage> {
       // Already granted (or desktop) — make sure the first backup is written.
       final pass =
           PreferencesService.instanceSync?.identityBackupPassphrase ?? '';
-      await IdentityBackup.instance
-          .backupAll(ProfileService.instance.profiles, passphrase: pass);
+      await IdentityBackup.instance.backupAll(
+        ProfileService.instance.profiles,
+        passphrase: pass,
+      );
       return;
     }
     if (!mounted) return;
@@ -420,8 +487,10 @@ class _WelcomePageState extends State<WelcomePage> {
     if (ok) {
       final pass =
           PreferencesService.instanceSync?.identityBackupPassphrase ?? '';
-      await IdentityBackup.instance
-          .backupAll(ProfileService.instance.profiles, passphrase: pass);
+      await IdentityBackup.instance.backupAll(
+        ProfileService.instance.profiles,
+        passphrase: pass,
+      );
     }
   }
 
@@ -530,8 +599,7 @@ class _WelcomePageState extends State<WelcomePage> {
                               children: [
                                 if (_previous != null)
                                   IconButton(
-                                    onPressed:
-                                        _isFinalizing ? null : _goBack,
+                                    onPressed: _isFinalizing ? null : _goBack,
                                     icon: const Icon(Icons.undo),
                                     tooltip: 'Revert to previous callsign',
                                     color: cs.primary,
@@ -540,17 +608,16 @@ class _WelcomePageState extends State<WelcomePage> {
                                   const SizedBox(width: 48),
                                 const SizedBox(width: 8),
                                 AnimatedSwitcher(
-                                  duration:
-                                      const Duration(milliseconds: 200),
+                                  duration: const Duration(milliseconds: 200),
                                   child: Text(
                                     _preview.callsign,
                                     key: ValueKey(_preview.callsign),
                                     style: theme.textTheme.headlineMedium
                                         ?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: cs.primary,
-                                      letterSpacing: 2,
-                                    ),
+                                          fontWeight: FontWeight.bold,
+                                          color: cs.primary,
+                                          letterSpacing: 2,
+                                        ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -583,8 +650,9 @@ class _WelcomePageState extends State<WelcomePage> {
                                   label: const Text('Import nsec'),
                                 ),
                                 OutlinedButton.icon(
-                                  onPressed:
-                                      _isFinalizing ? null : _restoreFromBackup,
+                                  onPressed: _isFinalizing
+                                      ? null
+                                      : _restoreFromBackup,
                                   icon: const Icon(Icons.restore, size: 18),
                                   label: const Text('Restore from backup'),
                                 ),
@@ -664,8 +732,11 @@ class _WelcomePageState extends State<WelcomePage> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.error_outline,
-                                  size: 20, color: cs.error),
+                              Icon(
+                                Icons.error_outline,
+                                size: 20,
+                                color: cs.error,
+                              ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
@@ -688,8 +759,11 @@ class _WelcomePageState extends State<WelcomePage> {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.info_outline,
-                                size: 20, color: cs.secondary),
+                            Icon(
+                              Icons.info_outline,
+                              size: 20,
+                              color: cs.secondary,
+                            ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(

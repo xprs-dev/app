@@ -35,6 +35,7 @@ import '../../wapp/android_foreground_service.dart';
 import '../hero/launcher_visibility.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
+import 'xprs_archive.dart';
 import 'xprs_cadence.dart';
 import 'xprs_id.dart';
 import 'xprs_monitor.dart';
@@ -51,6 +52,24 @@ class XprsCatchup {
 
   /// The ask window never reaches further back than this (36.10.1 rule 4).
   static const Duration maxWindow = Duration(days: 7);
+
+  /// How far back a FIRST-RUN backfill reaches, and how many messages is
+  /// enough of a conversation to arrive with.
+  ///
+  /// 36.10.1 rule 4 bounds a background poll to seven days and says in the
+  /// same breath that "anything older is fetched deliberately, not by a
+  /// background poll". This is that deliberate fetch: it runs once, on a
+  /// device whose archive holds no conversation at all, so a fresh install
+  /// opens Global chat with something in it instead of a blank page. The poll
+  /// keeps its week.
+  static const Duration backfillWindow = Duration(days: 30);
+  static const int backfillMessages = 1000;
+
+  /// The archiver a backfill is currently draining, if any. One at a time:
+  /// asking three supers for the same month fetches the same conversation
+  /// three times, and the responder meters each of them.
+  String? _backfillStation;
+  int _backfillFetched = 0;
 
   /// One ask per archiver per period.
   final Map<String, int> _askedAtMs = {};
@@ -315,6 +334,14 @@ class XprsCatchup {
           for (final e in _askedAtMs.entries) e.key: nowMs() - e.value,
         },
         'resuming': _resume.keys.toList(),
+        // The first-run backfill, because a fresh install that quietly
+        // fetches nothing must be readable without a debugger.
+        'backfill': {
+          'station': _backfillStation,
+          'messages': _backfillFetched,
+          'target': backfillMessages,
+          'days': backfillWindow.inDays,
+        },
       };
 
   /// Test seam: forget every station's news, ask history and pending page.
@@ -331,6 +358,8 @@ class XprsCatchup {
     _sawRows.clear();
     _lastResumeMs.clear();
     _identityAtMs = 0;
+    _backfillStation = null;
+    _backfillFetched = 0;
   }
 
   /// Announce which key this callsign signs with, on every active bearer.
@@ -405,14 +434,35 @@ class XprsCatchup {
     // bearer, and even with one it only ever asked stations it could HEAR --
     // so a network reachable only over the internet was never asked anything,
     // and Global chat arrived from nowhere.
-    final supers = <String>[];
-    for (final c in prefs.xprsSuperArchivers) {
+    // The operator's list and the ones heard on the air, in that order. A
+    // fresh install has nothing in the first -- which is why it used to ask
+    // nobody and show an empty Global chat -- and the second fills itself from
+    // whatever announced `serve:…,super` while this device was listening.
+    final knownSupers = <String>[];
+    for (final c in [
+      ...prefs.xprsSuperArchivers,
+      ...learnedSupers(prefs),
+    ]) {
       final base = _base(c);
       if (base.isEmpty || base == selfBase) continue;
-      if (fresh.any((s) => _base(s.callsign) == base)) continue; // heard: above
-      if (!supers.contains(base)) supers.add(base);
+      if (!knownSupers.contains(base)) knownSupers.add(base);
     }
+    // For the ask loop, drop the ones already coming through `fresh` so they
+    // are not asked twice. The backfill below uses the FULL list: whether a
+    // super also happens to be in earshot says nothing about whether this
+    // device is missing a month of what it holds.
+    final supers = [
+      for (final base in knownSupers)
+        if (!fresh.any((s) => _base(s.callsign) == base)) base
+    ];
     if (fresh.isEmpty && supers.isEmpty) return;
+
+    // ── The first-run backfill (36.10.1 rule 4's "fetched deliberately") ──
+    // A device whose archive holds no conversation has nothing to show in
+    // Global chat, and the seven-day poll would fill it a week at a time only
+    // as new traffic arrived. Reach back a month instead, once, against one
+    // known super, and stop as soon as there is enough to read.
+    _updateBackfill(knownSupers, fresh);
 
     final asked = <String>[];
     for (final st in [
@@ -488,13 +538,94 @@ class XprsCatchup {
     _lastSweepSeen = fresh.length;
   }
 
+  /// How many conversation records the archive holds. The stop condition is
+  /// measured from the ARCHIVE, not from the pages served, so a backfill
+  /// interrupted by a restart resumes where the device actually is rather
+  /// than starting the month again.
+  int _messagesHeld() {
+    try {
+      return XprsArchive.instance
+          .query(types: const ['message'], limit: backfillMessages)
+          .length;
+    } catch (_) {
+      // No archive open yet (first frames of a cold start): not a reason to
+      // claim the device is full, and not a reason to crash the sweep.
+      return 0;
+    }
+  }
+
+  /// Start, continue or finish the first-run backfill.
+  ///
+  /// Re-armable on purpose: a first launch that hears no super is not a
+  /// permanent verdict, and the next sweep that knows one will pick it up.
+  void _updateBackfill(List<String> supers, List<XprsStation> fresh) {
+    final held = _messagesHeld();
+    _backfillFetched = held;
+    if (held >= backfillMessages) {
+      _backfillStation = null;
+      return;
+    }
+    if (_backfillStation != null) {
+      // Still draining. Keep going while the station is still one we know.
+      if (supers.contains(_backfillStation)) return;
+      _backfillStation = null;
+    }
+    // Only a device with NO conversation at all backfills. One that has some
+    // is a device the ordinary poll is already serving, and a month-wide ask
+    // there is a metered replay spent on records it mostly has.
+    if (held > 0) return;
+    // A super first -- it is the one that holds everything everybody said.
+    // A station in earshot holds its neighbourhood, which is worth having but
+    // is not what an empty Global chat is missing.
+    if (supers.isNotEmpty) {
+      _backfillStation = supers.first;
+    } else {
+      return;
+    }
+    LogService.instance.add(
+        'XPRS catch-up: first-run backfill from $_backfillStation — '
+        'up to $backfillMessages messages or '
+        '${backfillWindow.inDays} days');
+  }
+
+  /// The learned rows (`CALLSIGN:<heardMs>`) as plain callsigns, freshest
+  /// first. Stored with the time so a super that has gone quiet can age out;
+  /// the sweep only wants the names.
+  static List<String> learnedSupers(PreferencesService prefs) {
+    final rows = <MapEntry<String, int>>[];
+    for (final row in prefs.xprsSuperArchiversLearned) {
+      final at = row.lastIndexOf(':');
+      if (at <= 0) continue;
+      rows.add(MapEntry(
+          row.substring(0, at), int.tryParse(row.substring(at + 1)) ?? 0));
+    }
+    rows.sort((a, b) => b.value.compareTo(a.value));
+    return [for (final e in rows) e.key];
+  }
+
   Future<void> _ask(String self, String archiver, int now,
       PreferencesService prefs) async {
     // since: = THIS station's mark, floored at a week (36.10.1 rule 4). Not a
     // shared one: see PreferencesService.xprsCatchupMarks.
     var sinceSec = _markFor(archiver, prefs);
-    final floorSec = (now - maxWindow.inMilliseconds) ~/ 1000;
-    if (sinceSec < floorSec) sinceSec = floorSec;
+    final backfilling = archiver == _backfillStation;
+    final window = backfilling ? backfillWindow : maxWindow;
+    final floorSec = (now - window.inMilliseconds) ~/ 1000;
+    if (backfilling) {
+      // The mark is IGNORED here, and that is the point of the backfill.
+      //
+      // A fresh install plants its watermark at the moment it first ticks --
+      // "a fresh install has no hole", above -- which is true of this device's
+      // own log and false of the conversation. Every later ask then said
+      // `since:<the minute it was installed>`, so a new phone could only ever
+      // fetch what was said AFTER it arrived, and Global chat opened empty and
+      // stayed that way with nothing anywhere reporting a failure. Flooring at
+      // the month would not have helped: the mark is NEWER than the floor, so
+      // the floor never applied.
+      sinceSec = floorSec;
+    } else if (sinceSec < floorSec) {
+      sinceSec = floorSec;
+    }
 
     // A page the station could not finish: ask for what came BEFORE the oldest
     // record it managed to send, rather than asking the same window again.
@@ -616,6 +747,14 @@ class XprsCatchup {
     // nothing about the newest.
     _resume.remove(ask.station);
     _oldestReplayMs.remove(ask.station);
+    if (ask.station == _backfillStation) {
+      // The window is finished, which for a backfill means the month is
+      // exhausted -- there is no more to have, however few records it was.
+      LogService.instance.add(
+          'XPRS catch-up: backfill from ${ask.station} finished with '
+          '$_backfillFetched message(s)');
+      _backfillStation = null;
+    }
     if (ask.partial) return;
     final sec = ask.atMs ~/ 1000;
     if (sec > _markFor(ask.station, prefs)) {

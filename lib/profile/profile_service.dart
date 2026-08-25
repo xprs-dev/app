@@ -153,8 +153,15 @@ class ProfileService {
   ///
   /// [callsignLength] defaults to four, so an nsec imported from an older
   /// install rebuilds exactly the callsign it had before.
+  ///
+  /// [station] picks the `X3` prefix instead of `X1` (spec section 3: `X1` is
+  /// a person or operator, `X3` a station, relay or unattended equipment).
+  /// Both are derived from the same key by the same arithmetic, so an `X3`
+  /// callsign is self-certifying exactly as an `X1` one is -- the prefix says
+  /// what kind of holder it is, not how much anyone should believe it.
   IwiProfile buildFromNsec(String nsec,
       {String nickname = '',
+      bool station = false,
       int callsignLength = reticulum.NostrCrypto.kDefaultCallsignLength}) {
     if (!NostrKeyGenerator.isValidNsec(nsec)) {
       throw ArgumentError('Invalid nsec — must be a bech32 nsec1… string');
@@ -163,8 +170,9 @@ class ProfileService {
     if (npub == null) {
       throw ArgumentError('Could not derive npub from nsec');
     }
-    final callsign =
-        NostrKeyGenerator.deriveCallsign(npub, length: callsignLength);
+    final callsign = station
+        ? NostrKeyGenerator.deriveStationCallsign(npub, length: callsignLength)
+        : NostrKeyGenerator.deriveCallsign(npub, length: callsignLength);
     return IwiProfile(
       id: callsign,
       nickname: nickname,

@@ -1972,8 +1972,8 @@ class RnsService {
     // In XPRS the CALLSIGN is npub-derived (X1<4>); the NICKNAME is the peer's
     // kind-0 display_name when fetched, else its announced text.
     final pub = n.nostrPubHex;
-    final callsign = _derivedCallsign(pub);
     final announced = (n.callsign ?? '').trim();
+    final callsign = _callsignFor(pub, announced);
     final profileName = _profileNameFor(pub);
     final nickname = profileName.isNotEmpty ? profileName : announced;
     final String label;
@@ -2186,6 +2186,37 @@ class RnsService {
     } catch (_) {
       return '';
     }
+  }
+
+  /// The callsign to show for a node: the one it ANNOUNCED when that name is
+  /// arithmetically its own, else the `X1`+4 we can derive ourselves.
+  ///
+  /// Spec section 3: a callsign is `X1`/`X3`/`X4`/`X5` plus two to five
+  /// characters of the holder's key, and BOTH halves are the holder's choice --
+  /// `X1` a person, `X3` a station, and the length "the holder's own choice,
+  /// and four is the default". This used to derive `X1`+4 unconditionally and
+  /// let it OVERRIDE the announcement, so a station calling itself `X3ARK`
+  /// appeared to the whole mesh as `X1ARKL`: a second name for one device,
+  /// invented by the observer.
+  ///
+  /// Believing the announcement costs nothing here because it is CHECKED, not
+  /// trusted: [NostrCrypto.callsignMatchesKey] re-derives the body from this
+  /// node's own key at the announced length, so a node can pick its prefix and
+  /// its length but can never wear a name its key cannot produce.
+  ///
+  /// An issued callsign (`CT1ABC`, section 9.4.2) has no arithmetic relation to
+  /// any key, so it fails that test and we fall back to the derived name rather
+  /// than repeating a claim we cannot check.
+  static String _callsignFor(String? nostrPubHex, String announced) {
+    final pub = nostrPubHex;
+    final a = announced.trim().toUpperCase();
+    if (a.isNotEmpty &&
+        pub != null &&
+        pub.length == 64 &&
+        NostrCrypto.callsignMatchesKey(a, pub)) {
+      return a;
+    }
+    return _derivedCallsign(pub);
   }
 
   /// Hand the wapps a message that reached us over a path Reticulum knows
