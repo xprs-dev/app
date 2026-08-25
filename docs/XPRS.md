@@ -6690,7 +6690,25 @@ asking again. No cursor, no session. `404` nothing held, `403` refused, `429`
 over budget with alternatives in `m:`.
 Derived identifiers make the replay safe: a duplicate collapses on the identifier
 it already had, so there are no cursors and overlapping windows cost only
-airtime. Advertise a spool with `serve:archive`, files with `serve:files`.
+airtime.
+
+**A continuation must make progress.** Two rules, one on each side, because
+this is the exchange that silently loops when either is missing:
+
+- The station answering MUST serve records strictly OLDER than `until:`, so the
+  window a continuation asks for is always a window it has not already served.
+- The station asking MUST notice when it stops moving. If a continuation comes
+  back reaching the same oldest `ts:` as the one before it, the exchange has
+  stalled: that is not new traffic and must not be counted as any (36.10.2), and
+  the asker abandons the window rather than asking a third time.
+
+Measured, because both halves failed at once: a resume mark that walked FORWARD
+with the clock (each continuation asking for a slightly newer slice than the
+last), and then, once that was fixed, one that stopped moving at all. A caller
+that reads a stuck loop as a busy archiver polls it at its fastest cadence
+forever, which is the most expensive possible response to an archiver that is
+telling it nothing.
+ Advertise a spool with `serve:archive`, files with `serve:files`.
 
 ### Mentions, threads and files
 
@@ -7585,6 +7603,23 @@ the ordinary service discovery of this section. `super` is a claim like
 every other `serve:` word: it invites asks and compels nothing, and a
 super-archiver that answers like a pocket one simply stops being asked.
 
+**What claiming `super` commits a station to.** The word is a claim like every
+other `serve:` word and compels nothing -- but a station that cannot do the
+following should not write it, because every humble node that believes it will
+route its asks nowhere:
+
+| the claim | what it means in practice |
+|---|---|
+| **addressable** | reachable by a DIRECTED packet, not only by broadcast. A station that can only announce is not reachable through a public transport at all (36.12.1), and a super that cannot be asked is not a super |
+| **deep** | a spool measured in RECORDS, not in whatever the board's flash happened to have spare. A store that holds a busy neighbourhood's day is a pocket archiver with ambitions |
+| **budgeted for it** | section 31.2's reference numbers raised by orders of magnitude, because six replays an hour is a pocket device's budget and a super exists to be leaned on |
+| **concurrent** | more than one ask in flight. One replay at a time, with a page taking tens of seconds to air, means the second asker of any minute is refused |
+| **complete** | gossip kept for every callsign it learns of, without the need-to-know cap a small station rightly applies (36.9.4) |
+| **awake** | always on, because the value of a super is that it heard what everybody else missed while they were asleep |
+
+A station that can do some of these and not others is an ordinary archiver
+doing well, which is a good thing to be. `serve:archive` says so honestly.
+
 ### 36.10 Two archivers meet
 
 A station that was away has a hole in its archive exactly as wide as its
@@ -7986,6 +8021,25 @@ rules follow:
   independently; the second is the one that fails silently, so it is the one
   that must be checked against the air.
 
+**A station too small for a link layer still has a directed lane.** "Directed"
+in this section means addressed to one destination, not any particular
+transport mechanism. A microcontroller with kilobytes of free memory cannot
+carry a link layer or a store-and-forward router, and it does not need one: an
+addressed, encrypted single packet reaches a named destination through the same
+transports, and reference implementations forward it by destination the same
+way they forward anything else. Measured across a public hub, multi-hop,
+between two stations on different networks.
+
+What it gives up is the receipt. A link tells the sender the peer received it;
+a single packet does not, so silence and refusal look alike. That is the right
+trade for an ask that will be asked again anyway -- a poll, a gossip query, a
+replay request, all of which repeat on their own schedule (36.10.2) -- and the
+wrong one for mail, which is why mail is held under custody (36.7) rather than
+fired at a destination and forgotten.
+
+So a constrained station's obligations shrink to three: announce so paths
+exist, answer where it was asked from, and never assume its packet arrived.
+
 **Send on every lane that might work.** Where a transport offers more than
 one addressed mechanism, a directed wire MAY go out on all of them: they fail
 independently, and section 5's identifier makes the duplicate collapse into
@@ -8014,7 +8068,9 @@ mechanism.**
 | Section 36.9.4 gossip (layers, budgets, super-archivers) | **implemented** on the Flutter side (`xprs_gossip.dart`: L2/L3 tables, K/G caps, signer quotas, byte budget, the super-archiver mode and the miss-path ask) with DoS-probe unit tests; the shared ESP32 app keeps the need-to-know ring |
 | Section 36.12 reaching a callsign from anywhere | **implemented and bench-validated**: an internet sender on a foreign network reached a WiFi-less BLE-only pocket through deposit, gossip, forward and release-on-hearing, with signatures intact at every hop |
 | Section 36.12.1 constrained internet transports (directed replies, directed asks, deposit, sender-parks-own-mail) | **implemented** on the Flutter side; specified after being proven necessary on public hubs |
-| Section 36.10.2 the poll adapts to what it finds (per-archiver interval, the quiet ladder, the peer's floor, 429 as authority) | **implemented** on the Flutter side, with the ladder as pure functions under unit test |
+| Section 36.10.2 the poll adapts to what it finds (per-archiver interval, the quiet ladder, the peer's floor, 429 as authority) | **implemented** on the Flutter side, with the ladder as pure functions under unit test; bench-measured 600s down to the 15s floor under load and back up to the ceiling when the room went quiet |
+| Section 25.2.1 a continuation must make progress | specified in this revision after both halves failed on the bench; the asker's half (a stalled resume is not news) is **implemented** on the Flutter side, the responder's `until:` half is not yet |
+| Section 36.9.4 what claiming `super` commits a station to | specified in this revision -- written while planning the ESP32 super-archiver, where no board yet meets it |
 | Section 36.12.2 public traffic across the internet (push to chosen archivers, pull from them, publications past the declaration rule, callsign-to-address resolution) | **implemented and bench-validated**: two phones on different networks, neither hearing the other's broadcasts, exchanged Global chat through one super-archiver -- push arrived in seconds, pull on the metering period |
 | Callsigns, signatures, verification | implemented |
 | Signing by default on every packet type | not implemented; signing exists and is opt-in |
