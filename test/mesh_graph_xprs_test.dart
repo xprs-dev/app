@@ -2,8 +2,11 @@
 // kind:"xprs" nodes edged to self — and stay OUT of it by default, so the
 // localOnly consumers (the Chat wapp's nearby list) never see them.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:xprs/services/preferences_service.dart';
 import 'package:xprs/services/reticulum/rns_service.dart';
+import 'package:xprs/services/xprs/xprs_vocab.dart';
 import 'package:xprs/services/xprs/xprs_monitor.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_sig.dart';
@@ -90,6 +93,124 @@ void main() {
     expect(files.any((n) => n['id'] == 'xprs:X3WWAJ'), false,
         reason: 'it never claimed files');
 
+    XprsMonitor.instance.clear();
+  });
+
+  test('serve:archive,super survives parsing and reads as a super-archiver',
+      () {
+    XprsMonitor.instance.clear();
+    // The word is section 24 vocabulary and this device AIRS it (MeshService
+    // puts `serve:archive,super` on both beacons when super-archiver mode is
+    // on). It used to be missing from kXprsServices, so our own receiver threw
+    // away a word our own transmitter sent, and nothing downstream could ever
+    // answer "is this a super-archiver".
+    expect(kXprsServices.contains('super'), true);
+    final p = XprsPacket.parse('t:service f:X3SUPR serve:archive,super');
+    expect(xprsServices(p!), ['archive', 'super']);
+    // The whitelist still holds for everything else.
+    expect(
+        xprsServices(XprsPacket.parse('t:service f:X3SUPR serve:archive,bogus')!),
+        ['archive']);
+
+    XprsMonitor.instance.offer(p, bearer: 'lan', selfCallsign: 'X1TEST');
+    final node = (RnsService.instance.graphSnapshot(includeXprs: true)['nodes']
+            as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((n) => n['id'] == 'xprs:X3SUPR');
+    expect((node['services'] as List), containsAll(['archive', 'super']));
+    expect((node['meta'] as Map)['role'], 'super-archiver');
+    XprsMonitor.instance.clear();
+  });
+
+  test('the role filter buckets supers, archivers and normal nodes', () async {
+    PreferencesService.resetForTest();
+    SharedPreferences.setMockInitialValues({});
+    await PreferencesService.instance();
+    XprsMonitor.instance.clear();
+    void hear(String wire) => XprsMonitor.instance
+        .offer(XprsPacket.parse(wire)!, bearer: 'lan', selfCallsign: 'X1TEST');
+    hear('t:service f:X3SUPR serve:archive,super');
+    hear('t:service f:X3ARCH serve:archive');
+    hear('t:observation f:X3PHON link:lan peers:1');
+
+    List<String> idsFor(String? role) => (RnsService.instance
+            .graphSnapshot(includeXprs: true, role: role)['nodes'] as List)
+        .cast<Map<String, dynamic>>()
+        .map((n) => n['id'] as String)
+        .toList();
+
+    // Each bucket answers a question the others do not, so assert what each
+    // one EXCLUDES too -- a predicate that accidentally matches everything
+    // passes every "contains" check ever written.
+    expect(idsFor(null),
+        containsAll(['xprs:X3SUPR', 'xprs:X3ARCH', 'xprs:X3PHON']));
+
+    final supers = idsFor('super');
+    expect(supers, contains('xprs:X3SUPR'));
+    expect(supers, isNot(contains('xprs:X3ARCH')));
+    expect(supers, isNot(contains('xprs:X3PHON')));
+
+    // Disjoint on purpose: a super announces `archive,super`, so an archivers
+    // bucket holding every super would answer nothing new.
+    final archivers = idsFor('archive');
+    expect(archivers, contains('xprs:X3ARCH'));
+    expect(archivers, isNot(contains('xprs:X3SUPR')));
+    expect(archivers, isNot(contains('xprs:X3PHON')));
+
+    final normal = idsFor('normal');
+    expect(normal, contains('xprs:X3PHON'));
+    expect(normal, isNot(contains('xprs:X3SUPR')));
+    expect(normal, isNot(contains('xprs:X3ARCH')));
+
+    // Hubs and self are emitted before the filter and survive every bucket:
+    // a role filter asks which of these CLAIMS to be a super, and a gateway
+    // claims nothing.
+    for (final r in [null, 'super', 'archive', 'normal']) {
+      final nodes = (RnsService.instance
+              .graphSnapshot(includeXprs: true, role: r)['nodes'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(nodes.any((n) => n['kind'] == 'self'), true,
+          reason: 'self is the centre the scene is built around ($r)');
+    }
+    XprsMonitor.instance.clear();
+  });
+
+  test('an operator-named super counts even with no beacon claim', () async {
+    // The case the whole design turns on: a super reached only over the
+    // internet is never heard on a radio, so it has no `serve:` list at all.
+    // The device suffix must not hide it either (section 3.1).
+    // resetForTest first: the singleton caches its SharedPreferences, so a
+    // mock set after it exists would be read by nobody.
+    PreferencesService.resetForTest();
+    SharedPreferences.setMockInitialValues({
+      'xprs.superArchivers': ['X3WWAJ'],
+    });
+    await PreferencesService.instance();
+    XprsMonitor.instance.clear();
+    XprsMonitor.instance.offer(
+        XprsPacket.parse('t:service f:X3WWAJ-2 serve:archive')!,
+        bearer: 'lan',
+        selfCallsign: 'X1TEST');
+
+    final supers = (RnsService.instance
+            .graphSnapshot(includeXprs: true, role: 'super')['nodes'] as List)
+        .cast<Map<String, dynamic>>()
+        .map((n) => n['id'] as String);
+    // The node keeps the callsign it aired (suffix and all -- that IS the
+    // device); what the suffix must not do is stop the match.
+    expect(supers, contains('xprs:X3WWAJ-2'),
+        reason: 'named by the operator, and the -2 suffix is the same station');
+
+    // ...and it must NOT also show up under archivers.
+    final archivers = (RnsService.instance
+            .graphSnapshot(includeXprs: true, role: 'archive')['nodes'] as List)
+        .cast<Map<String, dynamic>>()
+        .map((n) => n['id'] as String);
+    expect(archivers, isNot(contains('xprs:X3WWAJ-2')));
+
+    PreferencesService.resetForTest();
+    SharedPreferences.setMockInitialValues({});
+    await PreferencesService.instance();
     XprsMonitor.instance.clear();
   });
 

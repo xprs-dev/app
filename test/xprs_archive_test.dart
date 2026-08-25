@@ -245,6 +245,28 @@ void main() {
     expect(XprsMonitor.instance.revision, rev);
   });
 
+  test('reticulum lane records the bearer it actually travelled on', () {
+    Uint8List wire(String s) => Uint8List.fromList(utf8.encode(s));
+    // A broadcast message (no d:) is a publication, so the declaration gate
+    // does not apply — the same rows the chat wapp shows in its rooms.
+    XprsIngest.reticulum(
+        'aa11', wire('t:message f:X1LAN ts:2026-08-13_10:00:00 m:over the lan'),
+        bearer: 'lan');
+    XprsIngest.reticulum('bb22',
+        wire('t:message f:X1BEN ts:2026-08-13_10:01:00 m:off the bench board'),
+        bearer: 'espnow');
+    // Nothing said where this one came from: it crossed the internet.
+    XprsIngest.reticulum(
+        'cc33', wire('t:message f:X1HUB ts:2026-08-13_10:02:00 m:off a hub'));
+    a.flush(nowMs: 3000);
+    final byFrom = {
+      for (final r in a.query()) r['from'] as String: r['bearer'] as String,
+    };
+    expect(byFrom['X1LAN'], 'lan');
+    expect(byFrom['X1BEN'], 'espnow');
+    expect(byFrom['X1HUB'], 'rns');
+  });
+
   test('query: window on packet ts, only: matches from or to, newest first',
       () {
     a.admit(_p('t:info f:X1AAA ts:2026-08-13_10:00:00 m:one'),

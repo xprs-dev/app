@@ -139,6 +139,12 @@ const Set<String> kXprsBearers = {
 const Set<String> kXprsServices = {
   'relay',
   'archive',
+  // The archive role at server scale (36.9.4), announced BESIDE `archive` and
+  // never instead of it. It was missing here while this very device airs it on
+  // both beacons (mesh_service.dart), so our own receiver dropped a word our
+  // own transmitter sent -- and everything downstream that asked "is this a
+  // super-archiver" was reading a list that could never say yes.
+  'super',
   'internet',
   'aprs',
   'nostr',

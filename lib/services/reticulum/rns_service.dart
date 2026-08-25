@@ -1919,6 +1919,34 @@ class RnsService {
     (1 << 3, 'archive'),
   ];
 
+  /// The `archive` capability bit, read from [_capNames] rather than written
+  /// out again, so the role filter and the `meta.caps` list a node is shown
+  /// with can never drift apart.
+  static bool _relayArchives(RelayEntry? relay) {
+    if (relay == null) return false;
+    for (final (bit, name) in _capNames) {
+      if (name == 'archive') return relay.announcement.caps & bit != 0;
+    }
+    return false;
+  }
+
+  /// Does a node in bucket ([isSuper], [isArchiver]) belong under [role]?
+  /// One predicate for both filter sites -- the RNS lane and the XPRS-station
+  /// lane decide membership differently but must agree on what the words mean.
+  static bool _roleMatches(String role,
+      {required bool isSuper, required bool isArchiver}) {
+    switch (role) {
+      case 'super':
+        return isSuper;
+      case 'archive':
+        return isArchiver;
+      case 'normal':
+        return !isSuper && !isArchiver;
+      default:
+        return true; // an undefined bucket filters nothing
+    }
+  }
+
   static String _shortHex(String h) => h.length > 8 ? h.substring(0, 8) : h;
 
   // A XPRS device carries a XPRS service (chat/relay/wapp/files/dht) — our
@@ -1944,12 +1972,7 @@ class RnsService {
     // In XPRS the CALLSIGN is npub-derived (X1<4>); the NICKNAME is the peer's
     // kind-0 display_name when fetched, else its announced text.
     final pub = n.nostrPubHex;
-    var callsign = '';
-    if (pub != null && pub.length == 64) {
-      try {
-        callsign = 'X1${NostrCrypto.deriveCallsign(pub)}';
-      } catch (_) {}
-    }
+    final callsign = _derivedCallsign(pub);
     final announced = (n.callsign ?? '').trim();
     final profileName = _profileNameFor(pub);
     final nickname = profileName.isNotEmpty ? profileName : announced;
@@ -2152,6 +2175,19 @@ class RnsService {
   static String _bareUpper(String s) =>
       NostrCrypto.bareCallsign(s.trim()).toUpperCase();
 
+  /// The callsign an observed node's key implies (section 3.1: in XPRS the
+  /// callsign is npub-derived). Shared with [_nodeJson], which shows the same
+  /// name -- a node must not be findable under a name it is not displayed by.
+  static String _derivedCallsign(String? nostrPubHex) {
+    final pub = nostrPubHex;
+    if (pub == null || pub.length != 64) return '';
+    try {
+      return 'X1${NostrCrypto.deriveCallsign(pub)}';
+    } catch (_) {
+      return '';
+    }
+  }
+
   /// Hand the wapps a message that reached us over a path Reticulum knows
   /// nothing about — carried by a custodian on the mesh (see MeshCourier).
   /// It enters the SAME inbox a directly-delivered LXMF message does, so the
@@ -2244,9 +2280,27 @@ class RnsService {
     bool localOnly = false,
     int limit = 0,
     bool includeXprs = false,
+    String? role,
   }) {
     sweepObserved();
     final q = (search ?? '').trim().toLowerCase();
+    // What a node is FOR: 'super' (a super-archiver, XPRS.md 36.9.4),
+    // 'archive' (an archiver that is not a super -- the two buckets are
+    // disjoint, or neither answers a question), 'normal' (neither), null for
+    // any. Hubs are exempt: they are emitted before this filter runs, because
+    // a role filter asks which of these CLAIMS to be a super and a gateway
+    // claims nothing -- it is the wire the stations hang off.
+    //
+    // The operator's named list is the only honest bridge to the internet
+    // lane: a super reached solely over the internet is never heard on a
+    // radio, so it has no beacon and no `serve:` list to read (the same fact
+    // XprsCatchup records). Computed once, outside both filter sites.
+    final namedSupers = <String>{
+      for (final c
+          in PreferencesService.instanceSync?.xprsSuperArchivers ??
+              const <String>[])
+        _bareUpper(c),
+    }..remove('');
     // Relay roles, keyed by identity hex, joined in for meta.role/caps.
     final relayByHex = <String, RelayEntry>{};
     for (final e in _relayDir.entries()) {
@@ -2288,6 +2342,26 @@ class RnsService {
           service.isNotEmpty &&
           !n.services.contains(service)) {
         return false;
+      }
+      if (role != null) {
+        // This lane has NO super concept to read. RelayCap.archive (bit 3,
+        // _capNames) is a NOSTR relay capability and RelayAnnouncement.wide
+        // means something else again -- neither is section 36.9.4. So here a
+        // node is a super only because the operator SAID so, and
+        // `n.services.contains('super')` is deliberately absent: it can never
+        // be true, and writing it would look like coverage this lane does not
+        // have.
+        //
+        // Matched on all three handles for the same reason lxmfDestForCallsign
+        // does: an internet-only super shows up as an LXMF node whose announce
+        // text may be a display name rather than a callsign.
+        final isSuper = namedSupers.contains(_bareUpper(n.callsign ?? '')) ||
+            namedSupers.contains(_bareUpper(n.lxmfName ?? '')) ||
+            namedSupers.contains(_bareUpper(_derivedCallsign(n.nostrPubHex)));
+        final isArch = !isSuper && _relayArchives(relayByHex[n.identityHex]);
+        if (!_roleMatches(role, isSuper: isSuper, isArchiver: isArch)) {
+          return false;
+        }
       }
       if (q.isNotEmpty) {
         // Searchable handles: callsign, identity hash, services, the LXMF
@@ -2425,6 +2499,20 @@ class RnsService {
           continue;
         }
         final call = s.callsign.toUpperCase();
+        // The lane where the role filter is REAL: `serve:archive,super` (24,
+        // 36.9.4) reaches us here as words on the air. The operator's list
+        // still counts, for the archiver reachable only over the internet
+        // that no radio ever hears.
+        final isSuper =
+            s.services.contains('super') || namedSupers.contains(_bareUpper(call));
+        // Disjoint from super on purpose: a super announces `archive,super`,
+        // so an "Archivers" bucket that also held every super would answer no
+        // question the "Supers" bucket had not already answered.
+        final isArch = !isSuper && s.services.contains('archive');
+        if (role != null &&
+            !_roleMatches(role, isSuper: isSuper, isArchiver: isArch)) {
+          continue;
+        }
         if (knownCalls.contains(call)) continue;
         if (q.isNotEmpty && !call.toLowerCase().contains(q)) continue;
         final id = 'xprs:$call';
@@ -2453,7 +2541,11 @@ class RnsService {
             // which xprsServices can never return because `index` is not in
             // kXprsServices -- so the role was unreachable and every archiver
             // on the air rendered as an ordinary station.
-            'role': s.services.contains('archive') ? 'indexer' : '',
+            'role': isSuper
+                ? 'super-archiver'
+                : s.services.contains('archive')
+                    ? 'indexer'
+                    : '',
             'caps': const <String>[],
             'capacity': 0,
             'firstSeen': s.firstMs,
@@ -3963,13 +4055,22 @@ class RnsService {
 
   /// Queue one inbound datagram for [tag]: straight to the running wapp, else
   /// to the durable mailbox, and ask for the wapp to be started.
-  void _deliverWappDatagram(String tag, String from, Uint8List payload) {
+  ///
+  /// [via] is the interface label the datagram arrived on. It is carried all
+  /// the way to the wapp (as `via`, in the bearer vocabulary) because the wapp
+  /// has no other way to know: the Reticulum lane is where a datagram is
+  /// HANDED OVER, not where it travelled, and dropping the label here is what
+  /// made a message from the board on the bench -- over Bluetooth, ESP-NOW,
+  /// LoRa or the LAN -- announce itself to the reader as "Reticulum".
+  void _deliverWappDatagram(String tag, String from, Uint8List payload,
+      {String via = ''}) {
+    final bearer = rnsIfaceBearer(via);
     // Core tap for XPRS off the hub lane: archived under the mailbox-
     // declaration rule (docs/XPRS.md sections 13.12 and 36.3), never shown
     // as an air sighting. The wapp inbox below still gets its copy.
     if (tag == 'xprs') {
       try {
-        XprsIngest.reticulum(from, payload);
+        XprsIngest.reticulum(from, payload, bearer: bearer);
       } catch (_) {}
     }
     final q = _wappInbox[tag];
@@ -3978,13 +4079,14 @@ class RnsService {
         'from': from,
         'payload': base64.encode(payload),
         'ts': DateTime.now().millisecondsSinceEpoch,
+        'via': bearer,
       });
       while (q.length > 1024) {
         q.removeAt(0);
       }
       return;
     }
-    final kept = WappMailbox.instance.put(tag, from, payload);
+    final kept = WappMailbox.instance.put(tag, from, payload, via: bearer);
     if (!kept) {
       LogService.instance.add(
           'RNS/wapp: datagram for "$tag" LOST — no mailbox and the wapp is not '
@@ -4174,7 +4276,7 @@ class RnsService {
               allowMalformed: true,
             );
             final payload = a.sublist(1 + tagLen);
-            _deliverWappDatagram(tag, ann.identity.hexHash, payload);
+            _deliverWappDatagram(tag, ann.identity.hexHash, payload, via: via);
           }
         }
       } catch (_) {}

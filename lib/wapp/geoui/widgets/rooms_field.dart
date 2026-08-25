@@ -41,7 +41,6 @@ class RoomsField extends StatefulWidget {
   /// shows what you are already in; this finds everything else.
   final VoidCallback? onSearch;
 
-  final VoidCallback onSettings;
   final void Function(String id) onMemberTap;
   final void Function(String from)? onSenderTap;
 
@@ -67,7 +66,6 @@ class RoomsField extends StatefulWidget {
     required this.onNewRoom,
     this.onNewChat,
     this.onSearch,
-    required this.onSettings,
     required this.onMemberTap,
     this.onSenderTap,
     this.onHide,
@@ -221,9 +219,6 @@ class _RoomsFieldState extends State<RoomsField> {
       right: false,
       child: Column(
         children: [
-          // Search sits at the TOP: it is how you reach anything not already
-          // on the rail, so it should not be below a list of arbitrary length.
-          if (widget.onSearch != null) _searchTile(cs, expanded),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 6),
@@ -232,8 +227,14 @@ class _RoomsFieldState extends State<RoomsField> {
               ],
             ),
           ),
-          const Divider(height: 1),
-          _gearTile(cs, expanded),
+          // Search sits at the BOTTOM, pinned below the list rather than
+          // scrolling with it: on a phone it is the corner the thumb already
+          // rests in, and the list above is what you came for — the room you
+          // want is usually already on it, and search is the fallback.
+          if (widget.onSearch != null) ...[
+            const Divider(height: 1),
+            _searchTile(cs, expanded),
+          ],
         ],
       ),
     );
@@ -514,7 +515,7 @@ class _RoomsFieldState extends State<RoomsField> {
     final tile = InkWell(
       onTap: widget.onSearch,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
         child: expanded
             ? Container(
                 height: 38,
@@ -549,24 +550,6 @@ class _RoomsFieldState extends State<RoomsField> {
     return expanded
         ? tile
         : Tooltip(message: 'Search rooms, chats and people', child: tile);
-  }
-
-  Widget _gearTile(ColorScheme cs, bool expanded) {
-    return InkWell(
-      onTap: widget.onSettings,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        child: Row(
-          children: [
-            Icon(Icons.settings, color: cs.onSurfaceVariant, size: 26),
-            if (expanded) ...[
-              const SizedBox(width: 12),
-              Text('Settings', style: TextStyle(color: cs.onSurfaceVariant)),
-            ],
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _chat(ColorScheme cs) {

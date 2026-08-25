@@ -54,11 +54,45 @@ class PeopleViewField extends StatefulWidget {
 class _PeopleViewFieldState extends State<PeopleViewField> {
   int _section = 0;
 
+  /// The user tapped this filter themselves, so leave it alone even when it
+  /// is empty — "Rooms: none" is an answer somebody asked for. Cleared the
+  /// moment the content changes underneath them (a new search query), because
+  /// then the empty filter is no longer an answer, just a stale choice.
+  bool _pinned = false;
+
+  int _count(int i) => ((widget.sections[i]['items'] as List?) ?? const []).length;
+
+  /// Fingerprint of what is on offer. Only the shape matters — which filters
+  /// exist and how many rows each holds — because that is exactly what makes
+  /// a previous choice stale.
+  String _shape(List<Map<String, dynamic>> s) => [
+        for (final x in s)
+          '${x['title']}:${((x['items'] as List?) ?? const []).length}',
+      ].join('|');
+
+  @override
+  void didUpdateWidget(covariant PeopleViewField old) {
+    super.didUpdateWidget(old);
+    if (_shape(old.sections) != _shape(widget.sections)) _pinned = false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final sections = widget.sections;
     if (_section >= sections.length) _section = 0;
+    // Never open on an empty filter while another one has results. Searching
+    // for something that exists and being shown "nothing here" — because the
+    // first filter happened to be the empty one — reads as "not found", and
+    // the answer was one tap away the whole time.
+    if (!_pinned && sections.isNotEmpty && _count(_section) == 0) {
+      for (var i = 0; i < sections.length; i++) {
+        if (_count(i) > 0) {
+          _section = i;
+          break;
+        }
+      }
+    }
     final items = sections.isEmpty
         ? const <Map<String, dynamic>>[]
         : ((sections[_section]['items'] as List?) ?? const [])
@@ -69,14 +103,24 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Section selector (Following (n) | Followers (n)) — Twitter-style
-        // top tabs with an underline on the active one.
+        // Filter chips, not tabs. Tabs divided the width equally and made
+        // every label as wide as the widest one could be: three of them turned
+        // "Channels and conversations (3)" into two wrapped lines and a strip
+        // three times taller than the rows it filters. A chip is as wide as
+        // its word, the strip scrolls when the words do not fit, and a filter
+        // with nothing behind it is dimmed rather than shouting "(0)".
         if (sections.length > 1)
-          Row(
-            children: [
-              for (var i = 0; i < sections.length; i++)
-                Expanded(child: _sectionTab(cs, sections[i], i)),
-            ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Row(
+              children: [
+                for (var i = 0; i < sections.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  _sectionChip(cs, sections[i], i),
+                ],
+              ],
+            ),
           ),
         if (sections.length > 1) const Divider(height: 1),
         Expanded(
@@ -96,68 +140,70 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
     );
   }
 
-  Widget _sectionTab(ColorScheme cs, Map<String, dynamic> s, int idx) {
+  Widget _sectionChip(ColorScheme cs, Map<String, dynamic> s, int idx) {
     final sel = _section == idx;
     final title = (s['title'] ?? '').toString();
     final count = ((s['items'] as List?) ?? const []).length;
     final iconName = (s['icon'] ?? '').toString();
     final icon = iconName.isEmpty ? null : geoUiResolveIcon(iconName);
-    return InkWell(
-      onTap: () => setState(() => _section = idx),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              width: 3,
-              color: sel ? cs.primary : Colors.transparent,
-            ),
-          ),
+    // A filter with nothing behind it stays tappable — "show me the rooms" is
+    // a fair question even when the answer is none — but it recedes, so the
+    // eye lands on the ones that have something.
+    final fg = sel
+        ? cs.onPrimaryContainer
+        : (count == 0 ? cs.onSurfaceVariant.withAlpha(110) : cs.onSurfaceVariant);
+
+    final chip = Container(
+      padding: EdgeInsets.symmetric(horizontal: icon != null ? 12 : 14, vertical: 7),
+      decoration: BoxDecoration(
+        color: sel ? cs.primaryContainer : cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: sel ? cs.primary.withAlpha(120) : cs.outlineVariant.withAlpha(70),
         ),
-        alignment: Alignment.center,
-        // A section may name an ICON, and then the tab is that icon and the
-        // count — no label. Six worded tabs across a phone wrap to three lines
-        // each ("Messa/ges", "Beaco/ns") and the strip stops being scannable,
-        // which is the one thing a filter row has to be. The title survives as
-        // the tooltip, so nothing is lost for anyone who wants the word.
-        child: icon != null
-            ? Tooltip(
-                message: '$title ($count)',
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon,
-                        size: 20,
-                        color: sel ? cs.primary : cs.onSurfaceVariant),
-                    if (count > 0) ...[
-                      const SizedBox(width: 5),
-                      Text(
-                        '$count',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                          color: sel ? cs.onSurface : cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              )
-            : Text(
-                // "Downloaded (3)". A bare trailing number read as part of the
-                // title ("Downloaded 3"), and a wapp that wrote its own count
-                // into the title ended up saying it twice. The count belongs to
-                // the tab, so the tab formats it — and it says (0) rather than
-                // hiding, because "none yet" is information the user wants, not
-                // a state to conceal.
-                '$title ($count)',
-                style: TextStyle(
-                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                  color: sel ? cs.onSurface : cs.onSurfaceVariant,
-                ),
-              ),
       ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // A section may name an ICON instead of a word — then the icon IS
+          // the label. Either way the count rides alongside it, and only when
+          // there is one: "People 0" is three characters of nothing, and the
+          // dimmed chip has already said it.
+          if (icon != null)
+            Icon(icon, size: 17, color: fg)
+          else
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                color: fg,
+              ),
+            ),
+          if (count > 0) ...[
+            const SizedBox(width: 6),
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: sel ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => setState(() {
+        _section = idx;
+        _pinned = true;
+      }),
+      // The word survives as the tooltip when the chip is an icon, so nothing
+      // is lost for anyone who wants it.
+      child: icon != null ? Tooltip(message: title, child: chip) : chip,
     );
   }
 

@@ -242,14 +242,19 @@ class FunctionalityRegistry {
       ], ReturnDef('int', '1 if queued, -1 on error')),
       EndpointDef('hal_rns_available', 'Size of next inbound datagram', [],
           ReturnDef('uint32', '0 if none')),
-      EndpointDef('hal_rns_recv', 'Read next inbound datagram (JSON {from,payload,ts})', [],
+      EndpointDef('hal_rns_recv',
+          'Read next inbound datagram (JSON {from,payload,ts,via}); via is the '
+          'bearer it arrived on: ble/lan/espnow/lora/wifi/vhf/uhf/hf, or rns '
+          'when it came over the internet', [],
           ReturnDef('uint32', 'Bytes written, 0 if none')),
       EndpointDef('hal_rns_status', 'Node status JSON (up,mode,paths,observed,…)', [],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef('hal_rns_hubs', 'Configured bootstrap hubs [{endpoint,connected}]', [],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef('hal_rns_nodes', 'Observed network graph {nodes,edges} (filtered)', [
-        ParamDef('filter', 'string', 'JSON {service,xprsOnly,search} (empty = none)'),
+        ParamDef('filter', 'string',
+            'JSON {service,xprsOnly,search,role} (empty = none); role is '
+            'super|archive|normal and buckets a node by what it serves'),
       ], ReturnDef('int', 'Bytes written, negated required size if too small')),
     ]),
     'hal.node': FunctionalityDef('hal.node',

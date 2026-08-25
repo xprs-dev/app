@@ -109,21 +109,30 @@ class XprsCatchup {
   /// (36.9.4) can serve a fast caller; our own other devices are not metered
   /// at all by the responder, so they count as fast too.
   XprsPeerClass _classOf(String base, String selfCallsign) {
-    if (base == _base(selfCallsign)) return XprsPeerClass.fast;
-    // An archiver this operator NAMED as a super-archiver is one. The beacon
-    // is the other way to learn it, and it is the way that does not work
-    // here: a super reached only over the internet is never heard on a radio,
-    // so it has no station record and no `serve:` list to read. Requiring the
-    // beacon meant the one archiver everybody pulls Global chat from was the
-    // one archiver nobody could poll quickly.
-    final chosen =
-        PreferencesService.instanceSync?.xprsSuperArchivers ?? const <String>[];
-    for (final c in chosen) {
-      if (_base(c) == base) return XprsPeerClass.fast;
-    }
+    if (_operatorTrusted(base, selfCallsign)) return XprsPeerClass.fast;
     final st = XprsMonitor.instance.stations[base];
     final serves = st?.services ?? const <String>[];
     return serves.contains('super') ? XprsPeerClass.fast : XprsPeerClass.ordinary;
+  }
+
+  /// A super this operator actually agreed to: our own other device, or one
+  /// they NAMED. Kept apart from a super we merely BELIEVE, because the two
+  /// answer different questions and only this one may spend the battery
+  /// without asking (see [_floorMsFor]).
+  ///
+  /// The named list is also the only way to learn a super reached solely over
+  /// the internet: it is never heard on a radio, so it has no station record
+  /// and no `serve:` list to read. Requiring the beacon meant the one archiver
+  /// everybody pulls Global chat from was the one archiver nobody could poll
+  /// quickly.
+  bool _operatorTrusted(String base, String selfCallsign) {
+    if (base == _base(selfCallsign)) return true;
+    final chosen =
+        PreferencesService.instanceSync?.xprsSuperArchivers ?? const <String>[];
+    for (final c in chosen) {
+      if (_base(c) == base) return true;
+    }
+    return false;
   }
 
   /// The fastest this archiver may be asked, right now.
@@ -135,8 +144,16 @@ class XprsCatchup {
     // section 36.10.1 floor, never faster. Somebody minding their battery can
     // ask for less; nobody gets to ask an ordinary archiver for more than its
     // six replays an hour.
+    //
+    // The knob is waived only for a super this operator CHOSE. A super-archiver
+    // is a claim, not a fact -- anything in earshot can beacon
+    // `serve:archive,super` and a phone can say it -- so honouring a stranger's
+    // claim here would let one beacon override the battery setting and turn a
+    // once-a-minute poll into four. A claimed super still earns the raised
+    // floor, it just never gets asked faster than its own operator allowed.
     final chosen = prefs.xprsCatchupMinutes * 60000;
-    if (peer == XprsPeerClass.ordinary && chosen > floor) floor = chosen;
+    final trusted = _operatorTrusted(base, _selfCallsign);
+    if (!trusted && chosen > floor) floor = chosen;
     return floor;
   }
 

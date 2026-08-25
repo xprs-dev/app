@@ -171,6 +171,10 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // do nothing because it asked for the state already in force.
   bool _geoOnly = true;
   String _service = '';
+  /// Role bucket: '' (any) | 'super' | 'archive' | 'normal'. Session-only, like
+  /// every other chip here -- see the note in the mesh wapp's main.c on why it
+  /// is deliberately not persisted on the wapp side either.
+  String _role = '';
   Timer? _searchDebounce;
 
   // Bootstrap manager.
@@ -561,6 +565,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         'command': 'graph_filter',
         'xprsOnly': _geoOnly,
         'service': _service,
+        'role': _role,
         'search': _searchCtl.text.trim(),
       });
 
@@ -698,6 +703,17 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             onTap: _pickService,
           ),
           const SizedBox(width: 4),
+          // Left to right the three filters read: what it serves -> what it is
+          // -> whose network.
+          _filterChip(
+            label: _roleLabels[_role] ?? 'role',
+            icon: _role == 'super'
+                ? Icons.workspace_premium
+                : Icons.workspace_premium_outlined,
+            active: _role.isNotEmpty,
+            onTap: _pickRole,
+          ),
+          const SizedBox(width: 4),
           _filterChip(
             label: 'XPRS',
             icon: _geoOnly ? Icons.check_box : Icons.check_box_outline_blank,
@@ -767,9 +783,54 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     );
   }
 
+  /// Chip label per bucket. Short words: the chip sits in a row that has to
+  /// leave the search field room to be typed in.
+  static const Map<String, String> _roleLabels = {
+    '': 'role',
+    'super': 'supers',
+    'archive': 'archivers',
+    'normal': 'normal',
+  };
+
+  /// Which nodes are worth looking at, by what they do for everyone else.
+  /// `supers` and `archivers` are disjoint (a super announces `archive,super`),
+  /// so each bucket answers a question the other does not.
+  ///
+  /// Honest limit, and the reason the menu says "named or heard": on the RNS
+  /// lane there is no super-archiver concept to read at all, so a node there
+  /// counts as one only because the operator listed it. On the air, the word
+  /// arrives in `serve:`.
+  Future<void> _pickRole() async {
+    const opts = ['', 'super', 'archive', 'normal'];
+    const help = {
+      '': 'any role',
+      'super': 'super-archivers',
+      'archive': 'archivers',
+      'normal': 'normal nodes',
+    };
+    final sel = await showMenu<String>(
+      context: context,
+      position: const RelativeRect.fromLTRB(1000, 46, 8, 0),
+      color: _gPanel,
+      items: [
+        for (final o in opts)
+          PopupMenuItem<String>(
+            value: o,
+            child: Text(help[o]!, style: const TextStyle(color: _gFg)),
+          ),
+      ],
+    );
+    if (sel != null) {
+      setState(() => _role = sel);
+      _emitFilter();
+    }
+  }
+
   Future<void> _pickService() async {
+    // `archive` was missing, so filtering for archivers -- which the host has
+    // supported all along -- could not be reached from the UI at all.
     const opts = [
-      '', 'chat', 'files', 'dht', 'relay', 'wapp', 'lxmf', 'rv'
+      '', 'chat', 'files', 'dht', 'relay', 'archive', 'wapp', 'lxmf', 'rv'
     ];
     final sel = await showMenu<String>(
       context: context,
@@ -1118,6 +1179,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   /// Section 24's `serve:` words, as a person would say them. The wire word is
   /// terse on purpose (250 bytes); a panel has room to say what it means.
   static const Map<String, String> _serviceLabels = {
+    'super': 'Super-archiver',
     'relay': 'Relay',
     'archive': 'Archiver',
     'internet': 'Internet gateway',

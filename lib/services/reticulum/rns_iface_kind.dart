@@ -78,3 +78,34 @@ bool _isPrivateHost(String via) {
   }
   return false;
 }
+
+/// The bearer name for a `via` label — the vocabulary the XPRS archive and the
+/// wapps speak (`ble`, `lan`, `espnow`, `lora`, `wifi`, `vhf`, `uhf`, `hf`),
+/// with `rns` for anything that genuinely crossed the internet.
+///
+/// [rnsIfaceKind] answers "is this local", which is one bit too coarse to put
+/// in front of a person: a message that walked in over Bluetooth and one that
+/// came off a hub in another country both used to be labelled "Reticulum",
+/// because the Reticulum lane is where they were handed over — not where they
+/// travelled. This says where they travelled.
+String rnsIfaceBearer(String via) {
+  final v = via.trim().toLowerCase();
+  if (v.isEmpty) return 'rns';
+  // Bearers whose own name is the answer, before the coarse kinds below fold
+  // them together (espnow/wifi are `lan`-kind, vhf/uhf/hf are `radio`-kind).
+  for (final b in const ['espnow', 'wifi', 'vhf', 'uhf', 'hf']) {
+    if (v.startsWith(b)) return b;
+  }
+  switch (rnsIfaceKind(v)) {
+    case 'ble':
+      return 'ble';
+    case 'lan':
+      return 'lan';
+    case 'lora':
+      return 'lora';
+    case 'radio':
+      return 'radio';
+    default:
+      return 'rns';
+  }
+}

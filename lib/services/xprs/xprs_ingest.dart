@@ -309,7 +309,17 @@ class XprsIngest {
   /// An XPRS datagram off the Reticulum 'xprs' tag. Never shown as a sighting
   /// (the monitor's no-internet invariant is structural, and this lane does
   /// not call it), and archived only under the declaration rule above.
-  static void reticulum(String from, Uint8List payload) {
+  ///
+  /// [bearer] is where the datagram actually travelled, which the Reticulum
+  /// node knows from the interface it arrived on: a phone on the same LAN, a
+  /// board over Bluetooth or LoRa, or `rns` when it genuinely came off a hub.
+  /// It is the ARCHIVE label only -- what a person is shown about a message.
+  /// Every policy below still asks the Reticulum lane's questions (declaration
+  /// gate, `link:`-decides gossip, the command lane's reply route), because
+  /// this lane's rules are about how the packet was HANDED OVER, not about
+  /// which radio carried it.
+  static void reticulum(String from, Uint8List payload,
+      {String bearer = 'rns'}) {
     final p = XprsPacket.parse(utf8.decode(payload, allowMalformed: true));
     if (p == null) return;
     final self = _base(
@@ -381,7 +391,7 @@ class XprsIngest {
       // Acting on it requires a verified signature (13.12); recordMailboxDecl
       // enforces that. A declaration naming us is itself worth keeping.
       if (XprsArchive.instance.recordMailboxDecl(p) && _archiveOn) {
-        XprsArchive.instance.admit(p, bearer: 'rns');
+        XprsArchive.instance.admit(p, bearer: bearer);
       }
       return;
     }
@@ -392,7 +402,7 @@ class XprsIngest {
     // to stop this station spooling the whole Reticulum lane on other
     // people's behalf; it was never meant to refuse our own post.
     if (toC.isNotEmpty && toC == self) {
-      XprsArchive.instance.admit(p, bearer: 'rns');
+      XprsArchive.instance.admit(p, bearer: bearer);
       return;
     }
 
@@ -455,7 +465,7 @@ class XprsIngest {
       }
       return;
     }
-    XprsArchive.instance.admit(p, bearer: 'rns');
+    XprsArchive.instance.admit(p, bearer: bearer);
     try {
       onArchived?.call(fromC, xprsParseTs(p['ts']));
     } catch (_) {}

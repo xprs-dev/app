@@ -1469,6 +1469,17 @@ IconData geoUiResolveIcon(String name) {
     case 'geochat':
     case 'forum':
       return Icons.forum_outlined;
+    // Unmapped names fall through to Icons.menu, and these three are what a
+    // chat row asks for by default — so every person, channel and world
+    // channel in the Search results, the New chat picker and the room rail
+    // was drawn as a hamburger.
+    case 'person':
+      return Icons.person_outline;
+    case 'campaign':
+      return Icons.campaign_outlined;
+    case 'public':
+    case 'globe':
+      return Icons.public;
     case 'visibility':
       return Icons.visibility;
     case 'lock':

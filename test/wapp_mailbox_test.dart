@@ -111,4 +111,21 @@ void main() {
     expect(WappMailbox.instance.count('chat'), 1);
     expect(WappMailbox.instance.drain('chat').single.payload, equals(body(16)));
   });
+
+  test('the bearer survives the store, and is handed to the wapp', () {
+    // The interface a datagram arrived on is gone by the time a restart hands
+    // it over, so it has to be written down: without it every held message
+    // tells the reader it came from Reticulum.
+    WappMailbox.instance.put('chat', 'p', body(8), via: 'espnow');
+    WappMailbox.instance.close();
+    WappMailbox.instance.open(dir.path);
+    final held = WappMailbox.instance.drain('chat').single;
+    expect(held.via, 'espnow');
+    expect(held.toDrainMap()['via'], 'espnow');
+  });
+
+  test('a datagram stored without a bearer is the internet lane', () {
+    WappMailbox.instance.put('chat', 'p', body(8));
+    expect(WappMailbox.instance.drain('chat').single.via, 'rns');
+  });
 }

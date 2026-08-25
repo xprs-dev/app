@@ -39,6 +39,7 @@ class WappMailboxEntry {
     required this.from,
     required this.payload,
     required this.ts,
+    this.via = 'rns',
   });
 
   final int id;
@@ -47,11 +48,18 @@ class WappMailboxEntry {
   final Uint8List payload;
   final int ts;
 
+  /// The bearer this datagram arrived on. Stored because it is not
+  /// recoverable later: a datagram handed over after a restart has no
+  /// interface left to ask, and defaulting it to "Reticulum" is exactly the
+  /// wrong answer for the message that came off the board in the next room.
+  final String via;
+
   /// The shape wappDrain hands to the engine.
   Map<String, dynamic> toDrainMap() => {
         'from': from,
         'payload': base64.encode(payload),
         'ts': ts,
+        'via': via,
       };
 }
 
@@ -84,6 +92,13 @@ class WappMailbox {
         );
         CREATE INDEX IF NOT EXISTS mail_tag ON mail(tag, id);
       ''');
+      // Added after the first release: a store written by an older build has
+      // no `via` column, and every row in it predates the label anyway.
+      try {
+        db.execute("ALTER TABLE mail ADD COLUMN via TEXT NOT NULL DEFAULT 'rns'");
+      } catch (_) {
+        // Already there.
+      }
       _db = db;
       _path = path;
     } catch (e) {
@@ -106,17 +121,18 @@ class WappMailbox {
   /// Store one datagram for [tag]. Returns false when there is no store to
   /// write to — the caller then knows the datagram is genuinely lost and can
   /// say so, rather than assuming it was kept.
-  bool put(String tag, String from, Uint8List payload) {
+  bool put(String tag, String from, Uint8List payload, {String via = 'rns'}) {
     final db = _db;
     if (db == null) return false;
     try {
       final stmt = db.prepare(
-          'INSERT INTO mail (tag, src, payload, ts) VALUES (?, ?, ?, ?)');
+          'INSERT INTO mail (tag, src, payload, ts, via) VALUES (?, ?, ?, ?, ?)');
       stmt.execute([
         tag,
         from,
         payload,
         DateTime.now().millisecondsSinceEpoch,
+        via,
       ]);
       stmt.dispose();
       _trim();
@@ -134,7 +150,7 @@ class WappMailbox {
     if (db == null) return const [];
     try {
       final rows = db.select(
-          'SELECT id, src, payload, ts FROM mail WHERE tag = ? '
+          'SELECT id, src, payload, ts, via FROM mail WHERE tag = ? '
           'ORDER BY id ASC LIMIT ?',
           [tag, limit]);
       if (rows.isEmpty) return const [];
@@ -146,6 +162,7 @@ class WappMailbox {
           from: (r['src'] as String?) ?? '',
           payload: Uint8List.fromList(r['payload'] as List<int>),
           ts: (r['ts'] as int?) ?? 0,
+          via: (r['via'] as String?) ?? 'rns',
         ));
       }
       final ids = out.map((e) => e.id).join(',');

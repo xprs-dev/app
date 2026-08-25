@@ -3321,6 +3321,8 @@ class WappEngine {
         // reticulum wapp is unaffected.
         var localOnly = false;
         var limit = 0;
+        // What a node is FOR: 'super' | 'archive' | 'normal', or null for any.
+        String? role;
         if (filterLen > 0) {
           try {
             final f = jsonDecode(_readStr(filterPtr, filterLen))
@@ -3332,6 +3334,13 @@ class WappEngine {
             if (q is String && q.isNotEmpty) search = q;
             localOnly = f['localOnly'] == true;
             final l = f['limit'];
+            // Whitelisted rather than passed through: a value nobody defined
+            // has to mean "no filter", never "match nothing" -- a typo must
+            // not blank somebody's graph.
+            final r = f['role'];
+            if (r == 'super' || r == 'archive' || r == 'normal') {
+              role = r as String;
+            }
             if (l is int && l > 0) limit = l;
           } catch (_) {}
         }
@@ -3339,6 +3348,7 @@ class WappEngine {
             service: service,
             xprsOnly: xprsOnly,
             search: search,
+            role: role,
             localOnly: localOnly,
             limit: limit,
             // The Mesh wapp's graph shows the whole street: RNS nodes AND the
