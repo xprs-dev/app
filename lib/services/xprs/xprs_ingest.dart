@@ -47,6 +47,12 @@ class XprsIngest {
   /// the catch-up poller advances its watermark on these (36.10.1).
   static void Function(XprsPacket p)? onResult;
 
+  /// A packet from [from] was archived. The catch-up poller uses it to tell a
+  /// pull that returned rows from one that returned nothing -- the signal its
+  /// cadence runs on, and one the delivery hook cannot give it, because a
+  /// broadcast is addressed to nobody.
+  static void Function(String from)? onArchived;
+
   /// Set by RnsService, which owns the callsign→key map, so a `t:identity`
   /// heard on any bearer lands in the same place a key learned from an
   /// announce does. Same reasoning as [XprsArchive.keyResolver]: this file
@@ -189,6 +195,9 @@ class XprsIngest {
     if ((_archiveOn || forUs) && _worthKeeping(p, forUs: forUs)) {
       XprsArchive.instance
           .admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
+      try {
+        onArchived?.call(from);
+      } catch (_) {}
     }
 
     // And DELIVER it. Knowing a message is ours and only filing it is what
@@ -446,5 +455,8 @@ class XprsIngest {
       return;
     }
     XprsArchive.instance.admit(p, bearer: 'rns');
+    try {
+      onArchived?.call(fromC);
+    } catch (_) {}
   }
 }

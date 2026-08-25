@@ -213,6 +213,7 @@ class MeshService {
               selfBase: NostrCrypto.bareCallsign(tableCallsign)));
         };
         XprsIngest.onResult = XprsCatchup.instance.onResult;
+        XprsIngest.onArchived = XprsCatchup.instance.noteRow;
         // A message addressed to us, heard on ANY bearer, goes to the courier
         // for verification, unsealing and delivery to the inbox. Before this
         // the only route ran through the BLE 0x41 custody tap, so anything a

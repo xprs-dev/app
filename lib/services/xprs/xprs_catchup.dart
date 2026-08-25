@@ -311,6 +311,7 @@ class XprsCatchup {
     _intervalMs.clear();
     _lastNewsMs.clear();
     _inFlight.clear();
+    _sawRows.clear();
     _identityAtMs = 0;
   }
 
@@ -545,7 +546,11 @@ class XprsCatchup {
     // What the answer was WORTH, which is the whole input to the cadence: an
     // archiver that served rows is talking and is worth coming back to sooner;
     // one that had nothing has just told us it can be left alone longer.
-    final served = _oldestReplayMs.containsKey(ask.station);
+    // 206 says so in words -- more was held than was served -- and rows we
+    // archived while the ask was outstanding say it in evidence.
+    final served = code == 206 ||
+        (_sawRows.remove(ask.station) ?? false) ||
+        _oldestReplayMs.containsKey(ask.station);
     _noteAnswer(
         ask.station, served ? XprsAnswer.news : XprsAnswer.quiet);
     final prefs = PreferencesService.instanceSync;
@@ -595,6 +600,23 @@ class XprsCatchup {
   /// A replayed packet arrived from [station]. Called from the ingest funnel
   /// for anything carrying an older ts than now, so a partial page knows where
   /// it stopped.
+  /// Rows this archiver actually gave us while an ask was outstanding.
+  ///
+  /// [noteReplay] cannot answer that question: it is fed from the delivery
+  /// hook, which only fires for packets addressed to US. Global chat is a
+  /// broadcast, so a pull that returned a hundred messages looked exactly like
+  /// one that returned nothing, and the cadence sat pinned at its ceiling
+  /// however busy the room was.
+  final Map<String, bool> _sawRows = {};
+
+  /// A packet was archived from [from]. Only interesting while we are waiting
+  /// on that station: then it is the answer to our ask arriving.
+  void noteRow(String from) {
+    final base = _base(from);
+    if (base.isEmpty || !_inFlight.containsKey(base)) return;
+    _sawRows[base] = true;
+  }
+
   void noteReplay(String station, int tsMs) {
     final base = _base(station);
     final prev = _oldestReplayMs[base];
