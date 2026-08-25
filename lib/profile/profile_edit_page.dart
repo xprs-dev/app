@@ -5,7 +5,7 @@
  * avatar colour and avatar image) and shows the read-only identity (callsign +
  * npub, with copy) plus a reveal/copy of the secret key for backup. Also
  * deletes the profile. Ported in spirit from xprs/lib/pages/profile_page.dart
- * but adapted to Aurora's [IwiProfile] + [ProfileService].
+ * but adapted to XPRS's [IwiProfile] + [ProfileService].
  */
 
 import 'dart:io';
@@ -237,7 +237,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     setState(() => _encBusy = true);
     try {
       await ProfileEncryption.enableWithDeviceKey(_p.id);
-      _snack('Profile encrypted. Restart Aurora to complete.');
+      _snack('Profile encrypted. Restart XPRS to complete.');
     } catch (e) {
       _snack('Enable failed: $e');
     }
@@ -326,7 +326,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     setState(() => _encBusy = true);
     try {
       await ProfileEncryption.disable(_p.id, password: pw);
-      _snack('Encryption removed. Restart Aurora to complete.');
+      _snack('Encryption removed. Restart XPRS to complete.');
     } on WrongProfilePassword {
       _snack('Wrong password');
     } catch (e) {
@@ -368,7 +368,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('Lock profile'),
         content: const Text(
-            'Aurora will close to lock the profile. Background message '
+            'XPRS will close to lock the profile. Background message '
             'reception stops until you unlock it again.'),
         actions: [
           TextButton(

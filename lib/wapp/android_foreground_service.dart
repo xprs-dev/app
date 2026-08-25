@@ -33,7 +33,6 @@ class AndroidForegroundService {
   // process alive independently without stomping on each other.
   final Set<String> _holders = {};
   final Set<void Function()> _tickListeners = {};
-  String? _wappLabel; // label contributed by the 'wapps' holder
 
   bool get _supported => !kIsWeb && Platform.isAndroid;
   bool get isRunning => _running;
@@ -79,14 +78,15 @@ class AndroidForegroundService {
     }
   }
 
-  String _composeLabel() {
-    final parts = <String>[];
-    if (_holders.contains('mesh')) parts.add('Mesh node');
-    if (_wappLabel != null && _wappLabel!.isNotEmpty) parts.add(_wappLabel!);
-    return parts.isEmpty
-        ? 'Running in background'
-        : '${parts.join(', ')} running in background';
-  }
+  /// What the persistent notification says under the title.
+  ///
+  /// It used to enumerate the machinery: "Mesh node, Mail, Torrents running in
+  /// background". That is the wrong thing to put on somebody's lock screen all
+  /// day -- it reads as a list of things the phone is busy with rather than as
+  /// what the app is for, and it named wapps the user may not have thought
+  /// about since installing them. Android requires a foreground service to say
+  /// something; this says what XPRS does.
+  String _composeLabel() => 'Internet without internet';
 
   Future<void> _sync() async {
     if (!_supported) return;
@@ -122,17 +122,21 @@ class AndroidForegroundService {
   void removeTickListener(void Function() listener) =>
       _tickListeners.remove(listener);
 
-  /// Background-wapp holder: start (or refresh the label of) the service for the
-  /// given running wapps. Releasing happens via [stop].
+  /// Background-wapp holder: start the service for the given running wapps.
+  /// Releasing happens via [stop].
+  ///
+  /// [wappNames] no longer reaches the notification -- it used to be joined
+  /// into the text, which is how a lock screen ended up listing somebody's
+  /// wapps all day. Kept in the signature because it is what the call sites
+  /// have, and because what is running is worth having here if the text ever
+  /// needs to vary again.
   Future<void> start(List<String> wappNames) async {
-    _wappLabel = wappNames.isEmpty ? null : wappNames.join(', ');
     await hold('wapps');
   }
 
   /// Release the background-wapp holder (the service stays up if e.g. the
   /// Reticulum node still holds it).
   Future<void> stop() async {
-    _wappLabel = null;
     await release('wapps');
   }
 

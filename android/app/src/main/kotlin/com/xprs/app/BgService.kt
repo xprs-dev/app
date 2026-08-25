@@ -136,7 +136,7 @@ class BgService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Aurora")
+            .setContentTitle("XPRS")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_stat_xprs)
             .setOngoing(true)
@@ -156,7 +156,7 @@ class BgService : Service() {
         fun startFromBoot(context: Context) {
             val i = Intent(context, BgService::class.java).apply {
                 action = ACTION_START_FROM_BOOT
-                putExtra("text", "Aurora running in background")
+                putExtra("text", "Internet without internet")
             }
             ContextCompat.startForegroundService(context, i)
         }

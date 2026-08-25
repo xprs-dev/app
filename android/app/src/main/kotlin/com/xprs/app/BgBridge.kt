@@ -58,7 +58,7 @@ object BgBridge {
                 }
                 "notify" -> {
                     val id = call.argument<Int>("id") ?: (System.currentTimeMillis() and 0x7fffffff).toInt()
-                    val title = call.argument<String>("title") ?: "Aurora"
+                    val title = call.argument<String>("title") ?: "XPRS"
                     val body = call.argument<String>("body")
                     notify(
                         appCtx, id, title, body,

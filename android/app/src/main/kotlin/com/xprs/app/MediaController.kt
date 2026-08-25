@@ -77,7 +77,7 @@ object MediaController {
 
         s.setMetadata(
             MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title.ifEmpty { "Aurora" })
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title.ifEmpty { "XPRS" })
                 .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
                 .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, if (durationMs > 0) durationMs else 0L)
                 .build(),
@@ -143,7 +143,7 @@ object MediaController {
 
         val b = NotificationCompat.Builder(ctx, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_xprs)
-            .setContentTitle(title.ifEmpty { "Aurora" })
+            .setContentTitle(title.ifEmpty { "XPRS" })
             .setContentText(artist)
             .setOngoing(playing)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
