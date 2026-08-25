@@ -1,6 +1,6 @@
 ; XPRS — Inno Setup Script
 ; Per-user installer EXE with Full and Portable modes (no admin required).
-; Compile: iscc installer\aurora.iss
+; Compile: iscc installer\xprs.iss
 ;   (version auto-read from pubspec.yaml; override with /DMyAppVersion=x.y.z)
 
 #ifndef MyAppVersion
@@ -26,7 +26,12 @@
 #pragma message "Building installer for version " + MyAppVersion
 
 #define MyAppName "XPRS"
-#define MyAppExeName "aurora.exe"
+; The Windows binary is named by windows/CMakeLists.txt (BINARY_NAME "xprs"),
+; and this said aurora.exe. [Files] copies Release\* with a wildcard so the
+; installer still BUILT and still installed -- but the Start Menu shortcut,
+; the desktop icon, the autostart registry entry and UninstallDisplayIcon all
+; pointed at a file that was never there. It shipped that way in v1.1.0.
+#define MyAppExeName "xprs.exe"
 #define MyAppPublisher "XPRS"
 #define MyAppURL "https://github.com/xprs-dev/xprs-flutter"
 
@@ -39,12 +44,12 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}/releases
-DefaultDirName={localappdata}\XPRSAurora
+DefaultDirName={localappdata}\XPRS
 DefaultGroupName={#MyAppName}
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\build\installer
-OutputBaseFilename=aurora-windows-x64-setup
+OutputBaseFilename=xprs-windows-x64-setup
 SetupIconFile=..\windows\runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64

@@ -45,9 +45,9 @@ jobs:
       - name: Rename artifact
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/aurora.apk
+          cp build/app/outputs/flutter-apk/app-release.apk dist/xprs.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: aurora-android
-          path: dist/aurora.apk
+          name: xprs-android
+          path: dist/xprs.apk

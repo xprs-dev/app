@@ -14,10 +14,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout aurora
+      - name: Checkout xprs
         uses: actions/checkout@v4
         with:
-          path: aurora
+          path: xprs
 
       - name: Checkout reticulum-dart (path dependency)
         uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
           cache: true
 
       - name: Test
-        working-directory: aurora
+        working-directory: xprs
         run: |
           flutter pub get
           flutter test

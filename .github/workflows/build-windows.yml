@@ -64,9 +64,9 @@ jobs:
       - name: Build Inno Setup installer
         shell: cmd
         run: |
-          "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" installer\aurora.iss
+          "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" installer\xprs.iss
 
       - uses: actions/upload-artifact@v4
         with:
-          name: aurora-windows
-          path: build/installer/aurora-windows-x64-setup.exe
+          name: xprs-windows
+          path: build/installer/xprs-windows-x64-setup.exe

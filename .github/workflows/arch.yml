@@ -17,10 +17,10 @@ jobs:
   arch-guard:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout aurora
+      - name: Checkout xprs
         uses: actions/checkout@v4
         with:
-          path: aurora
+          path: xprs
 
       # The wapp-side rules only run when the wapps repo is present; without it
       # the guard silently checks less, so check it out.
@@ -34,5 +34,5 @@ jobs:
       - uses: dart-lang/setup-dart@v1
 
       - name: Architecture guard
-        working-directory: aurora
+        working-directory: xprs
         run: dart tool/arch_guard.dart
