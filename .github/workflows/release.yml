@@ -20,7 +20,14 @@ jobs:
     env:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
+      # fetch-depth: 0 because the build number below is the COMMIT
+      # COUNT, and checkout defaults to a depth-1 clone where that
+      # count is 1. v1.1.0 shipped versionCode 1 for exactly this
+      # reason -- and so would every release after it, which Android
+      # rejects as a downgrade rather than an upgrade.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       # pubspec.yaml has a path dependency on ../reticulum-dart (a sibling repo
       # not checked out by default). Clone it next to the workspace so the very
       # first `pub get` (run by flutter-action's setup) can resolve it.
@@ -82,7 +89,14 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 because the build number below is the COMMIT
+      # COUNT, and checkout defaults to a depth-1 clone where that
+      # count is 1. v1.1.0 shipped versionCode 1 for exactly this
+      # reason -- and so would every release after it, which Android
+      # rejects as a downgrade rather than an upgrade.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Fetch reticulum-dart (path dependency)
         shell: bash
         run: git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
@@ -118,7 +132,14 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
+      # fetch-depth: 0 because the build number below is the COMMIT
+      # COUNT, and checkout defaults to a depth-1 clone where that
+      # count is 1. v1.1.0 shipped versionCode 1 for exactly this
+      # reason -- and so would every release after it, which Android
+      # rejects as a downgrade rather than an upgrade.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Fetch reticulum-dart (path dependency)
         shell: bash
         run: git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart

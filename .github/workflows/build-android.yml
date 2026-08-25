@@ -11,7 +11,11 @@ jobs:
   android:
     runs-on: ubuntu-latest
     steps:
+      # Full history: the build number is the commit count, and a
+      # depth-1 clone makes that 1 (see release.yml).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # pubspec.yaml has a path dependency on ../reticulum-dart; clone it next to
       # the workspace so pub get (incl. flutter-action's setup) can resolve it.
