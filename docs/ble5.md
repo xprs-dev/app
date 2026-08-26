@@ -295,3 +295,89 @@ listening — which is exactly what a `stopScan` that cancelled the EventChannel
 subscription produced, silently, for a whole session (section 5). Without these,
 a radio receiving nothing and an environment containing no stations are
 indistinguishable.
+
+---
+
+## 9. Two things measured on the bench, 2026-08-26
+
+Both phones on the bench, TANK2 with **no internet at all** (its hotspot had
+left; every DNS lookup failing) and C61 on home WiFi. The question being
+answered: can a device with only Bluetooth fetch an app update from a
+super-archiver, the way it would over Reticulum or the LAN?
+
+### 9.1 `scanning:false, scanResults:0` — a scanner that only a reboot fixes
+
+TANK2 advertised normally (3769 attempts, 0 failures) and heard **nothing** —
+`scanResults: 0`, `rxEmitted: 0` — while `wantScan` and `busScanning` were both
+true. The composition table above says radio-hears-nothing, and the log said
+why, every two seconds, forever:
+
+```
+BleService: scan toggle failed: PlatformException(IllegalStateException,
+  java.lang.IllegalStateException: Start discovery failed with error code: 2
+```
+
+Error code 2 is `SCAN_FAILED_APPLICATION_REGISTRATION_FAILED`. Every permission
+was granted and location was on, so neither usual cause applied. What it took
+to clear it:
+
+| attempt | result |
+|---|---|
+| toggle Bluetooth | no change |
+| force-stop the app, relaunch | no change |
+| force-stop, toggle Bluetooth, relaunch | no change |
+| **reboot the phone** | **fixed** — `scanning:true`, 230 results in 25 s |
+
+So the registration is stuck **below the app**, in a place the app cannot reach.
+Two things follow, and both are defects:
+
+- **The retry has no backoff and no ceiling.** It re-attempted every 2 s for the
+  whole session — thousands of identical lines, each an allocation and a row in
+  the log ring, pushing out the history that would explain anything else (the
+  §8.7 shape in `docs/performance.md`). It should back off and stop.
+- **A permanently deaf radio is not surfaced.** `/api/ble/status` reports the
+  counters, but nothing says "this scanner is unrecoverable, reboot the phone".
+  The device looks like it is in an empty room. Report the scan-failure code and
+  the consecutive-failure count, and let the UI say so.
+
+### 9.2 Bulk transfer over BLE stalls; control traffic does not
+
+Once TANK2 could hear, everything small worked with no internet on that side:
+
+- XPRS beacons arrived (`Mesh: XPRS beacon from X3GSLC (-62 dBm)`);
+- RNS ran over the radio — `RNS: rx from <tank2-id> via ble5` on C61, and TANK2
+  answering path requests;
+- both phones resolved each other by callsign with `bearer: "ble"`;
+- TANK2 came up `mode=ble5` on its own: *"no bootstrap reachable — up on
+  Bluetooth only"*.
+
+A 64 KB content-addressed fetch, however, **never completed in 5 minutes**:
+
+```
+RNS/files: fetch stall tick 67: seg=1/1 parts=0/142 known=74
+           win=2(min=2,max=6) mtu=500 out=2 hmu=false done=false
+```
+
+The hashmap arrived (`known=74`) and **not one data part did** (`parts=0/142`).
+Two things line up to cause that:
+
+- `mtu=500` — the resource is sized to the protocol MTU, while TANK2's
+  controller allows **296** usable bytes per advertisement (section 4). This is
+  the exact failure `RnsBleInterface.hardwareMtu` exists to prevent: *"a medium
+  that promises 500 while its controller allows ~296 makes the stack build
+  packets the radio then refuses."* The link did not take the BLE hardware MTU.
+- `clientLinkUp:false` and `serverClients:[]` on **both** phones — no GATT link
+  was ever dialled between them. `RnsBleInterface.send` prefers a link for
+  everything and only falls back to the advert channel; with no link, a
+  500-byte packet exceeds the broadcast cap and is dropped.
+
+So the honest answer to *"are BLE5 file transfers valid?"*: **the transport is
+genuinely medium-agnostic for control traffic and is not usable for bulk
+today.** Announces, gossip, path requests and callsign resolution all crossed
+Bluetooth with no internet. A file did not — and an app update is 47-61 MB, four
+orders of magnitude above what stalled.
+
+Fixing it is two separate pieces of work: make the link adopt the BLE hardware
+MTU, and make two phones actually dial a GATT link to each other when a bulk
+transfer is pending. Neither is a one-line change, and neither should be claimed
+working until a file arrives on the far side.
