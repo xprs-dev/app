@@ -164,4 +164,57 @@ void main() {
       expect(compareSemver('1.2.0', '1.1.1'), greaterThan(0));
     });
   });
+
+  group('mirrorFileName', () {
+    test('a name that already carries the right version is untouched', () {
+      expect(mirrorFileName('xprs-1.2.0-android-arm64-v8a.apk', '1.2.0'),
+          'xprs-1.2.0-android-arm64-v8a.apk');
+    });
+
+    test('a versionless name gets the version the feed knows', () {
+      // v1.1.1 really shipped these, and they parsed as five separate
+      // "versions" -- so a keep-5 limit never pruned anything.
+      expect(mirrorFileName('xprs-android-arm64-v8a.apk', '1.1.1'),
+          'xprs-1.1.1-android-arm64-v8a.apk');
+      expect(mirrorFileName('xprs-linux-x64.tar.gz', '1.1.1'),
+          'xprs-1.1.1-linux-x64.tar.gz');
+      expect(mirrorFileName('xprs-windows-x64-setup.exe', '1.1.1'),
+          'xprs-1.1.1-windows-x64-setup.exe');
+    });
+
+    test('the rebuilt name parses back to that version', () {
+      for (final n in [
+        'xprs-android-arm64-v8a.apk',
+        'xprs-linux-x64.tar.gz',
+        'xprs-windows-x64-setup.exe',
+      ]) {
+        expect(versionFromAssetName(mirrorFileName(n, '1.1.1')), '1.1.1');
+      }
+    });
+
+    test('the legacy aurora- prefix is replaced, not doubled', () {
+      expect(mirrorFileName('aurora-android-arm64-v8a.apk', '1.0.2'),
+          'xprs-1.0.2-android-arm64-v8a.apk');
+    });
+
+    test('five versionless artifacts become ONE version, so retention works',
+        () {
+      // The regression this exists for: before, these five grouped as five
+      // versions and keep:1 pruned nothing.
+      const names = [
+        'xprs-android-arm64-v8a.apk',
+        'xprs-android-armeabi-v7a.apk',
+        'xprs-android-x86_64.apk',
+        'xprs-linux-x64.tar.gz',
+        'xprs-windows-x64-setup.exe',
+      ];
+      final stored = [
+        for (final n in names) mirrorFileName(n, '1.1.1'),
+        for (final n in names) mirrorFileName(n, '1.2.0'),
+      ];
+      final victims = mirrorPruneVictims(stored, keep: 1);
+      expect(victims.length, 5);
+      expect(victims.every((v) => v.contains('1.1.1')), isTrue);
+    });
+  });
 }

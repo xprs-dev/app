@@ -86,6 +86,11 @@ class UpdateMirrorService extends BackgroundService {
   Timer? _folderRetry;
   int _folderRetries = 0;
 
+  /// One tick at a time. A tick can run for minutes (ten artifacts, ~460 MB),
+  /// and the immediate tick from onStart plus a retry timer were able to
+  /// overlap and race each other over folder creation.
+  bool _ticking = false;
+
   /// Per-channel summary, refreshed on tick from the one directory pass the
   /// prune already does. Cached so a curious `curl` in a loop is not a
   /// directory walk in a loop.
@@ -183,7 +188,16 @@ class UpdateMirrorService extends BackgroundService {
 
   @override
   Future<void> onTick() async {
-    if (!enabled) return;
+    if (!enabled || _ticking) return;
+    _ticking = true;
+    try {
+      await _tick();
+    } finally {
+      _ticking = false;
+    }
+  }
+
+  Future<void> _tick() async {
     lastPollMs = DateTime.now().millisecondsSinceEpoch;
     // Folders may not have been creatable at start: the folder manager comes up
     // with Reticulum, which is later than main(). Retry here rather than let a
@@ -207,6 +221,7 @@ class UpdateMirrorService extends BackgroundService {
         return;
       }
       _folderRetries = 0;
+      lastError = null; // the retry worked; stop reporting the old failure
     }
     try {
       await _mirrorChannel('stable.json',
@@ -217,6 +232,11 @@ class UpdateMirrorService extends BackgroundService {
     } catch (e) {
       lastError = '$e';
       LogService.instance.add('update-mirror: tick failed: $e');
+    } finally {
+      // Report what is on disk whatever happened above: a channel that threw
+      // half way is exactly the one an operator needs to see the contents of.
+      if (stableDir != null) _refreshHeld('stable', stableDir!);
+      if (betaDir != null) _refreshHeld('beta', betaDir!);
     }
   }
 
@@ -240,8 +260,9 @@ class UpdateMirrorService extends BackgroundService {
     var added = 0;
     for (final a in rel.assets) {
       if (a.name.isEmpty || a.sha256.isEmpty) continue;
-      if (held.contains(a.name)) continue;
-      if (await _ingest(a, rel.version, dir, folderId)) added++;
+      final target = mirrorFileName(a.name, rel.version);
+      if (held.contains(target)) continue;
+      if (await _ingest(a, target, rel.version, dir, folderId)) added++;
     }
     if (added > 0) {
       lastAddMs = DateTime.now().millisecondsSinceEpoch;
@@ -249,7 +270,6 @@ class UpdateMirrorService extends BackgroundService {
           .add('update-mirror: $channelFile +$added artifact(s) ${rel.version}');
     }
     await _prune(dir, folderId);
-    _refreshHeld(channelFile.startsWith('beta') ? 'beta' : 'stable', dir);
   }
 
   List<String> _heldNames(String dir) {
@@ -272,8 +292,8 @@ class UpdateMirrorService extends BackgroundService {
   /// Returns true when the artifact is now in the folder. Every failure path
   /// leaves NOTHING behind in [dir]: a corrupt or partial artifact that reached
   /// the folder would be signed, announced and served to every phone.
-  Future<bool> _ingest(
-      ReleaseAsset a, String version, String dir, String folderId) async {
+  Future<bool> _ingest(ReleaseAsset a, String target, String version,
+      String dir, String folderId) async {
     final staged = fetchOverride != null
         ? await fetchOverride!(a, version)
         : await _fetch(a, version);
@@ -291,7 +311,7 @@ class UpdateMirrorService extends BackgroundService {
       // Rename, not copy: same volume, so this is atomic and costs no bytes.
       // It also means the folder differ can never observe a half-written APK —
       // the file appears complete or not at all.
-      await File(staged).rename('$dir${Platform.pathSeparator}${a.name}');
+      await File(staged).rename('$dir${Platform.pathSeparator}$target');
     } catch (e) {
       LogService.instance.add('update-mirror: ${a.name} move failed: $e');
       await _delete(staged);
@@ -412,6 +432,29 @@ class UpdateMirrorService extends BackgroundService {
             .map((e) => {'name': e.key, 'percent': e.value})
             .toList(),
       };
+}
+
+/// The name an artifact is stored under in a mirror directory.
+///
+/// Retention groups files by the version parsed out of their name, so a name
+/// that does not carry one breaks it. v1.1.1 shipped
+/// `xprs-android-arm64-v8a.apk`, which parses as version "android-arm64-v8a" --
+/// five artifacts looking like five different releases, and a retention limit
+/// of five that therefore never prunes anything.
+///
+/// The feed knows the version even when the filename does not, so rebuild the
+/// name around it: `xprs-<version>-<rest>`. A name that already carries the
+/// right version is returned untouched.
+String mirrorFileName(String assetName, String version) {
+  if (versionFromAssetName(assetName) == version) return assetName;
+  var rest = assetName;
+  for (final prefix in const ['xprs-', 'aurora-']) {
+    if (rest.startsWith(prefix)) {
+      rest = rest.substring(prefix.length);
+      break;
+    }
+  }
+  return 'xprs-$version-$rest';
 }
 
 /// Given the artifact filenames a channel directory holds, the ones to delete

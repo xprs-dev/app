@@ -166,9 +166,21 @@ the folder's master key, and deleting it would orphan the folder.
 
 ## 6. The versionCode trap
 
-Android's `versionCode` is `git rev-list --count HEAD` (hence `fetch-depth: 0`
-in every job — a shallow clone counts 1, which is how v1.1.0 shipped
-versionCode 1).
+Android's `versionCode` is `git rev-list --count HEAD` **plus a per-ABI
+offset** that `--split-per-abi` adds, so one release ships several:
+
+| artifact | versionCode for build 109 |
+|---|---|
+| `xprs-<v>.apk` (universal) | 109 |
+| `-android-armeabi-v7a.apk` | 1109 |
+| `-android-arm64-v8a.apk` | 2109 |
+| `-android-x86_64.apk` | 4109 |
+
+`fetch-depth: 0` is required in every job because a shallow clone counts 1 —
+which is how v1.1.0 shipped versionCode 1. Note `buildNumber` in
+`/api/update/status` is the base number (109), not the installed versionCode:
+`adb shell dumpsys package com.xprs.app | grep versionCode` is the number
+Android actually compares.
 
 Nothing compares it. "Is this newer?" is decided by the version **name**, by
 `compareSemver`. `versionCode` only decides whether Android will *install*
@@ -176,9 +188,10 @@ what was offered — and it refuses anything not strictly greater.
 
 So a device carrying a hand-built APK (`--build-number=994039`, as both bench
 phones did in August 2026) will **detect** every future release and be unable to
-install a single one, because CI stamps ~100. There is no in-app symptom: the
-download succeeds and the installer declines. A phone in that state has to be
-reinstalled once from CI. Do not hand-pass large build numbers to
+install a single one, because CI stamps ~2100. There is no in-app symptom: the
+download succeeds and the installer declines. `adb install -d` does not rescue
+it either -- the downgrade flag only applies to debuggable builds, and a release
+build refuses. A phone in that state has to be uninstalled and reinstalled. Do not hand-pass large build numbers to
 `launch-android.sh` on a device you intend to keep updating.
 
 ---
