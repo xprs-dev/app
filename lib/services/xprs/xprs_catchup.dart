@@ -654,6 +654,23 @@ class XprsCatchup {
   /// answered when asked directly; not knowing that yet is no reason not to
   /// ask, because an archiver with nothing for us answers 404 and costs one
   /// metered packet.
+  /// Stations in earshot worth asking for a file, nearest-heard first.
+  ///
+  /// Same rule as history: `X3` is a station (section 3) and the prefix IS the
+  /// indicator. Exposed so the file fetch can reuse the station list this
+  /// service already maintains instead of building a second one.
+  List<String> stationsInEarshot({int max = 4}) {
+    final out = <String>[];
+    for (final s in XprsMonitor.instance.stations.values) {
+      final base = _base(s.callsign);
+      if (base.isEmpty || !_looksLikeStation(base)) continue;
+      if (out.contains(base)) continue;
+      out.add(base);
+      if (out.length >= max) break;
+    }
+    return out;
+  }
+
   static bool _looksLikeStation(String call) {
     final c = call.trim().toUpperCase();
     return c.startsWith('X3');

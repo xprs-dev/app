@@ -109,6 +109,35 @@ class MeshBulkSpool {
     return out;
   }
 
+  /// An ORIGIN entry holds no payload of its own in the spool: the bytes live
+  /// in the MediaArchive (`archive`) or in a file somebody else owns (`file`).
+  /// Handover and eviction must never delete either.
+  static bool _isOrigin(Map<String, dynamic> m) {
+    final src = m['src'] as String? ?? '';
+    return src == 'archive' || src == 'file';
+  }
+
+  /// Claim an inbound file the instant it verifies, before it is archived.
+  ///
+  /// Return the absolute path the file now lives at (the spool renames it
+  /// there), or null to let the normal MediaArchive path run. This exists
+  /// because archiving reads the whole file into memory and stores it as a
+  /// sqlite blob — right for a photo in a chat bubble, wrong for a 56 MB app
+  /// update on the phone that is receiving it (docs/performance.md 8.7).
+  String? Function(String shaHex, String partPath, Map<String, dynamic> meta)?
+      inboundClaim;
+
+  /// A file addressed to us arrived and verified. [path] is where it landed.
+  void Function(String shaHex, String path)? onInboundComplete;
+
+  /// A file WE were serving was verified by the peer (its FILE_OK). The XPRS
+  /// side airs its closing `code:200` from here — the receipt the spec makes
+  /// conditional on the receiver's own hash check, not on transmission.
+  void Function(String shaHex, String peer)? onOriginHandedOver;
+
+  /// Is there a spool entry for this digest at all (any state, any target)?
+  bool holds(String shaHex) => _meta(shaHex.toLowerCase()) != null;
+
   // --- outbound (chat attachment origin) ------------------------------------
 
   /// Queue a MediaArchive blob for mesh delivery to [target]. Called from the
@@ -141,6 +170,60 @@ class MeshBulkSpool {
       'createdMs': DateTime.now().millisecondsSinceEpoch,
     });
     _log('queued $token (${data.length}B) -> $target');
+    return true;
+  }
+
+  /// Queue a file already on disk for mesh delivery to [target], WITHOUT
+  /// copying it or reading it into memory.
+  ///
+  /// [enqueueFromArchive] is the chat-attachment path: the bytes live in the
+  /// MediaArchive as a sqlite blob, and serving one means holding the whole
+  /// thing (see the `archive` branch of [readAt]). That is fine for a photo and
+  /// wrong for an app update — an artifact is 47-61 MB and the station serving
+  /// it is usually the one with the least RAM (docs/performance.md 8.7).
+  ///
+  /// So this variant records a path. [readAt] serves it with the same seek+read
+  /// it already uses for a `.part`, and the file stays exactly where its owner
+  /// put it — the update mirror's channel directory, for instance.
+  ///
+  /// [sha256Hex] must already be known and verified; nothing here hashes the
+  /// file, because hashing 56 MB is the cost this exists to avoid.
+  bool enqueueFromFile(
+    String path,
+    String sha256Hex,
+    int size, {
+    required String target,
+    required String origin,
+    String name = '',
+    String ext = '',
+    int? ttlS,
+  }) {
+    if (!ready) return false;
+    final hex = sha256Hex.toLowerCase();
+    if (hex.length != 64 || size <= 0) return false;
+    if (!File(path).existsSync()) return false;
+    final existing = _meta(hex);
+    if (existing != null &&
+        (existing['target'] as String?)?.toUpperCase() == target.toUpperCase()) {
+      return false; // already queued for this peer
+    }
+    final base = name.isNotEmpty ? name : path.split(Platform.pathSeparator).last;
+    final dot = base.lastIndexOf('.');
+    _saveMeta(hex, {
+      'sha': hex,
+      'size': size,
+      'ext': ext.isNotEmpty ? ext : (dot > 0 ? base.substring(dot + 1) : ''),
+      'name': base,
+      'origin': origin.toUpperCase(),
+      'target': target.toUpperCase(),
+      'src': 'file',
+      'path': path,
+      'state': 'ready',
+      'ttlUntil': DateTime.now().millisecondsSinceEpoch ~/ 1000 +
+          (ttlS ?? defaultTtlS),
+      'createdMs': DateTime.now().millisecondsSinceEpoch,
+    });
+    _log('queued $base (${size}B, on disk) -> $target');
     return true;
   }
 
@@ -230,6 +313,21 @@ class MeshBulkSpool {
       final m = _meta(hex);
       if (m == null) return Uint8List(0);
       _activeSha.add(hex);
+      // A file entry is served straight off disk, one window at a time. Never
+      // cached whole: that is the point of this kind existing.
+      if (m['src'] == 'file') {
+        final path = m['path'] as String? ?? '';
+        if (path.isEmpty) return Uint8List(0);
+        final f = File(path);
+        if (!f.existsSync()) return Uint8List(0);
+        final raf = f.openSync();
+        try {
+          raf.setPositionSync(offset);
+          return raf.readSync(len);
+        } finally {
+          raf.closeSync();
+        }
+      }
       if (m['src'] == 'archive') {
         if (_cacheSha != hex) {
           final bytes = _archive?.get(m['token'] as String? ?? '');
@@ -304,6 +402,20 @@ class MeshBulkSpool {
     if (m == null) return;
     final target = (m['target'] as String? ?? '').toUpperCase();
     if (target == selfCallsign.toUpperCase()) {
+      // Somebody may want this file as a file. Ask before archiving it, since
+      // archiving is the expensive, memory-hungry answer.
+      try {
+        final claimed = inboundClaim?.call(hex, _partPath(hex), m);
+        if (claimed != null) {
+          m['state'] = 'done';
+          _saveMeta(hex, m);
+          _log('received ${m['name']} -> $claimed (claimed)');
+          onInboundComplete?.call(hex, claimed);
+          return;
+        }
+      } catch (e) {
+        _log('inbound claim of $hex failed: $e');
+      }
       try {
         final bytes = File(_partPath(hex)).readAsBytesSync();
         final token = _archive?.putBytes(bytes, m['ext'] as String? ?? 'bin',
@@ -312,6 +424,7 @@ class MeshBulkSpool {
         File(_partPath(hex)).deleteSync();
         m['state'] = 'done';
         _saveMeta(hex, m);
+        onInboundComplete?.call(hex, token ?? '');
       } catch (e) {
         _log('archive of $hex failed: $e');
       }
@@ -332,8 +445,12 @@ class MeshBulkSpool {
     if (m == null) return;
     final target = (m['target'] as String? ?? '').toUpperCase();
     MeshStore.instance.recordBulkHandover(hex, target, peer);
-    if (m['src'] == 'archive') {
-      m['state'] = 'done'; // origin keeps the blob in the archive anyway
+    onOriginHandedOver?.call(hex, peer);
+    if (_isOrigin(m)) {
+      // Origin: the payload is ours and lives elsewhere (the archive blob, or
+      // a file on disk that its owner manages). Record the handover and keep
+      // the entry; never touch the source.
+      m['state'] = 'done';
       _saveMeta(hex, m);
     } else {
       // Intermediate hop: payload custody moved on — drop our copy.
@@ -380,7 +497,7 @@ class MeshBulkSpool {
       final ttl = (e.value['ttlUntil'] as num?)?.toInt() ?? 0;
       final done = e.value['state'] == 'done';
       if (_activeSha.contains(e.key)) continue;
-      if (ttl < nowS || done && e.value['src'] != 'archive') {
+      if (ttl < nowS || done && !_isOrigin(e.value)) {
         try {
           File(_partPath(e.key)).deleteSync();
         } catch (_) {}

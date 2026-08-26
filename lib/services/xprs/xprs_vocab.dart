@@ -253,6 +253,19 @@ String xprsFmtDuration(int seconds) {
 /// the archive orders by it, `cmd:history` windows on it, and a mailbox
 /// declaration's `since:`/`until:` bound with it — and three parsers of one
 /// format is how they disagree.
+/// Format [epochMs] as the `ts:` of section 4: `YYYY-MM-DD_HH:MM:SS`, UTC.
+///
+/// The inverse of [xprsParseTs]. Defaults to now, which is what almost every
+/// caller wants when it is building a packet.
+String xprsNowTs([int? epochMs]) {
+  final d = DateTime.fromMillisecondsSinceEpoch(
+      epochMs ?? DateTime.now().millisecondsSinceEpoch,
+      isUtc: true);
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${d.year}-${two(d.month)}-${two(d.day)}_'
+      '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+}
+
 int? xprsParseTs(String? v) {
   if (v == null || v.length != 19 || v[10] != '_') return null;
   final t = DateTime.tryParse('${v.substring(0, 10)}T${v.substring(11)}Z');

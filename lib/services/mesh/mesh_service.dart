@@ -27,6 +27,7 @@ import '../log_service.dart';
 import '../preferences_service.dart';
 import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_catchup.dart';
+import '../xprs/xprs_files.dart';
 import '../xprs/xprs_history_server.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_gossip.dart';
@@ -212,7 +213,13 @@ class MeshService {
           unawaited(XprsForwarder.instance.maybeForward(target, wire,
               selfBase: NostrCrypto.bareCallsign(tableCallsign)));
         };
-        XprsIngest.onResult = XprsCatchup.instance.onResult;
+        // Two handlers want t:result: the history poller and the file fetch.
+        // Chained rather than replaced — the hook is a single slot, and a
+        // second assignment would silently unhook the first.
+        XprsIngest.onResult = (p) {
+          XprsCatchup.instance.onResult(p);
+          XprsFileFetch.instance.onResult(p);
+        };
         XprsIngest.onArchived = XprsCatchup.instance.noteRow;
         // A message addressed to us, heard on ANY bearer, goes to the courier
         // for verification, unsealing and delivery to the inbox. Before this
@@ -236,6 +243,15 @@ class MeshService {
             MediaArchive.forDirectory(
                 wappsDataStorage(prefs).getAbsolutePath('')));
         MeshBulkSpool.instance.sweep();
+        // The XPRS bracket around the bulk lane (section 25.2.2): the closing
+        // `code:200` is aired from the sender's FILE_OK, and a requester's
+        // wait ends when the bytes land and verify on this side.
+        MeshBulkSpool.instance.onOriginHandedOver =
+            XprsFileServer.instance.noteHandedOver;
+        MeshBulkSpool.instance.onInboundComplete =
+            XprsFileFetch.instance.noteInboundComplete;
+        MeshBulkSpool.instance.inboundClaim =
+            XprsFileFetch.instance.claimInbound;
       } catch (e) {
         LogService.instance.add('Mesh: store init failed: $e');
       }

@@ -31,7 +31,11 @@ import 'reticulum/rns_service.dart';
 import 'update_models.dart';
 import 'update_platform.dart';
 import 'update_native.dart';
+import '../util/nostr_crypto.dart';
 import 'log_service.dart';
+import 'mesh/mesh_service.dart';
+import 'xprs/xprs_catchup.dart';
+import 'xprs/xprs_files.dart';
 import 'notification_service.dart';
 
 enum UpdateStatus { idle, checking, available, downloading, downloaded, error }
@@ -314,7 +318,18 @@ class UpdateService {
       return false;
     }
 
-    // Reticulum first, whenever the feed told us the artifact's sha256.
+    // The mesh first, when a station is in earshot.
+    //
+    // XPRS.md section 25.2.2: `cmd:file` on the advert channel, the bytes on
+    // the bulk lane, `code:200` once the receiver has hashed what it holds.
+    // This is the lane that works with no internet at all — the phone asking
+    // may have nothing but Bluetooth.
+    if (asset.sha256.isNotEmpty) {
+      final path = await _downloadOverMesh(release, asset);
+      if (path != null) return true;
+    }
+
+    // Reticulum second, whenever the feed told us the artifact's sha256.
     //
     // The sha IS the address: a super-archiver that mirrored this release
     // published a DHT provider record keyed on exactly this value, so the bytes
@@ -402,6 +417,55 @@ class UpdateService {
       progress.value = 1;
       status.value = UpdateStatus.downloaded;
       return true;
+    } finally {
+      UpdateNative.serviceStop();
+    }
+  }
+
+  /// Ask a station in earshot for the artifact, over XPRS + the bulk lane.
+  ///
+  /// Returns the local path on success. Costs one 250-byte packet to find out:
+  /// a station that does not hold it answers `404` and we move on, which is
+  /// exactly what section 31.2's budget is for.
+  Future<String?> _downloadOverMesh(
+      ReleaseInfo release, ReleaseAsset asset) async {
+    final self = MeshService.instance.tableCallsign;
+    if (self.isEmpty) return null;
+    final stations = XprsCatchup.instance.stationsInEarshot();
+    if (stations.isEmpty) return null;
+
+    status.value = UpdateStatus.downloading;
+    progress.value = 0;
+    error = null;
+    lastSource = 'xprs';
+    UpdateNative.serviceStart('Fetching XPRS ${release.version} over the mesh');
+    try {
+      for (final station in stations) {
+        final dot = asset.name.lastIndexOf('.');
+        final path = await XprsFileFetch.instance.fetch(
+          archiver: station,
+          shaHex: asset.sha256,
+          selfCallsign: NostrCrypto.bareCallsign(self),
+          ext: dot >= 0 ? asset.name.substring(dot + 1) : '',
+          // Land it where the installer expects, as a file: an APK that became
+          // a sqlite blob would have to be written back out to be installed.
+          destDir: await UpdateNative.supportDir(),
+        );
+        if (path == null) continue; // 404 / refused / timed out: try the next
+        _downloadedPath = path;
+        progress.value = 1;
+        status.value = UpdateStatus.downloaded;
+        LogService.instance.add(
+            'update: ${release.version} arrived from $station over the mesh');
+        return path;
+      }
+      lastSource = null;
+      status.value = UpdateStatus.checking;
+      return null;
+    } catch (e) {
+      lastSource = null;
+      status.value = UpdateStatus.checking;
+      return null;
     } finally {
       UpdateNative.serviceStop();
     }

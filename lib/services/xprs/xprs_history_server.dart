@@ -27,6 +27,7 @@ import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
 import 'xprs_archive.dart';
+import 'xprs_files.dart';
 import 'xprs_gossip.dart';
 import '../reticulum/rns_service.dart';
 import 'xprs_id.dart';
@@ -115,13 +116,21 @@ class XprsHistoryServer {
       unawaited(XprsPublisher.instance.publishIdentity());
       return;
     }
-    if ((p['cmd'] ?? '') != 'history') return;
+    final cmd = p['cmd'] ?? '';
+    if (cmd != 'history' && cmd != 'file') return;
     // The rns lane is served like every other (36.0). The refusal that used
     // to sit here guarded a reply lane that did not exist; _air now goes
     // through the publisher, whose reticulum bearer IS that lane.
-    if (!(PreferencesService.instanceSync?.xprsServeHistory ?? true)) return;
+    //
+    // Both gates below are about the SPOOL, so they gate `cmd:history` only.
+    // Serving a file is a different offer: what bounds it is whether anything
+    // answers the digest at all (XprsFileServer.resolver) and section 31.2's
+    // budget, which every command pays below.
     final archive = XprsArchive.instance;
-    if (!archive.ready) return;
+    if (cmd == 'history') {
+      if (!(PreferencesService.instanceSync?.xprsServeHistory ?? true)) return;
+      if (!archive.ready) return;
+    }
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final cmdId = xprsIdentifier(p);
@@ -142,7 +151,7 @@ class XprsHistoryServer {
     }
 
     // Flush so a window ending "now" sees what was heard seconds ago.
-    archive.flush(nowMs: now);
+    if (cmd == 'history') archive.flush(nowMs: now);
 
     final selfIsAsking = from == selfBase;
     if (!selfIsAsking && !_budgetAllows(from, now)) {
@@ -150,6 +159,20 @@ class XprsHistoryServer {
       LogService.instance
           .add('XPRS: history for $from refused — over budget (429)');
       _airControl(selfBase, from, cmdId, 429);
+      return;
+    }
+
+    // `cmd:file` (section 25.2): the ask in front of the bulk lane. Everything
+    // above it is shared with `cmd:history` — for us, not a duplicate, not
+    // forged, within budget — and everything below is the history reader.
+    if (cmd == 'file') {
+      if (!selfIsAsking) _recordAsk(from, now);
+      XprsFileServer.instance.onCommand(p,
+          selfBase: selfBase,
+          from: from,
+          cmdId: cmdId,
+          air: (code, {String? m}) =>
+              _airControl(selfBase, from, cmdId, code, m: m));
       return;
     }
 

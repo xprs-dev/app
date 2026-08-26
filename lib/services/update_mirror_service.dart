@@ -32,6 +32,7 @@ import 'preferences_service.dart';
 import 'reticulum/rns_service.dart';
 import 'update_models.dart';
 import 'update_native.dart';
+import 'xprs/xprs_files.dart';
 import 'update_service.dart';
 
 class UpdateMirrorService extends BackgroundService {
@@ -119,8 +120,42 @@ class UpdateMirrorService extends BackgroundService {
     stableFolderId = p.getString(_kStableFolder);
     betaFolderId = p.getString(_kBetaFolder);
     await _ensureFolders(p);
+    // Answer `cmd:file` for anything we hold. The artifacts are already on
+    // disk, already verified, and already keyed by the sha256 the feed
+    // published — which is the same digest a peer will ask for.
+    XprsFileServer.instance.resolver = heldFile;
     unawaited(tickNow()); // don't wait six hours to do the first thing
   }
+
+  /// The `cmd:file` resolver: does either channel directory hold this digest?
+  ///
+  /// Reads the directory, never the files. The name carries the version and the
+  /// platform, but identity is the digest, so the lookup is by content: a peer
+  /// that asks for a sha we have gets it whatever the file happens to be called.
+  XprsHeldFile? heldFile(String shaHex) {
+    for (final dir in [betaDir, stableDir]) {
+      if (dir == null) continue;
+      for (final name in _heldNames(dir)) {
+        final path = '$dir${Platform.pathSeparator}$name';
+        if (_shaOfHeld(path) != shaHex) continue;
+        final len = File(path).lengthSync();
+        final dot = name.lastIndexOf('.');
+        return XprsHeldFile(
+          path: path,
+          shaHex: shaHex,
+          size: len,
+          name: name,
+          ext: dot > 0 ? name.substring(dot + 1) : '',
+        );
+      }
+    }
+    return null;
+  }
+
+  /// Digest of an artifact we hold, from the manifest the mirror keeps beside
+  /// the files — never by hashing 56 MB to answer a question.
+  final Map<String, String> _shaByPath = {};
+  String? _shaOfHeld(String path) => _shaByPath[path];
 
   /// Create (or re-adopt) the two disk-backed folders this station owns.
   ///
@@ -261,6 +296,12 @@ class UpdateMirrorService extends BackgroundService {
     for (final a in rel.assets) {
       if (a.name.isEmpty || a.sha256.isEmpty) continue;
       final target = mirrorFileName(a.name, rel.version);
+      // Learn the digest of everything this channel names, held or not. The
+      // feed is where a sha comes from; hashing an artifact we already
+      // verified once, to answer "do you hold this?", would be the expensive
+      // way to know something we were told.
+      _shaByPath['$dir${Platform.pathSeparator}$target'] =
+          a.sha256.toLowerCase();
       if (held.contains(target)) continue;
       if (await _ingest(a, target, rel.version, dir, folderId)) added++;
     }
