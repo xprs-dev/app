@@ -94,6 +94,19 @@ class XprsFileServer {
   /// channel directories. Several owners chain by wrapping.
   XprsHeldFile? Function(String shaHex)? resolver;
 
+  /// Files pinned explicitly, by digest. Consulted before [resolver], so an
+  /// operator (or a bench run) can offer one file without displacing whatever
+  /// service owns the dynamic lookup.
+  final Map<String, XprsHeldFile> _held = {};
+
+  /// Offer [f] to anyone who asks for its digest, until [drop].
+  void hold(XprsHeldFile f) => _held[f.shaHex.toLowerCase()] = f;
+  bool drop(String shaHex) => _held.remove(shaHex.toLowerCase()) != null;
+  List<XprsHeldFile> get pinned => _held.values.toList(growable: false);
+
+  XprsHeldFile? _lookUp(String shaHex) =>
+      _held[shaHex] ?? resolver?.call(shaHex);
+
   /// Largest file this station will offer a peer. A transfer is minutes of
   /// somebody's radio and battery (section 31.2), so there has to be a number;
   /// above it the answer is a polite `403` naming the size.
@@ -126,7 +139,7 @@ class XprsFileServer {
       air(400, m: 'file: must be a digest');
       return 400;
     }
-    final held = resolver?.call(shaHex);
+    final held = _lookUp(shaHex);
     if (held == null) {
       notHeld++;
       air(404);
@@ -192,6 +205,10 @@ class XprsFileServer {
         'inFlight': _inFlight.length,
         'maxServeBytes': maxServeBytes,
         'resolver': resolver != null,
+        'pinned': [
+          for (final f in _held.values)
+            {'sha': f.shaHex, 'name': f.name, 'size': f.size}
+        ],
       };
 }
 
@@ -216,6 +233,15 @@ class XprsFileFetch {
 
   /// Waiters by digest, completed when the bytes land and verify.
   final Map<String, Completer<String?>> _waiting = {};
+
+  /// Digests a holder has already answered `202` for: the ask is done its job
+  /// and re-airing it would only take rotation slots from the transfer.
+  final Set<String> _accepted = {};
+
+  /// How often an unanswered ask goes back on the air. Just under the
+  /// advertising period (60 s), so a re-air lands in a different window rather
+  /// than the same one.
+  static const Duration askEvery = Duration(seconds: 45);
 
   /// Where a caller wants its file put, by digest. Set at [fetch] time and
   /// honoured by [claimInbound] so the artifact never becomes a sqlite blob.
@@ -265,15 +291,39 @@ class XprsFileFetch {
     LogService.instance.add('XPRS: asking $archiver for ${sha.substring(0, 8)}');
     await XprsPublisher.instance.publishWire(wire);
 
+    // Re-air the ask until it is answered.
+    //
+    // The advert channel is fire-and-forget on a half-duplex radio: "a frame
+    // transmitted once may not be observed at all" (docs/ble5.md section 1), and
+    // the transmit window is five seconds a minute shared by every registered
+    // frame. Asked once, a cmd:file is simply lost some of the time — measured
+    // on the bench, the holder's `served` counter stayed at 0 for a whole
+    // six-minute attempt. XprsCatchup re-asks on a cadence for the same reason.
+    //
+    // The SAME wire is re-published each time, so `ts:` and therefore the
+    // section-5 identifier stay put and the answer still correlates; the advert
+    // key is refreshed rather than a second frame added.
+    final retry = Timer.periodic(askEvery, (t) {
+      if (done.isCompleted || !_pending.containsKey(id)) {
+        t.cancel();
+        return;
+      }
+      if (_accepted.contains(sha)) return; // 202 in hand; bytes are coming
+      unawaited(XprsPublisher.instance.publishWire(wire));
+    });
+
     Timer(timeout, () {
+      retry.cancel();
       if (done.isCompleted) return;
       _pending.remove(id);
       _waiting.remove(sha);
       _destDir.remove(sha);
+      _accepted.remove(sha);
       LogService.instance
           .add('XPRS: cmd:file ${sha.substring(0, 8)} timed out');
       done.complete(null);
     });
+    unawaited(done.future.whenComplete(retry.cancel));
     return done.future;
   }
 
@@ -285,7 +335,8 @@ class XprsFileFetch {
     switch (code) {
       case 202:
         // Accepted; the bytes are coming on the bulk lane. Keep waiting — the
-        // completion is FILE_OK on that lane, not this packet.
+        // completion is FILE_OK on that lane, not this packet. Stop re-airing.
+        _accepted.add(ask.sha);
         LogService.instance.add('XPRS: ${ask.station} accepted (202)');
         return;
       case 200:
@@ -338,6 +389,7 @@ class XprsFileFetch {
   /// The bulk lane finished and the file verified against its digest.
   void noteInboundComplete(String shaHex, String path) {
     _destDir.remove(shaHex.toLowerCase());
+    _accepted.remove(shaHex.toLowerCase());
     final w = _waiting.remove(shaHex.toLowerCase());
     _pending.removeWhere((_, a) => a.sha == shaHex.toLowerCase());
     if (w == null || w.isCompleted) return;

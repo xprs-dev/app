@@ -127,6 +127,10 @@ class MeshBulkSpool {
   String? Function(String shaHex, String partPath, Map<String, dynamic> meta)?
       inboundClaim;
 
+  /// Our own callsign, so an inbound completed inside [offered] knows whether
+  /// it is the final target. Set at init beside the other hooks.
+  String Function()? selfCallsign;
+
   /// A file addressed to us arrived and verified. [path] is where it landed.
   void Function(String shaHex, String path)? onInboundComplete;
 
@@ -205,7 +209,21 @@ class MeshBulkSpool {
     final existing = _meta(hex);
     if (existing != null &&
         (existing['target'] as String?)?.toUpperCase() == target.toUpperCase()) {
-      return false; // already queued for this peer
+      // Already known for this peer. If we thought it was delivered, the peer
+      // asking again is evidence that it was not — re-arm rather than sit on a
+      // `done` entry the scheduler will never look at again. (A handover
+      // record from a previous attempt would also suppress it, so clear that
+      // too.)
+      if (existing['state'] != 'ready') {
+        existing['state'] = 'ready';
+        existing['ttlUntil'] = DateTime.now().millisecondsSinceEpoch ~/ 1000 +
+            (ttlS ?? defaultTtlS);
+        _saveMeta(hex, existing);
+        MeshStore.instance.clearBulkHandover(hex, target.toUpperCase());
+        _log('re-armed ${existing['name']} for $target (asked again)');
+        return true;
+      }
+      return false; // already queued and ready
     }
     final base = name.isNotEmpty ? name : path.split(Platform.pathSeparator).last;
     final dot = base.lastIndexOf('.');
@@ -261,6 +279,28 @@ class MeshBulkSpool {
     return null;
   }
 
+  /// What the spool holds, for diagnostics. Names and counters only — never
+  /// bytes, and never a directory walk per request beyond the meta files.
+  Map<String, dynamic> statusJson() => {
+        'ready': ready,
+        'dir': _dir,
+        'pending': ready ? pendingCount() : 0,
+        'entries': !ready
+            ? const <Map<String, dynamic>>[]
+            : [
+                for (final e in _metas())
+                  {
+                    'sha': e.key.substring(0, 8),
+                    'name': e.value['name'],
+                    'size': e.value['size'],
+                    'src': e.value['src'],
+                    'state': e.value['state'],
+                    'target': e.value['target'],
+                    'origin': e.value['origin'],
+                  }
+              ],
+      };
+
   /// Files we still owe delivery for (beacon pending trailer).
   int pendingCount() =>
       _metas().where((e) => e.value['state'] == 'ready').length;
@@ -287,6 +327,21 @@ class MeshBulkSpool {
     }
     final part = File(_partPath(hex));
     final have = part.existsSync() ? part.lengthSync() : 0;
+    // Every byte already here from an earlier session. FINISH it rather than
+    // answer "accept at size" and wait: the sender reads offset >= size as
+    // "peer already has it" and declares custody handed over
+    // (mesh_session.dart _onAccept), so a complete-but-unverified .part would
+    // sit in the spool forever while the sender believed it delivered. Seen on
+    // the bench: the receiver stuck at state 'rx' across three attempts while
+    // the sender said 'done' each time.
+    if (m != null && have >= o.size && o.size > 0) {
+      if (verify(o.sha256)) {
+        completeInbound(o.sha256, selfCallsign: selfCallsign?.call() ?? '');
+        return MeshBulkDecision.accept(o.size);
+      }
+      // verify() deleted the poison partial; start this one over from zero.
+      return MeshBulkDecision.accept(0);
+    }
     if (m == null) {
       _saveMeta(hex, {
         'sha': hex,
@@ -381,8 +436,9 @@ class MeshBulkSpool {
     try {
       final f = File(_partPath(hex));
       if (!f.existsSync()) return false;
-      final got = crypto.sha256.convert(f.readAsBytesSync()).bytes;
-      final ok = shaHex(Uint8List.fromList(got)) == hex;
+      // Chunked: an app update is 47-61 MB and readAsBytesSync would put all
+      // of it on the heap of the phone receiving it (docs/performance.md 8.7).
+      final ok = _sha256OfFile(f) == hex;
       if (!ok) {
         _log('verify FAILED for $hex — truncating for a clean retry');
         f.deleteSync(); // hash mismatch: partial is poison, start over
@@ -391,6 +447,26 @@ class MeshBulkSpool {
     } catch (_) {
       return false;
     }
+  }
+
+
+  /// sha256 of [f], read in 64 KiB chunks, as lowercase hex.
+  static String _sha256OfFile(File f) {
+    final sink = _DigestSink();
+    final input = crypto.sha256.startChunkedConversion(sink);
+    final raf = f.openSync();
+    try {
+      const chunkSize = 1 << 16;
+      while (true) {
+        final chunk = raf.readSync(chunkSize);
+        if (chunk.isEmpty) break;
+        input.add(chunk);
+      }
+    } finally {
+      raf.closeSync();
+    }
+    input.close();
+    return shaHex(Uint8List.fromList(sink.value!.bytes));
   }
 
   /// A verified inbound completed. Final target → MediaArchive (+ the chat
@@ -554,4 +630,12 @@ class MeshBulkSpool {
     }
     return out;
   }
+}
+
+class _DigestSink implements Sink<crypto.Digest> {
+  crypto.Digest? value;
+  @override
+  void add(crypto.Digest data) => value = data;
+  @override
+  void close() {}
 }

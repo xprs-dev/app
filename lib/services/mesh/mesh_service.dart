@@ -252,6 +252,7 @@ class MeshService {
             XprsFileFetch.instance.noteInboundComplete;
         MeshBulkSpool.instance.inboundClaim =
             XprsFileFetch.instance.claimInbound;
+        MeshBulkSpool.instance.selfCallsign = () => tableCallsign;
       } catch (e) {
         LogService.instance.add('Mesh: store init failed: $e');
       }

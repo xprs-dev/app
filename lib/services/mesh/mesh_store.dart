@@ -413,6 +413,16 @@ class MeshStore {
         [shaHex, target.toUpperCase(), peer.toUpperCase(), _now()]);
   }
 
+  /// Forget a handover record.
+  ///
+  /// A handover is normally final — it is what stops a file being pushed at a
+  /// peer twice. But a peer that ASKS for the file again is telling us it does
+  /// not have it, and that outranks our record of having sent it.
+  void clearBulkHandover(String shaHex, String target) {
+    _db?.execute('DELETE FROM bulk_handover WHERE sha = ? AND target = ?',
+        [shaHex, target.toUpperCase()]);
+  }
+
   bool bulkHandedOver(String shaHex, String target) {
     final db = _db;
     if (db == null) return false;

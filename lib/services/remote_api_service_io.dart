@@ -53,6 +53,7 @@ import 'hero/launcher_visibility.dart';
 import 'torrent_service.dart';
 import '../version.dart';
 import 'update_mirror_service.dart';
+import 'xprs/xprs_files.dart';
 import 'update_service.dart';
 import 'update_models.dart';
 import 'update_native.dart';
@@ -969,6 +970,82 @@ class RemoteApiService {
           'version': sel.version,
           'status': u.status.value.name,
           'error': u.error,
+        });
+      }
+      // ── XPRS files (section 25.2): cmd:file, both ends ──────────────
+      if (req.method == 'GET' && path == '/api/xprs/files') {
+        return _json(res, {
+          'server': XprsFileServer.instance.statusJson(),
+          'fetch': XprsFileFetch.instance.statusJson(),
+          'spool': MeshBulkSpool.instance.statusJson(),
+        });
+      }
+      if (req.method == 'POST' && path == '/api/xprs/hold') {
+        // {"path":"/abs/file","sha256":"<hex>","name":"x.bin"} — offer one file
+        // to anyone who asks for that digest. The digest is supplied, never
+        // computed: hashing to answer "do you hold this" is the cost the whole
+        // design avoids.
+        final data = await _body(req);
+        final fpath = '${data['path'] ?? ''}'.trim();
+        final sha = '${data['sha256'] ?? ''}'.trim().toLowerCase();
+        if (fpath.isEmpty || sha.length != 64) {
+          return _json(res, {'ok': false, 'error': 'path and sha256 required'},
+              status: HttpStatus.badRequest);
+        }
+        final f = File(fpath);
+        if (!f.existsSync()) {
+          return _json(res, {'ok': false, 'error': 'no such file'},
+              status: HttpStatus.notFound);
+        }
+        final name = '${data['name'] ?? fpath.split('/').last}';
+        final dot = name.lastIndexOf('.');
+        XprsFileServer.instance.hold(XprsHeldFile(
+          path: fpath,
+          shaHex: sha,
+          size: f.lengthSync(),
+          name: name,
+          ext: dot > 0 ? name.substring(dot + 1) : '',
+        ));
+        return _json(res, {
+          'ok': true,
+          'sha256': sha,
+          'size': f.lengthSync(),
+          'name': name,
+        });
+      }
+      if (req.method == 'POST' && path == '/api/xprs/file') {
+        // {"from":"X3ARK","sha256":"<hex>","ext":"bin"} — cmd:file, then wait
+        // for the bytes on the bulk lane. Returns when they land and verify.
+        final data = await _body(req);
+        final from = '${data['from'] ?? ''}'.trim().toUpperCase();
+        final sha = '${data['sha256'] ?? ''}'.trim().toLowerCase();
+        if (from.isEmpty || sha.length != 64) {
+          return _json(res, {'ok': false, 'error': 'from and sha256 required'},
+              status: HttpStatus.badRequest);
+        }
+        final self = MeshService.instance.tableCallsign;
+        if (self.isEmpty) {
+          return _json(res, {'ok': false, 'error': 'mesh not up'},
+              status: HttpStatus.serviceUnavailable);
+        }
+        final mins = int.tryParse('${data['timeoutMinutes'] ?? ''}');
+        final began = DateTime.now().millisecondsSinceEpoch;
+        final got = await XprsFileFetch.instance.fetch(
+          archiver: from,
+          shaHex: sha,
+          selfCallsign: NostrCrypto.bareCallsign(self),
+          ext: '${data['ext'] ?? ''}',
+          destDir: '${data['destDir'] ?? await UpdateNative.supportDir() ?? ''}',
+          timeout: mins == null
+              ? XprsFileFetch.defaultTimeout
+              : Duration(minutes: mins),
+        );
+        return _json(res, {
+          'ok': got != null,
+          'path': got,
+          'sha256': sha,
+          'from': from,
+          'elapsedMs': DateTime.now().millisecondsSinceEpoch - began,
         });
       }
       // What this station holds and seeds for the phones around it.
