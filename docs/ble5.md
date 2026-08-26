@@ -297,87 +297,101 @@ a radio receiving nothing and an environment containing no stations are
 indistinguishable.
 
 ---
+## 9. Which lane carries what, measured on the bench 2026-08-26
 
-## 9. Two things measured on the bench, 2026-08-26
+Both phones on a desk, TANK2 with **no internet at all** — WiFi off, every DNS
+lookup failing. The question: can a device with only Bluetooth fetch a file from
+a super-archiver?
 
-Both phones on the bench, TANK2 with **no internet at all** (its hotspot had
-left; every DNS lookup failing) and C61 on home WiFi. The question being
-answered: can a device with only Bluetooth fetch an app update from a
-super-archiver, the way it would over Reticulum or the LAN?
+**Yes.** 64 KB crossed in 140 s, and a 56 MB app update over the same path.
+Nothing was ever paired.
 
-### 9.1 `scanning:false, scanResults:0` — a scanner that only a reboot fixes
+### 9.1 The lanes are not interchangeable, and that is the whole point
 
-TANK2 advertised normally (3769 attempts, 0 failures) and heard **nothing** —
-`scanResults: 0`, `rxEmitted: 0` — while `wantScan` and `busScanning` were both
-true. The composition table above says radio-hears-nothing, and the log said
-why, every two seconds, forever:
+The mistake that cost a day was pushing **Reticulum resources through the advert
+channel**. They do not go there. The division is:
+
+| what | lane | limit |
+|---|---|---|
+| XPRS packets | BLE5 extended advertisement, subtype `0x58` | 250 B, one packet per advert, never fragmented |
+| file bytes | MSP over a short auto-paired GATT session | ~27 kB/s, offset resume, sha-verified |
+| Reticulum | the internet path | not this radio |
+
+XPRS.md §25.2.2 draws the transfer, and it is two XPRS packets around a binary
+middle:
+
+```
+->  t:command cmd:file file:<ref> [off:]     (advert channel)
+<-  t:result  code:202
+    FILE_OFFER / ACCEPT / CHUNK / WIN_ACK / DONE / OK   (bulk lane)
+<-  t:result  code:200                       (advert channel again)
+```
+
+Observed, in that order:
+
+```
+XPRS: asking X3ARK for d194663d
+XPRS: X3ARK accepted (202)
+Mesh: MSP< session with X3ARK caps=0xf pending=0/1
+Mesh: MSP< accept xprs-1.2.0-beta.3-android-arm64-v8a.apk from X3ARK at 0/56830760
+MeshBulk: received bletest.bin -> .../files/updates/bletest.bin (claimed)
+```
+
+### 9.2 "Auto-paired" does not mean bonded
+
+`mesh.md` calls these auto-paired GATT sessions and the BLE status reports
+`autoPair`. Both mean the link is **dialled automatically and lives seconds** —
+not that anything is bonded. Bonding only happens when a characteristic demands
+encrypted access, and ours are plain (`Ble5.kt:1019`, `:1030`). There is no
+`createBond()` in the native code and `Ble5.kt:935` says why: *"this transport
+must pair with nobody, ever."*
+
+Checked after the transfers: TANK2's paired list held the operator's headset,
+watch and car, and nothing from the session. **A pairing dialog is a stop-work
+bug**, not a nuisance — it once came from the `ble_peripheral` plugin's GATT
+server callback, which is why that plugin is refused on a BLE5 device.
+
+### 9.3 An ask sent once is an ask often lost
+
+The advert channel is fire-and-forget on a half-duplex radio, and §1 already
+says a frame transmitted once may not be observed at all. A `cmd:file` sent
+once simply vanished some of the time: one six-minute attempt ended with the
+holder's `served` counter still at 0.
+
+**Anything that must arrive re-airs until it is answered.** `XprsFileFetch`
+re-publishes the same wire every 45 s — the same wire, so `ts:` and therefore
+the §5 identifier are unchanged and the answer still correlates. `XprsCatchup`
+has done the same for history all along. This is the rule §1 states as
+"anything that must arrive takes a link, not the air", applied to the one
+packet that opens the link.
+
+### 9.4 A stuck scanner needs a reboot, and the app never says so
+
+TANK2 heard **nothing** for a whole session — `scanResults: 0` against 3769
+clean advert attempts — with every permission granted and location on:
 
 ```
 BleService: scan toggle failed: PlatformException(IllegalStateException,
-  java.lang.IllegalStateException: Start discovery failed with error code: 2
+  Start discovery failed with error code: 2
 ```
 
-Error code 2 is `SCAN_FAILED_APPLICATION_REGISTRATION_FAILED`. Every permission
-was granted and location was on, so neither usual cause applied. What it took
-to clear it:
+Code 2 is `SCAN_FAILED_APPLICATION_REGISTRATION_FAILED`. A Bluetooth toggle did
+not clear it, nor a force-stop, nor both together. **Only a reboot did.** The
+registration is stuck below the app, somewhere the app cannot reach.
 
-| attempt | result |
-|---|---|
-| toggle Bluetooth | no change |
-| force-stop the app, relaunch | no change |
-| force-stop, toggle Bluetooth, relaunch | no change |
-| **reboot the phone** | **fixed** — `scanning:true`, 230 results in 25 s |
+Two defects follow, both still open:
 
-So the registration is stuck **below the app**, in a place the app cannot reach.
-Two things follow, and both are defects:
+- the retry has no backoff and no ceiling — every 2 s for the whole session,
+  filling the log ring with the one line that explains nothing else;
+- nothing surfaces "this radio is unrecoverably deaf". `/api/ble/status` has the
+  counters but no verdict, so the device looks exactly like a device in an empty
+  room. Report the scan-failure code and the consecutive-failure count.
 
-- **The retry has no backoff and no ceiling.** It re-attempted every 2 s for the
-  whole session — thousands of identical lines, each an allocation and a row in
-  the log ring, pushing out the history that would explain anything else (the
-  §8.7 shape in `docs/performance.md`). It should back off and stop.
-- **A permanently deaf radio is not surfaced.** `/api/ble/status` reports the
-  counters, but nothing says "this scanner is unrecoverable, reboot the phone".
-  The device looks like it is in an empty room. Report the scan-failure code and
-  the consecutive-failure count, and let the UI say so.
+### 9.5 What an app update over Bluetooth actually costs
 
-### 9.2 Bulk transfer over BLE stalls; control traffic does not
-
-Once TANK2 could hear, everything small worked with no internet on that side:
-
-- XPRS beacons arrived (`Mesh: XPRS beacon from X3GSLC (-62 dBm)`);
-- RNS ran over the radio — `RNS: rx from <tank2-id> via ble5` on C61, and TANK2
-  answering path requests;
-- both phones resolved each other by callsign with `bearer: "ble"`;
-- TANK2 came up `mode=ble5` on its own: *"no bootstrap reachable — up on
-  Bluetooth only"*.
-
-A 64 KB content-addressed fetch, however, **never completed in 5 minutes**:
-
-```
-RNS/files: fetch stall tick 67: seg=1/1 parts=0/142 known=74
-           win=2(min=2,max=6) mtu=500 out=2 hmu=false done=false
-```
-
-The hashmap arrived (`known=74`) and **not one data part did** (`parts=0/142`).
-Two things line up to cause that:
-
-- `mtu=500` — the resource is sized to the protocol MTU, while TANK2's
-  controller allows **296** usable bytes per advertisement (section 4). This is
-  the exact failure `RnsBleInterface.hardwareMtu` exists to prevent: *"a medium
-  that promises 500 while its controller allows ~296 makes the stack build
-  packets the radio then refuses."* The link did not take the BLE hardware MTU.
-- `clientLinkUp:false` and `serverClients:[]` on **both** phones — no GATT link
-  was ever dialled between them. `RnsBleInterface.send` prefers a link for
-  everything and only falls back to the advert channel; with no link, a
-  500-byte packet exceeds the broadcast cap and is dropped.
-
-So the honest answer to *"are BLE5 file transfers valid?"*: **the transport is
-genuinely medium-agnostic for control traffic and is not usable for bulk
-today.** Announces, gossip, path requests and callsign resolution all crossed
-Bluetooth with no internet. A file did not — and an app update is 47-61 MB, four
-orders of magnitude above what stalled.
-
-Fixing it is two separate pieces of work: make the link adopt the BLE hardware
-MTU, and make two phones actually dial a GATT link to each other when a bulk
-transfer is pending. Neither is a one-line change, and neither should be claimed
-working until a file arrives on the far side.
+~27 kB/s, so a 56 MB per-ABI APK is roughly 35 minutes, spread over several MSP
+sessions: the protocol ends a session politely at `MSP_SESSION_CAP` (300 s) and
+the receiver's `.part` length **is** the resume offset, so the next session
+carries on where the last stopped. That is the design working, not a failure —
+but it is the number to quote, and it is why `size:` exists on a `t:file`
+(§6.7.1): a station declines before starting something it cannot finish.
