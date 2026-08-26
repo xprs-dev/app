@@ -39,6 +39,21 @@ files and two JSON documents, and that is all it will ever hold — Pages is not
 asked to serve a 60 MB APK, and its git history does not grow by 230 MB a
 release.
 
+### Three lanes, one digest
+
+The sha256 in the feed is the address on every one of them, so a phone that has
+read the feed can take whichever lane it can reach:
+
+| lane | when | cost |
+|---|---|---|
+| **XPRS + the bulk lane** | a station is in Bluetooth range | ~10 kB/s measured phone-to-phone, resumes across sessions |
+| **Reticulum** | the device has a Reticulum path | fast; the internet overlay |
+| **HTTPS** | neither, and the device has internet | the URL in the feed; only the mirror normally uses it |
+
+The first is the one that works with no internet at all. `cmd:file` on the
+advert channel opens it, MSP carries the bytes, and `code:200` closes it once
+the receiver has hashed what it holds (XPRS.md §25.2.2). See `docs/ble5.md` §9.
+
 ### Why the sha256 is the important field
 
 `folderFetchBytes` ignores the folder id it is given and calls
@@ -222,6 +237,9 @@ come off the web. The rest of the surface:
 | `POST /api/update/install` | apply it |
 | `GET /api/update/mirror` | what this station holds and seeds |
 | `POST /api/update/mirror/config` | `{"enabled":true}` — be a mirror |
+| `GET /api/xprs/files` | the `cmd:file` server, the fetch, and the bulk spool |
+| `POST /api/xprs/hold` | `{"path":…,"sha256":…}` — offer one file by digest |
+| `POST /api/xprs/file` | `{"from":"X3ARK","sha256":…}` — ask for one, and wait |
 
 ---
 
