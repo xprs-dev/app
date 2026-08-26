@@ -448,7 +448,29 @@ class XprsArchive {
     'message', 'reaction', 'blog', 'event', 'warning', 'sos', 'info', 'status',
   };
 
-  List<Map<String, dynamic>> query({
+/// How many records of [types] the archive holds, without building any.
+  ///
+  /// [query] materialises a Dart Map per row INCLUDING the wire, so asking it
+  /// for a count means allocating the page to throw it away. A caller that
+  /// wanted `.length` of a thousand-row page ran that once a minute on the
+  /// main isolate, forever, on the device with the biggest archive -- which is
+  /// megabytes of garbage a minute to learn one integer, and is what an
+  /// out-of-memory on a busy archiver looks like from the inside
+  /// (docs/performance.md 4.2: the drains are cheap calls in hot loops, not
+  /// expensive algorithms).
+  int countOf({List<String>? types}) {
+    final db = _db;
+    if (db == null) return 0;
+    if (types == null || types.isEmpty) {
+      return db.select('SELECT COUNT(*) c FROM packets').first['c'] as int;
+    }
+    final marks = List.filled(types.length, '?').join(',');
+    return db.select(
+        'SELECT COUNT(*) c FROM packets WHERE type IN ($marks)',
+        types).first['c'] as int;
+  }
+
+    List<Map<String, dynamic>> query({
     int? sinceMs,
     int? untilMs,
     String? only,

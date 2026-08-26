@@ -33,10 +33,34 @@ class LogService {
   final List<String> _lines = <String>[];
 
   /// Append one line (timestamped). Oldest lines are dropped past [_max].
+  /// The last line added, and how many identical ones have been swallowed
+  /// since. A repeating fault is one fact however often it repeats.
+  String _lastLine = '';
+  int _repeats = 0;
+
   void add(String line) {
     final capped = line.length <= _maxLineLen
         ? line
         : '${line.substring(0, _maxLineLen)}…[+${line.length - _maxLineLen}]';
+
+    // COLLAPSE consecutive duplicates. The ring is bounded in ROWS, which
+    // bounds its memory and nothing else: a component stuck in an error loop
+    // still pays the allocation and the timestamp for every line, and still
+    // pushes every other line in the ring out of it -- so the one buffer that
+    // could explain the fault is full of the fault. Measured on a phone: 800
+    // identical socket errors in 56 ms, about 14,000 lines a second, which is
+    // both an out-of-memory and a log with no history left in it.
+    if (capped == _lastLine) {
+      _repeats++;
+      // Keep the tail honest without growing it: rewrite the last row.
+      if (_lines.isNotEmpty) {
+        _lines[_lines.length - 1] =
+            '${DateTime.now().toIso8601String()}  $capped (x${_repeats + 1})';
+      }
+      return;
+    }
+    _lastLine = capped;
+    _repeats = 0;
     _lines.add('${DateTime.now().toIso8601String()}  $capped');
     if (_lines.length > _max) {
       _lines.removeRange(0, _lines.length - _max);

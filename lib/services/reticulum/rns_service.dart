@@ -2269,7 +2269,11 @@ class RnsService {
   /// The callsign is the point (section 3): `X3` is a station, relay or
   /// unattended equipment, so a caller looking for an archiver to ask needs
   /// nothing more than this list and a prefix test.
-  List<String> announcedCallsigns({int max = 32}) {
+  /// [prefix] filters BEFORE the list is built and sorted. The caller wants
+  /// stations (section 3's `X3`), and this runs on a poll: building every name
+  /// the node has ever heard, sorting it, and discarding all but a handful is
+  /// work paid once a minute for one answer.
+  List<String> announcedCallsigns({int max = 32, String prefix = ''}) {
     final rows = <MapEntry<String, int>>[];
     final seen = <String>{};
     for (final n in _observed.values) {
@@ -2282,7 +2286,9 @@ class RnsService {
       // apart when they are written separately (36.12.2).
       for (final raw in [n.callsign ?? '', n.lxmfName ?? '']) {
         final call = _bareUpper(raw);
-        if (call.isEmpty || !seen.add(call)) continue;
+        if (call.isEmpty) continue;
+        if (prefix.isNotEmpty && !call.startsWith(prefix)) continue;
+        if (!seen.add(call)) continue;
         rows.add(MapEntry(call, n.lastSeenMs));
       }
     }

@@ -363,6 +363,7 @@ class XprsCatchup {
     _identityAtMs = 0;
     _backfillStation = null;
     _backfillFetched = 0;
+    _backfillSettled = false;
   }
 
   /// Announce which key this callsign signs with, on every active bearer.
@@ -458,9 +459,7 @@ class XprsCatchup {
       // tank2, installed minutes earlier on a different network, already
       // resolved X3ARK to an LXMF destination two hops away through a public
       // hub. It could have asked at any moment; it just never knew it should.
-      ...RnsService.instance
-          .announcedCallsigns()
-          .where(_looksLikeStation),
+      ...RnsService.instance.announcedCallsigns(prefix: 'X3'),
     ]) {
       final base = _base(c);
       if (base.isEmpty || base == selfBase) continue;
@@ -574,9 +573,10 @@ class XprsCatchup {
       // would arm a month-deep ask on every device that had not finished
       // opening its store yet.
       if (!XprsArchive.instance.ready) return -1;
-      return XprsArchive.instance
-          .query(types: const ['message'], limit: backfillMessages)
-          .length;
+      // COUNT, not a page. This asked query() for a thousand rows and took
+      // their .length -- once a minute, on the main isolate, on a device whose
+      // archive is the biggest on the network. See XprsArchive.countOf.
+      return XprsArchive.instance.countOf(types: const ['message']);
     } catch (_) {
       // UNKNOWN, which is not the same as empty and must not be treated as
       // it: a month-deep ask is the heaviest thing this poller does, and
@@ -591,7 +591,13 @@ class XprsCatchup {
   ///
   /// Re-armable on purpose: a first launch that hears no super is not a
   /// permanent verdict, and the next sweep that knows one will pick it up.
+  /// Set once this device is known to hold a conversation. The backfill is a
+  /// FIRST-RUN job: after that the answer cannot change back, so there is
+  /// nothing to re-establish every minute for the life of the process.
+  bool _backfillSettled = false;
+
   void _updateBackfill(List<String> supers, List<XprsStation> fresh) {
+    if (_backfillSettled) return;
     final held = _messagesHeld();
     if (held < 0) {
       _backfillStation = null; // cannot read the archive: do not guess
@@ -600,6 +606,7 @@ class XprsCatchup {
     _backfillFetched = held;
     if (held >= backfillMessages) {
       _backfillStation = null;
+      _backfillSettled = true;
       return;
     }
     if (_backfillStation != null) {
@@ -610,7 +617,10 @@ class XprsCatchup {
     // Only a device with NO conversation at all backfills. One that has some
     // is a device the ordinary poll is already serving, and a month-wide ask
     // there is a metered replay spent on records it mostly has.
-    if (held > 0) return;
+    if (held > 0) {
+      _backfillSettled = true;
+      return;
+    }
     // A super first -- it is the one that holds everything everybody said.
     // Failing that, a STATION in earshot: `X3` is a station, relay or
     // unattended equipment (section 3), so it keeps a spool worth a month-deep
