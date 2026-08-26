@@ -23,7 +23,6 @@ import 'dart:convert';
 import 'xprs_id.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
-import '../preferences_service.dart';
 import 'xprs_vocab.dart';
 
 /// Bearers a sighting may claim.
@@ -260,16 +259,7 @@ class XprsMonitor {
     // `serve:`, `count:` and `hears:` follow the same rule: a beacon or a
     // service advertisement states them, an ordinary message states neither,
     // and a message must not erase what the advertisement said.
-    if (p.has('serve')) {
-      st.services = xprsServices(p);
-      // A station that says `super` is one this device can lean on for the
-      // history it does not have (36.9.4). Remembered here, at the one place
-      // every heard packet's `serve:` already lands, because the alternative
-      // was an operator typing callsigns in by hand -- and a fresh install
-      // with nothing typed in asked nobody at all and showed an empty Global
-      // chat with no error anywhere.
-      if (st.services.contains('super')) _noteSuper(st.callsign, now);
-    }
+    if (p.has('serve')) st.services = xprsServices(p);
     // Only from a packet where `count:` means the archive size. On
     // `t:file kind:folder` it is the number of files in a listing (6.7.3), and
     // reading that as an archive size would have a folder announcement move a
@@ -282,51 +272,6 @@ class XprsMonitor {
     if (!p.has('via')) st.lastDirectMs = now;
 
     revision++;
-  }
-
-  /// How many learned supers to keep, and how long a silent one stays worth
-  /// asking. Bounded because this is fed by anything on the air: a list that
-  /// only ever grows is a list that eventually asks a hundred stations for the
-  /// same month of chat.
-  static const int _learnedSupersMax = 16;
-  static const Duration _learnedSuperTtl = Duration(days: 30);
-
-  /// Remember a station that announced `serve:…,super`.
-  ///
-  /// Written straight to preferences rather than held in RAM: the value of
-  /// knowing a super is mostly at the NEXT start, when the archive is empty
-  /// and there is a month of conversation to fetch. Never touches
-  /// [PreferencesService.xprsSuperArchivers] -- that list is the operator's.
-  void _noteSuper(String callsign, int now) {
-    final prefs = PreferencesService.instanceSync;
-    if (prefs == null) return;
-    final base = callsign.split('-').first.trim().toUpperCase();
-    if (base.isEmpty) return;
-
-    final kept = <String, int>{};
-    for (final row in prefs.xprsSuperArchiversLearned) {
-      final at = row.lastIndexOf(':');
-      if (at <= 0) continue;
-      final call = row.substring(0, at);
-      final heard = int.tryParse(row.substring(at + 1)) ?? 0;
-      if (now - heard > _learnedSuperTtl.inMilliseconds) continue;
-      kept[call] = heard;
-    }
-    final was = kept[base];
-    // One write a minute per station at most: this sits on the packet path and
-    // a beacon arrives every few seconds.
-    if (was != null && now - was < const Duration(minutes: 1).inMilliseconds) {
-      return;
-    }
-    kept[base] = now;
-
-    final rows = kept.entries.toList()
-      ..sort((a, b) => a.value.compareTo(b.value));
-    while (rows.length > _learnedSupersMax) {
-      rows.removeAt(0); // the stalest goes
-    }
-    prefs.xprsSuperArchiversLearned =
-        [for (final e in rows) '${e.key}:${e.value}'];
   }
 
   /// The callsigns this station can hear directly, most recent first — what

@@ -338,24 +338,6 @@ class PreferencesService {
   set xprsSuperArchivers(List<String> v) =>
       _prefs.setStringList('xprs.superArchivers', v);
 
-  /// Super-archivers this station LEARNED from the air, `CALLSIGN:<heardMs>`
-  /// per entry, newest-heard last.
-  ///
-  /// Deliberately not the same list as [xprsSuperArchivers]. That one belongs
-  /// to the operator, and a set of callsigns the radio happened to hear must
-  /// never overwrite what a person typed. They are unioned where they are
-  /// used, and only this one expires.
-  ///
-  /// It exists because a fresh install asked NOBODY: the operator list is
-  /// empty until someone fills it in, a phone with no radio in earshot has no
-  /// heard stations either, and the catch-up sweep returns early when both are
-  /// empty -- so Global chat stayed empty and nothing anywhere said why.
-  /// Nothing is shipped in here; XPRS is dynamic, and whichever supers are on
-  /// the air when a device starts are the ones it learns.
-  List<String> get xprsSuperArchiversLearned =>
-      _prefs.getStringList('xprs.superArchivers.learned') ?? const [];
-  set xprsSuperArchiversLearned(List<String> v) =>
-      _prefs.setStringList('xprs.superArchivers.learned', v);
   Future<void> setXprsServeHistory(bool v) async {
     await _prefs.setBool('xprs.serveHistory', v);
   }

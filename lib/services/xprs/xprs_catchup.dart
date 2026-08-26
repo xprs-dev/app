@@ -31,6 +31,8 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../wapp/android_foreground_service.dart';
 import '../hero/launcher_visibility.dart';
 import '../log_service.dart';
@@ -442,7 +444,6 @@ class XprsCatchup {
     final knownSupers = <String>[];
     for (final c in [
       ...prefs.xprsSuperArchivers,
-      ...learnedSupers(prefs),
       // Every station this node has learned from a Reticulum ANNOUNCE.
       //
       // This is the list that makes a fresh install work, and the one that was
@@ -560,15 +561,29 @@ class XprsCatchup {
   /// measured from the ARCHIVE, not from the pages served, so a backfill
   /// interrupted by a restart resumes where the device actually is rather
   /// than starting the month again.
+  /// Test seam: what the archive holds, when there is no archive to ask.
+  @visibleForTesting
+  int Function()? messagesHeldOverride;
+
   int _messagesHeld() {
+    final o = messagesHeldOverride;
+    if (o != null) return o();
     try {
+      // `ready` FIRST: query() answers `const []` when there is no database
+      // open, which is indistinguishable from a genuinely empty archive and
+      // would arm a month-deep ask on every device that had not finished
+      // opening its store yet.
+      if (!XprsArchive.instance.ready) return -1;
       return XprsArchive.instance
           .query(types: const ['message'], limit: backfillMessages)
           .length;
     } catch (_) {
-      // No archive open yet (first frames of a cold start): not a reason to
-      // claim the device is full, and not a reason to crash the sweep.
-      return 0;
+      // UNKNOWN, which is not the same as empty and must not be treated as
+      // it: a month-deep ask is the heaviest thing this poller does, and
+      // launching one because the archive happened to be unreadable for a
+      // moment spends a peer's metered replay on a question we could not
+      // establish we needed to ask. -1 means "do not backfill".
+      return -1;
     }
   }
 
@@ -578,6 +593,10 @@ class XprsCatchup {
   /// permanent verdict, and the next sweep that knows one will pick it up.
   void _updateBackfill(List<String> supers, List<XprsStation> fresh) {
     final held = _messagesHeld();
+    if (held < 0) {
+      _backfillStation = null; // cannot read the archive: do not guess
+      return;
+    }
     _backfillFetched = held;
     if (held >= backfillMessages) {
       _backfillStation = null;
@@ -593,12 +612,21 @@ class XprsCatchup {
     // there is a metered replay spent on records it mostly has.
     if (held > 0) return;
     // A super first -- it is the one that holds everything everybody said.
-    // A station in earshot holds its neighbourhood, which is worth having but
-    // is not what an empty Global chat is missing.
+    // Failing that, a STATION in earshot: `X3` is a station, relay or
+    // unattended equipment (section 3), so it keeps a spool worth a month-deep
+    // ask. A person's phone is not, which is why the prefix decides rather
+    // than mere presence -- asking every neighbour for a month of history
+    // would spend somebody's metered replay on a device that has no archive
+    // to give.
     if (supers.isNotEmpty) {
       _backfillStation = supers.first;
     } else {
-      return;
+      final station = fresh
+          .map((s) => _base(s.callsign))
+          .where(_looksLikeStation)
+          .firstOrNull;
+      if (station == null) return;
+      _backfillStation = station;
     }
     LogService.instance.add(
         'XPRS catch-up: first-run backfill from $_backfillStation — '
@@ -619,21 +647,6 @@ class XprsCatchup {
   static bool _looksLikeStation(String call) {
     final c = call.trim().toUpperCase();
     return c.startsWith('X3');
-  }
-
-  /// The learned rows (`CALLSIGN:<heardMs>`) as plain callsigns, freshest
-  /// first. Stored with the time so a super that has gone quiet can age out;
-  /// the sweep only wants the names.
-  static List<String> learnedSupers(PreferencesService prefs) {
-    final rows = <MapEntry<String, int>>[];
-    for (final row in prefs.xprsSuperArchiversLearned) {
-      final at = row.lastIndexOf(':');
-      if (at <= 0) continue;
-      rows.add(MapEntry(
-          row.substring(0, at), int.tryParse(row.substring(at + 1)) ?? 0));
-    }
-    rows.sort((a, b) => b.value.compareTo(a.value));
-    return [for (final e in rows) e.key];
   }
 
   Future<void> _ask(String self, String archiver, int now,

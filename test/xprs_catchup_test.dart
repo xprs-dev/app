@@ -76,6 +76,7 @@ void main() {
     };
     XprsPublisher.instance.bearers = [_UpBearer()];
     c.debugReset();
+    c.messagesHeldOverride = null;
     XprsMonitor.instance.debugReset();
   });
 
@@ -266,7 +267,6 @@ void main() {
   void freshInstall() {
     final prefs = PreferencesService.instanceSync!;
     prefs.xprsSuperArchivers = const [];
-    prefs.xprsSuperArchiversLearned = const [];
     prefs.xprsCatchupMarks = const {};
   }
 
@@ -278,44 +278,27 @@ void main() {
         .offer(p!, bearer: 'ble', selfCallsign: _self, rssi: -50, nowMs: nowMs);
   }
 
-  test('a super heard on the air is remembered; an ordinary archiver is not',
+
+  test('a station heard on the air is asked without being configured',
       () async {
-    final prefs = PreferencesService.instanceSync!;
     freshInstall();
-    superBeacon('X1SUPER', now);
-    expect(XprsCatchup.learnedSupers(prefs), contains('X1SUPER'));
-
-    _beacon(now, count: 3); // serve:archive, no super
-    expect(XprsCatchup.learnedSupers(prefs), isNot(contains(_station)),
-        reason: 'only serve:…,super earns the word');
-  });
-
-  test('discovery never writes the operator\'s own list', () async {
-    freshInstall();
-    final prefs = PreferencesService.instanceSync!;
-    prefs.xprsSuperArchivers = const ['X9MINE'];
-    superBeacon('X1SUPER', now);
-    expect(prefs.xprsSuperArchivers, const ['X9MINE'],
-        reason: 'a callsign the radio heard must not edit what a person typed');
-  });
-
-  test('a fresh install with only a LEARNED super still asks it', () async {
-    final prefs = PreferencesService.instanceSync!;
-    freshInstall();
-    expect(prefs.xprsSuperArchivers, isEmpty, reason: 'nothing configured');
-    superBeacon('X1SUPER', now);
+    superBeacon('X3SUPR', now);
     await XprsCatchup.instance.tick(_self);
-    expect(aired.where((w) => w.contains('d:X1SUPER')), hasLength(1),
-        reason: 'the whole bug: this used to ask nobody at all');
+    expect(aired.where((w) => w.contains('d:X3SUPR')), hasLength(1),
+        reason: 'a station in earshot is already in the heard list');
+    expect(PreferencesService.instanceSync!.xprsSuperArchivers, isEmpty,
+        reason: 'and nothing the radio heard may edit the operator list');
   });
+
 
   // Rule 4 bounds the POLL to seven days and says in the same breath that
   // anything older is fetched deliberately. This is that deliberate fetch.
   test('the first-run backfill reaches a month back, not a week', () async {
     freshInstall();
-    superBeacon('X1SUPER', now);
+    XprsCatchup.instance.messagesHeldOverride = () => 0;
+    superBeacon('X3SUPR', now);
     await XprsCatchup.instance.tick(_self);
-    final ask = aired.firstWhere((w) => w.contains('d:X1SUPER'));
+    final ask = aired.firstWhere((w) => w.contains('d:X3SUPR'));
     final since = RegExp(r'since:(\S+)').firstMatch(ask)!.group(1)!;
     final asked = DateTime.parse(since.replaceFirst('_', ' ') + 'Z');
     final backMs = now - asked.millisecondsSinceEpoch;
@@ -328,11 +311,12 @@ void main() {
 
   test('the backfill is reported so a quiet first run is readable', () async {
     freshInstall();
-    superBeacon('X1SUPER', now);
+    XprsCatchup.instance.messagesHeldOverride = () => 0;
+    superBeacon('X3SUPR', now);
     await XprsCatchup.instance.tick(_self);
     final st = XprsCatchup.instance.statusJson()['backfill']
         as Map<String, dynamic>;
-    expect(st['station'], 'X1SUPER');
+    expect(st['station'], 'X3SUPR');
     expect(st['target'], XprsCatchup.backfillMessages);
     expect(st['days'], XprsCatchup.backfillWindow.inDays);
   });

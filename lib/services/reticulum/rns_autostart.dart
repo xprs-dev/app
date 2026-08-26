@@ -174,6 +174,27 @@ Future<void> ensureRnsAutostart() async {
 }
 
 Timer? _retryTimer;
+bool _profileWatch = false;
+
+/// Re-announce under the callsign that is active NOW.
+///
+/// `announceName` is read once, at `rns.start(...)`, so the name a node
+/// announces is whichever profile happened to be active when the node came up.
+/// Switch profile afterwards and the node goes on announcing the old callsign
+/// -- and since a peer can only address what it heard announced (36.12.2), the
+/// station becomes unreachable under the name every other layer now uses,
+/// with nothing anywhere reporting a fault. A phone here carries two profiles,
+/// so this is a switch away at any time.
+void _watchProfileForAnnounce() {
+  if (_profileWatch) return;
+  _profileWatch = true;
+  ProfileService.instance.activeProfileNotifier.addListener(() {
+    final cs = (ProfileService.instance.activeProfile?.callsign ?? '').trim();
+    if (cs.isEmpty || !RnsService.instance.isUp) return;
+    LogService.instance.add('RNS autostart: profile is now $cs — re-announcing');
+    unawaited(RnsService.instance.announce(cs));
+  });
+}
 
 /// Kick off the always-on node in the background and keep retrying until it is
 /// up. Returns immediately so it never blocks boot on the bootstrap TCP connect
@@ -181,6 +202,7 @@ Timer? _retryTimer;
 void startRnsAutostart() {
   final prefs = PreferencesService.instanceSync;
   if (prefs != null && !prefs.rnsAutoStart) return;
+  _watchProfileForAnnounce();
   // Reconnect immediately when the hub uplink drops (socket closed or the
   // device's network changed and the watchdog noticed the silence) instead of
   // waiting for the next periodic tick. RnsService has already torn the dead
