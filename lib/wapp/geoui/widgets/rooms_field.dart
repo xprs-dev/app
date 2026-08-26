@@ -555,12 +555,19 @@ class _RoomsFieldState extends State<RoomsField> {
   Widget _chat(ColorScheme cs) {
     final open = widget.openId;
     final room = open == null ? null : widget.store.items[open];
-    // Who you are talking to. The store title is the display name; for a
-    // direct LXMF peer also show the address underneath, because a name alone
-    // ("Ben Mobile") does not tell you WHICH address you are about to message
-    // — and when there is no name yet, the address is the only identity there
-    // is. Falling back to the raw conversation id (as this did) shows neither.
+    // Who you are talking to. The store title is the display name.
+    //
+    // A ROOM gets this header: it names the room and opens the member list.
+    // A 1:1 does not. The AppBar directly above already shows the callsign, so
+    // the header repeated it in a smaller font with the LXMF address beneath —
+    // two titles for one conversation, and an address nobody can do anything
+    // with. A person is identified by their callsign here; the address is
+    // plumbing (it is still on the row in "New chat", where you are choosing
+    // BETWEEN addresses and it is the only thing that tells them apart).
     final isLxmf = (open ?? '').startsWith('lxmf:');
+    // Every room and channel id starts with '#', including the two scope rooms
+    // (#LOCAL / #GLOBAL). Anything else is a conversation with one person.
+    final isDirect = open != null && !open.startsWith('#');
     final addr = isLxmf ? open!.substring(5) : '';
     var name = room?.title ?? '';
     if (name.isEmpty) {
@@ -571,8 +578,10 @@ class _RoomsFieldState extends State<RoomsField> {
     return Column(
       children: [
         // room header: who + members toggle (and, on a narrow window where the
-        // rail is hidden behind the chat, the way back to it)
-        Container(
+        // rail is hidden behind the chat, the way back to it). Rooms only —
+        // see isDirect above.
+        if (!isDirect)
+          Container(
           height: 48,
           padding: const EdgeInsets.only(left: 4, right: 12),
           decoration: BoxDecoration(
@@ -599,16 +608,6 @@ class _RoomsFieldState extends State<RoomsField> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    if (isLxmf)
-                      Text(
-                        'NomadNet · $addr',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
                   ],
                 ),
               ),

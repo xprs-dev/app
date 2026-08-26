@@ -1068,6 +1068,29 @@ class RnsService {
   ///
   /// `live` still reports the strict answer, so the UI can say "online now"
   /// versus "heard 12m ago" without hiding anybody.
+  /// Is this LXMF peer live right now — the same freshness [messagingDirectory]
+  /// reports as `live`, for ONE destination.
+  ///
+  /// The directory builds a row per observed node and is the wrong thing to
+  /// call to answer a question about one peer (docs/performance.md 8.7: if the
+  /// answer is one value, do not build the list). This walks the observed table
+  /// and stops at the match; it is a scan of a small in-memory map, cheap
+  /// enough for a widget build.
+  ///
+  /// "Live" means heard recently, which is what decides whether a message goes
+  /// out now or waits — not whether a path happens to be cached.
+  bool lxmfPeerLive(String destHex) {
+    final want = destHex.trim().toLowerCase();
+    if (want.isEmpty) return false;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final n in _observed.values) {
+      if (!n.services.contains('lxmf')) continue;
+      if (_lxmfDestHexForPub(n.publicKeyHex).toLowerCase() != want) continue;
+      return _isFreshNode(n, now);
+    }
+    return false;
+  }
+
   List<Map<String, dynamic>> messagingDirectory(String query) {
     sweepObserved();
     final q = query.trim().toLowerCase();

@@ -3964,6 +3964,69 @@ class _WappPageState extends State<WappPage>
     }
   }
 
+  /// The AppBar title, with a reachability dot when a 1:1 conversation is open.
+  ///
+  /// Green: there is a path to this peer right now, so a message leaves as you
+  /// send it. Grey: there is not, and LXMF holds it until one appears — a
+  /// normal state on this network rather than an error, so it is a quiet dot
+  /// and not a warning.
+  ///
+  /// 1:1 only. Every room and channel id starts with '#' (including the two
+  /// scope rooms), and "is the room reachable" has no single answer.
+  Widget _titleWithReach(String fallback) {
+    final id = _roomsOpenId;
+    if (id == null) return Text(fallback);
+    // Name the conversation, not the wapp. The room header underneath used to
+    // carry the callsign and the AppBar said "Chat"; with the duplicate header
+    // gone for a 1:1 the bar is the only place left to say who you are talking
+    // to, and the wapp only sends a nav title on some paths.
+    final open = _convStore('conversations').items[id];
+    final title = (open?.title ?? '').isNotEmpty ? open!.title : fallback;
+    final direct = !id.startsWith('#');
+    if (!direct) return Text(title, maxLines: 1, overflow: TextOverflow.ellipsis);
+    final reachable = _peerReachable(id);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: reachable
+              ? 'Reachable now'
+              : 'Not reachable — the message waits for them',
+          child: Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: reachable
+                  ? const Color(0xFF4CAF50)
+                  : Theme.of(context).colorScheme.outline,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ],
+    );
+  }
+
+  /// Is there a Reticulum path to the peer of conversation [id] right now?
+  ///
+  /// A direct conversation is keyed `lxmf:<dest>`, so the destination is in the
+  /// id and nothing has to be resolved.
+  ///
+  /// The same freshness the conversation LIST already draws its green dot from
+  /// (the wapp reads it out of the people directory as `live`), so the two
+  /// agree. A cached path is NOT the test: a path can linger for a peer that
+  /// has gone, and be absent for one that is plainly here — being heard
+  /// recently is what decides whether a message leaves now or waits.
+  bool _peerReachable(String id) {
+    final dest = id.startsWith('lxmf:') ? id.substring(5) : '';
+    if (dest.isEmpty) return false;
+    return RnsService.instance.lxmfPeerLive(dest);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_tabController == null) {
@@ -4187,7 +4250,7 @@ class _WappPageState extends State<WappPage>
                       ),
                   ],
                 )
-              : Text(navBack ? _wappNavTitle! : widget.title),
+              : _titleWithReach(navBack ? _wappNavTitle! : widget.title),
           // The horizontal tab bar lives under the title. Hidden while a
           // conversation thread or a graph panel takes over the screen.
           bottom: (showTabs && thread == null && _graphPanelTitle == null)
