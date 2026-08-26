@@ -174,7 +174,7 @@ class MainActivity : FlutterFragmentActivity() {
             "installApk" -> {
                 val path = call.argument<String>("filePath")
                 if (path == null) {
-                    result.error("ARG", "filePath required", null); return
+                    result.error("ARG", "filePath required", null); return true
                 }
                 result.success(installApk(path))
             }
