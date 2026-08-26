@@ -2253,7 +2253,44 @@ class RnsService {
   /// nodes "heard just now", so being recent is not enough — a generic remote
   /// node must re-announce over a span to count as online. LAN neighbours are
   /// never flood ghosts and count immediately. Newest-heard first.
-  List<Map<String, dynamic>> observedDevices() {
+/// Callsigns this node has learned from Reticulum ANNOUNCES and can address,
+  /// freshest first.
+  ///
+  /// Not [observedDevices]: that one answers "what should the mesh screen
+  /// draw", so it hides anything without a re-announce span, anything a hub
+  /// relays for, and anything whose announcement did not advertise a service.
+  /// This answers a different question -- "who could I send a directed packet
+  /// to right now" -- and the two must not share a filter. Measured on the
+  /// bench: a phone whose XPRS device list showed exactly one entry resolved
+  /// `X3ARK` to an LXMF destination two hops away through a public hub in the
+  /// same second, because the address was known all along and only the display
+  /// rule had rejected it.
+  ///
+  /// The callsign is the point (section 3): `X3` is a station, relay or
+  /// unattended equipment, so a caller looking for an archiver to ask needs
+  /// nothing more than this list and a prefix test.
+  List<String> announcedCallsigns({int max = 32}) {
+    final rows = <MapEntry<String, int>>[];
+    final seen = <String>{};
+    for (final n in _observed.values) {
+      // BOTH names, exactly as lxmfDestForCallsign matches on both. Reading
+      // only `callsign` here was the difference between a peer this node can
+      // demonstrably address -- whois resolved X3ARK to a destination two hops
+      // away -- and a peer it never listed, because the name had arrived on
+      // the other field. The spec warns about precisely this: a resolver must
+      // read every name the transport offers, and the two directions grow
+      // apart when they are written separately (36.12.2).
+      for (final raw in [n.callsign ?? '', n.lxmfName ?? '']) {
+        final call = _bareUpper(raw);
+        if (call.isEmpty || !seen.add(call)) continue;
+        rows.add(MapEntry(call, n.lastSeenMs));
+      }
+    }
+    rows.sort((a, b) => b.value.compareTo(a.value));
+    return [for (final e in rows.take(max)) e.key];
+  }
+
+    List<Map<String, dynamic>> observedDevices() {
     sweepObserved();
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     bool alive(_ObservedNode n) {

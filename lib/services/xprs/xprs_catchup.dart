@@ -35,6 +35,7 @@ import '../../wapp/android_foreground_service.dart';
 import '../hero/launcher_visibility.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
+import '../reticulum/rns_service.dart';
 import 'xprs_archive.dart';
 import 'xprs_cadence.dart';
 import 'xprs_id.dart';
@@ -442,6 +443,23 @@ class XprsCatchup {
     for (final c in [
       ...prefs.xprsSuperArchivers,
       ...learnedSupers(prefs),
+      // Every station this node has learned from a Reticulum ANNOUNCE.
+      //
+      // This is the list that makes a fresh install work, and the one that was
+      // missing: a phone with no radio neighbour and nothing configured has no
+      // heard stations and no named supers, so the sweep returned before
+      // asking anybody and Global chat stayed empty with nothing to read
+      // anywhere.
+      //
+      // An announcement is one of only two things a shared transport is
+      // guaranteed to carry (36.12.1), and a directed ask is the other -- so
+      // between them there is always a way through. Measured on the bench:
+      // tank2, installed minutes earlier on a different network, already
+      // resolved X3ARK to an LXMF destination two hops away through a public
+      // hub. It could have asked at any moment; it just never knew it should.
+      ...RnsService.instance
+          .announcedCallsigns()
+          .where(_looksLikeStation),
     ]) {
       final base = _base(c);
       if (base.isEmpty || base == selfBase) continue;
@@ -586,6 +604,21 @@ class XprsCatchup {
         'XPRS catch-up: first-run backfill from $_backfillStation — '
         'up to $backfillMessages messages or '
         '${backfillWindow.inDays} days');
+  }
+
+  /// Is this callsign a station worth asking for history?
+  ///
+  /// Section 3: `X1` is a person, `X3` is a station, relay or unattended
+  /// equipment, `X4` an automated device, `X5` a group. The prefix IS the
+  /// indicator -- a station says what it is by its name, so no configuration,
+  /// no lookup and no extra round trip is needed to decide it is worth asking.
+  /// Whether it is a SUPER is a further claim, carried on its announcement or
+  /// answered when asked directly; not knowing that yet is no reason not to
+  /// ask, because an archiver with nothing for us answers 404 and costs one
+  /// metered packet.
+  static bool _looksLikeStation(String call) {
+    final c = call.trim().toUpperCase();
+    return c.startsWith('X3');
   }
 
   /// The learned rows (`CALLSIGN:<heardMs>`) as plain callsigns, freshest
