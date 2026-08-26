@@ -22,6 +22,7 @@
 // =============================================================================
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -124,6 +125,9 @@ class UpdateMirrorService extends BackgroundService {
     // disk, already verified, and already keyed by the sha256 the feed
     // published — which is the same digest a peer will ask for.
     XprsFileServer.instance.resolver = heldFile;
+    for (final d in [stableDir, betaDir]) {
+      if (d != null) _loadDigests(d);
+    }
     unawaited(tickNow()); // don't wait six hours to do the first thing
   }
 
@@ -154,8 +158,54 @@ class UpdateMirrorService extends BackgroundService {
 
   /// Digest of an artifact we hold, from the manifest the mirror keeps beside
   /// the files — never by hashing 56 MB to answer a question.
+  ///
+  /// The map is also written to `.digests.json` in each channel directory,
+  /// because an in-memory one is empty after a restart and stays empty until
+  /// the next six-hourly tick. A peer that asked in that window got a `404`
+  /// for a file sitting right there — observed on the bench.
   final Map<String, String> _shaByPath = {};
-  String? _shaOfHeld(String path) => _shaByPath[path];
+
+  static const String _digestFile = '.digests.json';
+
+  String? _shaOfHeld(String path) {
+    final known = _shaByPath[path];
+    if (known != null) return known;
+    // Not in memory: consult the manifest of the directory it is in.
+    final sep = path.lastIndexOf(Platform.pathSeparator);
+    if (sep <= 0) return null;
+    _loadDigests(path.substring(0, sep));
+    return _shaByPath[path];
+  }
+
+  /// Read a channel's digest manifest into the map. Cheap: a few hundred bytes.
+  void _loadDigests(String dir) {
+    try {
+      final f = File('$dir${Platform.pathSeparator}$_digestFile');
+      if (!f.existsSync()) return;
+      final m = jsonDecode(f.readAsStringSync());
+      if (m is! Map) return;
+      for (final e in m.entries) {
+        _shaByPath['$dir${Platform.pathSeparator}${e.key}'] =
+            '${e.value}'.toLowerCase();
+      }
+    } catch (_) {}
+  }
+
+  /// Write what we know about [dir] back to its manifest.
+  void _saveDigests(String dir) {
+    try {
+      final prefix = '$dir${Platform.pathSeparator}';
+      final out = <String, String>{};
+      for (final e in _shaByPath.entries) {
+        if (!e.key.startsWith(prefix)) continue;
+        out[e.key.substring(prefix.length)] = e.value;
+      }
+      if (out.isEmpty) return;
+      File('$prefix$_digestFile').writeAsStringSync(jsonEncode(out));
+    } catch (e) {
+      lastError = 'digest manifest: $e';
+    }
+  }
 
   /// Create (or re-adopt) the two disk-backed folders this station owns.
   ///
@@ -311,6 +361,7 @@ class UpdateMirrorService extends BackgroundService {
           .add('update-mirror: $channelFile +$added artifact(s) ${rel.version}');
     }
     await _prune(dir, folderId);
+    _saveDigests(dir);
   }
 
   List<String> _heldNames(String dir) {
