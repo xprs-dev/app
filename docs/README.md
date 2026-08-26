@@ -1,5 +1,9 @@
 # XPRS protocol & networking docs
 
+> Looking for **what to read before changing something**, rather than what each
+> document contains? See **[index.md](index.md)** — it maps a task to the
+> sections that will save you a day.
+
 XPRS is an off‑grid‑first messenger. It speaks several protocols at once and
 glues them together so a message — or a file — reaches the other side over
 whatever path is available: the internet, a Reticulum overlay, an APRS network,
