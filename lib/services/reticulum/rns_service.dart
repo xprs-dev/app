@@ -2937,7 +2937,19 @@ class RnsService {
                 // (its announce was never flooded to us) so DHT resolve + file fetch
                 // links are routable — the fix that makes device-to-device folder
                 // discovery work on busy/asymmetric public hubs.
-                requestPath: (h) => _transport?.requestPath(h),
+                requestPath: (h) {
+                  // Jump the BLE path-request trickle, exactly as LXMF delivery
+                  // does. Without this a file fetch over Bluetooth could never
+                  // start: the radio's budget is deliberately tiny (the advert
+                  // channel is for the room, not for resolving a directory), so
+                  // the one request the fetch was waiting on was dropped with
+                  // the sweep, the link request was never sent, and the
+                  // transfer sat at parts=0/0 until it timed out. Somebody
+                  // asking for a FILE is "reach this peer", which is precisely
+                  // what the budget's escape hatch is for.
+                  _wantPathOverBle(h);
+                  _transport?.requestPath(h);
+                },
                 // Pin an outbound file link to its dest's path interface (the LAN) up
                 // front, so our GET_FILE/resource traffic can't be flipped onto a slow
                 // hub by a proof copy arriving there.

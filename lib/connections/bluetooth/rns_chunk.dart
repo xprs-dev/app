@@ -33,7 +33,17 @@ import 'dart:typed_data';
 const int kRnsChunkHeader = 4;
 
 /// How long an incomplete fragment set is kept before it is abandoned.
-const Duration kRnsChunkTtl = Duration(seconds: 20);
+const Duration kRnsChunkTtl = kRnsAdvertTtl;
+
+/// How long an RNS frame stays registered for the advertising rotation.
+///
+/// The radio transmits ADV_WINDOW_MS = 5 s out of every ADV_PERIOD_MS = 60 s,
+/// and registered frames share that window in rotation at ROTATE_MS = 1200 —
+/// roughly four slots a minute between all of them. A TTL shorter than one full
+/// period means a frame that loses the rotation on its first pass expires
+/// before the window opens again. 65 s spans a whole period plus a window, so
+/// every frame gets at least two chances to be on air.
+const Duration kRnsAdvertTtl = Duration(seconds: 65);
 
 /// Most fragments one packet may be split into (255 is the wire limit; this is
 /// the sanity bound — 32 fragments of ~230 B is already 7 kB, far past

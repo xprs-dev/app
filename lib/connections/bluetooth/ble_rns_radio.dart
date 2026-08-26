@@ -123,9 +123,19 @@ class Ble5ChunkedRnsRadio implements RnsBleRadio {
       isAnnounce ? _announceKey(frame) : 'rnst:${_frameKey(frame)}',
       Ble5Subtype.rns,
       frame,
-      ttl: isAnnounce
-          ? const Duration(seconds: 35)
-          : const Duration(seconds: 8),
+      // TTL has to outlive the TRANSMIT WINDOW, not the reader's patience.
+      //
+      // The radio is on air ADV_WINDOW_MS = 5 s out of every ADV_PERIOD_MS =
+      // 60 s, and within that window registered frames share the set in
+      // rotation at ROTATE_MS = 1200 — about four slots a minute, divided by
+      // however many frames are registered. Traffic held an 8-second TTL, which
+      // spans one window: a frame that lost the rotation on its first pass
+      // expired before the window ever opened again, and a link handshake is
+      // three packets in a row that all have to land. Measured: the responder
+      // logged zero inbound RNS adverts while the initiator kept re-offering.
+      //
+      // A full period plus a window guarantees at least two openings.
+      ttl: kRnsAdvertTtl,
       prio: !isAnnounce,
     );
   }
