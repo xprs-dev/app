@@ -817,6 +817,93 @@ because it will.
 > checkpoint, integrity-checked by hash, idle links closed, liveness swept on a tick.
 > Code that only works while the network stays up doesn't work.
 
+### 8.7 The three shapes that put a phone into swap (2026-08-26)
+
+An OOM on the C61 came down to three faults, none of which is an expensive
+algorithm and all of which read as free at the call site. They are now
+machine-checked — see §8.8.
+
+**A page fetched to be counted.** The catch-up poller asked
+
+```dart
+XprsArchive.instance.query(types: ['message'], limit: 1000).length
+```
+
+`query()` builds a Map per row with thirteen entries **including the whole
+wire**, so this materialised up to a thousand of them to learn one integer —
+once a minute, on the main isolate, forever, on the device whose archive is the
+largest on the network. `.length` is what made it invisible: the expensive part
+is the call it is attached to. `XprsArchive.countOf()` asks SQL for the number.
+
+> **The general form**: any `.length` / `.isEmpty` on the result of a query, a
+> directory walk or a network listing. If the answer is a number, ask for the
+> number.
+
+**A question re-asked after the answer stopped changing.** The same count ran
+every sweep for the life of the process, though it fed a FIRST-RUN decision —
+once the archive holds a conversation it never stops holding one. Latch
+one-shot state and stop paying for it. A poll that cannot change its own answer
+is pure heat.
+
+**A guard that logs every occurrence of something that happens in a loop.** The
+NOSTR engine's `runZonedGuarded` sent one port message to main per error. The
+comment above it correctly names the error as expected and survivable — but
+dart:io produces it in a tight loop: **800 identical lines spanning 56 ms, about
+14,000 a second, sustained**. Each one was an allocation on main, a port
+message, and a row in the log ring.
+
+Two lessons, and the second is the one that generalises:
+
+- An error that repeats is **one fact**, however often it repeats. Coalesce in
+  the handler: same message inside N seconds → count it, report once.
+- **A ring bounded in ROWS is not bounded in cost.** It still pays an
+  allocation and a timestamp per line, and — worse — a component in an error
+  loop pushes every other line out, so the one buffer that could explain the
+  fault is full of the fault. `LogService.add` now collapses consecutive
+  duplicates into a counted row.
+
+**How it was found, which is the reusable part.** `perf:` counters looked clean
+(§7's command showed only ordinary wapp ticks). The fault was visible only in
+the raw log:
+
+```sh
+curl -s 'http://127.0.0.1:3456/api/log?n=800' \
+  | python3 -c "import sys,json,collections,re; \
+      L=json.load(sys.stdin)['lines']; \
+      c=collections.Counter(re.sub(r'^\S+\s+','',l)[:60] for l in L); \
+      print(len(L)); [print(n,m) for m,n in c.most_common(5)]"
+```
+
+**If one message is most of the log, that is the bug** — count the lines before
+reading them. Measured on the C61 across the fix: PSS 295 MB → 230 MB, swap
+**106 MB → 0.6 MB**, and a log with history in it again.
+
+> Caveat kept deliberately: the after-figures came from a six-minute-old
+> process and the before-figures from one up for hours, so the swap number is
+> the trustworthy half of that comparison. A soak settles the rest.
+
+### 8.8 The guard runs these rules for you
+
+`tool/arch_guard.dart` grew a **cost** section, so the shapes above fail a
+commit instead of being remembered:
+
+| rule | what it refuses |
+|---|---|
+| `no-page-fetch-to-count` | `.query(…).length` / `.isEmpty` — counting by materialising rows |
+| `no-sub-minute-poll` | `Timer.periodic` under a minute — §6.5's battery setting |
+| `no-store-work-in-ui-layer` | raw SQL in `lib/ui`, `lib/launcher`, `lib/wapp/geoui` (modules named `*_db`/`*_store`/`*_archive` are exempt — they own the store) |
+
+Same contract as the architecture rules: baseline in `tool/arch_baseline.txt`
+so only NEW violations fail, `// arch-ignore: <rule-id> <reason>` for a
+deliberate exception, and `./tool/install-hooks.sh` puts it on pre-commit.
+Verified by re-introducing the exact line that caused this OOM: the guard fails
+the commit and prints why.
+
+**When you find the next one of these, add the rule the same day.** A lesson in
+a document is a lesson someone has to have read; a lesson in the guard is one
+they cannot skip. The rules that pay are the ones matching a shape that *reads
+as free* — those are precisely the ones review does not catch.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile

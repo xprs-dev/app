@@ -109,6 +109,54 @@ const rules = <Rule>[
     message: 'Read-only diagnostics are fine but must be documented as such; '
         'a wapp must not steer delivery.',
   ),
+
+  // ── cost (docs/performance.md) ────────────────────────────────────────────
+  // These are not style. Each one is a shape that has already put a phone into
+  // swap or an isolate at 100%, and each one READS as free at the call site,
+  // which is why review does not catch it.
+  Rule(
+    id: 'no-page-fetch-to-count',
+    why: 'Counting by materialising rows. query()/select() build an object per '
+        'row -- here, a Map of thirteen entries including the whole wire -- so '
+        'asking one for .length allocates the page to throw it away. On a poll '
+        'that is megabytes a minute on the main isolate, on the device with '
+        'the biggest store. Use a COUNT (XprsArchive.countOf) '
+        '(docs/performance.md 4.2, 8.7).',
+    appliesTo: ['lib/**'],
+    pattern: r'\.(query|select)\([^;]*\)\s*\.(length|isEmpty|isNotEmpty)\b',
+    message: 'Ask the database for the number, not for the rows.',
+  ),
+  Rule(
+    id: 'no-sub-minute-poll',
+    why: 'A poll interval is a battery setting, not a freshness setting: the '
+        'phone spends its life with the screen off and nobody reading. A '
+        'sub-minute Timer.periodic runs 1,440+ times a day for a result no one '
+        'is awake to see. Justify it as cost-per-hour-screen-off, and fire '
+        'once immediately then settle (docs/performance.md 6.5, 8.5).',
+    appliesTo: ['lib/**'],
+    pattern: r'Timer\.periodic\(\s*(?:const\s+)?Duration\('
+        r'\s*(?:milliseconds|seconds)\s*:',
+    message: 'If it must be this fast, say what it costs per hour with the '
+        'screen off, and gate it on something being awake to read it.',
+  ),
+  Rule(
+    id: 'no-store-work-in-ui-layer',
+    why: 'sqlite is pure CPU with no plugin behind it, so it belongs to a '
+        'service or a worker, never to a widget or a wapp-engine tick. On the '
+        'UI isolate it is a dropped frame; on a tick it is a dropped frame '
+        'every tick (docs/performance.md 8.1).',
+    appliesTo: ['lib/ui/**', 'lib/launcher/**', 'lib/wapp/geoui/**'],
+    // A module whose NAME says it owns a store is where the statements
+    // belong, wherever it happens to sit in the tree. The rule is about a
+    // widget reaching for sqlite, not about a directory.
+    exempt: [
+      'lib/**/*_db.dart',
+      'lib/**/*_store.dart',
+      'lib/**/*_archive.dart',
+    ],
+    pattern: r'\.(select|execute)\(\s*[\x27"]\s*(SELECT|INSERT|UPDATE|DELETE)',
+    message: 'Move the statement behind a service that owns the store.',
+  ),
 ];
 
 /// Rules for the sibling wapps repo (C sources). Checked only when it is there.
