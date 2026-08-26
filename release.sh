@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # =============================================================================
-# release.sh — cut a XPRS Aurora release.
+# release.sh — cut an XPRS release.
 #
 # Bumps pubspec.yaml, syncs lib/version.dart, commits, tags vX.Y.Z and pushes.
-# The release workflow (.github/workflows/release.yml) then builds the Android
-# APK, Linux tar.gz and Windows installer named aurora-<version>-<platform>.
-# Updates are decentralized: the built artifacts are published into the two
-# signed Reticulum update folders on the always-on node (see
-# tool/publish_update_folder.sh) — no central web host. The in-app Update Center
-# fetches them peer-to-peer over Reticulum and verifies each by sha256.
+# Pushing the tag is what triggers everything else: release.yml builds the three
+# platforms as xprs-<version>-<platform>, the site repo's sync.yml hashes them
+# into the xprs.dev feed, and a super-archiver with the mirror enabled seeds
+# them over Reticulum. Phones fetch the bytes by sha256 from that station and
+# never make an HTTPS request for a binary. See releases.md.
 #
 # Usage:
 #   ./release.sh                 # auto-bump patch (or prerelease counter)
@@ -64,17 +63,10 @@ branch=$(git rev-parse --abbrev-ref HEAD)
 git push origin "$branch"
 git push origin "v${VERSION}"
 
-# Pushing the tag triggers .github/workflows/release.yml, which builds the three
-# aurora-<version>-<platform> artifacts. Publish them into the signed Reticulum
-# update folders on the always-on node (the master keys live only in each
-# .folder.json there — no CI secret):
-#
-#   AURORA_API=http://<node>:3456 \
-#     tool/publish_update_folder.sh ${VERSION} <dir-with-built-artifacts>
-#
-# That copies the binaries into the beta folder (and the stable folder for a
-# non-prerelease) and rescans, so the node signs the addFile ops and serves the
-# bytes. Consumers fetch them over Reticulum and re-seed — no central web host.
-echo ">> done. release.yml is building v${VERSION}'s artifacts."
-echo ">>   then on the always-on node, publish them to the update folders:"
-echo ">>     tool/publish_update_folder.sh ${VERSION} <artifacts-dir>"
+# From here it is automatic. release.yml attaches the artifacts to a GitHub
+# Release; the site repo's sync.yml (cron every 3h, or run it manually) hashes
+# them into https://xprs.dev/updates/{stable,beta}.json; a super-archiver with
+# the mirror on downloads each artifact once and seeds it by content address.
+echo ">> done. release.yml is building v${VERSION}."
+echo ">>   feed:   gh workflow run sync.yml -R xprs-dev/xprs-dev.github.io"
+echo ">>   verify: curl -s https://xprs.dev/updates/beta.json | jq .version"
