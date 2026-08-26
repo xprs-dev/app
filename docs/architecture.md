@@ -123,6 +123,43 @@ See [ble5.md](ble5.md) for transmission budgets and
 - Store-and-forward is a core service, `MeshCourier`, armed by the core on every
   direct send. Arrivals are returned through the ordinary LXMF inbox.
 
+### Which lane carries what — get this right first
+
+The lanes are not interchangeable, and confusing them costs days. Established
+the hard way (2026-08-26), and the answer is short:
+
+| lane | carries | limit |
+|---|---|---|
+| **BLE5 extended advertising** | **XPRS packets only**, subtype `0x58` | 250 B, one packet per advert, never fragmented |
+| **GATT + MSP** | file bytes and parked mail | ~10 kB/s, offset resume, sha-verified |
+| **Reticulum** | the internet path: LXMF, folders, DHT | not a radio lane |
+
+**BLE5 carries XPRS. Reticulum is the internet path.** Pushing a Reticulum
+resource through the advert channel does not work and cannot be made to work: a
+resource is sized to a link MTU and the advert channel carries 250-byte packets
+on a 5-second-a-minute transmit window. A whole day went into "fixing" MTU
+negotiation, advert TTLs and path-request throttles before the premise was
+questioned.
+
+**How a file moves between two stations** is specified — XPRS.md §25.2.2 — and
+it uses two of the three lanes at once:
+
+```
+->  t:command cmd:file file:<ref> [off:]   (advert channel: XPRS)
+<-  t:result  code:202
+    FILE_OFFER / ACCEPT / CHUNK / WIN_ACK / DONE / OK   (bulk lane: MSP)
+<-  t:result  code:200                     (advert channel again)
+```
+
+The XPRS packets open and close it; MSP carries the bytes; the `200` is aired
+only after the receiver has hashed what it holds. The same two packets bracket
+the transfer whatever the bearer — only the middle block changes, which is why
+the specification leaves it out.
+
+**Test for a transport question**: name the lane before writing code. If the
+answer is "bytes between two stations in radio range", it is MSP with an XPRS
+bracket, and both halves already exist — see `docs/mesh.md` §14.
+
 ---
 
 ## 5. Enforcement

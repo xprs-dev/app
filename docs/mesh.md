@@ -339,6 +339,9 @@ Reticulum wapp.
   controller dup-scan filters must be OFF, session slots must reap on
   timer-closes, notify bursts need a TX ring, and every gate needs a
   visible decision (scheduler logs + failsafe).
+  **Re-validated 2026-08-26 carrying a 56 MB app update** (see section 14):
+  throughput is 7-19 kB/s, not the 27 kB/s above; resume is solid across
+  five sessions; two protocol bugs found and fixed.
 - **M3 — behave in a crowd. [IN PROGRESS]** Done: load-adaptive beacon
   (30 s quiet → 90 s busy → 5 min presence-only saturated; powered nodes
   back off last), battery dial policy (low+discharging = no pulling for
@@ -355,3 +358,98 @@ Validation rules that apply throughout: device tests on different networks
 where reachability claims are made; never trust a single scan burst; measure
 airtime (adverts/s heard) before/after — the whole point is that the number
 stays flat as N grows.
+
+---
+
+## 14. The bulk lane carrying a large file (2026-08-26)
+
+M2 was validated on a 5 MB image. Carrying a **56,830,760-byte app update**
+between two phones, one of them with no internet at all, found things a 5 MB
+image never could. The transfer completed and verified; what follows is what it
+cost and what had to be fixed.
+
+### 14.1 A complete `.part` could never finish
+
+The worst of the two, because it looked like success on the sending side.
+
+`MeshBulkSpool.offered` answered `accept(have)` where `have` is the length of
+the partial on disk. When a previous session had already delivered every byte,
+that is `accept(size)` — and the sender reads `offset >= size` as *"peer already
+has it"* and declares custody handed over without a byte moving or a hash being
+checked (`mesh_session.dart` `_onAccept`).
+
+So a transfer interrupted at the very end left the receiver holding the whole
+file in state `rx` **forever**, while the sender recorded `done` and a handover.
+Every retry re-confirmed the lie in milliseconds. Observed across three attempts
+before the cause was found.
+
+**A receiver that already holds every byte must FINISH the transfer — verify,
+complete, land the file — and only then say it has it.** "I already have it" is
+a statement about a verified file, not about a byte count.
+
+### 14.2 A peer that asks again does not have it
+
+A `done` spool entry plus a `MeshStore` handover record together meant a repeat
+request was accepted and then never offered: the scheduler skips `done` entries
+and `nextFor` skips anything already handed over.
+
+Both are now cleared when the peer asks again. **An ask outranks our record of
+having sent it** — the peer is the authority on what the peer has.
+
+### 14.3 Serving a file that is not in the archive
+
+The spool knew two kinds of entry: an archive blob and a `.part` it was
+relaying. An artifact that simply lives on disk — the update mirror's channel
+directory — fitted neither, and the archive path caches the whole file to serve
+one window.
+
+A third kind (`src: 'file'`, an absolute path) serves with the same seek+read
+the `.part` branch already used. The file stays where its owner put it and is
+never copied. Symmetrically, `inboundClaim` lets a caller take the finished
+`.part` by rename instead of having it read into memory and stored as a sqlite
+BLOB. See `docs/performance.md` §8.9 — four places read a whole file, and all
+four were correct for a photo.
+
+### 14.4 Numbers, honestly
+
+| | |
+|---|---|
+| file | 56,830,760 B, sha-verified on arrival |
+| sessions | 5, resuming to the byte every time; nothing re-sent |
+| sustained rate | **7-19 kB/s** (not 27) |
+| wall clock | ~3 h, of which ~40 min was a dead stall (14.5) |
+| plan for | ~10 kB/s, ~1.5 h for a per-ABI APK |
+
+`MSP_SESSION_CAP` (300 s) ends a session politely and the receiver's `.part`
+length **is** the resume offset. That part of the design is sound and needed no
+change.
+
+### 14.5 Two phones can lose sight of each other for a long time
+
+Mid-transfer both phones reported `neighbors: 0` for nearly forty minutes and
+heard only the ESP32, while both scanned healthily and the sender dialled every
+tick into silence. The transfer did not advance one byte.
+
+The ESP32 **advertises continuously** (160 ms, no duty cycle); a phone transmits
+**five seconds a minute** and shares even that between frames. So a phone is
+reliably *heard*, and two phones must catch each other inside a window neither
+controls. Restarting both apps restored contact at once.
+
+That is a workaround. Two things it argues for, both open:
+
+- a pending bulk transfer is a reason to widen the transmit window, and nothing
+  currently does that;
+- dialling a peer we cannot currently hear should be *said*, not repeated
+  silently — `neighbors: 0` while dialling every tick is a diagnosable state.
+
+### 14.6 Other XPRS traffic keeps flowing — on phones
+
+A phone in a bulk session **does not go deaf**. The extended scan is never
+suspended (`docs/ble5.md` §4: pausing it was measured as 10-of-10 versus
+0-of-10 messages delivered), and during this transfer the receiver logged 199
+beacons from a third XPRS node and reached `2 of 2 peers`.
+
+The **ESP32 is different and does go deaf**: frames aired at a dongle during an
+MSP session are not received (`ble5.md` §5). Anything that must reach one has to
+be re-aired afterwards. GATT-based file transfer on the ESP32 is deliberately
+out of scope for now, so this matters only for a dongle acting as a server.

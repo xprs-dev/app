@@ -892,6 +892,13 @@ commit instead of being remembered:
 | `no-page-fetch-to-count` | `.query(…).length` / `.isEmpty` — counting by materialising rows |
 | `no-sub-minute-poll` | `Timer.periodic` under a minute — §6.5's battery setting |
 | `no-store-work-in-ui-layer` | raw SQL in `lib/ui`, `lib/launcher`, `lib/wapp/geoui` (modules named `*_db`/`*_store`/`*_archive` are exempt — they own the store) |
+| `no-whole-file-read` | `readAsBytes()` / `readAsBytesSync()` — the whole file on the heap (§8.9) |
+
+`no-whole-file-read` baselined **18** existing calls when it was added. That is
+the point of the baseline, not a failure of it: each is now a recorded decision
+rather than something nobody has looked at. Two are worth someone's time —
+`disk_folder.dart:219` serves a whole file to a whole-file fetcher, and
+`rns_service.dart:9804/9983` read a disk file straight into `putBytes`.
 
 Same contract as the architecture rules: baseline in `tool/arch_baseline.txt`
 so only NEW violations fail, `// arch-ignore: <rule-id> <reason>` for a
@@ -903,6 +910,59 @@ the commit and prints why.
 a document is a lesson someone has to have read; a lesson in the guard is one
 they cannot skip. The rules that pay are the ones matching a shape that *reads
 as free* — those are precisely the ones review does not catch.
+
+### 8.9 A file is not a photo: four places that read one whole (2026-08-26)
+
+Moving a 56 MB app update between two phones found the same shape four times in
+code that was correct for the thing it was written for — a chat attachment.
+
+| where | what it did | why it was fine before |
+|---|---|---|
+| `MeshBulkSpool.readAt` | cached the WHOLE archive entry in `_cacheBytes` to serve one window | a photo is 200 kB |
+| `MeshBulkSpool.verify` | `sha256.convert(f.readAsBytesSync())` | same |
+| `MeshBulkSpool.completeInbound` | read the finished file into memory, then wrote it into sqlite as a BLOB | same |
+| `UpdateNative.verifyFile` | `sha256.convert(await f.readAsBytes())` on the downloaded APK | it was never true; this one shipped |
+
+Four times 56 MB, on the phone with 3.8 GB of RAM, on the path whose whole
+purpose is a large file.
+
+**The rule: a size that is fine for the median case is not a design.** Ask what
+the biggest legitimate input is, and if the answer is "a file the user chose" or
+"whatever we ship", the code has to stream. All four now do — chunked at 64 KiB,
+and the receiver renames the finished `.part` into place rather than copying it
+through memory into a database.
+
+**The corollary that bit hardest**: `MediaArchive` stores content as a **sqlite
+BLOB**. That is a fine store for thumbnails and a bad one for artifacts, and
+"content-addressed store" reads like it will do for both. A large file gets a
+path and a rename; only small content gets a row.
+
+### 8.10 A log line per parcel is a log ring that only logs itself
+
+`BLEQueue` wrote one line per parcel, per receipt, per send. During the 56 MB
+transfer the transfer's own progress lines were gone from a 500-line window
+within minutes, leaving `Received parcel 1 for IE` repeated to the horizon. The
+one buffer that could explain the transfer was full of the transfer.
+
+This is §8.7's third shape again — *a ring bounded in ROWS is not bounded in
+cost* — and it is worth restating because it did not arrive as an error loop
+this time. It arrived as ordinary, reasonable, per-event logging on a path that
+became hot. **Any per-event log line is a bet that the event is rare.**
+
+The fix is the same one the `perf:` lines already use next door: count, and say
+what the counters did once a minute, and only when they did something.
+
+```
+perf: ble-queue parcels=812/40 receipts=3/12 msgs=2/1 retransmit=0 timeout=0
+```
+
+What keeps a line of its own is what somebody can act on: a message dropped
+after its retries, a peer muted, a parse failure. Per-message narration lives
+behind a flag for when you are chasing one transfer.
+
+**How to spot it before it costs an afternoon**: the §8.7 recipe — count the log
+lines before reading them. If one message is most of the window, that is the
+bug, whether or not anything is failing.
 
 ## Profiling native memory on a stock device (recipe)
 

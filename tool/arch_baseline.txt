@@ -4,8 +4,17 @@
 lib/connections/bluetooth/ble_service_io.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 2), (_) => _dartTick());
 lib/launcher/wapp_runner_page.dart :: no-sub-minute-poll :: _tickTimer = Timer.periodic(Duration(milliseconds: interval), (_) {
 lib/main.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(milliseconds: 500), (_) {
+lib/platform/platform_io.dart :: no-whole-file-read :: return await f.readAsBytes();
+lib/platform/platform_io.dart :: no-whole-file-read :: return f.readAsBytesSync();
+lib/profile/profile_edit_page.dart :: no-whole-file-read :: final bytes = await file.readAsBytes();
+lib/profile/profile_storage_io.dart :: no-whole-file-read :: return await f.readAsBytes();
+lib/profile/profile_storage_io.dart :: no-whole-file-read :: return f.readAsBytesSync();
+lib/profile/secure_file.dart :: no-whole-file-read :: final raw = f.readAsBytesSync();
 lib/profile/vanity_callsign_page.dart :: no-sub-minute-poll :: _timer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+lib/services/folders/disk_folder.dart :: no-whole-file-read :: return File(path).readAsBytesSync();
 lib/services/i2p/i2p_node.dart :: no-sub-minute-poll :: _natTimer = Timer.periodic(const Duration(seconds: 45), (t) async {
+lib/services/media_disk_cache.dart :: no-whole-file-read :: final bytes = await f.readAsBytes();
+lib/services/mesh/mesh_bulk_spool.dart :: no-whole-file-read :: final bytes = File(_partPath(hex)).readAsBytesSync();
 lib/services/mesh/mesh_courier.dart :: no-sub-minute-poll :: _pump ??= Timer.periodic(const Duration(seconds: 5), (_) => _tick());
 lib/services/mesh/mesh_service.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 300), (_) => _sendXprsLanBeacon());
 lib/services/mesh/mesh_service.dart :: no-sub-minute-poll :: _beaconTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -19,14 +28,23 @@ lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: Timer.periodic(
 lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _diskSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
 lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _linkWatchdog = Timer.periodic(const Duration(seconds: 10), (_) {
 lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _profileRetryTimer = Timer.periodic(const Duration(seconds: 90), (_) {
+lib/services/reticulum/rns_service.dart :: no-whole-file-read :: archive.putBytes(File(diskPath).readAsBytesSync(),
+lib/services/reticulum/rns_service.dart :: no-whole-file-read :: final bytes = File(diskPath).readAsBytesSync();
 lib/services/torrent_service.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 20), (t) {
+lib/services/torrent_service.dart :: no-whole-file-read :: final data = await f.readAsBytes();
+lib/services/update_native_io.dart :: no-whole-file-read :: final bytes = await File(tarGzPath).readAsBytes();
 lib/services/wifi_direct/wifi_direct_coordinator.dart :: no-sub-minute-poll :: _idleTimer = Timer.periodic(const Duration(seconds: 10), (_) {
 lib/services/xprs/xprs_archive.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 20), (_) => flush());
+lib/wapp/geoui/tile_cache_io.dart :: no-whole-file-read :: final bytes = await file.readAsBytes();
 lib/wapp/geoui/widgets/media_view.dart :: no-sub-minute-poll :: _poll = Timer.periodic(const Duration(seconds: 1), (t) {
 lib/wapp/geoui/widgets/people_view_field.dart :: no-sub-minute-poll :: _poll = Timer.periodic(const Duration(seconds: 1), (t) {
 lib/wapp/native/hw_video_player.dart :: no-sub-minute-poll :: _posPoll ??= Timer.periodic(const Duration(milliseconds: 250), (_) async {
 lib/wapp/native/wasm_video_player.dart :: no-sub-minute-poll :: _ticker = Timer.periodic(const Duration(milliseconds: 16), (_) {
 lib/wapp/native/wasm_video_session.dart :: no-sub-minute-poll :: _pump = Timer.periodic(const Duration(milliseconds: 8), (_) => _drain());
+lib/wapp/wapp_engine.dart :: no-whole-file-read :: : File(path).readAsBytesSync();
+lib/wapp/wapp_engine.dart :: no-whole-file-read :: f.readAsBytesSync(),
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(milliseconds: 400), (t) {
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(milliseconds: 600), (t) {
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: _tickTimer = Timer.periodic(Duration(milliseconds: interval), (_) {
+lib/wapp/wapp_page.dart :: no-whole-file-read :: final bytes = await f.readAsBytes();
+lib/wapp/wapp_page.dart :: no-whole-file-read :: final bytes = await file.readAsBytes();

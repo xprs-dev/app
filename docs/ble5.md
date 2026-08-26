@@ -434,3 +434,27 @@ Restarting both apps restored contact immediately and the transfer finished at
   and nothing currently does that;
 - `neighbors: 0` while a dial is being attempted every tick is a state the
   scheduler could notice and say out loud, instead of dialling into silence.
+
+### 9.7 Does a bulk transfer make the phone deaf to everyone else? No
+
+Asked during the 56 MB run, and answerable from that run's own logs: the
+receiver logged **199 beacons from a third XPRS node** while the transfer was in
+flight, and reached `2 of 2 peers`.
+
+It holds because bulk rides a **GATT connection**, which the controller services
+on its own connection events, while advertising and scanning continue on the
+advertising channels. Different radio time, not the same. And §4's rule is
+absolute for a reason: the scan is never suspended, because pausing it during a
+GATT link measured as 10-of-10 versus 0-of-10 messages delivered.
+
+What a transfer *does* cost the advert channel is share: the transmit window is
+still five seconds a minute, and a phone busy with bulk has more frames
+competing for it. Third-party traffic keeps flowing; a single-shot ask into that
+window is likelier to be missed. That is why `cmd:file` re-airs (9.3) rather
+than trusting one transmission.
+
+**The ESP32 is the exception and it is a hard one**: a dongle in an MSP session
+does not scan (§5), so frames aired at it during a transfer are simply lost.
+GATT-based file transfer on the ESP32 is deliberately out of scope for now, so
+this bites only a dongle acting as an MSP server for something else.
+

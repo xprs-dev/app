@@ -152,3 +152,36 @@ message | X3ARK  ->  -    | rns | t:message f:X3ARK … m:Hello world!
 
 Two devices, two networks, no configuration. Until that line exists, the
 feature is not working — it is only expected to work.
+
+### MTU discovery that floors itself back up is not discovery
+
+`RnsLink._negotiatedMtu` ended with `m < kRnsMtu ? kRnsMtu : m` — an
+unconditional floor at the 500-byte protocol MTU. On any medium narrower than
+that it threw the answer away: both ends offered their real figure and the
+negotiation raised the link straight back to 500.
+
+`RnsBleInterface.hardwareMtu` exists precisely so a narrow medium can tell the
+truth, and its own comment says why — *"a medium that promises 500 while its
+controller allows ~296 makes the stack build packets the radio then refuses"*.
+The floor made that report unreachable, so every resource part was built at 500,
+exceeded the broadcast cap, and was **dropped by the interface before reaching
+the radio** — which is why the controller reported zero advertisement refusals
+while a transfer sat at `parts=0/142` forever.
+
+Two rules out of it:
+
+- **A floor that can exceed a hardware ceiling is a bug.** Clamp down to the
+  medium; only clamp up to something you have measured you can carry.
+- The initiator must also clamp its *confirm* by its own first hop. It clamped
+  only by `kRnsLinkMtuMax`, so a responder's echo could put the link back above
+  what the local radio can transmit.
+
+The BLE interface now reports **250** — XPRS.md §4's packet ceiling, the same on
+every device, rather than a per-controller figure that differs between phones
+and is therefore not interoperable.
+
+**A caveat on where this mattered.** Fixing it did not make BLE file transfer
+work, because file bytes do not travel over Reticulum on that radio at all —
+see `docs/architecture.md` §4. It is a real bug on any narrow Reticulum medium
+and was worth fixing on its own; it was not the thing standing in the way.
+

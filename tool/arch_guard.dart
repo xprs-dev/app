@@ -127,6 +127,26 @@ const rules = <Rule>[
     message: 'Ask the database for the number, not for the rows.',
   ),
   Rule(
+    id: 'no-whole-file-read',
+    why: 'readAsBytes() puts the ENTIRE file on the heap. Correct for a '
+        'thumbnail, wrong for anything a user picked or anything we ship: an '
+        'app update is 47-61 MB and the station serving it usually has the '
+        'least RAM. This exact call was found in four places on the file-'
+        'transfer path -- serving a window, verifying a digest, completing an '
+        'inbound transfer, and checking a downloaded APK -- each correct for '
+        'the photo it was written for. Stream it: openSync + readSync in 64 '
+        'KiB chunks, or rename the file instead of copying it through memory '
+        '(docs/performance.md 8.9).',
+    appliesTo: ['lib/**'],
+    // The size that is fine for the median case is not a design. If the biggest
+    // legitimate input is "a file somebody chose", it has to stream.
+    exempt: [
+      'lib/platform/io_stub.dart',
+    ],
+    pattern: r'\.readAsBytes(Sync)?\(\s*\)',
+    message: 'Stream it in chunks, or move the file instead of reading it.',
+  ),
+  Rule(
     id: 'no-sub-minute-poll',
     why: 'A poll interval is a battery setting, not a freshness setting: the '
         'phone spends its life with the screen off and nobody reading. A '
