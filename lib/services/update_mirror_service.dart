@@ -78,6 +78,14 @@ class UpdateMirrorService extends BackgroundService {
   String? lastError;
   final Map<String, int> _inFlight = {}; // artifact name -> percent
 
+  // Folder creation needs the Reticulum folder manager, which comes up later
+  // than main(). Bounded short retries so a boot-order race costs minutes
+  // rather than the six hours until the next tick.
+  static const Duration _folderRetryDelay = Duration(minutes: 2);
+  static const int _maxFolderRetries = 10;
+  Timer? _folderRetry;
+  int _folderRetries = 0;
+
   /// Per-channel summary, refreshed on tick from the one directory pass the
   /// prune already does. Cached so a curious `curl` in a loop is not a
   /// directory walk in a loop.
@@ -168,9 +176,38 @@ class UpdateMirrorService extends BackgroundService {
   }
 
   @override
+  Future<void> onStop() async {
+    _folderRetry?.cancel();
+    _folderRetry = null;
+  }
+
+  @override
   Future<void> onTick() async {
     if (!enabled) return;
     lastPollMs = DateTime.now().millisecondsSinceEpoch;
+    // Folders may not have been creatable at start: the folder manager comes up
+    // with Reticulum, which is later than main(). Retry here rather than let a
+    // boot-order race cost six hours.
+    if (stableFolderId == null ||
+        betaFolderId == null ||
+        stableDir == null ||
+        betaDir == null) {
+      await _ensureFolders(await SharedPreferences.getInstance());
+      if (stableFolderId == null || betaFolderId == null) {
+        // Still not up. Come back in a couple of minutes rather than at the
+        // next six-hour tick — but only while this is actually the problem, so
+        // a station with no Reticulum at all is not retrying forever.
+        if (_folderRetries < _maxFolderRetries) {
+          _folderRetries++;
+          _folderRetry?.cancel();
+          _folderRetry = Timer(_folderRetryDelay, () {
+            if (isRunning) unawaited(tickNow());
+          });
+        }
+        return;
+      }
+      _folderRetries = 0;
+    }
     try {
       await _mirrorChannel('stable.json',
           dir: stableDir, folderId: stableFolderId, prereleaseOk: false);
