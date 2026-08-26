@@ -46,7 +46,7 @@ read the feed can take whichever lane it can reach:
 
 | lane | when | cost |
 |---|---|---|
-| **XPRS + the bulk lane** | a station is in Bluetooth range | ~10 kB/s measured phone-to-phone, resumes across sessions |
+| **XPRS + the bulk lane** | a station is in Bluetooth range | ~10 kB/s measured phone-to-phone: a 56 MB APK took five resumed sessions. Resumes to the byte |
 | **Reticulum** | the device has a Reticulum path | fast; the internet overlay |
 | **HTTPS** | neither, and the device has internet | the URL in the feed; only the mirror normally uses it |
 

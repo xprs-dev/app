@@ -389,9 +389,48 @@ Two defects follow, both still open:
 
 ### 9.5 What an app update over Bluetooth actually costs
 
-~27 kB/s, so a 56 MB per-ABI APK is roughly 35 minutes, spread over several MSP
-sessions: the protocol ends a session politely at `MSP_SESSION_CAP` (300 s) and
-the receiver's `.part` length **is** the resume offset, so the next session
-carries on where the last stopped. That is the design working, not a failure —
-but it is the number to quote, and it is why `size:` exists on a `t:file`
-(§6.7.1): a station declines before starting something it cannot finish.
+**Measured, 2026-08-26: the whole 56,830,760-byte arm64 APK, C61 to TANK2, with
+TANK2 offline the entire time.**
+
+```
+Mesh: MSP< accept xprs-1.2.0-beta.3-android-arm64-v8a.apk from X3ARK at 0/56830760
+Mesh: MSP< accept ... at 5212068/56830760      (session 2, resumed)
+Mesh: MSP< accept ... at 28924836/56830760     (session 3)
+Mesh: MSP< accept ... at 49790040/56830760     (session 4)
+MeshBulk: received xprs-1.2.0-beta.3-android-arm64-v8a.apk -> .../files/updates/…
+```
+
+Five resumed sessions, ~3 hours wall clock. The rate is **not** the 27 kB/s this
+document used to quote from the July run: sustained throughput measured between
+**7 and 19 kB/s**, and about 40 minutes of that wall clock was a dead stall (9.6
+below). Quote 10 kB/s and an hour and a half for a per-ABI APK, and treat
+anything better as luck.
+
+The resume is the part that matters and it worked every time: `MSP_SESSION_CAP`
+ends a session politely at 300 s, the receiver's `.part` length **is** the resume
+offset, and the next session carries on to the byte. Nothing was re-sent.
+
+`size:` on a `t:file` (§6.7.1) exists for exactly this: at 10 kB/s a station
+should decline before starting something it cannot finish.
+
+### 9.6 Two phones lose sight of each other; a continuously-advertising node does not
+
+Mid-transfer both phones reported `neighbors: 0` and heard only the ESP32
+(`X3GSLC`), for nearly forty minutes, while both were scanning healthily
+(`scanResults` climbing, `advOnAir: true`) and C61 was dialling TANK2 every tick
+with bulk to move. The transfer sat at 87.61% and did not advance by one byte.
+
+The asymmetry is the clue. **The ESP32 advertises continuously** — one kept
+advertising set at a 160 ms interval, no duty cycle at all (`xprsble.c`). **A
+phone transmits five seconds a minute** and shares even that window between
+every registered frame at `ROTATE_MS`. So a phone is reliably heard by anything
+listening, but two phones have to catch each other inside a narrow window that
+neither controls, and they can miss each other for a very long time.
+
+Restarting both apps restored contact immediately and the transfer finished at
+~19 kB/s. That is a workaround, not a fix. What it points at:
+
+- a bulk transfer with work pending is a reason to widen the transmit window,
+  and nothing currently does that;
+- `neighbors: 0` while a dial is being attempted every tick is a state the
+  scheduler could notice and say out loud, instead of dialling into silence.
