@@ -227,6 +227,19 @@ class UpdateMirrorService extends BackgroundService {
         lastError = 'cannot create $ch dir: $e';
         continue;
       }
+      // The DIRECTORY is what serving a file needs, and it is ours the moment
+      // it exists. Set it before the Reticulum folder, which is a different
+      // lane and may fail or lag: answering `cmd:file` with a 404 for an
+      // artifact sitting right there, because a folder id had not come back
+      // yet, is exactly what happened on the bench (notHeld 2 with the file on
+      // disk and its digest in the manifest).
+      if (ch == 'stable') {
+        stableDir = dir.path;
+      } else {
+        betaDir = dir.path;
+      }
+      _loadDigests(dir.path);
+
       final id = await RnsService.instance.folderAddFromDisk(dir.path);
       if (id == null) {
         lastError = 'folderAddFromDisk failed for $ch';
@@ -234,11 +247,9 @@ class UpdateMirrorService extends BackgroundService {
       }
       if (ch == 'stable') {
         stableFolderId = id;
-        stableDir = dir.path;
         await p.setString(_kStableFolder, id);
       } else {
         betaFolderId = id;
-        betaDir = dir.path;
         await p.setString(_kBetaFolder, id);
       }
       LogService.instance.add('update-mirror: $ch folder $id at ${dir.path}');
@@ -287,10 +298,7 @@ class UpdateMirrorService extends BackgroundService {
     // Folders may not have been creatable at start: the folder manager comes up
     // with Reticulum, which is later than main(). Retry here rather than let a
     // boot-order race cost six hours.
-    if (stableFolderId == null ||
-        betaFolderId == null ||
-        stableDir == null ||
-        betaDir == null) {
+    if (stableFolderId == null || betaFolderId == null) {
       await _ensureFolders(await SharedPreferences.getInstance());
       if (stableFolderId == null || betaFolderId == null) {
         // Still not up. Come back in a couple of minutes rather than at the

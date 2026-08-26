@@ -297,9 +297,22 @@ class MeshBulkSpool {
                     'state': e.value['state'],
                     'target': e.value['target'],
                     'origin': e.value['origin'],
+                    // For an inbound transfer the .part length IS the resume
+                    // offset, so it is also the only honest progress figure.
+                    'have': _haveBytes(e.key),
                   }
               ],
       };
+
+  /// Bytes of an inbound transfer already on disk (its resume offset).
+  int _haveBytes(String hex) {
+    try {
+      final f = File(_partPath(hex));
+      return f.existsSync() ? f.lengthSync() : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
 
   /// Files we still owe delivery for (beacon pending trailer).
   int pendingCount() =>
