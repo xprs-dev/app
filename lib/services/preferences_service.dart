@@ -329,6 +329,15 @@ class PreferencesService {
   bool get xprsSuperArchiver => _prefs.getBool('xprs.superArchiver') ?? false;
   set xprsSuperArchiver(bool v) => _prefs.setBool('xprs.superArchiver', v);
 
+  /// Mirror app releases over Reticulum for the phones around this station.
+  ///
+  /// A station that says yes downloads each release artifact once over HTTPS,
+  /// verifies it and seeds it by content address, so the phones near it update
+  /// without reaching the internet for a 60 MB binary. Off by default: an
+  /// ordinary phone must never spend a byte on this.
+  bool get updateMirrorEnabled => _prefs.getBool('update.mirror') ?? false;
+  set updateMirrorEnabled(bool v) => _prefs.setBool('update.mirror', v);
+
   /// Callsigns of super-archivers this station may lean on (36.9.4): asked
   /// on a gossip miss, and used as the custody deposit hop when no gateway
   /// resolves. Reached over the directed LXMF lane -- the one the public

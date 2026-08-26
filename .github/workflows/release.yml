@@ -73,13 +73,18 @@ jobs:
       # hosts only the splits; the app downloads the one matching its ABI.
       - run: flutter build apk --release
       - run: flutter build apk --release --split-per-abi
+      # Artifact names carry the VERSION. versionFromAssetName() parses
+      # xprs-<version>-<platform>, so a versionless name like
+      # xprs-android-arm64-v8a.apk reads its version as "android-arm64-v8a"
+      # and the Reticulum folder path offers a release that does not exist.
       - run: |
           mkdir -p dist
           apk=build/app/outputs/flutter-apk
-          cp "$apk/app-release.apk" dist/xprs.apk
-          cp "$apk/app-arm64-v8a-release.apk"   dist/xprs-android-arm64-v8a.apk
-          cp "$apk/app-armeabi-v7a-release.apk" dist/xprs-android-armeabi-v7a.apk
-          cp "$apk/app-x86_64-release.apk"      dist/xprs-android-x86_64.apk
+          VER=$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d+ -f1)
+          cp "$apk/app-release.apk" "dist/xprs-$VER.apk"
+          cp "$apk/app-arm64-v8a-release.apk"   "dist/xprs-$VER-android-arm64-v8a.apk"
+          cp "$apk/app-armeabi-v7a-release.apk" "dist/xprs-$VER-android-armeabi-v7a.apk"
+          cp "$apk/app-x86_64-release.apk"      "dist/xprs-$VER-android-x86_64.apk"
           ls -lh dist
       - uses: actions/upload-artifact@v4
         with:
@@ -121,13 +126,14 @@ jobs:
       - name: Package portable bundle
         run: |
           mkdir -p dist
+          VER=$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d+ -f1)
           tar -C build/linux/x64/release/bundle \
             --sort=name --owner=0 --group=0 --mtime='1970-01-01' \
-            -czf dist/xprs-linux-x64.tar.gz .
+            -czf "dist/xprs-$VER-linux-x64.tar.gz" .
       - uses: actions/upload-artifact@v4
         with:
           name: xprs-linux
-          path: dist/xprs-linux-x64.tar.gz
+          path: dist/*.tar.gz
 
   windows:
     runs-on: windows-latest
@@ -194,7 +200,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: xprs-windows
-          path: build/installer/xprs-windows-x64-setup.exe
+          path: build/installer/*-setup.exe
 
   publish:
     # Wait for all three so the Windows installer is attached when its build is
@@ -214,11 +220,11 @@ jobs:
         run: |
           mkdir -p dist
           cp artifacts/xprs-android/*.apk dist/
-          cp artifacts/xprs-linux/xprs-linux-x64.tar.gz dist/
+          cp artifacts/xprs-linux/*.tar.gz dist/
           # Windows is optional (see the publish job's needs) — attach it only if
           # its job produced the installer this run.
-          if [ -f artifacts/xprs-windows/xprs-windows-x64-setup.exe ]; then
-            cp artifacts/xprs-windows/xprs-windows-x64-setup.exe dist/
+          if compgen -G 'artifacts/xprs-windows/*-setup.exe' > /dev/null; then
+            cp artifacts/xprs-windows/*-setup.exe dist/
           else
             echo "::warning::Windows installer not built this run — publishing Android + Linux only."
           fi

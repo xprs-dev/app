@@ -15,7 +15,45 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'background_service.dart';
 import 'update_models.dart';
+
+/// sha256 of the file at [path], read in 64 KiB chunks.
+///
+/// Top-level so it can be the body of an `Isolate.run`. Bounded memory whatever
+/// the file size: an update artifact is 47-61 MB and must never be materialised
+/// as one `Uint8List` (docs/performance.md 8.7 — a page fetched to be counted,
+/// and its general form: if the answer is a digest, do not hold the input).
+Future<String> sha256OfFile(String path) async {
+  final catcher = _DigestSink();
+  final input = crypto.sha256.startChunkedConversion(catcher);
+  final raf = await File(path).open();
+  try {
+    const chunkSize = 1 << 16; // 64 KiB
+    while (true) {
+      final chunk = await raf.read(chunkSize);
+      if (chunk.isEmpty) break;
+      input.add(chunk);
+    }
+  } finally {
+    await raf.close();
+  }
+  input.close();
+  final b = catcher.value!.bytes;
+  final sb = StringBuffer();
+  for (final x in b) {
+    sb.write(x.toRadixString(16).padLeft(2, '0'));
+  }
+  return sb.toString();
+}
+
+class _DigestSink implements Sink<crypto.Digest> {
+  crypto.Digest? value;
+  @override
+  void add(crypto.Digest data) => value = data;
+  @override
+  void close() {}
+}
 
 class UpdateNative {
   static const _channel = MethodChannel('com.xprs.app/updates');
@@ -30,6 +68,22 @@ class UpdateNative {
       return dir.path;
     } catch (e) {
       debugPrint('UpdateNative.supportDir failed: $e');
+      return null;
+    }
+  }
+
+  /// The app's external files dir on Android (where DownloadManager is told to
+  /// put artifacts). The mirror stages into a sibling of it so that moving a
+  /// finished download into a folder is a rename on the same volume rather than
+  /// a 61 MB copy. Null off Android, or when the bridge is unavailable.
+  static Future<String?> externalFilesDir() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final dirs = await getExternalStorageDirectories();
+      if (dirs == null || dirs.isEmpty) return null;
+      return dirs.first.path;
+    } catch (e) {
+      debugPrint('UpdateNative.externalFilesDir failed: $e');
       return null;
     }
   }
@@ -275,8 +329,13 @@ nohup "\$APPDIR/xprs" >/dev/null 2>&1 &
         return false;
       }
       if (expectedSha.isNotEmpty) {
-        final got =
-            crypto.sha256.convert(await f.readAsBytes()).toString();
+        // On a worker isolate, chunked: this used to be
+        // `sha256.convert(await f.readAsBytes())`, which put the whole 61 MB
+        // APK on the calling isolate — the shape docs/performance.md 8.7 is
+        // about, on the phone least able to absorb it.
+        final got = await BackgroundService.runOffThread(
+          () async => sha256OfFile(path),
+        );
         if (got.toLowerCase() != expectedSha.toLowerCase()) {
           debugPrint('UpdateNative.verifyFile sha $got != $expectedSha');
           return false;

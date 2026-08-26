@@ -2,7 +2,7 @@
 // Run `dart run tool/update_version.dart` (release.sh / CI do this) to refresh.
 //
 // kAppVersion is the semantic version shown in the Update Center and compared
-// against GitHub releases; kBuildNumber is the +N build (Android versionCode).
+// against the update feed; kBuildNumber is the +N build (Android versionCode).
 
 const String kAppVersion = '1.1.1';
 const int kBuildNumber = 95;

@@ -1,42 +1,39 @@
 // =============================================================================
-// publish_release.dart — publish a built Aurora release to the xprs.dev
-// update feed (the xprs-dev/xprs-dev.github.io GitHub Pages repo).
+// publish_release.dart — write the xprs.dev update feed for a built release.
 //
-// The in-app updater (lib/services/update_service.dart) reads a self-hosted
-// feed at https://xprs.dev/updates with two channel files:
-//   updates/stable.json   — latest stable release
-//   updates/beta.json     — latest release incl. pre-releases
-// and per-version binaries under updates/v<version>/. This script copies the
-// given artifacts into updates/v<version>/ and (re)writes the channel JSON so
-// the app can find them — no github.com runtime dependency.
+// The feed ANNOUNCES; it does not host. Two small channel documents:
+//   updates/stable.json   — newest stable release
+//   updates/beta.json     — newest release including pre-releases
+// each naming the version, the notes, and for every artifact its absolute
+// download URL, size and sha256. No binaries are copied anywhere, so the site
+// repo stays a few KB however many releases ship.
+//
+// The sha256 is the load-bearing field. It is the content address an XPRS
+// phone fetches the artifact by over Reticulum from a super-archiver that has
+// already mirrored it — which is how an ordinary phone updates without ever
+// making an HTTPS request for the binary. The URL is there for the mirror, and
+// as the fallback for a device with no Reticulum path.
 //
 // Usage:
 //   dart run tool/publish_release.dart \
 //       --site <path-to-website-repo> \
 //       --version <X.Y.Z[-beta.N]> \
+//       --base-url <https://host/path/to/v1.2.3> \
 //       [--notes <notes-file>] [--name "<title>"] [--date <ISO8601>] \
-//       [--keep <N>] \
 //       <artifact> [<artifact> ...]
 //
 // Channel is derived from the version: a pre-release (contains '-') publishes
 // to beta.json only; a stable version publishes to BOTH stable.json and
 // beta.json (so the beta channel always tracks the newest build).
 //
-// `--site` defaults to ../website relative to the repo root (the
-// local checkout of xprs-dev/xprs-dev.github.io in this workspace).
-//
-// `--keep <N>` (default 5) prunes old updates/v<version>/ dirs to bound the
-// size of the Pages repo: it keeps the N newest versions (by semver) PLUS
-// whatever stable.json and beta.json currently point at, and deletes the rest.
-// (We prune instead of Git LFS because GitHub Pages does not serve LFS-tracked
-// files over the Pages URL — they would 404.)
-//
-// Asset URLs are written relative to the updates/ dir ("v<version>/<file>") so
-// the feed works regardless of the host it is served from.
+// `--site` defaults to ../website relative to the repo root (the local
+// checkout of the GitHub Pages repo serving xprs.dev).
 // =============================================================================
 
 import 'dart:convert';
 import 'dart:io';
+
+import 'package:crypto/crypto.dart' as crypto;
 
 void main(List<String> argv) {
   String? site;
@@ -44,7 +41,7 @@ void main(List<String> argv) {
   String? notesFile;
   String? name;
   String? date;
-  var keep = 5;
+  String? baseUrl;
   final artifacts = <String>[];
 
   for (var i = 0; i < argv.length; i++) {
@@ -60,8 +57,8 @@ void main(List<String> argv) {
         name = argv[++i];
       case '--date':
         date = argv[++i];
-      case '--keep':
-        keep = int.tryParse(argv[++i]) ?? keep;
+      case '--base-url':
+        baseUrl = argv[++i];
       default:
         artifacts.add(a);
     }
@@ -76,12 +73,20 @@ void main(List<String> argv) {
     exit(2);
   }
 
+  if (baseUrl == null || baseUrl.isEmpty) {
+    stderr.writeln('error: --base-url <https://.../v1.2.3> is required — the '
+        'feed announces where the binaries are, it does not host them');
+    exit(2);
+  }
+  final root = baseUrl.endsWith('/')
+      ? baseUrl.substring(0, baseUrl.length - 1)
+      : baseUrl;
+
   // Default site path: ../website relative to this repo's root.
   final repoRoot = Directory.current.path;
   site ??= '$repoRoot/../website';
   final updatesDir = Directory('$site/updates');
-  final versionDir = Directory('${updatesDir.path}/v$version');
-  versionDir.createSync(recursive: true);
+  updatesDir.createSync(recursive: true);
 
   final v = version; // promoted non-null
   final isPre = v.contains('-');
@@ -93,14 +98,17 @@ void main(List<String> argv) {
       exit(1);
     }
     final base = path.split('/').last;
-    final dest = File('${versionDir.path}/$base');
-    f.copySync(dest.path);
+    // sha256 is load-bearing, not a nicety: it is the address the artifact is
+    // fetched by over Reticulum, and the only thing a mirror can verify an
+    // HTTPS download against. Streamed, so publishing never holds an APK.
+    final sha = _sha256OfFile(f);
     assets.add({
       'name': base,
-      'url': 'v$v/$base', // relative to updates/
-      'size': dest.lengthSync(),
+      'url': '$root/$base', // absolute — the feed hosts nothing
+      'size': f.lengthSync(),
+      'sha256': sha,
     });
-    stdout.writeln('copied $base (${dest.lengthSync()} bytes)');
+    stdout.writeln('${base.padRight(40)} ${f.lengthSync()} bytes  $sha');
   }
 
   String? notes;
@@ -111,7 +119,7 @@ void main(List<String> argv) {
   final feed = <String, dynamic>{
     'version': v,
     'tagName': 'v$v',
-    'name': name ?? 'XPRS Aurora $v',
+    'name': name ?? 'XPRS $v',
     'body': notes ?? '',
     'publishedAt': date ?? DateTime.now().toUtc().toIso8601String(),
     'prerelease': isPre,
@@ -127,68 +135,38 @@ void main(List<String> argv) {
     stdout.writeln('wrote ${out.path}');
   }
 
-  if (keep > 0) _prune(updatesDir, keep);
-
   stdout.writeln('done. Published v$v to ${updatesDir.path} '
       '(${isPre ? 'beta' : 'stable + beta'}).');
 }
 
-/// Keep the [keep] newest `updates/v<version>/` dirs (by semver) plus whatever
-/// stable.json and beta.json currently reference; delete the rest.
-void _prune(Directory updatesDir, int keep) {
-  // Versions referenced by the channel files must never be pruned.
-  final protected = <String>{};
-  for (final ch in ['stable.json', 'beta.json']) {
-    final f = File('${updatesDir.path}/$ch');
-    if (!f.existsSync()) continue;
-    try {
-      final v = (jsonDecode(f.readAsStringSync()) as Map)['version'] as String?;
-      if (v != null && v.isNotEmpty) protected.add(v);
-    } catch (_) {}
-  }
 
-  final versionDirs = updatesDir
-      .listSync()
-      .whereType<Directory>()
-      .map((d) => d.path.split(Platform.pathSeparator).last)
-      .where((n) => n.startsWith('v'))
-      .map((n) => n.substring(1))
-      .toList()
-    ..sort(_compareSemver);
-  // Newest first.
-  final ordered = versionDirs.reversed.toList();
-  final kept = <String>{...protected};
-  for (final v in ordered) {
-    if (kept.length >= keep && !protected.contains(v)) break;
-    kept.add(v);
-  }
-  // Anything not in `kept` gets removed.
-  for (final v in ordered) {
-    if (kept.contains(v)) continue;
-    final dir = Directory('${updatesDir.path}/v$v');
-    if (dir.existsSync()) {
-      dir.deleteSync(recursive: true);
-      stdout.writeln('pruned old version v$v');
+
+/// sha256 of [f], read in 64 KiB chunks — an artifact is 47-61 MB and is never
+/// held whole.
+String _sha256OfFile(File f) {
+  final sink = _DigestSink();
+  final input = crypto.sha256.startChunkedConversion(sink);
+  final raf = f.openSync();
+  try {
+    const chunkSize = 1 << 16;
+    while (true) {
+      final chunk = raf.readSync(chunkSize);
+      if (chunk.isEmpty) break;
+      input.add(chunk);
     }
+  } finally {
+    raf.closeSync();
   }
+  input.close();
+  return sink.value!.bytes
+      .map((b) => b.toRadixString(16).padLeft(2, '0'))
+      .join();
 }
 
-/// Ascending semver compare (pre-releases rank below their release).
-int _compareSemver(String a, String b) {
-  a = a.split('+').first;
-  b = b.split('+').first;
-  final ap = a.split('-'), bp = b.split('-');
-  List<int> core(String s) =>
-      s.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-  final ac = core(ap.first), bc = core(bp.first);
-  for (var i = 0; i < 3; i++) {
-    final x = i < ac.length ? ac[i] : 0;
-    final y = i < bc.length ? bc[i] : 0;
-    if (x != y) return x < y ? -1 : 1;
-  }
-  final aPre = ap.length > 1, bPre = bp.length > 1;
-  if (aPre && !bPre) return -1;
-  if (!aPre && bPre) return 1;
-  if (!aPre && !bPre) return 0;
-  return ap.sublist(1).join('-').compareTo(bp.sublist(1).join('-'));
+class _DigestSink implements Sink<crypto.Digest> {
+  crypto.Digest? value;
+  @override
+  void add(crypto.Digest data) => value = data;
+  @override
+  void close() {}
 }

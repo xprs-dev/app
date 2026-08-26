@@ -1,264 +1,241 @@
 # Releases & distribution
 
-How XPRS Aurora ships updates and how the wapp store gets its catalog.
+How XPRS ships updates, and how the wapp store gets its catalog.
 
-The guiding constraint: **the running app must never depend on github.com**
-(app-store policy). Everything the app fetches at runtime comes from
-**https://xprs.dev**. GitHub is used only as the build/CI backend — end
-users only ever talk to xprs.dev.
+The guiding constraint: **the running app never depends on github.com.** There
+is not one github.com string in `lib/`. What the app knows is a feed on
+**https://xprs.dev** and, for the bytes, a sha256.
 
 ---
 
-## 1. The big picture
+## 1. The shape: the web announces, Reticulum carries
 
 ```
-  xprs-dev/xprs-flutter (source + CI)            xprs-dev/wapps (wapp sources + binaries)
-        │                                          │
-        │ release.yml on tag vX.Y.Z                │ build-archive.sh commits binaries/
-        │  • build android/linux/windows           │
-        │  • attach binaries as GitHub             │
-        │    RELEASE ASSETS (not committed —        │
-        │    keeps the source repo lean)           │
+  xprs-dev/xprs-flutter                      xprs-dev/wapps
+        │  release.yml on tag vX.Y.Z               │ build-archive.sh commits binaries/
+        │   build android/linux/windows            │
+        │   attach as GitHub RELEASE ASSETS        │
         ▼                                          ▼
-  xprs-dev/xprs-flutter Releases (assets)      xprs-dev/wapps/binaries/
+  Release assets (never committed to git)      wapps/binaries/
         │                                          │
         └──────────────┬───────────────────────────┘
-                       │  xprs-dev/xprs-dev.github.io  ·  sync.yml (cron + manual)
-                       │   • download aurora release assets -> build feed JSON
-                       │   • copy wapps binaries/ -> wapps/
-                       ▼   (commits to itself with the default GITHUB_TOKEN)
-              xprs-dev/xprs-dev.github.io  ──GitHub Pages──►  https://xprs.dev
-                       │                                   /updates  (app updates)
-                       │                                   /wapps    (wapp store)
+                       │ xprs-dev.github.io · sync.yml (cron 3h + manual)
+                       │  • read the release, hash each artifact
+                       │  • write updates/{stable,beta}.json  ← JSON ONLY
                        ▼
-                  the app reads ONLY xprs.dev
+              https://xprs.dev/updates/stable.json      (a ~1 KB document)
+                       │
+        ┌──────────────┴───────────────────────────────┐
+        │                                              │
+   a super-archiver reads it,               every other phone reads it,
+   downloads each artifact ONCE             then fetches the bytes BY SHA256
+   over HTTPS, verifies the sha,            over Reticulum from that station
+   and seeds it by content address          and never makes an HTTPS request
+                                            for a binary at all
 ```
 
-The app binaries live in **two** places only: as GitHub Release *assets* on
-aurora (the build output / transfer mechanism) and as the served files in the
-xprs-html Pages repo (the CDN). They are **never committed to the aurora
-source repo**, which stays lean.
+**No binaries are ever committed to the website repo.** It holds three static
+files and two JSON documents, and that is all it will ever hold — Pages is not
+asked to serve a 60 MB APK, and its git history does not grow by 230 MB a
+release.
 
-Three repos, one website:
+### Why the sha256 is the important field
 
-| Repo | Role |
-|------|------|
-| `xprs-dev/xprs-flutter` | The Flutter app + release CI. On a tag it builds the 3 platforms and commits the **update feed** into its own `updates/`. |
-| `xprs-dev/wapps` | Wapp C sources + built `.wapp` packages in `binaries/` (with `index.json`). |
-| `xprs-dev/xprs-dev.github.io` | The xprs.dev website (GitHub Pages, `CNAME = xprs.dev`). Its `sync.yml` **copies** the published files from the other two repos into itself. |
+`folderFetchBytes` ignores the folder id it is given and calls
+`fetchContentAddressed(sha)`. A station that mirrors a release publishes a DHT
+provider record **keyed on each artifact's sha256** — the very value the feed
+already handed every phone. So the feed does not need to name a folder, an
+npub, or a station: publishing the hash *is* publishing the location.
 
-**No deploy keys / secrets anywhere.** Each workflow uses only the automatic
-`GITHUB_TOKEN`: write to its own repo, read from public repos.
-
----
-
-## 2. What the app reads at runtime
-
-### App updates — `https://xprs.dev/updates`
-`lib/services/update_service.dart` (`UpdateService`):
-- Stable channel → `<feed>/stable.json`
-- Beta channel → `<feed>/beta.json`
-- `_feedUrl` defaults to `https://xprs.dev/updates`, persisted as the
-  `update.feedUrl` preference, **editable at runtime** in Settings → Updates
-  ("Release source" card → `_editFeedUrl`). Blank resets to default.
-- A `404` on a channel = "no release on that channel", not an error.
-- Parsing: `ReleaseInfo.fromFeed(json, baseUrl)` in `lib/services/update_models.dart`.
-  Relative asset URLs are resolved against the directory the channel file was
-  fetched from.
-- Per-platform asset selection: `assetFor()` (android `.apk` non-debug,
-  linux `*linux-x64.tar.gz`, windows `*setup.exe`).
-- Apply: `lib/services/update_native_io.dart` (Android installer / Windows
-  silent setup / Linux tar swap). Web is a no-op.
-
-### Wapp store — `https://xprs.dev/wapps`
-The store is the `install` wapp (`wapps/install/main.c`):
-- `DEFAULT_SOURCE = "https://xprs.dev/wapps"`. The store appends
-  `/index.json` to fetch the catalog and downloads `<base>/<file>` per entry.
-- The catalog fetch uses the real `hal_http_*` HAL (implemented in
-  `lib/wapp/wapp_engine.dart`, backed by `HttpTransport`); the `.wapp` download
-  goes through the host `wapp.install` message → `installFromUrl`
-  (`lib/wapp/wapp_page.dart`).
-- First-run source seed priority (`wapp_page.dart`):
-  1. host pref `PreferencesService.wappStoreSource` (if set),
-  2. in-repo `wapps/binaries/` (dev checkout only),
-  3. the wasm's built-in `DEFAULT_SOURCE` (xprs.dev).
-- Users can change the source live in the store's own Settings tab (KV `source`).
+The download URL in the feed is used by exactly two parties: the mirror, once
+per artifact, and any device that cannot reach a mirror at all.
 
 ---
 
-## 3. Feed formats
+## 2. The feed
 
-### Update channel — `updates/stable.json` / `updates/beta.json`
+`updates/stable.json` and `updates/beta.json`:
+
 ```json
 {
-  "version": "1.0.1",
-  "tagName": "v1.0.1",
-  "name": "XPRS Aurora 1.0.1",
+  "version": "1.2.0-beta.1",
+  "tagName": "v1.2.0-beta.1",
+  "name": "XPRS 1.2.0-beta.1",
   "body": "release notes (markdown)",
-  "publishedAt": "2026-06-09T18:18:50Z",
-  "prerelease": false,
+  "publishedAt": "2026-08-26T09:15:04Z",
+  "prerelease": true,
   "assets": [
-    { "name": "aurora.apk",                   "url": "v1.0.1/aurora.apk",                   "size": 97752265 },
-    { "name": "aurora-linux-x64.tar.gz",       "url": "v1.0.1/aurora-linux-x64.tar.gz",       "size": 20608322 },
-    { "name": "aurora-windows-x64-setup.exe",  "url": "v1.0.1/aurora-windows-x64-setup.exe",  "size": 16188044 }
+    {
+      "name": "xprs-1.2.0-beta.1-android-arm64-v8a.apk",
+      "url": "https://…/xprs-1.2.0-beta.1-android-arm64-v8a.apk",
+      "size": 56830740,
+      "sha256": "ae7acaee…"
+    }
   ]
 }
 ```
-- Asset `url`s are **relative to the `updates/` dir** so the feed is host-agnostic.
-- Binaries live under `updates/v<version>/`.
+
+- Asset `url`s are **absolute**. The feed announces; it hosts nothing.
+- `sha256` is required in practice — an artifact without one cannot be fetched
+  over Reticulum and cannot be verified after an HTTPS download.
 - `beta.json` always points at the newest build; `stable.json` only at
-  non-pre-release versions. (Beta users get stable releases too, because a
-  stable publish writes BOTH files.)
+  non-pre-release versions. A stable publish writes BOTH, so beta users get
+  stable releases too.
+- Written by `tool/publish_release.dart`, which is the **only** implementation
+  of this format. `sync.yml` runs that script rather than re-deriving the JSON.
 
 ### Wapp catalog — `wapps/index.json`
+
 ```json
-[
-  {"file":"maps/maps-1.0.1.wapp","id":"tools.xprs.maps","version":"1.0.1","size":13128,"title":"Maps","description":"..."},
-  ...
-]
+[{"file":"maps/maps-1.0.1.wapp","id":"tools.xprs.maps","version":"1.0.1","size":13128,"title":"Maps"}]
 ```
-One entry per wapp; `file` is resolved against the catalog base
-(`https://xprs.dev/wapps`).
+
+One entry per wapp; `file` resolves against `https://xprs.dev/wapps`.
+
+---
+
+## 3. Artifact names carry the version
+
+```
+xprs-<version>-android-arm64-v8a.apk
+xprs-<version>-android-armeabi-v7a.apk
+xprs-<version>-android-x86_64.apk
+xprs-<version>-linux-x64.tar.gz
+xprs-<version>-windows-x64-setup.exe
+xprs-<version>.apk                     (universal; NOT mirrored — twice the size)
+```
+
+`versionFromAssetName()` parses that shape, and the mirror groups files by the
+parsed version to decide what to retain. This is not cosmetic: CI once emitted
+versionless names like `xprs-android-arm64-v8a.apk`, which parsed as version
+`"android-arm64-v8a"` and made the folder path offer a release that did not
+exist. `test/update_mirror_test.dart` pins every name the workflow publishes.
 
 ---
 
 ## 4. Cutting a release
 
 ```sh
-./release.sh 1.0.1          # or ./release.sh 1.0.1-beta.1 for a beta
-./release.sh                # auto-bump patch (or the prerelease counter)
-./release.sh 1.0.1 -y       # skip the confirmation prompt
+./release.sh 1.2.0            # stable
+./release.sh 1.2.0-beta.1     # beta (pre-release; beta channel only)
+./release.sh                  # auto-bump patch, or the prerelease counter
 ```
 
-`release.sh` bumps `pubspec.yaml`, syncs `lib/version.dart` (via
-`tool/update_version.dart`), commits `Release vX.Y.Z`, tags `vX.Y.Z`, and
-pushes the branch + tag. It does **not** create a GitHub release — pushing the
-tag is what triggers the pipeline.
+`release.sh` bumps `pubspec.yaml`, regenerates `lib/version.dart`, commits,
+tags and pushes. Pushing the tag is what triggers everything else.
 
-### What happens next (automatic)
-1. **`.github/workflows/release.yml`** fires on the `v*` tag:
-   - jobs `android` / `linux` / `windows` build and `upload-artifact`;
-   - job `publish` (needs all three) downloads the artifacts and attaches them
-     to a **GitHub Release** on aurora as assets (`softprops/action-gh-release`,
-     default `GITHUB_TOKEN`, `prerelease` when the tag has a `-`). Nothing is
-     committed to git — the source repo stays lean.
-2. **`xprs-dev/xprs-dev.github.io` `.github/workflows/sync.yml`** (cron every 3h, or
-   trigger manually):
-   - resolves the latest stable + latest (beta) release tags from aurora;
-   - if the feed is already current, stops (no redundant downloads);
-   - otherwise `gh release download`s the assets, runs
-     `tool/publish_release.dart` (from the aurora checkout) to write
-     `updates/v<ver>/` + `stable.json`/`beta.json` (with `--keep 3` pruning and
-     the release's `publishedAt` as `--date` so re-runs are stable);
-   - copies `wapps/binaries → wapps/`; commits to itself.
-3. **GitHub Pages** serves it at xprs.dev (~1 min to deploy).
-4. The app's next update check sees the new version.
-
-To skip the wait for the cron, trigger the mirror immediately:
-```sh
-gh workflow run sync.yml -R xprs-dev/xprs-dev.github.io
-```
+1. **`release.yml`** (this repo, on `v*`) builds the three platforms and
+   attaches the artifacts to a GitHub Release. `prerelease` is set when the tag
+   contains a `-`. Nothing is committed.
+2. **`sync.yml`** (the site repo, cron every 3 h or manual) resolves the newest
+   release and the newest stable one, downloads the artifacts, hashes them, and
+   commits the two JSON documents. It skips when the feed is already current, so
+   the cron does not produce an empty commit every three hours.
+3. **A super-archiver with the mirror enabled** picks the release up within six
+   hours and seeds it.
+4. **Every other phone** sees it at its next check and fetches over Reticulum.
 
 ---
 
-## 5. Publishing manually (no CI)
+## 5. The mirror
 
-If you build the artifacts yourself, publish straight into a local checkout of
-the website repo (you can push it; that publishes it):
+Opt-in, off by default, `update.mirror` (`POST /api/update/mirror/config
+{"enabled":true}`). Only an always-on station should say yes.
 
-```sh
-dart run tool/publish_release.dart \
-  --site /path/to/xprs-html \
-  --version 1.0.1 \
-  --name "XPRS Aurora 1.0.1" \
-  --keep 3 \
-  build/app/outputs/flutter-apk/app-release.apk \
-  dist/aurora-linux-x64.tar.gz \
-  build/installer/aurora-windows-x64-setup.exe
-# then: cd /path/to/xprs-html && git add updates && git commit && git push
-```
+Per artifact it does not already hold: hand the URL to the system
+DownloadManager, poll it, verify size + sha256, then **rename** the file into
+the channel directory and ask the folder to rescan. It retains the newest **5
+stable** and **5 beta** versions; older files are deleted from the directory,
+and the folder differ turns that into signed `rmFile` ops on its own.
 
-`--keep N` (default 5) prunes old `updates/v<version>/` dirs — it keeps the N
-newest by semver **plus** whatever `stable.json`/`beta.json` reference.
-The tool imports only `dart:` libraries, so it runs standalone (no `pub get`):
-`dart tool/publish_release.dart ...`.
+Memory is the whole design, because the station is usually the device under the
+most pressure (`docs/performance.md` §8.7):
 
-The wapp catalog has its own mirror helper:
-```sh
-# in xprs-dev/wapps, after ./build-archive.sh
-./publish-to-website.sh /path/to/xprs-html   # rsync binaries/ -> wapps/
-```
+- DownloadManager streams to disk in its own process — no APK in the Dart heap;
+- verification hashes in 64 KiB chunks on a worker isolate;
+- retention reads **filenames**, never bytes, and never browses the folder to
+  count (that would reduce and re-verify the whole signed op-log to learn a
+  number — `arch_guard: no-page-fetch-to-count`);
+- the move-in is a rename on the same volume, so the differ can never observe a
+  half-written APK and sign it.
+
+A file whose version cannot be parsed is never deleted — `.folder.json` holds
+the folder's master key, and deleting it would orphan the folder.
 
 ---
 
-## 6. The website repo (xprs.dev)
+## 6. The versionCode trap
 
-`xprs-dev/xprs-dev.github.io`, GitHub Pages from `main` root, `CNAME = xprs.dev`.
+Android's `versionCode` is `git rev-list --count HEAD` (hence `fetch-depth: 0`
+in every job — a shallow clone counts 1, which is how v1.1.0 shipped
+versionCode 1).
 
-- **`.nojekyll` at the root is REQUIRED.** Without it, GitHub Pages runs Jekyll
-  and drops the binary `.wapp` packages and JSON under `/wapps` and `/updates`
-  (they 404). The site is a static SPA, so disabling Jekyll is safe and correct.
-- Layout served:
-  ```
-  /updates/stable.json  /updates/beta.json  /updates/v<ver>/<binaries>
-  /wapps/index.json     /wapps/<name>/<name>-<ver>.wapp
-  ```
-- `sync.yml` is the only thing that should write `/updates` and `/wapps` — it
-  mirrors from the source repos, so don't hand-edit those dirs.
+Nothing compares it. "Is this newer?" is decided by the version **name**, by
+`compareSemver`. `versionCode` only decides whether Android will *install*
+what was offered — and it refuses anything not strictly greater.
+
+So a device carrying a hand-built APK (`--build-number=994039`, as both bench
+phones did in August 2026) will **detect** every future release and be unable to
+install a single one, because CI stamps ~100. There is no in-app symptom: the
+download succeeds and the installer declines. A phone in that state has to be
+reinstalled once from CI. Do not hand-pass large build numbers to
+`launch-android.sh` on a device you intend to keep updating.
 
 ---
 
-## 7. CI workflows summary
+## 7. Checking a device without a screenshot
+
+The local API answers the whole question read-only, with no side effect:
+
+```sh
+adb forward tcp:3499 tcp:3456
+curl -s localhost:3499/api/update/status | jq
+```
+
+```
+currentVersion, buildNumber, betaEnabled, autoCheck, feedBase,
+stable/beta/selected, updateAvailable, status, progress,
+downloadedPath, source, canInstall, error
+```
+
+`source` is `reticulum` or `https` — that is how you prove the bytes did not
+come off the web. The rest of the surface:
+
+| | |
+|---|---|
+| `POST /api/update/check` | run a check now (has a side effect; status does not) |
+| `POST /api/update/config` | `{"betaEnabled":true}`, `{"feedBase":"…"}` — aim a device at a staging feed |
+| `POST /api/update/download` | fetch the selected release |
+| `POST /api/update/install` | apply it |
+| `GET /api/update/mirror` | what this station holds and seeds |
+| `POST /api/update/mirror/config` | `{"enabled":true}` — be a mirror |
+
+---
+
+## 8. CI workflows
 
 | Workflow | Repo | Trigger | Does |
-|----------|------|---------|------|
-| `release.yml` | aurora | tag `v*` | build 3 platforms → attach as GitHub Release assets (no git commit) |
-| `build-android.yml` / `build-linux.yml` / `build-windows.yml` | aurora | push to `main` | CI build verification only (`upload-artifact`, no publish) |
-| `sync.yml` | xprs-html | cron `0 */3 * * *` + manual | download aurora release assets → build feed; copy wapps catalog; commit |
+|---|---|---|---|
+| `release.yml` | this repo | tag `v*` | build 3 platforms → attach as Release assets |
+| `build-*.yml` | this repo | push to `main` | build verification only |
+| `test.yml` / `arch.yml` | this repo | push, PR | `flutter test`; `dart tool/arch_guard.dart` |
+| `sync.yml` | site repo | cron 3 h + manual | hash the release artifacts → write the two JSON docs |
 
 ---
 
-## 8. Gotchas & decisions
+## 9. Decisions worth keeping
 
-- **No secrets, by design.** An earlier version pushed from aurora to the
-  website via an SSH deploy key (`WEBSITE_DEPLOY_KEY`). That was replaced: the
-  website pulls/copies from the public source repos with the default token. If
-  you ever make a source repo private, the sync would need a token with read
-  access to it.
-- **Binaries are GitHub Release assets, not git blobs.** To keep the source repo
-  lean, `release.yml` attaches the built binaries to a GitHub Release on aurora
-  (assets aren't part of git history); `sync.yml` downloads them. The aurora repo
-  therefore never accumulates ~100 MB-per-release blobs. The xprs-html Pages
-  repo DOES hold the currently-served binaries (it is the CDN) — bounded in the
-  working tree by `--keep 3`, though its git history still grows over time; that's
-  inherent to serving files via Pages. (Manual local publishing with
-  `publish_release.dart --site <xprs-html>` still copies files directly — fine
-  for one-offs.)
-- **Not Git LFS.** GitHub Pages does not serve LFS-tracked files over the Pages
-  URL (they 404), so binaries are stored as plain files, not LFS.
-- **Node 20 deprecation warnings** on `actions/checkout` / `upload-artifact` /
-  `download-artifact` are cosmetic until GitHub forces Node 24 (2026); bump the
-  action versions when convenient.
-- **Runtime is configurable.** Both the update feed URL (Settings → Updates) and
-  the wapp store source (store Settings tab, or the `wappStoreSource` pref) can
-  be repointed at runtime — useful if xprs.dev ever moves.
-
----
-
-## 9. Verified reference run — v1.0.2 (2026-06-09, asset-based)
-
-End-to-end with the GitHub-Release-asset flow:
-- `release.yml` built all 3 platforms and attached them to the **v1.0.2 GitHub
-  Release** on aurora — no git commit; the aurora repo has **no `updates/` dir**
-  (confirmed 404). Green, no secret.
-- `sync.yml` resolved the latest stable/beta release, `gh release download`ed the
-  assets, built the feed via `publish_release.dart`, and committed to xprs-html
-  (`d9ca314`). Green, no secret.
-- Live on xprs.dev (~45 s after the sync commit):
-  - `GET /updates/stable.json` → 200, version `1.0.2`, relative asset URLs
-  - `GET /updates/v1.0.2/aurora.apk` → 200, 97,752,265 B
-  - `GET /updates/v1.0.2/aurora-linux-x64.tar.gz` → 200, 20,608,172 B
-  - `GET /updates/v1.0.2/aurora-windows-x64-setup.exe` → 200, 16,188,312 B
-  - sizes match the GitHub Release assets.
-
-(The earlier v1.0.1 used the prior commit-to-git flow and was migrated away.)
+- **No secrets.** `sync.yml` reads a public repo and commits to itself with its
+  own `GITHUB_TOKEN`. Making a source repo private would break that.
+- **The site repo holds no binaries.** Not because of Pages' 100 MB file cap
+  (though the universal APK exceeds it), but because git history is forever:
+  committing 230 MB per release would be irreversible.
+- **Not Git LFS.** Pages does not serve LFS-tracked files — they 404.
+- **`.nojekyll` is required** at the site root.
+- **The self-update path has a compile-time kill switch.** Build the store
+  variant with `--dart-define=SELF_UPDATE=false`: F-Droid builds from source and
+  is the only updater for what it ships, so every check, download and install
+  short-circuits and the Update Center hides itself. A build with the switch off
+  also refuses to act as a mirror.
+- **Runtime is configurable.** Both the feed base and the wapp store source can
+  be repointed at runtime, which is how a staging feed is tested.

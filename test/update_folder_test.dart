@@ -74,7 +74,7 @@ void main() {
       for (final r in releases) {
         if (!prereleaseOk && r.isPrerelease) continue;
         if (best == null ||
-            UpdateModelsTestHook.cmp(r.version, best.version) > 0) {
+            compareSemver(r.version, best.version) > 0) {
           best = r;
         }
       }
@@ -128,45 +128,4 @@ void main() {
     expect(releases.length, 1);
     expect(releases.first.version, '1.2.3');
   });
-}
-
-/// Test-only access to the same prerelease-aware semver comparison the
-/// UpdateService uses to pick the newest release.
-class UpdateModelsTestHook {
-  static int cmp(String a, String b) => _cmp(a, b);
-  static int _cmp(String a, String b) {
-    a = a.split('+').first;
-    b = b.split('+').first;
-    final ap = a.split('-');
-    final bp = b.split('-');
-    List<int> core(String s) =>
-        s.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-    final ac = core(ap.first), bc = core(bp.first);
-    for (var i = 0; i < 3; i++) {
-      final x = i < ac.length ? ac[i] : 0;
-      final y = i < bc.length ? bc[i] : 0;
-      if (x != y) return x < y ? -1 : 1;
-    }
-    final aPre = ap.length > 1, bPre = bp.length > 1;
-    if (aPre && !bPre) return -1;
-    if (!aPre && bPre) return 1;
-    if (!aPre && !bPre) return 0;
-    final aId = ap.sublist(1).join('-').split('.');
-    final bId = bp.sublist(1).join('-').split('.');
-    for (var i = 0; i < aId.length && i < bId.length; i++) {
-      final an = int.tryParse(aId[i]), bn = int.tryParse(bId[i]);
-      int c;
-      if (an != null && bn != null) {
-        c = an.compareTo(bn);
-      } else if (an != null) {
-        c = -1;
-      } else if (bn != null) {
-        c = 1;
-      } else {
-        c = aId[i].compareTo(bId[i]);
-      }
-      if (c != 0) return c < 0 ? -1 : 1;
-    }
-    return aId.length.compareTo(bId.length).clamp(-1, 1);
-  }
 }

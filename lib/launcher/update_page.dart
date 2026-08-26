@@ -1,7 +1,7 @@
 /*
  * UpdatePage — the in-app Update Center (Settings → Updates).
  *
- * Shows the running version, a stable + beta release "table" pulled from GitHub
+ * Shows the running version, a stable + beta release "table" pulled from the xprs.dev feed
  * (xprs-dev/xprs-flutter), release notes, and a Download → Install action for the
  * selected channel. Mirrors xprs's update page; the beta toggle opts into
  * pre-releases. Disabled on web (managed by the store/package manager).

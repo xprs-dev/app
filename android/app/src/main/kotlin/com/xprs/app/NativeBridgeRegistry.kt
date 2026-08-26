@@ -25,6 +25,7 @@ object NativeBridgeRegistry {
 
         if (engine === flutterEngine && ble5 != null && wifiDirect != null) {
             BgBridge.attach(appContext, flutterEngine)
+            UpdateBridge.attach(appContext, flutterEngine)
             return
         }
 
@@ -33,6 +34,9 @@ object NativeBridgeRegistry {
         }
 
         BgBridge.attach(appContext, flutterEngine)
+        // The update channel is attached here, not in MainActivity, so it also
+        // exists on the headless engine an always-on station runs on.
+        UpdateBridge.attach(appContext, flutterEngine)
         ble5 = Ble5(appContext, flutterEngine.dartExecutor.binaryMessenger)
         wifiDirect = WifiDirect(appContext, flutterEngine.dartExecutor.binaryMessenger)
         engine = flutterEngine
@@ -59,6 +63,7 @@ object NativeBridgeRegistry {
         } catch (t: Throwable) {
             Log.w(TAG, "WiFi Direct dispose failed: ${t.message}")
         }
+        engine?.let { UpdateBridge.dispose(it) }
         ble5 = null
         wifiDirect = null
         engine = null

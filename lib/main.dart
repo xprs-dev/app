@@ -15,6 +15,7 @@ import 'wapp/native/wasm_video_player.dart' show warmVideoDecoderModule;
 import 'wapp/native/wasm_video_session.dart';
 import 'services/power_governor.dart';
 import 'services/i2p/i2p_background_service.dart';
+import 'services/update_mirror_service.dart';
 import 'services/update_service.dart';
 import 'services/announced_tags_store.dart';
 import 'services/notification_service.dart';
@@ -414,6 +415,13 @@ Future<void> _boot() async {
     unawaited(I2pBackgroundService().start());
   }
 
+  // Update mirror (opt-in, always-on stations): pull each release artifact off
+  // the feed once and seed it over Reticulum, so the phones around this station
+  // update without fetching 60 MB over the internet themselves.
+  if (prefs.updateMirrorEnabled) {
+    unawaited(UpdateMirrorService.instance.start());
+  }
+
   // Background wapp services the user enabled (autostart) — keep e.g. Chat
   // receiving over BLE without its page open. Gated: these wapps scan/advertise
   // over BLE, read GPS and run under a foreground-service notification, every
@@ -428,7 +436,7 @@ Future<void> _boot() async {
   // circles "apply to join" flow. Needs the navigator live (after runApp).
   unawaited(DeepLinkService.instance.start());
 
-  // Check GitHub for a newer XPRS XPRS release and, if found, surface one
+  // Check the xprs.dev feed for a newer XPRS release and, if found, surface one
   // notification (Settings → Updates does the install). Best-effort, off web.
   unawaited(UpdateService.instance.backgroundCheck());
 }

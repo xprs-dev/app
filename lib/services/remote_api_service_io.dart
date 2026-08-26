@@ -51,6 +51,8 @@ import 'wapp_unread_service.dart';
 import 'hero/hero_inbox.dart';
 import 'hero/launcher_visibility.dart';
 import 'torrent_service.dart';
+import '../version.dart';
+import 'update_mirror_service.dart';
 import 'update_service.dart';
 import 'update_models.dart';
 import 'update_native.dart';
@@ -863,10 +865,21 @@ class RemoteApiService {
           await u.setStableFolder('${data['stableFolder']}'.trim());
         }
         if (data['beta'] != null) await u.setBetaEnabled(data['beta'] == true);
+        if (data['betaEnabled'] != null) {
+          await u.setBetaEnabled(data['betaEnabled'] == true);
+        }
+        // Point this device at another feed (a staging one, or a self-hoster's).
+        // Until now setFeedBase had no caller at all, so the feed could only be
+        // changed by rebuilding.
+        if (data['feedBase'] != null) {
+          await u.setFeedBase('${data['feedBase']}'.trim());
+        }
         return _json(res, {
           'ok': true,
           'betaFolder': u.betaFolder,
+          'stableFolder': u.stableFolder,
           'betaEnabled': u.betaEnabled,
+          'feedBase': u.feedBase,
           'currentVersion': u.currentVersion,
         });
       }
@@ -904,20 +917,79 @@ class RemoteApiService {
           'version': sel.version,
           'status': u.status.value.name,
           'downloadedPath': u.downloadedPath,
+          'source': u.lastSource,
           'canInstall': await UpdateNative.canInstall(),
           'error': u.error,
         });
       }
       if (req.method == 'GET' && path == '/api/update/status') {
+        // The whole read-only picture, so "does this phone see an update?" is
+        // one GET with no side effect. It used to report six fields and omit
+        // every one that answers that question -- only POST /api/update/check
+        // had them, and that runs a network check to tell you.
         final u = UpdateService.instance;
+        final sel = u.selectedRelease;
         return _json(res, {
           'currentVersion': u.currentVersion,
+          'buildNumber': kBuildNumber,
+          'betaEnabled': u.betaEnabled,
+          'autoCheck': u.autoCheck,
+          'feedBase': u.feedBase,
+          'stableFolder': u.stableFolder,
+          'betaFolder': u.betaFolder,
+          'supported': u.supported,
           'status': u.status.value.name,
           'progress': u.progress.value,
+          'stable': _releaseJson(u.stable.value),
+          'beta': _releaseJson(u.beta.value),
+          'selected': _releaseJson(sel),
+          'updateAvailable': u.isNewer(sel),
           'downloadedPath': u.downloadedPath,
+          'source': u.lastSource,
           'canInstall': await UpdateNative.canInstall(),
           'error': u.error,
         });
+      }
+      if (req.method == 'POST' && path == '/api/update/install') {
+        // The verb that was missing: without it the chain check -> download ->
+        // install could not be driven end to end without a human tapping.
+        final u = UpdateService.instance;
+        final sel = u.selectedRelease;
+        if (sel == null) {
+          return _json(res, {'ok': false, 'error': 'no release selected'},
+              status: HttpStatus.badRequest);
+        }
+        if (u.downloadedPath == null) {
+          return _json(res, {'ok': false, 'error': 'nothing downloaded'},
+              status: HttpStatus.conflict);
+        }
+        final ok = await u.install(sel);
+        return _json(res, {
+          'ok': ok,
+          'version': sel.version,
+          'status': u.status.value.name,
+          'error': u.error,
+        });
+      }
+      // What this station holds and seeds for the phones around it.
+      if (req.method == 'GET' && path == '/api/update/mirror') {
+        return _json(res, UpdateMirrorService.instance.statusJson());
+      }
+      if (req.method == 'POST' && path == '/api/update/mirror/config') {
+        // {"enabled":true} — be a mirror, or stop being one.
+        final data = await _body(req);
+        final prefs = PreferencesService.instanceSync;
+        final m = UpdateMirrorService.instance;
+        if (data.containsKey('enabled')) {
+          final on = data['enabled'] == true;
+          prefs?.updateMirrorEnabled = on;
+          if (on && !m.isRunning) {
+            await m.start();
+          } else if (!on && m.isRunning) {
+            await m.stop();
+          }
+        }
+        return _json(res, m.statusJson());
       }
       // Air one XPRS packet on BLE, for validating the radio path end to end
       // from a laptop. {"type":"info","m":"..."} → t:info f:<self> ts:<now>

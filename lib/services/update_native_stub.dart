@@ -11,6 +11,7 @@ class UpdateNative {
   static bool get supported => false;
 
   static Future<String?> supportDir() async => null;
+  static Future<String?> externalFilesDir() async => null;
 
   static Future<String?> download(
     String url,

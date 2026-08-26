@@ -17,7 +17,7 @@ enum UpdatePlatform { android, linux, windows, macos, unknown }
 /// One downloadable file attached to a release.
 class ReleaseAsset {
   final String name;
-  final String url; // browser_download_url
+  final String url; // absolute download URL from the feed
   final int size;
   final String sha256; // lowercase hex, or '' when the feed didn't advertise one
   const ReleaseAsset(
@@ -27,14 +27,13 @@ class ReleaseAsset {
       this.sha256 = ''});
 }
 
-/// A parsed GitHub release.
+/// One release, as announced by the xprs.dev update feed.
 class ReleaseInfo {
   final String version; // tag without leading 'v' (e.g. "1.2.3")
   final String tagName; // e.g. "v1.2.3"
   final String? name; // release title
   final String? body; // markdown notes
   final String? publishedAt; // ISO 8601
-  final String? htmlUrl; // GitHub release page
   final bool isPrerelease;
   final List<ReleaseAsset> assets;
 
@@ -45,39 +44,11 @@ class ReleaseInfo {
     this.name,
     this.body,
     this.publishedAt,
-    this.htmlUrl,
     this.isPrerelease = false,
   });
 
   static String _stripV(String tag) =>
       tag.startsWith('v') ? tag.substring(1) : tag;
-
-  factory ReleaseInfo.fromGitHub(Map<String, dynamic> json) {
-    final tag = (json['tag_name'] as String?) ?? '';
-    final assets = <ReleaseAsset>[];
-    final rawAssets = json['assets'];
-    if (rawAssets is List) {
-      for (final a in rawAssets) {
-        if (a is Map) {
-          assets.add(ReleaseAsset(
-            name: (a['name'] as String?) ?? '',
-            url: (a['browser_download_url'] as String?) ?? '',
-            size: (a['size'] as int?) ?? 0,
-          ));
-        }
-      }
-    }
-    return ReleaseInfo(
-      version: _stripV(tag),
-      tagName: tag,
-      name: json['name'] as String?,
-      body: json['body'] as String?,
-      publishedAt: json['published_at'] as String?,
-      htmlUrl: json['html_url'] as String?,
-      isPrerelease: (json['prerelease'] as bool?) ?? false,
-      assets: assets,
-    );
-  }
 
   /// Parse a self-hosted xprs.dev feed object (updates/stable.json or
   /// updates/beta.json). Schema:
@@ -94,7 +65,8 @@ class ReleaseInfo {
   /// Asset `url`s may be relative — they are resolved against [baseUrl] (the
   /// directory the feed JSON was fetched from, e.g.
   /// "https://xprs.dev/updates"). Absolute http(s) urls pass through.
-  /// Accepts snake_case keys too so a GitHub-shaped object also parses.
+  /// snake_case keys are accepted as aliases so a feed written by an older
+  /// publisher still parses.
   factory ReleaseInfo.fromFeed(Map<String, dynamic> json, {String baseUrl = ''}) {
     final tag = (json['tagName'] as String?) ??
         (json['tag_name'] as String?) ??
@@ -139,7 +111,6 @@ class ReleaseInfo {
       body: json['body'] as String?,
       publishedAt:
           (json['publishedAt'] as String?) ?? (json['published_at'] as String?),
-      htmlUrl: (json['htmlUrl'] as String?) ?? (json['html_url'] as String?),
       isPrerelease: (json['prerelease'] as bool?) ??
           (json['isPrerelease'] as bool?) ??
           false,
@@ -194,6 +165,10 @@ class ReleaseInfo {
 /// version can be split off the filename unambiguously.
 const List<String> _kArtifactSuffixes = [
   '-linux-x64.tar.gz',
+  // Most specific first, always: '-setup.exe' would otherwise match
+  // xprs-1.2.0-windows-x64-setup.exe and report the version as
+  // "1.2.0-windows-x64".
+  '-windows-x64-setup.exe',
   '-setup.exe',
   // Per-ABI Android splits (most-specific first so the version splits cleanly).
   '-android-arm64-v8a.apk',
@@ -266,4 +241,46 @@ List<ReleaseInfo> releasesFromFolder(Map<String, dynamic> folderState) {
     ));
   });
   return out;
+}
+
+/// Compare two version strings, pre-release aware (semver §11).
+///
+/// Build metadata (`+N`) is stripped and ignored: the Android versionCode
+/// plays no part in deciding what is newer, only the version NAME does.
+/// One copy, shared by [UpdateService], the update mirror and the tests --
+/// it had already been duplicated once.
+int compareSemver(String a, String b) {
+  a = a.split('+').first;
+  b = b.split('+').first;
+  final ap = a.split('-');
+  final bp = b.split('-');
+  List<int> core(String s) =>
+      s.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+  final ac = core(ap.first), bc = core(bp.first);
+  for (var i = 0; i < 3; i++) {
+    final x = i < ac.length ? ac[i] : 0;
+    final y = i < bc.length ? bc[i] : 0;
+    if (x != y) return x < y ? -1 : 1;
+  }
+  final aPre = ap.length > 1, bPre = bp.length > 1;
+  if (aPre && !bPre) return -1; // 1.0.0-beta < 1.0.0
+  if (!aPre && bPre) return 1;
+  if (!aPre && !bPre) return 0;
+  final aId = ap.sublist(1).join('-').split('.');
+  final bId = bp.sublist(1).join('-').split('.');
+  for (var i = 0; i < aId.length && i < bId.length; i++) {
+    final an = int.tryParse(aId[i]), bn = int.tryParse(bId[i]);
+    int c;
+    if (an != null && bn != null) {
+      c = an.compareTo(bn);
+    } else if (an != null) {
+      c = -1; // numeric identifiers rank lower than alphanumeric
+    } else if (bn != null) {
+      c = 1;
+    } else {
+      c = aId[i].compareTo(bId[i]);
+    }
+    if (c != 0) return c < 0 ? -1 : 1;
+  }
+  return aId.length.compareTo(bId.length).clamp(-1, 1);
 }

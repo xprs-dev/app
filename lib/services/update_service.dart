@@ -31,6 +31,7 @@ import 'reticulum/rns_service.dart';
 import 'update_models.dart';
 import 'update_platform.dart';
 import 'update_native.dart';
+import 'log_service.dart';
 import 'notification_service.dart';
 
 enum UpdateStatus { idle, checking, available, downloading, downloaded, error }
@@ -55,11 +56,12 @@ class UpdateService {
   String get stableFolder => _stableFolder;
   String get betaFolder => _betaFolder;
 
-  // Preferred, authoritative source: the self-hosted xprs.dev feed (no
-  // github.com at runtime — required by the F-Droid policy). Each channel is a
-  // small JSON document with relative asset URLs resolved against this base; the
-  // binaries are served from the same site. Reticulum (the folders above) is the
-  // decentralized fallback used only when the website can't be reached.
+  // The feed announces; it does not host. Each channel is a small JSON document
+  // naming the newest version and, for every artifact, its size, its absolute
+  // download URL and its sha256. The sha256 is the address: the bytes normally
+  // arrive over Reticulum from a super-archiver that has already mirrored them,
+  // so an ordinary phone never makes an HTTPS request for a binary at all. The
+  // URL is the fallback for a device with no Reticulum path to any mirror.
   // Overridable at runtime for self-hosters.
   static const String defaultUpdateFeedBase = 'https://xprs.dev/updates';
   String _feedBase = defaultUpdateFeedBase;
@@ -95,6 +97,16 @@ class UpdateService {
   final ValueNotifier<ReleaseInfo?> beta = ValueNotifier(null);
   String? error;
   String? _downloadedPath;
+
+  /// Which path carried the last download: 'reticulum', 'https', or null when
+  /// nothing has been downloaded. Reported by GET /api/update/status so a test
+  /// can assert the bytes did NOT come off the web.
+  String? lastSource;
+
+  /// How long to wait for a Reticulum provider before falling back to the web.
+  /// Long enough for a DHT resolve plus a multi-source transfer of a ~60 MB
+  /// artifact, short enough that a phone with no mirror in reach is not stuck.
+  static const Duration reticulumFetchTimeout = Duration(minutes: 5);
 
   // True while a DownloadManager poll loop is running, so we never spin up a
   // second tracker (e.g. resume racing a fresh download).
@@ -183,7 +195,7 @@ class UpdateService {
 
   /// True if [r] is newer than what's running.
   bool isNewer(ReleaseInfo? r) =>
-      r != null && _compareSemver(r.version, kAppVersion) > 0;
+      r != null && compareSemver(r.version, kAppVersion) > 0;
 
   /// Browse both channel folders over Reticulum and pick the newest release on
   /// each. Safe to call from the Update Center on open and from a background
@@ -211,6 +223,13 @@ class UpdateService {
       status.value = UpdateStatus.error;
     }
   }
+
+  /// One channel of the feed, for a caller that wants the document rather than
+  /// the "is there an update for me" answer — the update mirror, which is
+  /// interested in every artifact regardless of this device's platform.
+  Future<ReleaseInfo?> releaseFromFeed(String channelFile,
+          {required bool prereleaseOk}) =>
+      _newestFromFeed(channelFile, prereleaseOk: prereleaseOk);
 
   /// Fetch one channel from the xprs.dev feed over HTTP and parse it. The
   /// feed's relative asset URLs are resolved against the feed base. Returns null
@@ -247,7 +266,7 @@ class UpdateService {
     ReleaseInfo? best;
     for (final r in releasesFromFolder(state)) {
       if (!prereleaseOk && r.isPrerelease) continue;
-      if (best == null || _compareSemver(r.version, best.version) > 0) {
+      if (best == null || compareSemver(r.version, best.version) > 0) {
         best = r;
       }
     }
@@ -295,6 +314,19 @@ class UpdateService {
       return false;
     }
 
+    // Reticulum first, whenever the feed told us the artifact's sha256.
+    //
+    // The sha IS the address: a super-archiver that mirrored this release
+    // published a DHT provider record keyed on exactly this value, so the bytes
+    // come peer-to-peer and this device never makes an HTTPS request for a
+    // 60 MB binary. The URL below is the fallback for a device that cannot
+    // reach any mirror.
+    if (asset.sha256.isNotEmpty) {
+      if (await _downloadOverReticulum(release, asset)) return true;
+      // No provider yet, or the fetch timed out. Not an error — fall through to
+      // the web and say afterwards which path actually carried it.
+    }
+
     final lower0 = asset.url.toLowerCase();
     final isHttp0 =
         lower0.startsWith('http://') || lower0.startsWith('https://');
@@ -303,8 +335,10 @@ class UpdateService {
     // only once the whole file is on disk. The Dart isolate just mirrors its
     // progress. The Reticulum (sha handle) and desktop paths stay below.
     if (isHttp0 && UpdateNative.hasDownloadManager) {
+      lastSource = 'https';
       return _downloadViaManager(release, asset);
     }
+    if (isHttp0) lastSource = 'https';
 
     status.value = UpdateStatus.downloading;
     progress.value = 0;
@@ -368,6 +402,68 @@ class UpdateService {
       progress.value = 1;
       status.value = UpdateStatus.downloaded;
       return true;
+    } finally {
+      UpdateNative.serviceStop();
+    }
+  }
+
+  /// Try to fetch [asset] by its content address over Reticulum.
+  ///
+  /// Returns false (quietly, leaving the status untouched) when no provider
+  /// answers in time, so the caller can fall back to HTTPS. The bounded wait
+  /// matters: a phone with no mirror in reach must not sit here.
+  ///
+  /// KNOWN COST, stated rather than hidden: the content-addressed fetch returns
+  /// the artifact as one Uint8List, so this puts ~60 MB on the heap for the
+  /// duration of one user-initiated download. Fixing it properly means a
+  /// stream-to-disk fetch down in the transfer layer (the ranged piece path
+  /// already exists); until then the DownloadManager path above is the one that
+  /// carries the mirror's own traffic, and it never holds a byte.
+  Future<bool> _downloadOverReticulum(
+      ReleaseInfo release, ReleaseAsset asset) async {
+    final folder = release.isPrerelease ? _betaFolder : _stableFolder;
+    final shaHex = asset.sha256.toLowerCase();
+    final dot = asset.name.lastIndexOf('.');
+    final ext = dot >= 0 ? asset.name.substring(dot + 1) : '';
+    status.value = UpdateStatus.downloading;
+    progress.value = 0;
+    error = null;
+    lastSource = 'reticulum';
+    UpdateNative.serviceStart('Fetching XPRS ${release.version} over Reticulum');
+    try {
+      final bytes = await RnsService.instance.folderFetchBytes(folder, shaHex,
+          ext: ext, timeout: reticulumFetchTimeout);
+      if (bytes == null || bytes.isEmpty) {
+        lastSource = null;
+        status.value = UpdateStatus.checking;
+        return false;
+      }
+      // Content-addressed already, but a mismatch here would mean handing the
+      // installer something nobody vouched for. Assert it.
+      final got = crypto.sha256.convert(bytes).toString();
+      if (got != shaHex) {
+        error = 'Update failed integrity check (sha mismatch)';
+        status.value = UpdateStatus.error;
+        return false;
+      }
+      final path = await UpdateNative.writeBytes(asset.name, bytes, (r, t) {
+        if (t > 0) progress.value = r / t;
+      });
+      if (path == null) {
+        error = 'Could not write the update to disk';
+        status.value = UpdateStatus.error;
+        return false;
+      }
+      _downloadedPath = path;
+      progress.value = 1;
+      status.value = UpdateStatus.downloaded;
+      LogService.instance.add(
+          'update: ${release.version} fetched over Reticulum (${bytes.length} B)');
+      return true;
+    } catch (e) {
+      lastSource = null;
+      status.value = UpdateStatus.checking;
+      return false;
     } finally {
       UpdateNative.serviceStop();
     }
@@ -528,40 +624,4 @@ class UpdateService {
     return true;
   }
 
-  // ── semver compare (pre-release aware, semver §11) ──────────────────
-  static int _compareSemver(String a, String b) {
-    a = a.split('+').first;
-    b = b.split('+').first;
-    final ap = a.split('-');
-    final bp = b.split('-');
-    List<int> core(String s) =>
-        s.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-    final ac = core(ap.first), bc = core(bp.first);
-    for (var i = 0; i < 3; i++) {
-      final x = i < ac.length ? ac[i] : 0;
-      final y = i < bc.length ? bc[i] : 0;
-      if (x != y) return x < y ? -1 : 1;
-    }
-    final aPre = ap.length > 1, bPre = bp.length > 1;
-    if (aPre && !bPre) return -1; // 1.0.0-beta < 1.0.0
-    if (!aPre && bPre) return 1;
-    if (!aPre && !bPre) return 0;
-    final aId = ap.sublist(1).join('-').split('.');
-    final bId = bp.sublist(1).join('-').split('.');
-    for (var i = 0; i < aId.length && i < bId.length; i++) {
-      final an = int.tryParse(aId[i]), bn = int.tryParse(bId[i]);
-      int c;
-      if (an != null && bn != null) {
-        c = an.compareTo(bn);
-      } else if (an != null) {
-        c = -1; // numeric identifiers rank lower than alphanumeric
-      } else if (bn != null) {
-        c = 1;
-      } else {
-        c = aId[i].compareTo(bId[i]);
-      }
-      if (c != 0) return c < 0 ? -1 : 1;
-    }
-    return aId.length.compareTo(bId.length).clamp(-1, 1);
-  }
 }
