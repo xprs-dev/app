@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relay, Gateway, Carrier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+
+<style>
+  :root {
+    --ground:   #EDF0F1;
+    --surface:  #F8FAFA;
+    --raised:   #FFFFFF;
+    --ink:      #131A1F;
+    --ink-soft: #4A585F;
+    --ink-faint:#77868D;
+    --line:     #D2DADD;
+    --line-soft:#E2E8EA;
+    --accent:   #0F6E7B;
+    --accent-b: #0A4C55;
+    --accent-w: #DCEBED;
+
+    --good:  #2E7D4F;  --good-bg:  #DCEFE3;
+    --warn:  #A9701A;  --warn-bg:  #FBEFD6;
+    --bad:   #A33A3A;  --bad-bg:   #F7DEDE;
+    --off:   #64717A;  --off-bg:   #E4E8EA;
+
+    --col: 68ch;
+    --plate: #FBFCFC;
+    --plate-line: #DCE3E5;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #0D1317;
+      --surface:  #131B20;
+      --raised:   #182228;
+      --ink:      #E4EAEC;
+      --ink-soft: #A2B0B6;
+      --ink-faint:#75858C;
+      --line:     #2A383F;
+      --line-soft:#1F2C32;
+      --accent:   #4FB3C0;
+      --accent-b: #7FCBD5;
+      --accent-w: #123136;
+
+      --good: #6FC38F;  --good-bg: #16311F;
+      --warn: #D9A94E;  --warn-bg: #33260D;
+      --bad:  #DE8080;  --bad-bg:  #351717;
+      --off:  #93A2A9;  --off-bg:  #1D272C;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #0D1317;
+    --surface:  #131B20;
+    --raised:   #182228;
+    --ink:      #E4EAEC;
+    --ink-soft: #A2B0B6;
+    --ink-faint:#75858C;
+    --line:     #2A383F;
+    --line-soft:#1F2C32;
+    --accent:   #4FB3C0;
+    --accent-b: #7FCBD5;
+    --accent-w: #123136;
+
+    --good: #6FC38F;  --good-bg: #16311F;
+    --warn: #D9A94E;  --warn-bg: #33260D;
+    --bad:  #DE8080;  --bad-bg:  #351717;
+    --off:  #93A2A9;  --off-bg:  #1D272C;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px 120px; }
+  .col  { max-width: var(--col); }
+
+  /* ---- masthead ---- */
+  header.top {
+    padding: 68px 0 40px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 52px;
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+    font-weight: 700;
+    font-size: clamp(38px, 6vw, 62px);
+    line-height: 1.02;
+    letter-spacing: -0.018em;
+    margin: 0 0 22px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 60ch;
+  }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- contents ---- */
+  .toc {
+    margin-top: 38px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 2px;
+    background: var(--line-soft);
+    border: 1px solid var(--line-soft);
+  }
+  .toc a {
+    background: var(--surface);
+    padding: 13px 15px;
+    text-decoration: none;
+    color: var(--ink);
+    display: flex;
+    gap: 11px;
+    align-items: baseline;
+    transition: background .13s ease;
+  }
+  .toc a:hover, .toc a:focus-visible { background: var(--accent-w); }
+  .toc .n {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .toc .t { font-size: 14px; line-height: 1.32; }
+
+  /* ---- sections ---- */
+  section { margin: 0 0 78px; scroll-margin-top: 24px; }
+  h2 {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-weight: 600;
+    font-size: 27px;
+    letter-spacing: -0.008em;
+    margin: 0 0 6px;
+    text-wrap: balance;
+    display: flex;
+    align-items: baseline;
+    gap: 13px;
+  }
+  h2 .fig {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .lede { color: var(--ink-soft); margin: 0 0 24px; max-width: var(--col); }
+  p { margin: 0 0 15px; max-width: var(--col); }
+  a { color: var(--accent-b); }
+
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.885em;
+  }
+  p code, li code, td code {
+    background: var(--accent-w);
+    color: var(--accent-b);
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+
+  /* ---- figure plate ----
+     Deliberately keeps a light ground in both themes: Mermaid renders with its
+     own dark-on-transparent palette, so a plate is a printed figure rather than
+     a themed surface. Border and caption stay themed so it still sits in the page. */
+  figure {
+    margin: 0 0 14px;
+    border: 1px solid var(--line);
+    background: var(--plate);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .plate-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--plate-line);
+    background: #F2F5F6;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #5C6C73;
+  }
+  .plate-body { padding: 22px 18px 26px; overflow-x: auto; }
+  .mermaid { display: flex; justify-content: center; min-width: min-content; }
+  figcaption {
+    font-size: 14px;
+    color: var(--ink-soft);
+    margin: 0 0 30px;
+    max-width: var(--col);
+    border-left: 2px solid var(--accent);
+    padding-left: 13px;
+  }
+  figcaption strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- verdict key ---- */
+  .verdicts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+    gap: 12px;
+    margin: 26px 0 30px;
+  }
+  .v {
+    border: 1px solid var(--line);
+    border-left-width: 3px;
+    background: var(--surface);
+    padding: 13px 15px;
+    border-radius: 2px;
+  }
+  .v .name {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600;
+    font-size: 13.5px;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .v .what { font-size: 13.5px; color: var(--ink-soft); line-height: 1.45; }
+  .v.sent     { border-left-color: var(--good); } .v.sent .name     { color: var(--good); }
+  .v.queued   { border-left-color: var(--warn); } .v.queued .name   { color: var(--warn); }
+  .v.refused  { border-left-color: var(--bad);  } .v.refused .name  { color: var(--bad); }
+  .v.disabled { border-left-color: var(--off);  } .v.disabled .name { color: var(--off); }
+
+  /* ---- callout ---- */
+  .note {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    padding: 16px 18px;
+    margin: 0 0 26px;
+    max-width: var(--col);
+    border-radius: 2px;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note .tag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 7px;
+  }
+  .note.warn { border-left-color: var(--bad); }
+  .note.warn .tag { color: var(--bad); }
+
+  /* ---- bench table ---- */
+  .tablewrap { overflow-x: auto; margin: 0 0 26px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; min-width: 560px; }
+  th, td {
+    text-align: left;
+    padding: 10px 13px;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+  th {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    border-bottom: 1px solid var(--line);
+    font-weight: 500;
+  }
+  td.res { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; white-space: nowrap; }
+  .chip {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    padding: 1.5px 6px;
+    border-radius: 2px;
+    margin-right: 3px;
+  }
+  .chip.g { background: var(--good-bg); color: var(--good); }
+  .chip.w { background: var(--warn-bg); color: var(--warn); }
+  .chip.b { background: var(--bad-bg);  color: var(--bad); }
+  .chip.o { background: var(--off-bg);  color: var(--off); }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 26px;
+    color: var(--ink-faint);
+    font-size: 14px;
+  }
+  footer code { color: var(--ink-soft); }
+
+  ul { max-width: var(--col); padding-left: 20px; margin: 0 0 15px; }
+  li { margin-bottom: 7px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+  a:focus-visible, .toc a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">XPRS · relay · gateway · carrier</p>
+  <h1>What repeats a packet, and what holds it</h1>
+  <p class="standfirst">
+    APRS had the <strong>digipeater</strong> and the <strong>iGate</strong>. XPRS
+    keeps both and adds the <strong>carrier</strong> — the role that holds a
+    packet for a station that is not there. Here is where each one actually runs,
+    which is not where you would guess.
+  </p>
+  <nav class="toc">
+    <a href="#f1"><span class="n">01</span><span class="t">The three roles, and where each one lives</span></a>
+    <a href="#f2"><span class="n">02</span><span class="t">What a relay is supposed to do</span></a>
+    <a href="#f3"><span class="n">03</span><span class="t">Who implements that, and who does not</span></a>
+    <a href="#f4"><span class="n">04</span><span class="t">The carrier — what XPRS adds over APRS</span></a>
+    <a href="#f5"><span class="n">05</span><span class="t">Handing mail toward where the recipient is</span></a>
+    <a href="#f6"><span class="n">06</span><span class="t">How a packet crosses bearers</span></a>
+    <a href="#f7"><span class="n">07</span><span class="t">The gate on the way in from the internet</span></a>
+  </nav>
+</header>
+
+<section id="f1">
+  <h2><span class="fig">FIG 1</span> The three roles, and where each one lives</h2>
+  <p class="lede">APRS had two roles that moved somebody else's packet. XPRS keeps both and adds a third — the one that holds a packet for a station that is not there.</p>
+  <figure>
+    <div class="plate-bar"><span>component view</span><span>APRS lineage → XPRS roles</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart TB
+    subgraph APRS["what APRS had"]
+        direction LR
+        A1["digipeater<br/><i>repeat what you hear, now</i>"]
+        A2["iGate<br/><i>put it on the internet</i>"]
+    end
+
+    subgraph XPRS["what XPRS has"]
+        direction LR
+        X1["relay §13.1–13.2.1<br/><i>repeat, with via: and a hop budget</i>"]
+        X3["carrier §13.3, §36.7<br/><b>hold it until they turn up</b>"]
+        X2["gateway §13.11.3<br/><i>republish off-protocol</i>"]
+    end
+
+    A1 --> X1
+    A2 --> X2
+    NEW(["new in XPRS"]) --> X3
+
+    X1 --> W1["ESP32 firmware<br/>LAN · LoRa · ESP-NOW"]
+    X3 --> W3["the Flutter app<br/>every bearer"]
+    X2 --> W2["the chat wapp — APRS-IS<br/>ESP32 firmware — APRS-IS"]
+
+    classDef none fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    classDef some fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
+    class W1,W2,W3 some
+</pre>
+    </div>
+  </figure>
+  <figcaption><strong>Nobody digipeats BLE.</strong> The firmware's relay engine is wired into LAN, LoRa and ESP-NOW; the BLE bearer does not include it, and the app does not relay on any bearer. On the busiest off-grid lane a packet travels one radio hop, and everything past that is custody.</figcaption>
+</section>
+
+<section id="f2">
+  <h2><span class="fig">FIG 2</span> What a relay is supposed to do</h2>
+  <p class="lede">§13.1 the budget, §13.2 the loop, §13.2.1 the wait. The random wait is not politeness — it is the whole mechanism.</p>
+  <figure>
+    <div class="plate-bar"><span>decision</span><span>§13.1 · §13.2 · §13.2.1</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart TD
+    H["packet heard from somebody else"] --> LOOP{"our callsign<br/>already in via:?"}
+    LOOP -- yes --> D1["drop — §13.2<br/><i>it went round in a circle</i>"]
+    LOOP -- no --> BUDGET{"via: shorter than<br/>the type's limit?"}
+    BUDGET -- no --> D2["drop — §13.1 budget spent<br/><i>sos/warning 9 · everything else 3</i>"]
+    BUDGET -- yes --> WAIT["wait a RANDOM 200–1200 ms<br/>§13.2.1"]
+    WAIT --> HEARD{"heard the same packet<br/>again while waiting?"}
+    HEARD -- yes --> D3["drop — somebody was closer<br/>to the front of the queue"]
+    HEARD -- no --> APPEND["append our callsign to via:"]
+    APPEND --> AIR["re-air"]
+
+    NOTE["§5 identifier and §9.1 signature<br/>both EXCLUDE via:, so relaying<br/>renames nothing and breaks no signature"]
+    APPEND -.-> NOTE
+
+    classDef drop fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    classDef go fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
+    class D1,D2,D3 drop
+    class AIR go
+</pre>
+    </div>
+  </figure>
+  <figcaption>Every station in range hears the packet in the same instant and every willing relay is ready to transmit in the same instant. Without the jitter they collide; <strong>without the cancel they all transmit anyway</strong>.</figcaption>
+</section>
+
+<section id="f3">
+  <h2><span class="fig">FIG 3</span> Who implements that, and who does not</h2>
+  <p class="lede">The rules exist in both codebases. Only one of them calls them.</p>
+  <figure>
+    <div class="plate-bar"><span>implementation</span><span>Dart vs firmware</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart LR
+    subgraph CODEC["the rules exist in both codebases"]
+        C1["Dart: xprsMayRelay<br/>xprsWouldLoop · xprsAppendVia"]
+        C2["C: xprs_append_via<br/><i>budget + loop in one call</i>"]
+    end
+
+    subgraph DART["Flutter app"]
+        D1["xprsMayRelay — <b>0 callers</b>"]
+        D2["xprsWouldLoop — <b>0 callers</b>"]
+        D3["xprsAppendVia — 1 caller<br/>XprsForwarder"]
+        D4["§13.2.1 jitter + cancel<br/><b>not implemented</b>"]
+    end
+
+    subgraph FW["ESP32 firmware"]
+        F1["xprsbearer.c<br/>200–1200 ms jitter · 8 slots<br/>cancel-on-hear · cross-bearer cancel"]
+        F2["LAN ✓ · LoRa ✓ · ESP-NOW ✓"]
+        F3["BLE ✗ — does not use the engine"]
+    end
+
+    C1 --> D1 & D2 & D3
+    C2 --> F1 --> F2
+    F1 -.-> F3
+
+    classDef dead fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    classDef live fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
+    classDef part fill:#FBEFD6,stroke:#A9701A,color:#4A3208
+    class D1,D2,D4,F3 dead
+    class F1,F2 live
+    class D3 part
+</pre>
+    </div>
+  </figure>
+  <figcaption><code>xprsMayRelay</code> and <code>xprsWouldLoop</code> are exercised <strong>only by unit tests</strong>. One deviation worth naming: <code>XprsForwarder</code> is the single path that appends <code>via:</code>, checks the loop by hand, and <strong>never checks the hop budget</strong> — while §36.8.1 says of exactly this hand-off that the §13.1 budget applies.</figcaption>
+</section>
+
+<section id="f4">
+  <h2><span class="fig">FIG 4</span> The carrier — what XPRS adds over APRS</h2>
+  <p class="lede">APRS loses a message addressed to a station that is not listening. XPRS holds it. This role has no APRS ancestor, and it is the one the app implements fully.</p>
+  <figure>
+    <div class="plate-bar"><span>sequence</span><span>park → hold → release → purge</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant S as sender
+    participant H as this station<br/>(a carrier)
+    participant R as recipient<br/>(not here yet)
+    participant O as other custodians
+
+    S-->>H: t:message d:R — overheard, not for us
+    Note over H: §36.12.1 — the sender parked its own copy too;<br/>an airing is an ATTEMPT, not a delivery
+    H->>H: park in custody §13.3<br/>bounded: 7-day TTL + byte quota, evict ORDER BY urg, ts
+
+    Note over H,R: …hours pass. The recipient is somewhere else…
+
+    R-->>H: any packet from R, heard DIRECTLY (no via:)
+    Note over H: §36.8.1 — the trigger is the packet itself.<br/>NOT a poll: "a station that checks every ten seconds<br/>spends its battery asking a question the air already answered"
+    H->>R: release held mail, on the bearer R was heard on
+    R-->>H: t:receipt s:ack §13.7
+    H->>H: purge our copy
+    O-->>O: every OTHER holder that hears the receipt<br/>releases its copy too
+</pre>
+    </div>
+  </figure>
+  <figcaption>A receipt is worth repeating after the sender has seen it: it is what <strong>drains a chain of custodians</strong> instead of delivering the same message five times.</figcaption>
+</section>
+
+<section id="f5">
+  <h2><span class="fig">FIG 5</span> Handing mail toward where the recipient is</h2>
+  <p class="lede">§36.8.1 — waiting is not the only option. A holder may move the mail closer while both parties sleep.</p>
+  <figure>
+    <div class="plate-bar"><span>decision</span><span>§36.8.1 · gossip layers</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart TD
+    M["held mail for X"] --> SENT{"already forwarded<br/>this packet once?"}
+    SENT -- yes --> STOP1["stop — once per holder"]
+    SENT -- no --> LOOPQ{"our callsign in via:?"}
+    LOOPQ -- yes --> STOP2["stop — it passed through us already §13.2"]
+    LOOPQ -- no --> L1{"L1 · X's own declaration<br/>t:mailbox hold: §13.12"}
+    L1 -- found --> PICK
+    L1 -- none --> L3{"L3 · freshest sighting<br/>gossip, 8 per callsign, 24 h TTL"}
+    L3 -- found --> PICK
+    L3 -- none --> L2{"L2 · visit history<br/>100-ring, never expires,<br/>RADIO sightings only"}
+    L2 -- found --> PICK
+    L2 -- none --> MISS["ask a super-archiver §36.9.4<br/>and meanwhile DEPOSIT with one<br/><i>rather than sitting on it</i>"]
+
+    PICK["append our callsign to via:"] --> LANE{"can the network<br/>name this gateway?"}
+    LANE -- yes --> LX["LXMF, addressed<br/><b>a deliberate crossing</b>"]
+    LANE -- "no — e.g. an ESP32 gateway<br/>has no LXMF letterbox" --> BC["broadcast re-air, verbatim<br/>via: already carries us,<br/>so it cannot come back"]
+
+    classDef stop fill:#E4E8EA,stroke:#64717A,color:#2A2E33
+    classDef act fill:#DCEBED,stroke:#0F6E7B,color:#08343B
+    class STOP1,STOP2 stop
+    class LX,BC act
+</pre>
+    </div>
+  </figure>
+  <figcaption>The recipient's own word outranks every observation — this is the one place <code>hold:</code>'s preference order is consumed rather than merely stored.</figcaption>
+</section>
+
+<section id="f6">
+  <h2><span class="fig">FIG 6</span> How a packet crosses bearers</h2>
+  <p class="lede">The question this document exists to answer: a packet arrives on Bluetooth — what puts it on the LAN, or on the internet?</p>
+  <figure>
+    <div class="plate-bar"><span>decision</span><span>the three re-air sites</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart TD
+    BLE["heard on BLE"] --> FUN["XprsIngest.heard"]
+
+    FUN --> C{"third-party 1:1?"}
+    C -- yes --> PARK["park in custody"] --> FWD["XprsForwarder"]
+    FUN --> DH{"heard directly,<br/>and we hold mail for them?"}
+    DH -- yes --> REL["release-on-hearing<br/>30 s throttle · max 4 · paced 1500 ms"]
+    FUN --> CMD{"cmd:history for us?"}
+    CMD -- yes --> REP["archive replay, verbatim"]
+
+    FWD -- "gateway nameable" --> LXA["LXMF, addressed<br/><b>DELIBERATE</b>"]
+    FWD -- otherwise --> PUB
+    REL -- "recipient on BLE" --> MSP["MSP session — BLE only,<br/>no air at all"]
+    REL -- "recipient elsewhere" --> PUB
+    REP --> LXB["LXMF copy to the asker<br/><b>DELIBERATE</b>"]
+    REP --> PUB
+
+    PUB["XprsPublisher._fanOut"] --> G1{"scope:local<br/>and bearer is long-range?"}
+    G1 -- yes --> BLOCK["blocked — the ONLY thing<br/>that stops the internet"]
+    G1 -- no --> G2{"bearer disabled or inactive?"}
+    G2 -- yes --> SKIP["skipped"]
+    G2 -- no --> OUT["ble5 · lan · reticulum<br/><i>the crossing is a SIDE EFFECT</i>"]
+
+    classDef del fill:#DCEBED,stroke:#0F6E7B,color:#08343B
+    classDef side fill:#FBEFD6,stroke:#A9701A,color:#4A3208
+    classDef blk fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    class LXA,LXB del
+    class OUT side
+    class BLOCK blk
+</pre>
+    </div>
+  </figure>
+  <figcaption><strong>Two crossings in the whole app are addressed</strong> — the forwarder's LXMF to a chosen gateway, and the history server's copy to whoever asked. Everything else reaches the internet because the fan-out puts the wire on every bearer that is up, and <code>scope:local</code> is the only brake. Not necessarily wrong — §36.0 says a station that cannot tell answers on every bearer — but it is the fallback doing the work, not a routing decision.</figcaption>
+</section>
+
+<section id="f7">
+  <h2><span class="fig">FIG 7</span> The gate on the way in from the internet</h2>
+  <p class="lede">Radio traffic is bounded by radio range. Internet traffic is not, so the internet lane has an admission rule the radio lanes do not.</p>
+  <figure>
+    <div class="plate-bar"><span>decision</span><span>§36.3 declaration gate</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart TD
+    IN["XPRS packet off Reticulum"] --> A["t:command / t:result → answered<br/><i>the gate governs what we SPOOL,<br/>not what we will say</i>"]
+    A --> B["t:identity → bind the key"]
+    B --> C["hears: → gossip<br/><i>L2 stays radio-only: link is 'rns'</i>"]
+    C --> D{"addressed to us?"}
+    D -- yes --> KEEP["archive it — our own mail"]
+    D -- no --> CARRY["onCarry → custody + forwarder<br/><i>this already happened</i>"]
+    CARRY --> E{"admitted to the archive?"}
+    E -- "super-archiver keeping observation/identity/service" --> KEEP
+    E -- "a publication: t:status, t:reaction,<br/>or a t:message with NO d:" --> KEEP
+    E -- "an active t:mailbox hold: names us" --> KEEP
+    E -- otherwise --> REF["refusedRns++<br/>rate-logged once a minute"]
+
+    classDef ref fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    class REF ref
+</pre>
+    </div>
+  </figure>
+  <figcaption><strong>The asymmetry is deliberate.</strong> <code>refusedRns</code> gates the <em>archive only</em>. By the time a packet is refused it has already been offered to custody and already been answered as a command. Refusing to <em>spool</em> a stranger's traffic is not refusing to <em>carry</em> it.</figcaption>
+</section>
+
+<section id="gaps">
+  <h2><span class="fig">TABLE</span> Where this disagrees with the specification</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>§</th><th>rule</th><th>state</th></tr></thead>
+      <tbody>
+        <tr><td class="res">13.1</td><td>relay budget by packet type</td>
+          <td>in the codec; <strong>no transmit path calls it</strong>. The forwarder appends <code>via:</code> without checking it, though §36.8.1 says it applies</td></tr>
+        <tr><td class="res">13.2</td><td>loop check</td>
+          <td>in the codec, unused; the forwarder re-implements it by hand</td></tr>
+        <tr><td class="res">13.2.1</td><td>random wait, cancel on hearing</td>
+          <td><strong>not implemented in the app at all</strong>; complete in firmware for LAN, LoRa, ESP-NOW</td></tr>
+        <tr><td class="res">13.11.3</td><td>a gateway treats <code>scope:</code> as binding</td>
+          <td>honoured — checked in the fan-out and in the chat wapp's APRS path</td></tr>
+        <tr><td class="res">36.8.1</td><td>release on hearing, forward toward a gateway, once per holder</td>
+          <td>implemented</td></tr>
+        <tr><td class="res">9.4.1</td><td>no self-generated callsign onto licensed spectrum</td>
+          <td><strong>violated</strong> — the ESP32 iGate computes an APRS-IS passcode for an <code>X3</code> callsign</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note warn">
+    <span class="tag">the row that matters outside this codebase</span>
+    <p>§9.4.1 is the only one that puts traffic somewhere a regulator cares about.
+    An <code>X1</code> or <code>X3</code> callsign is assigned by no authority, so
+    traffic from one must not be originated onto amateur infrastructure.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Drawn from <code>docs/diagrams/relay-gateway-flow.md</code>. Section numbers
+  refer to <code>docs/XPRS.md</code>. Companion:
+  <code>docs/diagrams/transports-flow.md</code>, which draws the coordinator these
+  roles sit on.</p>
+</footer>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  // The plates keep a light ground in both page themes, so mermaid stays on its
+  // light theme and never renders dark-on-dark.
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      background: '#FBFCFC', primaryColor: '#EDF2F3', primaryTextColor: '#131A1F',
+      primaryBorderColor: '#94A8AE', lineColor: '#5C6C73', secondaryColor: '#F2F5F6',
+      tertiaryColor: '#FFFFFF', fontFamily: 'IBM Plex Sans, sans-serif', fontSize: '14px',
+      actorBg: '#EDF2F3', actorBorder: '#0F6E7B', actorTextColor: '#131A1F',
+      noteBkgColor: '#FBEFD6', noteBorderColor: '#A9701A', noteTextColor: '#4A3208'
+    },
+    flowchart: { curve: 'basis', useMaxWidth: false },
+    sequence: { useMaxWidth: false, wrap: true, width: 175 }
+  });
+</script>
+</body>
+</html>

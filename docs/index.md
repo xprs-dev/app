@@ -55,6 +55,7 @@ Pictures for all of this live in **[diagrams/](diagrams/README.md)**.
 
 | doc | the sections that matter |
 |---|---|
+| [relay-gateway-flow.md](diagrams/relay-gateway-flow.md) | **Read before touching relaying or gatewaying.** The app does NOT digipeat on any bearer, and nobody digipeats BLE at all — `xprsMayRelay`/`xprsWouldLoop` are dead code, and §13.2.1's jitter-and-cancel is unimplemented outside the firmware. Also the §36.3 gate on the internet lane, which governs the archive only. |
 | [transports-flow.md](diagrams/transports-flow.md) | **Start here if you want the shape before the prose.** Seven diagrams: the component map, the send sequence, the per-bearer decision, the receive demux and funnel, the message lifecycle, and the bench instrument. |
 | [transports.md](transports.md) | **§2** the three answers a bearer gives, and why `queued` had to exist. **§4** the receive funnel and the third-party mail nobody was carrying — the defect that motivated the whole thing. **§5** the bearer switchboard for testing. **§7** the eight hardware cases. **§8** what is deliberately not done. |
 

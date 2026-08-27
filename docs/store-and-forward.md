@@ -1,5 +1,8 @@
 # Store-and-forward
 
+**Drawn:** [diagrams/relay-gateway-flow.md](diagrams/relay-gateway-flow.md)
+figures 4 and 5 — the carrier lifecycle, and choosing where to hand mail next.
+
 A message to a station that no path reaches is handed to a nearby device, which
 carries it and delivers it on meeting the recipient. Any capable device can act
 as a carrier: a phone, a tablet, or an ESP32 dongle.
