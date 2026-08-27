@@ -701,7 +701,8 @@ abstract class MeshSessionDelegate {
   /// identity we can trust on a link: a beacon can be re-aired by a neighbour,
   /// which teaches its address under somebody else's callsign, and a dialer
   /// then spends every attempt on the wrong device.
-  void peerIdentified(String callsign, {required bool dialer}) {}
+  void peerIdentified(String callsign,
+      {required bool dialer, required int caps}) {}
 
   /// Next spooled file to move to [peer], or null.
   MeshBulkPending? nextBulkFor(String peer);
@@ -886,8 +887,13 @@ class MeshSession {
   Future<void> _onHello(MspHello h) async {
     if (state != MeshSessionState.hello) return;
     peerCallsign = h.callsign;
-    delegate.peerIdentified(h.callsign, dialer: dialer);
     peerCaps = h.caps;
+    // Announce the identity WITH what the peer said it can do. The caps are
+    // the only proof on the wire that this station can hold a session and take
+    // custody of a 1:1 — a device class byte would be an inference, this is a
+    // declaration, and it arrives on the very lane that would carry the
+    // message (docs/mesh.md section 3, docs/ble5.md section 9).
+    delegate.peerIdentified(h.callsign, dialer: dialer, caps: peerCaps);
     peerMaxFrame = h.maxFrame;
     peerPendingMsgs = h.pendingMsgs;
     peerPendingBulk = h.pendingBulk;

@@ -3,106 +3,86 @@
  *
  * The advert window is five seconds a minute shared by every registered frame,
  * so a 1:1 broadcast to the whole street is airtime taken from the street. It
- * may be suppressed ONLY for a peer we hear ourselves, both ways, right now,
- * and only for a device that can hold a GATT session. Every other case keeps
- * the broadcast — getting this wrong costs 120 s of silence, so the tests are
- * about what must NOT be suppressed.
+ * may be suppressed ONLY for a peer we can dial right now AND that told us, in
+ * its own MSP HELLO, that it takes custody of messages.
+ *
+ * The previous version of this gate asked `MeshTable.neighbors` for a device
+ * class and a bidirectional flag. Both look right; both are structurally
+ * absent, because the table is fed only by the 0x4D mesh beacon and a phone
+ * deliberately airs none. Those tests passed against a feature that was dead on
+ * hardware — so these ones assert on the signal that is actually transmitted,
+ * and are mostly about what must NOT be suppressed.
  */
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xprs/services/mesh/mesh_beacon.dart';
 import 'package:xprs/services/mesh/mesh_custody.dart';
-import 'package:xprs/services/mesh/mesh_table.dart';
+import 'package:xprs/services/mesh/mesh_session.dart';
 
-MeshBeacon _beacon(
-  String cs, {
-  MeshDeviceClass cls = MeshDeviceClass.phone,
-  List<MeshDvEntry> dv = const [],
-}) =>
-    MeshBeacon(
-      callsign: cs,
-      deviceClass: cls,
-      cond: const MeshConditions(
-          powered: false, uptimeBucket: 0, mobility: MeshMobility.unknown),
-      dv: dv,
-    );
-
-/// A neighbour that lists ME at cost 1 — i.e. it hears us too.
-MeshNeighbor? _twoWay(String cs, MeshDeviceClass cls) {
-  final t = MeshTable('ME');
-  t.ingest(_beacon(cs, cls: cls, dv: [MeshDvEntry(meshHash('ME'), 1)]));
-  return t.neighbors[cs];
-}
-
-/// A neighbour we hear, that does not list us: a one-way link.
-MeshNeighbor? _oneWay(String cs, MeshDeviceClass cls) {
-  final t = MeshTable('ME');
-  t.ingest(_beacon(cs, cls: cls));
-  return t.neighbors[cs];
-}
+/// What a phone offers: msgCustody | bulkRx | bulkTx | gossip — the `caps=0xf`
+/// observed from X3ARK on the bench (docs/ble5.md §9.1).
+const int kPhoneCaps = MspCaps.msgCustody |
+    MspCaps.bulkRx |
+    MspCaps.bulkTx |
+    MspCaps.gossip;
 
 void main() {
-  final now = DateTime.now();
-
   group('a 1:1 may go point to point', () {
-    test('to a phone that hears us back', () {
+    test('to a peer we can dial that offered msgCustody', () {
       expect(
           MeshCustodyDelegate.pointToPointOk(
-              _twoWay('PHONE', MeshDeviceClass.phone), now),
+              dialableNow: true, peerCaps: kPhoneCaps),
           isTrue);
     });
 
-    test('to a tablet that hears us back', () {
+    test('msgCustody alone is enough — the bulk lane is a separate question',
+        () {
       expect(
           MeshCustodyDelegate.pointToPointOk(
-              _twoWay('TAB', MeshDeviceClass.tablet), now),
+              dialableNow: true, peerCaps: MspCaps.msgCustody),
           isTrue);
     });
   });
 
   group('and must NOT, for anything else', () {
-    test('an ESP32 keeps the broadcast — relaying is what it is for', () {
-      // A dongle cannot scan and advertise at the same time, and it has to
-      // OVERHEAR a frame to carry it. Suppressing the air for a dongle removes
-      // the reason it is on the street.
+    test('a peer we have never held a session with', () {
+      // No HELLO, no caps. The FIRST 1:1 to a peer is always aired; the session
+      // it provokes records the caps and the next one goes direct. Suppressing
+      // on a guess costs two minutes of silence.
       expect(
-          MeshCustodyDelegate.pointToPointOk(
-              _twoWay('DONGLE', MeshDeviceClass.esp32), now),
+          MeshCustodyDelegate.pointToPointOk(dialableNow: true, peerCaps: 0),
           isFalse);
     });
 
-    test('a desktop keeps the broadcast until its BLE duty cycle is proven', () {
+    test('a peer whose caps do not include msgCustody', () {
+      // An ESP32 excludes itself here: a dongle goes deaf during an MSP session
+      // and relaying is what dongles are FOR, so it needs to overhear the
+      // broadcast. No device-class byte is required to reach that conclusion.
+      const dongle = MspCaps.bulkRx | MspCaps.bulkTx;
       expect(
           MeshCustodyDelegate.pointToPointOk(
-              _twoWay('DESK', MeshDeviceClass.computer), now),
+              dialableNow: true, peerCaps: dongle),
           isFalse);
     });
 
-    test('a router and a base station keep the broadcast', () {
-      for (final c in [MeshDeviceClass.router, MeshDeviceClass.baseStation]) {
-        expect(MeshCustodyDelegate.pointToPointOk(_twoWay('INFRA', c), now),
-            isFalse,
-            reason: '$c must keep relaying');
-      }
-    });
-
-    test('a ONE-WAY neighbour is a black hole, however loudly we hear it', () {
-      // We hear them; nothing says they hear us. A suppressed broadcast would
-      // be a message sent into a hole with nobody else holding a copy.
+    test('a peer that has gone stale in the dial registry', () {
+      // It offered custody once; it is not in range now. The radio has moved on
+      // and the message must take its chances on the air.
       expect(
           MeshCustodyDelegate.pointToPointOk(
-              _oneWay('DEAF', MeshDeviceClass.phone), now),
+              dialableNow: false, peerCaps: kPhoneCaps),
           isFalse);
     });
 
-    test('a neighbour that has gone quiet past the TTL', () {
-      final n = _twoWay('GONE', MeshDeviceClass.phone);
-      // kNeighborTtl past its last beacon: still in the table, not reachable.
-      final later = now.add(kNeighborTtl).add(const Duration(seconds: 1));
-      expect(MeshCustodyDelegate.pointToPointOk(n, later), isFalse);
+    test('a peer that is neither dialable nor known', () {
+      expect(
+          MeshCustodyDelegate.pointToPointOk(dialableNow: false, peerCaps: 0),
+          isFalse);
     });
 
-    test('a peer we have no neighbour record for at all', () {
-      expect(MeshCustodyDelegate.pointToPointOk(null, now), isFalse);
+    test('gossip-only caps — a peer that swaps tables but takes no mail', () {
+      expect(
+          MeshCustodyDelegate.pointToPointOk(
+              dialableNow: true, peerCaps: MspCaps.gossip),
+          isFalse);
     });
   });
 

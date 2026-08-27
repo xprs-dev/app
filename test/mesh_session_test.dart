@@ -217,6 +217,13 @@ void main() {
       // from this.
       expect(net.da.identified, ['BBB']);
       expect(net.db.identified, ['AAA']);
+      // …and it carries what the peer can DO, not just who it is. This is the
+      // only signal on the wire that says "I will take custody of a 1:1", and a
+      // message is routed over the radio instead of the internet on the
+      // strength of it (MeshCustodyDelegate.pointToPointOk). A device class
+      // byte would be an inference; this is the peer's own declaration.
+      expect(net.da.identifiedCaps.single & MspCaps.msgCustody, isNonZero);
+      expect(net.db.identifiedCaps.single & MspCaps.msgCustody, isNonZero);
     });
 
     test('message custody transfers and archives', () async {
@@ -335,10 +342,14 @@ class _Delegate implements MeshSessionDelegate {
   int msgResult = 0;
   int gossipsSeen = 0;
   final List<String> identified = [];
+  final List<int> identifiedCaps = [];
 
   @override
-  void peerIdentified(String callsign, {required bool dialer}) =>
-      identified.add(callsign);
+  void peerIdentified(String callsign,
+      {required bool dialer, required int caps}) {
+    identified.add(callsign);
+    identifiedCaps.add(caps);
+  }
 
   // bulk tx side
   Uint8List? bulkData;

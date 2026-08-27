@@ -458,3 +458,105 @@ does not scan (§5), so frames aired at it during a transfer are simply lost.
 GATT-based file transfer on the ESP32 is deliberately out of scope for now, so
 this bites only a dongle acting as an MSP server for something else.
 
+
+### 9.8 A 1:1 to the phone in the room, measured 2026-08-27
+
+A DM from C61 to TANK2 — one desk apart, TANK2 with no internet — took **ten
+minutes**, because an LXMF destination is a Reticulum address and Reticulum
+found a path: `via tcp:use.inertia.chat:4242, hops 18`, refreshed three seconds
+earlier. Eighteen hops to a phone that has no internet at all.
+
+The fix is two decisions, and neither puts Reticulum on BLE:
+
+1. **Address an XPRS peer as an XPRS peer.** `RnsService.sendLxmf` arms
+   `MeshCourier` when the destination belongs to a callsign we can reach by
+   radio, packing the same text as a signed XPRS 1:1. The LXMF send still goes
+   ahead; whichever arrives first wins and the other deduplicates.
+2. **Hand that 1:1 over point to point.** `MeshCustodyDelegate.onAirFrame`
+   parks it and returns *"do not air"*, the scheduler dials, and it crosses on
+   the MSP MSG lane.
+
+Measured, TANK2 offline:
+
+```
+11:44:49.362  Mesh: parked 7316d3 X3ARK -> X1VCVM for custody
+11:44:49.363  Mesh: X1VCVM is next to us — handing 7316d3 over, not airing it
+11:44:50.537  Mesh: custody of 7316d3 -> X1VCVM (archived)
+11:44:50.350  (TANK2) LXMF: carried message from 2dc5d2c0 (via custody)
+```
+
+**1.2 s**, against ten minutes. Reverse direction 1.8 s.
+
+#### The mistake that shipped first: gating on a signal nobody transmits
+
+The first version asked `MeshTable.neighbors[peer]` for a **device class** and a
+**bidirectional** flag — "is this an Android that hears me back?". Both fields
+exist, both are documented, and both are *structurally always absent between two
+phones*: that table is filled only by the 0x4D mesh beacon, and
+`MeshService._sendBeacon` deliberately airs only the XPRS one. Two beacons
+competing for a five-second-a-minute window halve the chance either is heard,
+and the DV digest is exchanged in full over MSP anyway.
+
+The feature passed its tests and was **dead on the bench** — `neighbors: 0`
+against 466 XPRS beacons heard. Reviving the 0x4D beacon to feed it would have
+paid airtime to re-learn something already known.
+
+**Ask the peer, on the lane that will carry the message.** The MSP HELLO already
+declares `caps`, and `MspCaps.msgCustody` is exactly the question:
+
+```
+Mesh: MSP< session with X3ARK caps=0xf pending=0/1
+```
+
+It beats a device class on every count that matters — it is transmitted, it is
+proof rather than inference (a completed HELLO means a session with this peer
+demonstrably opens), and an **ESP32 excludes itself**: a dongle goes deaf during
+a session and relaying is what dongles are for, so it never offers custody and
+keeps getting the broadcast it needs to overhear. No new wire field, no beacon.
+
+A peer we have never held a session with has no caps recorded, so the **first**
+1:1 is aired normally and the session it provokes records them. Suppressing on a
+guess costs 120 s of silence; an unnecessary broadcast costs one advert.
+
+#### Preferring the radio means the internet must be told to stop
+
+`sendLxmf` returns Reticulum's verdict. With the radio delivering, that verdict
+is `false` for messages that **already arrived** — so the sender showed the DM
+as unsent and spent all seven rungs of the retry ladder, roughly half an hour,
+pushing the same bytes into hubs that could not reach the recipient. Observed: a
+path request every two seconds, minutes after the message had been read.
+
+`MeshCustodyDelegate.custodyTransferred` now calls
+`RnsService.retireLxmfRetriesFor(peer)` when custody went to the **target
+itself** (a relay proves nothing about arrival). On the bench it retired a
+nine-message backlog at the moment of delivery, and the churn stopped dead:
+
+```
+11:44:50.537  RNS/lxmf: X1VCVM took 9 message(s) over the radio —
+              retiring the internet retries
+```
+
+#### Suppression must never become silence
+
+A frame aired once may not be observed (§1), and suppressing a broadcast also
+gives up *passive* redundancy — no third device overhears it and parks a backup.
+So a suppressed frame is re-aired **once** at 120 s if the session lane has not
+delivered it, from the scheduler's existing tick. 120 s because a dial alone is
+allowed 110 s; anything shorter re-airs a message still being delivered.
+
+Verified by killing the target's Bluetooth two seconds after the send:
+
+```
+11:56:36.364  suppressed e13b46
+11:58:36.400  Mesh: e13b46 not handed over in 120s — airing it once
+```
+
+120.036 s, once. When the radio came back, both re-aired frames were received.
+`reAired` is reported in `/api/status` `mesh` — it is the only external evidence
+this half works, so it is published even though it is normally zero.
+
+**Degrading is the common case, so it must be the cheap one.** When the peer is
+not dialable the gate simply says no and nothing changes: no suppression, the
+old broadcast path, unchanged timing. Confirmed after a Bluetooth toggle left
+C61 unable to see TANK2's connectable advert — the DM parked for custody with no
+suppression line, exactly as before this feature existed.

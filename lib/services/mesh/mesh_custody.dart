@@ -20,6 +20,7 @@ import '../../util/media_ref.dart';
 
 import '../../connections/bluetooth/ble_service.dart';
 import '../log_service.dart';
+import '../reticulum/rns_service.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_vocab.dart';
 import 'mesh_table.dart';
@@ -38,7 +39,19 @@ class MeshTransportHooks {
   /// The peer on the CURRENT link named itself in its HELLO. The transport uses
   /// it to correct its dial registry — an address learned from a re-aired
   /// beacon belongs to the relayer, not to the callsign inside the beacon.
-  void Function(String callsign)? peerIdentified;
+  ///
+  /// [caps] is what the peer said it can do (`MspCaps`). The transport keeps it
+  /// so a later 1:1 can ask [canTakeCustody] instead of guessing from a device
+  /// class that is not on the air.
+  void Function(String callsign, int caps)? peerIdentified;
+
+  /// Can [callsign] be handed a 1:1 right now over a GATT/MSP session, instead
+  /// of being shouted at the whole street?
+  ///
+  /// Answered by the transport, which alone knows both halves: that the peer is
+  /// fresh enough to dial, and what its last HELLO offered. Null (no transport
+  /// wired) and false both mean "air it as before".
+  bool Function(String callsign)? canTakeCustody;
 
   /// Send one MSP frame on the client link (our GATT client → peer FFF1).
   Future<void> Function(Uint8List data)? clientSend;
@@ -262,6 +275,11 @@ class MeshCustodyCounters {
         'delivered': delivered,
         'purged': purged,
         'parked': parked,
+        // Suppressed 1:1s the point-to-point lane failed to deliver inside the
+        // grace period and that were therefore aired after all. This is the
+        // ONLY external evidence that suppression never becomes silence, so it
+        // is reported even though it is normally zero.
+        'reAired': reAired,
         'courier': MeshCourierCounters.json(),
         'sessionsClean': sessionsClean,
         'sessionsAbrupt': sessionsAbrupt,
@@ -285,6 +303,13 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
     MeshStore.instance.markArchived(m.key);
     MeshCustodyCounters.custodyOut++;
     _log('custody of ${m.key} -> $peer (archived)');
+    // Handed to the TARGET ITSELF, not to a carrier: that is delivery, and the
+    // internet no longer needs to keep trying. Handing a message to a relay
+    // proves nothing about arrival, so only the direct case retires anything.
+    final to = MeshFrame.parse(m.wire)?.to ?? '';
+    if (to.isNotEmpty && to.toUpperCase() == peer.toUpperCase()) {
+      RnsService.instance.retireLxmfRetriesFor(peer);
+    }
   }
 
   @override
@@ -348,9 +373,10 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
   }
 
   @override
-  void peerIdentified(String callsign, {required bool dialer}) {
+  void peerIdentified(String callsign,
+      {required bool dialer, required int caps}) {
     if (callsign.isEmpty) return;
-    MeshSessionManager.instance.hooks.peerIdentified?.call(callsign);
+    MeshSessionManager.instance.hooks.peerIdentified?.call(callsign, caps);
   }
 
   @override
@@ -583,40 +609,50 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
 
   /// Is [to] a peer we can hand a 1:1 to directly, instead of airing it?
   ///
-  /// Three things must ALL hold, and each one has cost somebody a bug:
+  /// **This asks the transport, not the routing table, and that distinction is
+  /// the whole fix.** The first version of this gate read
+  /// `MeshTable.neighbors[to].deviceClass` and `.bidirectional`, which look
+  /// exactly right and are structurally always absent: that table is filled
+  /// only by the 0x4D mesh beacon, and a phone deliberately does not air one
+  /// (`MeshService._sendBeacon` — two beacons halve the chance either is heard
+  /// in a five-second-a-minute window). The feature shipped, passed its tests,
+  /// and was dead on the bench with `neighbors: 0` against 466 XPRS beacons
+  /// heard. A gate on a signal that is not transmitted is not a gate.
   ///
-  ///  - **A neighbour we heard ourselves, recently.** Not a route, not a hub's
-  ///    replayed announce — our own radio, inside `kNeighborTtl`.
-  ///  - **Bidirectional.** `MeshTable` sets this only when the peer's own DV
-  ///    digest lists US at cost 1 (mesh_table.dart section 14). A one-way BLE
-  ///    link is a black hole: we hear them, they never hear us, and a
-  ///    suppressed broadcast would be a message sent into it.
-  ///  - **A phone or a tablet.** The device class is byte[1] of the mesh
-  ///    beacon and already on the wire, so nothing new is transmitted to learn
-  ///    this. An ESP32 is excluded deliberately: a dongle cannot scan and
-  ///    advertise at the same time, and relaying is what dongles are FOR — it
-  ///    needs to overhear the broadcast. A desktop is excluded until its BLE
-  ///    duty-cycling is verified against an MSP session.
-  ///
-  /// Anything else — a relayed target, a stale neighbour, a station, a peer we
-  /// only know from a hub — keeps the broadcast exactly as before.
+  /// See [pointToPointOk] for what is asked instead.
   static bool _pointToPointTarget(String to) {
-    final t = MeshService.instance.table;
-    if (t == null || to.isEmpty) return false;
-    final want = to.toUpperCase();
-    for (final e in t.neighbors.entries) {
-      if (e.key.toUpperCase() != want) continue;
-      return pointToPointOk(e.value, DateTime.now());
-    }
-    return false; // not a neighbour at all: air it, somebody may relay it
+    if (to.isEmpty) return false;
+    final ask = MeshSessionManager.instance.hooks.canTakeCustody;
+    if (ask == null) return false; // no transport wired: air it, as before
+    return ask(to.toUpperCase());
   }
 
-  /// The decision itself, pure, so it can be tested without a live mesh.
-  static bool pointToPointOk(MeshNeighbor? n, DateTime now) {
-    if (n == null) return false;
-    if (!n.aliveAt(now) || !n.bidirectional) return false;
-    return n.deviceClass == MeshDeviceClass.phone ||
-        n.deviceClass == MeshDeviceClass.tablet;
+  /// The decision itself, pure, so it can be tested without a live radio.
+  ///
+  /// Both halves must hold, and each answers a different question:
+  ///
+  ///  - [dialableNow] — *can we reach it?* The peer is in the transport's dial
+  ///    registry and fresh (`BleService._meshPeerFreshMs`, ~2.5 min). Stale
+  ///    means the radio has moved on and the message must take its chances on
+  ///    the air.
+  ///  - [peerCaps] carrying [MspCaps.msgCustody] — *will it take the message?*
+  ///    This is the peer's OWN declaration from its MSP HELLO, on the very lane
+  ///    that would carry the frame. It beats a device class on all three counts
+  ///    that matter: it is transmitted (the class byte is not), it is proof
+  ///    rather than inference (a HELLO completed means a session with this peer
+  ///    demonstrably opens), and it lets an ESP32 exclude ITSELF — a dongle
+  ///    goes deaf during a session and relaying is what dongles are for, so it
+  ///    does not offer custody and keeps getting the broadcast it needs to
+  ///    overhear (docs/ble5.md section 5).
+  ///
+  /// A peer we have never held a session with has no caps recorded, so the
+  /// FIRST 1:1 to it is aired normally and the session that follows records
+  /// them. That default is deliberate: a wrong suppression costs
+  /// [suppressedGrace] of silence, an unnecessary broadcast costs one advert.
+  static bool pointToPointOk(
+      {required bool dialableNow, required int peerCaps}) {
+    if (!dialableNow) return false;
+    return (peerCaps & MspCaps.msgCustody) != 0;
   }
 
   /// Ask the scheduler to dial [to] now, at most once per callsign per

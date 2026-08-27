@@ -6720,6 +6720,37 @@ class RnsService {
     return n;
   }
 
+  /// The radio delivered what the internet was still trying to deliver: retire
+  /// every pending LXMF retry addressed to [callsign].
+  ///
+  /// Called when custody of a 1:1 is handed to the TARGET ITSELF over a GATT
+  /// session — not to a relay, which proves nothing about arrival. Without
+  /// this, preferring the radio is only half done: the message crosses the room
+  /// in two seconds and the sender then spends all seven rungs of the ladder,
+  /// roughly half an hour, pushing the same bytes into hubs that cannot reach
+  /// the recipient, while its own UI shows the message as unsent. Measured on
+  /// the bench: a path request every two seconds for minutes after the message
+  /// had already been read.
+  ///
+  /// Returns how many were retired.
+  int retireLxmfRetriesFor(String callsign) {
+    final want = callsign.trim().toUpperCase();
+    if (want.isEmpty) return 0;
+    final doomed = <Map<String, Object?>>[];
+    for (final e in _lxmfRetries) {
+      final dest = (e['dest'] as String).trim().toLowerCase();
+      if ((_lxmfCallsign[dest] ?? '').toUpperCase() == want) doomed.add(e);
+    }
+    if (doomed.isEmpty) return 0;
+    for (final e in doomed) {
+      _lxmfRetries.remove(e);
+    }
+    _notifyLxmf();
+    LogService.instance.add('RNS/lxmf: $want took ${doomed.length} message(s) '
+        'over the radio — retiring the internet retries');
+    return doomed.length;
+  }
+
 
   /// Remember, on disk, that this LXMF address belongs to this callsign. Called
   /// for every announce that carries both — a device we can name today is a

@@ -453,3 +453,39 @@ The **ESP32 is different and does go deaf**: frames aired at a dongle during an
 MSP session are not received (`ble5.md` §5). Anything that must reach one has to
 be re-aired afterwards. GATT-based file transfer on the ESP32 is deliberately
 out of scope for now, so this matters only for a dongle acting as a server.
+
+## 15. A 1:1 to a peer in the room (2026-08-27)
+
+§3 describes two planes: gossip beacons for control, GATT/MSP unicast for data.
+This is what happened when a *message* was routed onto the second one.
+
+**Plane 1 is not what the code thinks it is.** §3 specifies the 0x4D route
+beacon with a class byte and a DV digest. `MeshService._sendBeacon` airs only
+the XPRS beacon, on purpose: the advert window is five seconds a minute and two
+beacons halve the chance either is heard, while the DV digest and the have-bloom
+are exchanged *in full* over MSP whenever two stations connect anyway — which
+§3 already anticipated as "two-tier gossip". The consequence is easy to miss and
+expensive: **`MeshTable.neighbors` is empty between two phones**, `bidirectional`
+is never set, `deviceClass` is never learned, and `gossipReceived` cannot seed
+the table because it only updates a neighbour that already exists.
+
+Anything that needs "is this peer an Android in range, both ways?" must
+therefore ask elsewhere. It asks the transport:
+
+- **Can we reach it?** `BleService._meshPeers` — callsign → BLE address, fresh
+  within 150 s. Only the legacy connectable presence advert and a live link file
+  a *dialable* address there; a beacon sighting files the extended-advert MAC,
+  which is deliberately not connectable.
+- **Will it take the message?** `MspCaps.msgCustody` from the peer's own MSP
+  HELLO, kept past the end of the session. A dongle goes deaf during a session
+  (`ble5.md` §5) and never offers it, so it keeps overhearing broadcasts, which
+  is what a relay is for.
+
+Both live in `MeshCustodyDelegate.pointToPointOk`, reported at `/api/status`
+`mesh.custody`, and the full account with bench numbers is `ble5.md` §9.8.
+
+**Custody to the target is delivery, and the other lane must be told.** When
+`custodyTransferred` hands a message to the callsign it was addressed to — not
+to a carrier — `RnsService.retireLxmfRetriesFor` cancels the pending internet
+retries. Without it the sender kept pushing a delivered message into hubs for
+half an hour and showed it as unsent.

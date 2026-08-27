@@ -1421,6 +1421,12 @@ class RemoteApiService {
         'spoolPending': MeshBulkSpool.instance.pendingCount(),
         'transfers': MeshBulkSpool.instance.transfersJson(),
         'dialable': BleService.instance.meshDialable(),
+        // Who may be handed a 1:1 point to point instead of having it aired,
+        // and why. `caps` is the peer's own MSP HELLO declaration; `direct` is
+        // the decision that suppresses the broadcast. Exposed because the
+        // previous version of this gate read a table that is always empty and
+        // there was no way to SEE that from outside the app.
+        'custody': BleService.instance.custodyStatus(),
         'gatt': BleService.instance.gattStatus(),
         'scheduler': MeshTransferScheduler.instance.statusJson(),
         'neighborPending': {

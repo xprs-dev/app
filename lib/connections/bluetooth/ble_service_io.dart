@@ -31,7 +31,7 @@ import '../../services/mesh/mesh_transfer_scheduler.dart';
 import '../../services/mesh/mesh_service.dart';
 import '../../services/reticulum/rns_service.dart';
 import '../../services/wifi_direct/wifi_direct_coordinator.dart';
-import '../../services/mesh/mesh_session.dart' show mspIsFrame;
+import '../../services/mesh/mesh_session.dart' show mspIsFrame, MspCaps;
 import '../../services/preferences_service.dart';
 import '../../wapp/android_foreground_service.dart';
 import 'ble5_bus.dart';
@@ -350,7 +350,7 @@ class BleService {
     // the dongle, because a re-aired beacon had filed the dongle's callsign
     // against the neighbour's address — and the mail it was carrying went
     // nowhere.
-    MeshSessionManager.instance.hooks.peerIdentified = (callsign) {
+    MeshSessionManager.instance.hooks.peerIdentified = (callsign, caps) {
       final addr = _ngClientPeer ?? _ngServerCentral;
       if (addr == null || callsign.isEmpty) return;
       final cs = callsign.toUpperCase();
@@ -366,7 +366,16 @@ class BleService {
       }
       _meshPeers[cs] = (addr: addr, ms: now);
       _verifiedAddr[cs] = addr;
+      // What this station said it can do, kept past the end of the session so
+      // the NEXT 1:1 to it can go point to point instead of to the whole
+      // street. In memory only, same lifetime as _verifiedAddr — a stale
+      // capability claim would be worse than no claim at all.
+      if (_peerCaps.length > 64 && !_peerCaps.containsKey(cs)) {
+        _peerCaps.remove(_peerCaps.keys.first);
+      }
+      _peerCaps[cs] = caps;
     };
+    MeshSessionManager.instance.hooks.canTakeCustody = meshCanTakeCustody;
     MeshTransferScheduler.instance.start();
   }
 
@@ -380,6 +389,38 @@ class BleService {
   // _lastPeerAddr slot only ever remembered the most recent one).
   final Map<String, ({String addr, int ms})> _meshPeers = {};
   static const int _meshPeerFreshMs = 150000; // ~2.5 min (a few scan gaps)
+
+  /// Callsign → the `MspCaps` bitmask from that peer's last MSP HELLO. Only a
+  /// completed HELLO writes here, so a key existing also proves the peer is
+  /// CONNECTABLE — the address a beacon sighting files is the extended-advert
+  /// MAC, which is deliberately not connectable (`Ble5.kt` setConnectable
+  /// false); only the legacy presence advert and a live link give a dialable
+  /// one.
+  final Map<String, int> _peerCaps = {};
+
+  /// Can [callsign] be handed a 1:1 over a session right now, rather than
+  /// aired? See `MeshCustodyDelegate.pointToPointOk` for why it is asked this
+  /// way and not from a device class.
+  bool meshCanTakeCustody(String callsign) {
+    final cs = callsign.toUpperCase();
+    final p = _meshPeers[cs];
+    final fresh = p != null &&
+        DateTime.now().millisecondsSinceEpoch - p.ms < _meshPeerFreshMs;
+    return MeshCustodyDelegate.pointToPointOk(
+        dialableNow: fresh, peerCaps: _peerCaps[cs] ?? 0);
+  }
+
+  /// Every callsign we have a capability record for: what it declared, and
+  /// whether a 1:1 to it would go point to point right now. Diagnostic only.
+  Map<String, dynamic> custodyStatus() => {
+        for (final e in _peerCaps.entries)
+          e.key: {
+            'caps': '0x${e.value.toRadixString(16)}',
+            'msgCustody': (e.value & MspCaps.msgCustody) != 0,
+            'dialable': _meshPeers.containsKey(e.key),
+            'direct': meshCanTakeCustody(e.key),
+          }
+      };
 
   /// Peers the mesh can currently dial: callsign → freshness.
   Map<String, int> meshDialable() {

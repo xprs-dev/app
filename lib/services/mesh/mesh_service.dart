@@ -45,6 +45,7 @@ import 'mesh_courier.dart';
 import 'mesh_custody.dart';
 import 'mesh_frame.dart';
 import 'mesh_bulk_spool.dart';
+import 'mesh_session.dart';
 import 'mesh_store.dart';
 import 'mesh_table.dart';
 
@@ -437,23 +438,24 @@ class MeshService {
     }
   }
 
-  /// Is [callsign] a neighbour we hear OURSELVES, right now, both ways?
+  /// Is [callsign] a station we can hand a 1:1 to over the radio in the room,
+  /// instead of sending it out to the internet?
   ///
-  /// Not a route and not a hub's replayed announce — our own radio, inside
-  /// `kNeighborTtl`, with the peer's own DV digest listing us at cost 1. That
-  /// last part is what makes it safe to act on: a one-way BLE link is a black
-  /// hole, and everything that reads this is about to prefer the radio over
-  /// some other lane.
+  /// Asked of the TRANSPORT, not of `MeshTable`: the table is fed only by the
+  /// 0x4D mesh beacon and this node does not air one (see [_sendBeacon]), so
+  /// `neighbors` is empty between two phones and every answer taken from it is
+  /// "no". The transport answers from the peer's own MSP HELLO caps plus its
+  /// dial freshness — see `MeshCustodyDelegate.pointToPointOk`.
+  ///
+  /// The same predicate decides whether the message is COUPLED to the radio at
+  /// all (`RnsService.sendLxmf` arms the courier) and whether its broadcast is
+  /// then suppressed. One condition, so the two cannot disagree and strand a
+  /// message that was armed but never handed over.
   bool isDirectNeighbour(String callsign) {
-    final t = _table;
-    if (t == null || callsign.isEmpty) return false;
-    final want = callsign.toUpperCase();
-    final now = DateTime.now();
-    for (final e in t.neighbors.entries) {
-      if (e.key.toUpperCase() != want) continue;
-      return e.value.aliveAt(now) && e.value.bidirectional;
-    }
-    return false;
+    if (callsign.isEmpty) return false;
+    final ask = MeshSessionManager.instance.hooks.canTakeCustody;
+    if (ask == null) return false;
+    return ask(callsign.toUpperCase());
   }
 
   MeshDeviceClass _deviceClass() {

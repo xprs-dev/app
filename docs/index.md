@@ -29,7 +29,7 @@ committing; it fails only on NEW violations.
 | doc | the sections that matter |
 |---|---|
 | [architecture.md](architecture.md) | **§4** — name the lane before writing code. A file uses two at once: XPRS packets bracket it, MSP carries it. |
-| [ble5.md](ble5.md) | **§1** the 5-seconds-a-minute transmit window and the rotation — *"a frame transmitted once may not be observed at all"*. **§3** the size router and every byte budget. **§4** the scan is never suspended, and why. **§5** the known failure modes. **§9** what was actually measured moving 56 MB. |
+| [ble5.md](ble5.md) | **§1** the 5-seconds-a-minute transmit window and the rotation — *"a frame transmitted once may not be observed at all"*. **§3** the size router and every byte budget. **§4** the scan is never suspended, and why. **§5** the known failure modes. **§9** what was actually measured moving 56 MB. **§9.8** when a 1:1 skips the air entirely and goes point to point — and the gate that shipped dead because it read a table nothing fills. |
 | [mesh.md](mesh.md) | **§3 Plane 2** the MSP data plane. **§7** politeness. **§14** the bulk lane under a large file: the two protocol bugs, the honest throughput, and the forty minutes two phones could not hear each other. |
 | [store-and-forward.md](store-and-forward.md) | Delivery to someone who is not there, and why every up-front reachability test lies. |
 
@@ -126,6 +126,17 @@ the code:
 - **Verify on hardware, and say which parts you saw.** Report what was observed
   and what was not, separately. (`validation.md`,
   `reticulum-connections.md`)
+- **A gate on a signal nobody transmits is not a gate.** A feature keyed on
+  `MeshTable.neighbors` passed every test and was inert on the bench, because
+  the beacon that fills that table is deliberately never aired. Before gating on
+  a field, check the counter that proves it is on the air. (`ble5.md` §9.8)
+- **Ask the peer, on the lane that will carry the message.** A capability the
+  peer declares in its MSP HELLO beats a device class inferred from a beacon:
+  transmitted, proof rather than guess, and wrong device types exclude
+  themselves. (`ble5.md` §9.8)
+- **Preferring a lane means telling the other one to stop.** A message the radio
+  delivered still read as failed to Reticulum, which retried it for half an
+  hour. (`ble5.md` §9.8)
 
 ---
 
