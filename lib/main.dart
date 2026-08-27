@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'models/monitored_task.dart';
-import 'connections/builtin_connections.dart';
 import 'editor/editor_install.dart';
 import 'wapp/host_event_bridge.dart';
 import 'wapp/native/media_capability.dart';
@@ -173,19 +172,6 @@ Future<void> _boot() async {
       NotificationService.instance.init();
       NotificationStore.instance.init();
       AnnouncedTagsStore.instance.init();
-    },
-  );
-  BootOrchestrator.instance.register(
-    id: 'register-connections',
-    name: 'Register connections',
-    description:
-        'Registers the built-in transports (internet live; LAN, Bluetooth, '
-        'LoRa, USB as capability-declaring stubs) into the '
-        'ConnectionRegistry so wapps can reason about available connections '
-        'and their characteristics.',
-    mode: BootStart.parallel,
-    init: () async {
-      registerBuiltinConnections();
     },
   );
   BootOrchestrator.instance.register(

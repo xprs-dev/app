@@ -25,7 +25,6 @@ import 'dart:typed_data';
 
 import '../../connections/bluetooth/ble5_bus.dart';
 import '../../connections/lora/lora_connection.dart';
-import '../../connections/connection.dart';
 import '../../profile/profile_service.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
@@ -218,7 +217,7 @@ class _LoraBearer implements XprsBearer {
   bool get shortRange => true;
   @override
   Future<bool> get active async =>
-      _lora.status == ConnectionStatus.available;
+      _lora.status == LoraStatus.available;
   @override
   Future<XprsSendResult> send(String wire,
           {required int part, String slot = 'status', Duration? ttl}) async =>
@@ -735,19 +734,24 @@ class XprsPublisher {
   ///
   /// Throttled per callsign, because the answer takes a moment to arrive and a
   /// composer retrying a send would otherwise ask on every keystroke.
-  final Map<String, int> _identityAskedAt = {};
-  static const int _identityAskQuietMs = 60 * 1000;
+  /// The ask climbs the shared ladder like every other repeated transmission
+  /// (§31.1: a retry is not a new packet). This used to be a private map and a
+  /// 60-second constant — the twelfth such timer in the codebase, each correct
+  /// alone and none aware of the others.
+  static const List<int> _identityLadderS = [60, 300, 1800];
 
   Future<void> askIdentity(String call) async {
     final c = call.trim().toUpperCase();
     if (c.isEmpty) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final last = _identityAskedAt[c];
-    if (last != null && now - last < _identityAskQuietMs) return;
-    if (_identityAskedAt.length > 64) {
-      _identityAskedAt.remove(_identityAskedAt.keys.first);
+    final key = 'qidentity:$c';
+    // Reachable enough to be worth asking: we have heard this station at all.
+    // §13.7.2 — asking into a room the peer walked out of teaches nothing.
+    final reachable = XprsMonitor.instance.stations[c] != null;
+    if (!XprsRetryLedger.instance
+        .may(key, reachable: reachable, ladderS: _identityLadderS)) {
+      return;
     }
-    _identityAskedAt[c] = now;
+    XprsRetryLedger.instance.spend(key);
     final self = XprsArchive.instance.selfCallsign.trim();
     if (self.isEmpty) return;
     final t = DateTime.now().toUtc();

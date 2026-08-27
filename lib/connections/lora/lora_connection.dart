@@ -1,35 +1,34 @@
 /*
- * LoRa transport — capability-declaring stub.
+ * LoRa — a slot for a radio that does not exist yet.
  *
- * Mirrors the hal.lora characteristics (see connections/hal/): very low
- * bandwidth, tiny payloads, long range, and crucially store-and-forward —
- * a wapp that picks LoRa must tolerate delayed, best-effort delivery across
- * a mesh. No radio code yet; reports unavailable.
+ * Read by `_LoraBearer` in xprs_publisher.dart, which asks one question:
+ * whether a LoRa radio is present this second. It answers no, and will until
+ * there is hardware to answer for.
+ *
+ * ── Why this is not a `Connection` any more ─────────────────────────────────
+ *
+ * It used to extend a `Connection` base class registered in a
+ * `ConnectionRegistry` at boot. That registry was a capability catalogue with
+ * no `send` method, four of five entries wrapping no implementation, no entry
+ * for Reticulum — the primary transport — and `bluetooth`/`lan` reporting
+ * `unavailable` while both were carrying live traffic. Nothing read it: one
+ * string in a boot-task description was the only reference outside its own
+ * directory. An inventory that is wrong is worse than no inventory, so it went.
+ *
+ * What was worth keeping from it is the vocabulary — bandwidth, payload, reach,
+ * delivery mode — and that lives on `XprsBearer`, which is the abstraction that
+ * actually carries packets and the one the airtime budget prices.
  */
 
-import '../connection.dart';
+/// Whether a LoRa radio is attached and usable.
+enum LoraStatus { available, unavailable }
 
-class LoraConnection extends Connection {
-  @override
-  String get id => 'lora';
+class LoraConnection {
+  const LoraConnection();
 
-  @override
-  ConnectionKind get kind => ConnectionKind.lora;
-
-  @override
-  String get displayName => 'LoRa radio';
-
-  @override
-  ConnectionCapabilities get capabilities => const ConnectionCapabilities(
-        deliveryMode: DeliveryMode.storeAndForward,
-        reach: ConnectionReach.mesh,
-        reliable: false,
-        // Single-digit kbps and ~256-byte frames are typical for LoRa.
-        maxBandwidthBitsPerSecond: 27000,
-        maxPayloadBytes: 256,
-        typicalLatency: Duration(seconds: 2),
-      );
-
-  @override
-  ConnectionStatus get status => ConnectionStatus.unavailable;
+  /// No radio code yet, so the honest answer is `unavailable`. `_LoraBearer`
+  /// reports `inactive` on the strength of it rather than pretending a lane
+  /// exists — a bearer that claims to be up and refuses every frame is the
+  /// failure mode this avoids.
+  LoraStatus get status => LoraStatus.unavailable;
 }

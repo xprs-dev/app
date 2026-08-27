@@ -21,6 +21,7 @@ import '../../util/media_ref.dart';
 import '../../connections/bluetooth/ble_service.dart';
 import '../log_service.dart';
 import '../reticulum/rns_service.dart';
+import '../xprs/xprs_airtime.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_vocab.dart';
 import 'mesh_table.dart';
@@ -715,11 +716,19 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
       if (s == null) continue;
       // Delivered while we waited: the store archived it. Nothing to air.
       if (!store.isPending(am)) continue;
+      // §31.1: a retry is not a new packet. This is the same wire we held back,
+      // so it charges the same budget and climbs the same ladder as every other
+      // re-airing path — one ledger, not a twelfth private timer.
+      if (!XprsRetryLedger.instance.may(am, reachable: true)) continue;
+      XprsRetryLedger.instance.spend(am);
       MeshCustodyCounters.reAired++;
       LogService.instance.add(
           'Mesh: $am not handed over in ${suppressedGrace.inSeconds}s — '
           'airing it once');
       BleService.instance.enqueueAdvert(_reAirOwner, s.wire);
+      // Straight to the advert bus, so the budget is charged here rather than
+      // in the fan-out.
+      XprsAirtime.instance.charge(const ['ble5']);
     }
   }
 

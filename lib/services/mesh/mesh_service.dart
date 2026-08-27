@@ -25,6 +25,7 @@ import '../../profile/storage_paths.dart';
 import '../../util/media_archive.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
+import '../xprs/xprs_airtime.dart';
 import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_catchup.dart';
 import '../xprs/xprs_files.dart';
@@ -663,6 +664,11 @@ class MeshService {
       final bytes = Uint8List.fromList(utf8.encode(p.encode()));
       final aired = await Ble5Bus.instance
           .advertiseFrame('xprs', Ble5Subtype.xprs, bytes, ttl: _beaconTtl);
+    // §31.1: "a beacon is not free". This path goes straight to the advert bus
+    // rather than through the publisher, so it charges the shared budget here —
+    // otherwise the one packet a station sends most often would be the one
+    // packet the budget never sees.
+    if (aired) XprsAirtime.instance.charge(const ['ble5']);
       // HONOUR the answer. A refused frame is aired nowhere, and counting it
       // as sent is how a device ends up reporting a healthy beacon while
       // broadcasting into nothing — the same trap the binary beacon above
@@ -741,6 +747,7 @@ class MeshService {
     if (d != null) p = xprsSign(p, d);
 
     final aired = XprsLan.instance.send(p.encode());
+    if (aired) XprsAirtime.instance.charge(const ['lan']);
     XprsIngest.own(p.encode(), bearer: aired ? 'lan' : 'none');
     if (aired) {
       _xprsLanBeaconsSent++;

@@ -103,7 +103,13 @@ class XprsAirtime {
   /// budget is alive. A budget nobody can see is indistinguishable from a
   /// station that has gone quiet.
   int deferrals = 0;
+
+  /// Packets offered to a bearer, metered or not.
   int charged = 0;
+
+  /// Packets that actually incurred debt — i.e. went out on a bearer bound by
+  /// something. Zero on a station with no LoRa, and that is the right answer.
+  int metered = 0;
   String lastDeferredBy = '';
 
   /// True when [bearers] can carry a packet right now.
@@ -141,11 +147,18 @@ class XprsAirtime {
   void charge(Iterable<String> bearers, {int packets = 1}) {
     final t = now();
     for (final b in bearers) {
+      // Counted whether or not the bearer is metered. `charged` at zero would
+      // otherwise mean two different things — "nothing was transmitted" and
+      // "everything transmitted was free" — and an instrument that cannot tell
+      // those apart is the ambiguity this whole budget exists to remove. On a
+      // station with no LoRa, every packet is free and `metered` stays zero;
+      // `charged` still climbs, which is how you know the wiring is live.
+      charged += packets;
       final c = costs[b];
       if (c == null || c.perPacketMs == 0) continue;
       final base = (_freeAt[b] ?? 0) > t ? _freeAt[b]! : t;
       _freeAt[b] = base + c.perPacketMs * packets;
-      charged += packets;
+      metered += packets;
     }
   }
 
@@ -160,12 +173,14 @@ class XprsAirtime {
     _freeAt.clear();
     deferrals = 0;
     charged = 0;
+    metered = 0;
     lastDeferredBy = '';
   }
 
   Map<String, dynamic> get json => {
         'deferrals': deferrals,
         'charged': charged,
+        'metered': metered,
         'lastDeferredBy': lastDeferredBy,
         'owed': {
           for (final e in _freeAt.entries)

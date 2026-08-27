@@ -194,6 +194,16 @@ void main() {
       air.now = () => clock;
     });
 
+    test('an unmetered packet is still counted, so the wiring is visible', () {
+      // `charged 0` must not mean both "nothing transmitted" and "everything
+      // was free". On a station with no LoRa the second is always true.
+      air.charge(['lan']);
+      expect(air.charged, 1);
+      expect(air.metered, 0, reason: 'the LAN owes nothing');
+      air.charge(['lora']);
+      expect(air.metered, 1);
+    });
+
     test('an unmetered bearer never blocks', () {
       air.charge(['lan', 'reticulum']);
       expect(air.may(['lan', 'reticulum']), XprsAirVerdict.ok);
@@ -289,6 +299,33 @@ void main() {
       led.retire('abc123');
       expect(led.tracked, 0);
       expect(led.may('abc123', reachable: true), isTrue);
+    });
+
+    test('a FIRST airing goes even to a peer we cannot hear', () {
+      // The gate is on retries, not on first contact: 13.7.2 spends a RETRY
+      // against evidence. Refusing the first ask would mean never asking a
+      // station whose key we lack — which is exactly when we need to ask.
+      expect(led.may('never-seen', reachable: false), isTrue);
+    });
+
+    test('two subsystems asking about the same packet share one ladder', () {
+      // The point of a shared ledger: the file fetch, the suppression re-air
+      // and the identity ask used to keep three private timers, each certain it
+      // was the only one transmitting.
+      led.spend('shared-id');
+      expect(led.may('shared-id', reachable: true), isFalse);
+      clock += 2000;
+      expect(led.may('shared-id', reachable: true), isTrue);
+      // …and a caller with its own ladder still shares the ATTEMPT count.
+      expect(led.attempts('shared-id'), 1);
+    });
+
+    test('a custom ladder is honoured', () {
+      led.spend('slow');
+      clock += 30000;
+      expect(led.may('slow', reachable: true, ladderS: const [60, 300]), isFalse);
+      clock += 31000;
+      expect(led.may('slow', reachable: true, ladderS: const [60, 300]), isTrue);
     });
 
     test('the ledger is bounded', () {

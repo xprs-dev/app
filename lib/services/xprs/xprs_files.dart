@@ -34,6 +34,8 @@ import '../../util/media_ref.dart';
 import '../log_service.dart';
 import '../mesh/mesh_bulk_spool.dart';
 import 'xprs_id.dart';
+import 'xprs_airtime.dart';
+import 'xprs_monitor.dart';
 import 'xprs_packet.dart';
 import 'xprs_publisher.dart';
 import 'xprs_vocab.dart';
@@ -309,6 +311,18 @@ class XprsFileFetch {
         return;
       }
       if (_accepted.contains(sha)) return; // 202 in hand; bytes are coming
+      // §31.1: a retry is not a new packet, and this is the same wire — same
+      // `ts:`, same §5 identifier — so it charges the same budget as the first
+      // ask. The 45 s above is this subsystem's CADENCE; whether the air can
+      // afford it is the ledger's answer, shared with every other re-airing
+      // path so eleven timers cannot each decide they are the only one.
+      //
+      // §13.7.2 gates it on evidence: re-asking a holder we can no longer hear
+      // teaches us nothing and costs a duty cycle everyone shares.
+      final reachable =
+          XprsMonitor.instance.stations[archiver.toUpperCase()] != null;
+      if (!XprsRetryLedger.instance.may(id, reachable: reachable)) return;
+      XprsRetryLedger.instance.spend(id);
       unawaited(XprsPublisher.instance.publishWire(wire));
     });
 
