@@ -106,7 +106,11 @@ class XprsHistoryServer {
 
   void _onPacket(XprsPacket p,
       {required String selfBase, required String bearer}) {
-    if (p.type != 'command') return;
+    // Section 7 carries a question in `q:` on a `t:request`; section 25 carries
+    // an instruction in `cmd:` on a `t:command`. Both are addressed to us and
+    // both are answered here, and reading only `t:command` meant a `q:identity`
+    // asked the way section 7 spells it went unanswered.
+    if (p.type != 'command' && p.type != 'request') return;
     if (_base(p['d'] ?? '') != selfBase) return;
     // `q:identity` (section 18.1) asks for the key binding directly instead of
     // waiting up to thirty minutes for the next announcement. Answering costs

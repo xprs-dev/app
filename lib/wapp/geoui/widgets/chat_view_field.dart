@@ -48,6 +48,12 @@ class ChatViewField extends StatefulWidget {
   /// Fired with the composed text when the user hits send.
   final ValueChanged<String> onSend;
 
+  /// Flip the form the next message goes out in, and what it is right now
+  /// (docs/XPRS.md section 9.2). Null on surfaces where the choice does not
+  /// apply -- a group or a room, which has no single recipient to seal to.
+  final VoidCallback? onTogglePrivacy;
+  final bool privacyOn;
+
   /// When true the widget fills its parent's bounded height (no min/max
   /// box, no label/tip chrome) — used inside the map's floating overlay.
   final bool fill;
@@ -98,6 +104,8 @@ class ChatViewField extends StatefulWidget {
     required this.label,
     required this.messages,
     required this.onSend,
+    this.onTogglePrivacy,
+    this.privacyOn = true,
     this.tip,
     this.hint = 'Message…',
     this.fill = false,
@@ -1449,6 +1457,23 @@ class _ChatViewFieldState extends State<ChatViewField> {
               tooltip: 'Attach a file',
               color: ChatPalette.accent,
               onPressed: _attach,
+            ),
+          // The private/plain switch. It sits in the composer rather than in a
+          // menu because it applies to the NEXT message and may be flipped
+          // between any two of them: in XPRS the wire form is per packet
+          // (section 9.2), so there is no mode to enter and nothing to agree
+          // with the other end.
+          if (widget.onTogglePrivacy != null)
+            IconButton(
+              icon: Icon(widget.privacyOn ? Icons.lock : Icons.lock_open),
+              iconSize: 20,
+              tooltip: widget.privacyOn
+                  ? 'Private — the body is encrypted (tap for plain text)'
+                  : 'Plain text — anyone in range can read it (tap for private)',
+              color: widget.privacyOn
+                  ? ChatPalette.accent
+                  : Colors.orangeAccent.withAlpha(200),
+              onPressed: widget.onTogglePrivacy,
             ),
           Expanded(
             child: TextField(

@@ -274,6 +274,11 @@ class ConversationStore {
       // Reticulum-only (private) message — the wapp tags it so the bubble is
       // visibly distinct from public APRS traffic (which can also be encrypted).
       if (d['private'] == true) 'private': true,
+      // The other half of the same statement (docs/XPRS.md section 9.2).
+      // Carried explicitly rather than inferred from `private` being absent,
+      // because absent means "the wapp said nothing", which is not the same as
+      // "this went out readable".
+      if (d['plain'] == true) 'plain': true,
       // Delivery-receipt correlation id + tick state for 1:1 outgoing messages
       // (WhatsApp-style sent/delivered/read). The wapp stamps `rid` (a small
       // per-message id echoed back in receipts); `status` advances via setStatus.

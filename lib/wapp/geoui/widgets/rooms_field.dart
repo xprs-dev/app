@@ -44,6 +44,10 @@ class RoomsField extends StatefulWidget {
   final void Function(String id) onMemberTap;
   final void Function(String from)? onSenderTap;
 
+  /// Flip the private/plain form for the next message (docs/XPRS.md 9.2).
+  final VoidCallback? onTogglePrivacy;
+  final bool privacyOn;
+
   /// Long-press bubble actions, same contract as the conversations widget:
   /// hide one message (by its content key) / block its sender. The rooms
   /// layout embeds the same chat view, and without these the ONLY layout most
@@ -57,6 +61,8 @@ class RoomsField extends StatefulWidget {
 
   const RoomsField({
     super.key,
+    this.onTogglePrivacy,
+    this.privacyOn = true,
     required this.rooms,
     required this.store,
     required this.openId,
@@ -652,6 +658,12 @@ class _RoomsFieldState extends State<RoomsField> {
                     safeBottom: true,
                     messages: room?.messages ?? const [],
                     onSend: (t) => widget.onSend(open, t),
+                    // Only a 1:1 has a single recipient to seal to. A group is
+                    // several stations behind one name (6.3), so there is no
+                    // key to seal a group message with and the switch is not
+                    // offered there.
+                    onTogglePrivacy: isDirect ? widget.onTogglePrivacy : null,
+                    privacyOn: widget.privacyOn,
                     onSenderTap: widget.onSenderTap,
                     onHide: widget.onHide == null
                         ? null

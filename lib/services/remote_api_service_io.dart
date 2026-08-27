@@ -14,8 +14,10 @@ import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_publisher.dart';
 import 'xprs/xprs_gossip.dart';
+import 'mesh/mesh_courier.dart';
 import 'mesh/mesh_custody.dart';
 import 'xprs/xprs_forwarder.dart';
+import 'xprs/xprs_body.dart';
 import 'xprs/xprs_packet.dart';
 import 'xprs/xprs_vocab.dart';
 
@@ -1086,6 +1088,68 @@ class RemoteApiService {
         String two(int n) => n.toString().padLeft(2, '0');
         final ts = '${now.year}-${two(now.month)}-${two(now.day)}_'
             '${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
+
+        // A DIRECT message is private by default (docs/XPRS.md section 9.4:
+        // encryption is "permitted, and is the default for direct messages"),
+        // and `private:false` sends it in the clear instead. The choice is per
+        // message because the wire form is per packet (9.2) -- there is no mode
+        // to set and nothing to negotiate, so the two forms may alternate
+        // freely within one conversation.
+        //
+        // A broadcast has no recipient to seal to, so it is always plain.
+        final wantPrivate = dest.isEmpty
+            ? false
+            : (data['private'] == null
+                ? type == 'message'
+                : data['private'] == true);
+        if (wantPrivate) {
+          final head =
+              XprsPacket.parse('t:$type f:$self d:$dest ts:$ts');
+          if (head == null) {
+            return _json(res, {'ok': false, 'error': 'malformed'},
+                status: HttpStatus.badRequest);
+          }
+          final built = xprsBuildDirect(
+            head: head,
+            text: text,
+            private: true,
+            // The key the recipient published in their `t:identity` (9.3),
+            // learned from the air and re-announced every 30 minutes (18.1).
+            recipientKeyHex: RnsService.instance.pubkeyForCallsign(dest) ?? '',
+          );
+          if (!built.ok) {
+            if (built.refusal == XprsSealRefusal.noRecipientKey) {
+              // Section 18.1: ask, rather than wait for the next announcement.
+              unawaited(XprsPublisher.instance.askIdentity(dest));
+            }
+            // Never silently downgraded: the caller asked for a sealed body and
+            // gets told why it could not have one (section 36.8 -- plaintext is
+            // disclosure, and the two forms are released under different rules).
+            return _json(res, {
+              'ok': false,
+              'private': true,
+              'error': 'cannot seal: ${built.refusal!.name}',
+            }, status: HttpStatus.conflict);
+          }
+          final reports = <Map<String, String>>[];
+          for (final part in built.packets) {
+            reports.add(await XprsPublisher.instance.publishWire(part.encode()));
+            final signed = XprsPublisher.instance.lastWire ?? part.encode();
+            MeshCustodyDelegate.onAirFrame(
+                Uint8List.fromList(utf8.encode(signed)),
+                outbound: true);
+          }
+          return _json(res, {
+            'ok': reports.any((r) => r.values.any((v) => v == 'sent')),
+            'private': true,
+            'form': 'x',
+            'parts': built.packets.length,
+            'bytes': built.packets.fold<int>(0, (n, q) => n + q.byteLength),
+            'bearers': reports.first,
+            'wire': built.packets.first.encode(),
+          });
+        }
+
         var p = XprsPacket.parse(
             't:$type f:$self${dest.isEmpty ? '' : ' d:$dest'} ts:$ts m:$text');
         if (p == null || !p.fits) {
@@ -1111,6 +1175,8 @@ class RemoteApiService {
         }
         return _json(res, {
           'ok': report.values.any((v) => v == 'sent'),
+          'private': false,
+          'form': 'm',
           'bytes': p.byteLength,
           'bearers': report,
           'wire': p.encode(),
@@ -1427,6 +1493,18 @@ class RemoteApiService {
         // previous version of this gate read a table that is always empty and
         // there was no way to SEE that from outside the app.
         'custody': BleService.instance.custodyStatus(),
+        // Private-message accounting (docs/XPRS.md section 9.2). `sealedAired`
+        // and `sealedUnreadable` are the two halves of "did privacy work": one
+        // counts what we sent sealed, the other what reached us sealed and
+        // would not open. `refusedNoSeal` counts what we declined to send in
+        // the clear after being asked for privacy — never silently downgraded.
+        'courier': {
+          'aired': MeshCourierCounters.aired,
+          'ingested': MeshCourierCounters.ingested,
+          'refusedNoSeal': MeshCourierCounters.refusedNoSeal,
+          'sealedUnreadable': MeshCourierCounters.ingestSealedUnreadable,
+          'ingestDropped': MeshCourierCounters.ingestDropped,
+        },
         'gatt': BleService.instance.gattStatus(),
         'scheduler': MeshTransferScheduler.instance.statusJson(),
         'neighborPending': {

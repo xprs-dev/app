@@ -30,6 +30,9 @@ import '../preferences_service.dart';
 import '../reticulum/rns_service.dart';
 import 'xprs_ingest.dart';
 import 'xprs_lan.dart';
+import 'xprs_archive.dart';
+import 'xprs_body.dart';
+import 'xprs_monitor.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
@@ -473,23 +476,54 @@ class XprsPublisher {
     final dest = (p['d'] ?? '').toUpperCase();
     final useSlot = slot ?? (dest.isEmpty ? p.type : '${p.type}:$dest');
 
+    // Section 36.0: "The one place a bearer legitimately decides anything is
+    // choosing among several paths to the SAME station." When this packet names
+    // a station we have recent per-peer evidence for, take the best of those
+    // paths instead of every path -- and when we have no such evidence, fan out,
+    // which is that same section's own fallback ("Where a station cannot tell
+    // which path reaches the asker ... it answers on every bearer it can
+    // transmit on").
+    final chosen = _preferredBearer(p, dest);
+
     final report = <String, String>{};
     String? carriedBy;
-    for (final b in bearers) {
+
+    Future<bool> tryOne(XprsBearer b) async {
       if (local && !b.shortRange) {
         report[b.name] = 'scope';
-        continue;
+        return false;
       }
       if (!await b.active) {
         report[b.name] = 'inactive';
-        continue;
+        return false;
       }
       final ok = await b.send(wire, part: 1, slot: useSlot, ttl: ttl);
       report[b.name] = ok ? 'sent' : 'refused';
       if (ok) carriedBy ??= b.archiveBearer;
+      return ok;
     }
-    if (!verbatim && carriedBy != null) {
-      XprsIngest.own(wire, bearer: carriedBy);
+
+    // The chosen path first. If it actually carried the packet the others are
+    // not used -- that is the whole point of choosing. If it did NOT, every
+    // bearer is tried after all: a preference that can turn into silence is not
+    // a preference, and section 36.0's own words are "if the arrival bearer
+    // cannot carry the answer it does not give up".
+    var done = false;
+    if (chosen != null) {
+      final pick = bearers.where((b) => b.name == chosen);
+      if (pick.isNotEmpty) done = await tryOne(pick.first);
+    }
+    for (final b in bearers) {
+      if (done && b.name == chosen) continue;
+      if (done) {
+        report[b.name] = 'unused';
+        continue;
+      }
+      await tryOne(b);
+    }
+    final took = carriedBy;
+    if (!verbatim && took != null) {
+      XprsIngest.own(wire, bearer: took);
     }
     published++;
     // One line per caller-composed wire: which bearers took it. A wire that
@@ -512,6 +546,95 @@ class XprsPublisher {
     if (p == null) return null;
     final signed = xprsSign(p, signingKey);
     return signed.fits ? signed.encode() : null;
+  }
+
+
+  /// Bearers this station can reach a peer over, best first.
+  ///
+  /// Section 36.0 ranks by "the highest usable bandwidth among those it has
+  /// recent evidence are working", with the tie-break stated outright:
+  /// "Reliability outranks raw speed -- a fast path that has not carried
+  /// anything lately is a guess, and a slower one that answered a minute ago is
+  /// knowledge." Hence evidence gates the list and bandwidth only orders what
+  /// survives.
+  ///
+  /// A LAN is one operator's own switch: no hop budget, no shared duty cycle,
+  /// no stranger's transport in the middle. BLE5 next -- in the room, but five
+  /// seconds of transmit a minute (docs/ble5.md section 1). Reticulum last for
+  /// a peer we can hear directly: it is the internet path, and eighteen hops
+  /// through community hubs to reach a phone on the same desk is the case this
+  /// ranking exists to stop.
+  static const List<String> _byBandwidth = ['lan', 'ble5', 'reticulum'];
+
+  /// How recent a sighting has to be to count as evidence of a working path.
+  /// Three beacon periods, the same window `RnsService._peerReachable` uses, so
+  /// one missed beacon does not demote a peer that is simply having a bad
+  /// minute.
+  static const int _evidenceMs = 3 * 60 * 1000;
+
+  /// The single bearer to use for [p], or null to fan out.
+  String? _preferredBearer(XprsPacket p, String dest) {
+    // Only a DIRECTED packet has one station to choose a path to. A broadcast
+    // has no "same station" to rank paths for, and section 36.0's rule does not
+    // reach it.
+    if (dest.isEmpty) return null;
+    // A group is several stations behind one name, so the paths are not to the
+    // same place. Callsigns start X1/X3/X4/X5 or are authority-issued; a group
+    // name is neither, and either way fanning out is the safe answer.
+    if (!_looksLikeCallsign(dest)) return null;
+    final st = XprsMonitor.instance.stations[dest];
+    if (st == null) return null;
+    // What the station SAYS it is on (its beacon's `link:`, section 10.6.1) --
+    // not the bearer its packets happened to arrive over, which is a statement
+    // about whoever re-aired them. See `XprsStation.bearersDeclared`.
+    final fresh = st
+        .declaredBearersFresh(DateTime.now().millisecondsSinceEpoch, _evidenceMs)
+        .toSet();
+    if (fresh.isEmpty) return null;
+    for (final want in _byBandwidth) {
+      if (fresh.contains(want)) return want;
+    }
+    // Heard, but on nothing we rank -- say nothing and let every bearer try.
+    return null;
+  }
+
+  static bool _looksLikeCallsign(String d) =>
+      RegExp(r'^(X[1345][A-Z0-9]{2,5}|[A-Z0-9]{1,3}[0-9][A-Z0-9]*)(-[0-9]{1,2})?$')
+          .hasMatch(d);
+
+  /// Ask [call] for its key binding, section 18.1: "`q:identity` (section 7)
+  /// asks for one directly rather than waiting for the next period."
+  ///
+  /// Without this, a station that has never heard a peer's `t:identity` -- or
+  /// has restarted and holds nothing for a peer it has never archived -- waits
+  /// up to thirty minutes before it can seal a private message to them (9.2) or
+  /// verify anything they sign. One directed packet buys that back.
+  ///
+  /// Throttled per callsign, because the answer takes a moment to arrive and a
+  /// composer retrying a send would otherwise ask on every keystroke.
+  final Map<String, int> _identityAskedAt = {};
+  static const int _identityAskQuietMs = 60 * 1000;
+
+  Future<void> askIdentity(String call) async {
+    final c = call.trim().toUpperCase();
+    if (c.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _identityAskedAt[c];
+    if (last != null && now - last < _identityAskQuietMs) return;
+    if (_identityAskedAt.length > 64) {
+      _identityAskedAt.remove(_identityAskedAt.keys.first);
+    }
+    _identityAskedAt[c] = now;
+    final self = XprsArchive.instance.selfCallsign.trim();
+    if (self.isEmpty) return;
+    final t = DateTime.now().toUtc();
+    String two(int n) => n.toString().padLeft(2, '0');
+    final ts = '${t.year}-${two(t.month)}-${two(t.day)}_'
+        '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
+    // Section 7: a question is `t:request` carrying `q:`.
+    final wire = 't:request f:$self d:$c ts:$ts q:identity';
+    LogService.instance.add('XPRS: asking $c for its identity (18.1)');
+    await publishWire(wire, slot: 'qidentity:$c');
   }
 
   /// Test seam: exactly the wires [publishStatus] would air for [head] and
@@ -540,25 +663,7 @@ class XprsPublisher {
     final capacity = XprsPacket.maxBytes - probe.byteLength;
     if (capacity <= 0) return const [];
 
-    final chunks = <String>[];
-    var current = StringBuffer();
-    for (final word in body.split(' ')) {
-      var w = word;
-      // A word longer than a whole part (a monster URL) has no space to
-      // split at; hard-cut it rather than lose everything after it.
-      while (utf8.encode(w).length > capacity) {
-        chunks.add(w.substring(0, capacity));
-        w = w.substring(capacity);
-      }
-      final trial = current.isEmpty ? w : '$current $w';
-      if (utf8.encode(trial).length > capacity) {
-        if (current.isNotEmpty) chunks.add(current.toString());
-        current = StringBuffer(w);
-      } else {
-        current = StringBuffer(trial);
-      }
-    }
-    if (current.isNotEmpty) chunks.add(current.toString());
+    final chunks = xprsChunkAtSpaces(body, capacity);
 
     if (chunks.length > 9) {
       // Nine parts is the format's ceiling (6.6); content past it is a

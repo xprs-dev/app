@@ -3265,6 +3265,10 @@ class _WappPageState extends State<WappPage>
     );
   }
 
+  /// Where the composer's private/plain switch currently sits. Private is the
+  /// default for a direct message (section 9.4).
+  bool _msgPrivate = true;
+
   void _sendCommand(String cmd) {
     // Bundle a scalar projection of the current field values so the
     // wapp's module_handle_event can read (source, wapp_id, ...) from
@@ -3369,6 +3373,15 @@ class _WappPageState extends State<WappPage>
       }
     }
     final roomsField = RoomsField(
+      // The private/plain switch for the next 1:1 (docs/XPRS.md section 9.2).
+      // The host holds the current position only so the icon can draw it; the
+      // wapp owns the decision and stamps each bubble with the form actually
+      // used, which is what the label must report.
+      privacyOn: _msgPrivate,
+      onTogglePrivacy: () {
+        setState(() => _msgPrivate = !_msgPrivate);
+        _sendCommand('conversations_form');
+      },
       rooms: rooms,
       store: store,
       openId: openId,

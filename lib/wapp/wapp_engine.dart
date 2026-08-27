@@ -2898,11 +2898,57 @@ class WappEngine {
           destHex: dest,
           title: _readStr(tPtr, tLen),
           content: _readStr(cPtr, cLen),
+          private: true,
         );
         return 1;
       },
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32,
         ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_lxmf_send2: send a 1:1 and say which form it took.
+    //
+    //   want: 1 = private (the section 9.4 default for a direct message),
+    //         0 = plain text.
+    //   returns 1 sealed, 2 plain, -1 privacy asked for and not possible,
+    //           0 malformed.
+    //
+    // One call rather than a "set the mode, then send" pair, because privacy in
+    // XPRS is a property of ONE PACKET (9.2) -- there is no mode to set, and a
+    // flag left lying between two calls is exactly the remembered state the
+    // format does not have.
+    //
+    // The return value is what a bubble should be labelled with: what actually
+    // happened, never what was asked for. -1 is a real answer rather than an
+    // error -- the recipient's key has not been heard yet (9.3) and the host has
+    // just asked for it (18.1), so the next attempt will very likely seal.
+    final halLxmfSend2 = WasmFunction(
+      (int dPtr, int dLen, int cPtr, int cLen, int want) {
+        final dest = _readStr(dPtr, dLen);
+        final body = _readStr(cPtr, cLen);
+        if (dest.isEmpty || body.isEmpty) return 0;
+        final private = want != 0;
+        if (private) {
+          // Resolve now, so the caller is told the truth before it draws a
+          // bubble. Sealing later without a key would be the silent downgrade
+          // this whole change exists to remove (36.8).
+          final call = RnsService.instance.callsignForLxmfDest(dest);
+          final key = call.isEmpty
+              ? null
+              : RnsService.instance.pubkeyForCallsign(call);
+          if (key == null || key.isEmpty) {
+            if (call.isNotEmpty) {
+              unawaited(XprsPublisher.instance.askIdentity(call));
+            }
+            return -1;
+          }
+        }
+        // ignore: discarded_futures
+        RnsService.instance
+            .sendLxmf(destHex: dest, content: body, private: private);
+        return private ? 1 : 2;
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
     final halRelayDmRecv = WasmFunction(
@@ -3901,6 +3947,7 @@ class WappEngine {
       WasmImport('hal', 'relay_dm_recv', halRelayDmRecv),
       WasmImport('hal', 'lxmf_recv', halLxmfRecv),
       WasmImport('hal', 'lxmf_send', halLxmfSend),
+      WasmImport('hal', 'lxmf_send2', halLxmfSend2),
       WasmImport('hal', 'relay_dm_drop', halRelayDmDrop),
       WasmImport('hal', 'relay_identity_publish', halRelayIdentityPublish),
       WasmImport('hal', 'relay_resolve', halRelayResolve),

@@ -191,6 +191,13 @@ class MeshService {
           ..onVerdict = XprsMonitor.instance.recordVerdict
           ..init(wappsDataStorage(prefs)
               .getAbsolutePath('xprs_archive.sqlite3'));
+        // A key binding lives in memory and a `t:identity` is re-announced only
+        // every thirty minutes (18.1), so a restart used to leave this station
+        // unable to seal a private message (9.2) or check a signature for up to
+        // half an hour -- while the archive it just opened already held the
+        // announcements that say so. Replay them; they are signed, so the
+        // binding is re-derived rather than trusted, and no airtime is spent.
+        XprsIngest.rebindFromArchive();
         XprsHistoryServer.instance.install();
         XprsGossip.instance
             .init(wappsDataStorage(prefs).getAbsolutePath('xprs_gossip.sqlite3'));

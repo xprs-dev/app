@@ -57,6 +57,8 @@ import '../log_service.dart';
 import '../../profile/profile_service.dart';
 import '../reticulum/rns_service.dart';
 import '../xprs/xprs_ingest.dart';
+import '../xprs/xprs_body.dart';
+import '../xprs/xprs_publisher.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_sig.dart';
 import 'mesh_custody.dart';
@@ -66,10 +68,17 @@ import 'mesh_service.dart';
 
 /// One message waiting to find out whether it needs a carrier.
 class _Armed {
-  _Armed(this.destHex, this.text, this.armedMs, {this.waitFirst = true});
+  _Armed(this.destHex, this.text, this.armedMs,
+      {this.waitFirst = true, this.private = true});
   final String destHex;
   final String text;
   final int armedMs;
+
+  /// The form the SENDER chose for this one message (docs/XPRS.md section 9.2).
+  /// Private is the default for a direct message (9.4). It travels with the
+  /// message rather than being remembered per peer, because the wire form is
+  /// per packet and either side may switch at any point.
+  final bool private;
 
   /// Give the Reticulum lane its head start before handing the message to a
   /// carrier. False when we can hear the recipient's own radio: there is
@@ -82,6 +91,15 @@ class MeshCourierCounters {
   static int armed = 0;
   static int aired = 0;
   static int refusedTooLong = 0;
+
+  /// Messages we declined to air because the sender asked for privacy and we
+  /// could not provide it. Counted rather than silently downgraded — see the
+  /// refusal branch in `_air`.
+  static int refusedNoSeal = 0;
+
+  /// Sealed messages that reached us and would not open. Shown to the operator
+  /// rather than dropped, so this is a diagnostic and not a loss count.
+  static int ingestSealedUnreadable = 0;
   static int refusedNoIdentity = 0;
   static int ingested = 0;
   static int ingestDropped = 0;
@@ -148,10 +166,11 @@ class MeshCourier {
     required String destHex,
     required String text,
     bool waitFirst = true,
+    bool private = true,
   }) {
     if (destHex.isEmpty || text.isEmpty) return;
     _armed.add(_Armed(destHex, text, DateTime.now().millisecondsSinceEpoch,
-        waitFirst: waitFirst));
+        waitFirst: waitFirst, private: private));
     MeshCourierCounters.armed++;
     _pump ??= Timer.periodic(const Duration(seconds: 5), (_) => _tick());
   }
@@ -193,15 +212,46 @@ class MeshCourier {
     }
     final npub = (peer['npub'] ?? '').trim();
 
-    final body = _seal(npub, a.text);
-    if (body == null) return;
-    final wire = _pack(self, call, body);
-    if (wire == null) return;
-    if (wire.length > maxWire) {
+    // Build the body in the form the SENDER chose for this one message
+    // (docs/XPRS.md section 9.2 -- `x:` sealed, `m:` plain; the wire form is
+    // the whole statement and nothing is negotiated).
+    final built = xprsBuildDirect(
+      head: XprsPacket.parse('t:message f:$self d:$call ts:${_nowIso()}')!,
+      text: a.text,
+      private: a.private,
+      recipientKeyHex: npub,
+    );
+    if (!built.ok) {
+      // A private message NEVER quietly becomes a plain one. Section 36.8 is
+      // why this is correctness and not caution: "Sealed mail travels on the
+      // strength of the seal ... Clear mail is released only to a declared
+      // holder or fetched by the recipient itself. Plaintext is disclosure."
+      // Every carrier that touches the two treats them differently, so airing
+      // the clear text would put the message under release rules its author
+      // did not choose -- and say nothing about having done so.
+      //
+      // The copy stays where it is. LXMF still holds it, the retry ladder still
+      // runs, and the recipient's next identity announcement (9.3) supplies the
+      // key that makes a sealed copy possible.
+      MeshCourierCounters.refusedNoSeal++;
+      LogService.instance.add(
+          'Courier: not airing $call in the clear — ${_why(built.refusal!)}');
+      // Section 18.1: ask for the key rather than waiting up to thirty minutes
+      // for the next announcement. The message stays held; the next attempt
+      // seals it.
+      if (built.refusal == XprsSealRefusal.noRecipientKey) {
+        unawaited(XprsPublisher.instance.askIdentity(call));
+      }
+      return;
+    }
+    // One wire unless the body had to split (6.6); parts are aired in order.
+    final wires = [for (final p in built.packets) utf8.encode(p.encode())];
+    final over = wires.where((w) => w.length > maxWire).toList();
+    if (over.isNotEmpty) {
       MeshCourierCounters.refusedTooLong++;
       LogService.instance.add(
-          'Courier: ${wire.length}B is more than a carrier can hold ($maxWire) '
-          '— not aired');
+          'Courier: ${over.first.length}B is more than a carrier can hold '
+          '($maxWire) — not aired');
       return;
     }
     // PARKED, not aired.
@@ -221,69 +271,30 @@ class MeshCourier {
     // Parking is explicit here because it used to be a side effect of
     // `enqueueAdvert` — the custody tap parked our own outbound copy on its way
     // to the radio. No advert, no tap, so the copy is offered directly.
-    MeshCustodyDelegate.onAirFrame(Uint8List.fromList(wire), outbound: true);
-    // Ours: it goes in our own log whether or not a carrier ever picks it up.
-    // `custody` is where it is, not a radio it went out on.
-    XprsIngest.own(utf8.decode(wire), bearer: 'custody');
-    MeshCourierCounters.aired++;
-    LogService.instance.add(
-        'Courier: no path to $call — ${wire.length}B parked for custody'
-        '${npub.isEmpty ? "" : " (sealed)"}, beacon will advertise it');
-  }
-
-  /// ENC1 body when we hold their key, plaintext when we do not. Refusing to
-  /// send without a key would leave the message nowhere, and the envelope is
-  /// public either way — the same exposure the public 1:1 lane already has.
-  String? _seal(String npub, String text) {
-    if (npub.isEmpty) return text;
-    try {
-      final d = _privScalar();
-      final pubHex = NostrCrypto.decodeNpub(npub);
-      if (d == null || pubHex.isEmpty) return text;
-      final blob = XprsCrypto.encryptFor(
-          d, Uint8List.fromList(HEX.decode(pubHex)), utf8.encode(text));
-      if (blob == null) return text;
-      return 'ENC1:${base64Url.encode(blob).replaceAll('=', '')}';
-    } catch (_) {
-      return text;
+    for (final wire in wires) {
+      MeshCustodyDelegate.onAirFrame(Uint8List.fromList(wire), outbound: true);
+      // Ours: it goes in our own log whether or not a carrier ever picks it up.
+      // `custody` is where it is, not a radio it went out on.
+      XprsIngest.own(utf8.decode(wire), bearer: 'custody');
     }
+    MeshCourierCounters.aired++;
+    final bytes = wires.fold<int>(0, (n, w) => n + w.length);
+    LogService.instance.add(
+        'Courier: no path to $call — ${bytes}B parked for custody '
+        '(${built.privacy == XprsPrivacy.sealed ? "sealed" : "plain"}'
+        '${wires.length > 1 ? ", ${wires.length} parts" : ""}), '
+        'beacon will advertise it');
   }
 
-  /// Build the frame as an XPRS packet (docs/XPRS.md).
-  ///
-  /// Three fields the compact frame carried are gone, and none of them is
-  /// missed:
-  ///
-  /// `am:` — the receipt id is now derived from the packet (section 5), so
-  /// nothing announces its own identifier and a relayed copy keeps the one it
-  /// was born with. `ts:` is what makes that safe: without it every "OK" from
-  /// the same sender would hash alike.
-  ///
-  /// `sd:` — the sender's LXMF address is a pure function of their public key
-  /// (`RnsService._lxmfDestHexForPub`), and XPRS publishes public keys in
-  /// `t:identity`. Deriving it is also the safer half: an address written on
-  /// the wire by the sender is a claim, and an unsigned one lets anybody file
-  /// messages into somebody else's conversation.
-  ///
-  /// `np:` — was already dropped; a sealed body proves the recipient better
-  /// than a 66-byte token does.
-  /// [body] arrives already sealed by [_seal], or plaintext when we hold no key.
-  List<int>? _pack(String self, String to, String body) {
-    var p = XprsPacket.parse('t:message f:$self d:$to ts:${_nowIso()} m:x');
-    if (p == null) return null;
-    // A sealed body is `x:`; plaintext is `m:`. `m:` must stay last either way,
-    // so the sealed form drops it rather than putting `x:` after it.
-    p = body.startsWith('ENC1:')
-        ? XprsPacket(p.fields
-            .where((f) => f.key != 'm')
-            .followedBy([MapEntry('x', body.substring(5))]).toList())
-        : p.with_('m', body);
-
-    final d = _privScalar();
-    if (d != null) p = xprsSign(p, d);
-    if (!p.fits) return null;
-    return utf8.encode(p.encode());
-  }
+  static String _why(XprsSealRefusal r) => switch (r) {
+        XprsSealRefusal.noRecipientKey =>
+          'no key for them yet (their t:identity has not been heard)',
+        XprsSealRefusal.noOwnKey => 'this station has no key to seal with',
+        XprsSealRefusal.cipherFailed => 'the cipher failed',
+        XprsSealRefusal.amateurBand =>
+          'a sealed body may not go onto amateur spectrum (9.4)',
+        XprsSealRefusal.tooLong => 'it does not fit, even split',
+      };
 
   /// `YYYY-MM-DD_HH:MM:SS` in UTC (docs/XPRS.md section 4.8).
   static String _nowIso() {
@@ -368,16 +379,30 @@ class MeshCourier {
       }
     }
 
-    var body = p['m'] ?? '';
-    if (p.has('x')) {
-      final clear = _open(senderNpub, p['x']!);
-      if (clear == null) {
-        MeshCourierCounters.ingestDropped++;
-        LogService.instance
-            .add('Courier: sealed packet from ${f.from} we cannot open');
-        return false;
-      }
-      body = clear;
+    // The body, in whichever form it arrived (section 9.2: `x:` sealed, `m:`
+    // plain — read off the wire, never from remembered state).
+    final read = xprsReadBody(p, senderKeyHex: senderNpub);
+    var body = read.clear ?? '';
+    if (read.privacy == XprsPrivacy.sealed && !read.readable) {
+      // It arrived, and we cannot read it. Both of those are facts the operator
+      // is owed, and this used to report neither: the packet was counted and
+      // dropped, so a message sent to this station simply never existed here.
+      //
+      // Show it as a sealed message we hold and cannot open. The usual cause is
+      // benign and self-correcting — their `t:identity` (9.3) has not been heard
+      // yet, and it is re-announced every 30 minutes (18.1).
+      MeshCourierCounters.ingestSealedUnreadable++;
+      LogService.instance.add(
+          'Courier: sealed packet from ${f.from} we cannot open — shown as '
+          'unreadable, not dropped');
+      // Section 18.1: ask them for the binding instead of waiting up to thirty
+      // minutes for the next announcement. This is the receiving half of the
+      // same remedy the sender uses when it cannot seal -- and it is the half
+      // that matters here, because the message ALREADY arrived: without it a
+      // station can be sealed to by a peer whose key it will not hold for half
+      // an hour, and every message in between is unreadable.
+      unawaited(XprsPublisher.instance.askIdentity(f.from));
+      body = '[sealed — no key for ${f.from} yet]';
     }
     if (body.isEmpty) return false;
 

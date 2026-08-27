@@ -49,6 +49,15 @@ thing.
 **Kept in this repo and in `xprs-esp32`, and they must not drift**: `ble5.md`
 and `lan.md` describe transports with an end in each.
 
+### Private messages, and which radio carries one
+
+| doc | the sections that matter |
+|---|---|
+| [private-messages.md](private-messages.md) | **§1** privacy is one field (`x:` replaces `m:`) and therefore per packet — no flag, no negotiation, no mode. **§2** a private send is never quietly downgraded, and why §36.8 makes that correctness. **§4** the half-hour key-discovery hole and its two fixes. **§6** choosing a bearer under §36.0, and the two ways "recent evidence" was got wrong on the bench. **§9** what is validated and what is not. |
+
+**Before you start**: the arrival bearer of a packet is not evidence of a path to
+its sender, and `via:` cannot tell you otherwise because nothing transmits it.
+
 ### The XPRS protocol itself
 
 | doc | the sections that matter |
@@ -126,6 +135,18 @@ the code:
 - **Verify on hardware, and say which parts you saw.** Report what was observed
   and what was not, separately. (`validation.md`,
   `reticulum-connections.md`)
+- **A gate on a signal nobody transmits is not a gate.** A feature keyed on
+  `MeshTable.neighbors` passed every test and was inert on the bench, because
+  the beacon that fills that table is deliberately never aired. Before gating on
+  a field, check the counter that proves it is on the air. (`ble5.md` §9.8)
+- **Where a packet ARRIVED says nothing about where its sender is.** A re-aired
+  packet is evidence about the relay. Use what the sender says about itself —
+  `link:` — and age it on the packet's own `ts:`, not on when you heard it.
+  (`private-messages.md` §6)
+- **A fallback that hides a failure is worse than the failure.** Sealing that
+  silently sent plaintext, and a sealed packet dropped because it would not
+  open, were both "safe" defaults that destroyed the information the operator
+  needed. (`private-messages.md` §2, §3)
 - **A gate on a signal nobody transmits is not a gate.** A feature keyed on
   `MeshTable.neighbors` passed every test and was inert on the bench, because
   the beacon that fills that table is deliberately never aired. Before gating on

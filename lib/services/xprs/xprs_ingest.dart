@@ -253,6 +253,50 @@ class XprsIngest {
   /// anyone re-point a callsign by shouting last, and since the archive DROPS
   /// packets whose signature fails against the key it holds, that is enough to
   /// make a station's genuine traffic look forged and be thrown away.
+  /// Re-bind every `t:identity` the archive already holds.
+  ///
+  /// The key bindings live in memory, and a `t:identity` is re-announced only
+  /// every thirty minutes (18.1). So a station that restarts has no key for
+  /// anybody until the next round of announcements -- and could not seal a
+  /// private message (9.2), verify a signature, or check a nickname for up to
+  /// half an hour, having heard and STORED the very packet that says so.
+  ///
+  /// The stored packets are signed, so replaying them through the same binding
+  /// path costs nothing in trust: [_bindIdentity] verifies each one against the
+  /// key it carries exactly as it did when the packet arrived off the air, and
+  /// first-wins still applies. No airtime is spent.
+  static int rebindFromArchive({int limit = 200}) {
+    var n = 0;
+    try {
+      // Oldest first, so first-wins reproduces the order the packets actually
+      // arrived in rather than inverting it.
+      final rows = XprsArchive.instance
+          .query(types: const ['identity'], limit: limit)
+          .reversed;
+      for (final r in rows) {
+        final wire = r['wire'];
+        if (wire is! String) continue;
+        final p = XprsPacket.parse(wire);
+        if (p == null || p.type != 'identity') continue;
+        final from = p['f'];
+        if (from == null || from.isEmpty) continue;
+        // The rate limiter below guards the AIR, where identities arrive from
+        // strangers; this replay is our own disk and is bounded by `limit`.
+        _idChecks = 0;
+        _idWindowMs = DateTime.now().millisecondsSinceEpoch;
+        _bindIdentity(from, p);
+        n++;
+      }
+    } catch (e) {
+      LogService.instance.add('XPRS: could not re-bind identities — $e');
+    }
+    if (n > 0) {
+      LogService.instance
+          .add('XPRS: re-bound $n stored identity announcement(s)');
+    }
+    return n;
+  }
+
   static void _bindIdentity(String callsign, XprsPacket p) {
     final hook = onIdentity;
     final npub = p['k'];

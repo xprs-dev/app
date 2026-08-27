@@ -94,12 +94,56 @@ class XprsStation {
   /// its own: BLE5 going quiet does not mean the LAN did.
   final Map<String, int> bearers = {};
 
-  /// The bearers heard within [window], newest first. The honest answer to
-  /// "how can I reach this station right now".
+  /// The bearers heard within [window], newest first -- INCLUDING packets that
+  /// reached us relayed. Good for "how did I hear this station"; not evidence
+  /// of a path TO it. See [bearersDirect].
   List<String> bearersFresh(int nowMs, int windowMs) {
     final live = bearers.entries.where((e) => nowMs - e.value <= windowMs).toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     return [for (final e in live) e.key];
+  }
+
+  /// Bearers this station SAYS IT IS ON, from the `link:` of its own beacon.
+  ///
+  /// Section 10.6.1: "a station reports once per bearer", and `link:` names
+  /// which one -- `lora`, `ble`, `wifi`, `espnow`, `lan`. That is the station's
+  /// own statement about its own radio, and it is the only trustworthy evidence
+  /// of a path TO it, which section 36.0 requires before choosing one path over
+  /// another.
+  ///
+  /// The arrival bearer is NOT that evidence, and the difference cost a bench
+  /// run: a message addressed to a phone with its WiFi off went out over the LAN
+  /// alone and reached nobody, because a third station had re-aired that phone's
+  /// beacon onto the LAN and the arrival bearer was recorded as if the phone
+  /// itself had been there.
+  ///
+  /// `via:` cannot be used to tell the two apart either, however much it looks
+  /// like the right field: nothing transmits it yet (section 37, "`via:`
+  /// instead of rewriting `f:` | not implemented"), so a re-aired packet is
+  /// byte-identical to a direct one. A beacon's `link:` survives re-airing with
+  /// its meaning intact, because it describes the sender rather than the hop.
+  final Map<String, int> bearersDeclared = {};
+
+  /// `link:` words as they appear on the wire, mapped to the bearer names the
+  /// publisher uses. Reticulum has no `link:` word -- it is the internet path,
+  /// not a radio a station stands on.
+  static const Map<String, String> linkToBearer = {
+    'ble': 'ble5',
+    'lan': 'lan',
+    'lora': 'lora',
+  };
+
+  /// Bearer names (publisher spelling) this station declared itself on inside
+  /// [windowMs], newest first.
+  List<String> declaredBearersFresh(int nowMs, int windowMs) {
+    final live = bearersDeclared.entries
+        .where((e) => nowMs - e.value <= windowMs)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return [
+      for (final e in live)
+        if (linkToBearer[e.key] != null) linkToBearer[e.key]!
+    ];
   }
 
   int firstMs;
@@ -239,6 +283,23 @@ class XprsMonitor {
     final st = _stations.putIfAbsent(from, () => XprsStation(from, bearer, now));
     st.bearer = bearer;
     st.bearers[bearer] = now;
+    // The station's own `link:` (10.6.1) -- what IT says it is on, which
+    // survives being re-aired by somebody else. See `bearersDeclared`.
+    //
+    // Stamped with the packet's OWN `ts:` (4.8: "when the packet was composed"),
+    // never with the moment we heard it. A beacon re-aired by a third station
+    // arrives now and was composed then, and stamping it `now` makes an hour-old
+    // claim look current -- which is how a phone whose WiFi had been off for an
+    // hour still read as "on the LAN" and had a private message sent there and
+    // nowhere else. A station with no clock (10.7) sends no `ts:`, and its
+    // sighting is stamped on arrival because that is the best that exists.
+    final link = p['link'];
+    if (link != null && link.isNotEmpty) {
+      final composed = xprsParseTs(p['ts']) ?? now;
+      final was = st.bearersDeclared[link];
+      // Newest claim wins; an out-of-order re-airing never ages one backwards.
+      if (was == null || composed > was) st.bearersDeclared[link] = composed;
+    }
     st.lastMs = now;
     // Keep the latest of anything it measured. A weather station's temp and a
     // tracker's battery arrive on ordinary packets, not a special type, so

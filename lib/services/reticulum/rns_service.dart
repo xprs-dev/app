@@ -5394,6 +5394,11 @@ class RnsService {
     String title = '',
     String content = '',
     Map<int, Object?>? fields,
+    /// The form the sender chose for THIS message (docs/XPRS.md section 9.2:
+    /// `x:` sealed, `m:` plain). Private is the default for a direct message
+    /// (9.4). It is a per-message argument and not a stored mode, because the
+    /// wire form is per packet and either side may switch at any point.
+    bool private = true,
   }) async {
     final r = _lxmf;
     if (!_up || r == null || _id == null) return false;
@@ -5428,8 +5433,11 @@ class RnsService {
     if (peerCall.isNotEmpty &&
         content.isNotEmpty &&
         MeshService.instance.isDirectNeighbour(peerCall)) {
-      MeshCourier.instance
-          .armLxmf(destHex: destHex, text: content, waitFirst: false);
+      MeshCourier.instance.armLxmf(
+          destHex: destHex,
+          text: content,
+          waitFirst: false,
+          private: private);
     }
 
     // Self-heal: if we have no path to the recipient yet, pull one (path
@@ -5482,7 +5490,8 @@ class RnsService {
     if (!ok) _queueLxmfRetry(destHex, msg.packed, title, content, fields);
     // Whether this needed a carrier is not knowable yet — MeshCourier asks the
     // retry queue twenty seconds from now, when "did it arrive" has an answer.
-    MeshCourier.instance.armLxmf(destHex: destHex, text: content);
+    MeshCourier.instance
+        .armLxmf(destHex: destHex, text: content, private: private);
     return ok;
   }
 
