@@ -32,6 +32,7 @@ import '../preferences_service.dart';
 import '../reticulum/rns_service.dart';
 import 'xprs_ingest.dart';
 import 'xprs_lan.dart';
+import 'xprs_airtime.dart';
 import 'xprs_archive.dart';
 import 'xprs_body.dart';
 import 'xprs_monitor.dart';
@@ -299,6 +300,7 @@ class XprsPublisher {
     required String slot,
     Duration? ttl,
     String? prefer,
+    bool urgent = false,
   }) async {
     final report = <String, String>{};
     String? carriedBy;
@@ -325,6 +327,14 @@ class XprsPublisher {
         report[b.name] = 'inactive';
         return false;
       }
+      // §31.1: this bearer may still owe silence for what it last transmitted,
+      // and a retry costs exactly what the first airing did. Deferred, never
+      // dropped — the caller keeps its own cadence and comes back.
+      if (!urgent && XprsAirtime.instance.owedBy(b.name) > 0) {
+        report[b.name] = 'deferred';
+        xprsLogDeferral(slot, b.name, XprsAirtime.instance.owedBy(b.name));
+        return false;
+      }
       // Worst answer across the parts wins: a message whose third part was
       // refused did not go, whatever the first two did.
       var worst = XprsSendResult.sent;
@@ -337,7 +347,10 @@ class XprsPublisher {
       // archive files it there — but it does NOT satisfy a path preference,
       // because we do not yet know it arrived and the point of choosing one
       // path is that it works.
-      if (worst != XprsSendResult.refused) carriedBy ??= b.archiveBearer;
+      if (worst != XprsSendResult.refused) {
+        carriedBy ??= b.archiveBearer;
+        XprsAirtime.instance.charge([b.name], packets: wires.length);
+      }
       return worst == XprsSendResult.sent;
     }
 
@@ -573,9 +586,17 @@ class XprsPublisher {
       {String? slot,
       Duration? ttl,
       bool verbatim = false,
-      /// Test seam: force the section 36.0 path choice. In production the
-      /// choice comes from evidence in [XprsMonitor]; a unit test has no air.
-      @visibleForTesting String? preferForTest}) async {
+      /// Force the section 36.0 path choice instead of deriving it from
+      /// evidence.
+      ///
+      /// The caller that has better evidence than the monitor does: §36.8.1
+      /// releases held mail "on the bearer X was heard on, which is the
+      /// freshest possible evidence of a working path". A packet that just
+      /// arrived from a station beats anything a beacon can say about it.
+      ///
+      /// Falls back to the fan-out like any other preference when the named
+      /// bearer does not carry it.
+      String? prefer}) async {
     LogService.instance.add('XPRS: publishWire <- $wireIn');
     var p = XprsPacket.parse(wireIn.trim());
     if (p == null || !p.fits) {
@@ -606,9 +627,20 @@ class XprsPublisher {
     // which is that same section's own fallback ("Where a station cannot tell
     // which path reaches the asker ... it answers on every bearer it can
     // transmit on").
-    final chosen = preferForTest ?? _preferredBearer(p, dest);
+    final chosen = prefer ?? _preferredBearer(p, dest);
 
-    final air = await _fanOut([wire], slot: useSlot, ttl: ttl, prefer: chosen);
+    // §31.2: "it may never hold back the control packets, because a code:404 or
+    // code:429 that does not arrive is indistinguishable from a station that is
+    // simply not there." A receipt is the same case — it is what releases every
+    // carrier holding the message, so a deferred one leaves a chain of stations
+    // holding mail that has already arrived. And §13.1 gives sos and warning
+    // nine relays precisely because they are worth spending a shared channel on.
+    const never = {'result', 'receipt', 'sos', 'warning'};
+    final air = await _fanOut([wire],
+        slot: useSlot,
+        ttl: ttl,
+        prefer: chosen,
+        urgent: never.contains(p.type));
     final report = air.report;
     final carriedBy = air.carriedBy;
 

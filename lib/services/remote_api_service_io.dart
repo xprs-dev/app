@@ -17,7 +17,9 @@ import 'xprs/xprs_gossip.dart';
 import 'mesh/mesh_courier.dart';
 import 'mesh/mesh_custody.dart';
 import 'xprs/xprs_forwarder.dart';
+import 'xprs/xprs_airtime.dart';
 import 'xprs/xprs_body.dart';
+import 'xprs/xprs_receipt.dart';
 import 'xprs/xprs_packet.dart';
 import 'xprs/xprs_vocab.dart';
 
@@ -1189,20 +1191,38 @@ class RemoteApiService {
       // outside the app — which is exactly how the funnel came to carry mail
       // off the internet lane and nothing off any radio.
       if (req.method == 'GET' && path == '/api/xprs/held') {
-        final rows = MeshService.instance
-            .held(limit: int.tryParse(req.uri.queryParameters["limit"] ?? "") ?? 50);
+        final limit =
+            int.tryParse(req.uri.queryParameters['limit'] ?? '') ?? 50;
+        final rows = MeshService.instance.held(limit: limit);
         final self = MeshService.instance.tableCallsign.toUpperCase();
-        final forOthers =
-            rows.where((r) => '${r['target']}'.toUpperCase() != self).toList();
+        // CARRIED = somebody else wrote it. That is the number this endpoint
+        // exists for: our own outbound has the LXMF ladder behind it, a
+        // stranger's mail has this store and nothing else. Keyed on `sender`,
+        // not `target` — mail we sent to X1RD89 is not us carrying for anyone.
+        final carried = rows
+            .where((r) => '${r['sender']}'.toUpperCase() != self)
+            .toList();
+        final own = rows.length - carried.length;
+        int oldest(List<Map<String, dynamic>> l) => l.isEmpty
+            ? 0
+            : l.map((r) => r['ts'] as int? ?? 0).reduce((a, b) => a < b ? a : b);
         return _json(res, {
           'ok': true,
-          'held': rows.length,
-          'forOthers': forOthers.length,
-          'targets': {
-            for (final t in forOthers.map((r) => '${r['target']}').toSet())
-              t: forOthers.where((r) => '${r['target']}' == t).length
+          'limit': limit,
+          'returned': rows.length,
+          'carriedRows': carried.length,
+          'ownRows': own,
+          // Whole-store totals, so a truncated page cannot read as an empty one.
+          'pending': MeshStore.instance.ready
+              ? MeshStore.instance.pendingCount()
+              : null,
+          'oldestCarriedTs': oldest(carried),
+          'byTarget': {
+            for (final t in carried.map((r) => '${r['target']}').toSet())
+              t: carried.where((r) => '${r['target']}' == t).length
           },
-          'rows': forOthers.take(20).toList(),
+          // Carried first — heldJson orders them that way deliberately.
+          'rows': rows,
         });
       }
       // ── The bearer switchboard: an instrument, not a feature ────────────
@@ -1586,6 +1606,12 @@ class RemoteApiService {
         // counts what we sent sealed, the other what reached us sealed and
         // would not open. `refusedNoSeal` counts what we declined to send in
         // the clear after being asked for privacy — never silently downgraded.
+        // §31.1's budget and the one retry ledger. `deferrals` is the
+        // observable that says the budget is alive — a budget nobody can see is
+        // indistinguishable from a station that has gone quiet.
+        'airtime': XprsAirtime.instance.json,
+        'retries': XprsRetryLedger.instance.json,
+        'receipts': XprsReceiptCounters.json,
         'courier': {
           'aired': MeshCourierCounters.aired,
           'ingested': MeshCourierCounters.ingested,

@@ -293,6 +293,28 @@ class XprsArchive {
     }
   }
 
+  /// Have [a] and [b] exchanged a DIRECT message before, in either direction?
+  ///
+  /// Section 13.7.1 gates the automatic receipt on exactly this: "a direct
+  /// message has already passed between the two callsigns, in either
+  /// direction". Not politeness — an acknowledgement is airtime on a shared
+  /// channel, and answering a stranger also confirms to everyone listening that
+  /// this callsign is here and awake. Two stations that have already exchanged
+  /// have both costs priced in; a stranger has not agreed to either.
+  ///
+  /// Indexed on `(fromc, toc)` via the existing type/time index; the limit makes
+  /// it a lookup rather than a scan.
+  bool hasExchanged(String a, String b) {
+    final db = _db;
+    if (db == null) return false;
+    final x = _base(a), y = _base(b);
+    if (x.isEmpty || y.isEmpty) return false;
+    return db.select(
+        "SELECT 1 FROM packets WHERE type = 'message' AND "
+        '((fromc = ? AND toc = ?) OR (fromc = ? AND toc = ?)) LIMIT 1',
+        [x, y, y, x]).isNotEmpty;
+  }
+
   /// Our base callsign, set by the owner at init/profile switch so `mine` can
   /// be computed at flush time without asking a service from inside sqlite.
   String selfCallsign = '';

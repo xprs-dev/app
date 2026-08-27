@@ -65,6 +65,18 @@ class XprsIngest {
   /// Set by MeshService to the custody park + forwarder.
   static void Function(String wire, String target)? onCarry;
 
+  /// A verified `t:receipt … s:ack` heard on any bearer. Set by MeshService to
+  /// the custody release.
+  ///
+  /// Every carrier holding the named message discards its copy — that is what
+  /// drains a chain of custodians instead of delivering the same message five
+  /// times (§36.8.1). It fires for a receipt addressed to ANYONE, not only to
+  /// us: overhearing somebody else's acknowledgement is precisely how a
+  /// third-party copy gets released, and §13.3 says so — "a station that
+  /// overhears a receipt for a message it is carrying discards its copy, which
+  /// is why a receipt is worth repeating even after the sender has seen it".
+  static void Function(XprsPacket p)? onReceipt;
+
   /// A `t:message` addressed to us, on any bearer. Set by MeshService to the
   /// courier's delivery entry point, which verifies, unseals and hands it to
   /// the ordinary inbox. Injected the same way as [onIdentity] so this file
@@ -264,6 +276,17 @@ class XprsIngest {
         onResult?.call(p);
       } catch (e) {
         LogService.instance.add('XPRS: result handling failed: $e');
+      }
+    }
+
+    // A receipt releases held mail — ours and other people's. Deliberately not
+    // gated on `forUs`: §13.3 has a carrier discard its copy on OVERHEARING the
+    // acknowledgement, which is the only way a chain of custodians drains.
+    if (p.type == 'receipt') {
+      try {
+        onReceipt?.call(p);
+      } catch (e) {
+        LogService.instance.add('XPRS: receipt handling failed: $e');
       }
     }
   }

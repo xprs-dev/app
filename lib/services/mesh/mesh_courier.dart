@@ -59,6 +59,7 @@ import '../reticulum/rns_service.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_body.dart';
 import '../xprs/xprs_publisher.dart';
+import '../xprs/xprs_receipt.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_sig.dart';
 import 'mesh_custody.dart';
@@ -441,10 +442,43 @@ class MeshCourier {
 
     RnsService.instance
         .injectLxmf(sourceHex: srcHex, content: body, title: '', via: via);
+    // REMEMBER it. `_alreadyDelivered` is checked on the way in, but nothing
+    // ever recorded the delivery, so the guard read a flag no one set and the
+    // same packet was delivered again on every arrival — once per bearer, and
+    // again for every re-aired copy. Invisible until the receipt made it
+    // audible: three identical `s:ack`s for one message inside 150 ms, which is
+    // airtime spent to say the same thing three times (§31.1).
+    _noteDelivered('id:${f.id}');
     MeshCourierCounters.ingested++;
     LogService.instance
         .add('Courier: delivered a carried packet from ${f.from} (via $via)');
+
+    // It reached a person. Say so — §13.7.1, and it is the ONLY thing that
+    // ends custody: this receipt releases the copy every carrier between us is
+    // still holding, and stops the sender's retry ladder.
+    //
+    // The publisher picks the lane from the sender's own `link:` evidence
+    // (§36.0), which is the freshest path we have back to them. Composed only
+    // when §13.7.1 allows: not for a group, not for a broadcast, not for a
+    // stranger, and never unsigned.
+    _acknowledge(p);
+
+    // "Frames that ended at us, the target." This counter existed but was only
+    // incremented on the MSP session lane, so a message delivered off the AIR
+    // — the ordinary case for carried mail — never moved it, and the bench read
+    // `delivered 0` after a day of delivering. The session lane counts itself
+    // (mesh_custody `msgReceived`), so only the air path is counted here.
+    if (via != 'custody') MeshCustodyCounters.delivered++;
     return true;
+  }
+
+  void _acknowledge(XprsPacket p) {
+    final self = MeshService.instance.tableCallsign;
+    final r = XprsReceipt.compose(p, selfCallsign: self);
+    if (r == null) return;
+    XprsReceiptCounters.sent++;
+    unawaited(XprsPublisher.instance.publishWire(r.encode(),
+        slot: 'ack:${r['r']}', verbatim: true));
   }
 
   /// Carried mail whose author we cannot address yet. Retried from [_tick];

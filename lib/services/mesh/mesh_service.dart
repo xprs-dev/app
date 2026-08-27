@@ -32,6 +32,7 @@ import '../xprs/xprs_history_server.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_gossip.dart';
 import '../xprs/xprs_publisher.dart';
+import '../xprs/xprs_receipt.dart';
 import '../xprs/xprs_forwarder.dart';
 import '../../util/nostr_crypto.dart';
 import 'mesh_transfer_scheduler.dart';
@@ -224,6 +225,24 @@ class MeshService {
         // Two handlers want t:result: the history poller and the file fetch.
         // Chained rather than replaced — the hook is a single slot, and a
         // second assignment would silently unhook the first.
+        // A verified receipt ends custody — here and on every other holder
+        // that hears it (§13.7.1, §36.8.1). Before this nothing composed or
+        // consumed one, so a parked row had no terminal state and the store
+        // grew to its quota: measured at 1739 parked, 0 purged, 0 delivered.
+        XprsIngest.onReceipt = (p) {
+          final id = XprsReceipt.release(p, selfCallsign: tableCallsign);
+          if (id == null) return; // unverifiable changes nothing (13.7.1)
+          final n = MeshStore.instance.purgeAm(id);
+          if (n > 0) {
+            XprsReceiptCounters.released += n;
+            MeshCustodyCounters.purged += n;
+            LogService.instance.add(
+                'Mesh: receipt from ${p['f']} released $n held copy of $id');
+          }
+          // Remember it even when we held nothing: a copy that reaches us
+          // AFTER the receipt must not be parked all over again.
+          MeshStore.instance.recordReceivedAm(id);
+        };
         XprsIngest.onResult = (p) {
           XprsCatchup.instance.onResult(p);
           XprsFileFetch.instance.onResult(p);
@@ -465,6 +484,34 @@ class MeshService {
     final ask = MeshSessionManager.instance.hooks.canTakeCustody;
     if (ask == null) return false;
     return ask(callsign.toUpperCase());
+  }
+
+  /// The wire to re-air for a held packet, with this station added to `via:`,
+  /// or null when section 13 says it may not travel further.
+  ///
+  /// Section 36.8.1 is explicit that a custody hand-off is a relay in every
+  /// respect that matters: "the author's packet travels byte for byte with the
+  /// author's signature, `via:` gains the holder's callsign, the section 13.1
+  /// budget and the section 13.2 loop check apply". The release used to re-air
+  /// verbatim, which meant a receiver could not tell a relayed copy from a
+  /// direct one -- the exact ambiguity that broke path evidence in
+  /// `private-messages.md` section 6 -- and a re-heard copy parked all over
+  /// again because nothing in it said we had already carried it.
+  ///
+  /// `xprsMayRelay` and `xprsWouldLoop` have existed, tested, with zero callers
+  /// since they were written. These are the callers.
+  String? _relayable(String wire) {
+    final p = XprsPacket.parse(wire);
+    if (p == null) return null;
+    final self = NostrCrypto.bareCallsign(tableCallsign).toUpperCase();
+    if (self.isEmpty) return null;
+    if (xprsWouldLoop(p, self)) return null; // 13.2: it came through us already
+    if (!xprsMayRelay(p)) return null; // 13.1: the type's budget is spent
+    final out = xprsAppendVia(p, self);
+    // Neither the identifier nor the signature changes -- both are computed
+    // with `via:` removed (sections 5 and 9.1) -- but the packet does get
+    // longer, and one that no longer fits stays put.
+    return out.fits ? out.encode() : null;
   }
 
   MeshDeviceClass _deviceClass() {
@@ -843,21 +890,20 @@ class MeshService {
     if (_releaseTriedMs.length > 256) {
       _releaseTriedMs.remove(_releaseTriedMs.keys.first);
     }
-    final pending =
-        MeshStore.instance.pendingFor(callsign, _table, max: 4,
-            selfCallsign: tableCallsign);
+    final pending = MeshStore.instance.releasableFor(callsign,
+        selfCallsign: tableCallsign);
     if (pending.isEmpty) return;
     LogService.instance.add(
-        'Mesh: $callsign heard on $bearer with ${pending.length} held — '
-        'releasing (36.8.1)');
+        'Mesh: $callsign heard on $bearer with ${pending.length} to release '
+        '(36.8.1)');
     if (bearer == 'ble') {
       // The session lane: clear the backoff and decide now.
       MeshTransferScheduler.instance.pokeFor(callsign);
       return;
     }
-    // No session lane on this bearer: re-air the held wires verbatim, paced,
-    // under the publisher's budgets. The receipt (13.7) is what marks them
-    // done -- an aired copy is an attempt, not a delivery.
+    // No session lane on this bearer: re-air the held wires, paced, under the
+    // publisher's budgets. The receipt (13.7) is what marks them done -- an
+    // aired copy is an attempt, not a delivery.
     unawaited(() async {
       for (final m in pending) {
         // The stored wire is bytes; the publisher speaks text wires. A held
@@ -865,8 +911,13 @@ class MeshService {
         // session lane and is skipped here.
         final wire = utf8.decode(m.wire, allowMalformed: true);
         if (!wire.startsWith('t:')) continue;
-        await XprsPublisher.instance
-            .publishWire(wire, verbatim: true, slot: 'release:${m.key}');
+        final out = _relayable(wire);
+        if (out == null) continue;
+        // Attempt recorded BEFORE the air, so a throw or a refused bearer
+        // still backs the row off rather than re-airing it every 30 s.
+        MeshStore.instance.noteReleased(m.key);
+        await XprsPublisher.instance.publishWire(out,
+            verbatim: true, slot: 'release:${m.key}', prefer: bearer);
         await Future<void>.delayed(const Duration(milliseconds: 1500));
       }
     }());
@@ -898,7 +949,7 @@ class MeshService {
 
   /// What this device is holding for other people, newest first.
   List<Map<String, dynamic>> held({int limit = 200}) =>
-      MeshStore.instance.heldJson(limit: limit);
+      MeshStore.instance.heldJson(limit: limit, selfCallsign: tableCallsign);
 
   /// What ANOTHER station is carrying, as plain rows; null when it could not
   /// be reached (or does not serve listings).

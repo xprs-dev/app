@@ -114,6 +114,7 @@ class MeshStore {
           state INTEGER NOT NULL DEFAULT 0
         )''');
       _migratePrioToUrg(db);
+      _migrateReleaseCols(db);
       db.execute(
           'CREATE INDEX IF NOT EXISTS idx_store_target ON mesh_store(target, state)');
       db.execute('''
@@ -223,6 +224,25 @@ class MeshStore {
   /// The old column only ever held 0 (a stranger's mail) or 1 (ours, or a
   /// target inside the mesh horizon), so it maps onto the bottom two levels
   /// exactly and the eviction order across the upgrade does not change.
+  /// v3 columns: when we last tried to release a row, and how many times.
+  ///
+  /// A release is an ATTEMPT, not a delivery (§36.8.1) — only a verified
+  /// receipt ends custody — so the row stays `state = 0` and these two columns
+  /// are what stop it being re-aired every time the recipient's beacon lands,
+  /// which on a live bearer is every thirty seconds.
+  static void _migrateReleaseCols(Database db) {
+    final cols = db
+        .select('PRAGMA table_info(mesh_store)')
+        .map((r) => r['name'] as String)
+        .toSet();
+    if (!cols.contains('relts')) {
+      db.execute('ALTER TABLE mesh_store ADD COLUMN relts INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!cols.contains('reln')) {
+      db.execute('ALTER TABLE mesh_store ADD COLUMN reln INTEGER NOT NULL DEFAULT 0');
+    }
+  }
+
   static void _migratePrioToUrg(Database db) {
     final cols = db
         .select('PRAGMA table_info(mesh_store)')
@@ -288,6 +308,75 @@ class MeshStore {
 
   void markArchived(String key) {
     _db?.execute('UPDATE mesh_store SET state = 1 WHERE am = ?', [key]);
+  }
+
+  /// Rows to release to [target] right now, newest first, **carried mail
+  /// before our own**, skipping anything whose release backoff has not expired.
+  ///
+  /// This replaces a `pendingFor(..., max: 4)` that inherited
+  /// `ORDER BY ts LIMIT 256` — the four OLDEST rows in the whole store. On a
+  /// station holding 1,739 rows of its own stale outbound, the third-party
+  /// message it had actually taken custody of sat behind all of them and was
+  /// never selected. Bench: the recipient's archive held zero copies of it. It
+  /// was carried for two hours and never delivered.
+  ///
+  /// Carried before own for the same reason `heldJson` orders that way: our own
+  /// outbound has the LXMF retry ladder behind it, a stranger's mail has this
+  /// store and nothing else.
+  ///
+  /// [budget] bounds the batch in BYTES rather than rows, because that is what
+  /// the bearer actually spends (§31.1).
+  List<MeshPendingMsg> releasableFor(String target,
+      {int budget = 900, String selfCallsign = '', int? nowMs}) {
+    final db = _db;
+    if (db == null) return const [];
+    final t = target.trim().toUpperCase();
+    if (t.isEmpty) return const [];
+    final self = selfCallsign.trim().toUpperCase();
+    final now = nowMs ?? _now();
+    final rows = db.select(
+        'SELECT am,target,sender,wire,ts,size,relts,reln FROM mesh_store '
+        'WHERE state = 0 AND UPPER(target) = ? '
+        'ORDER BY (UPPER(sender) = ?) ASC, ts DESC LIMIT 64',
+        [t, self]);
+    final out = <MeshPendingMsg>[];
+    var spent = 0;
+    for (final r in rows) {
+      final relts = r['relts'] as int? ?? 0;
+      final reln = r['reln'] as int? ?? 0;
+      if (relts > 0 && now - relts < _releaseBackoffS(reln)) continue;
+      final size = r['size'] as int? ?? 0;
+      if (out.isNotEmpty && spent + size > budget) break;
+      spent += size;
+      final key = r['am'] as String;
+      out.add(MeshPendingMsg(
+        am: key.startsWith('c:') ? '' : key,
+        key: key,
+        wire: Uint8List.fromList(r['wire'] as List<int>),
+        ts: r['ts'] as int,
+      ));
+    }
+    return out;
+  }
+
+  /// How long before a released-but-unreceipted row may be released again.
+  ///
+  /// A release is an ATTEMPT (§36.8.1); only a receipt ends custody. Without a
+  /// backoff the recipient's beacon — every thirty seconds on a live bearer —
+  /// would re-air the same mail every time it landed. §31.1: *a retry is not a
+  /// new packet*, it costs the same airtime as saying it the first time.
+  static int _releaseBackoffS(int attempts) => switch (attempts) {
+        0 => 0,
+        1 => 30,
+        2 => 120,
+        _ => 600,
+      };
+
+  /// Record a release ATTEMPT against [key]. Not a delivery.
+  void noteReleased(String key, {int? nowMs}) {
+    _db?.execute(
+        'UPDATE mesh_store SET relts = ?, reln = reln + 1 WHERE am = ?',
+        [nowMs ?? _now(), key]);
   }
 
   /// In-transit messages this session should hand to [peer]: frames FOR the
@@ -471,12 +560,28 @@ class MeshStore {
   /// Read-only and generic: the row as stored, with the wire decoded to text
   /// when it is text (XPRS is), so a viewer can show what is being carried
   /// rather than only how much. [limit] bounds a screenful.
-  List<Map<String, dynamic>> heldJson({int limit = 200}) {
+  /// What this device is holding, **mail for other people first**.
+  ///
+  /// Ordering is the whole point of this call. It used to be `ORDER BY ts DESC`
+  /// with a caller-side `.take(20)`, and on a station holding 1,739 of its own
+  /// outbound rows the third-party mail — the only kind nothing else retries,
+  /// and the only evidence that this station carries at all — never appeared.
+  /// The instrument built to observe carrying could not observe it.
+  ///
+  /// `sender != selfCallsign` is the test: our own outbound has the LXMF retry
+  /// ladder behind it, a stranger's mail has this store and nothing else.
+  List<Map<String, dynamic>> heldJson({int limit = 200, String? selfCallsign}) {
     final db = _db;
     if (db == null) return const [];
-    final rows = db.select(
-        'SELECT am, target, sender, wire, ts, size, urg, state '
-        'FROM mesh_store ORDER BY ts DESC LIMIT ?', [limit]);
+    final self = (selfCallsign ?? '').trim().toUpperCase();
+    final rows = self.isEmpty
+        ? db.select(
+            'SELECT am, target, sender, wire, ts, size, urg, state, relts, reln '
+            'FROM mesh_store ORDER BY ts DESC LIMIT ?', [limit])
+        : db.select(
+            'SELECT am, target, sender, wire, ts, size, urg, state, relts, reln '
+            'FROM mesh_store '
+            'ORDER BY (UPPER(sender) = ?) ASC, ts DESC LIMIT ?', [self, limit]);
     final out = <Map<String, dynamic>>[];
     for (final r in rows) {
       final blob = r['wire'];
@@ -503,6 +608,9 @@ class MeshStore {
         'urg': r['urg'] as int? ?? 1,
         // 0 = still to hand on, 1 = delivered and kept for the archive window.
         'state': r['state'] as int? ?? 0,
+        // Release ATTEMPTS, not deliveries — only a receipt ends custody.
+        'relts': r['relts'] as int? ?? 0,
+        'reln': r['reln'] as int? ?? 0,
         'wire': text,
       });
     }

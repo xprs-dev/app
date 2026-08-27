@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_ingest.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
+import 'package:xprs/services/xprs/xprs_airtime.dart';
 import 'package:xprs/services/xprs/xprs_publisher.dart';
 
 /// A bearer that records what it was asked to carry.
@@ -73,6 +74,7 @@ void main() {
     lan = FakeBearer('lan');
     rns = FakeBearer('reticulum', shortRange: false, archive: 'rns');
     lora = FakeBearer('lora');
+    XprsAirtime.instance.reset();
     pub = XprsPublisher.instance;
     pub.bearers = [ble, lan, rns, lora];
     for (final b in pub.bearers) {
@@ -188,7 +190,7 @@ void main() {
   group('preferring one path (36.0)', () {
     test('a carried preference leaves the others unused', () async {
       final r = await pub.publishWire(_wire(d: 'X1RD89'),
-          verbatim: true, preferForTest: 'lan');
+          verbatim: true, prefer: 'lan');
       expect(r['lan'], 'sent');
       expect(r['ble5'], 'unused');
       expect(r['reticulum'], 'unused');
@@ -200,7 +202,7 @@ void main() {
       // up". A preference that can become silence is not a preference.
       lan.up = false;
       final r = await pub.publishWire(_wire(d: 'X1RD89'),
-          verbatim: true, preferForTest: 'lan');
+          verbatim: true, prefer: 'lan');
       expect(r['lan'], 'inactive');
       expect(r['ble5'], 'sent');
       expect(r['reticulum'], 'sent');
@@ -209,14 +211,14 @@ void main() {
     test('a preference that is DISABLED also falls back', () async {
       pub.setBearerEnabled('lan', false);
       final r = await pub.publishWire(_wire(d: 'X1RD89'),
-          verbatim: true, preferForTest: 'lan');
+          verbatim: true, prefer: 'lan');
       expect(r['lan'], 'disabled');
       expect(r['ble5'], 'sent');
     });
 
     test('a preference naming a bearer we do not have falls back', () async {
       final r = await pub.publishWire(_wire(d: 'X1RD89'),
-          verbatim: true, preferForTest: 'satellite');
+          verbatim: true, prefer: 'satellite');
       expect(r['ble5'], 'sent');
       expect(r['lan'], 'sent');
     });
@@ -317,7 +319,8 @@ void _queued() {
       rns = FakeBearer('reticulum', shortRange: false, archive: 'rns')
         ..accepts = false
         ..result = XprsSendResult.queued;
-      pub = XprsPublisher.instance;
+      XprsAirtime.instance.reset();
+    pub = XprsPublisher.instance;
       pub.bearers = [ble, rns];
       for (final b in pub.bearers) {
         pub.setBearerEnabled(b.name, true);
@@ -337,7 +340,7 @@ void _queued() {
       // Choosing one path is only worth doing if it worked. "Handed to a lane
       // that will keep trying" is not "arrived", so the others still go.
       final r = await pub.publishWire(_wire(d: 'X1RD89'),
-          verbatim: true, preferForTest: 'reticulum');
+          verbatim: true, prefer: 'reticulum');
       expect(r['reticulum'], 'queued');
       expect(r['ble5'], 'sent', reason: 'queued is not done');
     });

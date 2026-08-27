@@ -86,6 +86,15 @@ class XprsForwarder {
       return null;
     }
 
+    // Section 36.8.1: "the section 13.1 budget and the section 13.2 loop check
+    // apply". The loop half was checked by hand above; the BUDGET half was not
+    // checked at all, so a packet could be forwarded past its hop limit — the
+    // one rule `xprsMayRelay` exists to enforce, with no caller since it was
+    // written.
+    if (!xprsMayRelay(p)) {
+      loops++;
+      return null;
+    }
     final carried = xprsAppendVia(p, selfBase);
     if (!carried.fits) return null; // a via: that no longer fits stays put
     final wire2 = carried.encode();
