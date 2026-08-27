@@ -59,6 +59,36 @@ ESP-NOW; `xprs_bearer_ble` does not include it. The app does not relay on any
 bearer. So on the busiest off-grid lane there is no digipeater at all — a packet
 travels one radio hop, and everything past that is custody.
 
+**Which is enough to bridge bearers, and does.** §36.12: *"It can cross the
+internet on one hop and a LoRa hill on the next; every hop is a holder."* A
+BLE-only phone reaches a LAN-only desktop because a station that hears both
+takes custody and hands it on — and §36.8.1 makes that hand-off a relay in every
+respect that matters: the author's bytes and signature travel untouched, `via:`
+gains the carrier, and the §13.1 budget and §13.2 loop check apply. Measured:
+
+```
+sent from TANK2 (Bluetooth only), arrived at the desktop (LAN only) in under 20s
+t:message f:X1VCVM d:X16JK8 ts:… sig:… via:X3ARK m:…      bearer=lan
+```
+
+`f:` is still the author (§13: *"A relay never rewrites `f:`"*), `via:` names the
+carrier, and the signature still verifies because §5 and §9.1 both exclude `via:`.
+
+Two things had to be true for that to happen automatically rather than by luck,
+and neither was:
+
+- **The carrier has to say what it hears.** The BLE beacon built `hears:` from
+  `MeshTable.neighbors`, a table nothing fills, so this station had never told
+  anyone who it could reach. §36.9.4's gossip resolves "who can reach X" from
+  exactly that field. It now reads the monitor, like the LAN beacon.
+- **And sign it.** Gossip refuses an unsigned claim outright, so a populated
+  `hears:` on an unsigned beacon still fed nothing. The BLE beacon is signed
+  now, with room reserved before the neighbour list is fitted.
+
+Before: the sender's gossip named only itself as a gateway to the desktop, and
+mail for it had nowhere to go but the hope that a carrier happened to overhear
+the one advert.
+
 ---
 
 ## Fig. 2 — What a relay is supposed to do (§13.1, §13.2, §13.2.1)
@@ -296,8 +326,8 @@ stranger's traffic is not refusing to *carry* it.
 
 | §  | rule | state |
 |---|---|---|
-| 13.1 | relay budget by packet type | in the codec; **no transmit path calls it**. `XprsForwarder` appends `via:` without checking it, though §36.8.1 says it applies |
-| 13.2 | loop check | in the codec, unused; the forwarder re-implements it by hand |
+| 13.1 | relay budget by packet type | **applied** on the custody hand-off — the release and `XprsForwarder` both call `xprsMayRelay` now. Still not applied to a general digipeat, because there is none |
+| 13.2 | loop check | **applied** on the same two paths |
 | 13.2.1 | random wait, cancel on hearing | **not implemented in the app at all**; complete in firmware for LAN, LoRa, ESP-NOW |
 | 13.11.3 | a gateway treats `scope:` as binding | honoured — `scope:local` is checked in the fan-out and in the chat wapp's APRS path |
 | 36.8.1 | release on hearing, forward toward a gateway, once per holder | implemented |

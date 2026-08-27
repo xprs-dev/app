@@ -17,6 +17,7 @@ import 'package:hex/hex.dart';
 
 import 'package:xprs/services/xprs/xprs_airtime.dart';
 import 'package:xprs/services/xprs/xprs_id.dart';
+import 'package:xprs/services/xprs/xprs_monitor.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_receipt.dart';
 import 'package:xprs/services/xprs/xprs_sig.dart';
@@ -43,6 +44,7 @@ void main() {
   final dOther = _big(otherPriv);
 
   _deliveryMemory();
+  _hearsClaim();
 
   group('a receipt is what ends custody (13.7.1)', () {
     // compose() consults the archive for "have we exchanged before", which a
@@ -357,6 +359,33 @@ void _deliveryMemory() {
       expect(id.startsWith('id:'), isTrue,
           reason: 'the courier keys deliveries as id:<section 5 identifier>');
       expect(id.substring(3).length, 6);
+    });
+  });
+}
+
+/*
+ * `hears:` is how a BLE-only station learns who can reach a LAN-only one.
+ */
+void _hearsClaim() {
+  group('a station advertises who it actually hears', () {
+    test('the monitor is the source, not the empty route table', () {
+      // The BLE beacon built `hears:` from `MeshTable.neighbors`, which is
+      // filled only by the 0x4D mesh beacon this station deliberately never
+      // airs — so the table is permanently empty and `hears:` was absent from
+      // every BLE beacon ever sent. §36.9.4's gossip resolves "who can reach X"
+      // from exactly that field, so a BLE-only station could not learn that a
+      // dual-homed neighbour reaches the LAN, and mail for a LAN-only peer had
+      // nowhere to go.
+      final m = XprsMonitor.instance;
+      m.debugReset();
+      final t = DateTime.now().toUtc();
+      String two(int n) => n.toString().padLeft(2, '0');
+      final ts = '${t.year}-${two(t.month)}-${two(t.day)}_'
+          '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
+      m.offer(XprsPacket.parse('t:observation f:X16JK8 link:lan ts:$ts')!,
+          bearer: 'lan', selfCallsign: 'X3ARK');
+      expect(m.directlyHeard(), contains('X16JK8'),
+          reason: 'the beacon must be able to say it reaches the desktop');
     });
   });
 }

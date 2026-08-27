@@ -47,7 +47,6 @@ import 'mesh_courier.dart';
 import 'mesh_custody.dart';
 import 'mesh_frame.dart';
 import 'mesh_bulk_spool.dart';
-import 'mesh_session.dart';
 import 'mesh_store.dart';
 import 'mesh_table.dart';
 
@@ -634,27 +633,50 @@ class MeshService {
     // Most relevant first, and this station's idea of relevant (section
     // 10.6.3): a powered, stationary relay outranks a passing phone that
     // happens to be loud right now, then how reliably we hear it, then signal.
-    final now = DateTime.now();
-    final ranked = t.neighbors.values.toList()
-      ..sort((a, b) {
-        final ap = a.cond.powered ? 1 : 0, bp = b.cond.powered ? 1 : 0;
-        if (ap != bp) return bp - ap;
-        final c = b.contactRatio.compareTo(a.contactRatio);
-        if (c != 0) return c;
-        return b.lastRssi.compareTo(a.lastRssi);
-      });
-    final fresh = ranked
-        .where((n) => now.difference(n.lastHeard) < kNeighborTtl)
-        .map((n) => n.callsign.toUpperCase())
-        .toList();
+    // WHO WE ACTUALLY HEAR, from the monitor — the same source the LAN beacon
+    // uses, and for the same reason.
+    //
+    // This read `MeshTable.neighbors`, which is filled only by the 0x4D mesh
+    // beacon that `_sendBeacon` deliberately does not air (two beacons halve
+    // the chance either is heard in a five-second-a-minute window). The table
+    // is therefore permanently empty, so **this station has never told anyone
+    // who it hears** — `hears:` was absent from every BLE beacon it ever sent,
+    // and `peers:` read 0 while the monitor knew otherwise.
+    //
+    // What that cost is the whole point of the field. §36.9.4's gossip resolves
+    // "who can reach X" from other stations' `hears:` claims, and §36.8.1's
+    // forwarder hands mail to whoever claims X. With no claim ever made, a
+    // BLE-only station could not learn that this station reaches the LAN, so
+    // mail for a LAN-only peer had nowhere to go but a lottery: hope the
+    // carrier happened to overhear the one advert. Measured on the bench —
+    // TANK2 had heard zero beacons naming X16JK8 and its gossip named only
+    // itself as the gateway.
+    final fresh = XprsMonitor.instance.directlyHeard();
+
+    // SIGNED, like the LAN beacon and for the same reason: an unsigned beacon
+    // is a callsign anybody can write.
+    //
+    // This one was not, and `hears:` is what that cost. §36.9.4's gossip
+    // refuses an unsigned claim outright (`refusedUnsigned`), so even once the
+    // list was populated it fed nothing — a BLE-only station would hear this
+    // beacon, drop the claim, and still not know who reaches the LAN. Both
+    // halves are needed: something true to say, and a signature that lets the
+    // hearer act on it.
+    //
+    // Room is reserved before the fit, exactly as the LAN builder does: ` sig:`
+    // plus 60 base85 characters is 65 bytes, and a `hears:` list sized against
+    // the full advert would push the signed packet over the ceiling.
+    final d = xprsProfileScalar();
+    final budget = Ble5Bus.instance.maxPayload - (d != null ? 65 : 0);
 
     // `peers:` is the true total even when `hears:` is cut to fit. Without it a
     // short list cannot be told from a small mesh (section 10.6.4).
-    final fit = xprsNeighbourFit(fresh, envelope, Ble5Bus.instance.maxPayload);
+    final fit = xprsNeighbourFit(fresh, envelope, budget);
     var p = envelope.with_('peers', '${fit.peers}');
     p = fit.hears.isEmpty
         ? XprsPacket(p.fields.where((f) => f.key != 'hears').toList())
         : p.with_('hears', fit.hears.join(','));
+    if (d != null) p = xprsSign(p, d);
 
     // No `busy:` or `txtime:` yet. Section 10.6 defines both over the last hour
     // and this node measures neither — `channelLoad` is a short sliding window

@@ -24,7 +24,6 @@ import '../reticulum/rns_service.dart';
 import '../xprs/xprs_airtime.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_vocab.dart';
-import 'mesh_table.dart';
 import 'mesh_beacon.dart';
 import 'mesh_bulk_spool.dart';
 import 'mesh_frame.dart';
