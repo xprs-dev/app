@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XPRS Packet Routing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+
+<style>
+  :root {
+    --ground:   #EDF0F1;
+    --surface:  #F8FAFA;
+    --raised:   #FFFFFF;
+    --ink:      #131A1F;
+    --ink-soft: #4A585F;
+    --ink-faint:#77868D;
+    --line:     #D2DADD;
+    --line-soft:#E2E8EA;
+    --accent:   #0F6E7B;
+    --accent-b: #0A4C55;
+    --accent-w: #DCEBED;
+
+    --good:  #2E7D4F;  --good-bg:  #DCEFE3;
+    --warn:  #A9701A;  --warn-bg:  #FBEFD6;
+    --bad:   #A33A3A;  --bad-bg:   #F7DEDE;
+    --off:   #64717A;  --off-bg:   #E4E8EA;
+
+    --col: 68ch;
+    --plate: #FBFCFC;
+    --plate-line: #DCE3E5;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #0D1317;
+      --surface:  #131B20;
+      --raised:   #182228;
+      --ink:      #E4EAEC;
+      --ink-soft: #A2B0B6;
+      --ink-faint:#75858C;
+      --line:     #2A383F;
+      --line-soft:#1F2C32;
+      --accent:   #4FB3C0;
+      --accent-b: #7FCBD5;
+      --accent-w: #123136;
+
+      --good: #6FC38F;  --good-bg: #16311F;
+      --warn: #D9A94E;  --warn-bg: #33260D;
+      --bad:  #DE8080;  --bad-bg:  #351717;
+      --off:  #93A2A9;  --off-bg:  #1D272C;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #0D1317;
+    --surface:  #131B20;
+    --raised:   #182228;
+    --ink:      #E4EAEC;
+    --ink-soft: #A2B0B6;
+    --ink-faint:#75858C;
+    --line:     #2A383F;
+    --line-soft:#1F2C32;
+    --accent:   #4FB3C0;
+    --accent-b: #7FCBD5;
+    --accent-w: #123136;
+
+    --good: #6FC38F;  --good-bg: #16311F;
+    --warn: #D9A94E;  --warn-bg: #33260D;
+    --bad:  #DE8080;  --bad-bg:  #351717;
+    --off:  #93A2A9;  --off-bg:  #1D272C;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px 120px; }
+  .col  { max-width: var(--col); }
+
+  /* ---- masthead ---- */
+  header.top {
+    padding: 68px 0 40px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 52px;
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+    font-weight: 700;
+    font-size: clamp(38px, 6vw, 62px);
+    line-height: 1.02;
+    letter-spacing: -0.018em;
+    margin: 0 0 22px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 60ch;
+  }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- contents ---- */
+  .toc {
+    margin-top: 38px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 2px;
+    background: var(--line-soft);
+    border: 1px solid var(--line-soft);
+  }
+  .toc a {
+    background: var(--surface);
+    padding: 13px 15px;
+    text-decoration: none;
+    color: var(--ink);
+    display: flex;
+    gap: 11px;
+    align-items: baseline;
+    transition: background .13s ease;
+  }
+  .toc a:hover, .toc a:focus-visible { background: var(--accent-w); }
+  .toc .n {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .toc .t { font-size: 14px; line-height: 1.32; }
+
+  /* ---- sections ---- */
+  section { margin: 0 0 78px; scroll-margin-top: 24px; }
+  h2 {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-weight: 600;
+    font-size: 27px;
+    letter-spacing: -0.008em;
+    margin: 0 0 6px;
+    text-wrap: balance;
+    display: flex;
+    align-items: baseline;
+    gap: 13px;
+  }
+  h2 .fig {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .lede { color: var(--ink-soft); margin: 0 0 24px; max-width: var(--col); }
+  p { margin: 0 0 15px; max-width: var(--col); }
+  a { color: var(--accent-b); }
+
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.885em;
+  }
+  p code, li code, td code {
+    background: var(--accent-w);
+    color: var(--accent-b);
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+
+  /* ---- figure plate ----
+     Deliberately keeps a light ground in both themes: Mermaid renders with its
+     own dark-on-transparent palette, so a plate is a printed figure rather than
+     a themed surface. Border and caption stay themed so it still sits in the page. */
+  figure {
+    margin: 0 0 14px;
+    border: 1px solid var(--line);
+    background: var(--plate);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .plate-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--plate-line);
+    background: #F2F5F6;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #5C6C73;
+  }
+  .plate-body { padding: 22px 18px 26px; overflow-x: auto; }
+  .mermaid { display: flex; justify-content: center; min-width: min-content; }
+  figcaption {
+    font-size: 14px;
+    color: var(--ink-soft);
+    margin: 0 0 30px;
+    max-width: var(--col);
+    border-left: 2px solid var(--accent);
+    padding-left: 13px;
+  }
+  figcaption strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- verdict key ---- */
+  .verdicts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+    gap: 12px;
+    margin: 26px 0 30px;
+  }
+  .v {
+    border: 1px solid var(--line);
+    border-left-width: 3px;
+    background: var(--surface);
+    padding: 13px 15px;
+    border-radius: 2px;
+  }
+  .v .name {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600;
+    font-size: 13.5px;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .v .what { font-size: 13.5px; color: var(--ink-soft); line-height: 1.45; }
+  .v.sent     { border-left-color: var(--good); } .v.sent .name     { color: var(--good); }
+  .v.queued   { border-left-color: var(--warn); } .v.queued .name   { color: var(--warn); }
+  .v.refused  { border-left-color: var(--bad);  } .v.refused .name  { color: var(--bad); }
+  .v.disabled { border-left-color: var(--off);  } .v.disabled .name { color: var(--off); }
+
+  /* ---- callout ---- */
+  .note {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    padding: 16px 18px;
+    margin: 0 0 26px;
+    max-width: var(--col);
+    border-radius: 2px;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note .tag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 7px;
+  }
+  .note.warn { border-left-color: var(--bad); }
+  .note.warn .tag { color: var(--bad); }
+
+  /* ---- bench table ---- */
+  .tablewrap { overflow-x: auto; margin: 0 0 26px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; min-width: 560px; }
+  th, td {
+    text-align: left;
+    padding: 10px 13px;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+  th {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    border-bottom: 1px solid var(--line);
+    font-weight: 500;
+  }
+  td.res { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; white-space: nowrap; }
+  .chip {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    padding: 1.5px 6px;
+    border-radius: 2px;
+    margin-right: 3px;
+  }
+  .chip.g { background: var(--good-bg); color: var(--good); }
+  .chip.w { background: var(--warn-bg); color: var(--warn); }
+  .chip.b { background: var(--bad-bg);  color: var(--bad); }
+  .chip.o { background: var(--off-bg);  color: var(--off); }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 26px;
+    color: var(--ink-faint);
+    font-size: 14px;
+  }
+  footer code { color: var(--ink-soft); }
+
+  ul { max-width: var(--col); padding-left: 20px; margin: 0 0 15px; }
+  li { margin-bottom: 7px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+  a:focus-visible, .toc a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">XPRS · communication coordinator</p>
+  <h1>How a packet finds a radio</h1>
+  <p class="standfirst">
+    Every XPRS packet leaves through one fan-out and arrives through one funnel.
+    These are the decisions each of them makes — and the branch that was missing,
+    which meant a station <strong>carried mail for nobody</strong> on any radio.
+  </p>
+
+  <nav class="toc">
+    <a href="#f1"><span class="n">01</span><span class="t">The map</span></a>
+    <a href="#f2"><span class="n">02</span><span class="t">Sending a 1:1</span></a>
+    <a href="#f3"><span class="n">03</span><span class="t">One bearer, one wire</span></a>
+    <a href="#f4"><span class="n">04</span><span class="t">Demux, then the funnel</span></a>
+    <a href="#f5"><span class="n">05</span><span class="t">What the funnel owes</span></a>
+    <a href="#f6"><span class="n">06</span><span class="t">Life of a message</span></a>
+    <a href="#f7"><span class="n">07</span><span class="t">Taking a lane away</span></a>
+  </nav>
+</header>
+
+<section id="f1">
+  <h2><span class="fig">FIG 1</span> Where a packet enters and leaves</h2>
+  <p class="lede">
+    Four bearers, two directions. The subtype matters more than it looks:
+    <strong>XPRS airs on <code>0x58</code></strong>, and the custody tap that used
+    to own carrying was wired to <code>0x41</code>.
+  </p>
+
+  <figure>
+    <div class="plate-bar"><span>Fig 1 · component view</span><span>bearers ⇄ core</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart LR
+    subgraph RADIO["bearers"]
+        direction TB
+        BLE["BLE5 advert<br/>0x58 xprs · 0x41 aprs"]
+        LAN["LAN<br/>UDP / TCP 4242"]
+        RNS["Reticulum<br/>LXMF + datagram"]
+        LORA["LoRa<br/>slot only, no radio yet"]
+    end
+    subgraph CORE["core"]
+        direction TB
+        FUNNEL["XprsIngest.heard<br/><b>the one door in</b>"]
+        FAN["XprsPublisher._fanOut<br/><b>the one door out</b>"]
+        ARCH[("XprsArchive<br/>§5 identifier dedup")]
+        STORE[("MeshStore<br/>custody")]
+        DEL["deliver to inbox"]
+    end
+    BLE --> FUNNEL
+    LAN --> FUNNEL
+    RNS --> FUNNEL
+    FUNNEL --> ARCH
+    FUNNEL -- "ours" --> DEL
+    FUNNEL -- "somebody else's" --> STORE
+    FAN --> BLE
+    FAN --> LAN
+    FAN --> RNS
+    FAN -. inactive .-> LORA
+    STORE -- "retry when a lane returns" --> FAN
+</pre>
+    </div>
+  </figure>
+  <figcaption>
+    <strong>One door each way.</strong> Anything that goes round them is a path
+    nobody owns — which is how the same packet came to be processed twice on one
+    subtype and not at all on another.
+  </figcaption>
+</section>
+
+<section id="f2">
+  <h2><span class="fig">FIG 2</span> Sending a 1:1</h2>
+  <p class="lede">
+    §36.0 permits choosing <em>one</em> path when there is recent evidence of
+    several to the same station. With no evidence it fans out — that is the same
+    section's own fallback, not a shortcut.
+  </p>
+
+  <figure>
+    <div class="plate-bar"><span>Fig 2 · sequence</span><span>publishWire → _fanOut</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant App as Wapp / API
+    participant Pub as XprsPublisher
+    participant Mon as XprsMonitor
+    participant Fan as _fanOut
+    participant Best as chosen bearer
+    participant Rest as other bearers
+    participant Arc as XprsArchive
+
+    App->>Pub: publishWire("t:message d:X16JK8 …")
+    Pub->>Pub: parse · sign (§9.1)
+    Pub->>Mon: declaredBearersFresh(X16JK8)
+    Note right of Mon: what the STATION said it is on<br/>(its own link:, §10.6.1)<br/>aged on the packet's ts: (§4.8)
+    Mon-->>Pub: ["lan"]
+    Pub->>Fan: _fanOut(prefer "lan")
+    Fan->>Best: send(part, slot, ttl)
+    alt carried
+        Best-->>Fan: sent
+        Note over Rest: reported "unused"
+    else not carried
+        Best-->>Fan: refused / inactive / disabled
+        Note over Fan: §36.0 — "it does not give up"
+        Fan->>Rest: send on every bearer
+        Rest-->>Fan: sent / queued / refused
+    end
+    Fan-->>Pub: report + carriedBy
+    Pub->>Arc: own(wire, bearer carriedBy ?? "none")
+</pre>
+    </div>
+  </figure>
+  <figcaption>
+    A packet the fan-out could not place is <strong>still filed</strong>, under
+    bearer <code>none</code>. A period in which a station reached nobody is a fact
+    worth keeping.
+  </figcaption>
+</section>
+
+<section id="f3">
+  <h2><span class="fig">FIG 3</span> What one bearer does with one wire</h2>
+  <p class="lede">
+    Four verdicts, because they mean four different things to whoever reads the
+    report.
+  </p>
+
+  <div class="verdicts">
+    <div class="v sent"><span class="name">sent</span><span class="what">On the air, or acknowledged by the medium.</span></div>
+    <div class="v queued"><span class="name">queued</span><span class="what">Handed to a lane that stores and forwards. Outcome not known yet.</span></div>
+    <div class="v refused"><span class="name">refused</span><span class="what">The medium said no to this frame.</span></div>
+    <div class="v disabled"><span class="name">disabled</span><span class="what">Switched off by the operator or a test — distinct from a radio being off.</span></div>
+  </div>
+
+  <div class="note warn">
+    <span class="tag">why <code>queued</code> had to exist</span>
+    <p>Measured on the bench: a directed wire reported
+    <code>reticulum: refused</code> and arrived at the far station over Reticulum
+    seconds later. That bearer hands the packet to two lanes and could only report
+    one. A report that calls an arriving packet <em>refused</em> is worse than no
+    report — answering “where did this actually go” is the whole job.</p>
+  </div>
+
+  <figure>
+    <div class="plate-bar"><span>Fig 3 · decision</span><span>per-bearer verdict</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart TD
+    A["wire offered to this bearer"] --> D{"switched off?"}
+    D -- yes --> DZ["disabled"]
+    D -- no --> S{"scope:local and<br/>this bearer is long-range?"}
+    S -- yes --> SZ["scope"]
+    S -- no --> AC{"radio up this second?"}
+    AC -- no --> IZ["inactive"]
+    AC -- yes --> TX["send every part<br/>worst answer wins"]
+    TX --> R{"what did the medium say?"}
+    R -- "on the air" --> SENT["sent"]
+    R -- "taken by store-and-forward" --> Q["queued"]
+    R -- "no" --> REF["refused"]
+    SENT --> CB["names the archive bearer<br/>satisfies a path preference"]
+    Q --> CB2["names the archive bearer<br/>does NOT satisfy a preference"]
+
+    classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
+    classDef warn fill:#FBEFD6,stroke:#A9701A,color:#4A3208
+    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    classDef off  fill:#E4E8EA,stroke:#64717A,color:#2A2E33
+    class SENT good
+    class Q warn
+    class REF bad
+    class DZ,IZ,SZ off
+</pre>
+    </div>
+  </figure>
+  <figcaption>
+    <strong><code>queued</code> names the lane but does not end the fan-out.</strong>
+    Choosing one path is only worth doing if it worked.
+  </figcaption>
+</section>
+
+<section id="f4">
+  <h2><span class="fig">FIG 4</span> Demux, then the funnel</h2>
+  <p class="lede">
+    One owner per form. An XPRS packet goes to the funnel whatever subtype carried
+    it; the legacy compact frame goes to the custody tap, which is the only thing
+    that understands it. Both used to run for every frame.
+  </p>
+
+  <figure>
+    <div class="plate-bar"><span>Fig 4 · sequence</span><span>inbound</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Air as BLE5 bus
+    participant Dx as subtype demux
+    participant Tap as MeshCustody tap
+    participant Fun as XprsIngest.heard
+    participant Arc as XprsArchive
+    participant Cou as MeshCourier
+    participant Fwd as XprsForwarder
+
+    Air->>Dx: frame + subtype
+    alt 0x58 xprs
+        Dx->>Fun: heard(packet, bearer "ble")
+    else 0x41 aprs
+        Dx->>Dx: does it parse as XPRS?
+        alt yes
+            Dx->>Fun: heard(packet, bearer "ble")
+        else no — legacy compact frame
+            Dx->>Tap: onAirFrame(inbound)
+        end
+    else 0x55 / 0x4D / 0x57
+        Dx->>Dx: other planes, not XPRS
+    end
+    Fun->>Arc: admit — QUEUES only
+    Arc-->>Fun: onStored → catch-up watermark
+    alt addressed to us
+        Fun->>Cou: onDeliver — verify, unseal, inbox
+    else somebody else's 1:1
+        Fun->>Cou: onCarry — park in custody
+        Fun->>Fwd: maybeForward toward their mailbox
+    end
+</pre>
+    </div>
+  </figure>
+  <figcaption>
+    <strong>The watermark moves from <code>onStored</code>, not <code>admit</code>.</strong>
+    <code>admit</code> only queues, and the flush drops forged packets — so a
+    watermark advanced at admit time stepped over history the station never stored.
+  </figcaption>
+</section>
+
+<section id="f5">
+  <h2><span class="fig">FIG 5</span> What the funnel owes an arriving packet</h2>
+  <p class="lede">
+    Every bearer enters here, so this is the only place these questions get asked.
+  </p>
+
+  <figure>
+    <div class="plate-bar"><span>Fig 5 · decision</span><span>XprsIngest.heard</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart TD
+    IN["XPRS packet + bearer label"] --> MON["monitor.offer<br/>sighting · link: evidence"]
+    MON --> ECHO{"f: is our own callsign?"}
+    ECHO -- yes --> DROP["stop — our own echo"]
+    ECHO -- no --> MBX{"t:mailbox?"}
+    MBX -- yes --> REC["record declaration §13.12"]
+    MBX -- no --> VIA{"carries via:?"}
+    REC --> VIA
+    VIA -- "no — heard directly" --> GOS["gossip noteDirect<br/>+ release-on-hearing §36.8.1"]
+    VIA -- yes --> IDT{"t:identity?"}
+    GOS --> IDT
+    IDT -- yes --> BIND["bind callsign to key §9.3"]
+    IDT -- no --> ARCH["archive.admit"]
+    BIND --> ARCH
+    ARCH --> FORUS{"d: is us?<br/>base callsign — §3.1.3 accepts -N"}
+    FORUS -- yes --> ISMSG{"t:message?"}
+    ISMSG -- yes --> DELIVER["DELIVER<br/>verify · unseal · inbox"]
+    ISMSG -- no --> CMD
+    FORUS -- no --> CARRY{"t:message to a STATION?<br/>a group is aired, not couriered §6.3"}
+    CARRY -- yes --> PARK["CARRY<br/>park in custody · forward §36.7"]
+    CARRY -- no --> CMD["onCommand · onResult"]
+    DELIVER --> CMD
+    PARK --> CMD
+
+    classDef act fill:#DCEBED,stroke:#0F6E7B,color:#08343B
+    class DELIVER,PARK act
+</pre>
+    </div>
+  </figure>
+  <figcaption>
+    <strong>The carry branch is the one that was missing.</strong> It was reached
+    only from the Reticulum lane, so a station carried mail that arrived over the
+    internet and nothing at all that arrived over a radio — while a comment
+    claimed otherwise, pointing at a tap on the wrong subtype.
+  </figcaption>
+</section>
+
+<section id="f6">
+  <h2><span class="fig">FIG 6</span> Life of a 1:1 message</h2>
+  <p class="lede">
+    Privacy is a property of one packet (§9.2), so the form is chosen per message
+    and never remembered.
+  </p>
+
+  <figure>
+    <div class="plate-bar"><span>Fig 6 · state</span><span>compose → release</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+stateDiagram-v2
+    direction TB
+    [*] --> Composed
+    Composed --> Sealed: private — the default for a direct message §9.4
+    Composed --> Clear: switched to plain, per packet §9.2
+    note right of Sealed
+        no recipient key means REFUSE
+        never silently downgrade §36.8
+    end note
+    Sealed --> Parked
+    Clear --> Parked
+    Parked --> Aired: fan-out places it
+    Parked --> Waiting: no bearer took it
+    Aired --> Queued: a store-and-forward lane has it
+    Aired --> Arrived: receiver's funnel delivers
+    Queued --> Arrived
+    Waiting --> Aired: lane returns · retry ladder · peer comes back
+    Arrived --> Released: receipt releases every custodian §13.3
+    Released --> [*]
+</pre>
+    </div>
+  </figure>
+  <figcaption>
+    <code>Parked</code> is not a failure state — §36.12.1: <strong>a sender is its
+    own first holder</strong>, so an airing is an attempt and the obligation ends
+    at a verified receipt.
+  </figcaption>
+</section>
+
+<section id="f7">
+  <h2><span class="fig">FIG 7</span> Taking a lane away, on purpose</h2>
+  <p class="lede">
+    None of the fallback behaviour is observable while four healthy bearers are
+    up — which on a bench they always are. So the bearers can be switched off at
+    runtime.
+  </p>
+
+  <figure>
+    <div class="plate-bar"><span>Fig 7 · sequence</span><span>bench instrument</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor T as bench
+    participant C61 as C61 · X3ARK
+    participant TK as TANK2 · X1VCVM<br/>Wi-Fi off, BLE only
+
+    T->>C61: POST /api/xprs/bearers {"disable":["ble5"]}
+    T->>C61: send 1:1 to X1VCVM
+    C61-->>T: ble5 disabled · lan sent · reticulum queued
+    Note over C61,TK: the only lane that reaches TANK2 is gone;<br/>the copy stays parked in custody
+    T->>C61: POST /api/xprs/bearers {"reset":true}
+    C61->>TK: held mail moves over BLE
+    TK-->>T: ingested 14 → 18
+</pre>
+    </div>
+  </figure>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>case</th><th>what was done</th><th>observed</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>2</td><td>1:1 to a peer on the LAN</td>
+          <td class="res"><span class="chip g">lan sent</span><span class="chip o">others unused</span></td></tr>
+        <tr><td>3</td><td>disable the preferred lane</td>
+          <td class="res"><span class="chip o">lan disabled</span><span class="chip g">ble5 sent</span></td></tr>
+        <tr><td>4</td><td>1:1 to a BLE-only peer</td>
+          <td class="res"><span class="chip g">ble5 sent</span><span class="chip o">others unused</span></td></tr>
+        <tr><td>5</td><td>disable the only lane that reaches it</td>
+          <td class="res"><span class="chip o">ble5 disabled</span><span class="chip g">lan sent</span><span class="chip w">reticulum queued</span></td></tr>
+        <tr><td>6</td><td>give the lane back</td>
+          <td class="res">held mail moved — ingested 14 → 18</td></tr>
+        <tr><td>8</td><td><strong>third-party carry</strong></td>
+          <td class="res">C61 holds <code>X1VCVM → X16JK8</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="tag">the case to re-run after any change here</span>
+    <p>Case 8 — a station holding mail between two <em>other</em> stations, heard
+    on the XPRS lane. That count was always zero before this work, and it fails
+    silently: nothing errors, nothing is refused, the station simply does less
+    than it claims.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Drawn from <code>docs/transports.md</code> and <code>docs/transports-flow.md</code>.
+  Section numbers refer to <code>docs/XPRS.md</code>.</p>
+  <p><strong>Not drawn, because it is not built:</strong> the §31.1 airtime budget —
+  a station should transmit no more often than the strictest bearer it is
+  transmitting on allows, and a retry is not a new packet. Both are cross-lane
+  rules; there are eleven independent retry schedulers and no shared budget, so
+  there is no box to draw.</p>
+</footer>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  // The plates keep a light ground in both page themes, so mermaid stays on its
+  // light theme and never renders dark-on-dark.
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      background: '#FBFCFC', primaryColor: '#EDF2F3', primaryTextColor: '#131A1F',
+      primaryBorderColor: '#94A8AE', lineColor: '#5C6C73', secondaryColor: '#F2F5F6',
+      tertiaryColor: '#FFFFFF', fontFamily: 'IBM Plex Sans, sans-serif', fontSize: '14px',
+      actorBg: '#EDF2F3', actorBorder: '#0F6E7B', actorTextColor: '#131A1F',
+      noteBkgColor: '#FBEFD6', noteBorderColor: '#A9701A', noteTextColor: '#4A3208'
+    },
+    flowchart: { curve: 'basis', useMaxWidth: false },
+    sequence: { useMaxWidth: false, wrap: true, width: 175 }
+  });
+</script>
+</body>
+</html>
