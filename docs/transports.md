@@ -178,7 +178,12 @@ the §13.2 loop check. It re-aired verbatim. `xprsMayRelay` and `xprsWouldLoop`
 had zero callers since they were written; they have callers now, here and in
 `XprsForwarder`, which appended `via:` while checking only half the rule.
 
-**And one airtime budget** (`xprs_airtime.dart`) for §31.1's two cross-lane
+**And one airtime budget** (`xprs_airtime.dart`), consulted by every re-airing
+path and charged directly by the beacons, which reach the radio without passing
+through the fan-out. `charged` counts every packet offered and `metered` only
+those that incurred debt — so on a station with no LoRa the pair reads *96 seen,
+0 owed* rather than a bare zero, which would mean both "nothing transmitted" and
+"everything was free". It exists for §31.1's two cross-lane
 rules: the strictest bearer binds, and a retry is not a new packet. One ledger
 keyed on the §5 identifier, so one packet on two lanes is one entry however
 often it is tried. Control packets are never deferred (§31.2). BLE is unmetered
@@ -200,20 +205,28 @@ with the carrier's callsign on it.
 
 ## 8. What is NOT done
 
-- **The eleven schedulers still keep their own timers.** `XprsAirtime` and
-  `XprsRetryLedger` exist and the fan-out charges them, but the file fetch, the
-  catch-up ladder, the courier pump and the LXMF retries have not yet been moved
-  onto the shared ledger — so §31.1 is enforced at the point of transmission,
-  not yet at the point of scheduling.
+- **Two schedulers still keep their own ladders.** The re-airing paths — the
+  45 s `cmd:file` re-ask, the 120 s suppression re-air, the identity ask and the
+  release — now consult `XprsRetryLedger`, and the beacons charge `XprsAirtime`
+  even though they reach the radio without passing through the fan-out. What has
+  **not** moved: `XprsCatchup`'s adaptive poll and `RnsService`'s LXMF ladder.
+  Both already implement §13.7.2's reachability gate correctly and are the two
+  most tuned loops here; moving them buys consistency, not correctness.
 - **`scope:` by country** (§13.11.2) — needs to know which bearers leave the
   country. Not implemented.
 - **Whether LoRa is a local bearer is an operator setting** (§13.11.1).
   `shortRange` is still a constant per bearer class.
-- **`ConnectionRegistry`** (`lib/connections/`) is still dead inventory:
-  registered at boot, read by nothing, `Connection` has no `send`, and
-  `bluetooth`/`lan` report *unavailable* while both carry live traffic. Either
-  revive it as the bearer inventory or delete it; leaving it is the worst of the
-  three.
+- ~~`ConnectionRegistry`~~ — **deleted**, and the reasoning is worth keeping.
+  Its base class had no `send`, four of its five entries wrapped no
+  implementation, Reticulum — the primary transport — had no entry at all, and
+  `bluetooth`/`lan` reported *unavailable* while both carried live traffic. One
+  string in a boot-task description was its only reference outside its own
+  directory. **An inventory that is wrong about the running system is worse than
+  no inventory**, because the first person to trust it is misled by it. Reviving
+  meant replacing the interface, every stub and the boot wiring — everything but
+  the capability vocabulary, which now lives on `XprsBearer`, the abstraction
+  packets actually go through. `http_transport` and `LoraConnection` survive;
+  the latter decoupled, because `_LoraBearer` asks it one real question.
 - The remaining bypass paths named in the analysis — the two beacon builders (of
   which only the LAN one signs), `enqueueAdvert` hardcoding the APRS subtype, and
   the triple-sent history reply — are unfixed.
