@@ -29,6 +29,7 @@ import '../../connections/bluetooth/ble_rns_radio.dart';
 import '../files/capacity_governor.dart';
 import 'package:hex/hex.dart';
 
+import '../mesh/mesh_service.dart';
 import '../mesh/mesh_courier.dart';
 import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_ingest.dart';
@@ -5404,6 +5405,33 @@ class RnsService {
     if (fields == null || !fields.containsKey(_kWappLxmfField)) {
       _recordLxmf(destHex, incoming: false, text: content, title: title);
     }
+    // The recipient is in the room: hand this to the radio, not to the hubs.
+    //
+    // An LXMF destination is a Reticulum address, so a message addressed to one
+    // goes looking for a Reticulum path — and BLE does not carry Reticulum
+    // (docs/architecture.md section 4). Measured on the bench: a DM to a phone
+    // one desk away, with no internet, took ten minutes while the sender kept
+    // posting it into an eighteen-hop hub route that could not possibly reach
+    // it.
+    //
+    // When that destination belongs to a callsign whose radio we can hear
+    // ourselves, the same message is ALSO armed for the courier, which packs it
+    // as a signed XPRS 1:1 to the callsign — the lane BLE actually carries.
+    // `waitFirst: false` because there is nothing to wait for: the usual
+    // twenty-second head start exists to let Reticulum win when Reticulum has
+    // a chance, and here it does not.
+    //
+    // The LXMF send still goes ahead. Whichever arrives first wins and the
+    // other is deduplicated on the derived identifier, exactly as a message
+    // heard twice over two bearers always has been.
+    final peerCall = callsignForLxmfDest(destHex);
+    if (peerCall.isNotEmpty &&
+        content.isNotEmpty &&
+        MeshService.instance.isDirectNeighbour(peerCall)) {
+      MeshCourier.instance
+          .armLxmf(destHex: destHex, text: content, waitFirst: false);
+    }
+
     // Self-heal: if we have no path to the recipient yet, pull one (path
     // request) and wait briefly. This lets delivery reach a peer whose announce
     // never passively flooded to us over busy/asymmetric public hubs.

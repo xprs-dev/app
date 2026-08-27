@@ -66,10 +66,15 @@ import 'mesh_service.dart';
 
 /// One message waiting to find out whether it needs a carrier.
 class _Armed {
-  _Armed(this.destHex, this.text, this.armedMs);
+  _Armed(this.destHex, this.text, this.armedMs, {this.waitFirst = true});
   final String destHex;
   final String text;
   final int armedMs;
+
+  /// Give the Reticulum lane its head start before handing the message to a
+  /// carrier. False when we can hear the recipient's own radio: there is
+  /// nothing to wait for, and waiting is the whole delay.
+  final bool waitFirst;
   bool aired = false;
 }
 
@@ -139,9 +144,14 @@ class MeshCourier {
 
   /// Note a 1:1 the core just sent over LXMF. Cheap and unconditional — the
   /// pump decides, twenty seconds later, whether it needed a carrier.
-  void armLxmf({required String destHex, required String text}) {
+  void armLxmf({
+    required String destHex,
+    required String text,
+    bool waitFirst = true,
+  }) {
     if (destHex.isEmpty || text.isEmpty) return;
-    _armed.add(_Armed(destHex, text, DateTime.now().millisecondsSinceEpoch));
+    _armed.add(_Armed(destHex, text, DateTime.now().millisecondsSinceEpoch,
+        waitFirst: waitFirst));
     MeshCourierCounters.armed++;
     _pump ??= Timer.periodic(const Duration(seconds: 5), (_) => _tick());
   }
@@ -157,7 +167,7 @@ class MeshCourier {
     final now = DateTime.now().millisecondsSinceEpoch;
     _armed.removeWhere((a) {
       final age = now - a.armedMs;
-      if (age < wait.inMilliseconds) return false;
+      if (a.waitFirst && age < wait.inMilliseconds) return false;
       if (age > giveUp.inMilliseconds) return true;
       // Delivered while we waited: nothing to hand on.
       if (RnsService.instance.lxmfPendingFor(a.destHex) <= 0) return true;

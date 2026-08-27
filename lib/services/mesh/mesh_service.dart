@@ -437,6 +437,25 @@ class MeshService {
     }
   }
 
+  /// Is [callsign] a neighbour we hear OURSELVES, right now, both ways?
+  ///
+  /// Not a route and not a hub's replayed announce — our own radio, inside
+  /// `kNeighborTtl`, with the peer's own DV digest listing us at cost 1. That
+  /// last part is what makes it safe to act on: a one-way BLE link is a black
+  /// hole, and everything that reads this is about to prefer the radio over
+  /// some other lane.
+  bool isDirectNeighbour(String callsign) {
+    final t = _table;
+    if (t == null || callsign.isEmpty) return false;
+    final want = callsign.toUpperCase();
+    final now = DateTime.now();
+    for (final e in t.neighbors.entries) {
+      if (e.key.toUpperCase() != want) continue;
+      return e.value.aliveAt(now) && e.value.bidirectional;
+    }
+    return false;
+  }
+
   MeshDeviceClass _deviceClass() {
     if (Platform.isAndroid || Platform.isIOS) return MeshDeviceClass.phone;
     return MeshDeviceClass.computer;

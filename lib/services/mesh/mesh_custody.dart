@@ -18,9 +18,11 @@ import 'dart:typed_data';
 
 import '../../util/media_ref.dart';
 
+import '../../connections/bluetooth/ble_service.dart';
 import '../log_service.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_vocab.dart';
+import 'mesh_table.dart';
 import 'mesh_beacon.dart';
 import 'mesh_bulk_spool.dart';
 import 'mesh_frame.dart';
@@ -238,6 +240,9 @@ class MeshSessionManager {
 /// Monotonic custody counters, exposed in the mesh status so relaying can be
 /// asserted as a number instead of grepped out of a 200-line rolling log.
 class MeshCustodyCounters {
+  /// Frames we held back for point-to-point delivery and had to air after
+  /// all, because the session lane did not get them there in time.
+  static int reAired = 0;
   static int custodyIn = 0; // frames we took custody of from a peer
   static int custodyOut = 0; // frames we handed on and archived
   static int delivered = 0; // frames that ended at us, the target
@@ -449,19 +454,22 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
   /// directions (docs/mesh.md §6): overheard `?ACK`s purge parked copies,
   /// frames addressed to us feed the have-bloom, and 1:1 frames for OTHERS
   /// (plus our own outbound) are parked for GATT custody delivery.
-  static void onAirFrame(Uint8List wire, {required bool outbound}) {
+  /// Returns true when the frame was parked for POINT-TO-POINT delivery and
+  /// must NOT be aired — see [_pointToPointTarget]. False means "carry on and
+  /// broadcast as before", which is every case but one.
+  static bool onAirFrame(Uint8List wire, {required bool outbound}) {
     final store = MeshStore.instance;
-    if (!store.ready) return;
+    if (!store.ready) return false;
     final f = MeshFrame.parse(wire);
-    if (f == null) return;
+    if (f == null) return false;
     final (from, to, text) = (f.from, f.to, f.body);
-    if (from.isEmpty) return;
+    if (from.isEmpty) return false;
 
     if (f.isXprs) {
       // Only a 1:1 message is custody material. Groups are not carried
       // (store-and-forward.md §4), and neither is anything else — an
       // observation, a status or a poll is aired, not couriered.
-      if (f.packet!.type != 'message' || !_isStation(to)) return;
+      if (f.packet!.type != 'message' || !_isStation(to)) return false;
     } else {
       // Overheard end-to-end receipt: `?ACK <am> d|r` — the target has it.
       if (text.startsWith('?ACK ')) {
@@ -473,10 +481,12 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
             LogService.instance.add('Mesh: ?ACK $am purged parked copy');
           }
         }
-        return;
+        return false;
       }
       // Only plain 1:1 traffic is custody material — no groups/control/queries.
-      if (to.isEmpty || '#!?'.contains(to[0]) || text.startsWith('?')) return;
+      if (to.isEmpty || '#!?'.contains(to[0]) || text.startsWith('?')) {
+        return false;
+      }
     }
 
     // The handle this frame is tracked by: the derived identifier for XPRS
@@ -484,7 +494,7 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
     // hex, so the store column is unchanged.
     final am = f.id;
     final self = MeshService.instance.tableCallsign.toUpperCase();
-    if (self.isEmpty) return;
+    if (self.isEmpty) return false;
 
     if (!outbound && to.toUpperCase() == self) {
       // Ours, heard on air — remember the am so our beacon bloom purges
@@ -493,10 +503,10 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
       // session at all.
       if (am.isNotEmpty) store.recordReceivedAm(am);
       MeshCourier.instance.ingest(wire, via: 'mesh');
-      return;
+      return false;
     }
     if (to.toUpperCase() == self || from.toUpperCase() == self && !outbound) {
-      return;
+      return false;
     }
     // A 1:1 for someone else (or our own outbound): CARRY IT, whoever it is for.
     //
@@ -519,7 +529,7 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
     if (!_mayCarry(wire)) {
       LogService.instance
           .add('Mesh: refused custody of a scope:local packet $from -> $to');
-      return;
+      return false;
     }
     // The sender states what it wants and the carrier decides what it may have.
     // Mail we originated, or whose target we can reach, may claim any level; a
@@ -535,11 +545,28 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
         : (_urgOf(wire) == null
             ? MeshUrgency.low
             : stated.cappedAt(MeshUrgency.high));
+    var parked = false;
     if (store.offer(
         target: to, sender: from, wire: wire, am: am, urg: urg)) {
+      parked = true;
       MeshCustodyCounters.parked++;
       LogService.instance.add('Mesh: parked ${am.isEmpty ? "msg" : am} '
           '$from -> $to for custody${known ? "" : " (stranger)"}');
+    }
+    // Ours, to an Android in the room: hand it over point to point instead of
+    // spending the street on it. The advert window is five seconds a minute
+    // shared by every registered frame (docs/ble5.md section 1), so a 1:1 aired
+    // to everyone is airtime taken from everyone. mesh_courier.dart already
+    // made this trade for parked mail -- "PARKED, not aired".
+    //
+    // Only when the message is actually in the store: a refused offer (quota,
+    // oversize, carry-for-others off) must never become a message nobody sent.
+    if (outbound && parked && _pointToPointTarget(to)) {
+      _pokeOnce(to);
+      _noteSuppressed(am, wire);
+      LogService.instance
+          .add('Mesh: $to is next to us — handing $am over, not airing it');
+      return true;
     }
     // Chat attachment: our outbound 1:1 references media we host — queue the
     // payload for the bulk lane (the message travels custody, bytes follow).
@@ -551,7 +578,116 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
         }
       }
     }
+    return false;
   }
+
+  /// Is [to] a peer we can hand a 1:1 to directly, instead of airing it?
+  ///
+  /// Three things must ALL hold, and each one has cost somebody a bug:
+  ///
+  ///  - **A neighbour we heard ourselves, recently.** Not a route, not a hub's
+  ///    replayed announce — our own radio, inside `kNeighborTtl`.
+  ///  - **Bidirectional.** `MeshTable` sets this only when the peer's own DV
+  ///    digest lists US at cost 1 (mesh_table.dart section 14). A one-way BLE
+  ///    link is a black hole: we hear them, they never hear us, and a
+  ///    suppressed broadcast would be a message sent into it.
+  ///  - **A phone or a tablet.** The device class is byte[1] of the mesh
+  ///    beacon and already on the wire, so nothing new is transmitted to learn
+  ///    this. An ESP32 is excluded deliberately: a dongle cannot scan and
+  ///    advertise at the same time, and relaying is what dongles are FOR — it
+  ///    needs to overhear the broadcast. A desktop is excluded until its BLE
+  ///    duty-cycling is verified against an MSP session.
+  ///
+  /// Anything else — a relayed target, a stale neighbour, a station, a peer we
+  /// only know from a hub — keeps the broadcast exactly as before.
+  static bool _pointToPointTarget(String to) {
+    final t = MeshService.instance.table;
+    if (t == null || to.isEmpty) return false;
+    final want = to.toUpperCase();
+    for (final e in t.neighbors.entries) {
+      if (e.key.toUpperCase() != want) continue;
+      return pointToPointOk(e.value, DateTime.now());
+    }
+    return false; // not a neighbour at all: air it, somebody may relay it
+  }
+
+  /// The decision itself, pure, so it can be tested without a live mesh.
+  static bool pointToPointOk(MeshNeighbor? n, DateTime now) {
+    if (n == null) return false;
+    if (!n.aliveAt(now) || !n.bidirectional) return false;
+    return n.deviceClass == MeshDeviceClass.phone ||
+        n.deviceClass == MeshDeviceClass.tablet;
+  }
+
+  /// Ask the scheduler to dial [to] now, at most once per callsign per
+  /// [_pokeQuiet].
+  ///
+  /// The throttle is checked BEFORE anything else because `pokeFor` leads to
+  /// `MeshStore.pendingFor`, a sqlite query, and this now runs on every
+  /// outbound 1:1 — a cheap call in a hot loop IS the drain
+  /// (docs/performance.md section 4.2).
+  static final Map<String, DateTime> _pokedAt = {};
+  static const Duration _pokeQuiet = Duration(seconds: 10);
+  static void _pokeOnce(String to) {
+    final k = to.toUpperCase();
+    final now = DateTime.now();
+    final last = _pokedAt[k];
+    if (last != null && now.difference(last) < _pokeQuiet) return;
+    if (_pokedAt.length > 64) _pokedAt.remove(_pokedAt.keys.first);
+    _pokedAt[k] = now;
+    MeshTransferScheduler.instance.pokeFor(k);
+  }
+
+  /// Frames we held back from the air, so [sweepSuppressed] can put one on the
+  /// air if the session lane has not delivered it in time.
+  static final Map<String, _Suppressed> _suppressed = {};
+  static const int _suppressedMax = 64;
+
+  /// How long the point-to-point lane gets before we air the frame after all.
+  ///
+  /// A dial alone is allowed 110 s by the scheduler, so anything shorter would
+  /// re-air a message that is still being delivered. Suppressing a broadcast
+  /// also gives up PASSIVE redundancy — no third device overhears the frame and
+  /// parks a backup — so this deadline is what keeps the trade honest.
+  static const Duration suppressedGrace = Duration(seconds: 120);
+
+  static void _noteSuppressed(String am, Uint8List wire) {
+    if (am.isEmpty) return;
+    if (_suppressed.length >= _suppressedMax) {
+      _suppressed.remove(_suppressed.keys.first);
+    }
+    _suppressed[am] = _Suppressed(wire, DateTime.now());
+  }
+
+  /// Air, ONCE, any suppressed frame the session lane has not delivered inside
+  /// [suppressedGrace]. Called from the transfer scheduler's existing tick —
+  /// no timer of its own (docs/performance.md section 8.3).
+  ///
+  /// Once, not a repeating advert: a frame re-registered every cycle pays for
+  /// the whole street again, which is the cost this feature exists to avoid.
+  static void sweepSuppressed() {
+    if (_suppressed.isEmpty) return;
+    final store = MeshStore.instance;
+    if (!store.ready) return;
+    final now = DateTime.now();
+    final due = <String>[];
+    for (final e in _suppressed.entries) {
+      if (now.difference(e.value.at) >= suppressedGrace) due.add(e.key);
+    }
+    for (final am in due) {
+      final s = _suppressed.remove(am);
+      if (s == null) continue;
+      // Delivered while we waited: the store archived it. Nothing to air.
+      if (!store.isPending(am)) continue;
+      MeshCustodyCounters.reAired++;
+      LogService.instance.add(
+          'Mesh: $am not handed over in ${suppressedGrace.inSeconds}s — '
+          'airing it once');
+      BleService.instance.enqueueAdvert(_reAirOwner, s.wire);
+    }
+  }
+
+  static final Object _reAirOwner = Object();
 
   /// Outgoing chat-bubble tap (the PLAINTEXT side): when a 1:1 we sent
   /// references media we host, queue the payload on the bulk lane. The wire
@@ -635,4 +771,11 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
     if (b < 0) return null;
     return (s.substring(0, a), s.substring(a + 1, b), s.substring(b + 1));
   }
+}
+
+/// A frame held back from the air, and when.
+class _Suppressed {
+  final Uint8List wire;
+  final DateTime at;
+  _Suppressed(this.wire, this.at);
 }

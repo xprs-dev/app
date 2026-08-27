@@ -351,6 +351,15 @@ class MeshStore {
     return [for (final r in rows) r['target'] as String];
   }
 
+  /// Is this handle still in transit — i.e. do we still owe its delivery?
+  bool isPending(String am) {
+    final db = _db;
+    if (db == null || am.isEmpty) return false;
+    return db.select(
+        'SELECT 1 FROM mesh_store WHERE am = ? AND state = 0 LIMIT 1',
+        [am]).isNotEmpty;
+  }
+
   /// Count of frames we still owe delivery for (beacon pending trailer).
   int pendingCount() {
     final db = _db;

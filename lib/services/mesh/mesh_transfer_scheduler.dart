@@ -156,6 +156,11 @@ class MeshTransferScheduler {
   }
 
   void _onTick() {
+    // A 1:1 held back for point-to-point delivery gets aired after all if the
+    // session lane has not moved it in time. Runs first and unconditionally:
+    // it must not be skipped by the no-dialable-peers early return below —
+    // "nobody to dial" is exactly when a held frame most needs the air.
+    MeshCustodyDelegate.sweepSuppressed();
     final mgr = MeshSessionManager.instance;
     final hooks = mgr.hooks;
     final dial = hooks.dial;
