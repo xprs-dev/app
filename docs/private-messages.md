@@ -4,6 +4,9 @@ How a one-to-one message is sealed, how the operator chooses, and how a station
 decides which radio carries it. `docs/XPRS.md` governs; this file says what is
 built and what it cost to learn.
 
+**Drawn:** [diagrams/transports-flow.md](diagrams/transports-flow.md) figure 6 is
+the life of a 1:1 message, sealed or plain.
+
 ---
 
 ## 1. The whole mechanism is one field

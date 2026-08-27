@@ -51,9 +51,11 @@ and `lan.md` describe transports with an end in each.
 
 ### Sending and receiving across bearers
 
+Pictures for all of this live in **[diagrams/](diagrams/README.md)**.
+
 | doc | the sections that matter |
 |---|---|
-| [transports-flow.md](transports-flow.md) | **Start here if you want the shape before the prose.** Seven diagrams: the component map, the send sequence, the per-bearer decision, the receive demux and funnel, the message lifecycle, and the bench instrument. |
+| [transports-flow.md](diagrams/transports-flow.md) | **Start here if you want the shape before the prose.** Seven diagrams: the component map, the send sequence, the per-bearer decision, the receive demux and funnel, the message lifecycle, and the bench instrument. |
 | [transports.md](transports.md) | **§2** the three answers a bearer gives, and why `queued` had to exist. **§4** the receive funnel and the third-party mail nobody was carrying — the defect that motivated the whole thing. **§5** the bearer switchboard for testing. **§7** the eight hardware cases. **§8** what is deliberately not done. |
 
 **Before you start**: custody is invisible when it does not happen — nothing

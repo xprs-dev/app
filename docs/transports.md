@@ -4,6 +4,9 @@ Which bearer carries a packet, what happens when one is taken away, and what the
 receive funnel owes an arriving packet. `docs/XPRS.md` governs; this file says
 what is built, how to drive it, and what it cost to learn.
 
+**Drawn:** [diagrams/transports-flow.md](diagrams/transports-flow.md) — the same
+flows as seven figures, if you want the shape before the prose.
+
 `architecture.md` §4 says which **lane** carries what — BLE5 adverts carry XPRS
 packets, GATT+MSP carries bytes, Reticulum is the internet path. That is a
 design-time decision and this file does not touch it. What is decided at runtime

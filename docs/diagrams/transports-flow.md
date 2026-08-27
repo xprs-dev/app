@@ -1,6 +1,6 @@
 # Communication flow — diagrams
 
-The decision flows behind [transports.md](transports.md), drawn. Same rules, same
+The decision flows behind [transports.md](../transports.md), drawn. Same rules, same
 section references; this file is the picture and that one is the prose.
 
 Mermaid renders on GitHub and in most editors.
@@ -274,7 +274,7 @@ sequenceDiagram
 
 ## What these diagrams do not show
 
-The [§31.1](XPRS.md) airtime budget, because it is not built: a station should
+The [§31.1](../XPRS.md) airtime budget, because it is not built: a station should
 transmit unsolicited traffic no more often than the **strictest bearer** it is
 transmitting on allows, and **a retry is not a new packet**. Both are cross-lane
 rules. There are eleven independent retry schedulers and no shared budget between
