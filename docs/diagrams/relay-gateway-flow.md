@@ -54,10 +54,24 @@ flowchart TB
 | **carrier** (store & forward) | **yes** | `MeshStore` + `MeshCourier` + `XprsForwarder` |
 | **gateway** (iGate) | **no** | the chat wapp (wasm, over the app's socket HAL) and the ESP32 |
 
-**Nobody digipeats BLE.** The firmware's relay engine is wired into LAN, LoRa and
-ESP-NOW; `xprs_bearer_ble` does not include it. The app does not relay on any
-bearer. So on the busiest off-grid lane there is no digipeater at all — a packet
-travels one radio hop, and everything past that is custody.
+**The firmware now gateways BLE; it still does not digipeat it.** Two different
+things, and the distinction is the whole design:
+
+- *Gatewaying* BLE — taking what arrives on Bluetooth and putting it onto the
+  other bearers — is done, on the T-Deck, as of this week. `on_ble` offers every
+  0x58 it hears to LAN, ESP-NOW and LoRa, exactly as `on_espnow` and `on_lora`
+  already did. The offer runs through `xb_offer`, so `via:` is appended and the
+  §13.1 budget and §13.2 loop check apply, and a repeat is swallowed by the
+  receiving bearer's dedup ring. Until then BLE was a leaf: the one bearer the
+  station heard and never repeated, which made a Bluetooth-only phone
+  unreachable from anywhere else.
+- *Digipeating* BLE — re-airing on Bluetooth itself — is still not done.
+  `xprs_bearer_ble` is not an `xb_` bearer: no queue, no jitter, no
+  cancel-on-hear. Two BLE stations out of each other's range still do not reach
+  each other through a third. The app does not relay on any bearer either.
+
+So on the busiest off-grid lane there is still no digipeater — but the lane is
+no longer a dead end, because the station that hears it now passes it on.
 
 **Which is enough to bridge bearers, and does.** §36.12: *"It can cross the
 internet on one hop and a LoRa hill on the next; every hop is a holder."* A
@@ -73,6 +87,19 @@ t:message f:X1VCVM d:X16JK8 ts:2026-08-27_18:35:38 sig:… via:X3ARK m:on my way
                                                             ↑
                                               the only field the bridge added
 ```
+
+The same chain, carried by the ESP32 instead of a phone — C61 in flight mode, so
+the T-Deck was the only station that could hear TANK2 at all:
+
+```
+t:message f:X1VCVM d:X16JK8 ts:2026-08-27_20:16:07 sig:… via:X3GSLC m:final 221607
+                                                            ↑
+                                            X3GSLC is the T-Deck, heard it at
+                                            -69 dBm and put it on the LAN
+```
+
+Two different bridges, one wire format, and the receiver cannot tell — nor need
+it — whether the hop was made by a phone or by a board on the bench.
 
 Figure 2 takes that packet apart.
 
@@ -194,12 +221,12 @@ flowchart LR
     subgraph FW["ESP32 firmware"]
         F1["xprsbearer.c<br/>200–1200 ms jitter · 8 slots<br/>cancel-on-hear · cross-bearer cancel"]
         F2["LAN ✓ · LoRa ✓ · ESP-NOW ✓"]
-        F3["BLE ✗ — does not use the engine"]
+        F3["BLE — offers INTO the engine<br/>(on_ble → xprslan/now/lora_offer)<br/>but is not an xb_ bearer itself:<br/>no re-air on Bluetooth"]
     end
 
     C1 --> D1 & D3
     C2 --> F1 --> F2
-    F1 -.-> F3
+    F3 --> F1
 
     classDef dead fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
     classDef live fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
