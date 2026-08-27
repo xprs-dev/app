@@ -6,7 +6,7 @@ is the source of truth, these are the map.
 
 | diagram | draws | prose it belongs to |
 |---|---|---|
-| [relay-gateway-flow.md](relay-gateway-flow.md) | The three roles that move somebody else's packet: **relay** (APRS' digipeater), **gateway** (its iGate) and **carrier** (new in XPRS). Where each one actually runs, what digipeats and what does not, and how a packet crosses from one bearer to another. Seven figures. | [../XPRS.md](../XPRS.md) §13, §36.8, [../store-and-forward.md](../store-and-forward.md), [../aprs.md](../aprs.md) |
+| [relay-gateway-flow.md](relay-gateway-flow.md) | The three roles that move somebody else's packet: **relay** (APRS' digipeater), **gateway** (its iGate) and **carrier** (new in XPRS). Where each one actually runs, what digipeats and what does not, and how a packet crosses from one bearer to another. Eight figures, including the bridged packet field by field. | [../XPRS.md](../XPRS.md) §13, §36.8, [../store-and-forward.md](../store-and-forward.md), [../aprs.md](../aprs.md) |
 | [transports-flow.md](transports-flow.md) | How an XPRS packet finds a radio: the component map, the send sequence and its fallback, the four per-bearer verdicts, the inbound demux and funnel, the life of a 1:1, and the bench instrument that switches a lane off. Seven figures. | [../transports.md](../transports.md), [../private-messages.md](../private-messages.md) |
 
 Each `.md` here has a `.html` beside it — the same figures, standalone, for

@@ -336,20 +336,21 @@
   </p>
   <nav class="toc">
     <a href="#f1"><span class="n">01</span><span class="t">The three roles, and where each one lives</span></a>
-    <a href="#f2"><span class="n">02</span><span class="t">What a relay is supposed to do</span></a>
-    <a href="#f3"><span class="n">03</span><span class="t">Who implements that, and who does not</span></a>
-    <a href="#f4"><span class="n">04</span><span class="t">The carrier — what XPRS adds over APRS</span></a>
-    <a href="#f5"><span class="n">05</span><span class="t">Handing mail toward where the recipient is</span></a>
-    <a href="#f6"><span class="n">06</span><span class="t">How a packet crosses bearers</span></a>
-    <a href="#f7"><span class="n">07</span><span class="t">The gate on the way in from the internet</span></a>
+    <a href="#f2"><span class="n">02</span><span class="t">The bridged packet, field by field</span></a>
+    <a href="#f3"><span class="n">03</span><span class="t">What a relay is supposed to do (§13.1, §13.2, §13.2.1)</span></a>
+    <a href="#f4"><span class="n">04</span><span class="t">Who implements that, and who does not</span></a>
+    <a href="#f5"><span class="n">05</span><span class="t">The carrier: what XPRS adds over APRS</span></a>
+    <a href="#f6"><span class="n">06</span><span class="t">Handing mail toward where the recipient actually is (§36.8.1)</span></a>
+    <a href="#f7"><span class="n">07</span><span class="t">How a packet crosses bearers</span></a>
+    <a href="#f8"><span class="n">08</span><span class="t">The gate on the way in from the internet (§36.3)</span></a>
   </nav>
 </header>
 
 <section id="f1">
   <h2><span class="fig">FIG 1</span> The three roles, and where each one lives</h2>
-  <p class="lede">APRS had two roles that moved somebody else's packet. XPRS keeps both and adds a third — the one that holds a packet for a station that is not there.</p>
+  <p>The surprise is that no single piece of software does all three, and the Flutter app — the thing most people run — does exactly one of them.</p>
   <figure>
-    <div class="plate-bar"><span>component view</span><span>APRS lineage → XPRS roles</span></div>
+    <div class="plate-bar"><span>Fig 1</span><span>The three roles, and where each one lives</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TB
@@ -380,14 +381,71 @@ flowchart TB
 </pre>
     </div>
   </figure>
-  <figcaption><strong>Nobody digipeats BLE</strong> — the firmware's relay engine is wired into LAN, LoRa and ESP-NOW, and the app does not relay on any bearer. <strong>Custody bridges the bearers anyway.</strong> Measured: a message from a Bluetooth-only phone reached a LAN-only desktop in under 20&nbsp;s as <code>f:X1VCVM d:X16JK8 … via:X3ARK</code> on <code>bearer=lan</code> — author untouched, carrier named, signature still valid because §5 and §9.1 both exclude <code>via:</code>.</figcaption>
+  <figcaption><p><strong>Nobody digipeats BLE.</strong> The firmware&#x27;s relay engine is wired into LAN, LoRa and ESP-NOW; <code>xprs_bearer_ble</code> does not include it. The app does not relay on any bearer. So on the busiest off-grid lane there is no digipeater at all — a packet travels one radio hop, and everything past that is custody.</p>
+<p><strong>Which is enough to bridge bearers, and does.</strong> §36.12: <em>&quot;It can cross the internet on one hop and a LoRa hill on the next; every hop is a holder.&quot;</em> A BLE-only phone reaches a LAN-only desktop because a station that hears both takes custody and hands it on — and §36.8.1 makes that hand-off a relay in every respect that matters: the author&#x27;s bytes and signature travel untouched, <code>via:</code> gains the carrier, and the §13.1 budget and §13.2 loop check apply. Measured:</p>
+<pre class="wire" style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.5;background:#F2F5F6;border:1px solid var(--plate-line);border-radius:2px;padding:12px 14px;overflow-x:auto;color:#131A1F">sent from TANK2 (Bluetooth only), arrived at the desktop (LAN only) in under 20s</pre>
+<p>t:message f:X1VCVM d:X16JK8 ts:2026-08-27_18:35:38 sig:… via:X3ARK m:on my way                                                             ↑                                               the only field the bridge added ```</p>
+<p>Figure 2 takes that packet apart.</p>
+<p>Two things had to be true for that to happen automatically rather than by luck, and neither was:</p>
+<ul><li><strong>The carrier has to say what it hears.</strong> The BLE beacon built <code>hears:</code> from
+  <code>MeshTable.neighbors</code>, a table nothing fills, so this station had never told
+  anyone who it could reach. §36.9.4&#x27;s gossip resolves &quot;who can reach X&quot; from
+  exactly that field. It now reads the monitor, like the LAN beacon.</li><li>And sign it.** Gossip refuses an unsigned claim outright, so a populated
+  <code>hears:</code> on an unsigned beacon still fed nothing. The BLE beacon is signed
+  now, with room reserved before the neighbour list is fitted.</li></ul>
+<p>Before: the sender&#x27;s gossip named only itself as a gateway to the desktop, and mail for it had nowhere to go but the hope that a carrier happened to overhear the one advert.</p></figcaption>
 </section>
 
 <section id="f2">
-  <h2><span class="fig">FIG 2</span> What a relay is supposed to do</h2>
-  <p class="lede">§13.1 the budget, §13.2 the loop, §13.2.1 the wait. The random wait is not politeness — it is the whole mechanism.</p>
+  <h2><span class="fig">FIG 2</span> The bridged packet, field by field</h2>
+  <p>Every field is a §4.1 envelope key and nothing is decoration. <code>m:</code> is the text a person typed; <code>via:</code> is the only thing a carrier adds.</p>
   <figure>
-    <div class="plate-bar"><span>decision</span><span>§13.1 · §13.2 · §13.2.1</span></div>
+    <div class="plate-bar"><span>Fig 2</span><span>The bridged packet, field by field</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart LR
+    subgraph A["written by the AUTHOR — never altered in flight"]
+        direction TB
+        F1["t:message<br/><i>§4.2 packet type</i>"]
+        F2["f:X1VCVM<br/><i>§13 — a relay NEVER rewrites this</i>"]
+        F3["d:X16JK8<br/><i>the recipient</i>"]
+        F4["ts:2026-08-27_18:35:38<br/><i>§4.8 when it was composed</i>"]
+        F6["sig:&lt;60 base85&gt;<br/><i>§9.1 the author's signature</i>"]
+        F5["m:on my way<br/><i>§4.1 the text — always last</i>"]
+    end
+
+    subgraph C["added by EACH CARRIER"]
+        direction TB
+        V["via:X3ARK<br/><i>§13 — oldest first</i>"]
+    end
+
+    subgraph D["computed, NEVER transmitted"]
+        direction TB
+        ID["§5 identifier<br/>sha256 of the packet<br/><b>minus sig: and via:</b>"]
+    end
+
+    A --> ID
+    C -. "excluded" .-> ID
+    F6 -. "covers the same bytes" .-> ID
+
+    classDef auth fill:#DCEBED,stroke:#0F6E7B,color:#08343B
+    classDef carr fill:#FBEFD6,stroke:#A9701A,color:#4A3208
+    classDef der  fill:#E4E8EA,stroke:#64717A,color:#2A2E33
+    class F1,F2,F3,F4,F5,F6 auth
+    class V carr
+    class ID der
+</pre>
+    </div>
+  </figure>
+  <figcaption><p><strong>Excluding <code>via:</code> from both the signature and the identifier is what makes carrying possible at all.</strong> §9.1 says why in one line: a relay appends itself, so <em>&quot;a signature covering it would break at the first hop and every relayed packet would read as forged — on a network whose whole point is relaying&quot;</em>. The same exclusion means a carried copy and a direct one share an identifier, so they deduplicate against each other and <strong>one receipt answers both</strong>.</p>
+<p><code>via:</code> earns its bytes three times over: §13.2&#x27;s loop check reads it (a station that finds itself there does not carry again), §13.1&#x27;s budget counts its length, and a receiver can tell a carried copy from a direct one — which is what the path evidence in <code>../private-messages.md</code> §6 depends on.</p></figcaption>
+</section>
+
+<section id="f3">
+  <h2><span class="fig">FIG 3</span> What a relay is supposed to do (§13.1, §13.2, §13.2.1)</h2>
+  
+  <figure>
+    <div class="plate-bar"><span>Fig 3</span><span>What a relay is supposed to do (§13.1, §13.2, </span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
@@ -411,14 +469,14 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption>Every station in range hears the packet in the same instant and every willing relay is ready to transmit in the same instant. Without the jitter they collide; <strong>without the cancel they all transmit anyway</strong>.</figcaption>
+  <figcaption><p>The random wait is not politeness, it is the whole mechanism: every station in range hears the packet in the same instant and every willing relay is ready to transmit in the same instant. Without the jitter they collide; without the cancel they all transmit anyway.</p></figcaption>
 </section>
 
-<section id="f3">
-  <h2><span class="fig">FIG 3</span> Who implements that, and who does not</h2>
-  <p class="lede">The rules exist in both codebases. Only one of them calls them.</p>
+<section id="f4">
+  <h2><span class="fig">FIG 4</span> Who implements that, and who does not</h2>
+  
   <figure>
-    <div class="plate-bar"><span>implementation</span><span>Dart vs firmware</span></div>
+    <div class="plate-bar"><span>Fig 4</span><span>Who implements that, and who does not</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart LR
@@ -451,14 +509,17 @@ flowchart LR
 </pre>
     </div>
   </figure>
-  <figcaption><code>xprsMayRelay</code> and <code>xprsWouldLoop</code> are exercised <strong>only by unit tests</strong>. One deviation worth naming: <code>XprsForwarder</code> is the single path that appends <code>via:</code>, checks the loop by hand, and <strong>never checks the hop budget</strong> — while §36.8.1 says of exactly this hand-off that the §13.1 budget applies.</figcaption>
+  <figcaption><p>The app does not digipeat, and says so itself — a decision rather than a gap (<code>lib/services/xprs/xprs_lan.dart</code>):</p>
+<p>&gt; This station does not relay. It airs what it composed and it ingests what it &gt; hears… a desktop is an endpoint on this bearer, and the digipeaters on the &gt; segment are the stations built to be one. Adding relaying here means &gt; implementing section 13.2.1 in full (the 200–1200 ms jitter AND the &gt; cancel-on-hearing), so it is a <strong>deliberate omission rather than an oversight</strong>.</p>
+<p><strong>Where the §13 rules DO apply is the custody hand-off</strong>, which §36.8.1 requires them for: <em>&quot;<code>via:</code> gains the holder&#x27;s callsign, the section 13.1 budget and the section 13.2 loop check apply&quot;</em>. Both the release and <code>XprsForwarder</code> call <code>xprsMayRelay</code> and <code>xprsWouldLoop</code> before appending <code>via:</code>. Until recently the forwarder checked the loop by hand and skipped the budget entirely — half the rule — and the release did neither, re-airing verbatim so a receiver could not tell a carried copy from a direct one.</p>
+<p>What is still absent is a <strong>general digipeat</strong>: repeating a packet not addressed to anyone this station is carrying for. That is what §13.2.1&#x27;s jitter and cancel exist for, and with no such path there is nothing to jitter.</p></figcaption>
 </section>
 
-<section id="f4">
-  <h2><span class="fig">FIG 4</span> The carrier — what XPRS adds over APRS</h2>
-  <p class="lede">APRS loses a message addressed to a station that is not listening. XPRS holds it. This role has no APRS ancestor, and it is the one the app implements fully.</p>
+<section id="f5">
+  <h2><span class="fig">FIG 5</span> The carrier: what XPRS adds over APRS</h2>
+  <p>APRS loses a message addressed to a station that is not listening. XPRS holds it. This is the role that has no APRS ancestor, and it is the one the app implements fully.</p>
   <figure>
-    <div class="plate-bar"><span>sequence</span><span>park → hold → release → purge</span></div>
+    <div class="plate-bar"><span>Fig 5</span><span>The carrier: what XPRS adds over APRS</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 sequenceDiagram
@@ -483,14 +544,15 @@ sequenceDiagram
 </pre>
     </div>
   </figure>
-  <figcaption>A receipt is worth repeating after the sender has seen it: it is what <strong>drains a chain of custodians</strong> instead of delivering the same message five times.</figcaption>
+  <figcaption><p>That last line is why a receipt is worth repeating after the sender has seen it: it is what drains a chain of custodians instead of delivering the same message five times.</p>
+<p><strong>Until recently steps 4–6 could not happen</strong>: nothing in the app composed a <code>t:receipt</code>, so a held message had no terminal state and the store filled with mail that had long since arrived — measured at 1,739 parked, 0 purged, 0 delivered. Now: <code>delivered=35, purged=35</code> on the same station, and <code>unverifiable=0</code>, which is the count that matters — §13.7.1 makes a forged <code>s:ack</code> <em>&quot;a way to delete a message from the whole mesh&quot;</em>, so a receipt that does not verify must release nothing.</p></figcaption>
 </section>
 
-<section id="f5">
-  <h2><span class="fig">FIG 5</span> Handing mail toward where the recipient is</h2>
-  <p class="lede">§36.8.1 — waiting is not the only option. A holder may move the mail closer while both parties sleep.</p>
+<section id="f6">
+  <h2><span class="fig">FIG 6</span> Handing mail toward where the recipient actually is (§36.8.1)</h2>
+  <p>Waiting is not the only option. A holder may move the mail closer while both parties sleep.</p>
   <figure>
-    <div class="plate-bar"><span>decision</span><span>§36.8.1 · gossip layers</span></div>
+    <div class="plate-bar"><span>Fig 6</span><span>Handing mail toward where the recipient actual</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
@@ -517,14 +579,15 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption>The recipient's own word outranks every observation — this is the one place <code>hold:</code>'s preference order is consumed rather than merely stored.</figcaption>
+  <figcaption><p>The recipient&#x27;s own word outranks every observation — this is the one place <code>hold:</code>&#x27;s preference order is consumed rather than merely stored.</p></figcaption>
 </section>
 
-<section id="f6">
-  <h2><span class="fig">FIG 6</span> How a packet crosses bearers</h2>
-  <p class="lede">The question this document exists to answer: a packet arrives on Bluetooth — what puts it on the LAN, or on the internet?</p>
+<section id="f7">
+  <h2><span class="fig">FIG 7</span> How a packet crosses bearers</h2>
+  <p>The question this document exists to answer: a packet arrives on Bluetooth — what puts it on the LAN, or on the internet?</p>
+<p><strong>Almost always: nothing decided to.</strong> There are exactly three places that re-air somebody else&#x27;s packet, all of them go through the publisher, and the publisher fans out to every active bearer.</p>
   <figure>
-    <div class="plate-bar"><span>decision</span><span>the three re-air sites</span></div>
+    <div class="plate-bar"><span>Fig 7</span><span>How a packet crosses bearers</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
@@ -559,14 +622,15 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption><strong>Two crossings in the whole app are addressed</strong> — the forwarder's LXMF to a chosen gateway, and the history server's copy to whoever asked. Everything else reaches the internet because the fan-out puts the wire on every bearer that is up, and <code>scope:local</code> is the only brake. Not necessarily wrong — §36.0 says a station that cannot tell answers on every bearer — but it is the fallback doing the work, not a routing decision.</figcaption>
+  <figcaption><p>Two crossings in the whole app are <em>addressed</em>: the forwarder&#x27;s LXMF to a chosen gateway, and the history server&#x27;s LXMF copy to whoever asked. Everything else reaches the internet because <code>_fanOut</code> puts the wire on every bearer that is up, and <code>scope:local</code> is the only brake.</p>
+<p>That is not necessarily wrong — §36.0 says a station that cannot tell which path reaches the asker <em>&quot;answers on every bearer it can transmit on&quot;</em> — but it is worth knowing that it is the fallback doing the work, not a routing decision.</p></figcaption>
 </section>
 
-<section id="f7">
-  <h2><span class="fig">FIG 7</span> The gate on the way in from the internet</h2>
-  <p class="lede">Radio traffic is bounded by radio range. Internet traffic is not, so the internet lane has an admission rule the radio lanes do not.</p>
+<section id="f8">
+  <h2><span class="fig">FIG 8</span> The gate on the way in from the internet (§36.3)</h2>
+  <p>Radio traffic is bounded by radio range. Internet traffic is not, so the internet lane has an admission rule the radio lanes do not.</p>
   <figure>
-    <div class="plate-bar"><span>decision</span><span>§36.3 declaration gate</span></div>
+    <div class="plate-bar"><span>Fig 8</span><span>The gate on the way in from the internet (§36.</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
@@ -587,29 +651,21 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption><strong>The asymmetry is deliberate.</strong> <code>refusedRns</code> gates the <em>archive only</em>. By the time a packet is refused it has already been offered to custody and already been answered as a command. Refusing to <em>spool</em> a stranger's traffic is not refusing to <em>carry</em> it.</figcaption>
+  <figcaption><p><strong>The asymmetry is deliberate and worth seeing on a diagram:</strong> <code>refusedRns</code> gates the <strong>archive only</strong>. By the time a packet is refused it has already been offered to custody and already been answered as a command. Refusing to <em>spool</em> a stranger&#x27;s traffic is not refusing to <em>carry</em> it.</p></figcaption>
 </section>
 
 <section id="gaps">
   <h2><span class="fig">TABLE</span> Where this disagrees with the specification</h2>
   <div class="tablewrap">
-    <table>
-      <thead><tr><th>§</th><th>rule</th><th>state</th></tr></thead>
-      <tbody>
-        <tr><td class="res">13.1</td><td>relay budget by packet type</td>
-          <td><strong>applied</strong> on the custody hand-off — the release and the forwarder both call it. Still no general digipeat to apply it to</td></tr>
-        <tr><td class="res">13.2</td><td>loop check</td>
-          <td><strong>applied</strong> on the same two paths</td></tr>
-        <tr><td class="res">13.2.1</td><td>random wait, cancel on hearing</td>
-          <td><strong>not implemented in the app at all</strong>; complete in firmware for LAN, LoRa, ESP-NOW</td></tr>
-        <tr><td class="res">13.11.3</td><td>a gateway treats <code>scope:</code> as binding</td>
-          <td>honoured — checked in the fan-out and in the chat wapp's APRS path</td></tr>
-        <tr><td class="res">36.8.1</td><td>release on hearing, forward toward a gateway, once per holder</td>
-          <td>implemented</td></tr>
-        <tr><td class="res">9.4.1</td><td>no self-generated callsign onto licensed spectrum</td>
-          <td><strong>violated</strong> — the ESP32 iGate computes an APRS-IS passcode for an <code>X3</code> callsign</td></tr>
-      </tbody>
-    </table>
+    <table><thead><tr><th>§</th><th>rule</th><th>state</th></tr></thead>
+    <tbody><tr><td class="res">13.1</td><td>relay budget by packet type</td><td><strong>applied</strong> on the custody hand-off — the release and <code>XprsForwarder</code> both call <code>xprsMayRelay</code> now. Still not applied to a general digipeat, because there is none</td></tr>
+<tr><td class="res">13.2</td><td>loop check</td><td><strong>applied</strong> on the same two paths</td></tr>
+<tr><td class="res">13.2.1</td><td>random wait, cancel on hearing</td><td><strong>not implemented in the app at all</strong>; complete in firmware for LAN, LoRa, ESP-NOW</td></tr>
+<tr><td class="res">13.11.3</td><td>a gateway treats <code>scope:</code> as binding</td><td>honoured — <code>scope:local</code> is checked in the fan-out and in the chat wapp&#x27;s APRS path</td></tr>
+<tr><td class="res">36.8.1</td><td>release on hearing, forward toward a gateway, once per holder</td><td>implemented</td></tr>
+<tr><td class="res">13.7.1</td><td>receipts without asking, signed</td><td><strong>implemented</strong> — composed on delivery under the exclusion table, always signed, and a receipt that does not verify releases nothing. <code>XPRS.md</code> §37 still records this as &quot;specified, not yet on the air&quot;</td></tr>
+<tr><td class="res">10.6</td><td><code>hears:</code> — who this station can reach</td><td><strong>implemented on both beacons.</strong> The BLE one built it from a table nothing fills, so it was absent from every advert ever sent; §36.9.4&#x27;s gossip resolves gateways from exactly that field, and an unsigned claim is refused, so the BLE beacon is signed now too</td></tr>
+<tr><td class="res">9.4.1</td><td>no self-generated callsign onto licensed spectrum</td><td><strong>violated</strong>: the ESP32 iGate computes an APRS-IS passcode for an <code>X3</code> callsign</td></tr></tbody></table>
   </div>
   <div class="note warn">
     <span class="tag">the row that matters outside this codebase</span>
@@ -622,8 +678,7 @@ flowchart TD
 <footer>
   <p>Drawn from <code>docs/diagrams/relay-gateway-flow.md</code>. Section numbers
   refer to <code>docs/XPRS.md</code>. Companion:
-  <code>docs/diagrams/transports-flow.md</code>, which draws the coordinator these
-  roles sit on.</p>
+  <code>docs/diagrams/transports-flow.md</code>.</p>
 </footer>
 
 </div>

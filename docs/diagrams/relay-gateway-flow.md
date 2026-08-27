@@ -68,11 +68,13 @@ gains the carrier, and the §13.1 budget and §13.2 loop check apply. Measured:
 
 ```
 sent from TANK2 (Bluetooth only), arrived at the desktop (LAN only) in under 20s
-t:message f:X1VCVM d:X16JK8 ts:… sig:… via:X3ARK m:…      bearer=lan
+
+t:message f:X1VCVM d:X16JK8 ts:2026-08-27_18:35:38 sig:… via:X3ARK m:on my way
+                                                            ↑
+                                              the only field the bridge added
 ```
 
-`f:` is still the author (§13: *"A relay never rewrites `f:`"*), `via:` names the
-carrier, and the signature still verifies because §5 and §9.1 both exclude `via:`.
+Figure 2 takes that packet apart.
 
 Two things had to be true for that to happen automatically rather than by luck,
 and neither was:
@@ -91,7 +93,60 @@ the one advert.
 
 ---
 
-## Fig. 2 — What a relay is supposed to do (§13.1, §13.2, §13.2.1)
+## Fig. 2 — The bridged packet, field by field
+
+Every field is a §4.1 envelope key and nothing is decoration. `m:` is the text a
+person typed; `via:` is the only thing a carrier adds.
+
+```mermaid
+flowchart LR
+    subgraph A["written by the AUTHOR — never altered in flight"]
+        direction TB
+        F1["t:message<br/><i>§4.2 packet type</i>"]
+        F2["f:X1VCVM<br/><i>§13 — a relay NEVER rewrites this</i>"]
+        F3["d:X16JK8<br/><i>the recipient</i>"]
+        F4["ts:2026-08-27_18:35:38<br/><i>§4.8 when it was composed</i>"]
+        F6["sig:&lt;60 base85&gt;<br/><i>§9.1 the author's signature</i>"]
+        F5["m:on my way<br/><i>§4.1 the text — always last</i>"]
+    end
+
+    subgraph C["added by EACH CARRIER"]
+        direction TB
+        V["via:X3ARK<br/><i>§13 — oldest first</i>"]
+    end
+
+    subgraph D["computed, NEVER transmitted"]
+        direction TB
+        ID["§5 identifier<br/>sha256 of the packet<br/><b>minus sig: and via:</b>"]
+    end
+
+    A --> ID
+    C -. "excluded" .-> ID
+    F6 -. "covers the same bytes" .-> ID
+
+    classDef auth fill:#DCEBED,stroke:#0F6E7B,color:#08343B
+    classDef carr fill:#FBEFD6,stroke:#A9701A,color:#4A3208
+    classDef der  fill:#E4E8EA,stroke:#64717A,color:#2A2E33
+    class F1,F2,F3,F4,F5,F6 auth
+    class V carr
+    class ID der
+```
+
+**Excluding `via:` from both the signature and the identifier is what makes
+carrying possible at all.** §9.1 says why in one line: a relay appends itself, so
+*"a signature covering it would break at the first hop and every relayed packet
+would read as forged — on a network whose whole point is relaying"*. The same
+exclusion means a carried copy and a direct one share an identifier, so they
+deduplicate against each other and **one receipt answers both**.
+
+`via:` earns its bytes three times over: §13.2's loop check reads it (a station
+that finds itself there does not carry again), §13.1's budget counts its length,
+and a receiver can tell a carried copy from a direct one — which is what the path
+evidence in `../private-messages.md` §6 depends on.
+
+---
+
+## Fig. 3 — What a relay is supposed to do (§13.1, §13.2, §13.2.1)
 
 ```mermaid
 flowchart TD
@@ -121,7 +176,7 @@ cancel they all transmit anyway.
 
 ---
 
-## Fig. 3 — Who implements that, and who does not
+## Fig. 4 — Who implements that, and who does not
 
 ```mermaid
 flowchart LR
@@ -176,7 +231,7 @@ exist for, and with no such path there is nothing to jitter.
 
 ---
 
-## Fig. 4 — The carrier: what XPRS adds over APRS
+## Fig. 5 — The carrier: what XPRS adds over APRS
 
 APRS loses a message addressed to a station that is not listening. XPRS holds it.
 This is the role that has no APRS ancestor, and it is the one the app implements
@@ -208,9 +263,17 @@ That last line is why a receipt is worth repeating after the sender has seen it:
 it is what drains a chain of custodians instead of delivering the same message
 five times.
 
+**Until recently steps 4–6 could not happen**: nothing in the app composed a
+`t:receipt`, so a held message had no terminal state and the store filled with
+mail that had long since arrived — measured at 1,739 parked, 0 purged, 0
+delivered. Now: `delivered=35, purged=35` on the same station, and
+`unverifiable=0`, which is the count that matters — §13.7.1 makes a forged
+`s:ack` *"a way to delete a message from the whole mesh"*, so a receipt that
+does not verify must release nothing.
+
 ---
 
-## Fig. 5 — Handing mail toward where the recipient actually is (§36.8.1)
+## Fig. 6 — Handing mail toward where the recipient actually is (§36.8.1)
 
 Waiting is not the only option. A holder may move the mail closer while both
 parties sleep.
@@ -244,7 +307,7 @@ The recipient's own word outranks every observation — this is the one place
 
 ---
 
-## Fig. 6 — How a packet crosses bearers
+## Fig. 7 — How a packet crosses bearers
 
 The question this document exists to answer: a packet arrives on Bluetooth —
 what puts it on the LAN, or on the internet?
@@ -296,7 +359,7 @@ worth knowing that it is the fallback doing the work, not a routing decision.
 
 ---
 
-## Fig. 7 — The gate on the way in from the internet (§36.3)
+## Fig. 8 — The gate on the way in from the internet (§36.3)
 
 Radio traffic is bounded by radio range. Internet traffic is not, so the internet
 lane has an admission rule the radio lanes do not.
@@ -335,6 +398,8 @@ stranger's traffic is not refusing to *carry* it.
 | 13.2.1 | random wait, cancel on hearing | **not implemented in the app at all**; complete in firmware for LAN, LoRa, ESP-NOW |
 | 13.11.3 | a gateway treats `scope:` as binding | honoured — `scope:local` is checked in the fan-out and in the chat wapp's APRS path |
 | 36.8.1 | release on hearing, forward toward a gateway, once per holder | implemented |
+| 13.7.1 | receipts without asking, signed | **implemented** — composed on delivery under the exclusion table, always signed, and a receipt that does not verify releases nothing. `XPRS.md` §37 still records this as "specified, not yet on the air" |
+| 10.6 | `hears:` — who this station can reach | **implemented on both beacons.** The BLE one built it from a table nothing fills, so it was absent from every advert ever sent; §36.9.4's gossip resolves gateways from exactly that field, and an unsigned claim is refused, so the BLE beacon is signed now too |
 | 9.4.1 | no self-generated callsign onto licensed spectrum | **violated**: the ESP32 iGate computes an APRS-IS passcode for an `X3` callsign |
 
 The last row is the one that matters outside this codebase, because it is the

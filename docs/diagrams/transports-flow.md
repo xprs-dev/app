@@ -201,17 +201,33 @@ flowchart TD
 
     FORUS -- no --> CARRY{"t:message to a STATION?<br/><i>a group is aired, not couriered §6.3</i>"}
     CARRY -- yes --> PARK["<b>carry</b><br/>park in custody · forward §36.7"]
-    CARRY -- no --> CMD["onCommand · onResult"]
-    DELIVER --> CMD
-    PARK --> CMD
+    CARRY -- no --> RCPT
+    DELIVER --> ACK["<b>acknowledge</b><br/>signed t:receipt s:ack §13.7.1"]
+    ACK --> RCPT
+    PARK --> RCPT{"t:receipt s:ack?"}
+    RCPT -- verified --> REL["<b>release</b><br/>purge the held copy — ours AND<br/>anyone else's we overhear §13.3"]
+    RCPT -- "unsigned / unverifiable" --> NOOP["changes nothing §13.7.1"]
+    RCPT -- no --> CMD["onCommand · onResult"]
+    REL --> CMD
+    NOOP --> CMD
 
     classDef act fill:#D9EAED,stroke:#0F7B8A,color:#08343B
-    class DELIVER,PARK act
+    classDef bad fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    class DELIVER,PARK,ACK,REL act
+    class NOOP bad
 ```
 
 **The carry branch is the one that was missing.** It was reached only from the
 Reticulum lane, so a station carried mail that arrived over the internet and
 nothing at all that arrived over a radio.
+
+**And the receipt branch is what ends it.** Nothing composed a `t:receipt`, so a
+carried copy had no terminal state — measured at 1,739 parked, 0 purged, 0
+delivered. The release fires on a receipt for **anybody**, not only for us:
+§13.3 has a carrier discard its copy on *overhearing* the acknowledgement, which
+is the only way a chain of custodians drains instead of delivering five times.
+An unverifiable one changes nothing, because §13.7.1 makes a forged `s:ack` a
+way to delete a message from the whole mesh.
 
 ---
 
@@ -242,7 +258,9 @@ stateDiagram-v2
 
     Waiting --> Aired: lane returns · retry ladder · peer comes back
 
-    Arrived --> Released: receipt / ?ACK releases every custodian §13.3
+    Arrived --> Acked: recipient composes a SIGNED t:receipt §13.7.1
+    Acked --> Released: every holder that hears it purges §13.3
+    Acked --> Held: an unverifiable receipt changes nothing
     Released --> [*]
 ```
 

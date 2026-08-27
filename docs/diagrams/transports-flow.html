@@ -360,28 +360,30 @@
 flowchart LR
     subgraph RADIO["bearers"]
         direction TB
-        BLE["BLE5 advert<br/>0x58 xprs · 0x41 aprs"]
-        LAN["LAN<br/>UDP / TCP 4242"]
-        RNS["Reticulum<br/>LXMF + datagram"]
-        LORA["LoRa<br/>slot only, no radio yet"]
+        BLE["BLE5 advert<br/><code>0x58 xprs · 0x41 aprs</code>"]
+        LAN["LAN<br/><code>UDP/TCP 4242</code>"]
+        RNS["Reticulum<br/><code>LXMF + datagram</code>"]
+        LORA["LoRa<br/><code>slot only, no radio yet</code>"]
     end
+
     subgraph CORE["core"]
         direction TB
         FUNNEL["XprsIngest.heard<br/><b>the one door in</b>"]
         FAN["XprsPublisher._fanOut<br/><b>the one door out</b>"]
         ARCH[("XprsArchive<br/>§5 identifier dedup")]
         STORE[("MeshStore<br/>custody")]
-        DEL["deliver to inbox"]
     end
-    BLE --> FUNNEL
-    LAN --> FUNNEL
-    RNS --> FUNNEL
+
+    BLE  -- in  --> FUNNEL
+    LAN  -- in  --> FUNNEL
+    RNS  -- in  --> FUNNEL
     FUNNEL --> ARCH
-    FUNNEL -- "ours" --> DEL
+    FUNNEL -- "ours" --> DEL["deliver to inbox"]
     FUNNEL -- "somebody else's" --> STORE
-    FAN --> BLE
-    FAN --> LAN
-    FAN --> RNS
+
+    FAN -- out --> BLE
+    FAN -- out --> LAN
+    FAN -- out --> RNS
     FAN -. inactive .-> LORA
     STORE -- "retry when a lane returns" --> FAN
 </pre>
@@ -421,10 +423,12 @@ sequenceDiagram
     Pub->>Mon: declaredBearersFresh(X16JK8)
     Note right of Mon: what the STATION said it is on<br/>(its own link:, §10.6.1)<br/>aged on the packet's ts: (§4.8)
     Mon-->>Pub: ["lan"]
-    Pub->>Fan: _fanOut(prefer "lan")
+    Pub->>Fan: _fanOut(prefer: "lan")
+
     Fan->>Best: send(part, slot, ttl)
     alt carried
         Best-->>Fan: sent
+        Fan->>Rest: (not used)
         Note over Rest: reported "unused"
     else not carried
         Best-->>Fan: refused / inactive / disabled
@@ -432,8 +436,9 @@ sequenceDiagram
         Fan->>Rest: send on every bearer
         Rest-->>Fan: sent / queued / refused
     end
-    Fan-->>Pub: report + carriedBy
-    Pub->>Arc: own(wire, bearer carriedBy ?? "none")
+
+    Fan-->>Pub: per-bearer report + carriedBy
+    Pub->>Arc: own(wire, bearer: carriedBy ?? "none")
 </pre>
     </div>
   </figure>
@@ -473,23 +478,24 @@ sequenceDiagram
 <pre class="mermaid">
 flowchart TD
     A["wire offered to this bearer"] --> D{"switched off?"}
-    D -- yes --> DZ["disabled"]
-    D -- no --> S{"scope:local and<br/>this bearer is long-range?"}
-    S -- yes --> SZ["scope"]
+    D -- yes --> DZ["<b>disabled</b><br/><i>operator or test</i>"]
+    D -- no --> S{"scope:local<br/>and this bearer is long-range?"}
+    S -- yes --> SZ["<b>scope</b><br/><i>§13.11.1 names bearers</i>"]
     S -- no --> AC{"radio up this second?"}
-    AC -- no --> IZ["inactive"]
-    AC -- yes --> TX["send every part<br/>worst answer wins"]
+    AC -- no --> IZ["<b>inactive</b><br/><i>the radio is off</i>"]
+    AC -- yes --> TX["send every part<br/><i>worst answer wins</i>"]
     TX --> R{"what did the medium say?"}
-    R -- "on the air" --> SENT["sent"]
-    R -- "taken by store-and-forward" --> Q["queued"]
-    R -- "no" --> REF["refused"]
-    SENT --> CB["names the archive bearer<br/>satisfies a path preference"]
-    Q --> CB2["names the archive bearer<br/>does NOT satisfy a preference"]
+    R -- "on the air" --> SENT["<b>sent</b>"]
+    R -- "taken by a store-and-forward lane" --> Q["<b>queued</b><br/><i>outcome not known yet</i>"]
+    R -- "no" --> REF["<b>refused</b>"]
+
+    SENT --> CB["names the archive bearer<br/>· satisfies a path preference"]
+    Q --> CB2["names the archive bearer<br/>· does <b>not</b> satisfy a preference"]
 
     classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
-    classDef warn fill:#FBEFD6,stroke:#A9701A,color:#4A3208
+    classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
     classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
-    classDef off  fill:#E4E8EA,stroke:#64717A,color:#2A2E33
+    classDef off  fill:#E6E8EA,stroke:#6B7280,color:#2A2E33
     class SENT good
     class Q warn
     class REF bad
@@ -527,18 +533,19 @@ sequenceDiagram
 
     Air->>Dx: frame + subtype
     alt 0x58 xprs
-        Dx->>Fun: heard(packet, bearer "ble")
+        Dx->>Fun: heard(packet, bearer:"ble")
     else 0x41 aprs
         Dx->>Dx: does it parse as XPRS?
         alt yes
-            Dx->>Fun: heard(packet, bearer "ble")
+            Dx->>Fun: heard(packet, bearer:"ble")
         else no — legacy compact frame
             Dx->>Tap: onAirFrame(inbound)
         end
-    else 0x55 / 0x4D / 0x57
+    else 0x55/0x56 rns · 0x4D beacon · 0x57 wfd
         Dx->>Dx: other planes, not XPRS
     end
-    Fun->>Arc: admit — QUEUES only
+
+    Fun->>Arc: admit (queues; flush writes and drops forged)
     Arc-->>Fun: onStored → catch-up watermark
     alt addressed to us
         Fun->>Cou: onDeliver — verify, unseal, inbox
@@ -567,31 +574,41 @@ sequenceDiagram
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
-    IN["XPRS packet + bearer label"] --> MON["monitor.offer<br/>sighting · link: evidence"]
+    IN["XPRS packet + bearer label"] --> MON["monitor.offer<br/><i>sighting · link: evidence</i>"]
     MON --> ECHO{"f: is our own callsign?"}
     ECHO -- yes --> DROP["stop — our own echo"]
     ECHO -- no --> MBX{"t:mailbox?"}
-    MBX -- yes --> REC["record declaration §13.12"]
+    MBX -- yes --> REC["record the declaration §13.12"]
     MBX -- no --> VIA{"carries via:?"}
     REC --> VIA
     VIA -- "no — heard directly" --> GOS["gossip noteDirect<br/>+ release-on-hearing §36.8.1"]
     VIA -- yes --> IDT{"t:identity?"}
     GOS --> IDT
-    IDT -- yes --> BIND["bind callsign to key §9.3"]
+    IDT -- yes --> BIND["bind callsign → key §9.3"]
     IDT -- no --> ARCH["archive.admit"]
     BIND --> ARCH
-    ARCH --> FORUS{"d: is us?<br/>base callsign — §3.1.3 accepts -N"}
-    FORUS -- yes --> ISMSG{"t:message?"}
-    ISMSG -- yes --> DELIVER["DELIVER<br/>verify · unseal · inbox"]
-    ISMSG -- no --> CMD
-    FORUS -- no --> CARRY{"t:message to a STATION?<br/>a group is aired, not couriered §6.3"}
-    CARRY -- yes --> PARK["CARRY<br/>park in custody · forward §36.7"]
-    CARRY -- no --> CMD["onCommand · onResult"]
-    DELIVER --> CMD
-    PARK --> CMD
+    ARCH --> FORUS{"d: is us?<br/><i>base callsign — §3.1.3 accepts -N</i>"}
 
-    classDef act fill:#DCEBED,stroke:#0F6E7B,color:#08343B
-    class DELIVER,PARK act
+    FORUS -- yes --> ISMSG{"t:message?"}
+    ISMSG -- yes --> DELIVER["<b>deliver</b><br/>verify · unseal · inbox"]
+    ISMSG -- no --> CMD
+
+    FORUS -- no --> CARRY{"t:message to a STATION?<br/><i>a group is aired, not couriered §6.3</i>"}
+    CARRY -- yes --> PARK["<b>carry</b><br/>park in custody · forward §36.7"]
+    CARRY -- no --> RCPT
+    DELIVER --> ACK["<b>acknowledge</b><br/>signed t:receipt s:ack §13.7.1"]
+    ACK --> RCPT
+    PARK --> RCPT{"t:receipt s:ack?"}
+    RCPT -- verified --> REL["<b>release</b><br/>purge the held copy — ours AND<br/>anyone else's we overhear §13.3"]
+    RCPT -- "unsigned / unverifiable" --> NOOP["changes nothing §13.7.1"]
+    RCPT -- no --> CMD["onCommand · onResult"]
+    REL --> CMD
+    NOOP --> CMD
+
+    classDef act fill:#D9EAED,stroke:#0F7B8A,color:#08343B
+    classDef bad fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    class DELIVER,PARK,ACK,REL act
+    class NOOP bad
 </pre>
     </div>
   </figure>
@@ -617,21 +634,30 @@ flowchart TD
 stateDiagram-v2
     direction TB
     [*] --> Composed
+
     Composed --> Sealed: private — the default for a direct message §9.4
     Composed --> Clear: switched to plain, per packet §9.2
     note right of Sealed
-        no recipient key means REFUSE
+        no recipient key ⇒ REFUSE
         never silently downgrade §36.8
     end note
+
     Sealed --> Parked
     Clear --> Parked
+    Parked: parked in custody — a sender is its own first holder §36.12.1
+
     Parked --> Aired: fan-out places it
     Parked --> Waiting: no bearer took it
+
     Aired --> Queued: a store-and-forward lane has it
     Aired --> Arrived: receiver's funnel delivers
     Queued --> Arrived
+
     Waiting --> Aired: lane returns · retry ladder · peer comes back
-    Arrived --> Released: receipt releases every custodian §13.3
+
+    Arrived --> Acked: recipient composes a SIGNED t:receipt §13.7.1
+    Acked --> Released: every holder that hears it purges §13.3
+    Acked --> Held: an unverifiable receipt changes nothing
     Released --> [*]
 </pre>
     </div>
@@ -658,13 +684,14 @@ stateDiagram-v2
 sequenceDiagram
     autonumber
     actor T as bench
-    participant C61 as C61 · X3ARK
-    participant TK as TANK2 · X1VCVM<br/>Wi-Fi off, BLE only
+    participant C61 as C61 (X3ARK)
+    participant TK as TANK2 (X1VCVM)<br/>Wi-Fi off — BLE only
 
     T->>C61: POST /api/xprs/bearers {"disable":["ble5"]}
     T->>C61: send 1:1 to X1VCVM
     C61-->>T: ble5 disabled · lan sent · reticulum queued
     Note over C61,TK: the only lane that reaches TANK2 is gone;<br/>the copy stays parked in custody
+
     T->>C61: POST /api/xprs/bearers {"reset":true}
     C61->>TK: held mail moves over BLE
     TK-->>T: ingested 14 → 18
