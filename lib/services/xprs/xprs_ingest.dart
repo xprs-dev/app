@@ -106,8 +106,26 @@ class XprsIngest {
   /// on a pocket device they are the whole storage cost and none of the value.
   /// They still reach XprsMonitor, which is what the graph, the Traffic screen
   /// and the station list read, so nothing on screen depends on spooling them.
+  /// Chatter: traffic a station may reasonably decline to spool for strangers.
+  ///
+  /// **`identity` is deliberately NOT in this set.** It used to be, which meant
+  /// a station that was not a super-archiver and had not opted into keeping
+  /// chatter stored no key bindings at all — and a key binding is not chatter,
+  /// it is the thing that makes every other packet from that station checkable.
+  /// Without it this station cannot verify a signature (§9.1 leaves it
+  /// `unverified`), cannot seal a private message to them (§9.2), cannot trust
+  /// a receipt from them (§13.7.1 — measured on the bench as fifteen
+  /// unverifiable receipts on a phone holding zero identities), and has nothing
+  /// for `rebindFromArchive` to replay at startup, so the half-hour hole of
+  /// §18.1 reopens on every restart.
+  ///
+  /// §18.1 says why the announcement is repeated at all: "a receiver that has
+  /// never heard the announcement cannot check a signature or issue a
+  /// challenge". Discarding it is discarding the reason it was sent.
+  ///
+  /// It is also cheap, and bounded — see `XprsArchive._collapseIdentities`.
   static bool _isPresence(String type) =>
-      type == 'observation' || type == 'identity' || type == 'service';
+      type == 'observation' || type == 'service';
 
   /// Whether this packet is worth the write.
   ///

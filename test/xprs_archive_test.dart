@@ -352,4 +352,78 @@ void main() {
     expect(rows.first['bearer'], 'none',
         reason: 'aired nowhere, and the row says so');
   });
+  group('a key binding is not chatter (9.3.2, 18.1)', () {
+    // It used to be grouped with `observation` and `service`, so a station that
+    // was not a super-archiver kept NO identities at all — measured on the
+    // bench as a phone with zero key bindings and fifteen receipts it could not
+    // verify. Without the binding this station can check no signature (9.1),
+    // seal no private message (9.2) and trust no receipt (13.7.1).
+
+    XprsPacket idOf(String call, String ts, {bool key = true}) =>
+        XprsPacket.parse(key
+            ? 't:identity f:$call ts:$ts '
+                'k:npub1qz3n7fu9j9uenmyva7ha6x9eqwymytv2847ccv4vxdmn45y50q7h7k5f'
+            : 't:identity f:$call ts:$ts nick:joao')!;
+
+    int idRows(String call) => a
+        .query(types: const ['identity'], limit: 100)
+        .where((r) => '${r['from']}' == call)
+        .length;
+
+    test("a stranger's identity is kept even with chatter off", () {
+      a.admit(idOf('X1QZ3N', '2026-08-08_10:00:00'), bearer: 'ble');
+      a.flush();
+      expect(idRows('X1QZ3N'), 1);
+    });
+
+    test('re-announcements collapse to the newest, not one row per half hour',
+        () {
+      // 18.1 re-announces every 30 minutes and each carries a fresh ts:, so
+      // each is a different section 5 identifier and would be its own row.
+      for (final t in [
+        '2026-08-08_10:00:00',
+        '2026-08-08_10:30:00',
+        '2026-08-08_11:00:00',
+      ]) {
+        a.admit(idOf('X1QZ3N', t), bearer: 'ble');
+        a.flush();
+      }
+      expect(idRows('X1QZ3N'), 1, reason: 'newest key-bearing row only');
+      final w = '${a.query(types: const ['identity'], limit: 10).first['wire']}';
+      expect(w, contains('11:00:00'), reason: 'the NEWEST survives');
+    });
+
+    test('a key-only announcement does not evict the decoration', () {
+      // 9.3.2 splits the announcement in two because both do not fit, and they
+      // are re-sent on different cadences: "the key binding is small and must
+      // be repeated often ... the decoration is larger and changes once a year".
+      a.admit(idOf('X1QZ3N', '2026-08-08_10:00:00', key: false), bearer: 'ble');
+      a.flush();
+      a.admit(idOf('X1QZ3N', '2026-08-08_10:30:00'), bearer: 'ble');
+      a.flush();
+      expect(idRows('X1QZ3N'), 2,
+          reason: 'one key-bearing row and one decoration row');
+    });
+
+    test('two stations keep two bindings each at most', () {
+      for (final c in ['X1QZ3N', 'X1RD89']) {
+        for (final t in ['2026-08-08_10:00:00', '2026-08-08_10:30:00']) {
+          a.admit(idOf(c, t), bearer: 'ble');
+          a.flush();
+        }
+      }
+      expect(idRows('X1QZ3N'), 1);
+      expect(idRows('X1RD89'), 1);
+    });
+
+    test('an identity does not age out', () {
+      // A station heard once a year ago is exactly the one whose signature
+      // cannot be checked without its binding.
+      a.maxAgeDays = 1;
+      a.admit(idOf('X1QZ3N', '2020-01-01_00:00:00'), bearer: 'ble');
+      a.flush();
+      expect(idRows('X1QZ3N'), 1);
+    });
+  });
+
 }

@@ -42,10 +42,28 @@ void main() {
 
   test('a stranger\'s presence is not written down', () {
     heard('t:observation f:X3R8XX link:ble peers:4');
-    heard('t:identity f:X3R8XX ts:2026-08-22_06:00:00 k:npub1zzz');
     heard('t:service f:X3R8XX serve:archive count:212');
     expect(admitted, isEmpty,
         reason: 'presence repeats forever and nothing reads it');
+  });
+
+  test("but a stranger's KEY BINDING is", () {
+    // `identity` used to be in this set, and the reason given — "presence
+    // repeats forever and nothing reads it" — turned out to be false on both
+    // counts. It does not repeat forever: `XprsArchive._collapseIdentities`
+    // keeps the newest row per shape, two per callsign, ever. And plenty reads
+    // it: every signature check goes through `keyResolver`, and
+    // `XprsIngest.rebindFromArchive` replays it at startup so a restart does
+    // not reopen §18.1's half-hour hole.
+    //
+    // Measured on the bench before this changed: a phone that was not a
+    // super-archiver held ZERO key bindings, and so could not verify a single
+    // receipt — fifteen of them arrived and all fifteen counted as
+    // `unverifiable`, which §13.7.1 correctly treats as changing nothing. The
+    // station was doing exactly what it was told and getting nowhere.
+    heard('t:identity f:X3R8XX ts:2026-08-22_06:00:00 k:npub1zzz');
+    expect(admitted, ['identity'],
+        reason: 'without the binding, nothing this station signs can be checked');
   });
 
   test("a stranger's conversation still is", () {

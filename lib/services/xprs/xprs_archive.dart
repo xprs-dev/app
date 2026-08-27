@@ -208,6 +208,8 @@ class XprsArchive {
     // Collected during the write and fired after the transaction, so a hook
     // that throws cannot leave the batch half-committed.
     final stored = <MapEntry<String, int?>>[];
+    /// Senders whose identity rows need collapsing after this batch.
+    final identities = <String>{};
     _pending.clear();
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
     try {
@@ -268,9 +270,13 @@ class XprsArchive {
             p.encode(),
           ]);
           admitted++;
+          if (p.type == 'identity') identities.add(fromc);
         }
       } finally {
         ins.dispose();
+      }
+      for (final c in identities) {
+        _collapseIdentities(db, c);
       }
       db.execute('COMMIT');
     } catch (e) {
@@ -289,6 +295,47 @@ class XprsArchive {
         } catch (_) {
           // A watermark that throws must not cost the spool its flush.
         }
+      }
+    }
+  }
+
+  /// Keep only the NEWEST identity announcement of each shape, per callsign.
+  ///
+  /// §9.3.2: "An identity announcement carries any subset of these fields, and
+  /// a receiver keeps, for each field, **the value from the newest verifiable
+  /// announcement that carried it**." A station re-announces every thirty
+  /// minutes (§18.1) and each announcement carries a fresh `ts:`, so each is a
+  /// different §5 identifier and a different row — 48 rows a day per station if
+  /// nothing collapses them. That growth is why identity was lumped in with
+  /// chatter and dropped wholesale, which threw away the binding to avoid the
+  /// duplication.
+  ///
+  /// Collapsing by SHAPE rather than by callsign is what §9.3.2 forces: the
+  /// same section splits the announcement in two because the key binding and
+  /// the decoration do not fit in one packet, and they are re-sent on different
+  /// cadences — "the key binding is small and must be repeated often ... the
+  /// decoration is larger and changes once a year". Keeping only the newest per
+  /// callsign would let a key-only announcement evict the avatar and the
+  /// description. So: newest key-bearing row, and newest decoration row. Two
+  /// per station, for ever.
+  static void _collapseIdentities(Database db, String fromc) {
+    if (fromc.isEmpty) return;
+    for (final bearing in [1, 0]) {
+      final rows = db.select(
+          "SELECT id, wire FROM packets WHERE type = 'identity' AND fromc = ? "
+          'ORDER BY pts DESC, ts DESC',
+          [fromc]);
+      final same = <String>[];
+      for (final r in rows) {
+        final w = r['wire'] as String? ?? '';
+        // `k:` is the key binding; anything else is decoration (§9.3.2).
+        final hasKey = w.contains(' k:npub') ? 1 : 0;
+        if (hasKey == bearing) same.add(r['id'] as String);
+      }
+      // The first is the newest — ordered by the packet's own ts:, not by when
+      // we heard it, so a re-aired old announcement cannot displace a newer one.
+      for (final id in same.skip(1)) {
+        db.execute('DELETE FROM packets WHERE id = ?', [id]);
       }
     }
   }
@@ -336,9 +383,15 @@ class XprsArchive {
     if (!_prunedThisSession) {
       _prunedThisSession = true;
       try {
+        // `identity` never ages out. It is the key binding, and a station
+        // heard once a year ago is exactly the one whose signature this
+        // station cannot check without it (§18.1). Bounded by construction —
+        // `_collapseIdentities` keeps two rows per callsign, ever — so ten
+        // thousand distinct stations is about 3.6 MB against a 500 MB spool.
         db.execute(
             'DELETE FROM packets WHERE pts < ? '
-            "AND (own = 0 OR type = 'observation') AND mine = 0",
+            "AND (own = 0 OR type = 'observation') AND mine = 0 "
+            "AND type != 'identity'",
             [now - maxAgeDays * 86400000]);
         db.execute(
             'DELETE FROM mailbox_decl WHERE until IS NOT NULL AND until < ?',
@@ -359,9 +412,14 @@ class XprsArchive {
           ? ''
           : ' AND fromc NOT IN (${List.filled(prot.length, '?').join(',')})';
       final protList = prot.toList();
+      // Identity is exempt here too, and for a sharper reason than age: the
+      // cap evicts OLDEST FIRST, and a key binding heard long ago is precisely
+      // the row most likely to be oldest and least likely to be re-heard soon.
+      // Under storage pressure this would have thrown away exactly the keys
+      // that cannot be re-derived from anything else on disk.
       final rows = db
           .select('SELECT COUNT(*) c FROM packets WHERE own=0 AND mine=0'
-              '$protSql', protList)
+              " AND type != 'identity'$protSql", protList)
           .first['c'] as int;
       if (rows == 0) return;
       final avg = (bytes / rows).clamp(64, 1 << 20);
@@ -369,8 +427,8 @@ class XprsArchive {
       if (drop > 20000) drop = 20000;
       db.execute(
           'DELETE FROM packets WHERE id IN '
-          '(SELECT id FROM packets WHERE own=0 AND mine=0$protSql '
-          'ORDER BY pts ASC LIMIT ?)',
+          "(SELECT id FROM packets WHERE own=0 AND mine=0 AND type != 'identity'"
+          '$protSql ORDER BY pts ASC LIMIT ?)',
           [...protList, drop]);
       db.execute('PRAGMA incremental_vacuum;');
     } catch (e) {
