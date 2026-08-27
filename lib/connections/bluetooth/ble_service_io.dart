@@ -820,13 +820,25 @@ class BleService {
     _rxAprsFrames++;
     _rxAprsBytes += f.data.length;
     _dbg('BLE5 rx aprs ${f.data.length}B rssi=${f.rssi}');
-    // Mesh custody tap: overheard ?ACKs purge, our 1:1s feed the have-bloom,
-    // others' 1:1s get parked for GATT delivery (docs/mesh.md §6).
-    MeshCustodyDelegate.onAirFrame(f.data, outbound: false);
-    // And, when it is xprs, show it to whoever is watching the air. Includes
+    // ONE OWNER PER FORM. An XPRS packet goes to the funnel, whatever subtype
+    // it arrived on; the legacy compact frame goes to the custody tap, which is
+    // the only thing that understands it.
+    //
+    // Both used to run for every frame, so an XPRS message addressed to us and
+    // heard on 0x41 was processed twice: two `heard()` passes (two monitor
+    // sightings, gossip fired twice), and `deliverXprs` ran twice — re-doing a
+    // signature verify and a sealed-body unseal, two curve operations, before
+    // the duplicate was caught. The funnel now does the parking too
+    // (`XprsIngest.onCarry`), so the tap has nothing left to add for XPRS.
+    final xp = XprsPacket.parse(utf8.decode(f.data, allowMalformed: true));
+    if (xp == null) {
+      // Legacy compact frame: overheard `?ACK`s purge, our 1:1s feed the
+      // have-bloom, others' 1:1s get parked (docs/mesh.md §6).
+      MeshCustodyDelegate.onAirFrame(f.data, outbound: false);
+    }
+    // When it is xprs, show it to whoever is watching the air. Includes
     // traffic addressed to other people — that is most of what a mesh carries,
     // and seeing it is the point of the XPRS wapp.
-    final xp = XprsPacket.parse(utf8.decode(f.data, allowMalformed: true));
     if (xp != null) {
       XprsIngest.heard(xp,
           bearer: 'ble',

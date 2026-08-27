@@ -359,6 +359,13 @@ class MeshCourier {
   /// step removed.
   bool deliverXprs(MeshFrame f, {required String via}) {
     final p = f.packet!;
+    // Cheapest possible first (docs/performance.md 4.2). Everything below is a
+    // curve operation or a store write, and this method is reached twice for
+    // the same packet by design: the funnel delivers through `onDeliver`, and a
+    // caller that already had the frame calls in directly. The duplicate used
+    // to be caught further down, AFTER a signature verify and a sealed-body
+    // unseal had both run a second time.
+    if (_alreadyDelivered('id:${f.id}')) return false;
     final senderNpub = _npubForCallsign(f.from);
 
     // A carried packet passed through hands we do not control. When we hold the
@@ -406,10 +413,10 @@ class MeshCourier {
     }
     if (body.isEmpty) return false;
 
-    // The identifier is the packet's own (section 5), so the copy that reached
-    // us on air and the copy handed over in a session collapse onto one entry
-    // without either of them carrying an id.
-    if (_alreadyDelivered('id:${f.id}')) return false;
+    // (The identifier check that used to sit here is now the first line of this
+    // method — the copy heard on air and the copy handed over in a session
+    // still collapse onto one entry, they just do it before paying for a
+    // signature verify and an unseal.)
 
     // No `sd:` to trust: the sender's delivery address is derived from the key
     // they published, which cannot be forged without the private half.

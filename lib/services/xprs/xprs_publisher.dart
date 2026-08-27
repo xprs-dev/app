@@ -19,6 +19,8 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 
 import '../../connections/bluetooth/ble5_bus.dart';
@@ -42,6 +44,27 @@ import 'xprs_vocab.dart';
 /// Deliberately tiny: the publisher asks two questions — are you on, and did
 /// you take it — and applies the scope rules itself so every future bearer
 /// (LoRa, a KISS TNC, WiFi Aware) inherits them by construction.
+/// What a bearer did with one wire.
+///
+/// `sent` and `refused` are not the only two answers, and pretending they were
+/// made the per-lane report untrustworthy. Measured on the bench: a directed
+/// wire reported `reticulum: refused` and arrived at the far station over
+/// Reticulum a moment later — because that bearer hands the packet to two lanes
+/// and could only report one of them. A report that says "refused" about a
+/// packet that arrived is worse than no report, since the whole point of it is
+/// to answer "where did this actually go".
+enum XprsSendResult {
+  /// On the air, or acknowledged by the medium.
+  sent,
+
+  /// Handed to a lane that stores and forwards, whose answer comes later. Not
+  /// a failure and not yet a delivery — the honest third answer.
+  queued,
+
+  /// The medium said no to this frame.
+  refused,
+}
+
 abstract class XprsBearer {
   String get name;
 
@@ -72,7 +95,7 @@ abstract class XprsBearer {
   /// apart: at the advertiser's 120 s default they would all still be on air
   /// long after the page ended, holding twelve rotation slots against
   /// everything else this station has to say.
-  Future<bool> send(String wire,
+  Future<XprsSendResult> send(String wire,
       {required int part, String slot = 'status', Duration? ttl});
 }
 
@@ -91,9 +114,9 @@ class _Ble5Bearer implements XprsBearer {
   Future<bool> get active async =>
       await Ble5Bus.instance.supported() && await Ble5Bus.instance.adapterOn();
   @override
-  Future<bool> send(String wire,
-          {required int part, String slot = 'status', Duration? ttl}) =>
-      Ble5Bus.instance.advertiseFrame(
+  Future<XprsSendResult> send(String wire,
+          {required int part, String slot = 'status', Duration? ttl}) async =>
+      await Ble5Bus.instance.advertiseFrame(
         'xprs-$slot:$part',
         Ble5Subtype.xprs,
         Uint8List.fromList(utf8.encode(wire)),
@@ -101,7 +124,9 @@ class _Ble5Bearer implements XprsBearer {
         // rationale hal_ble_advertise documents for its 120 s. A caller that
         // knows better (a paced replay) says so.
         ttl: ttl ?? const Duration(seconds: 120),
-      );
+      )
+          ? XprsSendResult.sent
+          : XprsSendResult.refused;
 }
 
 class _ReticulumBearer implements XprsBearer {
@@ -114,7 +139,7 @@ class _ReticulumBearer implements XprsBearer {
   @override
   Future<bool> get active async => RnsService.instance.isUp;
   @override
-  Future<bool> send(String wire,
+  Future<XprsSendResult> send(String wire,
       {required int part, String slot = 'status', Duration? ttl}) async {
     // A wire addressed to one station rides the LXMF lane when the network
     // can name that station. The distinction is not cosmetic: wappBroadcast
@@ -142,14 +167,20 @@ class _ReticulumBearer implements XprsBearer {
         unawaited(RnsService.instance
             .sendLxmf(destHex: hex, title: 'xprs', content: wire)
             .catchError((_) => false));
-        // True = delivered on a link; false ALSO covers "stored with a
-        // relay for later", which for mail is success -- but the return
-        // cannot tell that apart from failure, so the report stays honest
-        // and pessimistic.
-        return RnsService.instance.wappSendTo('xprs', hex, bytes);
+        // `wappSendTo` true means delivered on a link. False does NOT mean
+        // nothing went: the LXMF copy above is still in flight, and on the
+        // bench it is the one that arrives when the datagram lane is silent.
+        // So the answer is `queued` — handed to a store-and-forward lane whose
+        // outcome is not known yet — rather than `refused`, which said a
+        // packet had not gone while it was arriving.
+        return await RnsService.instance.wappSendTo('xprs', hex, bytes)
+            ? XprsSendResult.sent
+            : XprsSendResult.queued;
       }
     }
-    return RnsService.instance.wappBroadcast('xprs', bytes);
+    return await RnsService.instance.wappBroadcast('xprs', bytes)
+        ? XprsSendResult.sent
+        : XprsSendResult.refused;
   }
 }
 
@@ -165,9 +196,13 @@ class _LanBearer implements XprsBearer {
   @override
   Future<bool> get active async => XprsLan.instance.up;
   @override
-  Future<bool> send(String wire,
+  Future<XprsSendResult> send(String wire,
           {required int part, String slot = 'status', Duration? ttl}) async =>
-      XprsLan.instance.send(wire);
+      // The socket accepted it. A UDP broadcast is never acknowledged, so this
+      // is the most any LAN send can honestly claim.
+      XprsLan.instance.send(wire)
+          ? XprsSendResult.sent
+          : XprsSendResult.refused;
 }
 
 class _LoraBearer implements XprsBearer {
@@ -184,9 +219,18 @@ class _LoraBearer implements XprsBearer {
   Future<bool> get active async =>
       _lora.status == ConnectionStatus.available;
   @override
-  Future<bool> send(String wire,
+  Future<XprsSendResult> send(String wire,
           {required int part, String slot = 'status', Duration? ttl}) async =>
-      false;
+      XprsSendResult.refused;
+}
+
+/// What one fan-out did: the per-bearer verdicts, and the first bearer that
+/// actually carried the packet (the label the archive files it under).
+class _Air {
+  const _Air(this.report, this.carriedBy);
+  final Map<String, String> report;
+  final String? carriedBy;
+  bool get anySent => report.values.any((v) => v == 'sent');
 }
 
 class XprsPublisher {
@@ -203,6 +247,115 @@ class XprsPublisher {
   ];
 
   int published = 0;
+
+  /// Bearers switched off by the operator or by a test, by [XprsBearer.name].
+  ///
+  /// **In memory only, and deliberately so.** This is an instrument: it exists
+  /// so a lane can be taken away while the station keeps running, and the
+  /// station's reaction observed — the fallback in [_fanOut], the custody park,
+  /// the retry ladder. A disabled bearer reports `disabled`, which is a third
+  /// thing from `inactive` (the radio is off) and `refused` (the radio said
+  /// no), because those three mean different things to whoever reads the
+  /// report. It resets on restart so a forgotten switch cannot silently
+  /// half-mute a station for ever.
+  final Set<String> _disabled = <String>{};
+
+  Set<String> get disabledBearers => Set.unmodifiable(_disabled);
+
+  bool isBearerEnabled(String name) => !_disabled.contains(name.toLowerCase());
+
+  /// Returns true when the name matched a bearer this station actually has.
+  bool setBearerEnabled(String name, bool enabled) {
+    final n = name.toLowerCase().trim();
+    if (!bearers.any((b) => b.name == n)) return false;
+    if (enabled) {
+      _disabled.remove(n);
+    } else {
+      _disabled.add(n);
+    }
+    LogService.instance
+        .add('XPRS: bearer $n ${enabled ? "enabled" : "DISABLED"} by request');
+    return true;
+  }
+
+  /// Put [wires] on the air and say what each bearer did with them.
+  ///
+  /// **The one fan-out.** There used to be four copies of this loop — one per
+  /// public method — and they had drifted: two applied the scope gate and two
+  /// did not, only one supported `ttl`, only one split into section 6.6 parts,
+  /// and they disagreed three ways about when to file our own copy. Every cell
+  /// that differed was a decision made once, in one method, that the other
+  /// three never learned. Notably `publishMailboxDecl` and `publishStatus` both
+  /// fell through to the advert slot `status`, so a mailbox declaration evicted
+  /// the discovery beacon from the air.
+  ///
+  /// [prefer] names the bearer to try first (section 36.0's path choice). When
+  /// it carries the packet the others are not used; when it does not, every
+  /// bearer is tried after all, because a preference that can become silence is
+  /// not a preference — 36.0's own words are "if the arrival bearer cannot carry
+  /// the answer it does not give up".
+  Future<_Air> _fanOut(
+    List<String> wires, {
+    required String slot,
+    Duration? ttl,
+    String? prefer,
+  }) async {
+    final report = <String, String>{};
+    String? carriedBy;
+
+    // A packet's own scope decides which bearers may carry it at all
+    // (section 13.11.1: `local` names bearers, not a distance). Read from the
+    // first wire; every part of a split message repeats the envelope.
+    final p0 = XprsPacket.parse(wires.first);
+    final local = p0 != null && xprsScope(p0).scope != XprsScope.global;
+
+    Future<bool> tryOne(XprsBearer b) async {
+      if (_disabled.contains(b.name)) {
+        report[b.name] = 'disabled';
+        return false;
+      }
+      if (local && !b.shortRange) {
+        // A local packet never leaves the short-range bearers (13.11.1), and a
+        // node that cannot place itself does not gateway a country scope
+        // (13.11.3) — both land here.
+        report[b.name] = 'scope';
+        return false;
+      }
+      if (!await b.active) {
+        report[b.name] = 'inactive';
+        return false;
+      }
+      // Worst answer across the parts wins: a message whose third part was
+      // refused did not go, whatever the first two did.
+      var worst = XprsSendResult.sent;
+      for (var i = 0; i < wires.length; i++) {
+        final r = await b.send(wires[i], part: i + 1, slot: slot, ttl: ttl);
+        if (r.index > worst.index) worst = r;
+      }
+      report[b.name] = worst.name;
+      // `queued` still names the lane the packet is travelling on, so the
+      // archive files it there — but it does NOT satisfy a path preference,
+      // because we do not yet know it arrived and the point of choosing one
+      // path is that it works.
+      if (worst != XprsSendResult.refused) carriedBy ??= b.archiveBearer;
+      return worst == XprsSendResult.sent;
+    }
+
+    var done = false;
+    if (prefer != null) {
+      final pick = bearers.where((b) => b.name == prefer);
+      if (pick.isNotEmpty) done = await tryOne(pick.first);
+    }
+    for (final b in bearers) {
+      if (done && b.name == prefer) continue;
+      if (done) {
+        report[b.name] = 'unused';
+        continue;
+      }
+      await tryOne(b);
+    }
+    return _Air(report, carriedBy);
+  }
   int refused = 0;
 
   /// Publish a `t:status` (section 27). Returns per-bearer outcomes:
@@ -239,30 +392,9 @@ class XprsPublisher {
       return const {};
     }
 
-    final p0 = XprsPacket.parse(wires.first);
-    final local = p0 != null && xprsScope(p0).scope != XprsScope.global;
-
-    final report = <String, String>{};
-    String? carriedBy;
-    for (final b in bearers) {
-      if (local && !b.shortRange) {
-        // A local packet never leaves the short-range bearers (13.11.1), and
-        // a node that cannot place itself does not gateway a country scope
-        // (13.11.3) — both land here.
-        report[b.name] = 'scope';
-        continue;
-      }
-      if (!await b.active) {
-        report[b.name] = 'inactive';
-        continue;
-      }
-      var ok = true;
-      for (var i = 0; i < wires.length; i++) {
-        ok = await b.send(wires[i], part: i + 1) && ok;
-      }
-      report[b.name] = ok ? 'sent' : 'refused';
-      if (ok) carriedBy ??= b.archiveBearer;
-    }
+    final air = await _fanOut(wires, slot: 'status');
+    final report = air.report;
+    final carriedBy = air.carriedBy;
 
     // Push to the super-archivers this operator CHOSE (36.3, 36.4).
     //
@@ -344,17 +476,12 @@ class XprsPublisher {
     p = xprsSign(p, d);
     final wire = p.encode();
 
-    final report = <String, String>{};
-    String? carriedBy;
-    for (final b in bearers) {
-      if (!await b.active) {
-        report[b.name] = 'inactive';
-        continue;
-      }
-      final ok = await b.send(wire, part: 1);
-      report[b.name] = ok ? 'sent' : 'refused';
-      if (ok) carriedBy ??= b.archiveBearer;
-    }
+    // Its OWN slot. This used to fall through to the bearer-side default,
+    // `status`, and a slot is a rotation key on BLE5 — one frame per slot — so
+    // a mailbox declaration evicted the discovery beacon from the air.
+    final air = await _fanOut([wire], slot: 'mailbox');
+    final report = air.report;
+    final carriedBy = air.carriedBy;
     if (carriedBy != null) XprsIngest.own(wire, bearer: carriedBy);
     LogService.instance.add('XPRS: mailbox hold:$hold — '
         '${report.entries.map((e) => "${e.key}:${e.value}").join(", ")}');
@@ -404,17 +531,9 @@ class XprsPublisher {
     if (!p.fits) return const {};
     final wire = p.encode();
 
-    final report = <String, String>{};
-    String? carriedBy;
-    for (final b in bearers) {
-      if (!await b.active) {
-        report[b.name] = 'inactive';
-        continue;
-      }
-      final ok = await b.send(wire, part: 1, slot: 'identity');
-      report[b.name] = ok ? 'sent' : 'refused';
-      if (ok) carriedBy ??= b.archiveBearer;
-    }
+    final air = await _fanOut([wire], slot: 'identity');
+    final report = air.report;
+    final carriedBy = air.carriedBy;
     // 'none' rather than skipping: a period where the identity reached nobody
     // is a fact worth having in the spool.
     XprsIngest.own(wire, bearer: carriedBy ?? 'none');
@@ -451,7 +570,12 @@ class XprsPublisher {
   String? lastWire;
 
   Future<Map<String, String>> publishWire(String wireIn,
-      {String? slot, Duration? ttl, bool verbatim = false}) async {
+      {String? slot,
+      Duration? ttl,
+      bool verbatim = false,
+      /// Test seam: force the section 36.0 path choice. In production the
+      /// choice comes from evidence in [XprsMonitor]; a unit test has no air.
+      @visibleForTesting String? preferForTest}) async {
     LogService.instance.add('XPRS: publishWire <- $wireIn');
     var p = XprsPacket.parse(wireIn.trim());
     if (p == null || !p.fits) {
@@ -470,7 +594,6 @@ class XprsPublisher {
     }
     final wire = p.encode();
     lastWire = wire;
-    final local = xprsScope(p).scope != XprsScope.global;
     // `<type>` alone would still collide across destinations, which is exactly
     // the catch-up sweep's case: N asks, one slot, one survivor.
     final dest = (p['d'] ?? '').toUpperCase();
@@ -483,44 +606,12 @@ class XprsPublisher {
     // which is that same section's own fallback ("Where a station cannot tell
     // which path reaches the asker ... it answers on every bearer it can
     // transmit on").
-    final chosen = _preferredBearer(p, dest);
+    final chosen = preferForTest ?? _preferredBearer(p, dest);
 
-    final report = <String, String>{};
-    String? carriedBy;
+    final air = await _fanOut([wire], slot: useSlot, ttl: ttl, prefer: chosen);
+    final report = air.report;
+    final carriedBy = air.carriedBy;
 
-    Future<bool> tryOne(XprsBearer b) async {
-      if (local && !b.shortRange) {
-        report[b.name] = 'scope';
-        return false;
-      }
-      if (!await b.active) {
-        report[b.name] = 'inactive';
-        return false;
-      }
-      final ok = await b.send(wire, part: 1, slot: useSlot, ttl: ttl);
-      report[b.name] = ok ? 'sent' : 'refused';
-      if (ok) carriedBy ??= b.archiveBearer;
-      return ok;
-    }
-
-    // The chosen path first. If it actually carried the packet the others are
-    // not used -- that is the whole point of choosing. If it did NOT, every
-    // bearer is tried after all: a preference that can turn into silence is not
-    // a preference, and section 36.0's own words are "if the arrival bearer
-    // cannot carry the answer it does not give up".
-    var done = false;
-    if (chosen != null) {
-      final pick = bearers.where((b) => b.name == chosen);
-      if (pick.isNotEmpty) done = await tryOne(pick.first);
-    }
-    for (final b in bearers) {
-      if (done && b.name == chosen) continue;
-      if (done) {
-        report[b.name] = 'unused';
-        continue;
-      }
-      await tryOne(b);
-    }
     final took = carriedBy;
     if (!verbatim && took != null) {
       XprsIngest.own(wire, bearer: took);

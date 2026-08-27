@@ -48,12 +48,6 @@ class XprsIngest {
   /// the catch-up poller advances its watermark on these (36.10.1).
   static void Function(XprsPacket p)? onResult;
 
-  /// A packet from [from] was archived. The catch-up poller uses it to tell a
-  /// pull that returned rows from one that returned nothing -- the signal its
-  /// cadence runs on, and one the delivery hook cannot give it, because a
-  /// broadcast is addressed to nobody.
-  static void Function(String from, int? tsMs)? onArchived;
-
   /// Set by RnsService, which owns the callsign→key map, so a `t:identity`
   /// heard on any bearer lands in the same place a key learned from an
   /// announce does. Same reasoning as [XprsArchive.keyResolver]: this file
@@ -128,6 +122,21 @@ class XprsIngest {
 
   /// A packet heard over the air or over a local link. The complete receive
   /// surface calls this: BLE 0x41, BLE 0x58, and the courier's session lane.
+  /// Is [d] one station, rather than a group or a broadcast?
+  ///
+  /// Section 6.3: a group name is uppercase 1-16 characters and may not look
+  /// like a callsign; section 3 gives callsigns the `X1`/`X3`/`X4`/`X5` prefix
+  /// or an authority-issued form. Only a station has a key to seal to and a
+  /// mailbox to carry toward, so only a station's mail is custody material.
+  static bool _isStationAddr(String d) {
+    final s = d.trim().toUpperCase();
+    if (s.isEmpty) return false;
+    if (s.startsWith('#') || s.startsWith('!')) return false;
+    return RegExp(r'^(X[1345][A-Z0-9]{2,5}|[A-Z0-9]{1,3}[0-9][A-Z0-9]*)'
+            r'(-[0-9]{1,2})?(/[A-Z0-9]+)?$')
+        .hasMatch(s);
+  }
+
   static void heard(
     XprsPacket p, {
     required String bearer,
@@ -194,11 +203,12 @@ class XprsIngest {
     final forUs = _base(p['d'] ?? '').isNotEmpty &&
         _base(p['d'] ?? '') == _base(selfCallsign);
     if ((_archiveOn || forUs) && _worthKeeping(p, forUs: forUs)) {
+      // `admit` only QUEUES. Whoever needs to know a row exists listens to
+      // `XprsArchive.onStored`, which fires from the flush for rows the
+      // transaction actually wrote — a forged packet is dropped there, and a
+      // watermark advanced here would have stepped straight over it.
       XprsArchive.instance
           .admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
-      try {
-        onArchived?.call(from, xprsParseTs(p['ts']));
-      } catch (_) {}
     }
 
     // And DELIVER it. Knowing a message is ours and only filing it is what
@@ -214,6 +224,31 @@ class XprsIngest {
         onDeliver!(p, _archiveBearer(bearer));
       } catch (e) {
         LogService.instance.add('XPRS: delivery failed: $e');
+      }
+    }
+
+    // …and CARRY it when it is somebody else's mail.
+    //
+    // This is the other half of what the funnel owes, and it was missing on
+    // every bearer but one. `onCarry` was called from `XprsIngest.reticulum`
+    // and nowhere else, so a station carried mail that arrived over the
+    // internet and carried nothing at all that arrived over a radio — while
+    // `mesh_service` asserted the opposite in a comment, pointing at a BLE tap
+    // that is wired to subtype 0x41 only. XPRS airs on 0x58, so third-party
+    // mail heard on the XPRS lane was neither parked nor forwarded, and
+    // nothing anywhere said so: custody is invisible when it does not happen,
+    // because nothing is refused.
+    //
+    // Only a 1:1 to a station is custody material — a group is an address
+    // several stations read (6.3) and is aired, not couriered.
+    if (!forUs && p.type == 'message' && onCarry != null) {
+      final target = (p['d'] ?? '').trim();
+      if (_isStationAddr(target)) {
+        try {
+          onCarry!(p.encode(), target.toUpperCase());
+        } catch (e) {
+          LogService.instance.add('XPRS: carry failed: $e');
+        }
       }
     }
 
@@ -509,9 +544,8 @@ class XprsIngest {
       }
       return;
     }
+    // Same rule as the radio lanes: the watermark moves from
+    // `XprsArchive.onStored`, once the row exists.
     XprsArchive.instance.admit(p, bearer: bearer);
-    try {
-      onArchived?.call(fromC, xprsParseTs(p['ts']));
-    } catch (_) {}
   }
 }

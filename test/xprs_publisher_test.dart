@@ -28,12 +28,12 @@ class _FakeBearer implements XprsBearer {
   final List<String> slots = [];
   final List<Duration?> ttls = [];
   @override
-  Future<bool> send(String wire,
+  Future<XprsSendResult> send(String wire,
       {required int part, String slot = 'status', Duration? ttl}) async {
     sent.add(wire);
     slots.add(slot);
     ttls.add(ttl);
-    return true;
+    return XprsSendResult.sent;
   }
 }
 

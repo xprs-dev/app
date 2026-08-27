@@ -1182,6 +1182,94 @@ class RemoteApiService {
           'wire': p.encode(),
         });
       }
+      // What this station is carrying for OTHER people (36.7, 13.3).
+      //
+      // Exposed because custody is invisible when it does not happen: nothing
+      // errors and nothing is refused, so "am I a carrier?" had no answer from
+      // outside the app — which is exactly how the funnel came to carry mail
+      // off the internet lane and nothing off any radio.
+      if (req.method == 'GET' && path == '/api/xprs/held') {
+        final rows = MeshService.instance
+            .held(limit: int.tryParse(req.uri.queryParameters["limit"] ?? "") ?? 50);
+        final self = MeshService.instance.tableCallsign.toUpperCase();
+        final forOthers =
+            rows.where((r) => '${r['target']}'.toUpperCase() != self).toList();
+        return _json(res, {
+          'ok': true,
+          'held': rows.length,
+          'forOthers': forOthers.length,
+          'targets': {
+            for (final t in forOthers.map((r) => '${r['target']}').toSet())
+              t: forOthers.where((r) => '${r['target']}' == t).length
+          },
+          'rows': forOthers.take(20).toList(),
+        });
+      }
+      // ── The bearer switchboard: an instrument, not a feature ────────────
+      //
+      // GET  /api/xprs/bearers            what this station has, and its state
+      // POST /api/xprs/bearers {"disable":["lan"]} / {"enable":["lan"]}
+      //                        {"only":["ble5"]}  everything else off
+      //                        {"reset":true}     all back on
+      //
+      // Taking a lane away while the station keeps running is the only way to
+      // see what it does about it: whether the fallback in the fan-out fires,
+      // whether the message is parked for custody instead, whether the retry
+      // ladder picks it up. Every one of those is invisible when all four
+      // bearers are healthy, which on a bench they always are.
+      //
+      // In memory only — a forgotten switch cannot outlive the process.
+      if (path == '/api/xprs/bearers') {
+        final pub = XprsPublisher.instance;
+        if (req.method == 'POST') {
+          final data = await _body(req);
+          final unknown = <String>[];
+          void apply(Object? list, bool enabled) {
+            for (final e in (list as List?) ?? const []) {
+              if (!pub.setBearerEnabled('$e', enabled)) unknown.add('$e');
+            }
+          }
+
+          if (data['reset'] == true) {
+            for (final b in pub.bearers) {
+              pub.setBearerEnabled(b.name, true);
+            }
+          }
+          if (data['only'] != null) {
+            final keep = ((data['only'] as List?) ?? const [])
+                .map((e) => '$e'.toLowerCase())
+                .toSet();
+            for (final k in keep) {
+              if (!pub.bearers.any((b) => b.name == k)) unknown.add(k);
+            }
+            for (final b in pub.bearers) {
+              pub.setBearerEnabled(b.name, keep.contains(b.name));
+            }
+          }
+          apply(data['enable'], true);
+          apply(data['disable'], false);
+          if (unknown.isNotEmpty) {
+            return _json(res, {
+              'ok': false,
+              'error': 'no such bearer: ${unknown.join(", ")}',
+              'bearers': [for (final b in pub.bearers) b.name],
+            }, status: HttpStatus.badRequest);
+          }
+        }
+        return _json(res, {
+          'ok': true,
+          'bearers': {
+            for (final b in pub.bearers)
+              b.name: {
+                'enabled': pub.isBearerEnabled(b.name),
+                'active': await b.active,
+                'shortRange': b.shortRange,
+                'archiveBearer': b.archiveBearer,
+              }
+          },
+          'disabled': pub.disabledBearers.toList(),
+        });
+      }
       // Configure the super-archivers this station leans on (36.9.4).
       if (req.method == 'POST' && path == '/api/xprs/super') {
         final data = await _body(req);

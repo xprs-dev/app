@@ -49,6 +49,15 @@ thing.
 **Kept in this repo and in `xprs-esp32`, and they must not drift**: `ble5.md`
 and `lan.md` describe transports with an end in each.
 
+### Sending and receiving across bearers
+
+| doc | the sections that matter |
+|---|---|
+| [transports.md](transports.md) | **§2** the three answers a bearer gives, and why `queued` had to exist. **§4** the receive funnel and the third-party mail nobody was carrying — the defect that motivated the whole thing. **§5** the bearer switchboard for testing. **§7** the eight hardware cases. **§8** what is deliberately not done. |
+
+**Before you start**: custody is invisible when it does not happen — nothing
+errors and nothing is refused. `GET /api/xprs/held` is the observable.
+
 ### Private messages, and which radio carries one
 
 | doc | the sections that matter |

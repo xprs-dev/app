@@ -37,11 +37,11 @@ class _RecordingBearer implements XprsBearer {
   final List<String> sent = [];
   final List<Duration?> ttls = [];
   @override
-  Future<bool> send(String wire,
+  Future<XprsSendResult> send(String wire,
       {required int part, String slot = 'status', Duration? ttl}) async {
     sent.add(wire);
     ttls.add(ttl);
-    return true;
+    return XprsSendResult.sent;
   }
 }
 

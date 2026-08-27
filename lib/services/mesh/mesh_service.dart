@@ -228,7 +228,9 @@ class MeshService {
           XprsCatchup.instance.onResult(p);
           XprsFileFetch.instance.onResult(p);
         };
-        XprsIngest.onArchived = XprsCatchup.instance.noteRow;
+        // The catch-up watermark moves when a row is WRITTEN, not when it is
+        // queued — see XprsArchive.onStored.
+        XprsArchive.instance.onStored = XprsCatchup.instance.noteRow;
         // A message addressed to us, heard on ANY bearer, goes to the courier
         // for verification, unsealing and delivery to the inbox. Before this
         // the only route ran through the BLE 0x41 custody tap, so anything a

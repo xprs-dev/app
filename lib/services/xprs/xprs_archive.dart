@@ -188,6 +188,16 @@ class XprsArchive {
 
   /// Write the pending batch, verify signatures, prune. Public so tests and
   /// close() can force it; otherwise the 20 s timer calls it.
+  /// A row that is now ACTUALLY in the table: the sender's base callsign and
+  /// the packet's `ts:`.
+  ///
+  /// Fired here rather than at [admit], which only queues. The catch-up sweep
+  /// advances a watermark on this, and firing it at admit time advanced it past
+  /// packets the flush then dropped — a forged signature is discarded a few
+  /// lines below — so the sweep believed it held history it had never stored,
+  /// and stopped asking for it.
+  void Function(String fromBase, int? tsMs)? onStored;
+
   void flush({int? nowMs}) {
     final db = _db;
     if (db == null || _pending.isEmpty) {
@@ -195,6 +205,9 @@ class XprsArchive {
       return;
     }
     final batch = List.of(_pending);
+    // Collected during the write and fired after the transaction, so a hook
+    // that throws cannot leave the batch half-committed.
+    final stored = <MapEntry<String, int?>>[];
     _pending.clear();
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
     try {
@@ -237,6 +250,7 @@ class XprsArchive {
           }
           final fromc = _base(p['f'] ?? '');
           final toc = _base(p['d'] ?? '');
+          stored.add(MapEntry(fromc, xprsParseTs(p['ts'])));
           ins.execute([
             xprsIdentifier(p),
             e.nowMs,
@@ -266,6 +280,17 @@ class XprsArchive {
       LogService.instance.add('XPRS archive: flush failed: $e');
     }
     _prune(db, nowMs: now);
+    // Only now, and only for rows the transaction actually wrote.
+    final notify = onStored;
+    if (notify != null) {
+      for (final e in stored) {
+        try {
+          notify(e.key, e.value);
+        } catch (_) {
+          // A watermark that throws must not cost the spool its flush.
+        }
+      }
+    }
   }
 
   /// Our base callsign, set by the owner at init/profile switch so `mine` can
