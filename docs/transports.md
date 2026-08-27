@@ -153,13 +153,58 @@ off — Bluetooth only**), desktop (`X16JK8`, LAN only).
 Case 8 is the one to re-run after any change here. It is the whole point, and it
 is the one that fails silently.
 
+## 7a. Closing the custody loop
+
+For a day the store carried and never finished: `parked 1739, custodyOut 0,
+purged 0, delivered 0`. Three faults, one per file.
+
+**The receipt.** Nothing composed a `t:receipt`, so §36.8.1's only terminal
+state had nothing to fire on. `xprs_receipt.dart` composes and reads one under
+§13.7.1's exclusions — never for a group, a broadcast, a regional message, a
+receipt, or a station never exchanged with — and **always signed**, because a
+forged `s:ack` is *"a way to delete a message from the whole mesh, cheaply,
+without holding anyone's key"*. One that does not verify, or whose signer we
+cannot check, changes nothing.
+
+**The release picked the wrong rows.** It inherited `ORDER BY ts LIMIT 256` and
+took four — the four oldest in the whole store, which on a station holding 1,739
+of its own stale rows are all its own. `MeshStore.releasableFor` selects for the
+target, newest first, **carried mail before own**, bounded in bytes, skipping
+anything inside its backoff. A release is an attempt; `relts`/`reln` stop the
+recipient's 30-second beacon re-airing the same mail for ever.
+
+**The release was not a relay.** §36.8.1 requires `via:`, the §13.1 budget and
+the §13.2 loop check. It re-aired verbatim. `xprsMayRelay` and `xprsWouldLoop`
+had zero callers since they were written; they have callers now, here and in
+`XprsForwarder`, which appended `via:` while checking only half the rule.
+
+**And one airtime budget** (`xprs_airtime.dart`) for §31.1's two cross-lane
+rules: the strictest bearer binds, and a retry is not a new packet. One ledger
+keyed on the §5 identifier, so one packet on two lanes is one entry however
+often it is tried. Control packets are never deferred (§31.2). BLE is unmetered
+on the spec's own word — §31.1 puts Bluetooth under *"range, so traffic is
+naturally local and cheap"*; LoRa is the one bound by law.
+
+The receipt then made an older bug audible: `deliverXprs` checked its dedup on
+the way in and nothing recorded the delivery, so the same packet was delivered
+again on every arrival — three identical `s:ack`s inside 150 ms. Bench after the
+fix: **1.0 receipts per delivery**.
+
+    C61      delivered=16   receiptsSent=16   purged=21
+    DESKTOP  delivered=157  receiptsSent=157  purged=22
+    desktop: t:message f:X1VCVM d:X16JK8 … via=X3ARK, bearer=lan
+
+That last line is the chain: a message TANK2 could not deliver — it is BLE-only,
+the desktop LAN-only — carried by C61 across the bearer boundary and delivered
+with the carrier's callsign on it.
+
 ## 8. What is NOT done
 
-- **The airtime budget.** §31.1 requires that a station transmit unsolicited
-  traffic no more often than the **strictest bearer** it is transmitting on
-  allows, and that **a retry is not a new packet**. Both are cross-lane rules;
-  there are eleven independent retry schedulers and no shared budget. Nothing
-  here implements either.
+- **The eleven schedulers still keep their own timers.** `XprsAirtime` and
+  `XprsRetryLedger` exist and the fan-out charges them, but the file fetch, the
+  catch-up ladder, the courier pump and the LXMF retries have not yet been moved
+  onto the shared ledger — so §31.1 is enforced at the point of transmission,
+  not yet at the point of scheduling.
 - **`scope:` by country** (§13.11.2) — needs to know which bearers leave the
   country. Not implemented.
 - **Whether LoRa is a local bearer is an operator setting** (§13.11.1).
