@@ -380,7 +380,7 @@ flowchart TB
 </pre>
     </div>
   </figure>
-  <figcaption><strong>Nobody digipeats BLE.</strong> The firmware's relay engine is wired into LAN, LoRa and ESP-NOW; the BLE bearer does not include it, and the app does not relay on any bearer. On the busiest off-grid lane a packet travels one radio hop, and everything past that is custody.</figcaption>
+  <figcaption><strong>Nobody digipeats BLE</strong> — the firmware's relay engine is wired into LAN, LoRa and ESP-NOW, and the app does not relay on any bearer. <strong>Custody bridges the bearers anyway.</strong> Measured: a message from a Bluetooth-only phone reached a LAN-only desktop in under 20&nbsp;s as <code>f:X1VCVM d:X16JK8 … via:X3ARK</code> on <code>bearer=lan</code> — author untouched, carrier named, signature still valid because §5 and §9.1 both exclude <code>via:</code>.</figcaption>
 </section>
 
 <section id="f2">
@@ -428,10 +428,9 @@ flowchart LR
     end
 
     subgraph DART["Flutter app"]
-        D1["xprsMayRelay — <b>0 callers</b>"]
-        D2["xprsWouldLoop — <b>0 callers</b>"]
-        D3["xprsAppendVia — 1 caller<br/>XprsForwarder"]
-        D4["§13.2.1 jitter + cancel<br/><b>not implemented</b>"]
+        D1["xprsMayRelay · xprsWouldLoop<br/>called on the CUSTODY hand-off"]
+        D3["xprsAppendVia<br/>release + XprsForwarder"]
+        D4["§13.2.1 jitter + cancel<br/><b>not implemented</b><br/><i>no general digipeat to need it</i>"]
     end
 
     subgraph FW["ESP32 firmware"]
@@ -440,16 +439,15 @@ flowchart LR
         F3["BLE ✗ — does not use the engine"]
     end
 
-    C1 --> D1 & D2 & D3
+    C1 --> D1 & D3
     C2 --> F1 --> F2
     F1 -.-> F3
 
     classDef dead fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
     classDef live fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
     classDef part fill:#FBEFD6,stroke:#A9701A,color:#4A3208
-    class D1,D2,D4,F3 dead
-    class F1,F2 live
-    class D3 part
+    class D4,F3 dead
+    class F1,F2,D1,D3 live
 </pre>
     </div>
   </figure>
@@ -599,9 +597,9 @@ flowchart TD
       <thead><tr><th>§</th><th>rule</th><th>state</th></tr></thead>
       <tbody>
         <tr><td class="res">13.1</td><td>relay budget by packet type</td>
-          <td>in the codec; <strong>no transmit path calls it</strong>. The forwarder appends <code>via:</code> without checking it, though §36.8.1 says it applies</td></tr>
+          <td><strong>applied</strong> on the custody hand-off — the release and the forwarder both call it. Still no general digipeat to apply it to</td></tr>
         <tr><td class="res">13.2</td><td>loop check</td>
-          <td>in the codec, unused; the forwarder re-implements it by hand</td></tr>
+          <td><strong>applied</strong> on the same two paths</td></tr>
         <tr><td class="res">13.2.1</td><td>random wait, cancel on hearing</td>
           <td><strong>not implemented in the app at all</strong>; complete in firmware for LAN, LoRa, ESP-NOW</td></tr>
         <tr><td class="res">13.11.3</td><td>a gateway treats <code>scope:</code> as binding</td>

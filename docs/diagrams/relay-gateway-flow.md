@@ -131,10 +131,9 @@ flowchart LR
     end
 
     subgraph DART["Flutter app"]
-        D1["xprsMayRelay — <b>0 callers</b>"]
-        D2["xprsWouldLoop — <b>0 callers</b>"]
-        D3["xprsAppendVia — 1 caller<br/>XprsForwarder"]
-        D4["§13.2.1 jitter + cancel<br/><b>not implemented</b>"]
+        D1["xprsMayRelay · xprsWouldLoop<br/>called on the CUSTODY hand-off"]
+        D3["xprsAppendVia<br/>release + XprsForwarder"]
+        D4["§13.2.1 jitter + cancel<br/><b>not implemented</b><br/><i>no general digipeat to need it</i>"]
     end
 
     subgraph FW["ESP32 firmware"]
@@ -143,20 +142,18 @@ flowchart LR
         F3["BLE ✗ — does not use the engine"]
     end
 
-    C1 --> D1 & D2 & D3
+    C1 --> D1 & D3
     C2 --> F1 --> F2
     F1 -.-> F3
 
     classDef dead fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
     classDef live fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
     classDef part fill:#FBEFD6,stroke:#A9701A,color:#4A3208
-    class D1,D2,D4,F3 dead
-    class F1,F2 live
-    class D3 part
+    class D4,F3 dead
+    class F1,F2,D1,D3 live
 ```
 
-`xprsMayRelay` and `xprsWouldLoop` are **exercised only by unit tests**. The app
-says so itself, and calls it a decision rather than a gap
+The app does not digipeat, and says so itself — a decision rather than a gap
 (`lib/services/xprs/xprs_lan.dart`):
 
 > This station does not relay. It airs what it composed and it ingests what it
@@ -165,10 +162,17 @@ says so itself, and calls it a decision rather than a gap
 > implementing section 13.2.1 in full (the 200–1200 ms jitter AND the
 > cancel-on-hearing), so it is a **deliberate omission rather than an oversight**.
 
-**One deviation worth naming.** `XprsForwarder` is the single path that appends
-`via:`, and it checks the loop by hand but **never checks the hop budget** —
-while §36.8.1 says of exactly this hand-off that *"the section 13.1 budget and
-the section 13.2 loop check apply"*. Half the rule is applied.
+**Where the §13 rules DO apply is the custody hand-off**, which §36.8.1 requires
+them for: *"`via:` gains the holder's callsign, the section 13.1 budget and the
+section 13.2 loop check apply"*. Both the release and `XprsForwarder` call
+`xprsMayRelay` and `xprsWouldLoop` before appending `via:`. Until recently the
+forwarder checked the loop by hand and skipped the budget entirely — half the
+rule — and the release did neither, re-airing verbatim so a receiver could not
+tell a carried copy from a direct one.
+
+What is still absent is a **general digipeat**: repeating a packet not addressed
+to anyone this station is carrying for. That is what §13.2.1's jitter and cancel
+exist for, and with no such path there is nothing to jitter.
 
 ---
 
