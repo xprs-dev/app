@@ -37,6 +37,35 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
+  test('a big backlog for other targets does not starve the peer here', () {
+    // The bench failure: a phone holding 1,508 in-transit rows handed over
+    // ZERO in every session it opened, because pendingFor took the 256 OLDEST
+    // rows in the whole store and only then filtered for the peer. A message
+    // sent to the neighbour standing right there was parked, taken off the air
+    // for 1:1 delivery, and never handed over.
+    for (var i = 0; i < 400; i++) {
+      store.offer(
+          target: 'XOTHER',
+          sender: 'X1VCVM',
+          wire: _wire('X1VCVM', 'XOTHER', 'old$i'),
+          am: 'old$i',
+          inTransit: true);
+    }
+    expect(
+        store.offer(
+            target: 'X3ARK',
+            sender: 'X1VCVM',
+            wire: _wire('X1VCVM', 'X3ARK', 'hello'),
+            am: 'fresh1',
+            inTransit: true),
+        isTrue);
+
+    final batch = store.pendingFor('X3ARK', null, selfCallsign: 'X1VCVM');
+    expect(batch.map((m) => m.key), contains('fresh1'));
+    // …and the backlog for somebody else is not what we hand this peer.
+    expect(batch.every((m) => m.key.startsWith('fresh')), isTrue);
+  });
+
   test('offer parks once; duplicates rejected by am and by content', () {
     final w = _wire('AAA', 'BBB', 'am:a1b2c3 hello');
     expect(store.offer(target: 'BBB', sender: 'AAA', wire: w, am: 'a1b2c3'),

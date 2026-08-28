@@ -390,41 +390,72 @@ class MeshStore {
     if (db == null) return const [];
     final p = peer.toUpperCase();
     final self = selfCallsign.toUpperCase();
-    final rows = db.select(
-        'SELECT am,target,sender,wire,ts FROM mesh_store WHERE state = 0 '
-        'ORDER BY ts LIMIT 256');
     final out = <MeshPendingMsg>[];
-    for (final r in rows) {
-      final target = r['target'] as String;
-      var give = target == p;
-      if (!give && table != null) {
-        // DIRECT BEATS RELAYED. A neighbour we can hear is the shortest path
-        // there is, and handing its mail to somebody else instead is how a
-        // message went round in a circle: the relay's own route pointed back at
-        // us, our store already held the row, the offer came back "duplicate",
-        // and both copies ended up archived with nobody owing delivery. Only
-        // route through a third party when the target itself is out of reach.
-        final targetIsNeighbour = table.neighbors.keys
-            .any((n) => n.toUpperCase() == target.toUpperCase());
-        final hex = meshHashHex(meshHash(target));
-        final route = table.routes[hex];
-        if (route != null) {
-          give = !targetIsNeighbour && route.viaCallsign.toUpperCase() == p;
-        } else if (self.isNotEmpty &&
-            (r['sender'] as String) == self &&
-            !table.neighbors.keys
-                .any((n) => n.toUpperCase() == target.toUpperCase())) {
-          give = true; // own mail, unreachable target: mule it
-        }
-      }
-      if (!give) continue;
+    final seen = <String>{};
+
+    void take(Row r) {
       final key = r['am'] as String;
+      if (!seen.add(key)) return;
       out.add(MeshPendingMsg(
         am: key.startsWith('c:') ? '' : key,
         key: key,
         wire: Uint8List.fromList(r['wire'] as List<int>),
         ts: r['ts'] as int,
       ));
+    }
+
+    // FRAMES FOR THE PEER ITSELF, SELECTED BY TARGET IN SQL.
+    //
+    // This whole method used to be one `ORDER BY ts LIMIT 256` over the entire
+    // store, filtered for the peer afterwards in Dart — the same defect
+    // `releasableFor` above was rewritten to escape, and for the same reason.
+    // A station holding more than 256 in-transit rows never selected anything
+    // for the peer standing in front of it, because the window was full of
+    // older rows addressed to somebody else. Bench: a phone with 1,508 rows
+    // handed over ZERO across every session it opened, `custodyOut` pinned at
+    // 0, while its neighbour with 19 rows drained normally; a message sent
+    // between the two was parked, taken off the air for 1:1 delivery, and then
+    // never handed over. Direct delivery must not depend on how much unrelated
+    // mail this station happens to be carrying.
+    for (final r in db.select(
+        'SELECT am,target,sender,wire,ts FROM mesh_store '
+        'WHERE state = 0 AND UPPER(target) = ? ORDER BY ts LIMIT ?',
+        [p, max])) {
+      take(r);
+    }
+    if (out.length >= max || table == null) return out;
+
+    // Relayed and mule candidates: everything NOT addressed to the peer, which
+    // only qualifies by consulting the routing table, so it cannot be answered
+    // in SQL. Still bounded — this is a scan, and it runs inside a session
+    // (docs/performance.md section 4.2) — but the bound now costs at most a
+    // relaying opportunity, never a direct delivery.
+    final rows = db.select(
+        'SELECT am,target,sender,wire,ts FROM mesh_store '
+        'WHERE state = 0 AND UPPER(target) <> ? ORDER BY ts LIMIT 256',
+        [p]);
+    for (final r in rows) {
+      final target = r['target'] as String;
+      // DIRECT BEATS RELAYED. A neighbour we can hear is the shortest path
+      // there is, and handing its mail to somebody else instead is how a
+      // message went round in a circle: the relay's own route pointed back at
+      // us, our store already held the row, the offer came back "duplicate",
+      // and both copies ended up archived with nobody owing delivery. Only
+      // route through a third party when the target itself is out of reach.
+      final targetIsNeighbour = table.neighbors.keys
+          .any((n) => n.toUpperCase() == target.toUpperCase());
+      final hex = meshHashHex(meshHash(target));
+      final route = table.routes[hex];
+      var give = false;
+      if (route != null) {
+        give = !targetIsNeighbour && route.viaCallsign.toUpperCase() == p;
+      } else if (self.isNotEmpty &&
+          (r['sender'] as String) == self &&
+          !targetIsNeighbour) {
+        give = true; // own mail, unreachable target: mule it
+      }
+      if (!give) continue;
+      take(r);
       if (out.length >= max) break;
     }
     return out;

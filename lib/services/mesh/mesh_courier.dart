@@ -61,7 +61,9 @@ import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_body.dart';
 import '../xprs/xprs_publisher.dart';
 import '../xprs/xprs_receipt.dart';
+import '../xprs/xprs_id.dart';
 import '../xprs/xprs_packet.dart';
+import '../xprs/xprs_parts.dart';
 import '../xprs/xprs_sig.dart';
 import 'mesh_custody.dart';
 import 'mesh_frame.dart';
@@ -359,8 +361,13 @@ class MeshCourier {
   /// Calling [ingest] from the funnel would recurse, since [_ingestXprs] starts
   /// by calling the funnel; this entry point is the same code with that first
   /// step removed.
+  /// Parts of split messages waiting for their set to complete (section 6.6).
+  /// One table for the whole courier: a set is keyed on `(f, ts)`, so copies of
+  /// the same part arriving over different bearers land in the same set.
+  final XprsPartTable _parts = XprsPartTable();
+
   bool deliverXprs(MeshFrame f, {required String via}) {
-    final p = f.packet!;
+    var p = f.packet!;
     // Cheapest possible first (docs/performance.md 4.2). Everything below is a
     // curve operation or a store write, and this method is reached twice for
     // the same packet by design: the funnel delivers through `onDeliver`, and a
@@ -439,6 +446,37 @@ class MeshCourier {
       // an hour, and every message in between is unreadable.
       unawaited(XprsPublisher.instance.askIdentity(f.from));
       body = '[sealed — no key for ${f.from} yet]';
+    }
+    // SECTION 6.6: A PARTIAL MESSAGE IS NEVER DISPLAYED.
+    //
+    // A long message — and a sealed one reaches the limit sooner, being ~40%
+    // larger than the text it replaces (13.6) — is split into up to nine parts
+    // that each carry `n:i/total` and the full envelope. Every part is a
+    // `t:message`, so every part passed the test above and was delivered as its
+    // own chat entry: one message from a neighbour arrived as four lines of
+    // `n:3/4 x:TH`. Draining a backlog turned that into hundreds of them.
+    //
+    // `XprsPartTable` already implements this clause in full — keyed on
+    // `(f, ts)`, any order, repeats ignored, 10-minute hold, reassembled
+    // identifier — and had no caller anywhere in the tree. This is that caller.
+    // Reassembly is core by architecture (docs/architecture.md): a wapp is
+    // handed a message, never the parts of one.
+    if (p.has('n')) {
+      // A sealed part we could not open is offered as null: the set then cannot
+      // complete, which is correct — half a message with a hole in it is not
+      // the message, and the placeholder text must never be joined in as if it
+      // were the sender's words.
+      final whole = _parts.offer(p,
+          clear: (read.privacy == XprsPrivacy.sealed && !read.readable)
+              ? null
+              : read.clear);
+      if (whole == null) return false; // still short: held, not shown
+      p = whole.packet;
+      body = whole.text;
+      // The set is identified by the packet the parts reassemble into, so the
+      // same message completing twice (aired copy, then custody handover)
+      // collapses onto one entry.
+      if (_alreadyDelivered('id:${xprsIdentifier(p)}')) return false;
     }
     if (body.isEmpty) return false;
 
