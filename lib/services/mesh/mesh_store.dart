@@ -417,10 +417,29 @@ class MeshStore {
     // between the two was parked, taken off the air for 1:1 delivery, and then
     // never handed over. Direct delivery must not depend on how much unrelated
     // mail this station happens to be carrying.
+    //
+    // ORDER: carried before our own, and NEWEST first within each -- the same
+    // clause `releasableFor` above uses, and for the same reason. This used to
+    // be `ORDER BY ts` (oldest first), which meant a message the user had just
+    // typed went to the BACK of everything this station was already carrying
+    // for that peer. Measured on the bench: with 1,258 rows queued for the
+    // peer, C61 -> TANK2 arrived in 6 s (37 rows queued) while TANK2 -> C61 had
+    // not arrived after four minutes. A backlog is not a reason to make the
+    // person in front of you wait.
+    //
+    // Carried first is deliberate and unchanged in spirit: a stranger's mail
+    // has this store and nothing else behind it, our own has the LXMF retry
+    // ladder. What changes is only the order WITHIN each class.
+    //
+    // `rowid DESC` breaks ties: `ts` has second-to-millisecond resolution and a
+    // burst parks several rows inside one tick, so without it "newest" is
+    // whatever sqlite feels like returning. Insertion order is the real
+    // tiebreak and the table has a rowid.
     for (final r in db.select(
         'SELECT am,target,sender,wire,ts FROM mesh_store '
-        'WHERE state = 0 AND UPPER(target) = ? ORDER BY ts LIMIT ?',
-        [p, max])) {
+        'WHERE state = 0 AND UPPER(target) = ? '
+        'ORDER BY (UPPER(sender) = ?) ASC, ts DESC, rowid DESC LIMIT ?',
+        [p, self, max])) {
       take(r);
     }
     if (out.length >= max || table == null) return out;

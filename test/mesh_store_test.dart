@@ -37,6 +37,50 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
+  test('a message typed now is not queued behind the backlog', () {
+    // C61 -> TANK2 arrived in 6 s with 37 rows queued; TANK2 -> C61 had not
+    // arrived after four minutes with 1,258 queued. pendingFor drained
+    // oldest-first, so the newest message shipped last.
+    for (var i = 0; i < 50; i++) {
+      store.offer(
+          target: 'X3ARK',
+          sender: 'X1VCVM',
+          wire: _wire('X1VCVM', 'X3ARK', 'backlog$i'),
+          am: 'old$i',
+          inTransit: true);
+    }
+    store.offer(
+        target: 'X3ARK',
+        sender: 'X1VCVM',
+        wire: _wire('X1VCVM', 'X3ARK', 'just typed'),
+        am: 'fresh',
+        inTransit: true);
+
+    final batch =
+        store.pendingFor('X3ARK', null, max: 4, selfCallsign: 'X1VCVM');
+    expect(batch.map((m) => m.key), contains('fresh'),
+        reason: 'the newest of our own must be in the first batch');
+  });
+
+  test('a stranger\'s mail still goes before our own', () {
+    store.offer(
+        target: 'X3ARK',
+        sender: 'X1VCVM',
+        wire: _wire('X1VCVM', 'X3ARK', 'ours'),
+        am: 'ours',
+        inTransit: true);
+    store.offer(
+        target: 'X3ARK',
+        sender: 'X16JK8',
+        wire: _wire('X16JK8', 'X3ARK', 'carried'),
+        am: 'carried',
+        inTransit: true);
+    final batch =
+        store.pendingFor('X3ARK', null, max: 8, selfCallsign: 'X1VCVM');
+    expect(batch.first.key, 'carried',
+        reason: 'carried mail has only this store behind it');
+  });
+
   test('a big backlog for other targets does not starve the peer here', () {
     // The bench failure: a phone holding 1,508 in-transit rows handed over
     // ZERO in every session it opened, because pendingFor took the 256 OLDEST
