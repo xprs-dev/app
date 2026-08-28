@@ -34,6 +34,7 @@ import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_gossip.dart';
 import '../xprs/xprs_publisher.dart';
 import '../xprs/xprs_receipt.dart';
+import '../xprs/xprs_digipeat.dart';
 import '../xprs/xprs_forwarder.dart';
 import '../../util/nostr_crypto.dart';
 import 'mesh_transfer_scheduler.dart';
@@ -383,6 +384,14 @@ class MeshService {
     XprsIngest.heard(p,
         bearer: 'ble', selfCallsign: t.selfCallsign, rssi: f.rssi);
 
+    // 13.1: "repeats a packet on the medium it heard it". BLE is the one
+    // bearer where not doing so leaves stations unreachable outright — two
+    // phones out of range of each other have no other path — so unlike the
+    // wired bearers this is on by default. Every hearing goes in, duplicates
+    // included, because 13.2.1's cancel is driven by hearing the packet
+    // again while our own copy waits.
+    digipeater.heard(p, utf8.decode(f.data, allowMalformed: true));
+
     // The rest of this is beacon handling, and only a beacon is a beacon.
     if (p.type != 'observation') return;
     _xprsBeaconsHeard++;
@@ -500,6 +509,28 @@ class MeshService {
   ///
   /// `xprsMayRelay` and `xprsWouldLoop` have existed, tested, with zero callers
   /// since they were written. These are the callers.
+  /// 13.2.1's queue for the BLE radio. Wired to the same `_relayable` the
+  /// 36.8.1 release uses, so the hop budget and the loop check are decided in
+  /// one place whether a packet is being carried or merely repeated.
+  late final XprsDigipeater digipeater = XprsDigipeater(
+    relayable: _relayable,
+    enabled: () =>
+        digipeatBle && XprsPublisher.instance.isBearerEnabled('ble5'),
+    air: (wire) async {
+      for (final b in XprsPublisher.instance.bearers) {
+        if (b.name != 'ble5') continue;
+        if (!await b.active) return false;
+        return await b.send(wire, part: 1, slot: 'digi') ==
+            XprsSendResult.sent;
+      }
+      return false;
+    },
+  );
+
+  /// The operator's switch. On by default (see the note at the call site);
+  /// off makes this station an endpoint again without touching the bearer.
+  bool digipeatBle = true;
+
   String? _relayable(String wire) {
     final p = XprsPacket.parse(wire);
     if (p == null) return null;
