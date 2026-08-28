@@ -565,6 +565,21 @@
 "id": "de9780"
 },
 {
+"wire": "t:message f:X1VCVM d:X16JK8 ts:2026-08-28_09:40:00 relay:X3ARK,X3GSLC m:two hops",
+"bytes": 80,
+"id": "ccd6ce"
+},
+{
+"wire": "t:message f:X1VCVM d:X16JK8 ts:2026-08-28_09:40:00 relay:X3ARK,X3GSLC via:X3ARK m:two hops",
+"bytes": 90,
+"id": "ccd6ce"
+},
+{
+"wire": "t:message f:X1VCVM d:X16JK8 ts:2026-08-28_09:40:00 relay:X3ARK,X3GSLC via:X3ARK,X3GSLC m:two hops",
+"bytes": 97,
+"id": "ccd6ce"
+},
+{
 "wire": "t:message f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 dest:37.98,23.73 near:50km until:2026-09-08_00:00:00 q:sign m:are you still in Athens in September?",
 "bytes": 150,
 "id": "766d3e"
@@ -935,6 +950,11 @@
 "id": "7dd702"
 },
 {
+"wire": "t:service f:X3P7QK serve:archive count:1234 fw:1.4.2 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 117,
+"id": "ff8a53"
+},
+{
 "wire": "t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,archive,internet,aprs supply:solar ts:2026-08-08_14:26:40 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 173,
 "id": "049335"
@@ -968,6 +988,11 @@
 "wire": "t:command f:X1BOA3 d:X3RLY7 ts:2026-08-08_14:26:40 cmd:history since:2026-08-04_00:00:00 only:X5A3F2 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 165,
 "id": "ce1ae2"
+},
+{
+"wire": "t:command f:X1BOA3 d:X3RLY7 ts:2026-08-08_14:26:40 cmd:history since:2026-08-04_00:00:00 kind:message sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 166,
+"id": "99d361"
 },
 {
 "wire": "t:command f:X1QZ3N d:X3RLY7 ts:2026-08-08_14:26:40 cmd:file file:nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
@@ -1088,6 +1113,36 @@
 "wire": "t:result f:X4PL3M d:X1A67X ts:2026-08-19_18:41:02 r:44df54 code:200 state:on sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 141,
 "id": "c587af"
+},
+{
+"wire": "t:command f:X1RD89 d:X3P7QK ts:2026-08-20_14:26:40 cmd:update sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 126,
+"id": "a1ea61"
+},
+{
+"wire": "t:command f:X1RD89 d:X3P7QK ts:2026-08-20_14:26:40 cmd:update ver:1.4.2 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 136,
+"id": "ed994f"
+},
+{
+"wire": "t:command f:X1RD89 d:X3P7QK ts:2026-08-20_14:26:40 cmd:update url:http://192.168.1.9/fw/m5-1.4.2.bin sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 165,
+"id": "97b972"
+},
+{
+"wire": "t:result f:X3P7QK d:X1RD89 ts:2026-08-20_14:26:41 r:9f2c41 code:202 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 132,
+"id": "6de002"
+},
+{
+"wire": "t:result f:X3P7QK d:X1RD89 ts:2026-08-20_14:33:12 r:9f2c41 code:200 fw:1.4.2 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 141,
+"id": "6f5604"
+},
+{
+"wire": "t:result f:X3P7QK d:X1RD89 ts:2026-08-20_14:33:12 r:9f2c41 code:500 fw:1.4.1 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK m:rolled back",
+"bytes": 155,
+"id": "f4f0f1"
 },
 {
 "wire": "t:identity f:X5A3F2 ts:2026-08-08_14:26:40 k:npub1qz3n7fu9j9uenmyva7ha6x9eqwymytv2847ccv4vxdmn45y50q7h7k5f nick:lisboa-net sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
@@ -1318,6 +1373,11 @@
 "wire": "t:result f:X3ARC1 d:X1QZ3N ts:2026-08-17_15:04:10 r:5fd021 code:404 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK m:try X3ARC2,X3ARC7",
 "bytes": 152,
 "id": "5b868d"
+},
+{
+"wire": "t:command f:X3ARC1 d:X3ARC2 ts:2026-08-20_08:30:00 cmd:history kind:info,warning,event,status,blog,message since:2026-08-20_06:12:44 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": null,
+"id": "387766"
 },
 {
 "wire": "t:command f:X3ARC1 d:X3ARC2 ts:2026-08-20_08:30:00 cmd:history since:2026-08-20_06:12:44 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",

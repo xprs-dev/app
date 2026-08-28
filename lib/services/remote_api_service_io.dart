@@ -1105,9 +1105,46 @@ class RemoteApiService {
             : (data['private'] == null
                 ? type == 'message'
                 : data['private'] == true);
+        // 13.2.2: the relays the sender asks for, in order. Optional; absent
+        // means the ordinary rules of 13.1/13.2 decide who repeats it.
+        final relay = (data['relay'] ?? '')
+            .toString()
+            .split(',')
+            .map((c) => c.trim().toUpperCase())
+            .where((c) => c.isNotEmpty)
+            .toList();
+        if (relay.isNotEmpty) {
+          // A relay: naming more stations than the budget allows names hops
+          // that can never fire. Refused here rather than discovered on the
+          // air, which is 13.2.2's own advice.
+          if (relay.length > xprsRelayLimit(type)) {
+            return _json(res, {
+              'ok': false,
+              'error': 'relay names ${relay.length} hops; '
+                  '13.1 allows ${xprsRelayLimit(type)} for t:$type'
+            }, status: HttpStatus.badRequest);
+          }
+          if (relay.contains(self.toUpperCase())) {
+            return _json(res,
+                {'ok': false, 'error': 'a sender is not one of its own relays'},
+                status: HttpStatus.badRequest);
+          }
+          if (relay.toSet().length != relay.length) {
+            return _json(res,
+                {'ok': false, 'error': 'a repeated hop can never fire (13.2)'},
+                status: HttpStatus.badRequest);
+          }
+        }
+        final relayField = relay.isEmpty ? '' : ' relay:${relay.join(',')}';
+        // Every hop appends to `via:`, and the sender never sees the packet
+        // that arrives. Leave room for it or the last hop silently refuses to
+        // relay a packet that no longer fits (13.2.2's byte note).
+        final viaRoom = relay.fold<int>(0, (a, c) => a + c.length + 1) +
+            (relay.isEmpty ? 0 : 4);
+
         if (wantPrivate) {
           final head =
-              XprsPacket.parse('t:$type f:$self d:$dest ts:$ts');
+              XprsPacket.parse('t:$type f:$self d:$dest ts:$ts$relayField');
           if (head == null) {
             return _json(res, {'ok': false, 'error': 'malformed'},
                 status: HttpStatus.badRequest);
@@ -1153,11 +1190,18 @@ class RemoteApiService {
           });
         }
 
-        var p = XprsPacket.parse(
-            't:$type f:$self${dest.isEmpty ? '' : ' d:$dest'} ts:$ts m:$text');
+        var p = XprsPacket.parse('t:$type f:$self'
+            '${dest.isEmpty ? '' : ' d:$dest'} ts:$ts$relayField m:$text');
         if (p == null || !p.fits) {
           return _json(res, {'ok': false, 'error': 'malformed or too long'},
               status: HttpStatus.badRequest);
+        }
+        if (p.byteLength + viaRoom > XprsPacket.maxBytes) {
+          return _json(res, {
+            'ok': false,
+            'error': 'too long once every named hop has appended to via:: '
+                '${p.byteLength} + $viaRoom > ${XprsPacket.maxBytes}'
+          }, status: HttpStatus.badRequest);
         }
         // Through the publisher: every bearer this station has, not a radio
         // this endpoint happens to name (36.0). The publisher also signs and
@@ -1656,6 +1700,10 @@ class RemoteApiService {
         'airtime': XprsAirtime.instance.json,
         'retries': XprsRetryLedger.instance.json,
         'receipts': XprsReceiptCounters.json,
+        // 13.2.2 and 13.2.1: what this station repeated, what it stood down
+        // from, and what it refused. Without these a relay that never fires
+        // and a relay that fires and is ignored look identical from outside.
+        'digipeat': MeshService.instance.digipeater.json,
         'courier': {
           'aired': MeshCourierCounters.aired,
           'ingested': MeshCourierCounters.ingested,

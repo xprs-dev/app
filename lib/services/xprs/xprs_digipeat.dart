@@ -163,7 +163,18 @@ class XprsDigipeater {
       _aired[id] = t;
       aired++;
       try {
-        if (!await air(pend.wire)) refused++;
+        if (!await air(pend.wire)) {
+          refused++;
+          LogService.instance.add('XPRS: digipeat $id refused by the radio');
+        } else {
+          // The tail, because `via:` sits at the end of a wire. A digipeater
+          // whose repeats cannot be seen is indistinguishable from one that
+          // never repeats — which is exactly how an hour went into asking
+          // whether a hop had fired.
+          final w = pend.wire;
+          LogService.instance.add('XPRS: digipeat $id aired '
+              '${w.length}B ...${w.substring(w.length > 60 ? w.length - 60 : 0)}');
+        }
       } catch (e) {
         LogService.instance.add('XPRS: digipeat air failed: $e');
       }

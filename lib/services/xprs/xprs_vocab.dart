@@ -67,6 +67,48 @@ bool xprsWouldLoop(XprsPacket p, String self) {
   return xprsVia(p).any((c) => c.toUpperCase() == me);
 }
 
+/// The relays the SENDER asked for, in order (section 13.2.2).
+///
+/// Three fields hold a list of callsigns and they are not the same field:
+/// `relay:` is the route asked for and only the author writes it, `via:` is
+/// the route taken and every relay appends to it, `route:` (section 13.10) is
+/// the route taken as the recipient attested it inside a signature. Asked,
+/// happened, attested.
+List<String> xprsRelay(XprsPacket p) {
+  final v = p['relay'];
+  if (v == null || v.isEmpty) return const [];
+  return v.split(',').where((c) => c.trim().isNotEmpty).toList();
+}
+
+/// The next station [p] asks to relay it, or null when it names none or the
+/// list is spent.
+///
+/// Section 13.2.2: *"The next hop is the first callsign in `relay:` that does
+/// not appear in `via:`."* Nothing is consumed and nothing is rewritten —
+/// `relay:` is inside the signature and the section 5 identifier, so editing
+/// it would change the packet's identity at every hop. `via:` is what
+/// advances.
+String? xprsRelayNext(XprsPacket p) {
+  final asked = xprsRelay(p);
+  if (asked.isEmpty) return null;
+  final taken = xprsVia(p).map((c) => c.trim().toUpperCase()).toSet();
+  for (final hop in asked) {
+    final h = hop.trim().toUpperCase();
+    if (!taken.contains(h)) return h;
+  }
+  return null; // spent: nobody relays
+}
+
+/// Whether [self] is the hop [p] asks for next (section 13.2.2).
+///
+/// Compared whole and case-insensitively, **suffix included** — `X3ARK-9` is a
+/// different device from `X3ARK` (section 3.1), and a sender that writes one
+/// meaning the other has named a station that will never answer.
+bool xprsRelayNextIs(XprsPacket p, String self) {
+  final next = xprsRelayNext(p);
+  return next != null && next == self.trim().toUpperCase();
+}
+
 /// [p] with [self] appended to `via:`, which is what a relay transmits.
 ///
 /// Neither the identifier nor the signature changes, because both are computed

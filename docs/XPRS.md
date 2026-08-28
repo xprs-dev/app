@@ -471,6 +471,7 @@ a message may contain spaces, colons, URLs and any punctuation.
 | `arg` | `words` | its arguments |
 | `code` | `int` | what happened, on a `result` |
 | `near` | `qty` | how close to `dest` counts as arrived (section 13.4) |
+| `relay` | `path` | callsigns the sender asks to relay this packet, in order (section 13.2.2) |
 | `route` | `path` | the route a receipt is acknowledging (section 13.10) |
 | `add` | `enum` | something this packet adds (section 6.5) |
 | `remove` | `enum` | something this packet withdraws (section 6.5) |
@@ -3012,6 +3013,90 @@ This works without a new field because a section 5 identifier is computed with
 the same identifier. "Somebody already said this" is decidable from what is on
 the air.
 
+### 13.2.2 When the sender names the relays
+
+Everything above decides who relays from what a station can see. `relay:` lets
+the sender say it instead:
+
+```
+t:message f:X1VCVM d:X16JK8 ts:2026-08-28_09:40:00 relay:X3ARK,X3GSLC m:two hops
+t:message f:X1VCVM d:X16JK8 ts:2026-08-28_09:40:00 relay:X3ARK,X3GSLC via:X3ARK m:two hops
+t:message f:X1VCVM d:X16JK8 ts:2026-08-28_09:40:00 relay:X3ARK,X3GSLC via:X3ARK,X3GSLC m:two hops
+```
+
+80, 90 and 97 bytes: as sent, after the first named station, after the second.
+The identifier is `ccd6ce` in all three.
+
+**The next hop is the first callsign in `relay:` that does not appear in
+`via:`.** Nothing consumes the list and nothing rewrites it; the two fields
+together say what was asked for and what has happened so far, and the second is
+what advances. Callsigns compare whole and case-insensitively (section 3.0.1),
+suffix included -- `X3ARK-9` is a different device from `X3ARK` (section 3.1),
+and a sender that writes one meaning the other has named a station that will
+never answer.
+
+**A station not named does not relay the packet.** That is the point: on a
+shared bearer where everybody hears everybody, section 13.2.1 leaves exactly one
+relay standing, and which one is a matter of whose random wait was shortest. A
+sender that needs a particular second hop cannot get one by asking the network
+more loudly.
+
+**A station that is named may still decline.** Section 13.12.2 says it of
+mailboxes and it is just as true here: *listing a station is not asking its
+permission*. A named station relays under its own policy and its own airtime
+budget (section 31), and one that carries nothing is still a good citizen.
+
+**Three fields hold a list of callsigns and they are not the same field.**
+`relay:` is the route asked for, and only the author writes it. `via:` is the
+route taken, and every relay appends to it. `route:` (section 13.10) is the
+route taken as the recipient attested it, inside a signature. Asked, happened,
+attested.
+
+`relay:` is covered by `sig:` and is inside the identifier of section 5, which
+`via:` deliberately is not. So a relay cannot quietly rewrite where a packet was
+asked to go, and **a station must never edit `relay:`** -- doing so changes the
+packet's identity at every hop, and every mechanism that recognises a packet by
+its identifier stops working at once. It also follows that **`via:` is not a
+subset of `relay:`** and must never be validated as one: a carrier delivers, a
+station may relay a packet naming nobody, and an older station relays without
+reading the field at all.
+
+**The section 13.1 budget still binds**, counted from `via:` exactly as before.
+A `relay:` naming more stations than the type's budget allows names hops that
+can never fire, and a sender composing one has made an error worth refusing at
+the keyboard rather than discovering on the air.
+
+**Section 13.2.1's cancel does not apply to a named hop.** Under this section at
+most one station is willing to relay at any moment, so there is nothing for the
+cancel to prevent; what it would do instead is let a station outside `relay:`
+silence the one the sender asked for. The random wait still applies, because it
+costs nothing and there is no reason for two mechanisms where one will do.
+
+**Carrying is not relaying, and section 13.3 is not suspended.** A holder may
+deliver a held packet to the station named in `d:`, appending itself to `via:`
+as it always does -- that is the last hop and it is honest. It may not hand the
+packet to another holder while `relay:` names hops that have not happened. Mail
+that cannot move waits, which is what carrying is for.
+
+**Naming stations is not naming bearers.** A named station relays on whatever
+bearers it has, exactly as it would for any other packet. Section 36.0's rule
+about choosing among paths to the same station is unchanged.
+
+A station that does not know this field skips it (section 4) and relays under
+section 13.2 as before, so `relay:` narrows the traffic only among stations that
+understand it. It is a request, not a guarantee, and a sender that needs a
+guarantee does not have one.
+
+Two costs worth stating. The field is carried on every part of a split message
+(section 6.6), and with the `via:` it accumulates a two-hop path adds about
+thirty-six bytes to a packet that has two hundred and fifty -- a sender must
+leave room for a `via:` it will never see. And `relay:` is in the clear beside a
+sealed `x:` body: it says nothing about the message and something about who the
+sender believes can carry it.
+
+Section 13.9 records that each `via:` which arrives is a route that actually
+worked. `relay:` is how a station acts on that knowledge next time.
+
 ### 13.3 Carried messages
 
 A carrier holding a message for a station that is not currently reachable
@@ -4900,7 +4985,7 @@ bearer is the difference between a useful answer and an unusable one.
 `kind:` narrows it to the packet types it names -- one, or a comma-separated list -- each named by the `t:` value it matches:
 
 ```
-159  t:command f:X1BOA3 d:X3RLY7 ts:2026-08-08_14:26:40 cmd:history since:2026-08-04_00:00:00 kind:message sig:<60 characters>
+166  t:command f:X1BOA3 d:X3RLY7 ts:2026-08-08_14:26:40 cmd:history since:2026-08-04_00:00:00 kind:message sig:<60 characters>
 ```
 
 **`only:` and `kind:` are different questions and neither substitutes for the
@@ -6251,7 +6336,7 @@ All other lowercase words are reserved.
 
 Assigned keys: `t`, `f`, `d`, `ts`, `tz`, `q`, `s`, `r`, `n`, `via`, `track`,
 `seq`, `title`, `dest`, `onboard`, `price`, `cw`, `freq`, `bw`, `shift`,
-`urg`, `scope`, `lang`, `nick`, `hold`, `serve`, `cmd`, `arg`, `code`, `near`, `route`, `tone`, `input`, `power`, `mode`, `ch`, `range`, `site`, `supply`, `every`, `for`, `at`, `kind`, `sev`, `rad`, `tag`, `type`, `m`, `file`, `x`, `sig`, `k`, `add`,
+`urg`, `scope`, `lang`, `nick`, `hold`, `serve`, `cmd`, `arg`, `code`, `near`, `route`, `relay`, `tone`, `input`, `power`, `mode`, `ch`, `range`, `site`, `supply`, `every`, `for`, `at`, `kind`, `sev`, `rad`, `tag`, `type`, `m`, `file`, `x`, `sig`, `k`, `add`,
 `remove`, `grant`, `revoke`, `role`, `hide`, `mood`, `only`, `opt`, `vote`, `root`, `size`, `since`, `until`, `pos`, `alt`, `acc`, `spd`, `dir`, `o`, `climb`,
 `temp`, `hum`,
 `intemp`, `inhum`, `wave`, `swell`, `seatemp`, `vis`, `press`, `wind`, `wdir`, `gust`, `rain1`, `rain24`, `solar`, `batt`, `volt`,
@@ -6339,6 +6424,7 @@ packet **250 bytes**, on every transport.
 | `arg` | `words` | its arguments |
 | `code` | `int` | what happened, on a `result` |
 | `near` | `qty` | how close to `dest` counts as arrived (section 13.4) |
+| `relay` | `path` | callsigns the sender asks to relay this packet, in order (section 13.2.2) |
 | `route` | `path` | the route a receipt is acknowledging (section 13.10) |
 | `add` | `enum` | something this packet adds (section 6.5) |
 | `remove` | `enum` | something this packet withdraws (section 6.5) |

@@ -16,6 +16,8 @@ const String ts = '2026-08-27_20:00:00';
 String? relayable(String wire) {
   final p = XprsPacket.parse(wire);
   if (p == null) return null;
+  // Mirrors MeshService._relayable, including 13.2.2's gate.
+  if (xprsRelay(p).isNotEmpty && !xprsRelayNextIs(p, self)) return null;
   if (xprsWouldLoop(p, self)) return null;
   if (!xprsMayRelay(p)) return null;
   final out = xprsAppendVia(p, self);
@@ -151,6 +153,54 @@ void main() {
     hear(msg);
     await advance(2000);
     expect(aired, isEmpty);
+  });
+
+  // ── 13.2.2: the sender names the relays ────────────────────────────────
+  group('a named path', () {
+    const asked = 'relay:$self,X3NEXT';
+
+    test('we relay when we are the hop asked for next', () async {
+      hear('t:message f:X1AAAA d:X1BBBB ts:$ts $asked m:go');
+      await advance(2000);
+      expect(aired, hasLength(1));
+      expect(aired.single, contains('via:$self'));
+      expect(aired.single, contains(asked),
+          reason: 'relay: must travel unchanged — it is inside the identifier');
+    });
+
+    test('we stay quiet when the path does not name us', () async {
+      hear('t:message f:X1AAAA d:X1BBBB ts:$ts relay:X9OTHER,X3NEXT m:go');
+      await advance(2000);
+      expect(aired, isEmpty);
+    });
+
+    test('we stay quiet when named but not yet our turn', () async {
+      hear('t:message f:X1AAAA d:X1BBBB ts:$ts relay:X9FIRST,$self m:go');
+      await advance(2000);
+      expect(aired, isEmpty, reason: 'jumped the queue');
+    });
+
+    test('our turn arrives once the earlier hop has taken it', () async {
+      hear('t:message f:X1AAAA d:X1BBBB ts:$ts relay:X9FIRST,$self '
+          'via:X9FIRST m:go');
+      await advance(2000);
+      expect(aired, hasLength(1));
+      expect(aired.single, contains('via:X9FIRST,$self'));
+    });
+
+    test('a spent path is a terminal state: nobody relays', () async {
+      hear('t:message f:X1AAAA d:X1BBBB ts:$ts relay:X9FIRST,X9SECOND '
+          'via:X9FIRST,X9SECOND m:go');
+      await advance(2000);
+      expect(aired, isEmpty);
+    });
+
+    test('the suffix is part of the callsign (3.1)', () async {
+      // X3SELF-9 is a different device. Naming it must not fire here.
+      hear('t:message f:X1AAAA d:X1BBBB ts:$ts relay:$self-9 m:go');
+      await advance(2000);
+      expect(aired, isEmpty);
+    });
   });
 
   test('the queue is bounded', () async {

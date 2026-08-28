@@ -554,6 +554,14 @@ class MeshService {
     // own outbound never left custody. An author re-sending its own packet
     // airs it exactly as written.
     if ((p['f'] ?? '').trim().toUpperCase() == self) return p.encode();
+    // 13.2.2: when the sender named the relays, only a named one repeats it.
+    //
+    // On a bearer where every station hears every other, 13.2.1 leaves exactly
+    // one relay standing and which one is a matter of whose random wait was
+    // shortest — which is why a second hop could never be arranged before this.
+    // A station not named stays quiet; the list being spent means nobody
+    // relays, which is the terminal state and not an error.
+    if (xprsRelay(p).isNotEmpty && !xprsRelayNextIs(p, self)) return null;
     if (xprsWouldLoop(p, self)) return null; // 13.2: it came through us already
     if (!xprsMayRelay(p)) return null; // 13.1: the type's budget is spent
     final out = xprsAppendVia(p, self);
