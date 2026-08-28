@@ -24,6 +24,10 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 
 import '../../connections/bluetooth/ble5_bus.dart';
+import '../mesh/mesh_custody.dart';
+import '../mesh/mesh_service.dart';
+import '../mesh/mesh_store.dart';
+import '../mesh/mesh_transfer_scheduler.dart';
 import '../../connections/lora/lora_connection.dart';
 import '../../profile/profile_service.dart';
 import '../log_service.dart';
@@ -264,6 +268,49 @@ class XprsPublisher {
 
   bool isBearerEnabled(String name) => !_disabled.contains(name.toLowerCase());
 
+  /// Will a GATT/MSP session carry this to [dest] instead of the air?
+  ///
+  /// Two questions, and both must be yes. *Will the peer take it* is the
+  /// peer's own declaration from its last MSP HELLO, on the very lane that
+  /// would carry it — not a guess from a device class, and it lets a board
+  /// exclude itself, which every ESP32 does today. *Did the queue accept it*
+  /// matters because the store IS the session's outbox: `_drainCustody` pulls
+  /// from it, so a wire that is not in the store is a wire the session will
+  /// never send.
+  ///
+  /// Returns false on any doubt, and false means "air it as before". A wrong
+  /// suppression is silence until the 120 s sweep re-airs it; an unnecessary
+  /// broadcast is one advert. The asymmetry decides the default.
+  bool _sessionTakes(String dest) {
+    final ask = MeshSessionManager.instance.hooks.canTakeCustody;
+    if (ask == null || !ask(dest)) return false;
+    final store = MeshStore.instance;
+    if (!store.ready) return false;
+    final self = MeshService.instance.tableCallsign.trim();
+    if (self.isEmpty) return false;
+    var took = false;
+    for (final w in _sessionPending) {
+      if (store.offer(
+          target: dest,
+          sender: self,
+          wire: Uint8List.fromList(utf8.encode(w)),
+          urg: MeshUrgency.normal,
+          ours: true)) {
+        took = true;
+      }
+    }
+    if (!took) return false;
+    MeshTransferScheduler.instance.pokeFor(dest);
+    LogService.instance.add(
+        'XPRS: $dest is next to us — ${_sessionPending.length} wire(s) handed '
+        'to the session, not aired');
+    return true;
+  }
+
+  /// The wires the current fan-out is placing, so [_sessionTakes] can queue
+  /// every part rather than only the one a bearer happens to be looking at.
+  List<String> _sessionPending = const [];
+
   /// Returns true when the name matched a bearer this station actually has.
   bool setBearerEnabled(String name, bool enabled) {
     final n = name.toLowerCase().trim();
@@ -309,10 +356,37 @@ class XprsPublisher {
     // first wire; every part of a split message repeats the envelope.
     final p0 = XprsPacket.parse(wires.first);
     final local = p0 != null && xprsScope(p0).scope != XprsScope.global;
+    _sessionPending = wires;
+
+    // Who this is for, if it is for one station. Read once: every part of a
+    // split repeats the envelope.
+    final dest = (p0?['d'] ?? '').trim().toUpperCase();
 
     Future<bool> tryOne(XprsBearer b) async {
       if (_disabled.contains(b.name)) {
         report[b.name] = 'disabled';
+        return false;
+      }
+      // A 1:1 to a phone in the room takes the session, not the street.
+      //
+      // The advert window is five seconds a minute shared by every registered
+      // frame, so airing a packet meant for one station spends the whole
+      // room's airtime on two stations' business — a history replay is a dozen
+      // adverts, and past about ten XPRS devices in range that is what makes
+      // the channel unusable for everyone.
+      //
+      // This is the check the custody tap could never make: that tap lives in
+      // BleService.enqueueAdvert, and this bearer calls Ble5Bus.advertiseFrame
+      // directly, so a `cmd:history` went out as a broadcast however wide the
+      // tap's gate was opened. Measured on the bench: both phones reported
+      // ble5:sent and a third station witnessed both asks.
+      //
+      // Only this bearer, so a peer reachable another way still is: the other
+      // lanes are untouched and "no better bearer" holds by itself. And only
+      // when the peer has DECLARED it will take the handover — every ESP32
+      // today says no, so boards need no special-casing.
+      if (b.name == 'ble5' && dest.isNotEmpty && _sessionTakes(dest)) {
+        report[b.name] = 'session';
         return false;
       }
       if (local && !b.shortRange) {
