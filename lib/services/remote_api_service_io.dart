@@ -1683,6 +1683,12 @@ class RemoteApiService {
         'spoolPending': MeshBulkSpool.instance.pendingCount(),
         'transfers': MeshBulkSpool.instance.transfersJson(),
         'dialable': BleService.instance.meshDialable(),
+        // Peers heard recently that CANNOT be dialled, and why. Empty while
+        // beacons keep arriving from nobody dialable is the signature of a
+        // phone whose legacy discovery scan is not hearing any connectable
+        // advert — which is how two phones sat next to each other for hours
+        // with `neighbors: 0`.
+        'undialable': BleService.instance.meshUndialable(),
         // Who may be handed a 1:1 point to point instead of having it aired,
         // and why. `caps` is the peer's own MSP HELLO declaration; `direct` is
         // the decision that suppresses the broadcast. Exposed because the

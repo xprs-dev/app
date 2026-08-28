@@ -127,10 +127,16 @@ class MeshService {
   /// Bump-on-change revision so UI layers can cheaply poll for updates.
   int revision = 0;
 
-  /// Set by BleService: every beacon sighting also registers the sender's
-  /// BLE address as dialable. Vital at fringe — the constantly-rotating
-  /// extended beacon lands where a 200 ms legacy presence advert is missed,
-  /// and a GATT connect needs only the address.
+  /// Set by BleService: a beacon sighting reports that this peer is NEARBY.
+  ///
+  /// It does NOT report where to dial it, and the claim that it did — "a GATT
+  /// connect needs only the address" — was wrong. The address a beacon carries
+  /// is the extended advertising set's MAC, and that set is deliberately
+  /// non-connectable (`Ble5.kt`), so a connect to it ends in
+  /// `GATT_CONNECTION_TIMEOUT(147)` thirty seconds later. Only the peer's own
+  /// connectable presence advert or a completed MSP HELLO gives a dialable
+  /// address; see `BleService._verifiedAddr` and
+  /// `MeshCustodyDelegate.undialableReason`.
   void Function(String callsign, String addr)? onPeerSighting;
 
   /// The live table (null before start). M2 custody reads routes/neighbors.

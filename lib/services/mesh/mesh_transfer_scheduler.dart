@@ -331,13 +331,19 @@ class MeshTransferScheduler {
   }
 
   void _dialTo(String peer, bool Function(String) dial, String why) {
-    _lastDialAttempt = DateTime.now();
     _decide('dialing $peer ($why)');
     LogService.instance.add('Mesh: dialing $peer ($why)');
     if (dial(peer)) {
+      // Only a dial that actually went out counts as an attempt. Stamping
+      // this before the call meant a dial refused SYNCHRONOUSLY every tick
+      // kept _failsafe permanently disarmed — the one thing that would have
+      // noticed work piling up behind a link that never forms.
+      _lastDialAttempt = DateTime.now();
       _dialing = peer.toUpperCase();
       _dialStarted = DateTime.now();
     } else {
+      // The transport refused and has already said why (BleService.meshDial
+      // logs the reason). Back off, but do not pretend a dial happened.
       dialResult(peer, clean: false);
     }
   }

@@ -237,6 +237,33 @@ recognise: `xprsBeaconsHeard`, `beaconsHeard` and `neighbors` pinned at 0 while
 the phone's own beacons go out and stations reply to them. `rxNoSink` in
 section 6 names this state directly.
 
+**The endpoint that makes 1:1 possible is three things, and they came up from
+the wrong place.** `Ble5.startServer()` opens the GATT server, starts the legacy
+connectable presence advert and starts the legacy discovery scan — all three or
+none. It used to be reachable only through `BleService.startScan()`, whose only
+production caller is a wapp's `hal_ble_scan_start`, and which returned early on
+`_central == null` before reaching it. A phone whose chat wapp had Bluetooth off
+therefore aired only the extended set, which is deliberately
+`setConnectable(false)`: no server to dial, no advert to dial it by, and no scan
+to learn anyone else's dialable address. Measured on C61 (nothing) against TANK2
+(all three) on the same build, with both sitting at `custodyIn: 0`,
+`custodyOut: 0` and no session ever formed. It is now armed from `_initBle5` and
+healed on the service heartbeat by `_armGattEndpoint`, for the same reason
+`_scanWatchdog` is not gated on `_scanRefs`: this is core transport, not
+something a wapp asks for. The re-arm is idempotent and must stay that way —
+restarting a healthy advert is what rotates the address (section 2).
+
+**A beacon address is not a dialable address.** The address in an XPRS beacon is
+the extended advertising set's MAC, and that set is non-connectable, so a GATT
+connect to it cannot complete — Android takes thirty seconds to answer
+`GATT_CONNECTION_TIMEOUT(147)`, into logcat, where the app never looks.
+`MeshService.onPeerSighting` filed exactly that address as dialable, so every
+tick dialled an unreachable peer and armed a backoff with no reason recorded.
+Only an address proven by the peer's own connectable presence advert or by a
+completed MSP HELLO (`_verifiedAddr`) is dialled now; the rest are reported
+under `.mesh.undialable` with the reason, and `BleService.meshDial` says why it
+refused instead of returning a bare false into a backoff.
+
 **A frame transmitted once may not arrive.** Register it for minutes and
 refresh. The courier transmits at 0, +90 s and +180 s with a 300 s TTL. The
 earlier wapp-side path appeared reliable because its repeater re-transmitted at
@@ -288,6 +315,16 @@ cached (a status request must not cost a platform-channel round trip):
 | `rxDedup` | suppressed by the 750 ms native window |
 | `scanning` / `wantScan` / `busScanning` | asked-for vs actually registered |
 | `msSinceLastFrame` | silence, in ms |
+| `gattServerUp` | the native FFE0 server is open |
+| `legacyAdvOnAir` | **the connectable presence advert is transmitting** |
+| `legacyAdvFailures` / `legacyAdvLastError` | it was refused, and the `AdvertiseCallback` code (3 = `TOO_MANY_ADVERTISERS`) |
+| `legacyScanning` | the legacy discovery scan that hears other peers' presence adverts |
+
+The last four report the GATT endpoint, and until they existed the fields above
+described the extended broadcast set only — so a phone with no connectable
+advert, no server and no discovery scan looked exactly like a phone in an empty
+room. `legacyAdvOnAir: false` with `advOnAir: true` is the state where this
+device transmits to everyone and can be dialled by nobody.
 
 The composition is the diagnosis. `scanResults` climbing with `rxEmitted` flat
 and `rxNoSink` climbing is a radio that hears perfectly and an app that stopped

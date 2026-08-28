@@ -423,29 +423,99 @@ class BleService {
       };
 
   /// Peers the mesh can currently dial: callsign → freshness.
+  ///
+  /// A peer is only listed once its address is VERIFIED — heard from its own
+  /// connectable presence advert, or proven by an MSP HELLO. A beacon sighting
+  /// files the extended-advert MAC, which is deliberately not connectable
+  /// (`Ble5.kt` setConnectable false), so publishing it here sent the scheduler
+  /// into a 30 s GATT_CONNECTION_TIMEOUT(147) followed by a silent backoff,
+  /// forever, on a peer that was never reachable at that address.
   Map<String, int> meshDialable() {
     final now = DateTime.now().millisecondsSinceEpoch;
     _meshPeers.removeWhere((_, v) => now - v.ms > _meshPeerFreshMs);
-    return {for (final e in _meshPeers.entries) e.key: now - e.value.ms};
+    return {
+      for (final e in _meshPeers.entries)
+        if (MeshCustodyDelegate.undialableReason(
+              callsign: e.key,
+              addr: e.value.addr,
+              verifiedAddr: _verifiedAddr[e.key],
+            ) ==
+            null)
+          e.key: now - e.value.ms,
+    };
+  }
+
+  /// Peers seen recently whose address is not dialable, and why — for the
+  /// diagnostics. Empty here while beacons keep arriving means the legacy
+  /// discovery scan is not hearing anyone's connectable advert.
+  Map<String, String> meshUndialable() {
+    final out = <String, String>{};
+    for (final e in _meshPeers.entries) {
+      final why = MeshCustodyDelegate.undialableReason(
+        callsign: e.key,
+        addr: e.value.addr,
+        verifiedAddr: _verifiedAddr[e.key],
+      );
+      if (why != null) out[e.key] = why;
+    }
+    return out;
   }
 
   /// Dial [callsign] for a mesh custody session. Returns false when the peer
   /// hasn't been seen recently, the radio is busy, or GATT is unavailable.
   bool meshDial(String callsign) {
-    if (!_ble5) return false; // scheduler dialing is native-path only for now
-    if (_ngClientUp || _ngServerCentral != null) return false; // radio busy
-    final p = _meshPeers[callsign.toUpperCase()];
+    final cs = callsign.toUpperCase();
+    final p = _meshPeers[cs];
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (p == null || now - p.ms > _meshPeerFreshMs) return false;
-    _ngClientPeer = p.addr;
+    // SAY WHY. Every one of these used to be a bare `return false`, and the
+    // scheduler answers a bare false by arming a backoff — so a peer that
+    // could never be dialled looked exactly like a peer that was busy, and a
+    // payload waiting for a link that is never attempted is indistinguishable
+    // from one that was sent. Same reason _maybeAutoPair reports its refusals.
+    String? no;
+    if (!_ble5) {
+      no = 'not a BLE5 device';
+    } else if (_ngClientUp || _ngServerCentral != null) {
+      no = 'radio busy (${_ngClientUp ? "client link up" : "serving a central"})';
+    } else if (p == null) {
+      no = 'never seen';
+    } else if (now - p.ms > _meshPeerFreshMs) {
+      no = 'last seen ${(now - p.ms) ~/ 1000}s ago';
+    } else {
+      no = MeshCustodyDelegate.undialableReason(
+        callsign: cs,
+        addr: p.addr,
+        verifiedAddr: _verifiedAddr[cs],
+      );
+    }
+    if (no != null) {
+      _noteDialRefusal(cs, no);
+      return false;
+    }
+    final peer = p!;
+    _ngClientPeer = peer.addr;
     // Freshly-seen peer (seconds) = in solid range: use the fast DIRECT
     // connect. Stale sighting = fringe: background (auto) connect waits at
     // controller level for an ADV_IND the direct window would miss.
-    final fringe = now - p.ms > 10000;
-    _dbg('mesh dial: GATT connect to $callsign (${p.addr}) '
+    final fringe = now - peer.ms > 10000;
+    _dbg('mesh dial: GATT connect to $cs (${peer.addr}) '
         '${fringe ? "auto" : "direct"}');
-    Ble5Bus.instance.gattConnect(p.addr, auto: fringe);
+    _dialRefusals.remove(cs);
+    Ble5Bus.instance.gattConnect(peer.addr, auto: fringe);
     return true;
+  }
+
+  /// Report a dial refusal once, and again only when the reason changes or ten
+  /// minutes pass — the scheduler retries every tick and this must not become
+  /// the log.
+  final Map<String, ({String why, int ms})> _dialRefusals = {};
+
+  void _noteDialRefusal(String cs, String why) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _dialRefusals[cs];
+    if (last != null && last.why == why && now - last.ms < 600000) return;
+    _dialRefusals[cs] = (why: why, ms: now);
+    LogService.instance.add('Mesh: not dialling $cs — $why');
   }
 
   /// All peers currently reachable over the parcel transport (server clients +
@@ -602,6 +672,7 @@ class BleService {
         ..onGattServerDisconnected = _onNgServerDisconnected
         ..startGattEvents();
       _dbg('BLE5 broadcast + native GATT enabled');
+      _armGattEndpoint();
     }
     // Street-mesh node (docs/mesh.md): rides the same BLE5 bus on its own
     // subtype. Non-BLE5 devices still start it as a scan-only leaf so the
@@ -1145,6 +1216,7 @@ class BleService {
     _lastServiceTickMs = DateTime.now().millisecondsSinceEpoch;
     _bcastTick();
     _scanWatchdog();
+    _gattEndpointWatchdog();
     _refreshRadioSnapshot();
     _rxSummaryTick();
   }
@@ -1176,6 +1248,7 @@ class BleService {
     if (_lastServiceTickMs != 0 && age < 6000) return;
     _bcastTick();
     _scanWatchdog();
+    _gattEndpointWatchdog();
     _refreshRadioSnapshot();
     _rxSummaryTick();
   }
@@ -1192,6 +1265,42 @@ class BleService {
     // The legacy discovery scan IS ref-counted: nobody asked for it, nobody
     // pays for it.
     if (_scanRefs > 0 && _central != null && !_scanning) unawaited(_applyScan());
+  }
+
+  /// Bring up (and keep up) the native GATT endpoint: server + legacy
+  /// connectable advert + legacy discovery scan, all three from one call.
+  ///
+  /// CORE, deliberately NOT gated on `_scanRefs` — same reason `_scanWatchdog`
+  /// is not. This used to be reachable only from [startScan], whose only
+  /// production caller is a wapp's `hal_ble_scan_start`, and whose
+  /// `_central == null` early return skipped it even then. A phone whose chat
+  /// wapp had Bluetooth off aired only the NON-connectable extended set: no
+  /// registered GATT server, no connectable advert, no discovery scan, so
+  /// nothing could dial it and it learned no dialable address for anyone else.
+  /// Measured on C61 while TANK2, on the same build with the wapp running, had
+  /// all three. The 1:1 custody lane is a transport, so it comes up with the
+  /// transport.
+  ///
+  /// Idempotent on both sides — the native server is created once and kept,
+  /// and the advert is not restarted while healthy (a restart rotates the
+  /// address, docs/ble5.md section 2) — so this is safe to call on a tick.
+  void _armGattEndpoint() {
+    if (!_ble5) return;
+    final cs = ProfileService.instance.activeProfile?.callsign ?? '';
+    unawaited(Ble5Bus.instance.startServer(cs.isEmpty ? 'AURORA' : cs));
+  }
+
+  int _lastGattArmMs = 0;
+
+  /// Re-arm the endpoint on the heartbeat. Paced at 30 s: the native call is a
+  /// no-op when nothing is wrong, but it is still a platform-channel round
+  /// trip and the tick runs every 2 s.
+  void _gattEndpointWatchdog() {
+    if (!_ble5) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastGattArmMs < 30000) return;
+    _lastGattArmMs = now;
+    _armGattEndpoint();
   }
 
   /// Hold the foreground service for as long as BLE is in use, so the radio
@@ -1237,7 +1346,10 @@ class BleService {
     // Linux/BlueZ.
     final cs = ProfileService.instance.activeProfile?.callsign ?? '';
     if (_ble5) {
-      unawaited(Ble5Bus.instance.startServer(cs.isEmpty ? 'AURORA' : cs));
+      // On BLE5 this is already up from _initBle5 and healed on the tick
+      // (_armGattEndpoint); the call is idempotent and kept here so a wapp
+      // asking for a scan does not have to wait for the next heartbeat.
+      _armGattEndpoint();
     } else if (_gattServer?.isRunning != true) {
       unawaited(_gattServer?.start(cs, advertise: true) ?? Future<void>.value());
     }

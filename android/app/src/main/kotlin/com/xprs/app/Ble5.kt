@@ -211,6 +211,20 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     private var serverCentral: BluetoothDevice? = null
     private var legacyAdvertiser: BluetoothLeAdvertiser? = null
     private var legacyAdvCb: AdvertiseCallback? = null
+    // Health of the LEGACY CONNECTABLE advert — the only advert a peer can
+    // dial. radioStatus() reported the extended set only, so a phone that
+    // failed to start this one looked identical to a phone with nobody
+    // around: no registered GATT server, no connectable advert, and every
+    // dial into it timing out with status 147. Measured on C61 while TANK2,
+    // running the same build, had both.
+    @Volatile private var legacyAdvOnAir = false
+    @Volatile private var legacyAdvLastError: Int? = null
+    private val legacyAdvFailures = java.util.concurrent.atomic.AtomicLong(0)
+    // The callsign the advert on air is carrying, so a re-arm can tell "still
+    // correct, leave it alone" from "the profile changed, restart it".
+    private var legacyAdvCallsign: String? = null
+    // A failed start is retried, but not on every 2 s heartbeat.
+    private var legacyAdvNextTryMs = 0L
     private var legacyScanner: BluetoothLeScanner? = null
     private var legacyScanCb: ScanCallback? = null
     private var serverCallsign: String = "AURORA"
@@ -719,9 +733,11 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     }
 
     // ── GATT client ─────────────────────────────────────────────────────────
-    // Connect to a peer's FFE0 GATT server by address (learned from the extended
-    // scan), so the connectable extended advert above can serve BOTH broadcast
-    // and connections — no legacy advert, no second advertiser.
+    // Connect to a peer's FFE0 GATT server by address. That address must come
+    // from the peer's LEGACY CONNECTABLE presence advert (or from a live MSP
+    // HELLO) — NOT from the extended scan. The extended set is deliberately
+    // setConnectable(false) below, so a connect to an address learned there
+    // can only end in GATT_CONNECTION_TIMEOUT(147) thirty seconds later.
 
     /** Ground truth for the diagnostics: attempted vs refused, heard vs deaf. */
     private fun radioStatus(): Map<String, Any?> = mapOf(
@@ -742,6 +758,15 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         "rxDedup" to rxDedup.get(),
         "scanning" to (scanCallback != null),
         "maxDataLen" to maxDataLen(),
+        // The GATT endpoint: server + connectable advert + discovery scan.
+        // All three come up together in startServer(), and until they were
+        // reported here a phone that had none of them was indistinguishable
+        // from a phone in an empty room.
+        "gattServerUp" to (gattServer != null),
+        "legacyAdvOnAir" to legacyAdvOnAir,
+        "legacyAdvFailures" to legacyAdvFailures.get(),
+        "legacyAdvLastError" to legacyAdvLastError,
+        "legacyScanning" to (legacyScanCb != null),
     )
 
     /// Run [block] on the BLE worker thread and answer the method call from the
@@ -1215,9 +1240,26 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     // broadcast set) so peers can discover and connect. Beacon manufacturer data:
     // [0x3E, deviceId(1..15), callsign...] — the xprs presence format.
 
+    /**
+     * Start (or heal) the connectable presence advert.
+     *
+     * NOT restarted while it is healthy and carrying the right callsign: a
+     * stop/start is what makes Android hand out a fresh random address, and
+     * that address churn is what filled peers' address books with several
+     * addresses for one device (docs/ble5.md section 2). The caller may
+     * therefore invoke this on a heartbeat — it is a no-op until something
+     * actually needs fixing.
+     */
     private fun startLegacyAdvert() {
         if (disposed) return
         val advertiser = adapter?.bluetoothLeAdvertiser ?: return
+        val want = serverCallsign.take(6)
+        if (legacyAdvOnAir && legacyAdvCallsign == want) return // healthy: do not churn
+        val now = System.currentTimeMillis()
+        // A start already in flight (callback registered, no verdict yet) or a
+        // recent failure: let it settle rather than stacking attempts.
+        if (legacyAdvCallsign == want && !legacyAdvOnAir && now < legacyAdvNextTryMs) return
+        legacyAdvNextTryMs = now + 30000
         stopLegacyAdvert()
         val cs = serverCallsign.take(6)
         val csBytes = cs.toByteArray(Charsets.UTF_8)
@@ -1235,13 +1277,29 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             .setIncludeDeviceName(false)
             .build()
         val cb = object : AdvertiseCallback() {
+            override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+                legacyAdvOnAir = true
+                legacyAdvLastError = null
+            }
+
             override fun onStartFailure(errorCode: Int) {
+                legacyAdvOnAir = false
+                legacyAdvLastError = errorCode
+                legacyAdvFailures.incrementAndGet()
+                // errorCode 3 is ADVERTISE_FAILED_TOO_MANY_ADVERTISERS: on a
+                // chipset that grants few instances, the extended broadcast
+                // set can take the last one and this phone is then reachable
+                // by nobody. radioStatus() carries it so it is visible.
                 android.util.Log.e(TAG, "legacy advert failed: $errorCode")
             }
         }
         legacyAdvCb = cb
         legacyAdvertiser = advertiser
+        legacyAdvCallsign = cs
         try { advertiser.startAdvertising(settings, data, cb) } catch (e: Exception) {
+            legacyAdvOnAir = false
+            legacyAdvLastError = -1
+            legacyAdvFailures.incrementAndGet()
             android.util.Log.e(TAG, "startAdvertising: ${e.message}")
         }
     }
@@ -1254,6 +1312,8 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         }
         legacyAdvCb = null
         legacyAdvertiser = null
+        legacyAdvOnAir = false
+        legacyAdvCallsign = null
     }
 
     /** Legacy scan for peers' connectable presence beacons → emit "discovered". */

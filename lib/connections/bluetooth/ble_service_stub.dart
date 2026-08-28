@@ -42,6 +42,7 @@ class BleService {
 
   void Function(Uint8List frame)? onGattRnsFrame;
   Map<String, int> meshDialable() => const {};
+  Map<String, String> meshUndialable() => const {};
   Map<String, dynamic> custodyStatus() => const {};
 
   /// No radio, so nothing is ever next to us: every 1:1 keeps its normal path.

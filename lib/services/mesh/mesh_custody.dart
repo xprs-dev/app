@@ -671,6 +671,32 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
     return (peerCaps & MspCaps.msgCustody) != 0;
   }
 
+  /// Why [addr] cannot be dialled for [callsign], or null when it can — pure,
+  /// so it can be tested without a live radio.
+  ///
+  /// [verifiedAddr] is the address that peer has been PROVEN to answer on: its
+  /// own connectable presence advert, or an MSP HELLO on a live link. A beacon
+  /// sighting is not proof. The address a beacon carries is the extended
+  /// advertising set's MAC, and that set is deliberately `setConnectable(false)`
+  /// (`Ble5.kt`, so it does not starve the connectable advert of an instance) —
+  /// a GATT connect to it cannot complete, and Android takes thirty seconds to
+  /// say so, with `GATT_CONNECTION_TIMEOUT(147)` in logcat and nothing at all
+  /// in the app. Dialling it anyway is how two phones in the same room spent
+  /// hours at `neighbors: 0`: every tick dialled an unreachable address, timed
+  /// out, and armed a backoff nobody could see the reason for.
+  static String? undialableReason({
+    required String callsign,
+    required String addr,
+    required String? verifiedAddr,
+  }) {
+    if (verifiedAddr == addr) return null;
+    if (verifiedAddr == null) {
+      return 'no connectable address — only its beacon MAC, which cannot '
+          'accept a connection';
+    }
+    return 'address $addr unconfirmed';
+  }
+
   /// Ask the scheduler to dial [to] now, at most once per callsign per
   /// [_pokeQuiet].
   ///

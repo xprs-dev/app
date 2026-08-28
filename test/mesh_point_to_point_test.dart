@@ -86,6 +86,44 @@ void main() {
     });
   });
 
+  group('which address may be dialled', () {
+    // The bug this exists for: two phones in one room, `neighbors: 0` for
+    // hours. Every tick dialled the address a beacon carried — the extended
+    // advertising set's MAC, which is setConnectable(false) — and Android took
+    // 30 s to answer GATT_CONNECTION_TIMEOUT(147) into a log nobody read.
+    test('a beacon MAC is refused, and says so', () {
+      final why = MeshCustodyDelegate.undialableReason(
+        callsign: 'X3ARK',
+        addr: 'AA:BB:CC:DD:EE:FF',
+        verifiedAddr: null,
+      );
+      expect(why, isNotNull);
+      expect(why, contains('cannot'));
+    });
+
+    test('an address proven by a presence advert or a HELLO is dialled', () {
+      expect(
+          MeshCustodyDelegate.undialableReason(
+            callsign: 'X3ARK',
+            addr: 'AA:BB:CC:DD:EE:FF',
+            verifiedAddr: 'AA:BB:CC:DD:EE:FF',
+          ),
+          isNull);
+    });
+
+    test('a peer whose address changed under us is refused, not dialled', () {
+      // The extended set rotates its address; the connectable one does not.
+      // A sighting under a new MAC must not overwrite what we proved.
+      final why = MeshCustodyDelegate.undialableReason(
+        callsign: 'X3ARK',
+        addr: '11:22:33:44:55:66',
+        verifiedAddr: 'AA:BB:CC:DD:EE:FF',
+      );
+      expect(why, isNotNull);
+      expect(why, contains('11:22:33:44:55:66'));
+    });
+  });
+
   group('the fallback deadline', () {
     test('is longer than the scheduler is allowed to spend on one dial', () {
       // A dial alone gets 110 s in the scheduler, so a shorter deadline would
