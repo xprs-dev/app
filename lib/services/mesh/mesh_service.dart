@@ -536,6 +536,24 @@ class MeshService {
     if (p == null) return null;
     final self = NostrCrypto.bareCallsign(tableCallsign).toUpperCase();
     if (self.isEmpty) return null;
+    // An author is not one of its own relays.
+    //
+    // 13 defines `via:` as "the list of callsigns that RELAYED the packet",
+    // and a station does not relay what it wrote. Without this the 36.8.1
+    // release put us in the `via:` of our own mail, which is wrong three
+    // ways: it spends one of the three hops 13.1 allows before the packet has
+    // been relayed at all; it makes 13.2's loop check refuse our own retry;
+    // and — the one that cost a night on the bench — it makes an ORIGIN copy
+    // read as relayed, so every digipeater in earshot treats the author
+    // repeating itself as somebody else having carried it and cancels its own
+    // queued repeat under 13.2.1. That is exactly the rule a second hop
+    // depends on.
+    //
+    // Unchanged, NOT refused: this routine is also how the 36.8.1 release airs
+    // held mail, and some of that mail is our own. Refusing it would mean our
+    // own outbound never left custody. An author re-sending its own packet
+    // airs it exactly as written.
+    if ((p['f'] ?? '').trim().toUpperCase() == self) return p.encode();
     if (xprsWouldLoop(p, self)) return null; // 13.2: it came through us already
     if (!xprsMayRelay(p)) return null; // 13.1: the type's budget is spent
     final out = xprsAppendVia(p, self);

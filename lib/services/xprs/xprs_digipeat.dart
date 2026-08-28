@@ -112,8 +112,20 @@ class XprsDigipeater {
     if (id.isEmpty) return;
     _sweep();
 
-    // Somebody else got there first. Only a RELAYED copy says so.
-    if (xprsVia(p).isNotEmpty && _queue.remove(id) != null) {
+    // Somebody ELSE got there first — and "else" is the load-bearing word.
+    //
+    // A non-empty `via:` is not enough to establish it. A station that wrongly
+    // appends itself to the `via:` of its own packet (a defect real phones
+    // shipped with, fixed here in MeshService._relayable and XprsForwarder but
+    // still on the air from anything not yet updated) emits an ORIGIN copy
+    // that reads as relayed. Cancelling on that means every digipeater in the
+    // room stands down when the author merely repeats itself, which is the
+    // opposite of what 13.2.1 asks for: the origin saying it again means
+    // nobody has carried it yet, and that is precisely when we should.
+    final from = (p['f'] ?? '').trim().toUpperCase();
+    final byOthers =
+        xprsVia(p).where((c) => c.trim().toUpperCase() != from).isNotEmpty;
+    if (byOthers && _queue.remove(id) != null) {
       cancelled++;
       LogService.instance.add(
           'XPRS: digipeat $id cancelled — heard it relayed (13.2.1)');

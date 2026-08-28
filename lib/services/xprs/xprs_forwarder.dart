@@ -52,6 +52,25 @@ class XprsForwarder {
       return null; // it already passed through us once (13.2)
     }
 
+    // An author is not one of its own relays (13: `via:` is "the list of
+    // callsigns that RELAYED the packet").
+    //
+    // maybeForward is called on our own freshly authored wire the moment
+    // /api/xprs/send accepts it, so without this the very first directed
+    // message a station sends leaves carrying its own callsign in `via:` —
+    // one of 13.1's three hops spent before it has been relayed once, and an
+    // origin copy that reads as relayed to every digipeater in earshot.
+    //
+    // Note what this costs: the once-per-holder guard above is
+    // `via.contains(selfBase)`, and for our own mail that can no longer fire.
+    // The `_sent` ring below is what stops us forwarding the same packet
+    // twice, and it is in memory only — a restart forgets. That is the right
+    // trade (a duplicate forward is airtime; a burnt hop is a delivery), but
+    // it is a trade and not a free win.
+    if ((p['f'] ?? '').trim().toUpperCase() == selfBase.toUpperCase()) {
+      return null;
+    }
+
     // Where X actually is: the recipient's word, then the freshest sighting.
     final supers = PreferencesService.instanceSync?.xprsSuperArchivers ??
         const <String>[];

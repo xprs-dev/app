@@ -88,6 +88,27 @@ void main() {
     expect(d.cancelled, 0);
   });
 
+  test('an author echoing itself in via: does not cancel ours', () async {
+    // The defect real phones shipped with: the author appends ITSELF to the
+    // `via:` of its own packet. Cancelling on that copy means every digipeater
+    // in the room stands down when the origin merely repeats itself — the
+    // opposite of 13.2.1, which stands down only when somebody ELSE carried it.
+    hear(msg);
+    hear('t:message f:X1AAAA d:X1BBBB ts:$ts via:X1AAAA m:hello');
+    await advance(2000);
+    expect(aired, hasLength(1),
+        reason: "the author's own via: cancelled our relay");
+    expect(d.cancelled, 0);
+  });
+
+  test('the author among others still cancels', () async {
+    hear(msg);
+    hear('t:message f:X1AAAA d:X1BBBB ts:$ts via:X1AAAA,X9OTHER m:hello');
+    await advance(2000);
+    expect(aired, isEmpty);
+    expect(d.cancelled, 1);
+  });
+
   test('our own callsign in via: means hands off (13.2)', () async {
     hear('t:message f:X1AAAA d:X1BBBB ts:$ts via:$self m:hello');
     await advance(2000);
