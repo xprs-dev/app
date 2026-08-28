@@ -39,6 +39,35 @@ void main() {
     });
   });
 
+  group('a FRAGMENT of a wire is protocol too', () {
+    // Tails that lost their t:/f: on the way here, every one of them observed
+    // rendered as somebody's message on the bench.
+    test('the bench residue', () {
+      for (final w in [
+        'x:J6vbktsijxG0-fF8IkmBH9uh69 sig:E^2L#[[TmF6A%) code:202 sO',
+        'sig:OfdVATNg/Jy#!,)JKB+TkUW94WMM4j%C9Ux',
+        's:ack s3',
+        'until:2026-08-28_14:47:50 *D',
+        'x:blob sig:abc until:2026-08-28_14:47:50',
+      ]) {
+        expect(xprsLooksLikeWire(w), isTrue, reason: w);
+      }
+    });
+
+    test('but it is NOT recoverable, so it is dropped rather than mangled', () {
+      expect(xprsNormaliseWire('sig:OfdVATNg/Jy#!'), isNull);
+    });
+
+    test('A REAL MESSAGE CARRIES am: AND MUST SURVIVE', () {
+      // The delivered form is `am:<handle> the words` — this is exactly what
+      // we are trying to show, and a fragment rule that ate it would be worse
+      // than the bug.
+      expect(xprsLooksLikeWire('am:a1b3db ALPHA1'), isFalse);
+      expect(xprsLooksLikeWire('am:7f2c01 see you at the harbour'), isFalse);
+      expect(xprsLooksLikeWire('m:hello there'), isFalse);
+    });
+  });
+
   group("and a person's words are left alone", () {
     test('plain text', () {
       expect(xprsLooksLikeWire('hello, are you still at the harbour?'), isFalse);

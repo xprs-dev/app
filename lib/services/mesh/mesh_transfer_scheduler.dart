@@ -38,6 +38,10 @@ class MeshTransferScheduler {
 
   Timer? _timer;
   final Map<String, DateTime> _nextTry = {};
+
+  /// The part of [_nextTry] that is only politeness after a session that went
+  /// WELL, as opposed to a backoff after one that did not.
+  final Map<String, DateTime> _cleanUntil = {};
   final Map<String, Duration> _backoff = {};
   final Map<String, DateTime> _pendingVisited = {};
 
@@ -135,10 +139,15 @@ class MeshTransferScheduler {
     if (clean) {
       _backoff.remove(p);
       _nextTry[p] = DateTime.now().add(_cleanQuiet);
+      // Politeness, not failure. Recorded apart so a peer we have something to
+      // SAY to is not made to wait out a timer that exists for FETCHING —
+      // see [blocked].
+      _cleanUntil[p] = _nextTry[p]!;
     } else {
       final b = _backoff[p] ?? _backoffMin;
       _nextTry[p] = DateTime.now().add(b);
       _backoff[p] = b * 2 > _backoffMax ? _backoffMax : b * 2;
+      _cleanUntil.remove(p);
     }
   }
 
@@ -206,9 +215,29 @@ class MeshTransferScheduler {
     }
 
     final now = DateTime.now();
-    bool blocked(String peer) {
-      final t = _nextTry[peer.toUpperCase()];
-      return t != null && now.isBefore(t);
+
+    /// Is this peer held off right now?
+    ///
+    /// [toSend] true means we are asking in order to HAND SOMETHING OVER, and
+    /// then the 60 s clean-quiet does not apply. That timer exists so we do not
+    /// keep re-dialling a station to COLLECT mail it does not have for us —
+    /// its own comment names the case, a dongle advertising "24 waiting" for
+    /// seven days. Applying it to our own outbound made a message the user had
+    /// just typed wait up to a minute behind a politeness rule meant for
+    /// strangers. Measured: TANK2 -> C61 took 36 s with an empty backoff and a
+    /// live, healthy session lane.
+    ///
+    /// The FAILURE backoff still applies in both directions, untouched: a peer
+    /// that will not answer is not dialled harder because we are impatient.
+    bool blocked(String peer, {bool toSend = false}) {
+      final p = peer.toUpperCase();
+      final t = _nextTry[p];
+      if (t == null || !now.isBefore(t)) return false;
+      if (!toSend) return true;
+      // The hold came from a clean close when the two stamps are the same one.
+      // Then it is politeness and we may dial to hand something over. Anything
+      // else is a failure backoff and still holds.
+      return _cleanUntil[p] != t;
     }
 
     final table = MeshService.instance.table;
@@ -220,7 +249,7 @@ class MeshTransferScheduler {
     final havePendingBulk = spool.ready && spool.pendingCount() > 0;
     if (havePendingMsgs || havePendingBulk) {
       for (final peer in dialable.keys) {
-        if (blocked(peer)) continue;
+        if (blocked(peer, toSend: true)) continue;
         if (havePendingMsgs &&
             store.pendingFor(peer, table, max: 1).isNotEmpty) {
           _dialTo(peer, dial, 'flush mail');

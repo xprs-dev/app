@@ -75,10 +75,11 @@ class ConversationDb {
   void _purgeProtocolBodiesOnce() {
     try {
       final v = _db.select('PRAGMA user_version').first.columnAt(0) as int;
-      if (v >= 1) return;
+      if (v >= 3) return; // bumped whenever the rule below widens
       final rows = _db.select(
         "SELECT seq, body FROM messages "
-        "WHERE body LIKE '%t:%' AND body LIKE '%f:%'",
+        "WHERE body LIKE '%t:%' OR body LIKE '%sig:%' OR body LIKE '%x:%' "
+        "   OR body LIKE '%s:ack%' OR body LIKE '%until:%' OR body LIKE '%code:%'",
       );
       final doomed = <int>[];
       for (final r in rows) {
@@ -95,7 +96,7 @@ class ConversationDb {
             'Chat: removed ${doomed.length} stored protocol wire(s) that had '
             'been shown as messages');
       }
-      _db.execute('PRAGMA user_version = 1');
+      _db.execute('PRAGMA user_version = 3');
     } catch (_) {
       // A purge that fails must not stop the app opening its conversations.
     }

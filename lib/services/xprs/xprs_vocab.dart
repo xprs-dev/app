@@ -144,8 +144,35 @@ String? xprsNormaliseWire(String content) {
   return '${content.substring(at + 1)} ${content.substring(0, at)}';
 }
 
+/// Field keys that only ever appear in protocol, used to recognise a FRAGMENT
+/// of a wire — a tail that lost its `t:`/`f:` on the way here.
+///
+/// `m:` and `am:` are deliberately absent: a real message is `am:<handle> the
+/// words`, and treating that as protocol would hide exactly what we are trying
+/// to deliver.
+const Set<String> _kXprsFragmentKeys = {
+  'x', 'sig', 'via', 'relay', 'route', 'code', 'until', 'since', 'cmd',
+  'q', 'pos', 'urg', 'ttl', 'hold', 'kind', 'ph',
+};
+
 bool xprsLooksLikeWire(String content) {
   if (content.length < 4) return false;
+  // A FRAGMENT: the leading token is a protocol field and nothing a person
+  // writes starts that way. Bench residue this catches, all of it displayed as
+  // somebody's message until now:
+  //   "x:J6vbktsijxG0-... sig:E^2L#[[TmF6A%) code:202 sO"
+  //   "sig:OfdVATNg/Jy#!,)JKB+TkUW94WMM4j%C9Ux"
+  //   "s:ack s3"        "until:2026-08-28_14:47:50 *D"
+  // One field is enough here — half a wire is not correspondence either, and
+  // requiring two would let `s:ack s3` through.
+  final firstColon = content.indexOf(':');
+  final firstSpace = content.indexOf(' ');
+  if (firstColon > 0 && (firstSpace < 0 || firstColon < firstSpace)) {
+    final k = content.substring(0, firstColon);
+    if (_kXprsFragmentKeys.contains(k) || k == 's' || k == 'r' || k == 'n') {
+      return true;
+    }
+  }
   var sawType = false;
   var sawFrom = false;
   var i = 0;

@@ -373,7 +373,7 @@ class MeshCourier {
   int _joined = 0;
   int _unwrapFailed = 0;
 
-  bool deliverXprs(MeshFrame f, {required String via}) {
+  bool deliverXprs(MeshFrame f, {required String via, int depth = 0}) {
     var p = f.packet!;
     // Cheapest possible first (docs/performance.md 4.2). Everything below is a
     // curve operation or a store write, and this method is reached twice for
@@ -545,13 +545,34 @@ class MeshCourier {
     // to us it lands here again with its own body, which is the person's words
     // and not a wire, and is delivered normally. Terminates because the second
     // pass has a plain body, and a repeat collapses on the identifier dedup.
-    final inner = xprsNormaliseWire(body);
-    if (inner != null) {
-      final ip = XprsPacket.parse(inner);
-      if (ip != null) {
-        XprsIngest.heard(ip,
-            bearer: via,
-            selfCallsign: MeshService.instance.tableCallsign);
+    // GATE ON "IS THIS PROTOCOL", NOT ON "COULD I RECOVER IT".
+    //
+    // These are two different questions and conflating them put this back on
+    // the screen:
+    //   "x:4p01bitRTH9... kind:message since:... sig:... until:... fn"
+    // A fragment like that IS protocol -- xprsLooksLikeWire says so -- but it
+    // carries no `t:`, so xprsNormaliseWire returns null. Filtering only when
+    // the recovery succeeded meant every unrecoverable fragment was delivered
+    // as somebody's message. Unrecoverable is a reason to DROP it, never a
+    // reason to show it.
+    if (xprsLooksLikeWire(body)) {
+      final inner = xprsNormaliseWire(body);
+      // Deliver the inner packet HERE rather than handing it to the ingest
+      // funnel. Routing it to XprsIngest looked tidier and lost the message:
+      // the funnel is about what to do with a packet heard on the air — relay
+      // it, count it, answer it — and nothing in it brings a 1:1 back to this
+      // method. Bench: "joined 1/4 (192B)" with no delivery after it, and
+      // ECHO1 never reached the screen.
+      //
+      // Recursing terminates: each pass strips one layer, and the layer that
+      // holds the person's words has a plain body, which fails the wire test
+      // above and is injected. [depth] is a belt against a crafted packet that
+      // nests wires all the way down.
+      final f2 = (inner != null && depth < 4)
+          ? MeshFrame.parse(Uint8List.fromList(utf8.encode(inner)))
+          : null;
+      if (f2 != null && f2.isXprs) {
+        return deliverXprs(f2, via: via, depth: depth + 1);
       } else {
         _unwrapFailed++;
         if (_unwrapFailed == 1 || _unwrapFailed % 32 == 0) {

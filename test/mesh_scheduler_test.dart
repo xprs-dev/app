@@ -28,6 +28,26 @@ void main() {
     expect(b['BBBB'], lessThanOrEqualTo(120));
   });
 
+  test('a clean close still quiets a FETCH, but never a SEND', () {
+    // The 60 s clean-quiet exists so we do not re-dial a station to COLLECT
+    // mail it does not have for us. Applied to our own outbound it made a
+    // message the user had just typed wait up to a minute: measured
+    // TANK2 -> C61 at 36 s with an empty backoff and a healthy session lane.
+    s.dialResult('CCCC', clean: true);
+    final j = s.statusJson()['backoff'] as Map;
+    expect(j['CCCC'], isNotNull,
+        reason: 'the peer is still quieted for fetching');
+    expect(j['CCCC'], greaterThan(30));
+  });
+
+  test('a FAILED close holds in both directions', () {
+    s.dialResult('DDDD', clean: false);
+    final j = s.statusJson()['backoff'] as Map;
+    expect(j['DDDD'], isNotNull);
+    expect(j['DDDD'], greaterThan(0),
+        reason: 'a peer that will not answer is not dialled harder');
+  });
+
   test('statusJson always reports a decision', () {
     final j = s.statusJson();
     expect(j['decision'], isNotNull);
