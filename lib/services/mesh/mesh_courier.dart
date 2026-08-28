@@ -56,6 +56,7 @@ import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
 import '../../profile/profile_service.dart';
 import '../reticulum/rns_service.dart';
+import '../xprs/xprs_vocab.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_body.dart';
 import '../xprs/xprs_publisher.dart';
@@ -367,6 +368,33 @@ class MeshCourier {
     // to be caught further down, AFTER a signature verify and a sealed-body
     // unseal had both run a second time.
     if (_alreadyDelivered('id:${f.id}')) return false;
+
+    // Only a person's text reaches a person.
+    //
+    // This function ends in RnsService.injectLxmf, which is the inbox chat
+    // renders as correspondence and notifies on — so whatever arrives here
+    // becomes a chat bubble and an Android notification titled with the
+    // sender's callsign. A `cmd:history` ask, a `t:result`, a receipt or an
+    // observation is machine traffic: it must cross the air freely and must
+    // never reach a screen.
+    //
+    // The rule is not new and this is the half that was missing. The custody
+    // ACCEPTANCE side already says it, at mesh_custody.dart's `_isCarriable`:
+    // "Only a 1:1 message is custody material ... an observation, a status or
+    // a poll is aired, not couriered." The delivery side never tested it, and
+    // MSP custody handover (mesh_custody.dart, the `custody delivery from`
+    // branch) calls straight into `ingest` with no type check at all, so any
+    // packet type a peer handed over arrived as somebody's message.
+    //
+    // Neither guard already in the tree could catch it: the host's LXMF filter
+    // sits on the RECEIVE side, and chat's own `t:` prefix test cannot help
+    // because injectLxmf passes the bare `m:` VALUE, not the wire.
+    //
+    // Not sos or warning, though both are worth a person's attention: 13.1
+    // gives them nine relays precisely so they are AIRED rather than carried,
+    // so they do not travel this path and widening it would deliver nothing.
+    if (!xprsRendersToPerson(p)) return false;
+
     final senderNpub = _npubForCallsign(f.from);
 
     // A carried packet passed through hands we do not control. When we hold the

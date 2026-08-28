@@ -28,7 +28,71 @@ List<Map<String, dynamic>> _corpus() {
   return (jsonDecode(f.readAsStringSync()) as List).cast<Map<String, dynamic>>();
 }
 
+// ── Only a person's text reaches a person ────────────────────────────────
+//
+// The mesh is mostly machines: on a four-station bench, 176 observations and
+// 105 catch-up commands against 15 messages. All of it must cross the air —
+// that is what a mesh is — and almost none of it belongs on a screen. This is
+// the rule that decides, and it is tested here rather than through
+// MeshCourier.deliverXprs because that function needs a live Reticulum stack
+// and returns false in a bare test for reasons that have nothing to do with
+// the rule: a test that cannot fail for the right reason proves nothing.
+void _rendersToPerson() {
+  XprsPacket pkt(String w) => XprsPacket.parse(w)!;
+  const ts = '2026-08-28_09:00:00';
+
+  group('what a person is shown', () {
+    test('a message is', () {
+      expect(xprsRendersToPerson(pkt('t:message f:X3ARK d:X16JK8 ts:$ts '
+              'm:are you there')),
+          isTrue);
+    });
+
+    test('a catch-up ask is not', () {
+      expect(
+          xprsRendersToPerson(pkt('t:command f:X3ARK d:X16JK8 ts:$ts '
+              'cmd:history kind:message since:2026-08-26_20:22:14')),
+          isFalse);
+    });
+
+    test('a result is not, even carrying m:', () {
+      // The one machine type with an m: field — the one that would otherwise
+      // have arrived as a bubble reading "try X1AAAA,X1BBBB".
+      expect(
+          xprsRendersToPerson(pkt('t:result f:X3ARK d:X16JK8 ts:$ts '
+              'r:9f2c41 code:404 m:try X1AAAA,X1BBBB')),
+          isFalse);
+    });
+
+    test('an observation is not, even carrying m:', () {
+      expect(
+          xprsRendersToPerson(pkt('t:observation f:X3ARK ts:$ts link:ble '
+              'peers:2 m:on the hill')),
+          isFalse);
+    });
+
+    test('a receipt and an identity are not', () {
+      expect(
+          xprsRendersToPerson(
+              pkt('t:receipt f:X3ARK d:X16JK8 ts:$ts r:9f2c41 s:ack')),
+          isFalse);
+      expect(
+          xprsRendersToPerson(pkt('t:identity f:X3ARK ts:$ts k:npub1abc')),
+          isFalse);
+    });
+
+    test('sos and warning are not couriered — 13.1 airs them', () {
+      // A person wants both. They reach people by being HEARD, with nine
+      // relays, not by being delivered into an inbox.
+      expect(xprsRendersToPerson(pkt('t:sos f:X3ARK ts:$ts m:help')), isFalse);
+      expect(xprsRendersToPerson(pkt('t:warning f:X3ARK ts:$ts m:fire')),
+          isFalse);
+    });
+  });
+}
+
 void main() {
+  _rendersToPerson();
   group('the XPRS codec against the specification', () {
     final corpus = _corpus();
 

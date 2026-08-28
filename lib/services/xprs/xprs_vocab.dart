@@ -67,6 +67,25 @@ bool xprsWouldLoop(XprsPacket p, String self) {
   return xprsVia(p).any((c) => c.toUpperCase() == me);
 }
 
+/// Does this packet carry something a PERSON should be shown?
+///
+/// The mesh is mostly machines talking: on a four-station bench, 176
+/// observations and 105 catch-up commands against 15 messages. All of it must
+/// cross the air freely — that is what a mesh is — and almost none of it
+/// belongs on a screen. A `cmd:history` ask, a `t:result`, a receipt, an
+/// identity or an observation is housekeeping, and rendering it as
+/// correspondence buries the correspondence.
+///
+/// `t:message` is the set, and it is not a new judgement: the custody
+/// acceptance rule already says the same thing in the same words — *"Only a
+/// 1:1 message is custody material … an observation, a status or a poll is
+/// aired, not couriered"*.
+///
+/// Deliberately NOT `sos` and `warning`, though a person certainly wants
+/// those: section 13.1 gives them nine relays so they are **aired**, and they
+/// reach people by being heard rather than by being couriered into an inbox.
+bool xprsRendersToPerson(XprsPacket p) => p.type == 'message';
+
 /// The relays the SENDER asked for, in order (section 13.2.2).
 ///
 /// Three fields hold a list of callsigns and they are not the same field:
