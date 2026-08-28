@@ -997,6 +997,20 @@ class MeshService {
         // session lane and is skipped here.
         final wire = utf8.decode(m.wire, allowMalformed: true);
         if (!wire.startsWith('t:')) continue;
+        // Only mail is released, which is the third place this same rule
+        // belongs and the last one to get it. Custody ACCEPTANCE has said it
+        // since it was written — "an observation, a status or a poll is aired,
+        // not couriered" — and delivery got it when machine packets were
+        // arriving as somebody's chat messages. Releasing had no test at all,
+        // because until now only a t:message could ever be parked.
+        //
+        // It becomes load-bearing the moment anything else can be: a directed
+        // packet handed to the session lane is parked in this same store, and
+        // without this it would be re-aired here as a broadcast, minutes late,
+        // which is precisely the airtime the session lane exists to save.
+        // A no-op today, by construction, and the guard that keeps it one.
+        final held = XprsPacket.parse(wire);
+        if (held == null || held.type != 'message') continue;
         final out = _relayable(wire);
         if (out == null) continue;
         // Attempt recorded BEFORE the air, so a throw or a refused bearer

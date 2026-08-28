@@ -492,10 +492,26 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
     if (from.isEmpty) return false;
 
     if (f.isXprs) {
-      // Only a 1:1 message is custody material. Groups are not carried
-      // (store-and-forward.md §4), and neither is anything else — an
-      // observation, a status or a poll is aired, not couriered.
-      if (f.packet!.type != 'message' || !_isStation(to)) return false;
+      // Only a 1:1 message is CARRIED. Groups are not (store-and-forward.md
+      // §4), and neither is anything else — an observation, a status or a poll
+      // is aired, not couriered.
+      //
+      // But carrying and handing over are different questions, and this test
+      // used to answer both. Anything addressed to one station that is next to
+      // us should go over the session rather than the street: a `cmd:history`
+      // ask, its `t:result`, every replayed row. Those are 1:1 by nature, and
+      // airing them spends the whole room's five-seconds-a-minute advert window
+      // on two stations' business — which past about ten XPRS devices in range
+      // is what makes the channel unusable for everyone.
+      //
+      // So: mail may be parked for later delivery; anything else directed may
+      // only be handed over NOW, to a peer that has declared it will take it.
+      // A peer without the capability — every ESP32 today — fails
+      // _pointToPointTarget below and keeps the broadcast unchanged, with no
+      // special-casing per board.
+      if (!_isStation(to)) return false;
+      final mail = f.packet!.type == 'message';
+      if (!mail && !(outbound && _pointToPointTarget(to))) return false;
     } else {
       // Overheard end-to-end receipt: `?ACK <am> d|r` — the target has it.
       if (text.startsWith('?ACK ')) {
