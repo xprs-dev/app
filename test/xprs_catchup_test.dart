@@ -110,6 +110,89 @@ void main() {
     expect(aired.single, isNot(contains('only:')));
   });
 
+  // ── The loop that ran for hours on the bench ──────────────────────────
+  //
+  // A 206 chain whose page stops moving. `_oldestReplayMs` was cleared only on
+  // 200/404, so across a chain it was a running MINIMUM rather than this
+  // page's oldest: once nothing older arrived it froze, and the continuation
+  // asked an identical window forever. The non-progress branch DID detect it,
+  // logged "made no progress", and then fell through and cleared `_askedAtMs`
+  // anyway — which is what let the next sweep bypass the cadence floor and ask
+  // again immediately. Measured: `until:2026-08-27_18:17:16` five times over,
+  // `since:` never moving, one ask a minute for hours.
+  test('a 206 chain that stops progressing is abandoned, not re-asked', () async {
+    final prefs = PreferencesService.instanceSync!;
+    final before = prefs.xprsCatchupMarks[_station] ?? prefs.xprsCatchupWatermark;
+    final stuck = now - 600000;
+
+    _beacon(now, count: 3);
+    await XprsCatchup.instance.tick(_self);
+    var ask = XprsPacket.parse(aired.last)!;
+
+    // Round one: the page reaches back to `stuck` and the station says more.
+    XprsCatchup.instance.noteReplay(_station, stuck);
+    XprsCatchup.instance.onResult(XprsPacket.parse(
+        't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
+
+    // The continuation goes out at once — that part is deliberate (36.10.1:
+    // the next ask is the continuation of this one).
+    await XprsCatchup.instance.tick(_self);
+    expect(aired, hasLength(2), reason: 'the continuation should follow');
+    ask = XprsPacket.parse(aired.last)!;
+    expect(aired.last, contains('until:'));
+
+    // Round two reaches exactly as far back as round one: no progress.
+    XprsCatchup.instance.noteReplay(_station, stuck);
+    XprsCatchup.instance.onResult(XprsPacket.parse(
+        't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
+
+    // The chain is over. A sweep right now must NOT produce a third ask —
+    // before this fix it did, every minute, indefinitely.
+    await XprsCatchup.instance.tick(_self);
+    expect(aired, hasLength(2),
+        reason: 'a stalled chain re-asked immediately instead of standing down');
+
+    // And nothing was skipped to achieve that.
+    expect(prefs.xprsCatchupMarks[_station] ?? prefs.xprsCatchupWatermark,
+        before,
+        reason: 'abandoning a chain must never advance the watermark');
+  });
+
+  // The cursor is per-ASK, not per-chain. Without clearing it when the ask is
+  // sent, a stale value from an abandoned chain makes the NEXT chain look
+  // stalled on its very first page.
+  test('a later chain is judged on its own page, not the last one', () async {
+    final stuck = now - 600000;
+
+    _beacon(now, count: 3);
+    await XprsCatchup.instance.tick(_self);
+    var ask = XprsPacket.parse(aired.last)!;
+    XprsCatchup.instance.noteReplay(_station, stuck);
+    XprsCatchup.instance.onResult(XprsPacket.parse(
+        't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
+    await XprsCatchup.instance.tick(_self);
+    ask = XprsPacket.parse(aired.last)!;
+    XprsCatchup.instance.noteReplay(_station, stuck);
+    XprsCatchup.instance.onResult(XprsPacket.parse(
+        't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
+    final afterAbandon = aired.length;
+
+    // Much later, a fresh sweep. Its page reaches somewhere new, so this chain
+    // IS progressing and must be allowed to continue.
+    now += const Duration(minutes: 30).inMilliseconds;
+    _beacon(now, count: 9);
+    await XprsCatchup.instance.tick(_self);
+    expect(aired.length, afterAbandon + 1, reason: 'the station was never re-asked');
+    ask = XprsPacket.parse(aired.last)!;
+
+    XprsCatchup.instance.noteReplay(_station, now - 1200000); // older than before
+    XprsCatchup.instance.onResult(XprsPacket.parse(
+        't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
+    await XprsCatchup.instance.tick(_self);
+    expect(aired.length, afterAbandon + 2,
+        reason: 'a progressing chain was mistaken for the stalled one');
+  });
+
   test('206 resumes with until: and does NOT advance the watermark', () async {
     final prefs = PreferencesService.instanceSync!;
     final before = prefs.xprsCatchupMarks[_station] ?? prefs.xprsCatchupWatermark;

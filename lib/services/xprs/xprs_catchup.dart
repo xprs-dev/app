@@ -736,6 +736,15 @@ class XprsCatchup {
     if (_pending.length >= _pendingMax) _pending.remove(_pending.keys.first);
     _pending[id] = _Ask(archiver, now, partial: untilMs != null);
 
+    // This page's oldest row, not the chain's. It was cleared only on 200/404,
+    // which made it a running MINIMUM across a whole 206 chain: once nothing
+    // older arrived it became a constant, the continuation asked the same
+    // `until:` forever, and the pair re-asked each other for hours. Measured on
+    // the bench: `until:2026-08-27_18:17:16` repeated identically five times
+    // while `since:` never moved. `_sawRows` is already cleared per answer, and
+    // this is its missing counterpart.
+    _oldestReplayMs.remove(archiver);
+
     final send = sendOverride ?? XprsPublisher.instance.publishWire;
     await send(wire.toString());
   }
@@ -747,6 +756,20 @@ class XprsCatchup {
     final ask = _pending[r];
     if (ask == null) return;
     final code = int.tryParse(p['code'] ?? '') ?? 0;
+
+    // Judge the page against what is ON DISK, not what happens to have been
+    // flushed. A 12-record page airs over about eighteen seconds and the
+    // archive flushes on a 20 s timer, so the rows regularly arrive in
+    // `onStored` AFTER this method has already decided the page was empty —
+    // and a chain that is genuinely progressing reads as stalled. The serving
+    // side already flushes before it serves, for the mirror-image reason.
+    if (code == 200 || code == 206 || code == 404) {
+      try {
+        XprsArchive.instance.flush();
+      } catch (e) {
+        LogService.instance.add('XPRS catch-up: flush before judging failed: $e');
+      }
+    }
 
     // 429 does not answer the window -- the mark stays exactly where it was --
     // but it is NOT nothing, and treating it as silence is what made a refusal
@@ -779,9 +802,25 @@ class XprsCatchup {
         reached == null ||
         reached != _lastResumeMs[ask.station];
     if (code == 206 && !progressed) {
+      // Detected since it was written, and acted on by nobody: the branch
+      // logged, then fell through and STILL wrote `_resume` and still cleared
+      // `_askedAtMs`, which is what lets the next sweep bypass the cadence
+      // floor. That is the one-ask-per-minute measured on the bench.
+      //
+      // Abandon the chain instead. Nothing advances, so nothing is skipped —
+      // the window stays exactly as unfinished as it was, and the station
+      // returns to its ordinary metered cadence instead of asking again
+      // immediately. A backlog still does not drain; that needs a cursor this
+      // station can trust, and re-asking politely is strictly better than
+      // re-asking every minute.
       LogService.instance.add(
           'XPRS catch-up: ${ask.station} 206 made no progress at '
-          '${_ts(reached!)} — treating as quiet');
+          '${_ts(reached)} — chain abandoned, back to the ordinary cadence');
+      _resume.remove(ask.station);
+      _oldestReplayMs.remove(ask.station);
+      _lastResumeMs.remove(ask.station);
+      _noteAnswer(ask.station, XprsAnswer.quiet);
+      return;
     }
     final served = sawRows && progressed;
     _noteAnswer(
