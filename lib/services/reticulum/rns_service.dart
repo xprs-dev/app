@@ -2262,20 +2262,50 @@ class RnsService {
   }) {
     if (sourceHex.isEmpty || content.isEmpty) return;
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    _lxmfInbox.add({
+    if (!_admitToInbox({
       'from': sourceHex,
       'title': title,
       'content': content,
       'hash': '',
       'ts': nowMs / 1000.0,
       'via': via,
-    });
+    })) {
+      return;
+    }
     _recordLxmf(sourceHex,
         incoming: true, text: content, title: title, tsMs: nowMs);
     _notifyLxmf();
     LogService.instance
         .add('LXMF: carried message from ${sourceHex.substring(0, 8)} '
             '(via $via)');
+  }
+
+  /// Protocol wires refused at the inbox door, for the diagnostics.
+  int inboxRefusedProtocol = 0;
+
+  /// THE ONE DOOR INTO WHAT A PERSON READS.
+  ///
+  /// Everything the chat shows arrives in `_lxmfInbox`: a message delivered
+  /// over Reticulum, and a message the courier carried over the radio. The
+  /// rule that PROTOCOL NEVER REACHES A PERSON therefore belongs here, on the
+  /// door, once.
+  ///
+  /// It was enforced at five different call sites instead — each at the end of
+  /// a different path, each with its own slightly different test — and every
+  /// one of them was a separate bug: one asked "can I recover this wire?"
+  /// instead of "is this a wire?", one wanted `t:` first, one wanted `t:` AND
+  /// `f:` and so missed every fragment. A caller that forgets the rule cannot
+  /// break it from here, and there is one place to correct when the rule is
+  /// wrong.
+  bool _admitToInbox(Map<String, dynamic> row) {
+    final content = (row['content'] ?? '').toString();
+    if (content.isEmpty) return false;
+    if (xprsLooksLikeWire(content)) {
+      inboxRefusedProtocol++;
+      return false;
+    }
+    _lxmfInbox.add(row);
+    return true;
   }
 
   /// Other Reticulum devices ALIVE right now — NOT our XPRS devices and
@@ -3179,7 +3209,7 @@ class RnsService {
               }
               return;
             }
-            _lxmfInbox.add({
+            _admitToInbox({
               'from': _hex(m.sourceHash),
               'title': m.titleString,
               'content': m.contentString,

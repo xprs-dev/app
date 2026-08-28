@@ -1695,6 +1695,10 @@ class RemoteApiService {
         // previous version of this gate read a table that is always empty and
         // there was no way to SEE that from outside the app.
         'custody': BleService.instance.custodyStatus(),
+        // Protocol wires refused at the one door into what a person reads.
+        // Climbing means machinery is still being handed to the chat by some
+        // caller — visible here instead of on somebody's screen.
+        'inboxRefusedProtocol': RnsService.instance.inboxRefusedProtocol,
         // Private-message accounting (docs/XPRS.md section 9.2). `sealedAired`
         // and `sealedUnreadable` are the two halves of "did privacy work": one
         // counts what we sent sealed, the other what reached us sealed and

@@ -371,7 +371,6 @@ class MeshCourier {
   int _delivered = 0;
   int _held = 0;
   int _joined = 0;
-  int _unwrapFailed = 0;
 
   bool deliverXprs(MeshFrame f, {required String via, int depth = 0}) {
     var p = f.packet!;
@@ -545,17 +544,18 @@ class MeshCourier {
     // to us it lands here again with its own body, which is the person's words
     // and not a wire, and is delivered normally. Terminates because the second
     // pass has a plain body, and a repeat collapses on the identifier dedup.
-    // GATE ON "IS THIS PROTOCOL", NOT ON "COULD I RECOVER IT".
+    // UNWRAP a packet that was carried inside another one.
     //
-    // These are two different questions and conflating them put this back on
-    // the screen:
-    //   "x:4p01bitRTH9... kind:message since:... sig:... until:... fn"
-    // A fragment like that IS protocol -- xprsLooksLikeWire says so -- but it
-    // carries no `t:`, so xprsNormaliseWire returns null. Filtering only when
-    // the recovery succeeded meant every unrecoverable fragment was delivered
-    // as somebody's message. Unrecoverable is a reason to DROP it, never a
-    // reason to show it.
-    if (xprsLooksLikeWire(body)) {
+    // The courier carries whatever it was given, and that is sometimes an XPRS
+    // packet wrapped as mail: an outer sealed packet whose plaintext is
+    // another wire. The words the user typed are sealed INSIDE that inner
+    // packet, so unwrapping is how the message is found at all.
+    //
+    // This is only the RECOVERY. Whether protocol may be shown to a person is
+    // not decided here any more — `RnsService` refuses it at the inbox door,
+    // which is the one place every displayed message passes through. A wire
+    // that cannot be recovered simply falls through and is refused there.
+    {
       final inner = xprsNormaliseWire(body);
       // Deliver the inner packet HERE rather than handing it to the ingest
       // funnel. Routing it to XprsIngest looked tidier and lost the message:
@@ -573,15 +573,7 @@ class MeshCourier {
           : null;
       if (f2 != null && f2.isXprs) {
         return deliverXprs(f2, via: via, depth: depth + 1);
-      } else {
-        _unwrapFailed++;
-        if (_unwrapFailed == 1 || _unwrapFailed % 32 == 0) {
-          LogService.instance.add(
-              'Courier: $_unwrapFailed carried wire(s) would not parse — '
-              'not shown, not ingested');
-        }
       }
-      return false; // never correspondence
     }
 
     // DIAGNOSTIC (cheap, coalesced): what actually reaches a person. A carried
