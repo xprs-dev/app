@@ -27,6 +27,8 @@ import 'dart:io';
 import 'package:sqlite3/common.dart';
 
 import '../../profile/profile_db.dart';
+import '../../services/log_service.dart';
+import '../../services/xprs/xprs_vocab.dart';
 import 'conversation_store.dart';
 
 /// Per-thread message cap, mirroring [ConversationStore]'s in-memory cap.
@@ -54,7 +56,49 @@ class ConversationDb {
     final db = openProfileDb(absPath);
     final out = ConversationDb._(db);
     out._migrate();
+    out._purgeProtocolBodiesOnce();
     return out;
+  }
+
+  /// Delete stored bubbles whose text is an XPRS protocol wire. Runs ONCE per
+  /// database, gated on `user_version` the way `MeshStore` does it.
+  ///
+  /// Filtering the inbound path stops new ones; it cannot un-say what is
+  /// already on disk, and two phones were each holding hundreds of bubbles
+  /// reading `x:<sealed> t:message f:X3ARK d:X1VCVM ts:... n:2/3 sig:...`.
+  ///
+  /// SQL narrows first and Dart decides only on what survives, because the
+  /// predicate cannot run in sqlite and loading every row to filter in Dart is
+  /// exactly the shape docs/performance.md section 8.7 blames for an OOM on
+  /// this hardware. `LIKE` on both markers throws nearly everything away
+  /// before a single body is decoded, and the deletes go in one statement.
+  void _purgeProtocolBodiesOnce() {
+    try {
+      final v = _db.select('PRAGMA user_version').first.columnAt(0) as int;
+      if (v >= 1) return;
+      final rows = _db.select(
+        "SELECT seq, body FROM messages "
+        "WHERE body LIKE '%t:%' AND body LIKE '%f:%'",
+      );
+      final doomed = <int>[];
+      for (final r in rows) {
+        final m = _decodeBody(r['body']);
+        if (m == null) continue;
+        if (xprsLooksLikeWire((m['text'] ?? '').toString())) {
+          doomed.add(r['seq'] as int);
+        }
+      }
+      if (doomed.isNotEmpty) {
+        _db.execute(
+            'DELETE FROM messages WHERE seq IN (${doomed.join(",")})');
+        LogService.instance.add(
+            'Chat: removed ${doomed.length} stored protocol wire(s) that had '
+            'been shown as messages');
+      }
+      _db.execute('PRAGMA user_version = 1');
+    } catch (_) {
+      // A purge that fails must not stop the app opening its conversations.
+    }
   }
 
   void _migrate() {

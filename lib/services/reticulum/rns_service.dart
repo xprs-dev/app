@@ -33,8 +33,10 @@ import '../mesh/mesh_service.dart';
 import '../mesh/mesh_courier.dart';
 import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_ingest.dart';
+import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_monitor.dart';
 import '../xprs/xprs_tcp.dart';
+import '../xprs/xprs_vocab.dart';
 import '../files/dht/dht_core.dart' show kDhtAspects;
 import '../files/dht/dht_node.dart';
 import '../files/dht/holder_hint.dart';
@@ -214,6 +216,11 @@ class RnsService {
   // LXMF messaging (interop with Sideband/NomadNet/MeshChat).
   LxmfRouter? _lxmf;
   NomadNode? _nomad; // NomadNet page fetcher
+  /// Protocol wires that reached the inbound funnel and would not parse.
+  /// Exposed because a wire nobody can read is a producer bug somewhere,
+  /// and it must be findable without a build.
+  int lxmfMalformedWires = 0;
+
   final List<Map<String, dynamic>> _lxmfInbox = [];
 
   /// Envelope hashes of LXMF messages already accepted. Retries now re-send
@@ -3140,12 +3147,36 @@ class RnsService {
             // machinery started appearing in people's conversations as
             // "t:result f:X10G3D d:...". A protocol packet the user can read
             // is a bug whichever direction it travelled.
+            //
+            // The test used to be `startsWith('t:')`, and that is exactly how
+            // the bug above kept happening despite the paragraph above it. A
+            // wire whose first field is not `t:` -- observed on the bench as
+            // `x:<sealed> t:message f:X3ARK d:X1VCVM ts:... n:2/3 sig:...` --
+            // failed it, was filed here as ordinary correspondence, and arrived
+            // on the other phone as a chat bubble AND an Android notification.
+            // Hundreds of them. `xprsLooksLikeWire` asks whether the content is
+            // SHAPED like a packet instead of where its first field happens to
+            // sit.
             final xprsWire = m.contentString;
-            if (xprsWire.startsWith('t:')) {
+            if (xprsLooksLikeWire(xprsWire)) {
               try {
                 XprsIngest.reticulum(_hex(m.sourceHash),
                     Uint8List.fromList(utf8.encode(xprsWire)));
               } catch (_) {}
+              // A wire the funnel cannot parse is still not correspondence, so
+              // it stops here either way. Count it and say so ONCE per run of
+              // them: docs/performance.md section 8.7's third shape -- "a guard
+              // that logs every occurrence of something that happens in a loop"
+              // -- is what put a phone into swap, and these arrive in bursts.
+              if (XprsPacket.parse(xprsWire) == null) {
+                lxmfMalformedWires++;
+                if (lxmfMalformedWires == 1 ||
+                    lxmfMalformedWires % 64 == 0) {
+                  LogService.instance.add(
+                      'LXMF: $lxmfMalformedWires protocol wire(s) arrived that '
+                      'do not parse — not shown, not ingested');
+                }
+              }
               return;
             }
             _lxmfInbox.add({

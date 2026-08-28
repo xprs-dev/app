@@ -366,6 +366,13 @@ class MeshCourier {
   /// the same part arriving over different bearers land in the same set.
   final XprsPartTable _parts = XprsPartTable();
 
+  /// How many carried messages we have handed to a person, for the diagnostic
+  /// line below.
+  int _delivered = 0;
+  int _held = 0;
+  int _joined = 0;
+  int _unwrapFailed = 0;
+
   bool deliverXprs(MeshFrame f, {required String via}) {
     var p = f.packet!;
     // Cheapest possible first (docs/performance.md 4.2). Everything below is a
@@ -470,7 +477,23 @@ class MeshCourier {
           clear: (read.privacy == XprsPrivacy.sealed && !read.readable)
               ? null
               : read.clear);
-      if (whole == null) return false; // still short: held, not shown
+      if (whole != null) {
+        _joined++;
+        if (_joined <= 4 || _joined % 32 == 0) {
+          LogService.instance.add(
+              'Courier: joined ${p['n']} from ${f.from} '
+              '(${whole.text.length}B)');
+        }
+      }
+      if (whole == null) {
+        _held++;
+        if (_held <= 3 || _held % 20 == 0) {
+          LogService.instance.add(
+              'Courier: holding part ${p['n']} from ${f.from} — '
+              '${_parts.pending} set(s) incomplete');
+        }
+        return false; // still short: held, not shown
+      }
       p = whole.packet;
       body = whole.text;
       // The set is identified by the packet the parts reassemble into, so the
@@ -506,6 +529,55 @@ class MeshCourier {
       return false;
     }
 
+    // A CARRIED BODY THAT IS ITSELF A WIRE IS PROTOCOL, NOT CORRESPONDENCE.
+    //
+    // The courier carries whatever it was given, and what it is given is
+    // sometimes an XPRS packet wrapped as mail: an outer sealed packet whose
+    // plaintext is another wire. Measured on the bench, reassembled and handed
+    // to a person verbatim:
+    //   "x:iSQKF1iM... t:message f:X3ARK d:X1VCVM ts:... n:4/4 sig:..."
+    // That is where every raw-wire chat bubble came from, and it is also why a
+    // real message never appeared: the text the user typed is sealed INSIDE
+    // that inner packet, and nothing ever opened it.
+    //
+    // So unwrap instead of displaying. The inner packet goes back through the
+    // funnel exactly as if it had been heard on the air; when it is addressed
+    // to us it lands here again with its own body, which is the person's words
+    // and not a wire, and is delivered normally. Terminates because the second
+    // pass has a plain body, and a repeat collapses on the identifier dedup.
+    final inner = xprsNormaliseWire(body);
+    if (inner != null) {
+      final ip = XprsPacket.parse(inner);
+      if (ip != null) {
+        XprsIngest.heard(ip,
+            bearer: via,
+            selfCallsign: MeshService.instance.tableCallsign);
+      } else {
+        _unwrapFailed++;
+        if (_unwrapFailed == 1 || _unwrapFailed % 32 == 0) {
+          LogService.instance.add(
+              'Courier: $_unwrapFailed carried wire(s) would not parse — '
+              'not shown, not ingested');
+        }
+      }
+      return false; // never correspondence
+    }
+
+    // DIAGNOSTIC (cheap, coalesced): what actually reaches a person. A carried
+    // message that never appeared on screen was indistinguishable from one
+    // that was never delivered, because the only thing not logged anywhere on
+    // this path was the content itself. Truncated, and rate-limited to one
+    // line per 20 so a backlog drain cannot flood the ring
+    // (docs/performance.md section 8.7).
+    _delivered++;
+    if (_delivered <= 3 || _delivered % 20 == 0) {
+      // Length, never the words. This line exists to tell "delivered" from
+      // "shown", which it does just as well without putting somebody's private
+      // message into a log that /api/log serves over the LAN.
+      LogService.instance.add(
+          'Courier: #$_delivered to a person from ${f.from} '
+          '(${body.length}B of text)');
+    }
     RnsService.instance
         .injectLxmf(sourceHex: srcHex, content: body, title: '', via: via);
     // REMEMBER it. `_alreadyDelivered` is checked on the way in, but nothing

@@ -86,6 +86,88 @@ bool xprsWouldLoop(XprsPacket p, String self) {
 /// reach people by being heard rather than by being couriered into an inbox.
 bool xprsRendersToPerson(XprsPacket p) => p.type == 'message';
 
+/// Every packet type the specification defines (section 4.2).
+///
+/// The list is CLOSED -- "An unknown type is ignored. It is never an error and
+/// is never displayed as a message." That sentence is the whole reason this set
+/// exists here rather than as a loose string test.
+const Set<String> kXprsTypes = {
+  'message', 'observation', 'receipt', 'reaction', 'request', 'identity',
+  'track', 'sos', 'info', 'blog', 'poll', 'file', 'report', 'place', 'status',
+  'passage', 'event', 'offer', 'need', 'channel', 'mailbox', 'service',
+  'command', 'result', 'moderate', 'challenge', 'response', 'warning',
+  'ping', 'pong',
+};
+
+/// Is [content] an XPRS protocol wire rather than something a person wrote?
+///
+/// THE POINT: protocol must never reach a screen. Two places used to decide
+/// this with `content.startsWith('t:')` -- `RnsService`'s inbound LXMF handler
+/// and the chat wapp's `lxmf_drain` -- and both were wrong in the same way. A
+/// wire whose first field is not `t:` (observed on the bench:
+/// `x:<sealed> t:message f:X3ARK d:X1VCVM ts:... n:2/3 sig:...`) failed both
+/// tests, was filed in the LXMF inbox as ordinary correspondence, and arrived
+/// as a chat bubble and an Android notification. Hundreds of them.
+///
+/// So this asks the honest question instead of the convenient one: is the text
+/// SHAPED like a packet, wherever its fields happen to sit. A wire always
+/// carries a type from the closed vocabulary and the callsign that sent it, so
+/// `t:<known-type>` plus `f:` is the test. `m:` is deliberately not required --
+/// a sealed packet replaces it with `x:` (section 9.2).
+///
+/// Ordinary writing does not collide with this. A colon in prose ("meet me at
+/// 5: the pub") is not a `t:` token, and a person would have to type both a
+/// real type word and an `f:` callsign to be mistaken for a packet.
+///
+/// Cost: one pass over a string already in memory, no regex, and at most two
+/// short substrings allocated (docs/performance.md section 4.2 -- a cheap call
+/// in a hot loop IS the drain, and this one runs per inbound message).
+/// A wire whose fields are in an order `XprsPacket.parse` will accept, or null
+/// when [content] is not a wire at all.
+///
+/// Section 4 puts `t:` first and every parser in the tree assumes it
+/// (`XprsPacket.parse` returns null otherwise). Wires reach us that do not:
+/// measured on the bench, a carried packet arrived as
+/// `x:<sealed> t:message f:X3ARK d:X1VCVM ts:... n:4/4 sig:...`. Design rule 8
+/// says a receiver is tolerant of what it is given, and the alternative here is
+/// worse than tolerance -- an unparseable wire was shown to the user AS the
+/// message, which is the bug this exists to end.
+///
+/// Rotating rather than reordering: the fields keep their relative order and
+/// only the leading run moves to the back, so nothing is invented and the
+/// packet still carries exactly the fields it arrived with.
+String? xprsNormaliseWire(String content) {
+  if (!xprsLooksLikeWire(content)) return null;
+  if (content.startsWith('t:')) return content;
+  final at = content.indexOf(' t:');
+  if (at < 0) return null;
+  return '${content.substring(at + 1)} ${content.substring(0, at)}';
+}
+
+bool xprsLooksLikeWire(String content) {
+  if (content.length < 4) return false;
+  var sawType = false;
+  var sawFrom = false;
+  var i = 0;
+  while (i < content.length) {
+    var end = content.indexOf(' ', i);
+    if (end < 0) end = content.length;
+    // A field is `key:value`; only two keys interest us, so test the key's
+    // bytes in place and skip everything else without building a string.
+    if (end - i > 2 && content.codeUnitAt(i + 1) == 0x3a /* ':' */) {
+      final k = content.codeUnitAt(i);
+      if (!sawType && k == 0x74 /* t */) {
+        sawType = kXprsTypes.contains(content.substring(i + 2, end));
+      } else if (!sawFrom && k == 0x66 /* f */) {
+        sawFrom = true;
+      }
+      if (sawType && sawFrom) return true;
+    }
+    i = end + 1;
+  }
+  return false;
+}
+
 /// The relays the SENDER asked for, in order (section 13.2.2).
 ///
 /// Three fields hold a list of callsigns and they are not the same field:
