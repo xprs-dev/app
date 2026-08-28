@@ -30,6 +30,44 @@ import 'package:sqlite3/sqlite3.dart';
 
 import '../log_service.dart';
 
+/// One reachability edge: [observer] hears [heard] directly, on [bearer].
+///
+/// The same rows [XprsGossip.whereIs] reads, turned the other way up. That
+/// query answers "who can reach X" -- one hop, about one callsign, which is
+/// all a carrier deciding where to deposit mail ever needs (36.9.4). A path
+/// needs the whole adjacency at once, and this is it.
+///
+/// `direct` marks an edge this station witnessed itself rather than one it
+/// was told about. 10.6.3 is blunt about the difference: a station "may list
+/// callsigns it cannot hear, and nothing here detects that", so a claim is
+/// worth less than a hearing and a reader that cannot tell them apart is
+/// trusting the wrong one.
+class GossipEdge {
+  final String observer;
+  final String heard;
+  final String bearer;
+  final int tsMs;
+  final bool durable; // L2 (radio truth) rather than L3
+  final bool direct; // we are the observer
+  const GossipEdge(
+    this.observer,
+    this.heard,
+    this.bearer,
+    this.tsMs, {
+    this.durable = false,
+    this.direct = false,
+  });
+
+  Map<String, dynamic> json(int nowMs) => {
+    'from': observer,
+    'hears': heard,
+    'link': bearer,
+    'ageS': ((nowMs - tsMs) / 1000).round(),
+    'layer': durable ? 'L2' : 'L3',
+    'direct': direct,
+  };
+}
+
 /// One place a callsign was seen, for routing.
 class GossipSighting {
   final String callsign;
@@ -53,7 +91,14 @@ class XprsGossip {
   /// Bearers that count as radio truth for L2 (36.9.4: short-range only —
   /// `rns`/internet never writes the durable layer).
   static const Set<String> kShortRange = {
-    'ble', 'lan', 'espnow', 'lora', 'wifi', 'vhf', 'uhf', 'hf',
+    'ble',
+    'lan',
+    'espnow',
+    'lora',
+    'wifi',
+    'vhf',
+    'uhf',
+    'hf',
   };
 
   Database? _db;
@@ -73,19 +118,27 @@ class XprsGossip {
     try {
       final db = sqlite3.open(path);
       db.execute('PRAGMA journal_mode=WAL');
-      db.execute('CREATE TABLE IF NOT EXISTS gossip_visits('
-          'callsign TEXT NOT NULL, gateway TEXT NOT NULL,'
-          'bearer TEXT NOT NULL, first_ts INTEGER NOT NULL,'
-          'last_ts INTEGER NOT NULL,'
-          'PRIMARY KEY(callsign, gateway))');
-      db.execute('CREATE INDEX IF NOT EXISTS idx_gv_call_last '
-          'ON gossip_visits(callsign, last_ts)');
-      db.execute('CREATE TABLE IF NOT EXISTS gossip_live('
-          'callsign TEXT NOT NULL, gateway TEXT NOT NULL,'
-          'bearer TEXT NOT NULL, ts INTEGER NOT NULL, signer TEXT NOT NULL,'
-          'PRIMARY KEY(callsign, gateway))');
-      db.execute('CREATE INDEX IF NOT EXISTS idx_gl_call_ts '
-          'ON gossip_live(callsign, ts)');
+      db.execute(
+        'CREATE TABLE IF NOT EXISTS gossip_visits('
+        'callsign TEXT NOT NULL, gateway TEXT NOT NULL,'
+        'bearer TEXT NOT NULL, first_ts INTEGER NOT NULL,'
+        'last_ts INTEGER NOT NULL,'
+        'PRIMARY KEY(callsign, gateway))',
+      );
+      db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_gv_call_last '
+        'ON gossip_visits(callsign, last_ts)',
+      );
+      db.execute(
+        'CREATE TABLE IF NOT EXISTS gossip_live('
+        'callsign TEXT NOT NULL, gateway TEXT NOT NULL,'
+        'bearer TEXT NOT NULL, ts INTEGER NOT NULL, signer TEXT NOT NULL,'
+        'PRIMARY KEY(callsign, gateway))',
+      );
+      db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_gl_call_ts '
+        'ON gossip_live(callsign, ts)',
+      );
       _db = db;
     } catch (e) {
       LogService.instance.add('Gossip: store failed to open: $e');
@@ -99,8 +152,12 @@ class XprsGossip {
 
   /// This station heard [callsign] itself, with no `via:`. The one feed that
   /// needs no signature — our own radio is its own witness.
-  void noteDirect(String callsign, String selfCallsign,
-      {required String bearer, int? nowMs}) {
+  void noteDirect(
+    String callsign,
+    String selfCallsign, {
+    required String bearer,
+    int? nowMs,
+  }) {
     final db = _db;
     if (db == null || callsign.isEmpty || selfCallsign.isEmpty) return;
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
@@ -140,8 +197,13 @@ class XprsGossip {
   /// A verified observation from [observer] whose `hears:` lists callsigns it
   /// hears directly on [link]. [verified] is the packet's signature verdict —
   /// an unsigned or unverifiable claim feeds nothing (36.9.4).
-  void noteHears(String observer, List<String> hears,
-      {required String link, required bool verified, int? nowMs}) {
+  void noteHears(
+    String observer,
+    List<String> hears, {
+    required String link,
+    required bool verified,
+    int? nowMs,
+  }) {
     final db = _db;
     if (db == null || observer.isEmpty || hears.isEmpty) return;
     if (!verified) {
@@ -155,7 +217,8 @@ class XprsGossip {
       return;
     }
     _signerLastMs[observer] = now;
-    if (_signerLastMs.length > 512) _signerLastMs.remove(_signerLastMs.keys.first);
+    if (_signerLastMs.length > 512)
+      _signerLastMs.remove(_signerLastMs.keys.first);
     final radio = kShortRange.contains(link);
     for (final c in hears) {
       final call = c.trim().toUpperCase();
@@ -168,33 +231,42 @@ class XprsGossip {
   }
 
   void _noteLive(
-      Database db, String call, String gw, String bearer, int now, String by) {
+    Database db,
+    String call,
+    String gw,
+    String bearer,
+    int now,
+    String by,
+  ) {
     db.execute(
-        'INSERT INTO gossip_live(callsign,gateway,bearer,ts,signer) '
-        'VALUES(?,?,?,?,?) ON CONFLICT(callsign,gateway) DO UPDATE SET '
-        'bearer=excluded.bearer, ts=MAX(ts, excluded.ts), signer=excluded.signer',
-        [call, gw, bearer, now, by]);
+      'INSERT INTO gossip_live(callsign,gateway,bearer,ts,signer) '
+      'VALUES(?,?,?,?,?) ON CONFLICT(callsign,gateway) DO UPDATE SET '
+      'bearer=excluded.bearer, ts=MAX(ts, excluded.ts), signer=excluded.signer',
+      [call, gw, bearer, now, by],
+    );
     // The per-callsign G cap: stalest beyond G go.
     db.execute(
-        'DELETE FROM gossip_live WHERE callsign=? AND gateway NOT IN '
-        '(SELECT gateway FROM gossip_live WHERE callsign=? '
-        'ORDER BY ts DESC LIMIT ?)',
-        [call, call, liveCapG]);
+      'DELETE FROM gossip_live WHERE callsign=? AND gateway NOT IN '
+      '(SELECT gateway FROM gossip_live WHERE callsign=? '
+      'ORDER BY ts DESC LIMIT ?)',
+      [call, call, liveCapG],
+    );
   }
 
-  void _noteVisit(
-      Database db, String call, String gw, String bearer, int now) {
+  void _noteVisit(Database db, String call, String gw, String bearer, int now) {
     db.execute(
-        'INSERT INTO gossip_visits(callsign,gateway,bearer,first_ts,last_ts) '
-        'VALUES(?,?,?,?,?) ON CONFLICT(callsign,gateway) DO UPDATE SET '
-        'bearer=excluded.bearer, last_ts=MAX(last_ts, excluded.last_ts)',
-        [call, gw, bearer, now, now]);
+      'INSERT INTO gossip_visits(callsign,gateway,bearer,first_ts,last_ts) '
+      'VALUES(?,?,?,?,?) ON CONFLICT(callsign,gateway) DO UPDATE SET '
+      'bearer=excluded.bearer, last_ts=MAX(last_ts, excluded.last_ts)',
+      [call, gw, bearer, now, now],
+    );
     // The K ring: oldest DISTINCT archiver leaves when a new one arrives.
     db.execute(
-        'DELETE FROM gossip_visits WHERE callsign=? AND gateway NOT IN '
-        '(SELECT gateway FROM gossip_visits WHERE callsign=? '
-        'ORDER BY last_ts DESC LIMIT ?)',
-        [call, call, visitRingK]);
+      'DELETE FROM gossip_visits WHERE callsign=? AND gateway NOT IN '
+      '(SELECT gateway FROM gossip_visits WHERE callsign=? '
+      'ORDER BY last_ts DESC LIMIT ?)',
+      [call, call, visitRingK],
+    );
   }
 
   /// TTL for L3 and the byte budget, at most once a minute, on the insert
@@ -202,18 +274,21 @@ class XprsGossip {
   void _maybeSweep(Database db, int now) {
     if (now - _lastSweepMs < 60000) return;
     _lastSweepMs = now;
-    db.execute('DELETE FROM gossip_live WHERE ts < ?',
-        [now - liveTtl.inMilliseconds]);
+    db.execute('DELETE FROM gossip_live WHERE ts < ?', [
+      now - liveTtl.inMilliseconds,
+    ]);
     try {
-      final pages =
-          (db.select('PRAGMA page_count').first.values.first as num).toInt();
-      final pageSize =
-          (db.select('PRAGMA page_size').first.values.first as num).toInt();
+      final pages = (db.select('PRAGMA page_count').first.values.first as num)
+          .toInt();
+      final pageSize = (db.select('PRAGMA page_size').first.values.first as num)
+          .toInt();
       if (pages * pageSize > maxBytes) {
         // Over budget: L3 stalest-first goes before L2 loses anything
         // (36.9.4 — the visit history is the layer allowed to live forever).
-        db.execute('DELETE FROM gossip_live WHERE rowid IN '
-            '(SELECT rowid FROM gossip_live ORDER BY ts ASC LIMIT 512)');
+        db.execute(
+          'DELETE FROM gossip_live WHERE rowid IN '
+          '(SELECT rowid FROM gossip_live ORDER BY ts ASC LIMIT 512)',
+        );
       }
     } catch (_) {}
   }
@@ -228,31 +303,103 @@ class XprsGossip {
     final out = <GossipSighting>[];
     final seen = <String>{};
     for (final r in db.select(
-        'SELECT gateway,bearer,ts FROM gossip_live WHERE callsign=? '
-        'ORDER BY ts DESC LIMIT ?',
-        [call, max])) {
-      out.add(GossipSighting(
-          call, r['gateway'], r['bearer'], (r['ts'] as num).toInt()));
+      'SELECT gateway,bearer,ts FROM gossip_live WHERE callsign=? '
+      'ORDER BY ts DESC LIMIT ?',
+      [call, max],
+    )) {
+      out.add(
+        GossipSighting(
+          call,
+          r['gateway'],
+          r['bearer'],
+          (r['ts'] as num).toInt(),
+        ),
+      );
       seen.add(r['gateway'] as String);
     }
     for (final r in db.select(
-        'SELECT gateway,bearer,last_ts FROM gossip_visits WHERE callsign=? '
-        'ORDER BY last_ts DESC LIMIT ?',
-        [call, max])) {
+      'SELECT gateway,bearer,last_ts FROM gossip_visits WHERE callsign=? '
+      'ORDER BY last_ts DESC LIMIT ?',
+      [call, max],
+    )) {
       if (out.length >= max) break;
       if (seen.contains(r['gateway'] as String)) continue;
-      out.add(GossipSighting(
-          call, r['gateway'], r['bearer'], (r['last_ts'] as num).toInt()));
+      out.add(
+        GossipSighting(
+          call,
+          r['gateway'],
+          r['bearer'],
+          (r['last_ts'] as num).toInt(),
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// Every edge the store holds, freshest first — the local topology as a
+  /// graph rather than as a set of separate answers.
+  ///
+  /// L3 first because it is the live layer, then L2 for pairs L3 has expired;
+  /// an (observer, heard) pair appears once. [selfCallsign] marks our own
+  /// hearings as `direct`.
+  ///
+  /// Bounded by [max]: this is read by an API handler on the UI isolate, and
+  /// an unbounded SELECT over a 5 MB table is exactly the kind of thing
+  /// docs/performance.md exists to prevent.
+  List<GossipEdge> edges({int max = 512, String? selfCallsign, int? nowMs}) {
+    final db = _db;
+    if (db == null) return const [];
+    final self = (selfCallsign ?? '').trim().toUpperCase();
+    final out = <GossipEdge>[];
+    final seen = <String>{};
+    for (final r in db.select(
+      'SELECT callsign,gateway,bearer,ts FROM gossip_live '
+      'ORDER BY ts DESC LIMIT ?',
+      [max],
+    )) {
+      final gw = r['gateway'] as String, call = r['callsign'] as String;
+      if (!seen.add('$gw|$call')) continue;
+      out.add(
+        GossipEdge(
+          gw,
+          call,
+          r['bearer'] as String,
+          (r['ts'] as num).toInt(),
+          direct: self.isNotEmpty && gw == self,
+        ),
+      );
+    }
+    for (final r in db.select(
+      'SELECT callsign,gateway,bearer,last_ts FROM gossip_visits '
+      'ORDER BY last_ts DESC LIMIT ?',
+      [max],
+    )) {
+      if (out.length >= max) break;
+      final gw = r['gateway'] as String, call = r['callsign'] as String;
+      if (!seen.add('$gw|$call')) continue;
+      out.add(
+        GossipEdge(
+          gw,
+          call,
+          r['bearer'] as String,
+          (r['last_ts'] as num).toInt(),
+          durable: true,
+          direct: self.isNotEmpty && gw == self,
+        ),
+      );
     }
     return out;
   }
 
   /// Gateways worth naming in a 404's `m:try` (36.9): freshest few, never us.
-  List<String> tryCandidates(String callsign,
-      {required String selfBase, int max = 3}) {
+  List<String> tryCandidates(
+    String callsign, {
+    required String selfBase,
+    int max = 3,
+  }) {
     return [
       for (final s in whereIs(callsign, max: max + 1))
-        if (s.gateway != selfBase) s.gateway
+        if (s.gateway != selfBase) s.gateway,
     ].take(max).toList();
   }
 
@@ -263,31 +410,37 @@ class XprsGossip {
   final Map<String, int> _askedSuperMs = {};
   int superAsks = 0;
 
-  void askSuper(String call,
-      {required Future<void> Function(String wire) publish,
-      required List<String> superArchivers,
-      required String selfBase,
-      int? nowMs}) {
+  void askSuper(
+    String call, {
+    required Future<void> Function(String wire) publish,
+    required List<String> superArchivers,
+    required String selfBase,
+    int? nowMs,
+  }) {
     if (superArchivers.isEmpty) return;
     final c = call.trim().toUpperCase();
     if (c.isEmpty || c == selfBase) return;
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
     if (now - (_askedSuperMs[c] ?? 0) < 600000) return; // 36.10.1 cadence
     _askedSuperMs[c] = now;
-    if (_askedSuperMs.length > 128) _askedSuperMs.remove(_askedSuperMs.keys.first);
+    if (_askedSuperMs.length > 128)
+      _askedSuperMs.remove(_askedSuperMs.keys.first);
     final t = DateTime.now().toUtc();
     String two(int n) => n.toString().padLeft(2, '0');
-    final ts = '${t.year}-${two(t.month)}-${two(t.day)}_'
+    final ts =
+        '${t.year}-${two(t.month)}-${two(t.day)}_'
         '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
     final since = t.subtract(const Duration(days: 7));
-    final sinceS = '${since.year}-${two(since.month)}-${two(since.day)}_'
+    final sinceS =
+        '${since.year}-${two(since.month)}-${two(since.day)}_'
         '${two(since.hour)}:${two(since.minute)}:${two(since.second)}';
     for (final sa in superArchivers) {
       final g = sa.trim().toUpperCase();
       if (g.isEmpty || g == selfBase) continue;
       // identity first in the kind list: the observation that answers the
       // question verifies against a key that may ride the same page.
-      final wire = 't:command f:$selfBase d:$g ts:$ts cmd:history '
+      final wire =
+          't:command f:$selfBase d:$g ts:$ts cmd:history '
           'kind:identity,observation only:$c since:$sinceS';
       superAsks++;
       unawaited(publish(wire));

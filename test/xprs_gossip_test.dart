@@ -11,6 +11,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_gossip.dart';
+import 'package:xprs/services/xprs/xprs_ingest.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
 
 void main() {
   late Directory tmp;
@@ -30,6 +32,62 @@ void main() {
   tearDownAll(() {
     g.close();
     tmp.deleteSync(recursive: true);
+  });
+
+  // ── The two halves of the `via:` gate (36.9.4) ─────────────────────────
+  //
+  // They used to share one guard, and the cost was that a station could never
+  // see past its own neighbours. The distinction is not a nicety:
+  //
+  //   noteDirect  is about US. Only an unrelayed packet is evidence that we
+  //               can hear its author, so the gate is right there.
+  //   hears:      is about the OBSERVER, and 9.1 computes `sig:` with `via:`
+  //               removed -- a relay cannot alter what was signed, so a
+  //               relayed observation carries exactly the claim its author
+  //               made. 36.9.4 asks for "a verified observation whose `link:`
+  //               names a short-range bearer" and says nothing about how it
+  //               arrived.
+  //
+  // On the bench this was the difference between knowing "X3GSLC hears
+  // X1VCVM" and never knowing "X1VCVM hears X3GSLC" -- one direction of an
+  // asymmetric pair (10.6.5), and with it every route toward the phone.
+  test('a relayed observation still feeds hears:, but not direct', () {
+    final p = XprsPacket.parse(
+        't:observation f:X1VCVM link:ble peers:2 hears:X3GSLC,X3ARK '
+        'via:X3GSLC ts:2026-08-27_20:32:39 m:');
+    XprsIngest.heard(p!, bearer: 'lan', selfCallsign: 'X16JK8');
+
+    // It REACHED the intake. Unsigned here, so 36.9.4's wall turns it away —
+    // but being turned away by the wall and never arriving are different
+    // things, and only the counter can tell them apart.
+    expect(g.refusedUnsigned, 1,
+        reason: 'a relayed observation must reach the hears: intake');
+
+    // And the other half still holds: a packet that came through somebody
+    // else is not evidence that WE heard its author.
+    expect(g.whereIs('X1VCVM'), isEmpty,
+        reason: 'a relayed packet must not count as our own direct hearing');
+  });
+
+  test('an unrelayed observation feeds both', () {
+    final p = XprsPacket.parse(
+        't:observation f:X1VCVM link:ble peers:1 hears:X3GSLC '
+        'ts:2026-08-27_20:32:39 m:');
+    XprsIngest.heard(p!, bearer: 'ble', selfCallsign: 'X16JK8');
+    expect(g.refusedUnsigned, 1);
+    final w = g.whereIs('X1VCVM');
+    expect(w, hasLength(1));
+    expect(w.first.gateway, 'X16JK8', reason: 'we are the witness');
+  });
+
+  test('edges() reads the same rows as a graph', () {
+    g.noteDirect('X1AAAA', 'X3SELF', bearer: 'ble', nowMs: t0);
+    final e = g.edges(selfCallsign: 'X3SELF', nowMs: t0);
+    expect(e, hasLength(1));
+    expect(e.first.observer, 'X3SELF');
+    expect(e.first.heard, 'X1AAAA');
+    expect(e.first.bearer, 'ble');
+    expect(e.first.direct, isTrue);
   });
 
   test('own direct hearing feeds both layers on a radio bearer', () {

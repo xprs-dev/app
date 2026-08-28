@@ -14,6 +14,7 @@ import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_publisher.dart';
 import 'xprs/xprs_gossip.dart';
+import 'xprs/xprs_graph.dart';
 import 'mesh/mesh_courier.dart';
 import 'mesh/mesh_custody.dart';
 import 'xprs/xprs_forwarder.dart';
@@ -1190,6 +1191,49 @@ class RemoteApiService {
       // errors and nothing is refused, so "am I a carrier?" had no answer from
       // outside the app — which is exactly how the funnel came to carry mail
       // off the internet lane and nothing off any radio.
+      // GET /api/xprs/graph   the local topology, as edges and as a path
+      //
+      // Every station already broadcasts its own one-hop neighbours in a
+      // signed `t:observation` (`link:` + `hears:`, 10.6.1/10.6.3). Composed,
+      // those are a graph -- and until this endpoint there was no way to look
+      // at it, so "the mesh cannot see its own Bluetooth half" was a thing
+      // that could be true for weeks without anybody noticing.
+      //
+      // ?to=<callsign> also runs the walk and returns a candidate path.
+      // ADVISORY, and labelled so: 10.6.3 says `hears:` "informs a choice and
+      // never compels one", and nothing here changes what any packet does.
+      if (req.method == 'GET' && path == '/api/xprs/graph') {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final self = MeshService.instance.tableCallsign.toUpperCase();
+        final limit =
+            int.tryParse(req.uri.queryParameters['limit'] ?? '') ?? 256;
+        final edges = XprsGossip.instance
+            .edges(max: limit, selfCallsign: self, nowMs: now);
+        final to = (req.uri.queryParameters['to'] ?? '').trim().toUpperCase();
+        final maxAgeS =
+            int.tryParse(req.uri.queryParameters['maxAgeS'] ?? '') ?? 3600;
+        final graph = XprsGraph(edges, nowMs: now, maxAgeMs: maxAgeS * 1000);
+        final path0 = to.isEmpty ? null : graph.pathTo(to, from: self);
+        // Only the edges the walk is actually allowed to use are listed, or
+        // the listing and the path disagree about the same graph and the
+        // reader believes the wrong one.
+        final fresh = [
+          for (final e in edges)
+            if (now - e.tsMs <= maxAgeS * 1000 && now - e.tsMs >= 0) e
+        ];
+        return _json(res, {
+          'ok': true,
+          'self': self,
+          'edges': [for (final e in fresh) e.json(now)],
+          'edgesHeld': edges.length,
+          'stations': graph.stations.toList()..sort(),
+          'bearers': graph.bearers.toList()..sort(),
+          'maxAgeS': maxAgeS,
+          if (to.isNotEmpty) 'path': path0?.json() ?? {'to': to, 'found': false},
+          'advisory': true,
+        });
+      }
+
       if (req.method == 'GET' && path == '/api/xprs/held') {
         final limit =
             int.tryParse(req.uri.queryParameters['limit'] ?? '') ?? 50;

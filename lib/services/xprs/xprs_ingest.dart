@@ -41,8 +41,12 @@ class XprsIngest {
   /// Set by XprsHistoryServer so a heard command reaches the responder
   /// without this file importing it (and without the responder having to
   /// listen on three radios itself).
-  static void Function(XprsPacket p,
-      {required String selfBase, required String bearer})? onCommand;
+  static void Function(
+    XprsPacket p, {
+    required String selfBase,
+    required String bearer,
+  })?
+  onCommand;
 
   /// Every heard `t:result`, for whoever asked the question it answers --
   /// the catch-up poller advances its watermark on these (36.10.1).
@@ -162,9 +166,10 @@ class XprsIngest {
     final s = d.trim().toUpperCase();
     if (s.isEmpty) return false;
     if (s.startsWith('#') || s.startsWith('!')) return false;
-    return RegExp(r'^(X[1345][A-Z0-9]{2,5}|[A-Z0-9]{1,3}[0-9][A-Z0-9]*)'
-            r'(-[0-9]{1,2})?(/[A-Z0-9]+)?$')
-        .hasMatch(s);
+    return RegExp(
+      r'^(X[1345][A-Z0-9]{2,5}|[A-Z0-9]{1,3}[0-9][A-Z0-9]*)'
+      r'(-[0-9]{1,2})?(/[A-Z0-9]+)?$',
+    ).hasMatch(s);
   }
 
   static void heard(
@@ -173,8 +178,12 @@ class XprsIngest {
     required String selfCallsign,
     int rssi = 0,
   }) {
-    XprsMonitor.instance
-        .offer(p, bearer: bearer, selfCallsign: selfCallsign, rssi: rssi);
+    XprsMonitor.instance.offer(
+      p,
+      bearer: bearer,
+      selfCallsign: selfCallsign,
+      rssi: rssi,
+    );
 
     // Exact-callsign skip, NOT base: our own echo is noise, but another of
     // our devices (X1SELF-2, section 3.1) is a station whose traffic — and
@@ -191,33 +200,62 @@ class XprsIngest {
     // Cheap checks first (performance.md 4.2): everything below is a map
     // lookup or an indexed upsert; the one curve operation is gated on a
     // hears: list actually being present AND the signer's key being known.
+    final gb = _archiveBearer(bearer);
+    // Our own radio is its own witness, and only a packet that reached us
+    // unrelayed is evidence of that. A copy that came through somebody else
+    // says nothing about whether WE can hear its author, so noteDirect and
+    // the 36.8.1 release trigger stay behind the `via:` gate.
     if (!p.has('via')) {
-      final gb = _archiveBearer(bearer);
       XprsGossip.instance.noteDirect(from, self, bearer: gb);
       try {
         onDirectHeard?.call(from, gb);
       } catch (e) {
         LogService.instance.add('XPRS: direct-heard hook failed: $e');
       }
-      if (p.type == 'observation' &&
-          p.has('hears') &&
-          XprsGossip.instance.wouldAcceptHears(from)) {
-        final hears = (p['hears'] ?? '')
-            .split(',')
-            .map((c) => c.trim().toUpperCase())
-            .where((c) => c.isNotEmpty)
-            .toList();
-        if (hears.isNotEmpty) {
-          // The verify is the expensive step (a curve op, on this isolate)
-          // and wouldAcceptHears above has already said the quota will admit
-          // the claim — so it runs at most once per signer per quota window,
-          // not once per beacon (performance.md 4.2).
-          final verified = p.has('sig') &&
-              xprsVerify(p, XprsArchive.instance.keyResolver?.call(from)) ==
-                  XprsSigState.verified;
-          XprsGossip.instance.noteHears(from, hears,
-              link: p['link'] ?? gb, verified: verified);
-        }
+    }
+
+    // `hears:` is NOT behind that gate, and putting it there was the reason a
+    // station could never see more than one hop of its own mesh.
+    //
+    // 36.9.4 admits "a verified observation whose `link:` names a short-range
+    // bearer" -- it says nothing about how the packet reached the reader,
+    // because it does not need to. The claim is the OBSERVER's, the signature
+    // is what makes it theirs, and a relay cannot alter either: section 9.1
+    // computes `sig:` with `via:` removed, so a relayed observation carries
+    // exactly the assertion its author signed.
+    //
+    // Measured on the bench before this changed: the desktop knew
+    // "X3GSLC hears X1VCVM" -- the T-Deck publishes that straight onto the
+    // LAN -- but never "X1VCVM hears X3GSLC", because the phone is
+    // Bluetooth-only and its own observation could only ever arrive relayed.
+    // One direction of an asymmetric pair (10.6.5), thrown away at the door,
+    // and with it every route TOWARD the phone.
+    //
+    // Every wall of 36.9.4 stands: the per-signer quota below, verified-only,
+    // and L2 still written only when `link:` names a short-range bearer.
+    if (p.type == 'observation' &&
+        p.has('hears') &&
+        XprsGossip.instance.wouldAcceptHears(from)) {
+      final hears = (p['hears'] ?? '')
+          .split(',')
+          .map((c) => c.trim().toUpperCase())
+          .where((c) => c.isNotEmpty)
+          .toList();
+      if (hears.isNotEmpty) {
+        // The verify is the expensive step (a curve op, on this isolate)
+        // and wouldAcceptHears above has already said the quota will admit
+        // the claim — so it runs at most once per signer per quota window,
+        // not once per beacon (performance.md 4.2).
+        final verified =
+            p.has('sig') &&
+            xprsVerify(p, XprsArchive.instance.keyResolver?.call(from)) ==
+                XprsSigState.verified;
+        XprsGossip.instance.noteHears(
+          from,
+          hears,
+          link: p['link'] ?? gb,
+          verified: verified,
+        );
       }
     }
 
@@ -230,15 +268,15 @@ class XprsIngest {
 
     // The preference governs the INDEXER — other people's traffic. A packet
     // addressed to us is our own mail and is kept either way.
-    final forUs = _base(p['d'] ?? '').isNotEmpty &&
+    final forUs =
+        _base(p['d'] ?? '').isNotEmpty &&
         _base(p['d'] ?? '') == _base(selfCallsign);
     if ((_archiveOn || forUs) && _worthKeeping(p, forUs: forUs)) {
       // `admit` only QUEUES. Whoever needs to know a row exists listens to
       // `XprsArchive.onStored`, which fires from the flush for rows the
       // transaction actually wrote — a forged packet is dropped there, and a
       // watermark advanced here would have stepped straight over it.
-      XprsArchive.instance
-          .admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
+      XprsArchive.instance.admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
     }
 
     // And DELIVER it. Knowing a message is ours and only filing it is what
@@ -283,8 +321,11 @@ class XprsIngest {
     }
 
     try {
-      onCommand?.call(p,
-          selfBase: _base(selfCallsign), bearer: _archiveBearer(bearer));
+      onCommand?.call(
+        p,
+        selfBase: _base(selfCallsign),
+        bearer: _archiveBearer(bearer),
+      );
     } catch (e) {
       LogService.instance.add('XPRS: command handling failed: $e');
     }
@@ -367,8 +408,9 @@ class XprsIngest {
       LogService.instance.add('XPRS: could not re-bind identities — $e');
     }
     if (n > 0) {
-      LogService.instance
-          .add('XPRS: re-bound $n stored identity announcement(s)');
+      LogService.instance.add(
+        'XPRS: re-bound $n stored identity announcement(s)',
+      );
     }
     return n;
   }
@@ -390,8 +432,9 @@ class XprsIngest {
       if (hex.length != 64) return;
       final pub = Uint8List.fromList(HEX.decode(hex));
       if (xprsVerify(p, pub) != XprsSigState.verified) {
-        LogService.instance
-            .add('XPRS: identity from $callsign does not sign for its own key');
+        LogService.instance.add(
+          'XPRS: identity from $callsign does not sign for its own key',
+        );
         return;
       }
       hook(callsign, hex);
@@ -422,8 +465,7 @@ class XprsIngest {
     // phone to replay its own beacons, and on the bench they were 139 of the
     // newest 200 rows in this device's archive.
     if (!_worthKeeping(p, forUs: false)) return;
-    XprsArchive.instance
-        .admit(p, bearer: _archiveBearer(bearer), own: true);
+    XprsArchive.instance.admit(p, bearer: _archiveBearer(bearer), own: true);
   }
 
   /// An XPRS datagram off the Reticulum 'xprs' tag. Never shown as a sighting
@@ -438,14 +480,18 @@ class XprsIngest {
   /// gate, `link:`-decides gossip, the command lane's reply route), because
   /// this lane's rules are about how the packet was HANDED OVER, not about
   /// which radio carried it.
-  static void reticulum(String from, Uint8List payload,
-      {String bearer = 'rns'}) {
+  static void reticulum(
+    String from,
+    Uint8List payload, {
+    String bearer = 'rns',
+  }) {
     final p = XprsPacket.parse(utf8.decode(payload, allowMalformed: true));
     if (p == null) return;
     final self = _base(
-        XprsArchive.instance.selfCallsign.isEmpty
-            ? ''
-            : XprsArchive.instance.selfCallsign);
+      XprsArchive.instance.selfCallsign.isEmpty
+          ? ''
+          : XprsArchive.instance.selfCallsign,
+    );
     final fromC = _base(p['f'] ?? '');
     if (fromC.isEmpty || (self.isNotEmpty && fromC == self)) return;
 
@@ -499,11 +545,16 @@ class XprsIngest {
       if (hears.isNotEmpty) {
         // Quota peek first, verify second — same order as the radio lane,
         // same reason (performance.md 4.2).
-        final verified = p.has('sig') &&
+        final verified =
+            p.has('sig') &&
             xprsVerify(p, XprsArchive.instance.keyResolver?.call(fromC)) ==
                 XprsSigState.verified;
-        XprsGossip.instance
-            .noteHears(fromC, hears, link: p['link'] ?? 'rns', verified: verified);
+        XprsGossip.instance.noteHears(
+          fromC,
+          hears,
+          link: p['link'] ?? 'rns',
+          verified: verified,
+        );
       }
     }
 
@@ -546,9 +597,11 @@ class XprsIngest {
     // The declaration rule below guards against spooling other people's
     // MAIL off the internet; presence is not mail, and a super that
     // refused it could never answer `kind:observation` about anyone.
-    final superKeeps = (PreferencesService.instanceSync?.xprsSuperArchiver ??
-            false) &&
-        (p.type == 'observation' || p.type == 'identity' || p.type == 'service');
+    final superKeeps =
+        (PreferencesService.instanceSync?.xprsSuperArchiver ?? false) &&
+        (p.type == 'observation' ||
+            p.type == 'identity' ||
+            p.type == 'service');
 
     // A status is this network's public post (section 27), and a reaction is
     // how it earns its place (6.5). Both are PUBLICATIONS -- meant to be
@@ -566,11 +619,13 @@ class XprsIngest {
     // it is still gated, still routed through custody. Without this, two
     // stations on different internet connections could see each other's
     // presence and never each other's words.
-    final publication = p.type == 'status' ||
+    final publication =
+        p.type == 'status' ||
         p.type == 'reaction' ||
         (p.type == 'message' && toC.isEmpty);
 
-    final admitted = superKeeps ||
+    final admitted =
+        superKeeps ||
         publication ||
         XprsArchive.instance.hasActiveDecl(fromC) ||
         (toC.isNotEmpty && XprsArchive.instance.hasActiveDecl(toC));
@@ -580,8 +635,9 @@ class XprsIngest {
       if (now - _lastRefuseLogMs > 60000) {
         _lastRefuseLogMs = now;
         LogService.instance.add(
-            'XPRS archive: rns refused (no declaration from $fromC — '
-            '$refusedRns refused so far)');
+          'XPRS archive: rns refused (no declaration from $fromC — '
+          '$refusedRns refused so far)',
+        );
       }
       return;
     }
