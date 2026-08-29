@@ -37,6 +37,39 @@ List<Map<String, dynamic>> _corpus() {
 // MeshCourier.deliverXprs because that function needs a live Reticulum stack
 // and returns false in a bare test for reasons that have nothing to do with
 // the rule: a test that cannot fail for the right reason proves nothing.
+void _addressesStation() {
+  group('a station, or a group (6.3)', () {
+    test('a closed group is not a station, however callsign-shaped', () {
+      // The bug this predicate exists to end: three separate tests accepted
+      // `X[1345]`, and `X5` IS the closed-group prefix (26.1).
+      expect(xprsAddressesStation('X5KPGF'), isFalse);
+      expect(xprsAddressesStation('x5kpgf'), isFalse);
+    });
+
+    test('nor is an open group or a broadcast', () {
+      // `ROOM7` carries a digit, which is why "has a digit" is not the test:
+      // the shape has to be a callsign's. `NET21` is deliberately absent —
+      // 6.3 says an open group name "may not look like a callsign", so
+      // anything that does is one, and treating it as a station is right.
+      for (final d in ['#NEWS', '!ALL', 'LISBOA', 'ROOM7']) {
+        expect(xprsAddressesStation(d), isFalse, reason: d);
+      }
+    });
+
+    test('a station is, in every shape section 3 allows', () {
+      for (final d in ['X1RD89', 'X1RD89-2', 'X3ARK', 'CT1ABC-9', 'CT1ABC/P']) {
+        expect(xprsAddressesStation(d), isTrue, reason: d);
+      }
+    });
+
+    test('absent is not a station — a broadcast has nobody to address', () {
+      expect(xprsAddressesStation(''), isFalse);
+      expect(xprsAddressesStation(null), isFalse);
+      expect(xprsAddressesStation('   '), isFalse);
+    });
+  });
+}
+
 void _rendersToPerson() {
   XprsPacket pkt(String w) => XprsPacket.parse(w)!;
   const ts = '2026-08-28_09:00:00';
@@ -46,6 +79,36 @@ void _rendersToPerson() {
       expect(xprsRendersToPerson(pkt('t:message f:X3ARK d:X16JK8 ts:$ts '
               'm:are you there')),
           isTrue);
+    });
+
+    test('a post to a closed group is NOT — it is nobody\'s correspondence',
+        () {
+      // 26.1: `d:` is the GROUP. The courier that ends in the chat inbox keys
+      // the thread on the SENDER, so this arrived as a private message from
+      // whoever happened to post it. Measured on the bench.
+      expect(
+          xprsRendersToPerson(pkt('t:message f:X16JK8 d:X5KPGF ts:$ts '
+              'm:net at six')),
+          isFalse);
+    });
+
+    test('nor is an open group, nor an undirected post', () {
+      expect(
+          xprsRendersToPerson(
+              pkt('t:message f:X3ARK d:LISBOA ts:$ts m:anyone about')),
+          isFalse);
+      expect(
+          xprsRendersToPerson(
+              pkt('t:message f:X3ARK ts:$ts scope:local m:anyone about')),
+          isFalse);
+    });
+
+    test('a station keeps every shape section 3 allows', () {
+      for (final d in ['X1RD89', 'X1RD89-2', 'X3ARK', 'CT1ABC-9']) {
+        expect(xprsRendersToPerson(pkt('t:message f:X3ARK d:$d ts:$ts m:hi')),
+            isTrue,
+            reason: '$d is a station');
+      }
     });
 
     test('a catch-up ask is not', () {
@@ -92,6 +155,7 @@ void _rendersToPerson() {
 }
 
 void main() {
+  _addressesStation();
   _rendersToPerson();
   group('the XPRS codec against the specification', () {
     final corpus = _corpus();

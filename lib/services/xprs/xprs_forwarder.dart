@@ -39,6 +39,13 @@ class XprsForwarder {
       {required String selfBase}) async {
     final p = XprsPacket.parse(wire);
     if (p == null) return null;
+    // Only a station's mail is forwarded toward a mailbox. A group has none:
+    // asking a super-archiver "where is X5A3F2" spends airtime on a question
+    // with no answer, depositing a group post as somebody's mail is the wrong
+    // shelf, and the fallback re-airs it with our callsign appended to `via:`
+    // -- one of section 13.1's three hops spent on traffic that is aired, not
+    // couriered (docs/store-and-forward.md: groups are never carried).
+    if (!xprsAddressesStation(target)) return null;
     final id = xprsIdentifier(p);
     if (_sent.contains(id)) return null;
 

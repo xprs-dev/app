@@ -157,22 +157,6 @@ class XprsIngest {
 
   /// A packet heard over the air or over a local link. The complete receive
   /// surface calls this: BLE 0x41, BLE 0x58, and the courier's session lane.
-  /// Is [d] one station, rather than a group or a broadcast?
-  ///
-  /// Section 6.3: a group name is uppercase 1-16 characters and may not look
-  /// like a callsign; section 3 gives callsigns the `X1`/`X3`/`X4`/`X5` prefix
-  /// or an authority-issued form. Only a station has a key to seal to and a
-  /// mailbox to carry toward, so only a station's mail is custody material.
-  static bool _isStationAddr(String d) {
-    final s = d.trim().toUpperCase();
-    if (s.isEmpty) return false;
-    if (s.startsWith('#') || s.startsWith('!')) return false;
-    return RegExp(
-      r'^(X[1345][A-Z0-9]{2,5}|[A-Z0-9]{1,3}[0-9][A-Z0-9]*)'
-      r'(-[0-9]{1,2})?(/[A-Z0-9]+)?$',
-    ).hasMatch(s);
-  }
-
   static void heard(
     XprsPacket p, {
     required String bearer,
@@ -304,7 +288,16 @@ class XprsIngest {
     //
     // Cheap checks first: this runs for every inbound packet, and the
     // verification behind it is a curve operation (docs/performance.md 4.2).
-    if (forUs && onDeliver != null && p.type == 'message') {
+    //
+    // `forUs` is NOT the question here. It answers "do we keep this", and it
+    // says yes to a closed group's traffic on purpose (concernsUs, above) so a
+    // group we belong to has a record. Reusing it as the DELIVERY gate made
+    // "keep it" and "show it to a person" one decision, and every group post
+    // arrived as private correspondence from whoever sent it -- the courier
+    // below keys the thread on the SENDER, because by then `d:` is gone.
+    // `xprsRendersToPerson` asks the whole question: a message, addressed to a
+    // person.
+    if (forUs && onDeliver != null && xprsRendersToPerson(p)) {
       try {
         onDeliver!(p, _archiveBearer(bearer));
       } catch (e) {
@@ -328,7 +321,7 @@ class XprsIngest {
     // several stations read (6.3) and is aired, not couriered.
     if (!forUs && p.type == 'message' && onCarry != null) {
       final target = (p['d'] ?? '').trim();
-      if (_isStationAddr(target)) {
+      if (xprsAddressesStation(target)) {
         try {
           onCarry!(p.encode(), target.toUpperCase());
         } catch (e) {
@@ -589,7 +582,15 @@ class XprsIngest {
     // regardless of the indexer preference. The declaration rule below exists
     // to stop this station spooling the whole Reticulum lane on other
     // people's behalf; it was never meant to refuse our own post.
-    if (toC.isNotEmpty && toC == self) {
+    //
+    // A closed group we belong to counts as ours for exactly the same reason,
+    // and by the same test the air lane uses. Without this a group post that
+    // arrived ONLY over Reticulum fell past here to the declaration rule and,
+    // with the indexer preference off, was dropped -- so the room would have
+    // gone quiet for anybody not also in LAN or BLE range. It survived on the
+    // bench only because the LAN copy arrived too.
+    if (toC.isNotEmpty && toC == self ||
+        XprsGroups.instance.concernsUs(p, self)) {
       XprsArchive.instance.admit(p, bearer: bearer);
       return;
     }
@@ -597,7 +598,10 @@ class XprsIngest {
     // Mail for a third party: the custody question, not the archive one.
     // The park-or-not decision (budgets, quotas, 31.3) belongs to the
     // receiver; this lane only reports that mail arrived seeking a holder.
-    if (p.type == 'message' && toC.isNotEmpty && toC != self) {
+    //
+    // A group is not mail: it has no mailbox to carry toward, and
+    // `docs/store-and-forward.md` is explicit that groups are never carried.
+    if (p.type == 'message' && xprsAddressesStation(toC) && toC != self) {
       try {
         onCarry?.call(p.encode(), toC);
       } catch (e) {

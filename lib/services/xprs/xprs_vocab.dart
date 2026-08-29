@@ -67,6 +67,39 @@ bool xprsWouldLoop(XprsPacket p, String self) {
   return xprsVia(p).any((c) => c.toUpperCase() == me);
 }
 
+/// Does `d:` name one STATION, or a group?
+///
+/// Section 6.3 keeps the two apart by shape, and this is the format's own
+/// distinction rather than a guess about names: a closed group is an `X5`
+/// callsign (26.1), an open group is an uppercase name that may not look like
+/// a callsign, `!` is a broadcast — and every station callsign carries a
+/// digit: `X1QZ3N`, `X3RLY7`, `CT1ABC-9`. So "has a digit and is not X5".
+///
+/// It lives HERE because five places were asking it and getting five different
+/// answers. Two of them tested `X[1345]` with a comment claiming groups were
+/// excluded — `X5` is in that class, so a closed group read as a station and
+/// its traffic was couriered to somebody as correspondence. One place had the
+/// rule right (`MeshCustody._isStation`) and two had no test at all.
+///
+/// It matters because a group is an address several stations read: there is
+/// nobody to seal to, nobody to carry toward, and no 1:1 conversation the
+/// words belong in. `docs/store-and-forward.md` says the same in one line —
+/// *"Groups, observations, `?` control frames and receipts are never carried …
+/// an `X5` group callsign is addressed like a station but is group traffic."*
+bool xprsAddressesStation(String? d) {
+  final s = (d ?? '').trim().toUpperCase();
+  if (s.isEmpty) return false;
+  if (s.startsWith('#') || s.startsWith('!')) return false; // group, broadcast
+  if (s.startsWith('X5')) return false; // closed group (26.1)
+  // Callsign-SHAPED, not merely "has a digit". The looser form would let an
+  // open group called `NET21` or `ROOM7` pass as a station, which is the same
+  // mistake in the other direction: it would be couriered as somebody's mail.
+  return RegExp(
+    r'^(X[134][A-Z0-9]{2,5}|[A-Z0-9]{1,3}[0-9][A-Z0-9]*)'
+    r'(-[0-9]{1,2})?(/[A-Z0-9]+)?$',
+  ).hasMatch(s);
+}
+
 /// Does this packet carry something a PERSON should be shown?
 ///
 /// The mesh is mostly machines talking: on a four-station bench, 176
@@ -84,7 +117,14 @@ bool xprsWouldLoop(XprsPacket p, String self) {
 /// Deliberately NOT `sos` and `warning`, though a person certainly wants
 /// those: section 13.1 gives them nine relays so they are **aired**, and they
 /// reach people by being heard rather than by being couriered into an inbox.
-bool xprsRendersToPerson(XprsPacket p) => p.type == 'message';
+/// And it must be addressed to a PERSON. A post to a closed group is a
+/// `t:message` like any other, but `d:` is the group (26.1): there is no 1:1
+/// conversation it belongs in, and the courier that ends in the chat inbox
+/// keys the thread on the SENDER, so a group post arrived as private
+/// correspondence from whoever happened to send it. Measured on the bench —
+/// three group posts sitting in the 1:1 thread with their author.
+bool xprsRendersToPerson(XprsPacket p) =>
+    p.type == 'message' && xprsAddressesStation(p['d']);
 
 /// Every packet type the specification defines (section 4.2).
 ///

@@ -509,7 +509,7 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
       // A peer without the capability — every ESP32 today — fails
       // _pointToPointTarget below and keeps the broadcast unchanged, with no
       // special-casing per board.
-      if (!_isStation(to)) return false;
+      if (!xprsAddressesStation(to)) return false;
       final mail = f.packet!.type == 'message';
       if (!mail && !(outbound && _pointToPointTarget(to))) return false;
     } else {
@@ -795,18 +795,6 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
         }
       }
     } catch (_) {}
-  }
-
-  /// Whether `d:` names a station rather than a group.
-  ///
-  /// XPRS section 6.3 keeps the two apart by shape: an open group is an
-  /// uppercase name and may not look like a callsign, a closed group is an
-  /// `X5` callsign, and every station callsign carries a digit — `X1QZ3N`,
-  /// `X3RLY7`, `CT1ABC-9`. So "has a digit and is not X5" is the test, and it
-  /// is the format's own distinction rather than a guess about names.
-  static bool _isStation(String to) {
-    if (to.isEmpty || to.toUpperCase().startsWith('X5')) return false;
-    return to.contains(RegExp(r'[0-9]'));
   }
 
   /// The body of [wire] parsed as xprs, or null when it is not an XPRS packet.

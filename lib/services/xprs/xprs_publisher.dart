@@ -44,6 +44,7 @@ import 'xprs_id.dart';
 import 'xprs_monitor.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
+import 'xprs_groups.dart';
 import 'xprs_vocab.dart';
 
 /// One way bytes can leave this device.
@@ -159,8 +160,25 @@ class _ReticulumBearer implements XprsBearer {
     // take the addressed lane, which is also section 36.0's path rule --
     // the most reliable path that reaches the asker. Undirected publications
     // keep the broadcast: whoever is in announce reach hears them.
+    //
+    // A GROUP is the exception, and it is why this branch is split. `d:` on a
+    // closed group is the group (26.1), not somebody with a mailbox: sending
+    // it down the addressed lane made a group post an ordinary LXMF chat
+    // message to one peer, which the receiver filed as private correspondence
+    // from whoever sent it. Measured on the bench -- three group posts sitting
+    // in the 1:1 thread with their author.
+    //
+    // It goes to the MEMBERS instead, one addressed datagram each, and only on
+    // the wapp lane (field 0xB0) which `_routeWappLxmf` diverts away from the
+    // inbox -- so it cannot become correspondence however it arrives. Not
+    // wappBroadcast: an announce is what the hubs do NOT cross-forward, per
+    // the paragraph above, so broadcasting would cost groups the one Reticulum
+    // lane that actually works between networks.
     final bytes = Uint8List.fromList(utf8.encode(wire));
-    final dest = XprsPacket.parse(wire)?['d']?.trim() ?? '';
+    final dest = XprsPacket.parse(wire)?['d']?.trim().toUpperCase() ?? '';
+    if (dest.isNotEmpty && !xprsAddressesStation(dest)) {
+      return await _sendToMembers(dest, bytes);
+    }
     if (dest.isNotEmpty) {
       final hex = RnsService.instance.lxmfDestForCallsign(dest);
       if (hex.isNotEmpty) {
@@ -188,6 +206,36 @@ class _ReticulumBearer implements XprsBearer {
     return await RnsService.instance.wappBroadcast('xprs', bytes)
         ? XprsSendResult.sent
         : XprsSendResult.refused;
+  }
+
+  /// One addressed datagram per member of [group] (26.8: a group's traffic
+  /// travels by its members holding it, not by a directory).
+  ///
+  /// Only people who actually belong: an `invited` callsign has been asked and
+  /// has not answered (26.3.1), the group's own callsign is the admin in the
+  /// roster and has no mailbox, and we do not post to ourselves.
+  ///
+  /// `refused` when nobody resolves, rather than a quiet success. The publish
+  /// line then reads `reticulum:refused` and the radios still carry the post —
+  /// a visible answer instead of a packet that went nowhere in silence.
+  Future<XprsSendResult> _sendToMembers(String group, Uint8List bytes) async {
+    final me = XprsArchive.instance.selfCallsign.trim().toUpperCase();
+    final roster = XprsGroups.instance.rosterOf(group);
+    final sends = <Future<bool>>[];
+    for (final e in roster.roles.entries) {
+      if (e.key == group || e.key == me) continue;
+      if (e.value != XprsRole.member &&
+          e.value != XprsRole.mod &&
+          e.value != XprsRole.admin) {
+        continue;
+      }
+      final hex = RnsService.instance.lxmfDestForCallsign(e.key);
+      if (hex.isEmpty) continue; // never observed; the radios still carry it
+      sends.add(RnsService.instance.wappSendTo('xprs', hex, bytes));
+    }
+    if (sends.isEmpty) return XprsSendResult.refused;
+    final ok = await Future.wait(sends);
+    return ok.any((v) => v) ? XprsSendResult.sent : XprsSendResult.queued;
   }
 }
 
@@ -820,9 +868,13 @@ class XprsPublisher {
     // reach it.
     if (dest.isEmpty) return null;
     // A group is several stations behind one name, so the paths are not to the
-    // same place. Callsigns start X1/X3/X4/X5 or are authority-issued; a group
-    // name is neither, and either way fanning out is the safe answer.
-    if (!_looksLikeCallsign(dest)) return null;
+    // same place and fanning out is the only correct answer.
+    //
+    // The test used to be a local regex accepting `X[1345]`, with a comment
+    // saying groups were excluded -- but `X5` IS the closed-group prefix
+    // (26.1), so a group was ranked as though it were one station and could
+    // collapse to a single bearer.
+    if (!xprsAddressesStation(dest)) return null;
     final st = XprsMonitor.instance.stations[dest];
     if (st == null) return null;
     // What the station SAYS it is on (its beacon's `link:`, section 10.6.1) --
@@ -838,10 +890,6 @@ class XprsPublisher {
     // Heard, but on nothing we rank -- say nothing and let every bearer try.
     return null;
   }
-
-  static bool _looksLikeCallsign(String d) =>
-      RegExp(r'^(X[1345][A-Z0-9]{2,5}|[A-Z0-9]{1,3}[0-9][A-Z0-9]*)(-[0-9]{1,2})?$')
-          .hasMatch(d);
 
   /// Ask [call] for its key binding, section 18.1: "`q:identity` (section 7)
   /// asks for one directly rather than waiting for the next period."

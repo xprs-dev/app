@@ -14,6 +14,12 @@ import 'package:xprs/services/xprs/xprs_ingest.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_airtime.dart';
 import 'package:xprs/services/xprs/xprs_publisher.dart';
+import 'package:xprs/services/xprs/xprs_groups.dart';
+import 'package:xprs/services/xprs/xprs_sig.dart';
+import 'package:xprs/services/xprs/xprs_id.dart';
+import 'package:xprs/util/nostr_crypto.dart';
+import 'package:hex/hex.dart';
+import 'dart:typed_data';
 
 /// A bearer that records what it was asked to carry.
 class FakeBearer implements XprsBearer {
@@ -285,6 +291,55 @@ void _funnel() {
       hear('t:message f:X1QZ3N d:LISBOA ts:$_ts m:net at six', 'ble');
       expect(carried, isEmpty);
       expect(delivered, isEmpty);
+    });
+
+    test('a post to a group we BELONG to reaches nobody as correspondence', () {
+      // The bug: `forUs` says yes to a closed group's traffic on purpose, so
+      // the group has a record — and the delivery gate reused that same
+      // variable. Every group post arrived as a private message from whoever
+      // sent it, because the courier keys the thread on the SENDER once `d:`
+      // is gone. Measured between two devices; three posts in the 1:1 thread.
+      //
+      // Membership is what makes this bite, so the roster has to be real: an
+      // act nobody can verify moves nothing (26.4).
+      const g = 'X5A3F2';
+      final gk = NostrCrypto.generateKeyPair();
+      final mk = NostrCrypto.generateKeyPair();
+      BigInt scalar(String hex) {
+        var d = BigInt.zero;
+        for (final b in HEX.decode(hex)) {
+          d = (d << 8) | BigInt.from(b);
+        }
+        return d;
+      }
+
+      final pubs = {
+        g: Uint8List.fromList(HEX.decode(gk.publicKeyHex)),
+        'X1SELF': Uint8List.fromList(HEX.decode(mk.publicKeyHex)),
+      };
+      XprsGroups.instance
+        ..clear()
+        ..keyResolver = (c) => pubs[c];
+      final grant = xprsSign(
+          XprsPacket.parse(
+              't:moderate f:$g d:$g ts:2026-08-08_10:00:00 grant:X1SELF '
+              'role:member')!,
+          scalar(gk.privateKeyHex));
+      XprsGroups.instance.offer(grant);
+      XprsGroups.instance.offer(xprsSign(
+          XprsPacket.parse('t:moderate f:X1SELF d:$g ts:2026-08-08_10:01:00 '
+              'r:${xprsIdentifier(grant)} accept:member')!,
+          scalar(mk.privateKeyHex)));
+      expect(XprsGroups.instance.rosterOf(g).roles['X1SELF'], XprsRole.member,
+          reason: 'the roster has to be real for this test to mean anything');
+
+      hear('t:message f:X1QZ3N d:$g ts:$_ts m:net at six', 'ble');
+
+      expect(delivered, isEmpty,
+          reason: 'a group post is nobody\'s correspondence');
+      expect(carried, isEmpty,
+          reason: 'a group has no mailbox to carry toward');
+      XprsGroups.instance.clear();
     });
 
     test('a broadcast with no d: is not carried', () {
