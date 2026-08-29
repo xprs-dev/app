@@ -406,6 +406,51 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 // Where a mute is taken back. Muting itself happens where the
                 // spam is — the ⋯ menu on the post — because that is where the
                 // user is when they decide.
+                // ── Groups ──
+                //
+                // Closed groups (XPRS 26). Here rather than inside a chat
+                // because membership is not a conversation: it is a signed,
+                // public record that outlives any thread, and it is where a
+                // person accepts or refuses being written into one.
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+                  ),
+                  color: cs.surfaceContainerLow,
+                  child: ListTile(
+                    leading: const Icon(Icons.groups),
+                    title: const Text('Groups'),
+                    subtitle: Text(
+                      () {
+                        final mineCalls = {
+                          for (final g in XprsGroupKeys.instance.mine())
+                            g.callsign
+                        };
+                        final mine = mineCalls.length;
+                        // The union: a group can be both administered here and
+                        // heard about, and a max would under-count the rest.
+                        final n =
+                            {...mineCalls, ...XprsGroups.instance.known}.length;
+                        return n == 0
+                            ? 'None yet — create one, or wait to hear of one'
+                            : '$n group${n == 1 ? '' : 's'}'
+                                '${mine > 0 ? ', $mine you administer' : ''}';
+                      }(),
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context)
+                        .push(MaterialPageRoute(
+                            builder: (_) => const GroupsPage()))
+                        .then((_) {
+                      if (mounted) setState(() {});
+                    }),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
                 Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(

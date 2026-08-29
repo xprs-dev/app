@@ -21,6 +21,7 @@
  * lookup (hot). The only other trigger is an `until:` falling due, which is
  * known in advance and checked without work.
  */
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'xprs_id.dart';
@@ -138,6 +139,19 @@ class XprsGroups {
   /// due. 0 = nothing pending, so the common case costs one map read.
   final Map<String, int> _nextChange = {};
 
+  /// Every group this station has heard an act for. Discovery, in the sense
+  /// section 26 allows one: there is no directory and no registry, so what a
+  /// station knows is exactly what has reached it. Groups it administers are
+  /// added by whoever holds the keys, not from here.
+  Iterable<String> get known => _acts.keys;
+
+  /// Fires with a group's callsign whenever its record moved, so a screen can
+  /// redraw on the packet rather than on a timer. A roster changes when an act
+  /// arrives and at no other time -- polling it would be work per tick to
+  /// discover that nothing happened (docs/performance.md 8.7).
+  Stream<String> get changes => _changes.stream;
+  final StreamController<String> _changes = StreamController<String>.broadcast();
+
   int accepted = 0;
   int rejected = 0;
   int unverified = 0;
@@ -220,7 +234,47 @@ class XprsGroups {
     accepted++;
     _cache.remove(group);
     _nextChange.remove(group);
+    if (_changes.hasListener) _changes.add(group);
     return true;
+  }
+
+  /// Does this `t:moderate` belong to a group THIS station is part of?
+  ///
+  /// A group act is addressed to the group, never to a person, so the funnel's
+  /// "is it for us" test says no to every one of them — and with the indexer
+  /// off, the record of a group you belong to was thrown away as somebody
+  /// else's chatter. Section 26.4 replays that record from the packets and
+  /// nothing else, so a station that keeps none of them forgets every group it
+  /// was ever in the moment it restarts.
+  bool concernsUs(XprsPacket p, String selfBase) {
+    if (p.type != 'moderate') return false;
+    final group = (p['d'] ?? '').trim().toUpperCase();
+    if (group.isEmpty) return false;
+    // A group whose key we hold is ours outright.
+    if (_acts.containsKey(group)) return true;
+    final me = selfBase.trim().toUpperCase();
+    if (me.isEmpty) return false;
+    // Named in the act, or speaking in it — an invitation, a revocation, or
+    // our own acceptance coming back.
+    if ((p['f'] ?? '').trim().toUpperCase() == me) return true;
+    return _calls(p['grant']).contains(me) || _calls(p['revoke']).contains(me);
+  }
+
+  /// Replay the acts this station already holds (26.4).
+  ///
+  /// The roster lives in memory, so without this a restart loses every group —
+  /// which reads as "the group vanished" rather than as "we forgot", and is
+  /// exactly the failure a signed, replayable record is supposed to prevent.
+  /// The packets are signed, so nothing is trusted that was not checked; this
+  /// costs one indexed query and no airtime, like `rebindFromArchive`.
+  int hydrate(List<String> wires) {
+    var n = 0;
+    for (final w in wires) {
+      final p = XprsPacket.parse(w);
+      if (p == null || p.type != 'moderate') continue;
+      if (offer(p)) n++;
+    }
+    return n;
   }
 
   void _forget(String group) {

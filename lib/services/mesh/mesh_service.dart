@@ -27,6 +27,7 @@ import '../log_service.dart';
 import '../preferences_service.dart';
 import '../xprs/xprs_airtime.dart';
 import '../xprs/xprs_archive.dart';
+import '../xprs/xprs_groups.dart';
 import '../xprs/xprs_catchup.dart';
 import '../xprs/xprs_files.dart';
 import '../xprs/xprs_history_server.dart';
@@ -207,6 +208,18 @@ class MeshService {
         // announcements that say so. Replay them; they are signed, so the
         // binding is re-derived rather than trusted, and no airtime is spent.
         XprsIngest.rebindFromArchive();
+        // And the same for closed groups: keys first (above), then the acts
+        // those keys check. A roster lives in memory, so without this every
+        // group a station belongs to disappears on restart (26.4).
+        final acts = XprsArchive.instance
+            .query(types: const ['moderate'], limit: 512)
+            .map((r) => r['wire'])
+            .whereType<String>()
+            .toList()
+            .reversed
+            .toList();
+        final n = XprsGroups.instance.hydrate(acts);
+        if (n > 0) LogService.instance.add('XPRS: replayed $n group act(s)');
         XprsHistoryServer.instance.install();
         XprsGossip.instance
             .init(wappsDataStorage(prefs).getAbsolutePath('xprs_gossip.sqlite3'));

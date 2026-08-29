@@ -286,6 +286,33 @@ void main() {
     });
   });
 
+  group('keeping the record', () {
+    test('a group act concerns us when it names us, even though d: is the group',
+        () {
+      final act = _act(g, '2026-08-08_10:00:00', 'grant:X1RD89');
+      // The funnel's "addressed to us" test is about d:, and d: is the GROUP.
+      expect(m.concernsUs(act, 'X1RD89'), isTrue,
+          reason: 'being granted is our own record, not somebody else’s');
+      expect(m.concernsUs(act, 'X1NOPE'), isFalse);
+    });
+
+    test('a restart replays the roster from the acts we kept', () {
+      final grant = _act(g, '2026-08-08_10:00:00', 'grant:X1RD89');
+      final accept =
+          _accept('X1RD89', '2026-08-08_10:01:00', xprsIdentifier(grant));
+      final wires = [grant.encode(), accept.encode()];
+
+      m.clear();
+      m.keyResolver = (call) => _keys[call]?.pub;
+      expect(m.rosterOf(g, nowMs: now).roles['X1RD89'], isNull,
+          reason: 'a fresh station knows nothing');
+
+      expect(m.hydrate(wires), 2);
+      expect(m.rosterOf(g, nowMs: now).roles['X1RD89'], XprsRole.member,
+          reason: 'the record replays to the same answer it had before');
+    });
+  });
+
   group('what a client shows', () {
     test('an acceptance is not a hide — `r:` alone hides nothing (26.3.1)', () {
       final grant = _act(g, '2026-08-08_10:00:00', 'grant:X1RD89');

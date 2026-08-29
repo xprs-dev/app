@@ -280,8 +280,14 @@ class XprsIngest {
     // The preference governs the INDEXER — other people's traffic. A packet
     // addressed to us is our own mail and is kept either way.
     final forUs =
-        _base(p['d'] ?? '').isNotEmpty &&
-        _base(p['d'] ?? '') == _base(selfCallsign);
+        (_base(p['d'] ?? '').isNotEmpty &&
+                _base(p['d'] ?? '') == _base(selfCallsign)) ||
+            // A group act is addressed to the GROUP, so the test above says no
+            // to every one of them and, with the indexer off, the record of a
+            // group we belong to was dropped as somebody else's chatter. 26.4
+            // replays a roster from those packets and nothing else: keep none
+            // and the station forgets every group it is in on restart.
+            XprsGroups.instance.concernsUs(p, _base(selfCallsign));
     if ((_archiveOn || forUs) && _worthKeeping(p, forUs: forUs)) {
       // `admit` only QUEUES. Whoever needs to know a row exists listens to
       // `XprsArchive.onStored`, which fires from the flush for rows the

@@ -14,9 +14,7 @@ import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_publisher.dart';
 import 'xprs/xprs_gossip.dart';
-import 'xprs/xprs_group_act.dart';
-import 'xprs/xprs_sig.dart';
-import 'xprs/xprs_group_keys.dart';
+import 'xprs/xprs_group_ops.dart';
 import 'xprs/xprs_groups.dart';
 import 'xprs/xprs_graph.dart';
 import 'mesh/mesh_courier.dart';
@@ -1415,36 +1413,17 @@ class RemoteApiService {
       if (req.method == 'POST' && path == '/api/xprs/group/create') {
         final data = await _body(req);
         final nick = (data['nick'] ?? '').toString();
-        if (!XprsGroupKeys.instance.ready) {
-          return _json(res, {'ok': false, 'error': 'no profile open'},
-              status: HttpStatus.serviceUnavailable);
-        }
-        final g = XprsGroupKeys.instance.create(nick: nick);
+        final g = XprsGroupOps.create(nick: nick);
         if (g == null) {
           return _json(res, {'ok': false, 'error': 'could not mint a group'},
-              status: HttpStatus.internalServerError);
-        }
-        // Teach our OWN callsign→key map the group, or we could not verify the
-        // acts we are about to sign -- a station does not hear itself.
-        final hex = NostrCrypto.decodeNpub(g.npub);
-        RnsService.instance.recordCallsignPubkey(g.callsign, hex);
-        final scalar = XprsGroupKeys.instance.scalarFor(g.callsign);
-        final ann = scalar == null
-            ? null
-            : XprsGroupAct.identity(
-                group: g.callsign, npub: g.npub, scalar: scalar, nick: g.nick);
-        if (ann != null) {
-          // verbatim: it is signed by the GROUP, and publishWire signs only
-          // for our own callsign.
-          unawaited(
-              XprsPublisher.instance.publishWire(ann.encode(), verbatim: true));
+              status: HttpStatus.serviceUnavailable);
         }
         return _json(res, {
           'ok': true,
           'group': g.callsign,
           'npub': g.npub,
           'nick': g.nick,
-          'announced': ann != null,
+          'announced': true,
         });
       }
 
@@ -1461,38 +1440,18 @@ class RemoteApiService {
             .map((c) => c.trim())
             .where((c) => c.isNotEmpty)
             .toList();
-        final scalar = XprsGroupKeys.instance.scalarFor(g);
-        if (scalar == null) {
-          // Only the admin holds the key. Section 26.3: a moderator's revoke is
-          // signed by THEM, which this endpoint does not yet compose.
-          return _json(res,
-              {'ok': false, 'error': 'we do not hold the key for $g'},
-              status: HttpStatus.forbidden);
-        }
-        final grant = path.endsWith('grant');
-        final p = grant
-            ? XprsGroupAct.grant(
-                group: g,
-                callsigns: calls,
-                scalar: scalar,
+        final r = path.endsWith('grant')
+            ? XprsGroupOps.grant(g, calls,
                 role: (data['role'] ?? '').toString(),
                 until: (data['until'] ?? '').toString())
-            : XprsGroupAct.revoke(
-                group: g,
-                callsigns: calls,
-                scalar: scalar,
+            : XprsGroupOps.revoke(g, calls,
                 until: (data['until'] ?? '').toString(),
                 since: (data['since'] ?? '').toString());
-        if (p == null) {
-          return _json(res, {'ok': false, 'error': 'act did not compose/fit'},
-              status: HttpStatus.badRequest);
+        if (!r.ok) {
+          return _json(res, {'ok': false, 'error': r.error},
+              status: HttpStatus.forbidden);
         }
-        // Our own roster moves now: a station never hears its own packet, so
-        // waiting for the funnel would mean the admin is the last to know.
-        XprsGroups.instance.offer(p);
-        unawaited(
-            XprsPublisher.instance.publishWire(p.encode(), verbatim: true));
-        return _json(res, {'ok': true, 'wire': p.encode()});
+        return _json(res, {'ok': true, 'wire': r.wire});
       }
 
       // The member's own half (26.3.1): accepting an offer, or leaving.
@@ -1504,28 +1463,15 @@ class RemoteApiService {
         final data = await _body(req);
         final g = (data['d'] ?? '').toString().trim().toUpperCase();
         final me = MeshService.instance.tableCallsign.trim().toUpperCase();
-        final d = xprsProfileScalar();
-        if (g.isEmpty || me.isEmpty || d == null) {
-          return _json(res, {'ok': false, 'error': 'no profile or no group'},
-              status: HttpStatus.serviceUnavailable);
-        }
-        final accepting = path.endsWith('accept');
-        final p = accepting
-            ? XprsGroupAct.accept(
-                group: g,
-                member: me,
-                grantId: (data['r'] ?? '').toString(),
-                scalar: d,
+        final r = path.endsWith('accept')
+            ? XprsGroupOps.accept(g, me, (data['r'] ?? '').toString(),
                 role: (data['role'] ?? 'member').toString())
-            : XprsGroupAct.leave(group: g, member: me, scalar: d);
-        if (p == null) {
-          return _json(res, {'ok': false, 'error': 'did not compose'},
+            : XprsGroupOps.leave(g, me);
+        if (!r.ok) {
+          return _json(res, {'ok': false, 'error': r.error},
               status: HttpStatus.badRequest);
         }
-        XprsGroups.instance.offer(p);
-        unawaited(
-            XprsPublisher.instance.publishWire(p.encode(), verbatim: true));
-        return _json(res, {'ok': true, 'wire': p.encode()});
+        return _json(res, {'ok': true, 'wire': r.wire});
       }
 
       // One closed group's roster, replayed per section 26.4. The answer to
