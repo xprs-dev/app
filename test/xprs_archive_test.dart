@@ -267,6 +267,30 @@ void main() {
     expect(byFrom['X1HUB'], 'rns');
   });
 
+  test('query: to: keeps only the named destinations, "" meaning undirected',
+      () {
+    // setUp already opened a fresh archive as `a`.
+    // Three destinations: a person, a closed group, and nobody (scope:local).
+    a.admit(_p('t:message f:X1QZ3N d:X1RD89 ts:2026-08-20_10:00:00 m:mail'),
+        bearer: 'ble');
+    a.admit(_p('t:message f:X1QZ3N d:X5A3F2 ts:2026-08-20_10:00:01 m:group'),
+        bearer: 'ble');
+    a.admit(
+        _p('t:message f:X1QZ3N ts:2026-08-20_10:00:02 scope:local m:room'),
+        bearer: 'ble');
+    a.flush();
+
+    // The room's question: undirected plus one group. The 1:1 mail — which on
+    // a station mid store-and-forward outnumbers everything and used to eat
+    // the whole window — must not appear.
+    final rows = a.query(types: const ['message'], to: const ['', 'X5A3F2']);
+    expect(rows, hasLength(2));
+    expect(rows.map((r) => r['to']).toSet(), {'', 'X5A3F2'});
+
+    // And a single destination still works alone.
+    expect(a.query(to: const ['X1RD89']), hasLength(1));
+  });
+
   test('query: window on packet ts, only: matches from or to, newest first',
       () {
     a.admit(_p('t:info f:X1AAA ts:2026-08-13_10:00:00 m:one'),

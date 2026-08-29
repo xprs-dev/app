@@ -1523,10 +1523,14 @@ class RemoteApiService {
       // archived, plus its counters. ?since=&until= are XPRS timestamps.
       if (req.method == 'GET' && path == '/api/xprs/history') {
         final q = req.uri.queryParameters;
+        // ?to= is a comma list of destinations; an empty element means
+        // undirected ("to=,X5KPGF" reads a scope room plus one group).
+        final toQ = q['to'];
         final rows = XprsArchive.instance.query(
           sinceMs: xprsParseTs(q['since']),
           untilMs: xprsParseTs(q['until']),
           only: q['only'],
+          to: toQ == null ? null : toQ.split(','),
           limit: int.tryParse(q['limit'] ?? '') ?? 50,
         );
         return _json(res, {

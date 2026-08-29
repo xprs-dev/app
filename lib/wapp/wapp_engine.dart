@@ -3614,6 +3614,7 @@ class WappEngine {
         int? sinceMs, untilMs;
         String? only;
         List<String>? types;
+        List<String>? to;
         var limit = 200;
         try {
           final q = jsonDecode(_readStr(qPtr, qLen)) as Map<String, dynamic>;
@@ -3622,6 +3623,11 @@ class WappEngine {
           only = q['only'] as String?;
           final t = q['types'];
           if (t is List) types = t.map((e) => e.toString()).toList();
+          // Destination list, "" meaning undirected — so a room asks for the
+          // rows it can render instead of sieving the newest N and losing the
+          // window to custody re-airs (see XprsArchive.query).
+          final d = q['to'];
+          if (d is List) to = d.map((e) => e.toString()).toList();
           limit = (q['limit'] as num?)?.toInt() ?? 200;
         } catch (_) {}
         final bytes = utf8.encode(jsonEncode(XprsArchive.instance.query(
@@ -3629,6 +3635,7 @@ class WappEngine {
             untilMs: untilMs,
             only: only,
             types: types,
+            to: to,
             limit: limit.clamp(1, 200))));
         if (bytes.length > outCap) return -bytes.length;
         return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));

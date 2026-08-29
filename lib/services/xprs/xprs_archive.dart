@@ -599,6 +599,7 @@ class XprsArchive {
     int? untilMs,
     String? only,
     List<String>? types,
+    List<String>? to,
     int limit = 200,
     String? rankFor,
   }) {
@@ -606,6 +607,21 @@ class XprsArchive {
     if (db == null) return const [];
     final where = StringBuffer('1=1');
     final args = <Object?>[];
+    // Ask for the rows you will render, not a page you will sieve.
+    //
+    // The chat rooms asked for "the newest 48 messages" and filtered on their
+    // side, which is a lottery against whatever else the station is doing.
+    // Measured on the C61 mid store-and-forward: the newest 48 message rows
+    // were ALL this station's own custody re-airs to one absent peer — 343 of
+    // the newest 371 spanning five minutes — so of 400 rows fetched, the
+    // rooms could render zero, and a group post sat unrendered in the archive
+    // for an hour. A destination list makes the window mean something: the
+    // empty string is the undirected traffic a scope room reads, a group
+    // callsign is that group's room, and idx_pk_to(toc, pts) serves both.
+    if (to != null && to.isNotEmpty) {
+      where.write(' AND toc IN (${List.filled(to.length, '?').join(',')})');
+      args.addAll(to.map((d) => d.trim().isEmpty ? '' : _base(d)));
+    }
     // A caller that only reads conversations (message + reaction) must not
     // have its window eaten by the observation chatter, which outnumbers
     // everything else on a busy bench.
