@@ -6,6 +6,7 @@
 import 'dart:typed_data';
 
 import 'package:xprs/services/xprs/xprs_groups.dart';
+import 'package:xprs/services/xprs/xprs_id.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_sig.dart';
 import 'package:xprs/util/nostr_crypto.dart';
@@ -42,6 +43,21 @@ XprsPacket _act(String signer, String when, String rest) => xprsSign(
       _keyFor(signer).d,
     );
 
+/// A member consenting, signed by them (26.3.1). [grantId] is the section 5
+/// identifier of the grant being accepted.
+XprsPacket _accept(String member, String when, String grantId,
+        {String role = 'member'}) =>
+    xprsSign(
+      XprsPacket.parse(
+          't:moderate f:$member d:$g ts:$when r:$grantId accept:$role')!,
+      _keyFor(member).d,
+    );
+
+XprsPacket _leave(String member, String when) => xprsSign(
+      XprsPacket.parse('t:moderate f:$member d:$g ts:$when leave:group')!,
+      _keyFor(member).d,
+    );
+
 void main() {
   late XprsGroups m;
   final now = _ts('2026-08-20T00:00:00');
@@ -53,14 +69,53 @@ void main() {
   });
 
   group('membership', () {
-    test('the admin grants; a member may post', () {
+    test('a grant alone is an OFFER — nobody is a member without saying so', () {
       m.offer(_act(g, '2026-08-08_10:00:00', 'grant:X1RD89,X32DVA'),
           nowMs: now);
       final r = m.rosterOf(g, nowMs: now);
-      expect(r.roles['X1RD89'], XprsRole.member);
-      expect(r.roles['X32DVA'], XprsRole.member);
+      expect(r.roles['X1RD89'], XprsRole.invited);
+      expect(r.roles['X32DVA'], XprsRole.invited);
+      expect(m.mayPost(g, 'X1RD89', nowMs: now), isFalse,
+          reason: 'a pending grant confers no right to post (26.3.1)');
+    });
+
+    test('acceptance makes the member', () {
+      final grant = _act(g, '2026-08-08_10:00:00', 'grant:X1RD89');
+      m.offer(grant, nowMs: now);
+      m.offer(_accept('X1RD89', '2026-08-08_11:00:00', xprsIdentifier(grant)),
+          nowMs: now);
+      expect(m.rosterOf(g, nowMs: now).roles['X1RD89'], XprsRole.member);
       expect(m.mayPost(g, 'X1RD89', nowMs: now), isTrue);
+    });
+
+    test('an acceptance naming the wrong grant does nothing', () {
+      m.offer(_act(g, '2026-08-08_10:00:00', 'grant:X1RD89'), nowMs: now);
+      m.offer(_accept('X1RD89', '2026-08-08_11:00:00', 'ffffff'), nowMs: now);
+      expect(m.mayPost(g, 'X1RD89', nowMs: now), isFalse,
+          reason: 'the acceptance is evidence of a SPECIFIC offer');
+    });
+
+    test('a stranger cannot accept their way in', () {
+      final grant = _act(g, '2026-08-08_10:00:00', 'grant:X1RD89');
+      m.offer(grant, nowMs: now);
+      // X1PZ4Q was never offered anything, and names somebody else's grant.
+      m.offer(_accept('X1PZ4Q', '2026-08-08_11:00:00', xprsIdentifier(grant)),
+          nowMs: now);
       expect(m.mayPost(g, 'X1PZ4Q', nowMs: now), isFalse);
+    });
+
+    test('leaving ends it, and consent does not carry across a departure', () {
+      final g1 = _act(g, '2026-08-08_10:00:00', 'grant:X1RD89');
+      m.offer(g1, nowMs: now);
+      m.offer(_accept('X1RD89', '2026-08-08_11:00:00', xprsIdentifier(g1)),
+          nowMs: now);
+      m.offer(_leave('X1RD89', '2026-08-09_10:00:00'), nowMs: now);
+      expect(m.mayPost(g, 'X1RD89', nowMs: now), isFalse);
+
+      // Re-offered, but silent this time: an old offer must not re-add them.
+      m.offer(_act(g, '2026-08-10_10:00:00', 'grant:X1RD89'), nowMs: now);
+      expect(m.mayPost(g, 'X1RD89', nowMs: now), isFalse,
+          reason: 'a later grant needs a NEW acceptance (26.4)');
     });
 
     test('the group itself is the admin', () {
@@ -76,13 +131,35 @@ void main() {
   });
 
   group('two tiers — only the admin may appoint', () {
-    test('a moderator may revoke', () {
-      m.offer(_act(g, '2026-08-08_10:00:00', 'grant:X32DVA role:mod'),
+    test('a moderator may revoke — once they have accepted the role', () {
+      final appoint = _act(g, '2026-08-08_10:00:00', 'grant:X32DVA role:mod');
+      m.offer(appoint, nowMs: now);
+      m.offer(
+          _accept('X32DVA', '2026-08-08_10:30:00', xprsIdentifier(appoint),
+              role: 'mod'),
           nowMs: now);
-      m.offer(_act(g, '2026-08-08_11:00:00', 'grant:X1PZ4Q'), nowMs: now);
+      final gr = _act(g, '2026-08-08_11:00:00', 'grant:X1PZ4Q');
+      m.offer(gr, nowMs: now);
+      m.offer(_accept('X1PZ4Q', '2026-08-08_11:30:00', xprsIdentifier(gr)),
+          nowMs: now);
+      expect(m.mayPost(g, 'X1PZ4Q', nowMs: now), isTrue);
+
       m.offer(_act('X32DVA', '2026-08-09_10:00:00', 'revoke:X1PZ4Q'),
           nowMs: now);
       expect(m.mayPost(g, 'X1PZ4Q', nowMs: now), isFalse);
+    });
+
+    test('an appointed moderator who never accepted cannot act', () {
+      m.offer(_act(g, '2026-08-08_10:00:00', 'grant:X32DVA role:mod'),
+          nowMs: now);
+      final gr = _act(g, '2026-08-08_11:00:00', 'grant:X1PZ4Q');
+      m.offer(gr, nowMs: now);
+      m.offer(_accept('X1PZ4Q', '2026-08-08_11:30:00', xprsIdentifier(gr)),
+          nowMs: now);
+      m.offer(_act('X32DVA', '2026-08-09_10:00:00', 'revoke:X1PZ4Q'),
+          nowMs: now);
+      expect(m.mayPost(g, 'X1PZ4Q', nowMs: now), isTrue,
+          reason: 'an unaccepted appointment carries no authority');
     });
 
     test('a moderator may NOT appoint', () {
@@ -95,7 +172,10 @@ void main() {
     });
 
     test('a stranger may do nothing', () {
-      m.offer(_act(g, '2026-08-08_10:00:00', 'grant:X1RD89'), nowMs: now);
+      final gr = _act(g, '2026-08-08_10:00:00', 'grant:X1RD89');
+      m.offer(gr, nowMs: now);
+      m.offer(_accept('X1RD89', '2026-08-08_10:30:00', xprsIdentifier(gr)),
+          nowMs: now);
       m.offer(_act('X1NOPE', '2026-08-09_10:00:00', 'revoke:X1RD89'),
           nowMs: now);
       expect(m.mayPost(g, 'X1RD89', nowMs: now), isTrue);
@@ -104,7 +184,10 @@ void main() {
 
   group('a suspension is a revocation with an end', () {
     test('in force before its moment, lapsed after', () {
-      m.offer(_act(g, '2026-08-08_10:00:00', 'grant:X1PZ4Q'), nowMs: now);
+      final gr = _act(g, '2026-08-08_10:00:00', 'grant:X1PZ4Q');
+      m.offer(gr, nowMs: now);
+      m.offer(_accept('X1PZ4Q', '2026-08-08_10:30:00', xprsIdentifier(gr)),
+          nowMs: now);
       m.offer(
           _act(g, '2026-08-09_10:00:00',
               'revoke:X1PZ4Q until:2026-08-15_00:00:00'),
@@ -134,9 +217,16 @@ void main() {
 
     test('authority is judged at the moment of the act', () {
       // The moderator acts, and is only removed afterwards. The act stands.
-      m.offer(_act(g, '2026-08-01_10:00:00', 'grant:X32DVA role:mod'),
+      final ap = _act(g, '2026-08-01_10:00:00', 'grant:X32DVA role:mod');
+      m.offer(ap, nowMs: now);
+      m.offer(
+          _accept('X32DVA', '2026-08-01_10:30:00', xprsIdentifier(ap),
+              role: 'mod'),
           nowMs: now);
-      m.offer(_act(g, '2026-08-01_11:00:00', 'grant:X1PZ4Q'), nowMs: now);
+      final gr = _act(g, '2026-08-01_11:00:00', 'grant:X1PZ4Q');
+      m.offer(gr, nowMs: now);
+      m.offer(_accept('X1PZ4Q', '2026-08-01_11:30:00', xprsIdentifier(gr)),
+          nowMs: now);
       m.offer(_act('X32DVA', '2026-08-02_10:00:00', 'revoke:X1PZ4Q'),
           nowMs: now);
       m.offer(_act(g, '2026-08-03_10:00:00', 'revoke:X32DVA'), nowMs: now);
@@ -145,9 +235,16 @@ void main() {
     });
 
     test('the admin can void a moderator record with since:', () {
-      m.offer(_act(g, '2026-08-01_10:00:00', 'grant:X32DVA role:mod'),
+      final ap = _act(g, '2026-08-01_10:00:00', 'grant:X32DVA role:mod');
+      m.offer(ap, nowMs: now);
+      m.offer(
+          _accept('X32DVA', '2026-08-01_10:30:00', xprsIdentifier(ap),
+              role: 'mod'),
           nowMs: now);
-      m.offer(_act(g, '2026-08-01_11:00:00', 'grant:X1PZ4Q'), nowMs: now);
+      final gr = _act(g, '2026-08-01_11:00:00', 'grant:X1PZ4Q');
+      m.offer(gr, nowMs: now);
+      m.offer(_accept('X1PZ4Q', '2026-08-01_11:30:00', xprsIdentifier(gr)),
+          nowMs: now);
       m.offer(_act('X32DVA', '2026-08-02_10:00:00', 'revoke:X1PZ4Q'),
           nowMs: now);
       m.offer(
@@ -160,10 +257,14 @@ void main() {
 
     test('order of arrival does not change the answer', () {
       // Same packets, reversed. The replay sorts, so the result must match.
+      final g1 = _act(g, '2026-08-01_10:00:00', 'grant:X1RD89');
+      final g2 = _act(g, '2026-08-03_10:00:00', 'grant:X1RD89');
       final wires = [
-        _act(g, '2026-08-01_10:00:00', 'grant:X1RD89'),
+        g1,
+        _accept('X1RD89', '2026-08-01_11:00:00', xprsIdentifier(g1)),
         _act(g, '2026-08-02_10:00:00', 'revoke:X1RD89'),
-        _act(g, '2026-08-03_10:00:00', 'grant:X1RD89'),
+        g2,
+        _accept('X1RD89', '2026-08-03_11:00:00', xprsIdentifier(g2)),
       ];
       for (final w in wires) {
         m.offer(w, nowMs: now);
@@ -187,7 +288,11 @@ void main() {
 
   group('what a client shows', () {
     test('hide:message collects the identifier', () {
-      m.offer(_act(g, '2026-08-08_10:00:00', 'grant:X32DVA role:mod'),
+      final ap = _act(g, '2026-08-08_10:00:00', 'grant:X32DVA role:mod');
+      m.offer(ap, nowMs: now);
+      m.offer(
+          _accept('X32DVA', '2026-08-08_10:30:00', xprsIdentifier(ap),
+              role: 'mod'),
           nowMs: now);
       m.offer(_act('X32DVA', '2026-08-09_10:00:00', 'r:89a9c8 hide:message'),
           nowMs: now);

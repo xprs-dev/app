@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:xprs/services/xprs/xprs_group_act.dart';
 import 'package:xprs/services/xprs/xprs_groups.dart';
+import 'package:xprs/services/xprs/xprs_id.dart';
 import 'package:xprs/services/xprs/xprs_sig.dart';
 import 'package:xprs/util/nostr_crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,18 +90,48 @@ void main() {
   });
 
   test('what it composes is what the roster then reads', () {
-    // The two halves have to agree or nothing works end to end.
+    // The two halves have to agree or nothing works end to end -- including
+    // the consent half: a grant is an offer until the member signs (26.3.1).
+    final member = NostrCrypto.generateKeyPair();
+    final memberD = () {
+      var v = BigInt.zero;
+      for (final b in HEX.decode(NostrCrypto.decodeNsec(member.nsec))) {
+        v = (v << 8) | BigInt.from(b);
+      }
+      return v;
+    }();
+    final mCall = 'X1${NostrCrypto.deriveCallsign(member.publicKeyHex)}';
+    final mPub = Uint8List.fromList(HEX.decode(member.publicKeyHex));
+
     final m = XprsGroups.instance..clear();
-    m.keyResolver = (c) => c == g ? pub : null;
-    m.offer(XprsGroupAct.grant(
-        group: g, callsigns: ['X1RD89'], scalar: d, nowMs: now)!,
+    m.keyResolver = (c) => c == g ? pub : (c == mCall ? mPub : null);
+
+    final offer =
+        XprsGroupAct.grant(group: g, callsigns: [mCall], scalar: d, nowMs: now)!;
+    m.offer(offer, nowMs: now);
+    expect(m.rosterOf(g, nowMs: now).roles[mCall], XprsRole.invited,
+        reason: 'an offer, not yet a membership');
+    expect(m.mayPost(g, mCall, nowMs: now), isFalse);
+
+    m.offer(
+        XprsGroupAct.accept(
+            group: g,
+            member: mCall,
+            grantId: xprsIdentifier(offer),
+            scalar: memberD,
+            // A minute later: an acceptance comes after the offer it names.
+            // Sharing a ts: would leave the order to the section 26.4
+            // identifier tie-break -- deterministic, but not the story here.
+            nowMs: now + 60000)!,
         nowMs: now);
-    m.offer(XprsGroupAct.grant(
-        group: g, callsigns: ['X32DVA'], scalar: d, role: 'mod', nowMs: now)!,
+    expect(m.rosterOf(g, nowMs: now).roles[mCall], XprsRole.member);
+    expect(m.mayPost(g, mCall, nowMs: now), isTrue);
+
+    m.offer(
+        XprsGroupAct.leave(
+            group: g, member: mCall, scalar: memberD, nowMs: now + 120000)!,
         nowMs: now);
-    final r = m.rosterOf(g, nowMs: now);
-    expect(r.roles['X1RD89'], XprsRole.member);
-    expect(r.roles['X32DVA'], XprsRole.mod);
-    expect(m.mayPost(g, 'X1RD89', nowMs: now), isTrue);
+    expect(m.mayPost(g, mCall, nowMs: now), isFalse,
+        reason: 'a signed record that they went');
   });
 }

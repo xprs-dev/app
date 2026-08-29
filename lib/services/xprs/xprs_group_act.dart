@@ -90,6 +90,49 @@ class XprsGroupAct {
         nowMs: nowMs,
       );
 
+  /// The member consenting (26.3.1), signed by THEM.
+  ///
+  /// `r:` names the grant being accepted, so the acceptance is evidence of a
+  /// specific offer rather than a floating assertion -- and a grant that was
+  /// withdrawn cannot be accepted after the fact.
+  static XprsPacket? accept({
+    required String group,
+    required String member,
+    required String grantId,
+    required BigInt scalar,
+    String role = 'member',
+    int? nowMs,
+  }) {
+    final g = group.trim().toUpperCase();
+    final m = member.trim().toUpperCase();
+    final r = grantId.trim();
+    if (g.isEmpty || m.isEmpty || r.isEmpty) return null;
+    final word = role.trim().toLowerCase() == 'mod' ? 'mod' : 'member';
+    final p = XprsPacket.parse(
+        't:moderate f:$m d:$g ts:${xprsNowTs(nowMs)} r:$r accept:$word');
+    if (p == null) return null;
+    return xprsSign(p, scalar);
+  }
+
+  /// The member going (26.3.1), signed by them. No `r:` -- leaving is theirs
+  /// alone and needs nobody's agreement. What it leaves behind is a signed
+  /// record that they went, rather than a silence somebody could explain any
+  /// way they liked.
+  static XprsPacket? leave({
+    required String group,
+    required String member,
+    required BigInt scalar,
+    int? nowMs,
+  }) {
+    final g = group.trim().toUpperCase();
+    final m = member.trim().toUpperCase();
+    if (g.isEmpty || m.isEmpty) return null;
+    final p = XprsPacket.parse(
+        't:moderate f:$m d:$g ts:${xprsNowTs(nowMs)} leave:group');
+    if (p == null) return null;
+    return xprsSign(p, scalar);
+  }
+
   /// `r:<id> hide:message` -- "asks clients not to display the packet named in
   /// `r:`; it cannot unsend anything, because nothing on a radio can" (26.3).
   /// A moderator may do this, so [signer] and [scalar] may be theirs.

@@ -38,6 +38,8 @@ import 'xprs_lan.dart';
 import 'xprs_airtime.dart';
 import 'xprs_archive.dart';
 import 'xprs_body.dart';
+import 'xprs_group_keys.dart';
+import 'xprs_id.dart';
 import 'xprs_monitor.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
@@ -690,8 +692,26 @@ class XprsPublisher {
     lastWire = wire;
     // `<type>` alone would still collide across destinations, which is exactly
     // the catch-up sweep's case: N asks, one slot, one survivor.
+    //
+    // And `<type>:<dest>` still collides across RECORDS to one destination.
+    // Registering a slot REPLACES the frame in it, so a run of acts addressed
+    // to the same group left at most the last one on air: three grants to
+    // `X5A3F2` all keyed `moderate:X5A3F2`, two of them overwritten before the
+    // rotation ever reached them. That is fine for a packet that supersedes
+    // its predecessor -- a beacon, a status -- and wrong for one that is a
+    // distinct record. A roster act is a record: losing one loses a member.
+    //
+    // So a record keys on its own section 5 identifier. Bounded by the TTL
+    // rather than by the slot name, which is the correct bound: it holds a
+    // rotation slot for as long as it is worth airing and no longer.
     final dest = (p['d'] ?? '').toUpperCase();
-    final useSlot = slot ?? (dest.isEmpty ? p.type : '${p.type}:$dest');
+    const perRecord = {'moderate'};
+    final useSlot = slot ??
+        (perRecord.contains(p.type)
+            ? '${p.type}:${xprsIdentifier(p)}'
+            : dest.isEmpty
+                ? p.type
+                : '${p.type}:$dest');
 
     // Section 36.0: "The one place a bearer legitimately decides anything is
     // choosing among several paths to the SAME station." When this packet names
@@ -718,7 +738,19 @@ class XprsPublisher {
     final carriedBy = air.carriedBy;
 
     final took = carriedBy;
-    if (!verbatim && took != null) {
+    // File it as ours when we WROTE it -- which is not the same question as
+    // whether we signed it with the profile key.
+    //
+    // `verbatim` means "do not sign, do not claim authorship", and for a
+    // history replay both halves are right. For a group act both halves are
+    // wrong in the second: the packet is signed by a key THIS STATION HOLDS
+    // (section 26.1 -- the key belongs to the group, and the admin is whoever
+    // holds it), so it is our own record and nobody else will keep it for us.
+    // Bench: neither phone held a single `moderate` row, including the one
+    // that composed them, so there was nothing to serve and propagation was
+    // dead at the source.
+    final ours = !verbatim || XprsGroupKeys.instance.scalarFor(from) != null;
+    if (ours && took != null) {
       XprsIngest.own(wire, bearer: took);
     }
     published++;

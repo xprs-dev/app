@@ -33,6 +33,12 @@ enum XprsRole {
   /// Not granted, or revoked. Section 26.7: this decides DISPLAY, nothing else.
   none,
 
+  /// Offered a place and has not answered (26.3.1). A grant naming a person
+  /// confers nothing until they sign an acceptance, so this is NOT membership
+  /// -- but it is not absence either, and reporting it as absence would hide
+  /// the admin's act. The distinction is the person's own doing.
+  invited,
+
   /// Granted, no role word.
   member,
 
@@ -52,7 +58,7 @@ enum XprsRole {
 /// voids part of the record.
 class _Act {
   _Act(this.id, this.signer, this.ts, this.grant, this.revoke, this.role,
-      this.until, this.since, this.hideRef);
+      this.until, this.since, this.hideRef, this.accept, this.leave);
 
   /// Section 5 identifier -- breaks a tie when two acts share a `ts:` (26.4).
   final String id;
@@ -66,6 +72,13 @@ class _Act {
   final int? until;
   final int? since;
   final String hideRef;
+
+  /// `accept:member` / `accept:mod` -- the member consenting, signed by them
+  /// (26.3.1). `hideRef` carries the `r:` naming the grant accepted.
+  final String accept;
+
+  /// `leave:group` -- the member going, signed by them.
+  final String leave;
 }
 
 /// The answer for one group at one moment.
@@ -164,6 +177,8 @@ class XprsGroups {
       until,
       xprsParseTs(p['since']),
       (p['r'] ?? '').trim(),
+      (p['accept'] ?? '').trim().toLowerCase(),
+      (p['leave'] ?? '').trim().toLowerCase(),
     );
 
     final list = _acts.putIfAbsent(group, () {
@@ -228,7 +243,11 @@ class XprsGroups {
     final r = rosterOf(group, nowMs: nowMs, haveKey: haveKey);
     if (!r.verified) return true; // fail open, and say so elsewhere
     final role = r.roles[callsign.trim().toUpperCase()] ?? XprsRole.none;
-    return role != XprsRole.none && role != XprsRole.sub;
+    // 26.3.1: invited is not membership -- a pending grant "confers no right
+    // to post". 26.2: a listed subgroup is not a member of its parent.
+    return role == XprsRole.member ||
+        role == XprsRole.mod ||
+        role == XprsRole.admin;
   }
 
   /// Replay the record. Three passes, and they exist so that two
@@ -269,25 +288,60 @@ class XprsGroups {
     final roles = <String, XprsRole>{};
     final hidden = <String>{};
     final suspended = <String, int>{}; // callsign -> until
+    // Offers awaiting an acceptance: callsign -> the grant that made them.
+    final offered = <String, ({String id, XprsRole role, int ts})>{};
     var nextChange = 0;
 
     for (final a in live) {
       final isAdmin = a.signer == group;
       final signerRole = roles[a.signer] ?? XprsRole.none;
       final isMod = isAdmin || signerRole == XprsRole.mod;
-      if (!isAdmin && !isMod) continue; // no authority at this moment
+      // A member's own accept/leave needs no authority -- it is about
+      // themselves and nobody else. Everything below the authority gate is an
+      // act upon OTHERS, which is what authority is for.
+      final selfAct = a.accept.isNotEmpty || a.leave.isNotEmpty;
+      if (!isAdmin && !isMod && !selfAct) continue;
 
       // "A moderator may revoke and hide. Only the admin may appoint."
       if (a.grant.isNotEmpty && isAdmin) {
-        final role = a.role == 'mod'
-            ? XprsRole.mod
-            : a.role == 'sub'
-                ? XprsRole.sub
-                : XprsRole.member;
+        final sub = a.role == 'sub';
+        final role = a.role == 'mod' ? XprsRole.mod : XprsRole.member;
         for (final c in a.grant) {
-          roles[c] = role;
+          if (sub) {
+            // 26.2/26.3.1: a subgroup is a keypair, not a person. A listing
+            // "confers nothing", so asking it to consent would be ceremony.
+            roles[c] = XprsRole.sub;
+            suspended.remove(c);
+            continue;
+          }
+          // 26.3.1: a grant naming a PERSON is an offer. It confers nothing
+          // until they sign an acceptance, so record the offer and wait.
+          offered[c] = (id: a.id, role: role, ts: a.ts);
+          roles[c] = XprsRole.invited;
           suspended.remove(c);
         }
+      }
+
+      // The member answering (26.3.1), signed by themselves -- so `isAdmin`
+      // and `isMod` are irrelevant here and the authority test above must not
+      // have skipped it.
+      if (a.accept.isNotEmpty) {
+        final o = offered[a.signer];
+        // Bound to a SPECIFIC offer: `r:` names the grant accepted, so a
+        // withdrawn grant cannot be accepted after the fact and a stray
+        // acceptance names nothing.
+        if (o != null && o.id == a.hideRef && a.ts >= o.ts) {
+          roles[a.signer] = a.accept == 'mod' ? XprsRole.mod : o.role;
+          offered.remove(a.signer);
+        }
+      }
+
+      // Leaving is the member's alone and takes no `r:`. What it leaves behind
+      // is the point: a signed record that they went.
+      if (a.leave.isNotEmpty) {
+        roles.remove(a.signer);
+        offered.remove(a.signer);
+        suspended.remove(a.signer);
       }
       for (final c in a.revoke) {
         if (a.until != null) {
