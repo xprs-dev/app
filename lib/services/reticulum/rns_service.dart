@@ -32,6 +32,7 @@ import 'package:hex/hex.dart';
 import '../mesh/mesh_service.dart';
 import '../mesh/mesh_courier.dart';
 import '../xprs/xprs_archive.dart';
+import '../xprs/xprs_groups.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_monitor.dart';
@@ -139,6 +140,18 @@ class RnsService {
     // learned from beacons and announces. Wired here, in the one place that
     // owns the callsign→key map, so the archive itself needs no node.
     XprsArchive.instance.keyResolver = (base) {
+      final hex = pubkeyForCallsign(base);
+      if (hex == null || hex.isEmpty) return null;
+      try {
+        return Uint8List.fromList(HEX.decode(hex));
+      } catch (_) {
+        return null;
+      }
+    };
+    // Closed groups verify the same way and from the same map: section 26 is
+    // built entirely on signatures, so an act nobody can check must not move a
+    // roster. Same shape as the archive's resolver above, deliberately.
+    XprsGroups.instance.keyResolver = (base) {
       final hex = pubkeyForCallsign(base);
       if (hex == null || hex.isEmpty) return null;
       try {

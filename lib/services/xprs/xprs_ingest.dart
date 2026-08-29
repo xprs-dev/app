@@ -29,6 +29,7 @@ import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
 import 'xprs_archive.dart';
+import 'xprs_groups.dart';
 import 'xprs_gossip.dart';
 import 'xprs_monitor.dart';
 import 'xprs_packet.dart';
@@ -265,6 +266,16 @@ class XprsIngest {
     // `unverified` — not because it is bad, but because nothing here could
     // check it.
     if (p.type == 'identity') _bindIdentity(from, p);
+
+    // An act of authority in a closed group (section 26.3). One packet type
+    // carries every one of them, and XprsGroups replays the record.
+    //
+    // It goes HERE, in the funnel, for the reason everything else does: this
+    // is the one place every bearer reaches, so a group's roster is the same
+    // whether the act arrived over BLE, LAN, or a custody session. Cheap --
+    // the act is stored and the replay is redone only when one arrives, never
+    // per message (docs/performance.md 8.7).
+    if (p.type == 'moderate') XprsGroups.instance.offer(p);
 
     // The preference governs the INDEXER — other people's traffic. A packet
     // addressed to us is our own mail and is kept either way.

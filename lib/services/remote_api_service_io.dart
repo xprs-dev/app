@@ -14,6 +14,7 @@ import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_publisher.dart';
 import 'xprs/xprs_gossip.dart';
+import 'xprs/xprs_groups.dart';
 import 'xprs/xprs_graph.dart';
 import 'mesh/mesh_courier.dart';
 import 'mesh/mesh_custody.dart';
@@ -1404,6 +1405,26 @@ class RemoteApiService {
       }
       // Where can a callsign be reached (36.9.4 gossip + 13.12): the
       // internet sender's question, answered in layers.
+      // One closed group's roster, replayed per section 26.4. The answer to
+      // "who belongs, and who may act" without any UI -- which is how stage 1
+      // is verified on a phone.
+      if (req.method == 'GET' && path == '/api/xprs/group') {
+        final d = (req.uri.queryParameters['d'] ?? '').trim().toUpperCase();
+        if (d.isEmpty) {
+          return _json(res, {'ok': false, 'error': 'need d=<group>'},
+              status: HttpStatus.badRequest);
+        }
+        // `haveKey` is the difference between "closed and empty" and "we could
+        // not check": section 26.7 says a client that cannot verify fails open
+        // and SAYS SO, so the caller is told which one this is.
+        final haveKey =
+            XprsGroups.instance.keyResolver?.call(d) != null;
+        return _json(res, {
+          'ok': true,
+          ...XprsGroups.instance.groupJson(d, haveKey: haveKey),
+        });
+      }
+
       if (req.method == 'GET' && path == '/api/xprs/whois') {
         final call = (req.uri.queryParameters['call'] ?? '')
             .trim()
@@ -1579,6 +1600,7 @@ class RemoteApiService {
           'POST /api/rns/start {"mode":"tcpserver|tcpclient|ble","host":"..","port":4242}',
           'POST /api/rns/announce {"text":"hello"}',
           'GET /api/rns/inbox',
+          'GET /api/xprs/group?d=<X5group>',
         ],
       }, status: HttpStatus.notFound);
     } catch (e) {
@@ -1699,6 +1721,10 @@ class RemoteApiService {
         // Climbing means machinery is still being handed to the chat by some
         // caller — visible here instead of on somebody's screen.
         'inboxRefusedProtocol': RnsService.instance.inboxRefusedProtocol,
+        // Closed groups (section 26): counts only. A status endpoint that
+        // serialised every member of every group would be a page fetch to
+        // count; /api/xprs/group answers for one group.
+        'groups': XprsGroups.instance.statusJson(),
         // Private-message accounting (docs/XPRS.md section 9.2). `sealedAired`
         // and `sealedUnreadable` are the two halves of "did privacy work": one
         // counts what we sent sealed, the other what reached us sealed and
