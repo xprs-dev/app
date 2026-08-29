@@ -338,6 +338,15 @@ class FunctionalityRegistry {
           ],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef(
+          'hal_xprs_groups',
+          'The closed groups (XPRS \u00a726) this station knows, with OUR '
+          'standing in each \u2014 '
+          '[{call,nick,role,admin,members,candidates,verified}]. `role` is one '
+          'of admin/mod/member/invited/none; only member, mod and admin may '
+          'post (\u00a726.3.1: a grant confers nothing until accepted)',
+          [],
+          ReturnDef('int', 'Bytes written, negated required size if too small')),
+      EndpointDef(
           'hal_xprs_send',
           'Air one caller-composed XPRS wire: section 4 validated, signed '
           'when it speaks as this station, scope rules applied, own copy '

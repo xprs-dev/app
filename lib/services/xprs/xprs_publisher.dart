@@ -36,6 +36,7 @@ import '../reticulum/rns_service.dart';
 import 'xprs_ingest.dart';
 import 'xprs_lan.dart';
 import 'xprs_airtime.dart';
+import '../../util/nostr_crypto.dart';
 import 'xprs_archive.dart';
 import 'xprs_body.dart';
 import 'xprs_group_keys.dart';
@@ -749,7 +750,19 @@ class XprsPublisher {
     // Bench: neither phone held a single `moderate` row, including the one
     // that composed them, so there was nothing to serve and propagation was
     // dead at the source.
-    final ours = !verbatim || XprsGroupKeys.instance.scalarFor(from) != null;
+    //
+    // The same is true of the OTHER half of a group's record. 26.3.1's
+    // acceptance and departure are signed by the PERSON, so `f:` is our own
+    // callsign rather than a group we hold a key for — and asking only the
+    // group-key question threw them away. Bench: the phone accepted an
+    // invitation, both screens agreed, and after a restart it was back to
+    // `invited` while the admin still had it as a member, because the one
+    // station that had to keep that consent was the one that gave it.
+    final ours = !verbatim ||
+        XprsGroupKeys.instance.scalarFor(from) != null ||
+        from ==
+            NostrCrypto.bareCallsign(XprsArchive.instance.selfCallsign)
+                .toUpperCase();
     if (ours && took != null) {
       XprsIngest.own(wire, bearer: took);
     }

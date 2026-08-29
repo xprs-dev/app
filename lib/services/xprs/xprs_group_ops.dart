@@ -16,6 +16,7 @@ import 'dart:async';
 
 import '../../util/nostr_crypto.dart';
 import '../reticulum/rns_service.dart';
+import 'xprs_archive.dart';
 import 'xprs_group_act.dart';
 import 'xprs_group_keys.dart';
 import 'xprs_groups.dart';
@@ -109,6 +110,25 @@ class XprsGroupOps {
 
   static XprsGroupOpResult leave(String group, String me) => _selfAct(
       (scalar) => XprsGroupAct.leave(group: group, member: me, scalar: scalar));
+
+  /// Forget a group entirely: its record, its archived acts, and the key if
+  /// we hold one.
+  ///
+  /// This is local and it is not a deletion. Section 26 has no packet for
+  /// "this group is over" and could not honour one — the record is signed and
+  /// held by whoever heard it, which is the point. Dropping the key is the
+  /// only half 26.6 says a holder can actually do, and even then "the previous
+  /// holder keeping a copy is a cost with no protocol answer".
+  ///
+  /// The archive goes too. The roster is replayed from those rows at startup,
+  /// so a group forgotten in memory alone reappears on the next launch, which
+  /// reads as the delete not having worked.
+  static void forget(String group) {
+    final g = group.trim().toUpperCase();
+    XprsGroups.instance.forget(g);
+    XprsArchive.instance.forgetGroup(g);
+    XprsGroupKeys.instance.forget(g);
+  }
 
   static XprsGroupOpResult _adminAct(
       String group, XprsPacket? Function(BigInt scalar) compose) {

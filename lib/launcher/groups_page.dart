@@ -128,7 +128,22 @@ class _GroupsPageState extends State<GroupsPage> {
     final candidates =
         r.roles.values.where((v) => v == XprsRole.invited).length;
 
-    return ListTile(
+    return Dismissible(
+      key: ValueKey(call),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) => _confirmForget(call, nick, mine),
+      onDismissed: (_) {
+        XprsGroupOps.forget(call);
+        setState(() {});
+        _say('Forgot $call on this device.');
+      },
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        color: cs.errorContainer,
+        child: Icon(Icons.delete_outline, color: cs.onErrorContainer),
+      ),
+      child: ListTile(
       leading: CircleAvatar(
         backgroundColor: mine ? cs.primaryContainer : cs.surfaceContainerHighest,
         child: Icon(mine ? Icons.key : Icons.groups,
@@ -152,7 +167,45 @@ class _GroupsPageState extends State<GroupsPage> {
           .then((_) {
         if (mounted) setState(() {});
       }),
+    ),
     );
+  }
+
+  /// Say what forgetting actually does before doing it. It is local, it is not
+  /// a deletion, and for a group we administer it is irreversible in the one
+  /// way that matters: the key cannot be regenerated, because the callsign is
+  /// derived from it (26.1, 26.6).
+  Future<bool> _confirmForget(String call, String nick, bool mine) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Forget ${nick.isEmpty ? call : nick}?'),
+        content: Text(
+          mine
+              ? 'This drops the group’s KEY from this device. The key cannot '
+                  'be regenerated — the callsign is derived from it — so you '
+                  'could never sign for $call again, and anybody else who '
+                  'heard its record still has it.\n\n'
+                  'The group does not stop existing. Only this device forgets.'
+              : 'This device forgets $call: its roster and the signed acts it '
+                  'kept.\n\nThe group does not stop existing, and you will '
+                  'hear about it again if somebody in earshot mentions it.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+                foregroundColor: Theme.of(ctx).colorScheme.onError),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Forget'),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
   }
 
   Widget? _roleChip(XprsRole role, {required bool pending}) {
@@ -246,6 +299,15 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
               icon: const Icon(Icons.person_add_alt),
               onPressed: _invite,
             ),
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              if (v == 'forget') _forget();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                  value: 'forget', child: Text('Forget on this device')),
+            ],
+          ),
         ],
       ),
       body: ListView(
@@ -423,6 +485,38 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
 
   void _leaveNow() => _report(XprsGroupOps.leave(widget.group, _me),
       done: 'Left ${widget.group}.');
+
+  Future<void> _forget() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Forget ${widget.group}?'),
+        content: Text(_amAdmin
+            ? 'This drops the group’s KEY from this device. It cannot be '
+                'regenerated — the callsign is derived from it — so you could '
+                'never sign for this group again. It does not stop existing: '
+                'everybody who heard its record still holds it.'
+            : 'This device forgets the group’s roster and the signed acts it '
+                'kept. The group does not stop existing, and you will hear of '
+                'it again if somebody in earshot mentions it.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+                foregroundColor: Theme.of(ctx).colorScheme.onError),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Forget'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    XprsGroupOps.forget(widget.group);
+    if (mounted) Navigator.of(context).pop();
+  }
 
   void _report(XprsGroupOpResult r, {String? done}) {
     if (mounted) setState(() {});

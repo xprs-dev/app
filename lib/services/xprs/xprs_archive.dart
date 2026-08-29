@@ -436,6 +436,25 @@ class XprsArchive {
     }
   }
 
+  /// Drop everything this station holds about one closed group.
+  ///
+  /// Forgetting a group is not deleting it: the group goes on existing
+  /// wherever anybody else holds its record, and 26.6 says as much about the
+  /// key. This is only the local copy — and it has to include the archive,
+  /// because the roster is replayed from these rows at startup and a group
+  /// forgotten in memory alone comes straight back on the next launch.
+  ///
+  /// Rides `idx_pk_to(toc, pts)`, so it is a range delete rather than a scan.
+  int forgetGroup(String group) {
+    final db = _db;
+    if (db == null) return 0;
+    final g = _base(group.trim().toUpperCase());
+    if (g.isEmpty) return 0;
+    flush(); // anything still queued would be written back after the delete
+    db.execute('DELETE FROM packets WHERE toc = ? OR fromc = ?', [g, g]);
+    return db.updatedRows;
+  }
+
   int _dataBytes(Database db) {
     try {
       final pc =

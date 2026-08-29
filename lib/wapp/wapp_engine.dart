@@ -29,6 +29,8 @@ import '../services/social/email_resolve_service.dart';
 import '../services/social/node_role_api.dart';
 import '../services/mesh/mesh_carry_broker.dart';
 import '../services/mesh/mesh_service.dart';
+import '../services/xprs/xprs_group_keys.dart';
+import '../services/xprs/xprs_groups.dart';
 import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_packet.dart';
@@ -3629,6 +3631,56 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_groups: the closed groups this station knows and what WE are in
+    // each of them (section 26). A wapp cannot work this out for itself — the
+    // answer is a replay of signed acts against a key map the host owns — and
+    // it is not a transport decision, so it belongs here rather than in a wapp.
+    final halXprsGroups = WasmFunction(
+      (int outPtr, int outCap) {
+        if (outCap <= 0) return 0;
+        final me = MeshService.instance.tableCallsign.trim().toUpperCase();
+        final mine = {
+          for (final g in XprsGroupKeys.instance.mine()) g.callsign: g.nick
+        };
+        final calls = <String>{...mine.keys, ...XprsGroups.instance.known};
+        final out = <Map<String, dynamic>>[];
+        for (final c in calls) {
+          final r = XprsGroups.instance.rosterOf(c,
+              haveKey: XprsGroups.instance.keyResolver?.call(c) != null);
+          // 26.1 makes the GROUP its own admin — `f:` equals `d:` on its own
+          // acts — and names the human admin only as "whoever holds the key".
+          // So the person running a group is never in `roles`, and reading the
+          // role straight out of the roster reported `none` for the one
+          // station that can sign for it: the admin got no room in Chat for
+          // the group they had just created.
+          final role = mine.containsKey(c)
+              ? XprsRole.admin
+              : r.offers.containsKey(me)
+                  ? XprsRole.invited
+                  : (r.roles[me] ?? XprsRole.none);
+          out.add({
+            'call': c,
+            'nick': mine[c] ?? '',
+            'role': role.name,
+            'admin': mine.containsKey(c),
+            'members': r.roles.entries
+                .where((e) =>
+                    e.key != c &&
+                    (e.value == XprsRole.member ||
+                        e.value == XprsRole.mod ||
+                        e.value == XprsRole.admin))
+                .length,
+            'candidates': r.offers.length,
+            'verified': r.verified,
+          });
+        }
+        final bytes = utf8.encode(jsonEncode(out));
+        if (bytes.length > outCap) return -bytes.length;
+        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     // hal_xprs_set_pref("key=value"): archive / archiveMaxMb / archiveMaxDays
     // / serveHistory. Persisted and live-applied.
     final halXprsSetPref = WasmFunction(
@@ -3991,6 +4043,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_traffic', halXprsTraffic),
       WasmImport('hal', 'xprs_status', halXprsStatus),
       WasmImport('hal', 'xprs_history', halXprsHistory),
+      WasmImport('hal', 'xprs_groups', halXprsGroups),
       WasmImport('hal', 'xprs_send', halXprsSend),
       WasmImport('hal', 'xprs_set_pref', halXprsSetPref),
       WasmImport('hal', 'mesh_scf_status', halMeshScfStatus),

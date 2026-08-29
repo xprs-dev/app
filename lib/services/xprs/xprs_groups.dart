@@ -247,12 +247,22 @@ class XprsGroups {
   /// nothing else, so a station that keeps none of them forgets every group it
   /// was ever in the moment it restarts.
   bool concernsUs(XprsPacket p, String selfBase) {
-    if (p.type != 'moderate') return false;
     final group = (p['d'] ?? '').trim().toUpperCase();
     if (group.isEmpty) return false;
-    // A group whose key we hold is ours outright.
-    if (_acts.containsKey(group)) return true;
     final me = selfBase.trim().toUpperCase();
+    if (p.type != 'moderate') {
+      // Traffic addressed to a group we are IN is our own mail: the group is
+      // the addressee, so the funnel's person-shaped test never matches it,
+      // and a room whose messages are not kept has no history to show and
+      // nothing to replay to anybody who asks.
+      if (me.isEmpty || !_acts.containsKey(group)) return false;
+      final role = rosterOf(group).roles[me];
+      return role == XprsRole.member ||
+          role == XprsRole.mod ||
+          role == XprsRole.admin;
+    }
+    // A group whose record we already keep is ours outright.
+    if (_acts.containsKey(group)) return true;
     if (me.isEmpty) return false;
     // Named in the act, or speaking in it — an invitation, a revocation, or
     // our own acceptance coming back.
@@ -276,6 +286,10 @@ class XprsGroups {
     }
     return n;
   }
+
+  /// Drop the in-memory record of one group. The caller is responsible for
+  /// the archive too, or a restart replays what was just forgotten.
+  void forget(String group) => _forget(group.trim().toUpperCase());
 
   void _forget(String group) {
     _acts.remove(group);
