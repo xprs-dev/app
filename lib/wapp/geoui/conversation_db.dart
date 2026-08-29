@@ -331,22 +331,54 @@ class ConversationDb {
       store.items[id] = ConversationItem.fromJson(meta);
       if (!store.order.contains(id)) store.order.add(id);
     }
-    final msgs = _db.select(
-      'SELECT convo_id, body FROM messages WHERE field=? ORDER BY seq',
-      [field],
-    );
-    for (final row in msgs) {
+    // Messages are NOT read here. See [loadMessagesInto].
+    //
+    // This used to be one `SELECT ... FROM messages WHERE field=?` over every
+    // thread, with a jsonDecode per row, on the UI isolate, before the first
+    // frame — and then each thread was trimmed to kConvoMaxMessages *after*
+    // paying for all of it. The on-disk tail is 500 per conversation, so the
+    // work grew as 500 x threads for a screen that displays none of it: a
+    // conversation row needs its title, preview, unread count and activity
+    // timestamp, and every one of those lives on the thread row above.
+    //
+    // Opening a conversation reads that conversation, bounded by the same cap
+    // and served by idx msg_thread(field, convo_id, seq).
+    //
+    // A conversation can exist as messages with no thread row — a database
+    // written by an older build, or one whose thread row was lost. The old
+    // loop minted those implicitly by walking every message; keep that, but
+    // ask for the ids alone. DISTINCT over the leading columns of
+    // msg_thread(field, convo_id, seq) is an index walk, and no body is
+    // decoded to learn that a conversation exists.
+    for (final row in _db.select(
+        'SELECT DISTINCT convo_id FROM messages WHERE field=?', [field])) {
       final id = (row['convo_id'] ?? '').toString();
-      final body = _decodeBody(row['body']);
-      if (id.isEmpty || body == null) continue;
-      final it = store.items.putIfAbsent(id, () {
-        if (!store.order.contains(id)) store.order.add(id);
-        return ConversationItem(id, title: id);
-      });
-      it.messages.add(body);
-      if (it.messages.length > kConvoMaxMessages) {
-        it.messages.removeRange(0, it.messages.length - kConvoMaxMessages);
-      }
+      if (id.isEmpty || store.items.containsKey(id)) continue;
+      store.items[id] = ConversationItem(id, title: id);
+      if (!store.order.contains(id)) store.order.add(id);
+    }
+    // Backfill the preview for rows written before it was stored.
+    //
+    // Without this every existing conversation would show a blank second line
+    // until its next message, because the old preview was derived from the
+    // messages this load deliberately no longer reads. One row per such
+    // thread, off the tail of msg_thread(field, convo_id, seq), written back
+    // so it is asked exactly once per conversation in the life of the install.
+    for (final it in store.items.values) {
+      if (it.lastLine.isNotEmpty) continue;
+      final r = _db.select(
+        'SELECT body FROM messages WHERE field=? AND convo_id=? '
+        'ORDER BY seq DESC LIMIT 1',
+        [field, it.id],
+      );
+      if (r.isEmpty) continue;
+      final body = _decodeBody(r.first['body']);
+      if (body == null) continue;
+      final text = (body['text'] ?? '').toString().trim();
+      if (text.isEmpty || body['sys'] == true) continue;
+      final who = (body['from'] ?? '').toString();
+      it.lastLine = who.isEmpty ? text : '$who: $text';
+      upsertThread(field, it);
     }
     for (final row
         in _db.select('SELECT mid, body FROM reactions WHERE field=?', [field])) {
@@ -359,6 +391,33 @@ class ConversationDb {
       statuses[(row['rid'] ?? '').toString()] = (row['state'] ?? '').toString();
     }
     store.restoreStatuses(statuses);
+  }
+
+  /// Read one conversation's message tail, newest-capped, oldest-first.
+  ///
+  /// Rides `msg_thread(field, convo_id, seq)`: the LIMIT is applied by SQL on
+  /// a descending index walk, so a thread with a hundred thousand rows behind
+  /// it costs the same as one with five hundred.
+  List<Map<String, dynamic>> loadMessages(String field, String convoId) {
+    final rows = _db.select(
+      'SELECT body FROM messages WHERE field=? AND convo_id=? '
+      'ORDER BY seq DESC LIMIT ?',
+      [field, convoId, kConvoMaxMessages],
+    );
+    final out = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final body = _decodeBody(row['body']);
+      if (body != null) out.add(body);
+    }
+    return out.reversed.toList(); // oldest first, the order a thread reads in
+  }
+
+  /// How many messages are stored for a field, without materialising them —
+  /// docs/performance.md 8.7: if the answer is a number, ask for the number.
+  int countMessages(String field) {
+    final r =
+        _db.select('SELECT COUNT(*) AS n FROM messages WHERE field=?', [field]);
+    return r.isEmpty ? 0 : (r.first['n'] as int? ?? 0);
   }
 
   /// One-time import of a store built from a legacy `messages/<field>.json`.

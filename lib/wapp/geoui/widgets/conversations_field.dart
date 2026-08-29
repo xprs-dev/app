@@ -773,7 +773,9 @@ class _ConversationsFieldState extends State<ConversationsField> {
             key: ValueKey('conv_$id'),
             fieldName: 'conv',
             label: '',
-            messages: it.messages,
+            // The open conversation: its tail is read here, on demand. A row
+            // in the list beside it needs none of this.
+            messages: widget.store.messagesOf(id),
             fill: true,
             safeBottom: true,
             composerAccessory: _toggleBar(context, id),

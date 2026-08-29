@@ -98,7 +98,17 @@ class ConversationItem {
     this.closed = false,
     this.private = false,
     this.declared = false,
+    this.lastLine = '',
   });
+
+  /// The preview line: what was last actually SAID here, as "who: what".
+  ///
+  /// Derived once when the message arrives and stored on the thread row,
+  /// because the list needs it and reading a conversation's messages to
+  /// recompute it is what made opening the wapp cost every message in the
+  /// database. Distinct from [subtitle], which is whatever the wapp chose to
+  /// put there and is nobody else's to overwrite.
+  String lastLine;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -112,6 +122,7 @@ class ConversationItem {
         'closed': closed,
         'private': private,
         'declared': declared,
+        'lastLine': lastLine,
         'messages': messages,
       };
 
@@ -127,6 +138,7 @@ class ConversationItem {
       muted: j['muted'] == true,
       closed: j['closed'] == true,
       private: j['private'] == true,
+      lastLine: (j['lastLine'] ?? '').toString(),
       // Absent = written before the flag existed = already on screen.
       declared: j['declared'] == null || j['declared'] == true,
     );
@@ -183,6 +195,38 @@ class ConversationStore {
     'delivered': 2,
     'read': 3,
   };
+
+  /// Conversations whose message tail has been read from the database.
+  ///
+  /// A restore loads the thread rows only, so a conversation's messages arrive
+  /// the first time somebody looks at it. Ids are tiny; this holds them for
+  /// the life of the store rather than re-reading on every rebuild.
+  final Set<String> _hydrated = {};
+
+  /// The message tail of [id], reading it from the database on first use.
+  ///
+  /// Every caller that renders a thread goes through here instead of touching
+  /// `item.messages`, so "have we read this one yet?" is asked in one place
+  /// rather than at each screen that happens to show messages.
+  List<Map<String, dynamic>> messagesOf(String id) {
+    final it = items[id];
+    if (it == null) return const [];
+    if (_hydrated.contains(id) || !_wt) return it.messages;
+    _hydrated.add(id);
+    try {
+      final rows = db!.loadMessages(dbField, id);
+      // Replace rather than merge: every message was written through on the
+      // way in, so the database is the complete copy and anything appended in
+      // memory before this point is already in those rows.
+      it.messages
+        ..clear()
+        ..addAll(rows);
+    } catch (_) {
+      // Unreadable tail: show the thread empty rather than failing the screen,
+      // and do not retry per frame.
+    }
+    return it.messages;
+  }
 
   /// The conversation currently shown (set by the widget) so the store can
   /// auto-manage unread counts. Null when no conversation is open.
@@ -241,6 +285,13 @@ class ConversationStore {
     final existing = items[id];
     final dir = (d['dir'] ?? 'in').toString();
     if (existing != null && existing.closed && dir == 'in') return;
+    // Read the tail before deduplicating against it. A restarted engine
+    // re-emits its whole durable inbox, and the check below only works against
+    // messages we are actually holding — with tails read lazily, a thread
+    // nobody has opened holds none, and every one of them would come back as
+    // a fresh bubble. Only threads that receive traffic pay this, and only
+    // once each.
+    if (existing != null) messagesOf(id);
     // A restarted engine re-reads the host's durable inbox from the beginning
     // and re-emits everything in it, so the same message can arrive twice with
     // the same content signature. Show it once.
@@ -296,6 +347,18 @@ class ConversationStore {
     // A receipt may have arrived before this bubble — apply the latest status.
     final rid = (d['rid'] ?? '').toString();
     if (rid.isNotEmpty && _statuses.containsKey(rid)) _applyStatus(rid);
+    // Keep the preview on the thread row. A vote arrives as a "<mid>:like"
+    // message and is not something anybody said, and a system note is not
+    // either — quoting one as the last word would show a hex blob or a status
+    // line where the conversation should be.
+    if (d['sys'] != true) {
+      final text = (d['text'] ?? '').toString().trim();
+      final isVote = RegExp(r'^[0-9a-f]{8,64}:(?:un)?like$').hasMatch(text);
+      if (text.isNotEmpty && !isVote) {
+        final who = (d['from'] ?? '').toString();
+        it.lastLine = who.isEmpty ? text : '$who: $text';
+      }
+    }
     if (dir == 'in' && id != openId && d['sys'] != true) it.unread++;
     it.activityTs = _nowMs();
     _bump(id);

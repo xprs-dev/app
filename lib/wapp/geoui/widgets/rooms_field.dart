@@ -308,8 +308,15 @@ class _RoomsFieldState extends State<RoomsField> {
     // Newest message that is actually a message. A like arrives as a
     // "<mid>:like" vote and is filtered out of the timeline — quoting one as
     // the preview would show a hex blob as the last thing anybody said.
-    var lastMsg = '';
-    for (final m in (item?.messages ?? const []).reversed) {
+    // The stored preview, written when the message arrived. Deriving it here
+    // meant every room on the rail had to have its messages loaded, which is
+    // the whole history in the database for a line of text per row.
+    var lastMsg = item?.lastLine ?? '';
+    // A room already open (its tail is in memory) can still refine it — and an
+    // older row written before lastLine existed has nothing else to fall back
+    // on until its next message.
+    for (final m in (lastMsg.isNotEmpty ? const [] : (item?.messages ?? const []))
+        .reversed) {
       final text = (m['text'] ?? '').toString().trim();
       if (text.isEmpty) continue;
       if (RegExp(r'^[0-9a-f]{8,64}:(?:un)?like$').hasMatch(text)) continue;
@@ -656,7 +663,12 @@ class _RoomsFieldState extends State<RoomsField> {
                     hint: 'Message…',
                     fill: true,
                     safeBottom: true,
-                    messages: room?.messages ?? const [],
+                    // The OPEN room, so this is where its tail is read from
+                    // the database (the rail above needs none — an unopened
+                    // room falls back to its stored preview line).
+                    messages: open.isEmpty
+                        ? const []
+                        : widget.store.messagesOf(open),
                     onSend: (t) => widget.onSend(open, t),
                     // Only a 1:1 has a single recipient to seal to. A group is
                     // several stations behind one name (6.3), so there is no

@@ -37,6 +37,22 @@ void main() {
         ..dbField = field
         ..loaded = true;
 
+  /// Reopen the way the page does: `loadInto` restores the THREAD rows, then
+  /// the store is attached so a conversation's message tail is read when
+  /// something actually looks at it. Loading every thread's messages up front
+  /// is the cost this split removed, so the tests reopen the same way the app
+  /// does rather than asserting the old shape.
+  ConversationStore reopen(ConversationDb db,
+      {String field = 'conversations'}) {
+    final store = ConversationStore()
+      ..dbField = field
+      ..loaded = false;
+    db.loadInto(field, store);
+    return store
+      ..db = db
+      ..loaded = true;
+  }
+
   test('messages survive close and reopen', () {
     final db = ConversationDb.open(dbPath);
     final store = attached(db);
@@ -46,11 +62,10 @@ void main() {
     db.close();
 
     final db2 = ConversationDb.open(dbPath);
-    final restored = ConversationStore();
-    db2.loadInto('conversations', restored);
+    final restored = reopen(db2);
     expect(restored.items['lxmf:abc']!.title, 'X1RD89');
     expect(
-      restored.items['lxmf:abc']!.messages.map((m) => m['text']).toList(),
+      restored.messagesOf('lxmf:abc').map((m) => m['text']).toList(),
       ['LIVE-D2P-001', 'LIVE-P2D-001'],
     );
     db2.close();
@@ -76,10 +91,9 @@ void main() {
     db2.close();
 
     final db3 = ConversationDb.open(dbPath);
-    final check = ConversationStore();
-    db3.loadInto('conversations', check);
+    final check = reopen(db3);
     expect(check.items['c1']?.title, 'kept', reason: 'history was overwritten');
-    expect(check.items['c1']!.messages.single['text'], 'precious');
+    expect(check.messagesOf('c1').single['text'], 'precious');
     db3.close();
   });
 
@@ -93,9 +107,8 @@ void main() {
     db.close();
 
     final db2 = ConversationDb.open(dbPath);
-    final restored = ConversationStore();
-    db2.loadInto('conversations', restored);
-    expect(restored.items['g']!.messages, hasLength(1));
+    final restored = reopen(db2);
+    expect(restored.messagesOf('g'), hasLength(1));
     db2.close();
   });
 
@@ -108,20 +121,15 @@ void main() {
 
     // Engine restarts, re-reads the durable inbox, re-emits the same message.
     final db2 = ConversationDb.open(dbPath);
-    final reloaded = ConversationStore()..dbField = 'conversations';
-    db2.loadInto('conversations', reloaded);
-    reloaded
-      ..db = db2
-      ..loaded = true;
+    final reloaded = reopen(db2);
     reloaded
         .addMessage({'id': 'c', 'dir': 'in', 'text': 'VERIFY', 'key': 'sig1'});
-    expect(reloaded.items['c']!.messages, hasLength(1));
+    expect(reloaded.messagesOf('c'), hasLength(1));
     db2.close();
 
     final db3 = ConversationDb.open(dbPath);
-    final check = ConversationStore();
-    db3.loadInto('conversations', check);
-    expect(check.items['c']!.messages, hasLength(1));
+    final check = reopen(db3);
+    expect(check.messagesOf('c'), hasLength(1));
     db3.close();
   });
 
@@ -138,9 +146,8 @@ void main() {
     raw.dispose();
 
     final db = ConversationDb.open(dbPath); // must NOT throw
-    final restored = ConversationStore();
-    db.loadInto('conversations', restored);
-    expect(restored.items['c']!.messages.single['text'], 'older build');
+    final restored = reopen(db);
+    expect(restored.messagesOf('c').single['text'], 'older build');
     db.close();
   });
 
@@ -155,9 +162,8 @@ void main() {
     db.close();
 
     final db2 = ConversationDb.open(dbPath);
-    final check = ConversationStore();
-    db2.loadInto('conversations', check);
-    expect(check.items['c']!.messages, hasLength(1));
+    final check = reopen(db2);
+    expect(check.messagesOf('c'), hasLength(1));
     db2.close();
   });
 
@@ -171,9 +177,8 @@ void main() {
     db.importStore('conversations', legacy);
     expect(db.hasField('conversations'), isTrue);
 
-    final restored = ConversationStore();
-    db.loadInto('conversations', restored);
-    expect(restored.items['old']!.messages.single['text'], 'archived');
+    final restored = reopen(db);
+    expect(restored.messagesOf('old').single['text'], 'archived');
     db.close();
   });
 
@@ -187,12 +192,98 @@ void main() {
     db.close();
 
     final db2 = ConversationDb.open(dbPath);
-    final restored = ConversationStore();
-    db2.loadInto('conversations', restored);
-    final msg = restored.items['c']!.messages.single;
+    final restored = reopen(db2);
+    final msg = restored.messagesOf('c').single;
     expect(msg['status'], 'delivered');
     expect(msg['likes'], 1);
     db2.close();
+  });
+
+  test('a reopen reads thread rows, not every message', () {
+    // The property that keeps the wapp opening in constant time as history
+    // grows: the list needs a title, a preview, an unread count and a
+    // timestamp, all of which live on the thread row.
+    final db = ConversationDb.open(dbPath);
+    final store = attached(db);
+    for (var c = 0; c < 5; c++) {
+      store.upsert({'id': 'c$c', 'title': 'chat $c', 'subtitle': 'last line'});
+      for (var i = 0; i < 40; i++) {
+        store.addMessage({'id': 'c$c', 'dir': 'in', 'text': 'm$i'});
+      }
+    }
+    db.close();
+
+    final db2 = ConversationDb.open(dbPath);
+    final fresh = ConversationStore()..loaded = false;
+    db2.loadInto('conversations', fresh);
+    expect(fresh.items, hasLength(5), reason: 'every thread is listed');
+    expect(fresh.items['c0']!.title, 'chat 0');
+    expect(fresh.items['c0']!.subtitle, 'last line',
+        reason: 'the list row is complete without reading a single message');
+    for (final it in fresh.items.values) {
+      expect(it.messages, isEmpty, reason: 'no tail is read until asked for');
+    }
+
+    // …and asking for one reads that one, in order, and nothing else.
+    fresh
+      ..db = db2
+      ..loaded = true;
+    expect(fresh.messagesOf('c3').map((m) => m['text']).take(3).toList(),
+        ['m0', 'm1', 'm2']);
+    expect(fresh.items['c4']!.messages, isEmpty,
+        reason: 'opening one conversation does not read its neighbours');
+    expect(db2.countMessages('conversations'), 200);
+    db2.close();
+  });
+
+  test('the list preview survives a reopen without reading messages', () {
+    final db = ConversationDb.open(dbPath);
+    final store = attached(db);
+    store.upsert({'id': 'c', 'title': 'chat'});
+    store.addMessage({'id': 'c', 'dir': 'in', 'from': 'X3ARK', 'text': 'hello'});
+    // A like is not something anybody said.
+    store.addMessage({'id': 'c', 'dir': 'in', 'from': 'X1RD89',
+      'text': 'abc12345:like'});
+    db.close();
+
+    final db2 = ConversationDb.open(dbPath);
+    final fresh = ConversationStore()..loaded = false;
+    db2.loadInto('conversations', fresh);
+    expect(fresh.items['c']!.lastLine, 'X3ARK: hello');
+    expect(fresh.items['c']!.messages, isEmpty,
+        reason: 'the preview came off the thread row, not the messages');
+    db2.close();
+  });
+
+  test('a conversation written before previews were stored gets one', () {
+    // The upgrade case: rows exist, none of them carries lastLine, and the
+    // messages that used to supply the preview are no longer read at load.
+    final db = ConversationDb.open(dbPath);
+    final store = attached(db);
+    store.upsert({'id': 'c', 'title': 'chat'});
+    store.addMessage({'id': 'c', 'dir': 'in', 'from': 'X3ARK', 'text': 'older'});
+    db.close();
+
+    // Strip it the way an older build would have left the row.
+    final raw = sqlite3.open(dbPath);
+    raw.execute(
+        "UPDATE threads SET meta = json_remove(meta, '\$.lastLine') "
+        "WHERE field='conversations'");
+    raw.dispose();
+
+    final db2 = ConversationDb.open(dbPath);
+    final fresh = ConversationStore()..loaded = false;
+    db2.loadInto('conversations', fresh);
+    expect(fresh.items['c']!.lastLine, 'X3ARK: older');
+    expect(fresh.items['c']!.messages, isEmpty);
+    db2.close();
+
+    // …and it was written back, so the next open asks nothing.
+    final db3 = ConversationDb.open(dbPath);
+    final again = ConversationStore()..loaded = false;
+    db3.loadInto('conversations', again);
+    expect(again.items['c']!.lastLine, 'X3ARK: older');
+    db3.close();
   });
 
   test('the per-thread cap is enforced on disk', () {
@@ -204,9 +295,8 @@ void main() {
     db.close();
 
     final db2 = ConversationDb.open(dbPath);
-    final restored = ConversationStore();
-    db2.loadInto('conversations', restored);
-    final msgs = restored.items['big']!.messages;
+    final restored = reopen(db2);
+    final msgs = restored.messagesOf('big');
     expect(msgs, hasLength(kConvoMaxMessages));
     expect(msgs.last['text'], 'm${kConvoMaxMessages + 24}');
     db2.close();

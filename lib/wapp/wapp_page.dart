@@ -801,11 +801,14 @@ class _WappPageState extends State<WappPage>
       store
         ..db = _convDb
         ..loaded = true;
-      final msgs =
-          store.items.values.fold<int>(0, (n, it) => n + it.messages.length);
+      // Count in SQL: the messages are deliberately not in memory, and
+      // materialising them to print a number is the exact shape this change
+      // removed (docs/performance.md 8.7).
+      final msgs = _convDb!.countMessages(field);
       LogService.instance.add(
         'wapp $_wappName: restored convo field "$field" '
-        '(${store.items.length} threads, $msgs messages)',
+        '(${store.items.length} threads, $msgs messages on disk, '
+        'tails read on open)',
       );
     }
   }
@@ -3348,7 +3351,11 @@ class _WappPageState extends State<WappPage>
         final id = '${r['id'] ?? ''}';
         if (id.isEmpty) continue;
         final it = store.items[id];
-        if (it == null || it.messages.isEmpty) continue;
+        // "Has anything been said here", asked of the thread row rather than
+        // of its messages — which are no longer loaded until the room is
+        // opened. activityTs is exactly that fact, and is what the comparison
+        // below already ranks on.
+        if (it == null || it.activityTs <= 0) continue;
         if (it.activityTs > bestTs) {
           bestTs = it.activityTs;
           best = r;
@@ -6956,8 +6963,9 @@ class _WappPageState extends State<WappPage>
       ];
       for (final convId in convIds) {
         final it = store.items[convId]!;
+        // Dedup needs this conversation's tail, so read it before comparing.
         final existingMids = <String>{
-          for (final m in it.messages)
+          for (final m in store.messagesOf(convId))
             if ((m['mid'] ?? '').toString().isNotEmpty) m['mid'].toString(),
         };
         final preUnread = it.unread; // backfilled history shouldn't ring badges
