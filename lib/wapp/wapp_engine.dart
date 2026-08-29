@@ -188,6 +188,11 @@ class WappLogEntry {
 }
 
 /// Lightweight WASM engine that loads a module and provides the full XPRS HAL.
+/// Group callsign -> its announced name, latched. Process-wide rather than
+/// per-engine: the answer comes from the archive, is the same for every wapp,
+/// and re-deriving it per engine would pay the query once per open.
+final Map<String, ({String nick, int retryAtMs})> _groupNickCache = {};
+
 class WappEngine {
   static int _nextEngineId = 0;
 
@@ -3635,6 +3640,38 @@ class WappEngine {
     // each of them (section 26). A wapp cannot work this out for itself — the
     // answer is a replay of signed acts against a key map the host owns — and
     // it is not a transport decision, so it belongs here rather than in a wapp.
+    // A group's readable name travels in its own `t:identity` (`nick:`), so a
+    // MEMBER can know it — but only the admin holds it in XprsGroupKeys, and
+    // reading it from there alone left everybody else looking at a callsign.
+    //
+    // Latched, because the answer stops changing: an identity is re-announced
+    // every half hour and collapses to one row per callsign, so this is a
+    // question worth asking once. A miss is remembered too, with a retry
+    // window — otherwise a group whose announcement has not arrived is
+    // re-queried on every poll for the life of the process, which is the shape
+    // docs/performance.md 3.2 calls "work redone forever".
+    const nickRetryMs = 5 * 60 * 1000;
+    String groupNick(String call) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final hit = _groupNickCache[call];
+      if (hit != null && (hit.nick.isNotEmpty || now < hit.retryAtMs)) {
+        return hit.nick;
+      }
+      var nick = '';
+      // Indexed on (type, fromc) and capped at one row: the newest identity is
+      // the only one that can carry the current name.
+      for (final r in XprsArchive.instance
+          .query(types: const ['identity'], only: call, limit: 1)) {
+        final w = r['wire'];
+        if (w is! String) continue;
+        final p = XprsPacket.parse(w);
+        if (p == null || (p['f'] ?? '').toUpperCase() != call) continue;
+        nick = (p['nick'] ?? '').trim();
+      }
+      _groupNickCache[call] =
+          (nick: nick, retryAtMs: now + nickRetryMs);
+      return nick;
+    }
     final halXprsGroups = WasmFunction(
       (int outPtr, int outCap) {
         if (outCap <= 0) return 0;
@@ -3660,7 +3697,7 @@ class WappEngine {
                   : (r.roles[me] ?? XprsRole.none);
           out.add({
             'call': c,
-            'nick': mine[c] ?? '',
+            'nick': (mine[c]?.isNotEmpty ?? false) ? mine[c]! : groupNick(c),
             'role': role.name,
             'admin': mine.containsKey(c),
             'members': r.roles.entries
