@@ -3984,8 +3984,8 @@ class _WappPageState extends State<WappPage>
   /// normal state on this network rather than an error, so it is a quiet dot
   /// and not a warning.
   ///
-  /// 1:1 only. Every room and channel id starts with '#' (including the two
-  /// scope rooms), and "is the room reachable" has no single answer.
+  /// 1:1 only. Every room and channel id starts with '#' (including the scope
+  /// room #LOCAL), and "is the room reachable" has no single answer.
   Widget _titleWithReach(String fallback) {
     final id = _roomsOpenId;
     if (id == null) return Text(fallback);

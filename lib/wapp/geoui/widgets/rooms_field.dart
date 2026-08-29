@@ -571,8 +571,8 @@ class _RoomsFieldState extends State<RoomsField> {
     // plumbing (it is still on the row in "New chat", where you are choosing
     // BETWEEN addresses and it is the only thing that tells them apart).
     final isLxmf = (open ?? '').startsWith('lxmf:');
-    // Every room and channel id starts with '#', including the two scope rooms
-    // (#LOCAL / #GLOBAL). Anything else is a conversation with one person.
+    // Every room and channel id starts with '#', including the scope room
+    // (#LOCAL). Anything else is a conversation with one person.
     final isDirect = open != null && !open.startsWith('#');
     final addr = isLxmf ? open!.substring(5) : '';
     var name = room?.title ?? '';
