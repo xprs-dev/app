@@ -86,10 +86,16 @@ a compile error, check whether anything is still running at all.
 Ceilings are therefore deliberately low, and raising one makes builds *less*
 reliable here, not more:
 
-- `android/gradle.properties` — 1g heap, Kotlin in-process, 2 workers.
-- `~/.gradle/gradle.properties` (machine-wide, not in the repo) — same shape.
-  This file **overrides** the repo, so check it first when the numbers do not
+- `~/.gradle/gradle.properties` (machine-wide, NOT in the repo) — 1g heap,
+  Kotlin in-process, 2 workers. This is where this machine's squeeze belongs,
+  and it **overrides** the repo, so check it first when the numbers do not
   match what you expect.
+- `android/gradle.properties` (in the repo) — a ceiling that must compile on
+  EVERY machine, CI included. Do not put this laptop's numbers here: they were
+  copied in once, and `:app:compileReleaseKotlin` then died on GitHub Actions
+  with an `InvocationTargetException` — a Kotlin worker OOM that never prints
+  "OutOfMemory". The machine-wide file already overrode it locally, so the
+  repo copy bought this box nothing and broke the release build.
 - `launch-android.sh` builds only the ABIs of the phones actually attached.
   `--split-per-abi` alone builds three, and two of those AOT compiles are the
   ones that push the machine over.
