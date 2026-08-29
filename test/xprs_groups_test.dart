@@ -287,6 +287,17 @@ void main() {
   });
 
   group('what a client shows', () {
+    test('an acceptance is not a hide — `r:` alone hides nothing (26.3.1)', () {
+      final grant = _act(g, '2026-08-08_10:00:00', 'grant:X1RD89');
+      m.offer(grant, nowMs: now);
+      m.offer(_accept('X1RD89', '2026-08-08_10:01:00', xprsIdentifier(grant)),
+          nowMs: now);
+      final r = m.rosterOf(g, nowMs: now);
+      expect(r.roles['X1RD89'], XprsRole.member);
+      expect(r.hidden, isEmpty,
+          reason: 'consent names the grant with r:, it does not hide it');
+    });
+
     test('hide:message collects the identifier', () {
       final ap = _act(g, '2026-08-08_10:00:00', 'grant:X32DVA role:mod');
       m.offer(ap, nowMs: now);

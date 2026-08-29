@@ -15,6 +15,7 @@ import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_publisher.dart';
 import 'xprs/xprs_gossip.dart';
 import 'xprs/xprs_group_act.dart';
+import 'xprs/xprs_sig.dart';
 import 'xprs/xprs_group_keys.dart';
 import 'xprs/xprs_groups.dart';
 import 'xprs/xprs_graph.dart';
@@ -1494,6 +1495,39 @@ class RemoteApiService {
         return _json(res, {'ok': true, 'wire': p.encode()});
       }
 
+      // The member's own half (26.3.1): accepting an offer, or leaving.
+      // Signed with the PROFILE key -- this is the person speaking for
+      // themselves, not the group speaking about them.
+      if (req.method == 'POST' &&
+          (path == '/api/xprs/group/accept' ||
+              path == '/api/xprs/group/leave')) {
+        final data = await _body(req);
+        final g = (data['d'] ?? '').toString().trim().toUpperCase();
+        final me = MeshService.instance.tableCallsign.trim().toUpperCase();
+        final d = xprsProfileScalar();
+        if (g.isEmpty || me.isEmpty || d == null) {
+          return _json(res, {'ok': false, 'error': 'no profile or no group'},
+              status: HttpStatus.serviceUnavailable);
+        }
+        final accepting = path.endsWith('accept');
+        final p = accepting
+            ? XprsGroupAct.accept(
+                group: g,
+                member: me,
+                grantId: (data['r'] ?? '').toString(),
+                scalar: d,
+                role: (data['role'] ?? 'member').toString())
+            : XprsGroupAct.leave(group: g, member: me, scalar: d);
+        if (p == null) {
+          return _json(res, {'ok': false, 'error': 'did not compose'},
+              status: HttpStatus.badRequest);
+        }
+        XprsGroups.instance.offer(p);
+        unawaited(
+            XprsPublisher.instance.publishWire(p.encode(), verbatim: true));
+        return _json(res, {'ok': true, 'wire': p.encode()});
+      }
+
       // One closed group's roster, replayed per section 26.4. The answer to
       // "who belongs, and who may act" without any UI -- which is how stage 1
       // is verified on a phone.
@@ -1693,6 +1727,8 @@ class RemoteApiService {
           'POST /api/xprs/group/create {"nick":"lisboa-net"}',
           'POST /api/xprs/group/grant {"d":"X5..","calls":"X1A,X1B","role":"mod"}',
           'POST /api/xprs/group/revoke {"d":"X5..","calls":"X1A","until":"..."}',
+          'POST /api/xprs/group/accept {"d":"X5..","r":"<grant id>"}',
+          'POST /api/xprs/group/leave {"d":"X5.."}',
         ],
       }, status: HttpStatus.notFound);
     } catch (e) {

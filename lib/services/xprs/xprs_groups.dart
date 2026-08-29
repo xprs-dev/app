@@ -58,7 +58,7 @@ enum XprsRole {
 /// voids part of the record.
 class _Act {
   _Act(this.id, this.signer, this.ts, this.grant, this.revoke, this.role,
-      this.until, this.since, this.hideRef, this.accept, this.leave);
+      this.until, this.since, this.hideRef, this.hide, this.accept, this.leave);
 
   /// Section 5 identifier -- breaks a tie when two acts share a `ts:` (26.4).
   final String id;
@@ -73,6 +73,12 @@ class _Act {
   final int? since;
   final String hideRef;
 
+  /// The `hide:` word itself. `r:` alone is NOT a hide: 26.3 writes the act as
+  /// `r:<id> hide:message`, and 26.3.1 reuses `r:` for something else entirely
+  /// -- naming the grant an acceptance consents to. Keying the hide set off
+  /// `r:` therefore hid a message every time somebody joined a group.
+  final String hide;
+
   /// `accept:member` / `accept:mod` -- the member consenting, signed by them
   /// (26.3.1). `hideRef` carries the `r:` naming the grant accepted.
   final String accept;
@@ -83,9 +89,17 @@ class _Act {
 
 /// The answer for one group at one moment.
 class XprsRoster {
-  XprsRoster(this.roles, this.hidden, this.verified);
+  XprsRoster(this.roles, this.hidden, this.verified, [this.offers = const {}]);
 
   final Map<String, XprsRole> roles;
+
+  /// callsign → section 5 identifier of the grant that is waiting on them.
+  ///
+  /// 26.3.1 binds an acceptance to a SPECIFIC offer with `r:`, so a person
+  /// cannot sign an acceptance at all without knowing which grant they are
+  /// accepting. Without this the rule is unusable from outside this class:
+  /// the invitee can see they are `invited` and has no way to say yes.
+  final Map<String, String> offers;
 
   /// Section 5 identifiers a moderator asked clients not to display.
   final Set<String> hidden;
@@ -177,6 +191,7 @@ class XprsGroups {
       until,
       xprsParseTs(p['since']),
       (p['r'] ?? '').trim(),
+      (p['hide'] ?? '').trim().toLowerCase(),
       (p['accept'] ?? '').trim().toLowerCase(),
       (p['leave'] ?? '').trim().toLowerCase(),
     );
@@ -356,7 +371,7 @@ class XprsGroups {
           suspended.remove(c);
         }
       }
-      if (a.hideRef.isNotEmpty) hidden.add(a.hideRef);
+      if (a.hide.isNotEmpty && a.hideRef.isNotEmpty) hidden.add(a.hideRef);
     }
     for (final c in suspended.keys) {
       roles[c] = XprsRole.none;
@@ -368,7 +383,8 @@ class XprsGroups {
     } else {
       _nextChange.remove(group);
     }
-    return XprsRoster(roles, hidden, haveKey);
+    return XprsRoster(roles, hidden, haveKey,
+        {for (final e in offered.entries) e.key: e.value.id});
   }
 
   /// For the diagnostics. Counts, never the roster itself -- a status endpoint
@@ -379,6 +395,10 @@ class XprsGroups {
         'accepted': accepted,
         'rejected': rejected,
         'unverified': unverified,
+        // Wired or not. `unverified` counts acts we could not check; this says
+        // whether we are ABLE to check any, which is a different fault and the
+        // one that hid for a whole release.
+        'resolver': keyResolver != null,
       };
 
   /// One group, in full -- for `/api/xprs/group?d=X5A3F2`.
@@ -393,6 +413,8 @@ class XprsGroups {
         for (final e in r.roles.entries) e.key: e.value.name,
       },
       'hidden': r.hidden.toList(),
+      // What an invitee needs in order to consent (26.3.1).
+      'offers': r.offers,
     };
   }
 
