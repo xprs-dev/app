@@ -32,6 +32,7 @@ import '../xprs/xprs_files.dart';
 import '../xprs/xprs_history_server.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_gossip.dart';
+import '../xprs/xprs_group_keys.dart';
 import '../xprs/xprs_publisher.dart';
 import '../xprs/xprs_receipt.dart';
 import '../xprs/xprs_digipeat.dart';
@@ -209,6 +210,13 @@ class MeshService {
         XprsHistoryServer.instance.install();
         XprsGossip.instance
             .init(wappsDataStorage(prefs).getAbsolutePath('xprs_gossip.sqlite3'));
+        // The groups this station ADMINISTERS -- their private keys (26.1).
+        // Profile-scoped and re-opened on profile change like the others, and
+        // encrypted for the same reason the profile's own nsec is: 26.6 says a
+        // leaked group key is permanent and cannot be rotated, because the
+        // callsign derives from it.
+        XprsGroupKeys.instance.init(
+            wappsDataStorage(prefs).getAbsolutePath('xprs_groups.sqlite3'));
         if (prefs.xprsSuperArchiver) {
           // The super budget (36.9.4): the table stops being pocket-sized.
           XprsGossip.instance.maxBytes = 256 * 1024 * 1024;

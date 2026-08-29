@@ -5678,6 +5678,47 @@ There is no application packet. **Asking to join is an ordinary message to the
 group**, which needs no new type and leaves no permanent signed record that a
 person asked and was refused.
 
+### 26.3.1 Nobody is a member without saying so
+
+A grant is an **offer**. It confers nothing until the person named signs an
+acceptance, and until then they are not a member, are not shown as one, and may
+not post as one.
+
+The reason is section 26.7: the roster is public, permanent and
+non-repudiable. Without this rule an admin could put anybody into that
+record -- a competitor, a stranger, somebody they wish to embarrass -- and the
+person named would have no act anywhere in the log to answer it with. Consent
+that leaves no trace is not consent.
+
+The member signs as themselves, so `f:` is the member and `d:` is still the
+group. It is the same shape a moderator's act already has, and it needs no new
+packet type:
+
+```
+139  t:moderate f:X1RD89 d:X5A3F2 ts:2026-08-08_14:26:40 r:9f2c1a accept:member sig:<60 characters>
+136  t:moderate f:X32DVA d:X5A3F2 ts:2026-08-08_14:26:40 r:4b81e7 accept:mod sig:<60 characters>
+128  t:moderate f:X1RD89 d:X5A3F2 ts:2026-08-08_14:26:40 leave:group sig:<60 characters>
+```
+
+`r:` names the grant being accepted, which is what makes the acceptance
+evidence rather than a floating assertion: it says *this* offer, at *this*
+moment, and a grant that was later withdrawn cannot be accepted after the fact.
+It is the use `r:` already has in `r:<id> hide:message`.
+
+`leave:group` is the other half, and it exists for the same reason. Leaving is
+the member's to decide and needs nobody's agreement, so it takes no `r:`. What
+it leaves behind is the point: a signed record that the person went, rather
+than a silence an admin could explain any way they liked.
+
+**A `role:sub` listing needs no acceptance.** A subgroup is a group, not a
+person; section 26.2 already says a listing "is a claim by the parent and
+nothing more" and confers nothing. Asking a keypair to consent would be
+ceremony without meaning.
+
+**A `revoke:` needs no acceptance either.** Removal is the group's to decide.
+Only joining requires agreement from both sides, because only joining puts a
+person's name in somebody else's record.
+
 ### 26.4 Reading the log
 
 Every act is signed and they accumulate; a client replays what it has heard.
@@ -5705,6 +5746,22 @@ the moderator and everything they did from that moment:
 
 Without it, a compromised moderator key that suspends fifty people costs fifty
 packets to undo, each one a packet that is unsafe to lose.
+
+**A grant naming a person is pending until its acceptance is heard.** Membership
+begins at the acceptance's `ts:`, and only if the grant was in force at that
+moment -- a grant already revoked cannot be accepted afterwards. A pending grant
+is not membership: it is not shown as one and it confers no right to post. A
+client that holds the grant but not the acceptance therefore reports the person
+as invited, not as absent, because those are different facts and only one of
+them is the person's doing.
+
+**Consent does not carry across a departure.** After `leave:group`, a later
+grant needs a new acceptance. The alternative would let an admin re-add
+somebody who left by replaying an old offer, which is the harm section 26.3.1
+exists to prevent, arriving by another door.
+
+**Removal needs no acceptance**, so a `revoke:` takes effect at its own `ts:`
+under the rules above and nothing waits on the person removed.
 
 Note what is **not** inherited from section 13.12.1: a mailbox declaration is
 chosen by the narrowest window containing the moment, and membership is not.
@@ -5801,6 +5858,75 @@ Two limits keep that from being an amplifier, both following section 18.4:
 
 A rebroadcast is a relay and not a new origination, so it stays under the limit
 of section 13.1 and does not earn a fresh three hops by being re-signed.
+
+### 26.9 Propagation and discovery
+
+Sections 26.1 to 26.8 say what a group is and who may act in it. They do not
+say how a group's traffic travels or how a station finds one, and without that
+a group works only among stations already in earshot of each other.
+
+Nothing here is a new bearer or a new sync protocol. A group is a station, its
+acts are ordinary signed packets, and they spread the way every other packet
+does. What follows is only what a station may say about the groups it keeps,
+and what it may promise.
+
+#### 26.9.1 Hosting is a directory line
+
+A station that keeps a group's traffic says so the way section 36.9 already
+says everything of this kind: the group's `X5` callsign appears as a line in
+the archiver's XDIR1 directory, and the directory is named by `file:` on its
+signed `t:service`.
+
+There is no new field, and deliberately nothing on the beacon. An `X5`
+callsign is a callsign (section 26.1), so a directory line naming a group is
+already legal and already means what it needs to mean. A beacon is the wrong
+place twice over: section 31.1 asks that service announcements go out "on a
+period measured in tens of minutes rather than seconds", and a list that grows
+with the number of groups kept has no bounded size to fit beside `hears:`.
+
+**A hosting line is a claim about capability, not about completeness.** It
+means *ask me about this group*. It does not say how far back the station holds,
+and section 31.3 already forbids saying so: "the claim is 'ask me', never 'I
+hold everything since a date'". A station that keeps one week of a group and a
+station that keeps five years publish the same line.
+
+#### 26.9.2 Depositing a group's traffic
+
+Any member may hand a group's packets to an archiver, and to a super-archiver
+in particular. This is section 26.8's rebroadcast with a destination: the
+packets are signed by the group and by their authors, so the archiver trusts
+the depositor for nothing and verifies everything.
+
+Two limits, both already stated elsewhere and both binding here:
+
+- A deposit is **addressed, never broadcast** (26.8), because a deposit is
+  work asked of one station rather than an announcement to the room.
+- A deposit is **metered**. Section 31.2 is the rule -- "serving a stranger is
+  optional and metered" -- so an archiver over budget answers `code:429` and
+  names an alternative in `m:try` where it knows one, rather than going quiet.
+  Section 31.1's "a retry is not a new packet" applies to the depositor: a
+  deposit that went unanswered is re-sent against the same budget as the first.
+
+#### 26.9.3 What an archiver keeps
+
+An archiver may bound what it keeps for any one group: a byte ceiling per `X5`
+callsign, and within that ceiling the oldest goes first.
+
+Section 36.11 already orders eviction by class and then by age, over three
+classes -- the spool, undeclared custody mail, and declared mail. A group is
+none of those. Its traffic is addressed to an `X5` rather than to a person, and
+no `hold:` declaration governs it, so under 36.11 alone a group's history is
+evicted by global age: one loud group crowds out every quiet one, and a small
+group that speaks once a month loses its whole record to a busy month
+elsewhere. A per-group ceiling is the smallest rule that prevents this, and it
+is a fourth axis on 36.11 rather than a change to the three it has.
+
+This changes nothing a client may assume. Section 31.3 already says a client
+"must never assume any depth exists", so a group's history being bounded, and
+bounded differently at every archiver, is the condition clients are already
+required to tolerate. An archiver that evicts says nothing about it: there is
+no packet announcing what was dropped, because a station that could hear such
+an announcement could equally have asked.
 
 ---
 

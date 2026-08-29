@@ -14,6 +14,8 @@ import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_publisher.dart';
 import 'xprs/xprs_gossip.dart';
+import 'xprs/xprs_group_act.dart';
+import 'xprs/xprs_group_keys.dart';
 import 'xprs/xprs_groups.dart';
 import 'xprs/xprs_graph.dart';
 import 'mesh/mesh_courier.dart';
@@ -1405,6 +1407,93 @@ class RemoteApiService {
       }
       // Where can a callsign be reached (36.9.4 gossip + 13.12): the
       // internet sender's question, answered in layers.
+      // Mint a group (section 26.1): a keypair, the X5 callsign it produces,
+      // and the ordinary t:identity that says so. "A group needs no
+      // announcement packet of its own, no registry and no creation ceremony.
+      // It exists once somebody generates a key and says so."
+      if (req.method == 'POST' && path == '/api/xprs/group/create') {
+        final data = await _body(req);
+        final nick = (data['nick'] ?? '').toString();
+        if (!XprsGroupKeys.instance.ready) {
+          return _json(res, {'ok': false, 'error': 'no profile open'},
+              status: HttpStatus.serviceUnavailable);
+        }
+        final g = XprsGroupKeys.instance.create(nick: nick);
+        if (g == null) {
+          return _json(res, {'ok': false, 'error': 'could not mint a group'},
+              status: HttpStatus.internalServerError);
+        }
+        // Teach our OWN callsign→key map the group, or we could not verify the
+        // acts we are about to sign -- a station does not hear itself.
+        final hex = NostrCrypto.decodeNpub(g.npub);
+        RnsService.instance.recordCallsignPubkey(g.callsign, hex);
+        final scalar = XprsGroupKeys.instance.scalarFor(g.callsign);
+        final ann = scalar == null
+            ? null
+            : XprsGroupAct.identity(
+                group: g.callsign, npub: g.npub, scalar: scalar, nick: g.nick);
+        if (ann != null) {
+          // verbatim: it is signed by the GROUP, and publishWire signs only
+          // for our own callsign.
+          unawaited(
+              XprsPublisher.instance.publishWire(ann.encode(), verbatim: true));
+        }
+        return _json(res, {
+          'ok': true,
+          'group': g.callsign,
+          'npub': g.npub,
+          'nick': g.nick,
+          'announced': ann != null,
+        });
+      }
+
+      // An act of authority (26.3). One shape for grant and revoke, because
+      // one packet type carries every one of them.
+      if (req.method == 'POST' &&
+          (path == '/api/xprs/group/grant' ||
+              path == '/api/xprs/group/revoke')) {
+        final data = await _body(req);
+        final g = (data['d'] ?? '').toString().trim().toUpperCase();
+        final calls = (data['calls'] ?? '')
+            .toString()
+            .split(',')
+            .map((c) => c.trim())
+            .where((c) => c.isNotEmpty)
+            .toList();
+        final scalar = XprsGroupKeys.instance.scalarFor(g);
+        if (scalar == null) {
+          // Only the admin holds the key. Section 26.3: a moderator's revoke is
+          // signed by THEM, which this endpoint does not yet compose.
+          return _json(res,
+              {'ok': false, 'error': 'we do not hold the key for $g'},
+              status: HttpStatus.forbidden);
+        }
+        final grant = path.endsWith('grant');
+        final p = grant
+            ? XprsGroupAct.grant(
+                group: g,
+                callsigns: calls,
+                scalar: scalar,
+                role: (data['role'] ?? '').toString(),
+                until: (data['until'] ?? '').toString())
+            : XprsGroupAct.revoke(
+                group: g,
+                callsigns: calls,
+                scalar: scalar,
+                until: (data['until'] ?? '').toString(),
+                since: (data['since'] ?? '').toString());
+        if (p == null) {
+          return _json(res, {'ok': false, 'error': 'act did not compose/fit'},
+              status: HttpStatus.badRequest);
+        }
+        // Our own roster moves now: a station never hears its own packet, so
+        // waiting for the funnel would mean the admin is the last to know.
+        XprsGroups.instance.offer(p);
+        unawaited(
+            XprsPublisher.instance.publishWire(p.encode(), verbatim: true));
+        return _json(res, {'ok': true, 'wire': p.encode()});
+      }
+
       // One closed group's roster, replayed per section 26.4. The answer to
       // "who belongs, and who may act" without any UI -- which is how stage 1
       // is verified on a phone.
@@ -1601,6 +1690,9 @@ class RemoteApiService {
           'POST /api/rns/announce {"text":"hello"}',
           'GET /api/rns/inbox',
           'GET /api/xprs/group?d=<X5group>',
+          'POST /api/xprs/group/create {"nick":"lisboa-net"}',
+          'POST /api/xprs/group/grant {"d":"X5..","calls":"X1A,X1B","role":"mod"}',
+          'POST /api/xprs/group/revoke {"d":"X5..","calls":"X1A","until":"..."}',
         ],
       }, status: HttpStatus.notFound);
     } catch (e) {
