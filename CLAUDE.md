@@ -75,6 +75,33 @@ Android installs need `--build-number` above the installed `versionCode`
 (`adb shell dumpsys package com.xprs.app | grep versionCode`), and other
 sessions may be installing to the same phone.
 
+### A build that vanishes was killed, not broken
+
+`earlyoom` runs here with `--prefer=(java|dart|kotlinc?|aapt2|R8|gradle)`, so
+when free RAM dips it shoots **the build** first. The symptom is not an OOM
+message: it is "Gradle build daemon disappeared unexpectedly", a `flutter build`
+that exits non-zero after ~20s, or a wrapper that hangs forever. Before hunting
+a compile error, check whether anything is still running at all.
+
+Ceilings are therefore deliberately low, and raising one makes builds *less*
+reliable here, not more:
+
+- `android/gradle.properties` — 1g heap, Kotlin in-process, 2 workers.
+- `~/.gradle/gradle.properties` (machine-wide, not in the repo) — same shape.
+  This file **overrides** the repo, so check it first when the numbers do not
+  match what you expect.
+- `launch-android.sh` builds only the ABIs of the phones actually attached.
+  `--split-per-abi` alone builds three, and two of those AOT compiles are the
+  ones that push the machine over.
+
+`tool/build-peak.sh <command>` reports peak build RSS when you need the number
+rather than a guess.
+
+**A timed-out build leaves its wrapper holding the flock**, and the next build
+then blocks on "Another Android build is running". Kill the orphan by PID —
+never `pkill -f`, which matches the wrapper's own command line and kills the
+shell issuing it.
+
 ## Wapps
 
 Wapp source lives in `../wapps` (the `xprs-dev/wapps` repo), not here;

@@ -52,9 +52,37 @@ fi
 echo ">> ${#DEVICES[@]} device(s): ${DEVICES[*]}"
 echo ">> package: $PKG   build: $BUILD_TYPE"
 
-# --- build per-ABI APKs once -------------------------------------------------
-echo ">> building APK ($BUILD_TYPE, split-per-abi)..."
-"$FLUTTER" build apk --"$BUILD_TYPE" --split-per-abi "${EXTRA[@]}"
+# --- build only the ABIs actually attached -----------------------------------
+#
+# --split-per-abi alone builds all three (arm64-v8a, armeabi-v7a, x86_64) --
+# three full Dart AOT compiles, of which a bench install uses one. On a 16GB
+# machine with earlyoom set to shoot builds first
+# (--prefer=java|dart|kotlinc?|aapt2|R8|gradle), the two extra compiles are not
+# merely slow: they are what pushes the box far enough for the build to be
+# killed mid-flight. The devices are already enumerated above, so ask them.
+#
+# Skipped when the caller passed their own --target-platform.
+PLATFORMS=()
+if ! printf '%s\n' "${EXTRA[@]:-}" | grep -q -- '--target-platform'; then
+  for serial in "${DEVICES[@]}"; do
+    case "$("$ADB" -s "$serial" shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r')" in
+      arm64-v8a)   PLATFORMS+=(android-arm64) ;;
+      armeabi-v7a) PLATFORMS+=(android-arm)   ;;
+      x86_64)      PLATFORMS+=(android-x64)   ;;
+    esac
+  done
+  # de-duplicate; two arm64 phones need one build, not two
+  mapfile -t PLATFORMS < <(printf '%s\n' "${PLATFORMS[@]}" | sort -u)
+fi
+
+if [ "${#PLATFORMS[@]}" -gt 0 ]; then
+  TP="$(IFS=,; echo "${PLATFORMS[*]}")"
+  echo ">> building APK ($BUILD_TYPE, split-per-abi, $TP)..."
+  "$FLUTTER" build apk --"$BUILD_TYPE" --split-per-abi --target-platform "$TP" "${EXTRA[@]}"
+else
+  echo ">> building APK ($BUILD_TYPE, split-per-abi)..."
+  "$FLUTTER" build apk --"$BUILD_TYPE" --split-per-abi "${EXTRA[@]}"
+fi
 
 APK_DIR="build/app/outputs/flutter-apk"
 echo ">> built:"; ls -1sh "$APK_DIR"/app-*-"$BUILD_TYPE".apk 2>/dev/null || true
