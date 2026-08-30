@@ -926,6 +926,7 @@ class RemoteApiService {
           'status': u.status.value.name,
           'downloadedPath': u.downloadedPath,
           'source': u.lastSource,
+          'phase': u.phase.value,
           'canInstall': await UpdateNative.canInstall(),
           'error': u.error,
         });
@@ -954,6 +955,7 @@ class RemoteApiService {
           'updateAvailable': u.isNewer(sel),
           'downloadedPath': u.downloadedPath,
           'source': u.lastSource,
+          'phase': u.phase.value,
           'canInstall': await UpdateNative.canInstall(),
           'error': u.error,
         });
@@ -1056,6 +1058,24 @@ class RemoteApiService {
         });
       }
       // What this station holds and seeds for the phones around it.
+      // Who holds this content? The question the whole update design turns
+      // on -- a phone fetches by sha256 from a super-archiver -- and until now
+      // the only way to ask it was to start a download and watch it hang.
+      if (req.method == 'GET' && path == '/api/files/providers') {
+        final sha = (req.uri.queryParameters['sha'] ?? '').trim().toLowerCase();
+        if (sha.length != 64) {
+          return _json(res, {'ok': false, 'error': 'need sha=<64 hex>'},
+              status: HttpStatus.badRequest);
+        }
+        final n = await RnsService.instance
+            .contentProviderCount(sha, timeout: const Duration(seconds: 20));
+        return _json(res, {
+          'ok': true,
+          'sha': sha,
+          'mirror': UpdateMirrorService.instance.pathForSha(sha),
+          'providers': n,
+        });
+      }
       if (req.method == 'GET' && path == '/api/update/mirror') {
         return _json(res, UpdateMirrorService.instance.statusJson());
       }
@@ -1397,6 +1417,15 @@ class RemoteApiService {
         // nowhere for the rest to pull from.
         if (data.containsKey('be')) {
           prefs?.xprsSuperArchiver = data['be'] == true;
+          // A super-archiver mirrors releases (docs: the phone fetches by sha
+          // from a super-archiver, which fetched from xprs.dev). Becoming one
+          // at runtime starts the mirror now rather than at the next boot.
+          final m = UpdateMirrorService.instance;
+          if (m.enabled && !m.isRunning) {
+            await m.start();
+          } else if (!m.enabled && m.isRunning) {
+            await m.stop();
+          }
         }
         return _json(res, {
           'ok': true,
@@ -1759,7 +1788,7 @@ class RemoteApiService {
           'version': r.version,
           'prerelease': r.isPrerelease,
           'assets': [
-            for (final a in r.assets) {'name': a.name, 'sha': a.url, 'size': a.size},
+            for (final a in r.assets) {'name': a.name, 'url': a.url, 'sha256': a.sha256, 'size': a.size},
           ],
         };
 

@@ -267,6 +267,7 @@ class XprsFileFetch {
     int off = 0,
     String? destDir,
     Duration timeout = defaultTimeout,
+    Duration? acceptWithin,
   }) async {
     final sha = shaHex.toLowerCase();
     final existing = _waiting[sha];
@@ -326,17 +327,33 @@ class XprsFileFetch {
       unawaited(XprsPublisher.instance.publishWire(wire));
     });
 
-    Timer(timeout, () {
+    void giveUp(String why) {
       retry.cancel();
       if (done.isCompleted) return;
       _pending.remove(id);
       _waiting.remove(sha);
       _destDir.remove(sha);
       _accepted.remove(sha);
-      LogService.instance
-          .add('XPRS: cmd:file ${sha.substring(0, 8)} timed out');
+      LogService.instance.add('XPRS: cmd:file ${sha.substring(0, 8)} $why');
       done.complete(null);
-    });
+    }
+
+    Timer(timeout, () => giveUp('timed out'));
+    // A station that holds the file answers 202 within seconds; one that does
+    // not answers 404 -- or, on a board that has never heard of the ref, says
+    // nothing at all. [timeout] is sized for the TRANSFER (a 60 MB APK over
+    // the bulk lane is an hour), so without this window an unanswered ask
+    // held the caller for that whole hour. Measured on the C61: the updater
+    // asked the ESP32 for a release it could not possibly hold and sat at 0%
+    // re-airing the same wire every 45 s, and the HTTPS fallback that would
+    // have worked in a minute was never reached. Once a 202 is in hand the
+    // transfer timeout governs, exactly as before.
+    if (acceptWithin != null) {
+      Timer(acceptWithin, () {
+        if (done.isCompleted || _accepted.contains(sha)) return;
+        giveUp('unanswered by $archiver after ${acceptWithin.inSeconds}s');
+      });
+    }
     unawaited(done.future.whenComplete(retry.cancel));
     return done.future;
   }

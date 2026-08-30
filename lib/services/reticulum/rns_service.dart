@@ -10434,6 +10434,26 @@ class RnsService {
   /// fine when the caller only wants the bytes, e.g. the decentralized updater,
   /// which verifies sha256(bytes)==shaHex and writes the binary itself).
   /// Returns null on failure.
+  /// How many OTHER nodes advertise holding the content named by [shaHex].
+  ///
+  /// The question the updater has to ask BEFORE fetching: a content-addressed
+  /// fetch is given a timeout sized for moving 60 MB, and when nobody holds
+  /// the bytes it spends that whole timeout finding out. This is the DHT
+  /// lookup on its own, bounded by [timeout], so "is there a super-archiver
+  /// to fetch from" costs seconds and a "no" falls straight through to the web.
+  Future<int> contentProviderCount(String shaHex,
+      {Duration timeout = const Duration(seconds: 20)}) async {
+    final sha = _bytesFromHex(shaHex);
+    final f = _files;
+    if (sha == null || f == null || !_up) return 0;
+    try {
+      final list = await f.resolveProviders(sha).timeout(timeout);
+      return list.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<Uint8List?> folderFetchBytes(
     String folderId,
     String shaHex, {

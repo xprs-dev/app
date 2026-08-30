@@ -19,6 +19,7 @@
  */
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -34,7 +35,10 @@ import 'update_native.dart';
 import '../util/nostr_crypto.dart';
 import 'log_service.dart';
 import 'mesh/mesh_service.dart';
+import 'update_mirror_service.dart';
 import 'xprs/xprs_catchup.dart';
+import 'xprs/xprs_publisher.dart';
+import 'xprs/xprs_monitor.dart';
 import 'xprs/xprs_files.dart';
 import 'notification_service.dart';
 
@@ -106,6 +110,32 @@ class UpdateService {
   /// nothing has been downloaded. Reported by GET /api/update/status so a test
   /// can assert the bytes did NOT come off the web.
   String? lastSource;
+
+  /// What the download is doing RIGHT NOW, in words a person can read on the
+  /// progress bar: which station is being asked, which lane is carrying it.
+  /// A bar sitting at 0% with no words was indistinguishable from a download
+  /// that had not started -- which is exactly how the fault above was
+  /// reported.
+  final ValueNotifier<String> phase = ValueNotifier('');
+
+  /// A station's `link:ble` beacon counts as evidence of a bulk lane for this
+  /// long — three beacon periods, the same window the publisher ranks paths on.
+  static const int meshEvidenceMs = 3 * 60 * 1000;
+
+  Future<bool> _ble5Active() async {
+    for (final b in XprsPublisher.instance.bearers) {
+      if (b.name == 'ble5') {
+        return XprsPublisher.instance.isBearerEnabled('ble5') && await b.active;
+      }
+    }
+    return false;
+  }
+
+  /// How long a station in earshot gets to say 202 before we ask the next one.
+  static const Duration meshAcceptWithin = Duration(seconds: 30);
+
+  /// How long the DHT gets to name a provider before we go to the web.
+  static const Duration providerProbeTimeout = Duration(seconds: 20);
 
   /// How long to wait for a Reticulum provider before falling back to the web.
   /// Long enough for a DHT resolve plus a multi-source transfer of a ~60 MB
@@ -349,11 +379,13 @@ class UpdateService {
     // panel/app closes, resumes an interrupted transfer, and reports success
     // only once the whole file is on disk. The Dart isolate just mirrors its
     // progress. The Reticulum (sha handle) and desktop paths stay below.
-    if (isHttp0 && UpdateNative.hasDownloadManager) {
+    if (isHttp0) {
       lastSource = 'https';
+      phase.value = 'Downloading from xprs.dev';
+    }
+    if (isHttp0 && UpdateNative.hasDownloadManager) {
       return _downloadViaManager(release, asset);
     }
-    if (isHttp0) lastSource = 'https';
 
     status.value = UpdateStatus.downloading;
     progress.value = 0;
@@ -431,7 +463,21 @@ class UpdateService {
       ReleaseInfo release, ReleaseAsset asset) async {
     final self = MeshService.instance.tableCallsign;
     if (self.isEmpty) return null;
-    final stations = XprsCatchup.instance.stationsInEarshot();
+    // Only over a lane that can carry the bytes. A `cmd:file` is answered on
+    // the advert channel and the FILE travels the bulk lane (25.2.2), and the
+    // bulk lane is BLE. Measured on the bench: the desktop, with no Bluetooth,
+    // asked a phone it could hear over LAN; the phone held the release and
+    // said 202 in 200 ms; and with no lane for the bytes the desktop then sat
+    // on that 202 for the transfer's whole timeout. So: our radio must be on,
+    // and the station must have declared `link:ble` recently (10.6.1) — not
+    // merely be a callsign we have archived a packet from.
+    if (!await _ble5Active()) return null;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final stations = XprsCatchup.instance.stationsInEarshot().where((c) {
+      final st = XprsMonitor.instance.stations[c.toUpperCase()];
+      return st != null &&
+          st.declaredBearersFresh(now, meshEvidenceMs).contains('ble');
+    }).toList();
     if (stations.isEmpty) return null;
 
     status.value = UpdateStatus.downloading;
@@ -442,6 +488,7 @@ class UpdateService {
     try {
       for (final station in stations) {
         final dot = asset.name.lastIndexOf('.');
+        phase.value = 'Asking $station over the mesh';
         final path = await XprsFileFetch.instance.fetch(
           archiver: station,
           shaHex: asset.sha256,
@@ -450,6 +497,9 @@ class UpdateService {
           // Land it where the installer expects, as a file: an APK that became
           // a sqlite blob would have to be written back out to be installed.
           destDir: await UpdateNative.supportDir(),
+          // Seconds to say 202, not the transfer's hour: a station that does
+          // not hold the release is asked and left behind, never waited on.
+          acceptWithin: meshAcceptWithin,
         );
         if (path == null) continue; // 404 / refused / timed out: try the next
         _downloadedPath = path;
@@ -495,6 +545,40 @@ class UpdateService {
     lastSource = 'reticulum';
     UpdateNative.serviceStart('Fetching XPRS ${release.version} over Reticulum');
     try {
+      // A super-archiver already holds every release it mirrors, verified at
+      // ingest. The DHT probe below asks for OTHER providers by design, so
+      // without this a mirror that was the only holder concluded nobody had
+      // it and went to the web for bytes sitting on its own disk.
+      final mine = UpdateMirrorService.instance.pathForSha(shaHex);
+      if (mine != null) {
+        phase.value = 'Held by this station\'s mirror';
+        final dir = await UpdateNative.supportDir();
+        final dest = '$dir${Platform.pathSeparator}${asset.name}';
+        await File(mine).copy(dest);
+        _downloadedPath = dest;
+        progress.value = 1;
+        lastSource = 'mirror';
+        status.value = UpdateStatus.downloaded;
+        LogService.instance
+            .add('update: ${release.version} taken from our own mirror');
+        return true;
+      }
+      // Is there anybody to fetch FROM? The fetch's timeout is sized for
+      // moving the bytes, and with no super-archiver holding this release it
+      // spent all five minutes learning that nobody did -- after the mesh had
+      // already spent its share. Ask the DHT the cheap question first.
+      phase.value = 'Looking for a super-archiver holding ${release.version}';
+      final providers = await RnsService.instance
+          .contentProviderCount(shaHex, timeout: providerProbeTimeout);
+      if (providers == 0) {
+        LogService.instance.add(
+            'update: no super-archiver holds ${release.version} yet — web');
+        lastSource = null;
+        status.value = UpdateStatus.checking;
+        return false;
+      }
+      phase.value =
+          'Fetching from $providers super-archiver${providers == 1 ? '' : 's'}';
       final bytes = await RnsService.instance.folderFetchBytes(folder, shaHex,
           ext: ext, timeout: reticulumFetchTimeout);
       if (bytes == null || bytes.isEmpty) {

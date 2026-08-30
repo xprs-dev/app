@@ -383,8 +383,14 @@ class _ReleaseCardState extends State<_ReleaseCard> {
               children: [
                 LinearProgressIndicator(value: p),
                 const SizedBox(height: 4),
-                Text('Downloading ${(p * 100).round()}%',
-                    style: const TextStyle(fontSize: 12)),
+                ValueListenableBuilder<String>(
+                  valueListenable: svc.phase,
+                  builder: (context, ph, _) => Text(
+                      ph.isEmpty
+                          ? 'Downloading ${(p * 100).round()}%'
+                          : '$ph — ${(p * 100).round()}%',
+                      style: const TextStyle(fontSize: 12)),
+                ),
               ],
             ),
           );

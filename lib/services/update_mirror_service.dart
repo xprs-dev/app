@@ -104,8 +104,19 @@ class UpdateMirrorService extends BackgroundService {
   Future<String?> Function(ReleaseAsset a, String version)? fetchOverride;
   Future<void> Function(String path)? deleteOverride;
 
-  bool get enabled =>
-      PreferencesService.instanceSync?.updateMirrorEnabled ?? false;
+  /// On when asked for, and on for every super-archiver whether asked or not.
+  ///
+  /// The design is one sentence: a phone fetches a release by sha256 from a
+  /// super-archiver, and the super-archiver is what fetched it from xprs.dev.
+  /// The two roles were two separate switches, and on the bench the machine
+  /// acting as super-archiver had this one off -- so no station anywhere held
+  /// the release, every by-sha fetch could only time out, and a phone was
+  /// mirroring 1.3 GB of binaries nobody would ask it for instead.
+  bool get enabled {
+    final p = PreferencesService.instanceSync;
+    if (p == null) return false;
+    return p.updateMirrorEnabled || p.xprsSuperArchiver;
+  }
 
   @override
   Future<void> onStart() async {
@@ -164,6 +175,16 @@ class UpdateMirrorService extends BackgroundService {
   /// the next six-hourly tick. A peer that asked in that window got a `404`
   /// for a file sitting right there — observed on the bench.
   final Map<String, String> _shaByPath = {};
+
+  /// The mirrored file for [shaHex], or null. The digest map is written at
+  /// ingest, so this is a map scan and one stat -- never a hash.
+  String? pathForSha(String shaHex) {
+    final want = shaHex.toLowerCase();
+    for (final e in _shaByPath.entries) {
+      if (e.value == want && File(e.key).existsSync()) return e.key;
+    }
+    return null;
+  }
 
   static const String _digestFile = '.digests.json';
 
