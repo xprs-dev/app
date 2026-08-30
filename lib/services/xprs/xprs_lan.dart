@@ -64,6 +64,23 @@ class XprsLan {
   RawDatagramSocket? _socket;
   String _selfCallsign = '';
 
+  /// The socket can die under us -- the runtime closes it on an error the
+  /// bearer never sees -- and before this the object kept the dead handle,
+  /// reported `up`, sent into nothing and received nothing, for hours.
+  /// Measured on the bench, 2026-08-30: `/api/xprs/bearers` said
+  /// `active:true`, the process held no UDP socket at all, and packets that
+  /// a raw listener on the same port saw never reached the app. So a close
+  /// is now an EVENT this bearer handles: say why, drop the handle, and
+  /// bind again after a moment.
+  ///
+  /// No poll watches for a socket that dies WITHOUT an event. The LAN beacon
+  /// already sends every 300 s (mesh_service); a send on a dead socket
+  /// throws, and that lands here too. A timer of our own would be a second
+  /// tick for the same fact (docs/performance.md 6.5, 8.5).
+  Timer? _reopen;
+  int _reopenDelayS = 5;
+  int reopened = 0;
+
   /// Our own addresses, so our own broadcast loopback is never ingested as if
   /// somebody else had said it.
   final Set<String> _selfAddrs = {};
@@ -93,21 +110,53 @@ class XprsLan {
       s.broadcastEnabled = true;
       _socket = s;
       await _learnSelfAddresses();
-      s.listen(_onEvent);
+      s.listen(_onEvent,
+          onError: (Object e) => _lost('error: $e'),
+          onDone: () => _lost('stream done'));
+      _reopenDelayS = 5;
       LogService.instance
           .add('XPRS: LAN bearer on UDP $port (broadcast, ${_directed.length} '
               'subnet${_directed.length == 1 ? "" : "s"})');
     } catch (e) {
       // A bind failure is not fatal: every other bearer still works, and the
-      // usual cause is another process already holding the port.
+      // usual cause is another process already holding the port. It is also
+      // not final: the next beacon's failed send brings us back here.
       LogService.instance.add('XPRS: LAN bearer could not bind UDP $port — $e');
     }
   }
 
   void stop() {
+    _reopen?.cancel();
+    _reopen = null;
     _socket?.close();
     _socket = null;
     _peers.clear();
+  }
+
+  /// The socket is gone. Forget it -- `up` must not lie -- and come back.
+  void _lost(String why) {
+    if (_socket == null) return;
+    LogService.instance.add('XPRS: LAN bearer socket closed ($why) — '
+        'reopening in ${_reopenDelayS}s');
+    _socket = null;
+    _scheduleReopen(why);
+  }
+
+  void _scheduleReopen(String why) {
+    _reopen?.cancel();
+    _reopen = Timer(Duration(seconds: _reopenDelayS), () async {
+      _reopen = null;
+      await start(selfCallsign: _selfCallsign);
+      if (_socket != null) {
+        reopened++;
+        LogService.instance.add('XPRS: LAN bearer back on UDP $port ($why)');
+      } else {
+        // Back off, but never past the beacon's own cadence: a LAN that
+        // comes back is missed for five minutes at most either way.
+        _reopenDelayS = _reopenDelayS < 300 ? _reopenDelayS * 2 : 300;
+        _scheduleReopen(why);
+      }
+    });
   }
 
   Future<void> _learnSelfAddresses() async {
@@ -138,10 +187,20 @@ class XprsLan {
   }
 
   void _onEvent(RawSocketEvent event) {
+    if (event == RawSocketEvent.closed || event == RawSocketEvent.readClosed) {
+      _lost(event == RawSocketEvent.closed ? 'closed' : 'read side closed');
+      return;
+    }
     if (event != RawSocketEvent.read) return;
     final s = _socket;
     if (s == null) return;
-    final dg = s.receive();
+    Datagram? dg;
+    try {
+      dg = s.receive();
+    } catch (e) {
+      _lost('receive: $e');
+      return;
+    }
     if (dg == null) return;
 
     final src = dg.address.address;
@@ -213,7 +272,9 @@ class XprsLan {
         if (s.send(bytes, p.addr, p.port) > 0) sent = true;
       }
     } catch (e) {
+      // A send that throws is a socket that is no longer a socket.
       LogService.instance.add('XPRS: LAN send failed — $e');
+      _lost('send: $e');
       return false;
     }
     if (sent) tx++;
