@@ -15,7 +15,9 @@ face on top of them.
 > **piece engine** (§8 step 2), the **listing** (§12, `data/meta.json` + artwork),
 > the **on-disk download library** (§13), **search / browse by category** (§14)
 > and the **favicon-style per-torrent icon** (§15) are **built and on-device
-> validated**. The still-unbuilt piece is the **database-backed folder source**
+> validated**. **2026-08-30:** the piece engine is now what every
+> content-addressed fetch actually runs — until then nothing called it. §16 is
+> the path as it executes today, measured. The still-unbuilt piece is the **database-backed folder source**
 > (§2). §9 tracks what is proven versus pending in detail. New here since the
 > first draft: **§12–§15**, and in particular the folder/file structure that
 > carries a torrent's metadata.
@@ -656,3 +658,128 @@ designed to fit it.
   reuses `TorrentService` + `folderAddFromDisk`). Not built.
 - **[torrents-as-websites.md](torrents-as-websites.md)** — serve a torrent folder
   as its own website (the favicon-style icon is the first built piece). Not built.
+
+---
+
+## 16. How a download runs today (2026-08-30)
+
+Everything above describes what the engine *is*. This section is what happens,
+in order, when a station wants bytes it knows only by sha256 — the update
+service given a hash by the xprs.dev feed, a folder browse given one by a
+signed entry. It is written from the code paths and from a bench run, and it
+records the one fact the rest of the document did not: **until 2026-08-30 the
+piece engine had no callers in either repository.** It was built and served
+on both ends, and every by-sha fetch took the whole-file resource path from
+one provider. That path is the one that stalled.
+
+### 16.1 Publishing: what a holder advertises
+
+`DiskFolderManager` (`lib/services/folders/disk_folder_manager.dart`) is the
+one place a file on disk becomes a swarm member. On every sync of a hosted
+directory it:
+
+1. cuts each file into pieces — `pieceSizeForFile(size)`: 64 KiB under 4 MB,
+   256 KiB under 64 MB, 1 MiB above — and hashes each piece
+   (`pieceHashesOfFile`);
+2. stores the packed list (`packPieceHashes`: 32 bytes per piece, nothing
+   else) in the content archive as a blob of its own, and **advertises that
+   blob's sha256 in the DHT** too, so a downloader can find the list;
+3. writes the file into the folder's signed op-log with `ps` (piece size) and
+   `ph` (the list's sha256) — `FileEntry.hasPieces`;
+4. advertises the file: a DHT provider record keyed on the file's sha256,
+   **carrying `manifestHash = ph`**. That last field is the 2026-08-30 change.
+   The record used to be published without it, which is why a bare-sha fetcher
+   could never reach step 16.3.
+
+Records are best-effort (10 s each, `_advertise`) and republished by
+`republishAll` on the ~30-minute TTL cycle, with the manifest hash. A record
+is pruned from the resolver's local store when its holder fails to serve
+(`demoteProvider`), so a holder that stalled once is not asked again until it
+republishes.
+
+A super-archiver is a holder like any other: `UpdateMirrorService` fetches
+each release artifact from xprs.dev, verifies size and sha256 against the
+feed, and drops the file into a hosted directory. From there it is step 1.
+
+### 16.2 The one door: `fetchContentAddressed`
+
+Every by-sha read in the app ends in
+`RnsService.fetchContentAddressed(sha, {ext, fromCallsign, timeout, size})`
+(`rns_service.dart`). In order:
+
+1. **Local.** `CompositeFileSource.read` — the media archive and every hosted
+   disk folder. A copy we hold is instant, and content-addressed means
+   identical.
+2. **Named sender.** If the caller named a station (`fromCallsign`), a direct
+   fetch from it.
+3. **The swarm — `dhtResolveFetch(sha, size:)`:**
+   1. `dht.resolve(sha)` → the provider records, ourselves excluded;
+   2. if **`size` is known** and **any record carries a `manifestHash`**:
+      fetch the piece list (a few KB, whole-file, from the first holder that
+      answers, 45 s); `unpackPieceHashes`; refuse it unless its length equals
+      `pieceCountFor(size, pieceSizeForFile(size))` — the same deterministic
+      rule the publisher used, so no piece size travels on the wire;
+   3. `FileTransferNode.fetchFilePieces(...)`: up to four holders opened in
+      parallel, `GET_HAVE` for each holder's bitfield, rarest-first
+      assignment, one holder per piece until the endgame, every piece hashed
+      against the signed list on arrival, a holder whose piece fails its hash
+      dropped for the rest of the transfer, and the whole file hashed once
+      more at the end;
+   4. **unknown size, no list, or a swarm that could not finish** →
+      `resolveAndFetch`, the whole-file resource path from one provider, which
+      is what every fetch did before.
+4. **Verify, archive, re-seed.** `_archiveAndReseed`: sha checked by the
+   transfer, the bytes stored, and this station published as a provider —
+   downloading is joining the swarm.
+
+`size` is the whole reason the swarm is reachable by bare sha: the piece size
+is a function of it. Callers that know it pass it — the updater from its feed
+entry, a folder browse from the op-log entry. Callers that do not are exactly
+as they were.
+
+### 16.3 The update path, end to end
+
+`UpdateService.download` tries three lanes, each bounded so a lane that will
+not answer costs seconds, not the transfer's hour:
+
+| lane | asked when | bound |
+|---|---|---|
+| mesh, `cmd:file` on the advert channel + bulk lane | our BLE radio is on **and** the station declared `link:ble` within 3 min | 30 s for a `202`, else the next station |
+| Reticulum, by sha | a DHT probe (20 s) names at least one other holder, or our own mirror holds it | deadline sized to the artifact: 5 min floor, 20 kB/s above it |
+| https, xprs.dev | always, last | the system download manager |
+
+`GET /api/files/providers?sha=<64 hex>` answers the question the design turns
+on — *who holds this?* — as `{mirror, providers}`, without starting a download.
+
+### 16.4 Measured
+
+Desktop (X16JK8, LAN, no Bluetooth) fetching a 35 MB artifact that only the
+C61 phone held, same bench, same hour:
+
+```
+whole-file resource path:  seg 3/34, parts 1019/1021, stalled 5 min, timed out
+piece swarm, one holder:   0 -> 100 % in ~4.9 min, ~120 kB/s, steady, sha verified
+```
+
+The whole-file stall is real and unexplained: the receiver re-requested the
+two missing parts on every tick and the sender never answered. It is now the
+fallback rather than the path, and it needs its own reproduction with logs on
+both ends.
+
+The flat five-minute deadline the updater used expired **seconds after** that
+fetch completed; a 57 MB APK at the same rate would have been cut off at 85 %.
+Hence the size-aware deadline in 16.3.
+
+### 16.5 Still open, stated plainly
+
+- **Throughput is one link's worth.** ~120 kB/s is a single holder;
+  `maxPeers` is 4 and the per-peer window is fixed, not sized by capacity or
+  measured throughput as §4 step 4 describes. It scales with holders, not yet
+  with links.
+- **Partial holders do not seed** during a transfer: `GET_HAVE` answers a
+  bitfield, but nothing publishes a provider record for a file that is
+  half-fetched. §8's second property is served on the wire and unused.
+- **A record without a manifest hash** — every file advertised before
+  2026-08-30, until its holder republishes — still takes the whole-file path.
+- **The `resolveAndFetch` whole-file stall** (16.4) is unfixed.
+
