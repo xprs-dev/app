@@ -115,7 +115,7 @@ private encrypted groups over Reticulum.
 
 ### Firmware
 
-[esp32.md](../../xprs-firmware/docs/esp32.md) (in the firmware repo, not this one) — read it before firmware work: heap first, pin to core 1,
+[esp32.md](../../firmware/docs/esp32.md) (in the firmware repo, not this one) — read it before firmware work: heap first, pin to core 1,
 the FatFs traps, and how to measure without rebooting the board. Note the
 ESP32 goes **deaf during an MSP session** (`ble5.md` §5), and GATT file
 transfer there is deliberately out of scope for now.
