@@ -77,7 +77,7 @@ import '../social/host_retention_policy.dart';
 import '../social/retention_tier.dart';
 import '../folders/disk_folder_manager.dart';
 import '../folders/folder_event.dart'
-    show kKindFolderKeyset, kKindFolderOp, kFolderTag, FolderShareType, FileEntry;
+    show kKindFolderKeyset, kKindFolderOp, kFolderTag, FolderShareType, FileEntry, pieceSizeForFile;
 import '../folders/folder_keystore.dart';
 import '../folders/folder_relay.dart';
 import '../folders/folder_service.dart';
@@ -3592,8 +3592,9 @@ class RnsService {
               folders: _folders!,
               localState: _localFolderState,
               publishFolderProvider: (fid) => _folderRelay!.publish(fid),
-              publishFileProvider: (sha) async {
-                await _files?.publishKey(sha, capacity: selfCapacity);
+              publishFileProvider: (sha, pieces) async {
+                await _files?.publishKey(sha,
+                    capacity: selfCapacity, manifestHash: pieces);
               },
               registerSource: (src) => _composite?.add(src),
               unregisterSource: (src) => _composite?.remove(src),
@@ -4684,8 +4685,14 @@ class RnsService {
   /// Live download progress (received, total bytes) for an in-flight
   /// content-addressed fetch of [fileHash] (32B) over Reticulum, or null when
   /// nothing is downloading for it. Drives the chat media progress label.
-  ({int received, int total})? fileFetchProgress(Uint8List fileHash) =>
-      _files?.fetchProgress(fileHash);
+  ({int received, int total})? fileFetchProgress(Uint8List fileHash) {
+    final whole = _files?.fetchProgress(fileHash);
+    if (whole != null) return whole;
+    // A piece fetch counts pieces, not bytes; a bar wants a ratio either way.
+    final pieces = _files?.pieceProgressFor(fileHash);
+    if (pieces == null) return null;
+    return (received: pieces.have, total: pieces.total);
+  }
 
   /// Resolve providers for [fileHash] (sha256, 32B) via the DHT and fetch the
   /// bytes from the best available provider over a Reticulum link. Returns the
@@ -4693,9 +4700,72 @@ class RnsService {
   Future<Uint8List?> dhtResolveFetch(
     Uint8List fileHash, {
     Duration timeout = const Duration(seconds: 30),
+    int size = 0,
   }) async {
-    if (!_up) return null;
-    return _files?.resolveAndFetch(fileHash, timeout: timeout);
+    final f = _files;
+    if (!_up || f == null) return null;
+    // Pieces first, from every holder at once (docs/torrents.md §8 step 2).
+    //
+    // The piece engine — GET_HAVE, GET_RANGE, rarest-first, per-piece
+    // verification against a list the folder owner signed — was built and
+    // served on both ends, and NOTHING CALLED IT. Every by-sha fetch took the
+    // whole-file resource path from one provider, and that path is the one
+    // that stalled on the bench at parts 1019/1021 of a 35 MB transfer, for
+    // five minutes, until the updater gave up and went to the web.
+    //
+    // A downloader that knows only the file's sha256 finds the piece list
+    // through the provider record's manifestHash; [size] tells it the piece
+    // size (the same deterministic rule the publisher used) and the count.
+    // Unknown size, no list, or a swarm that cannot finish: the whole-file
+    // path below, exactly as before.
+    if (size > 0) {
+      final swarm = await _fetchPiecesBySha(f, fileHash, size, timeout);
+      if (swarm != null && swarm.isNotEmpty) return swarm;
+    }
+    return f.resolveAndFetch(fileHash, timeout: timeout);
+  }
+
+  Future<Uint8List?> _fetchPiecesBySha(
+      FileTransferNode f, Uint8List fileHash, int size, Duration timeout) async {
+    final d = f.dht;
+    if (d == null) return null;
+    final records = await d.resolve(fileHash);
+    final self = _hex(f.identity.hash);
+    final providers = <RnsIdentity>[];
+    Uint8List? manifest;
+    for (final r in records) {
+      if (_hex(r.providerIdentity.hash) == self) continue;
+      providers.add(r.providerIdentity);
+      manifest ??= r.manifestHash;
+    }
+    if (providers.isEmpty || manifest == null) return null;
+    // The list itself is a small blob every holder also serves; one whole-file
+    // fetch of a few KB, from whichever provider answers first.
+    Uint8List? blob;
+    for (final p in providers) {
+      blob = await f.fetch(manifest, p, timeout: const Duration(seconds: 45));
+      if (blob != null && blob.isNotEmpty) break;
+    }
+    if (blob == null) {
+      LogService.instance.add(
+          'RNS/files: no holder served the piece list for ${_hex(fileHash).substring(0, 8)} — whole-file path');
+      return null;
+    }
+    final hashes = unpackPieceHashes(blob);
+    final pieceSize = pieceSizeForFile(size);
+    if (hashes == null || hashes.length != pieceCountFor(size, pieceSize)) {
+      LogService.instance.add(
+          'RNS/files: piece list for ${_hex(fileHash).substring(0, 8)} does not match its size — whole-file path');
+      return null;
+    }
+    return f.fetchFilePieces(
+      fileHash: fileHash,
+      size: size,
+      pieceSize: pieceSize,
+      pieceHashes: hashes,
+      providers: providers,
+      timeout: timeout,
+    );
   }
 
   // ── Indexer↔Indexer pointer sync (docs/NOSTR.md) ──────────────────────────
@@ -5249,6 +5319,7 @@ class RnsService {
     String ext = '',
     String? fromCallsign,
     Duration timeout = const Duration(seconds: 30),
+    int size = 0,
   }) async {
     // 1) Local hit — content is addressed by sha, so a copy we hold is identical
     // and instant. Lets a mirror answer when the owner is offline. Already a
@@ -5263,7 +5334,7 @@ class RnsService {
     }
     // 3) DHT discovery + multi-source fetch.
     if (bytes == null || bytes.isEmpty) {
-      bytes = await dhtResolveFetch(sha, timeout: timeout);
+      bytes = await dhtResolveFetch(sha, timeout: timeout, size: size);
     }
     if (bytes == null || bytes.isEmpty) return null;
     _archiveAndReseed(sha, bytes, ext);
@@ -10459,13 +10530,15 @@ class RnsService {
     String shaHex, {
     String ext = '',
     Duration timeout = const Duration(seconds: 30),
+    int size = 0,
   }) async {
     final shaB = _bytesFromHex(shaHex);
     if (shaB == null) return null;
     // One content-addressed path for everything: local hit → DHT multi-source →
     // verify → archive → re-seed. (No fromCallsign: a folder file is discovered
-    // via the DHT, not tied to a specific sender.)
-    return fetchContentAddressed(shaB, ext: ext, timeout: timeout);
+    // via the DHT, not tied to a specific sender.) [size], when the caller
+    // knows it, is what makes the multi-source half possible by bare sha.
+    return fetchContentAddressed(shaB, ext: ext, timeout: timeout, size: size);
   }
 
   /// Like [folderBrowse] but awaits a fresh network fetch of the folder's

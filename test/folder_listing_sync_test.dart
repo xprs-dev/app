@@ -51,7 +51,7 @@ void main() {
         return reduceFolder(folderId, ks.isEmpty ? null : ks.first, ops);
       },
       publishFolderProvider: (_) async {},
-      publishFileProvider: (_) async {},
+      publishFileProvider: (_, __) async {},
       registerSource: (_) {},
       registryPath: ':memory:',
     );

@@ -29,7 +29,12 @@ class DiskFolderManager {
   final FolderService folders;
   final Future<FolderState> Function(String folderId) localState;
   final Future<void> Function(String folderId) publishFolderProvider;
-  final Future<void> Function(Uint8List sha32) publishFileProvider;
+  /// Advertise a file, and the sha256 of its piece-hash list when the folder
+  /// entry carries one (`ph`). Without the second argument a downloader that
+  /// knows only the file's hash cannot find the list, and falls back to the
+  /// whole-file path for no reason — which is what every by-sha fetch did.
+  final Future<void> Function(Uint8List sha32, Uint8List? piecesSha32)
+      publishFileProvider;
   final void Function(DiskFolderSource source) registerSource;
   final void Function(DiskFolderSource source)? unregisterSource;
   final String registryPath; // disk_folders.json (':memory:' for tests)
@@ -292,9 +297,22 @@ class DiskFolderManager {
     }
 
     await bounded(() => publishFolderProvider(folderId));
+    // The piece list is named in the signed folder entry, not on the disk
+    // file, so read the entries once and advertise each file with its `ph`.
+    final piecesBySha = <String, String>{};
+    try {
+      final state = await localState(folderId);
+      for (final e in state.files.values) {
+        final ph = e.piecesSha;
+        if (ph != null && ph.length == 64) piecesBySha[e.sha] = ph;
+      }
+    } catch (_) {/* advertise without lists rather than not at all */}
     for (final f in files) {
       final b = _bytes(f.sha);
-      if (b != null) await bounded(() => publishFileProvider(b));
+      if (b == null) continue;
+      final ph = piecesBySha[f.sha];
+      final m = ph == null ? null : _bytes(ph);
+      await bounded(() => publishFileProvider(b, m));
     }
   }
 

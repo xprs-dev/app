@@ -43,7 +43,7 @@ void main() {
       folders: folders,
       localState: (folderId) async => reduceFolder(folderId, null, const []),
       publishFolderProvider: (_) async {},
-      publishFileProvider: (_) async {},
+      publishFileProvider: (_, __) async {},
       registerSource: (_) {},
       registryPath: ':memory:',
     );

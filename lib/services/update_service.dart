@@ -20,6 +20,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -118,6 +119,17 @@ class UpdateService {
   /// reported.
   final ValueNotifier<String> phase = ValueNotifier('');
 
+  static Uint8List? _hexBytes(String hex) {
+    if (hex.length != 64) return null;
+    try {
+      return Uint8List.fromList([
+        for (var i = 0; i < 64; i += 2) int.parse(hex.substring(i, i + 2), radix: 16),
+      ]);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// A station's `link:ble` beacon counts as evidence of a bulk lane for this
   /// long — three beacon periods, the same window the publisher ranks paths on.
   static const int meshEvidenceMs = 3 * 60 * 1000;
@@ -141,6 +153,18 @@ class UpdateService {
   /// Long enough for a DHT resolve plus a multi-source transfer of a ~60 MB
   /// artifact, short enough that a phone with no mirror in reach is not stuck.
   static const Duration reticulumFetchTimeout = Duration(minutes: 5);
+
+  /// The fetch deadline, sized to the artifact. A flat five minutes was
+  /// measured on the bench to expire seconds AFTER a 35 MB swarm fetch
+  /// finished at ~120 kB/s; a 57 MB APK at that rate would have been cut off
+  /// at 85%. The floor is the old value; above it, a modest 20 kB/s budget so
+  /// a slow-but-moving transfer is never abandoned while the bar is climbing.
+  /// A fetch that actually stalls is ended by the swarm's own per-piece
+  /// timeouts, not by this.
+  static Duration reticulumTimeoutFor(int sizeBytes) {
+    final budget = Duration(seconds: sizeBytes ~/ (20 * 1024));
+    return budget > reticulumFetchTimeout ? budget : reticulumFetchTimeout;
+  }
 
   // True while a DownloadManager poll loop is running, so we never spin up a
   // second tracker (e.g. resume racing a fresh download).
@@ -579,8 +603,27 @@ class UpdateService {
       }
       phase.value =
           'Fetching from $providers super-archiver${providers == 1 ? '' : 's'}';
-      final bytes = await RnsService.instance.folderFetchBytes(folder, shaHex,
-          ext: ext, timeout: reticulumFetchTimeout);
+      // Show what is arriving. The fetch reports pieces (or bytes) as they
+      // land; a bar that sat at 0% for the whole transfer is what "not
+      // starting" looked like from the outside.
+      final shaB = _hexBytes(shaHex);
+      // Lives only while a download the user started is in flight, cancelled
+      // in the finally below: it costs nothing per hour with the screen off
+      // because it never exists then.
+      final ticker = Timer.periodic(const Duration(milliseconds: 500), (_) { // arch-ignore: no-sub-minute-poll bounded to one user-initiated download, cancelled in finally
+        if (shaB == null) return;
+        final pr = RnsService.instance.fileFetchProgress(shaB);
+        if (pr != null && pr.total > 0) progress.value = pr.received / pr.total;
+      });
+      Uint8List? bytes;
+      try {
+        bytes = await RnsService.instance.folderFetchBytes(folder, shaHex,
+            ext: ext,
+            timeout: reticulumTimeoutFor(asset.size),
+            size: asset.size);
+      } finally {
+        ticker.cancel();
+      }
       if (bytes == null || bytes.isEmpty) {
         lastSource = null;
         status.value = UpdateStatus.checking;
