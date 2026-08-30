@@ -5,6 +5,13 @@ class _AppDrawer extends StatelessWidget {
 
   const _AppDrawer({required this.onSettings});
 
+  /// Close the drawer, then push the page — same order the Settings entry
+  /// uses, so the drawer is not still open when the user comes back.
+  void _open(BuildContext context, Widget page) {
+    Navigator.of(context).pop();
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -37,6 +44,26 @@ class _AppDrawer extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+            const Divider(height: 1),
+            // The panels people reach for often, one tap from the home
+            // screen. Settings still holds everything else.
+            if (UpdateService.selfUpdateEnabled)
+              ListTile(
+                leading: const Icon(Icons.system_update),
+                title: const Text('Updates'),
+                subtitle: Text('Version $kAppVersion'),
+                onTap: () => _open(context, const UpdatePage()),
+              ),
+            ListTile(
+              leading: const Icon(Icons.memory),
+              title: const Text('Hardware'),
+              onTap: () => _open(context, const HardwarePage()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.groups),
+              title: const Text('Groups'),
+              onTap: () => _open(context, const GroupsPage()),
             ),
             const Divider(height: 1),
             ListTile(

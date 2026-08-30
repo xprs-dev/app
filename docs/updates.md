@@ -198,7 +198,7 @@ against the feed, hashed in chunks off the UI isolate.
 
 **The F-Droid variant does none of this.** Build with
 `--dart-define=SELF_UPDATE=false` and every check, download and install
-short-circuits and the Update Center hides itself — F-Droid builds from source
+short-circuits and the Updates panel hides itself — F-Droid builds from source
 and is the only updater for what it ships. Such a build also refuses to act as
 a mirror.
 

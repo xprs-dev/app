@@ -56,8 +56,6 @@ import '../services/update_service.dart';
 import '../version.dart';
 import 'update_page.dart';
 import 'groups_page.dart';
-import '../services/xprs/xprs_group_keys.dart';
-import '../services/xprs/xprs_groups.dart';
 import '../profile/iwi_profile.dart';
 import '../profile/profile_encryption.dart';
 import '../profile/profile_service.dart';
@@ -81,8 +79,6 @@ import '../wapp/wapp_page.dart';
 
 import 'hardware_page.dart';
 import 'muted_page.dart';
-import '../services/social/node_profile_service.dart';
-import 'package:reticulum/src/services/social/node_profile.dart';
 
 part 'wapp_manifest.dart';
 part 'seeding.dart';

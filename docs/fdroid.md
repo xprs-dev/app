@@ -51,7 +51,7 @@ now only `libapp.so`, `libflutter.so`, `libwasm_run_dart.so`, `libsqlcipher.so`,
 
 ### 1.2 Self-update
 
-The Update Center downloads and installs APKs from `xprs.dev`. F-Droid is
+The Updates panel downloads and installs APKs from `xprs.dev`. F-Droid is
 the updater for what it ships and rejects apps that update themselves.
 
 Handled: build with `--dart-define=SELF_UPDATE=false` and
@@ -80,7 +80,7 @@ APRS-IS are proprietary services, although nothing depends on them.
 |---|---|---|
 | `server.arcgisonline.com` as the default map tiles | `tile.openstreetmap.org` | Esri is a proprietary service, and it was the default every user received without choosing. A wapp can still set `tile-url`. |
 | `install.wapp` rewrote `github.com` tree URLs to `raw.githubusercontent.com` | rewriter deleted; the configured URL is used verbatim | No GitHub code path in the shipped binary. |
-| Update Center always offered | hidden when `SELF_UPDATE=false` | Dead path should not have a door. |
+| Updates panel always offered | hidden when `SELF_UPDATE=false` | Dead path should not have a door. |
 
 ## 3. Hosts that remain, and why each is fine
 

@@ -1,4 +1,4 @@
-// Native (dart:io) implementation of the Update Center operations: download an
+// Native (dart:io) implementation of the Updates panel operations: download an
 // artifact to disk with progress, and apply it per platform —
 //   Android: launch the system package installer (MethodChannel -> FileProvider)
 //   Windows: run the Inno Setup installer silently, then quit

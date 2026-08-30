@@ -1,5 +1,5 @@
 /*
- * UpdatePage — the in-app Update Center (Settings → Updates).
+ * UpdatePage — the in-app Updates panel (drawer → Updates).
  *
  * Shows the running version, a stable + beta release "table" pulled from the xprs.dev feed
  * (xprs-dev/xprs-flutter), release notes, and a Download → Install action for the

@@ -1,5 +1,5 @@
 /*
- * Update models — release shapes for the in-app Update Center.
+ * Update models — release shapes for the in-app Updates panel.
  *
  * Releases are published into signed Reticulum mutable folders (see
  * update_service.dart): each per-platform binary is a content-addressed folder

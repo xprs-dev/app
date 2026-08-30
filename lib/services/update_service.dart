@@ -15,7 +15,7 @@
  * verifies sha256(bytes) == the entry hash, and applies it natively (see
  * update_native_io.dart). No central web host; any device that holds a binary
  * re-seeds it. Web is a no-op. Both folder npubs are overridable at runtime
- * (Update Center) for self-hosters.
+ * (Updates panel) for self-hosters.
  */
 
 import 'dart:async';
@@ -90,7 +90,7 @@ class UpdateService {
   static const _kBetaFolder = 'update.folder.beta';
   static const _kFeedBase = 'update.feed.base';
   // Active DownloadManager job (Android), persisted so an interrupted or
-  // backgrounded download can be re-attached when the Update Center reopens or
+  // backgrounded download can be re-attached when the Updates panel reopens or
   // the app is relaunched.
   static const _kDlId = 'update.dl.id';
   static const _kDlVersion = 'update.dl.version';
@@ -185,7 +185,7 @@ class UpdateService {
   ///     flutter build apk --dart-define=SELF_UPDATE=false
   ///
   /// and this reports unsupported, so every check, download and install path
-  /// short-circuits and the Update Center hides itself. Direct-download builds
+  /// short-circuits and the Updates panel hides itself. Direct-download builds
   /// (xprs.dev, CI artefacts) keep it on and are unaffected.
   static const bool selfUpdateEnabled =
       bool.fromEnvironment('SELF_UPDATE', defaultValue: true);
@@ -256,7 +256,7 @@ class UpdateService {
       r != null && compareSemver(r.version, kAppVersion) > 0;
 
   /// Browse both channel folders over Reticulum and pick the newest release on
-  /// each. Safe to call from the Update Center on open and from a background
+  /// each. Safe to call from the Updates panel on open and from a background
   /// check. An empty/unconfigured folder, or one we can't reach yet, is treated
   /// as "no release on that channel", not an error.
   Future<void> checkForUpdates() async {
@@ -744,7 +744,7 @@ class UpdateService {
 
   /// Re-attach to a DownloadManager job left running/finished by a previous
   /// session (panel closed, app backgrounded or relaunched). Safe to call on
-  /// every Update Center open and at startup; no-ops when nothing is pending.
+  /// every Updates panel open and at startup; no-ops when nothing is pending.
   Future<void> resumeActiveDownload() async {
     if (!supported || _tracking || !UpdateNative.hasDownloadManager) return;
     final p = await SharedPreferences.getInstance();

@@ -859,7 +859,7 @@ class RemoteApiService {
         return _json(res,
             {'ok': true, 'pinned': RnsService.instance.folderPinned(fid)});
       }
-      // ── Update Center (drives the real UpdateService) ──────────────────────
+      // ── Updates panel (drives the real UpdateService) ──────────────────────
       if (req.method == 'POST' && path == '/api/update/config') {
         // {"betaFolder":"<npub|hex>","beta":true} — point the beta channel at a
         // folder and enable it (self-hoster / test config).
@@ -894,7 +894,7 @@ class RemoteApiService {
       if (req.method == 'POST' && path == '/api/update/check') {
         // Browse the channel folders over Reticulum and report the newest
         // release + whether it is newer than what's running (the auto-discovery
-        // step the Update Center runs on open / at startup).
+        // step the Updates panel runs on open / at startup).
         final u = UpdateService.instance;
         await u.load();
         await u.checkForUpdates();

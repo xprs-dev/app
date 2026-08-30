@@ -1,4 +1,4 @@
-// Web stub for the native update operations. The Update Center is disabled on
+// Web stub for the native update operations. The Updates panel is disabled on
 // web (no filesystem / no installer), so these are all no-ops. The io
 // implementation lives in update_native_io.dart and is selected via
 // update_native.dart's conditional export.

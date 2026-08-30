@@ -21,45 +21,6 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
     _load();
   }
 
-  /// One line that says what this box is, so the user does not have to open the
-  /// page to remember. The full picture — and the honest two-mode reading of it
-  /// — lives in HardwarePage.
-  String _hardwareSubtitle() {
-    final p = NodeProfileService.instance.build();
-    final bits = <String>[];
-    if (p.power != PowerSource.unknown) {
-      bits.add(switch (p.power) {
-        PowerSource.solarBattery => 'Solar + battery',
-        PowerSource.windHydro => 'Wind / hydro',
-        PowerSource.solar => 'Solar',
-        PowerSource.gridUps => 'Grid + UPS',
-        PowerSource.grid => 'Grid',
-        PowerSource.vehicle => 'Vehicle',
-        PowerSource.batteryOnly => 'Battery',
-        PowerSource.unknown => '',
-      });
-    }
-    if (p.uplink != UplinkKind.unknown) {
-      bits.add(switch (p.uplink) {
-        UplinkKind.satellite => 'Satellite',
-        UplinkKind.fibre => 'Wired',
-        UplinkKind.wifi => 'Wi-Fi',
-        UplinkKind.cellular => 'Cellular',
-        UplinkKind.none => 'Offgrid',
-        UplinkKind.unknown => '',
-      });
-    }
-    for (final r in p.radios) {
-      bits.add(r.link == LinkFlag.lora
-          ? 'LoRa ${r.rangeKm}km'
-          : r.link == LinkFlag.packetRadio
-              ? 'Packet ${r.rangeKm}km'
-              : 'Radio');
-    }
-    if (p.poweredPct > 0) bits.add('${p.poweredPct}% powered');
-    return bits.isEmpty ? 'Not described yet' : bits.join(' · ');
-  }
-
   Future<void> _load() async {
     final prefs = await PreferencesService.instance();
     final defaultPath = wappsDataStorage(prefs).basePath;
@@ -316,141 +277,11 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
           : ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                // ── Updates ──
-                Text('Updates',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        )),
-                const SizedBox(height: 4),
-                Text(
-                  'Check for new XPRS releases (stable or beta) and '
-                  'install them in place.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                if (UpdateService.selfUpdateEnabled)
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                  ),
-                  color: cs.surfaceContainerLow,
-                  child: ListTile(
-                    leading: const Icon(Icons.system_update),
-                    title: const Text('Update Center'),
-                    subtitle: Text(
-                      'Version $kAppVersion',
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const UpdatePage()),
-                    ),
-                  ),
-                ),
-                // Builds made for a store that updates its own apps (F-Droid)
-                // pass --dart-define=SELF_UPDATE=false. There the whole path is
-                // dead, so offering the door is worse than not having it.
-                if (UpdateService.selfUpdateEnabled)
-                  const SizedBox(height: 24),
-
-                // ── Hardware ──
-                //
-                // Stated ONCE, for the device, and read by every role: a box
-                // volunteered as both an Indexer and an Archiver must not be
-                // asked twice what it is plugged into (docs/NOSTR.md).
-                Text('Hardware',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        )),
-                const SizedBox(height: 4),
-                Text(
-                  'Power, uplink, antennas and the region this device serves. '
-                  'Other nodes use it to decide who to ask for what — and when '
-                  'the grid goes down, a machine that is still running matters '
-                  'more than a fast one that is not.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                  ),
-                  color: cs.surfaceContainerLow,
-                  child: ListTile(
-                    leading: const Icon(Icons.memory),
-                    title: const Text('Hardware'),
-                    subtitle: Text(
-                      _hardwareSubtitle(),
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const HardwarePage()),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
                 // ── Muted accounts ──
                 //
                 // Where a mute is taken back. Muting itself happens where the
                 // spam is — the ⋯ menu on the post — because that is where the
                 // user is when they decide.
-                // ── Groups ──
-                //
-                // Closed groups (XPRS 26). Here rather than inside a chat
-                // because membership is not a conversation: it is a signed,
-                // public record that outlives any thread, and it is where a
-                // person accepts or refuses being written into one.
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                  ),
-                  color: cs.surfaceContainerLow,
-                  child: ListTile(
-                    leading: const Icon(Icons.groups),
-                    title: const Text('Groups'),
-                    subtitle: Text(
-                      () {
-                        final mineCalls = {
-                          for (final g in XprsGroupKeys.instance.mine())
-                            g.callsign
-                        };
-                        final mine = mineCalls.length;
-                        // The union: a group can be both administered here and
-                        // heard about, and a max would under-count the rest.
-                        final n =
-                            {...mineCalls, ...XprsGroups.instance.known}.length;
-                        return n == 0
-                            ? 'None yet — create one, or wait to hear of one'
-                            : '$n group${n == 1 ? '' : 's'}'
-                                '${mine > 0 ? ', $mine you administer' : ''}';
-                      }(),
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context)
-                        .push(MaterialPageRoute(
-                            builder: (_) => const GroupsPage()))
-                        .then((_) {
-                      if (mounted) setState(() {});
-                    }),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
                 Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
