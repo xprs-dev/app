@@ -1145,6 +1145,41 @@
 "id": "f4f0f1"
 },
 {
+"wire": "t:request f:X3RLY7 q:owner scope:local ts:2026-08-08_14:26:40 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 126,
+"id": "5cbea8"
+},
+{
+"wire": "t:command f:X1QZ3N d:X3RLY7 ts:2026-08-08_14:26:50 cmd:set owner:X1QZ3N sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 136,
+"id": "992d83"
+},
+{
+"wire": "t:result f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:26:51 r:992d83 code:200 owner:X1QZ3N sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 145,
+"id": "126d81"
+},
+{
+"wire": "t:command f:X1QZ3N d:X3RLY7 ts:2026-08-08_14:30:00 cmd:set use:listed first:X1ABCD,X1EFGH serve:relay,archive sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 174,
+"id": "6cbbb6"
+},
+{
+"wire": "t:result f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:30:01 r:6cbbb6 code:200 owner:X1QZ3N use:listed first:X1ABCD,X1EFGH serve:relay,archive sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 196,
+"id": "69664e"
+},
+{
+"wire": "t:request f:X1MB7K d:X3RLY7 ts:2026-08-08_14:31:00 q:policy",
+"bytes": 59,
+"id": "7b9f93"
+},
+{
+"wire": "t:observation f:X3RLY7 d:X1MB7K s:policy owner:X1QZ3N use:listed first:X1ABCD,X1EFGH serve:relay,archive ts:2026-08-08_14:31:01 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 192,
+"id": "c0c238"
+},
+{
 "wire": "t:identity f:X5A3F2 ts:2026-08-08_14:26:40 k:npub1qz3n7fu9j9uenmyva7ha6x9eqwymytv2847ccv4vxdmn45y50q7h7k5f nick:lisboa-net sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 187,
 "id": "37defc"

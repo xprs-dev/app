@@ -468,6 +468,9 @@ a message may contain spaces, colons, URLs and any punctuation.
 | `hold` | `path` | preferred mailboxes, in order (section 13.12) |
 | `serve` | `words` | what a station does for others (section 24) |
 | `cmd` | `label` | the action a command asks for (section 25) |
+| `owner` | `path` | who may command a station: its allow-list (section 25.9) |
+| `use` | `enum` | who may originate traffic through a station (section 25.9) |
+| `first` | `path` | senders whose packets a station airs ahead of others (section 25.9) |
 | `arg` | `words` | its arguments |
 | `code` | `int` | what happened, on a `result` |
 | `near` | `qty` | how close to `dest` counts as arrived (section 13.4) |
@@ -1510,7 +1513,7 @@ attacker never held (section 13.7.1).
 ## 8. Reserved words
 
 `q:` and `s:` words assigned by this document: `ack`, `read`, `sign`, `pos`,
-`batt`, `identity`, `pong`, `have`, `state`, `no`. Command words assigned:
+`batt`, `identity`, `pong`, `have`, `state`, `no`, `owner`, `policy`. Command words assigned:
 `history`, `file`, `put`, `set`, `interpret`, `update`. Reactions assigned for `add:` and `remove:`:
 `like`, `repost`. All other words are reserved. A word beginning with `z` is private, as a
 key beginning with `z` is.
@@ -5222,9 +5225,10 @@ door twice. Idempotency falls out of section 5 rather than needing a rule.
 
 **Authentication is not authorisation, and this format only provides the first.**
 A signature proves which callsign sent a command. Whether that callsign may open
-that door is an allow-list held by the station acting on it, and nothing in XPRS
-expresses, distributes or checks one. A bot that acts on any correctly signed
-command has an open door with extra steps.
+that door is an allow-list held by the station acting on it. Section 25.9 is
+how the owner puts that list on the wire; checking it is still the station's
+alone, and nothing in XPRS checks one for it. A bot that acts on any correctly
+signed command has an open door with extra steps.
 
 Where bystanders should not learn what is being operated, seal it:
 
@@ -5540,12 +5544,153 @@ and how a station that answers nothing at all still reports the one fact
 that explains why.
 
 **What this section does not do.** It does not say where firmware comes
-from, who may publish it, how an allow-list is distributed, or what a
-version string means -- those are the operator's, exactly as section 25.4
-says authorisation is. And it defends nothing against somebody standing at
+from, who may publish it, or what a version string means -- those are the
+operator's, exactly as section 25.4 says authorisation is (the allow-list
+itself is set on the wire by section 25.9). And it defends nothing against somebody standing at
 the station with a cable, which is deliberate: the owner of a device is
 entitled to change what it runs, and a station that its owner cannot
 repair is not a station they own.
+
+### 25.9 Owning a station, and what the owner sets
+
+Section 25.4 says a signature proves who sent a command and an allow-list
+decides whether they may give it, and until here the list was the station's
+private business: written into its configuration by whoever had a cable. That
+is the right place for the check and the wrong place for the edit. A station
+on a roof is set up once and then only ever reached by radio, and the person
+who bought it is not the person who will edit a configuration file. So the
+list goes on the wire, signed, as the command it always was -- and with it the
+few things an owner decides for a station that serves other people: who may
+talk through it, and whose traffic leaves first.
+
+**A station with no owner asks for one.** Freshly flashed, or with its
+configuration erased, it airs a request on its local bearers only, unsolicited
+and metered like any other unasked traffic (section 31):
+
+```
+126  t:request f:X3RLY7 q:owner scope:local ts:2026-08-08_14:26:40 sig:<60 characters>
+```
+
+`scope:local` because a claim is made by somebody standing next to the box,
+and a station that asks the whole network for an owner will be given one it
+did not want. The answer is a command, because it makes a state true:
+
+```
+136  t:command f:X1QZ3N d:X3RLY7 ts:2026-08-08_14:26:50 cmd:set owner:X1QZ3N sig:<60 characters>
+145  t:result f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:26:51 r:992d83 code:200 owner:X1QZ3N sig:<60 characters>
+```
+
+**An unowned station belongs to the first signer who claims it.** It accepts
+the first `cmd:set owner:` that verifies, that names the signer in `owner:`,
+and that arrived uncarried -- no `via:`, which section 25.4 already requires
+of a command and which here is what keeps a claim from being made from across
+the country. Every later claim from anyone else is `code:403`. There is no
+pairing code and no button to press, and the window in which a stranger could
+claim a station is the one between flashing it and answering it, which the
+person flashing it controls.
+
+**Ownership is a fact about the device, not about the network.** Nothing is
+announced, nothing is recorded anywhere else, and erasing the station's
+configuration -- reflashing it, or a factory reset -- makes it unowned again
+and it starts asking. A station that cannot be reclaimed with a cable is not
+one its owner can repair, which is the position section 25.8 takes about
+firmware, and the same one is taken here. Selling the box is handing over the
+box: erase it, and the buyer claims it.
+
+**`owner:` is the allow-list of section 25.4, and only an owner may change it.**
+It is a `path`, a comma-separated list of up to four callsigns, and the value
+replaces the list rather than adding to it: a list that no longer names the
+signer is a transfer, and a list that names four is full. A station with
+several owners obeys any of them, and where two disagree the later `ts:` wins.
+
+**What the owner sets, on `cmd:set`.** The command of section 25.7 already
+carries its parameters in keys and answers with what IS, and a station's
+policy is a state like any other, so it takes three more keys and one it
+already has:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `owner` | `path` | who may command this station: the allow-list, on the wire |
+| `use` | `enum` | who may originate traffic through it: `all`, `listed`, `owners`, `none` |
+| `first` | `path` | senders whose packets leave the queue ahead of everyone else's |
+| `serve` | `words` | what it does for others (section 24); `none` for nothing |
+
+```
+174  t:command f:X1QZ3N d:X3RLY7 ts:2026-08-08_14:30:00 cmd:set use:listed first:X1ABCD,X1EFGH serve:relay,archive sig:<60 characters>
+196  t:result f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:30:01 r:6cbbb6 code:200 owner:X1QZ3N use:listed first:X1ABCD,X1EFGH serve:relay,archive sig:<60 characters>
+```
+
+A key that is absent is unchanged, so an owner adjusts one thing without
+restating the rest, and a `cmd:set` carrying only these keys and no `state:`
+is a complete command. The result carries all four back whatever the command
+carried, because a result states what IS (section 25.7), and the four together
+are what is. A signer who is not an owner gets `code:403` for any of them, and
+`state:`, `level:` and `target:` are untouched by this section: a lamp's
+owner and the people allowed to switch it are not the same list, and section
+25.4 still leaves that one to the device.
+
+**`use:` is about the bridge.** A phone with no LoRa radio reaches the mesh by
+handing a station a packet over Bluetooth or the local network and having the
+station air it under the phone's own `f:`, and the station's owner decides who
+may do that. `all` is a public station; `owners` a private one; `listed` is
+the owners together with everyone in `first:`; `none` is a station that
+relays and archives but originates for nobody. Two exceptions hold whatever
+`use:` says, because a station that would not air a call for help from a
+stranger is worse than no station: **`t:sos` and `t:warning` are aired for
+anyone.** `serve:` is the station's announcement (section 24) made
+settable: it thereafter announces exactly what its owner told it to, and a
+station told `serve:none` announces nothing and does nothing for anyone,
+which section 31.2 says is still a good citizen.
+
+**Who goes first is fixed by this document, and the owner only fills in the
+names.** When more than one packet waits for a bearer, a station airs them in
+this order, and every station that queues for others airs them in the same
+one:
+
+1. `t:sos` and `t:warning`, before anything else at all;
+2. packets whose `f:` is in `first:`;
+3. by `urg:`, `urgent` before `high` before `normal` before `low`, with a
+   stranger's packet counted no higher than `high` (section 13.5, and the
+   quota policy in store-and-forward.md that it cites);
+4. by `ts:`, oldest first.
+
+The owner's named people rank above a stranger's stated urgency, not below
+it, because section 13.5 already says what a stranger's `urg:urgent` is worth:
+"stations will mark everything urgent". A name on `first:` was put there by
+somebody who answers for it. That the owner cannot move `sos` down, or put
+their own traffic above it, is the point of fixing the order here rather than
+offering a key for it: a station's owner is entitled to decide who it serves,
+and not entitled to bury a call for help under their own mail.
+
+**Anybody may ask what the policy is**, so a phone learns whether a station
+will carry for it before spending airtime finding out:
+
+```
+59  t:request f:X1MB7K d:X3RLY7 ts:2026-08-08_14:31:00 q:policy
+192  t:observation f:X3RLY7 d:X1MB7K s:policy owner:X1QZ3N use:listed first:X1ABCD,X1EFGH serve:relay,archive ts:2026-08-08_14:31:01 sig:<60 characters>
+```
+
+`q:policy` and `s:policy` are the words of section 7 doing what they always
+do, and the answer is an observation because that is what a state reported
+unasked-for or asked-for has been since section 25.7.
+
+**A policy survives a reboot, and an old one cannot be replayed.** Section
+25.4 gives a command 300 seconds and a station's memory of one 600, which is
+right for a door and wrong for a setting: a `cmd:set owner:` recorded today
+and aired next year would verify, be fresh by the ring's standard, and hand
+the station back to somebody who sold it. So a station keeps the `ts:` of the
+last policy command it accepted, and a policy command whose `ts:` is not
+later than that one is answered `code:408`, whatever the clock says now. The
+same rule is what settles two owners who disagree: the later `ts:` is the
+policy, on every station, in the same way.
+
+**What this section does not do.** It does not put ownership on the air, so
+nobody can find out from the network who owns a station, and there is nothing
+to forge. It does not make `use:` a promise the station can be held to: a
+station that says `use:all` still meters strangers under section 31.2 and may
+answer `code:429`. And it does not tell a station what to do with a packet it
+was handed and will not air, beyond the answer it already owes -- `code:403`,
+out loud, because refusing quietly is what section 31.2 forbids.
 
 ---
 
@@ -6462,7 +6607,7 @@ All other lowercase words are reserved.
 
 Assigned keys: `t`, `f`, `d`, `ts`, `tz`, `q`, `s`, `r`, `n`, `via`, `track`,
 `seq`, `title`, `dest`, `onboard`, `price`, `cw`, `freq`, `bw`, `shift`,
-`urg`, `scope`, `lang`, `nick`, `hold`, `serve`, `cmd`, `arg`, `code`, `near`, `route`, `relay`, `tone`, `input`, `power`, `mode`, `ch`, `range`, `site`, `supply`, `every`, `for`, `at`, `kind`, `sev`, `rad`, `tag`, `type`, `m`, `file`, `x`, `sig`, `k`, `add`,
+`urg`, `scope`, `lang`, `nick`, `hold`, `serve`, `cmd`, `arg`, `code`, `owner`, `use`, `first`, `near`, `route`, `relay`, `tone`, `input`, `power`, `mode`, `ch`, `range`, `site`, `supply`, `every`, `for`, `at`, `kind`, `sev`, `rad`, `tag`, `type`, `m`, `file`, `x`, `sig`, `k`, `add`,
 `remove`, `grant`, `revoke`, `role`, `hide`, `mood`, `only`, `opt`, `vote`, `root`, `size`, `since`, `until`, `pos`, `alt`, `acc`, `spd`, `dir`, `o`, `climb`,
 `temp`, `hum`,
 `intemp`, `inhum`, `wave`, `swell`, `seatemp`, `vis`, `press`, `wind`, `wdir`, `gust`, `rain1`, `rain24`, `solar`, `batt`, `volt`,
@@ -6547,6 +6692,9 @@ packet **250 bytes**, on every transport.
 | `hold` | `path` | preferred mailboxes, in order (section 13.12) |
 | `serve` | `words` | what a station does for others (section 24) |
 | `cmd` | `label` | the action a command asks for (section 25) |
+| `owner` | `path` | who may command a station: its allow-list (section 25.9) |
+| `use` | `enum` | who may originate traffic through a station (section 25.9) |
+| `first` | `path` | senders whose packets a station airs ahead of others (section 25.9) |
 | `arg` | `words` | its arguments |
 | `code` | `int` | what happened, on a `result` |
 | `near` | `qty` | how close to `dest` counts as arrived (section 13.4) |
@@ -6865,6 +7013,13 @@ authorisation -- the allow-list is the bot's.
 list `on off open closed locked unlocked` (`motion clear pressed` are report
 only), `level:` for the partial degree, `target:` for a setpoint. The result
 echoes what IS. Unsigned is discarded; signed and unknown is `403`.
+
+A station is owned (section 25.9): unowned, it asks `q:owner` on local
+bearers and the first uncarried signed `cmd:set owner:` claims it; the owner
+sets `owner:` (the allow-list), `use:` (`all listed owners none`, who may
+originate through it), `first:` (who is aired first) and `serve:`; anyone asks
+`q:policy`. Send order is fixed: `sos`/`warning`, then `first:`, then `urg:`,
+then `ts:`. A policy `ts:` not later than the last accepted one is `408`.
 
 `t:service` advertises what a station does: `relay` `archive` `internet`
 `aprs` `nostr` `files` `devices` `time` `weather` `wifi` `other`.
@@ -8274,6 +8429,7 @@ mechanism.**
 | **The packet format itself** | **implemented**; `lib/services/xprs/` parses, encodes, derives identifiers and signs. Every example packet in this document is a test fixture: `test/xprs_packet_test.dart` round-trips all 201 byte-exact, checks each stated byte count, and cross-checks every identifier against an independent Python implementation |
 | Section 5 identifiers | **implemented** |
 | Section 9.1 signatures, and surviving a relay | **implemented**; `test/xprs_sig_test.dart` signs, relays three hops and re-verifies |
+| Section 25.9 station ownership and owner policy | **specified, not implemented** on the station side: no firmware asks `q:owner`, accepts a claim, stores `use:`/`first:`/`serve:`, or orders its queue by it (the ESP32 holds owners in `own1..own4` set by hand, and airs FIFO). The codec side is **implemented**: `lib/services/xprs/xprs_station_policy.dart` builds the claim, the policy command and the `q:policy` ask, parses a policy back, decides a claim and the replay rule, and orders a queue by section 25.9; `test/xprs_station_policy_test.dart` covers it. No user interface claims a station yet |
 | Section 13.1 relay budget, 13.2 loop check | **implemented** in the codec (`xprsMayRelay`, `xprsWouldLoop`); nothing transmits `via:` yet, so nothing calls them on the air |
 | Section 13.11.3, `scope:local` is never carried | **implemented**; refused at custody admission in `MeshCustodyDelegate` |
 | Section 36.8.1 automated return leg (release on hearing, forward toward gossip) | **implemented** on the Flutter node (funnel-triggered release, `XprsForwarder` with `via:` and the loop check) and in the shared ESP32 app (release-on-hearing off the seen funnel, paced re-air, receipt purge); the T-Dongle keeps its original `blemesh_scf_*` loop. Bench-validated end to end |

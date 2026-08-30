@@ -192,7 +192,7 @@ String? xprsNormaliseWire(String content) {
 /// to deliver.
 const Set<String> _kXprsFragmentKeys = {
   'x', 'sig', 'via', 'relay', 'route', 'code', 'until', 'since', 'cmd',
-  'q', 'pos', 'urg', 'ttl', 'hold', 'kind', 'ph',
+  'q', 'pos', 'urg', 'ttl', 'hold', 'kind', 'ph', 'owner',
 };
 
 bool xprsLooksLikeWire(String content) {
@@ -346,6 +346,14 @@ const Set<String> kXprsBearers = {
 /// `serve:`). A fixed set: a word outside it is dropped rather than shown,
 /// because `serve:` is read to decide who to ask for something, and a made-up
 /// word would be a promise nobody defined.
+/// Who may originate traffic through a station (`docs/XPRS.md` section 25.9,
+/// `use:`). `listed` is the owners together with everyone in `first:`.
+const Set<String> kXprsUseModes = {'all', 'listed', 'owners', 'none'};
+
+/// The keys an owner sets on `cmd:set` (section 25.9). `serve` is the
+/// section 24 key made settable; the other three are new there.
+const Set<String> kXprsPolicyKeys = {'owner', 'use', 'first', 'serve'};
+
 const Set<String> kXprsServices = {
   'relay',
   'archive',

@@ -33,6 +33,7 @@ import '../reticulum/rns_service.dart';
 import 'xprs_id.dart';
 import 'xprs_ingest.dart';
 import 'xprs_packet.dart';
+import 'xprs_station_policy.dart';
 import 'xprs_publisher.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
@@ -111,6 +112,15 @@ class XprsHistoryServer {
     // both are answered here, and reading only `t:command` meant a `q:identity`
     // asked the way section 7 spells it went unanswered.
     if (p.type != 'command' && p.type != 'request') return;
+    // A station asking for an owner (section 25.9) is a broadcast, so it is
+    // read before the addressed-to-us gate. Recorded, not answered: the claim
+    // is a person's decision, made on a screen. (The rns lane hands this
+    // server commands only, so an ask heard over Reticulum is not seen here;
+    // a claim is made next to the box, on a local bearer, so that is fine.)
+    if (p.type == 'request' && p['q'] == 'owner') {
+      XprsUnownedStations.instance.note(p);
+      return;
+    }
     if (_base(p['d'] ?? '') != selfBase) return;
     // `q:identity` (section 18.1) asks for the key binding directly instead of
     // waiting up to thirty minutes for the next announcement. Answering costs
