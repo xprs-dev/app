@@ -943,6 +943,15 @@ class PreferencesService {
     _prefs.setStringList('nostr.blossomServers', v);
   }
 
+  /// NOSTR, as a whole: the relay engine on its own isolate, the inbound
+  /// relay server, the one-shot relay fetches. RETIRED, 2026-08-30 -- the
+  /// app no longer uses it, and it was the only thing on this device with
+  /// standing connections to the public internet: five relays, cycled
+  /// every 45 s of silence, all day. Off, nothing NOSTR opens a socket. The
+  /// code stays; this is the one switch that brings it back.
+  bool get nostrEnabled => _prefs.getBool('nostr.enabled') ?? false;
+  set nostrEnabled(bool v) => _prefs.setBool('nostr.enabled', v);
+
   /// Serve the device's NOSTR relay over WebSocket (NostrWsServer). Binds
   /// 0.0.0.0, so a port-forwarded/public device becomes a public NOSTR relay
   /// (and answers mailto→npub conversion REQs). Default on; kind-4 DMs are

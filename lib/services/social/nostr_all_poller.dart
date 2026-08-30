@@ -35,6 +35,7 @@ import 'package:reticulum/reticulum.dart'
         contentVerdict,
         kDefaultNostrRelays;
 
+import '../preferences_service.dart';
 import '../log_service.dart';
 import '../reticulum/rns_service.dart';
 import '../../wapp/geoui/activity_archive.dart';
@@ -453,6 +454,8 @@ class NostrAllPoller {
 
   List<String> _relays() {
     final list = <String>[];
+    // NOSTR retired: no relay, so nothing to poll (PreferencesService).
+    if (!(PreferencesService.instanceSync?.nostrEnabled ?? false)) return list;
     try {
       for (final r in RnsService.instance.nostrRelays()) {
         final uri = (r['uri'] ?? '').toString();

@@ -3446,7 +3446,11 @@ class RnsService {
           // relay, and its subscribers see mesh + internet events live. The WS
           // door runs the SAME admission policy as the RNS door above, and it
           // answers mailto→npub conversion REQs via the host email resolver.
-          if ((p?.nostrWsRelayEnabled ?? true) && (p?.hostEnabled ?? true)) {
+          // NOSTR is retired (PreferencesService.nostrEnabled): neither the
+          // inbound relay server nor the engine below starts unless it is
+          // switched back on.
+          final nostrOn = p?.nostrEnabled ?? false;
+          if (nostrOn && (p?.nostrWsRelayEnabled ?? true) && (p?.hostEnabled ?? true)) {
             _nostrWs = NostrWsServer(
               _relayStore!,
               port: p?.nostrWsRelayPort ?? 4848,
@@ -3482,7 +3486,13 @@ class RnsService {
           final base = relayStorePath == null
               ? null
               : relayStorePath!.replaceAll(RegExp(r'[^/]*$'), '');
-          if (base != null) {
+          if (base != null && !nostrOn) {
+            LogService.instance.add(
+              'NOSTR: retired (nostr.enabled=false) — engine not spawned, '
+              'no relay connections',
+            );
+          }
+          if (base != null && nostrOn) {
             final feedPath = '${base}nostr_feed.sqlite3';
             // ignore: discarded_futures
             NostrClient.spawn(

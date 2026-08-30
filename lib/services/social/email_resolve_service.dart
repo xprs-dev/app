@@ -31,6 +31,7 @@ import 'package:reticulum/reticulum.dart'
         NostrWsClient,
         kDefaultNostrRelays;
 
+import '../preferences_service.dart';
 import '../../connections/internet/http_transport.dart';
 import '../log_service.dart';
 import '../reticulum/rns_service.dart';
@@ -196,7 +197,9 @@ class EmailResolveService {
   ) async {
     final stored = RnsService.instance.relayStore?.profileOf(pubHex);
     var profile = stored;
-    if (profile == null) {
+    // NOSTR retired: no one-shot relay fetch either (PreferencesService).
+    final nostrOn = PreferencesService.instanceSync?.nostrEnabled ?? false;
+    if (profile == null && nostrOn) {
       final relays = <String>{
         ...relayHints.where((u) => u.startsWith('ws')),
         ...kDefaultNostrRelays,
