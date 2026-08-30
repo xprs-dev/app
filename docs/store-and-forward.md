@@ -12,7 +12,7 @@ called back when one arrives ([architecture.md](architecture.md)).
 
 Implementation: `lib/services/mesh/mesh_courier.dart` (decision, transmission,
 ingest), `mesh_custody.dart` (taps), `mesh_store.dart` (parked mail database),
-`common/xprs_blemesh/blemesh_scf.c` in xprs-esp32 (firmware side).
+`common/xprs_blemesh/blemesh_scf.c` in xprs-firmware (firmware side).
 
 ---
 
@@ -84,7 +84,7 @@ because the sender's LXMF address is a pure function of their public key, and
 deriving it is safer than trusting an address the sender wrote. `np:` because a
 sealed body already proves who the copy is for.
 
-**The dongle is ported** (xprs-esp32 `models/tdongle-s3/firmware`, via
+**The dongle is ported** (xprs-firmware `models/tdongle-s3/firmware`, via
 `common/xprs_xprs` — a C
 mirror of `lib/services/xprs/` verified against the same 205-example corpus):
 it reads XPRS on both subtypes, parks 1:1 `t:message` mail keyed by the derived

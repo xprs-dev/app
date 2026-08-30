@@ -39,7 +39,7 @@ Every row below is from source, not from documentation.
 | MeshCore | 869.525 MHz | 11 | 250 kHz | 4/5 | **0x12** | 16 |
 | Meshtastic LongFast | 869.525 MHz | 11 | 250 kHz | 4/5 | **0x2B** | 16 |
 
-- **XPRS**: `xprs-esp32/common/xprs_bearer_lora/xprslora.c:148-158`. The sync
+- **XPRS**: `xprs-firmware/common/xprs_bearer_lora/xprslora.c:148-158`. The sync
   word is never written anywhere in `common/xprs_sx1262/sx1262.c` — the only
   register write in the driver is OCP (`:70`) — so it sits at the SX1262 reset
   default, which is 0x12. The SX1276 driver does not even define

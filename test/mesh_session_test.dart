@@ -2,7 +2,7 @@
  * MSP (Mesh Session Protocol) tests — codec fixtures + session FSM loopback.
  *
  * The hex fixtures here are the shared source of truth with the C mirror
- * (xprs-esp32, common/xprs_blemesh/blemesh_session.c, checked by
+ * (xprs-firmware, common/xprs_blemesh/blemesh_session.c, checked by
  * test_msp_host.c) — a codec change that breaks one must break both.
  */
 import 'dart:typed_data';

@@ -90,7 +90,7 @@ phones, or a phone and the ESP32 dongle, move a file off‑grid: discovery by ha
 
 ## 6. The ESP32 node
 
-An ESP32‑S3 "T‑Dongle" runs a full BLE5 Reticulum node (xprs-esp32,
+An ESP32‑S3 "T‑Dongle" runs a full BLE5 Reticulum node (xprs-firmware,
 `models/tdongle-s3/firmware`) with
 on‑device crypto: it transmits signed announces that phones accept, receives, and
 can act as a blind relay — forwarding encrypted traffic it can't read, with its

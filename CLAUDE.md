@@ -29,7 +29,7 @@ paths below assume they are checked out as siblings of this directory:
 |---|---|
 | `../reticulum-dart` | the library: Reticulum, NOSTR, LXMF, DHT, files, and `XprsCrypto`. A **path dependency** in `pubspec.yaml`, so it must be a sibling or the build fails |
 | `../wapps` | wapp source (`xprs-dev/wapps`); `assets/wapps/*.wapp` here are built copies |
-| ESP32 firmware | `xprs-dev/xprs-esp32`, formerly `esp32/` in this repo. `docs/ble5.md` and `docs/lan.md` describe transports with an end in each, so they are kept here AND there and must not drift |
+| Station firmware (ESP32, nRF52840) | `xprs-dev/xprs-firmware` (was `xprs-esp32`), formerly `esp32/` in this repo. `docs/ble5.md` and `docs/lan.md` describe transports with an end in each, so they are kept here AND there and must not drift |
 
 `docs/XPRS.md` is a copy of the protocol specification (`xprs-dev/spec`). Keep
 it byte-identical to that one -- the corpus in `test/xprs_corpus.json` is

@@ -108,7 +108,7 @@ APRS-IS are proprietary services, although nothing depends on them.
 Absent from the APK: Firebase, Play Services, Google Analytics, Tag Manager,
 Crashlytics, and any advertising or tracking SDK. `googletagmanager.com`,
 `analytics.google.com` and `ip-api.com` appear only in the ESP32 firmware
-(a separate repository, xprs-esp32), which is
+(a separate repository, xprs-firmware), which is
 firmware for separate hardware and not part of this build.
 
 ## 4. Permissions worth explaining in the submission

@@ -233,7 +233,7 @@ no re-signing. An indexer passes on the author's packet.
 
 # The ESP32 implementation (T-Dongle)
 
-`common/xprs_xprsindex/` in xprs-esp32. Same role, no SQLite, and the reasons are
+`common/xprs_xprsindex/` in xprs-firmware. Same role, no SQLite, and the reasons are
 measured rather than aesthetic — see `docs/esp32.md`.
 
 - the app is ~1.86 MB in a 1,966,080 B partition and the board has **no PSRAM**,

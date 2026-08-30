@@ -46,7 +46,7 @@ thing.
 | [indexer.md](indexer.md) | What happened while I was not listening — the question a station cannot answer for itself. |
 | [lan.md](lan.md) | The bearer that costs nothing when a station is on WiFi or ethernet. |
 
-**Kept in this repo and in `xprs-esp32`, and they must not drift**: `ble5.md`
+**Kept in this repo and in `xprs-firmware`, and they must not drift**: `ble5.md`
 and `lan.md` describe transports with an end in each.
 
 ### Sending and receiving across bearers
@@ -115,7 +115,7 @@ private encrypted groups over Reticulum.
 
 ### Firmware
 
-[esp32.md](../../xprs-esp32/docs/esp32.md) (in the firmware repo, not this one) — read it before firmware work: heap first, pin to core 1,
+[esp32.md](../../xprs-firmware/docs/esp32.md) (in the firmware repo, not this one) — read it before firmware work: heap first, pin to core 1,
 the FatFs traps, and how to measure without rebooting the board. Note the
 ESP32 goes **deaf during an MSP session** (`ble5.md` §5), and GATT file
 transfer there is deliberately out of scope for now.

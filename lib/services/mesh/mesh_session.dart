@@ -10,7 +10,7 @@
  * routes on that prefix and everything else flows to the old path untouched.
  *
  * The protocol is deliberately flat and little-endian so the ESP32 mirror
- * (xprs-esp32, common/xprs_blemesh/blemesh_session.c) is a line-for-line
+ * (xprs-firmware, common/xprs_blemesh/blemesh_session.c) is a line-for-line
  * port; test/mesh_session_test.dart carries hex fixtures both codecs must
  * reproduce byte-identically.
  *
