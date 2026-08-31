@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>XPRS app - download</title>
-<meta name="description" content="Download the XPRS application for Android, Linux and Windows: messages, files and positions over LoRa, Bluetooth, WiFi and the internet, with no account and no server.">
+<meta name="description" content="Download the XPRS application for Android, Linux and Windows. Messages, files and positions over LoRa, Bluetooth, WiFi, Reticulum and the internet.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
 :root {
@@ -59,7 +59,7 @@ ul { margin: 0 0 0.9rem 1.4rem; }
 li { margin-bottom: 0.45rem; }
 .links li { margin-bottom: 0.7rem; }
 .links span { color: var(--dim); }
-/* Download row. Wraps one-per-line on a narrow screen rather than shrinking
+/* Download row. Wraps one per line on a narrow screen instead of shrinking
    the tap targets. */
 .dl { list-style: none; margin: 0 0 0.9rem; display: flex;
       flex-wrap: wrap; gap: 0.7rem; }
@@ -76,8 +76,8 @@ li { margin-bottom: 0.45rem; }
 .dl b { font-weight: normal; display: block; }
 .dl em { font-style: normal; color: var(--dim); font-size: 0.82rem;
          display: block; }
-/* Every artifact of the release, for the person who wants a different ABI or
-   the digest. Scrolls inside itself on a phone; the page never does. */
+/* Full artifact list: other ABIs and the digests. Scrolls inside itself so
+   the page does not scroll horizontally. */
 .wrap { overflow-x: auto; margin: 1rem 0; }
 table { border-collapse: collapse; font-size: 0.92rem; min-width: 34rem; }
 th, td { text-align: left; padding: 0.45rem 0.9rem 0.45rem 0;
@@ -102,17 +102,18 @@ footer {
 <body>
 <main>
 <header>
-  <h1>XPRS for your devices</h1>
-  <div class="tagline">Messages, files and positions over LoRa, Bluetooth,
-  WiFi and the internet - no account, no server, no phone number.</div>
+  <h1>XPRS application</h1>
+  <div class="tagline">Android, Linux and Windows. Messages, files and
+  positions over LoRa, Bluetooth, WiFi, Reticulum and the internet.</div>
 </header>
 
 <p class="up"><a href="/">&larr; xprs.dev</a></p>
 
-<p>This is the application: an Android phone, a Linux or Windows desktop, and
-the same protocol on each. It talks to other phones directly over Bluetooth,
-to a station over LoRa, to the wider mesh over Reticulum, and to the internet
-when there is one. Anything it cannot deliver now, it carries until it can.</p>
+<p>One codebase on all three platforms. Transports: BLE5 to nearby devices,
+LoRa through a station, Reticulum over WiFi or the internet. Messages that
+cannot be delivered now are stored and forwarded when a path appears. No
+account and no central server; the identity is a keypair generated on the
+device.</p>
 
 <h2 id="download"><a href="#download">Download</a></h2>
 
@@ -156,14 +157,13 @@ when there is one. Anything it cannot deliver now, it carries until it can.</p>
   <span><b>Windows</b><em data-sub>x64 &middot; installer</em></span></a></li>
 </ul>
 
-<p>macOS and iOS build from source; there is no signed build to hand out.
-Every version ever released is on the
+<p>No macOS or iOS build is published; both build from source. Earlier
+versions are on the
 <a href="https://github.com/xprs-dev/app/releases">releases page</a>.</p>
 
 <h2 id="files"><a href="#files">Every file in this release</a></h2>
-<p>The digest is the point: an XPRS device fetches an update by content hash
-from whichever station has it, so the file it installs is the same file
-whether it came from GitHub or off the air.</p>
+<p>Updates are fetched by content hash, from GitHub or from a station over
+the air, so the digest below identifies the file in either case.</p>
 <div class="wrap">
 <table>
   <thead><tr><th>file</th><th>size</th><th>sha256</th></tr></thead>
@@ -172,69 +172,68 @@ whether it came from GitHub or off the air.</p>
   </tbody>
 </table>
 </div>
-<p>Check one before you install it:</p>
+<p>To check a download:</p>
 <pre>sha256sum xprs-*-linux-x64.tar.gz
 certutil -hashfile xprs-*-setup.exe SHA256   # Windows</pre>
 
 <h2 id="install"><a href="#install">Installing</a></h2>
 
 <h3>Android</h3>
-<p>The APK is sideloaded, so the phone will ask once whether this browser may
-install applications. Take the ABI that matches the phone -
-<code>arm64-v8a</code> for anything made in the last several years - or the
-plain <code>xprs-&lt;version&gt;.apk</code>, which carries all three and is
-roughly twice the size. Android 8 or newer. Bluetooth scanning needs the
-location permission the system insists on for it; XPRS does not send your
-position anywhere unless you ask it to.</p>
+<p>Android 8 or newer. Sideloaded, so the browser needs the
+install-unknown-apps permission once. Pick the ABI of the device
+(<code>arm64-v8a</code> for most phones), or
+<code>xprs-&lt;version&gt;.apk</code>, which contains all three at about twice
+the size. Bluetooth scanning requires the location permission on Android;
+position is only transmitted when you send it.</p>
 
 <h3>Linux</h3>
-<p>Unpack and run - no installer, nothing written outside the folder and
-<code>~/.local/share/xprs</code>:</p>
+<p>x64. No installer; state is written to
+<code>~/.local/share/xprs</code>.</p>
 <pre>tar xf xprs-*-linux-x64.tar.gz
 ./xprs/xprs</pre>
-<p>x64 only. A LoRa or serial station is reached over USB, so your user needs
-to be in the <code>dialout</code> group for the port to open.</p>
+<p>A serial or USB-attached station needs the user in the
+<code>dialout</code> group.</p>
 
 <h3>Windows</h3>
-<p>The installer is unsigned, so SmartScreen will interrupt on first run:
-"More info" and then "Run anyway". x64, Windows 10 or newer.</p>
+<p>x64, Windows 10 or newer. The installer is unsigned: SmartScreen blocks
+it on first run, use "More info" then "Run anyway".</p>
 
 <h2 id="updates"><a href="#updates">Updates</a></h2>
-<p>The application checks the same feed this page reads and can install a new
-version in place - <strong>&#9776; &rarr; Updates</strong> inside the app, where
-the beta channel can be switched on. Builds installed from F-Droid update
-through F-Droid instead, and the in-app path is hidden.</p>
+<p>The application reads the same feed as this page and can install a new
+version in place: <strong>&#9776; &rarr; Updates</strong>, which is also where
+the beta channel is enabled. F-Droid builds update through F-Droid; the in-app
+updater is compiled out of them.</p>
 
-<h2 id="source"><a href="#source">Source, and what it is built on</a></h2>
+<h2 id="source"><a href="#source">Source</a></h2>
 <ul class="links">
 <li><a href="https://github.com/xprs-dev/app">xprs-dev/app</a>
   <span>&mdash; this application, Flutter and Dart</span></li>
 <li><a href="https://github.com/xprs-dev/reticulum-dart">xprs-dev/reticulum-dart</a>
   <span>&mdash; Reticulum, LXMF, the DHT and file transfer, in pure Dart</span></li>
 <li><a href="https://github.com/xprs-dev/wapps">xprs-dev/wapps</a>
-  <span>&mdash; the small WASM applications that ship inside it</span></li>
+  <span>&mdash; the bundled WASM applications</span></li>
 <li><a href="https://github.com/xprs-dev/firmware">xprs-dev/firmware</a>
   <span>&mdash; station firmware for ESP32 and nRF52840 boards</span></li>
 <li><a href="https://github.com/xprs-dev/spec/blob/main/XPRS.md">the specification</a>
-  <span>&mdash; the packet format all of it speaks</span></li>
+  <span>&mdash; the packet format</span></li>
 </ul>
 
 <footer>
-XPRS is free software. Nothing here phones home, and no download is counted.
+Free software. This page is static and loads nothing but the release feed on
+xprs.dev.
 </footer>
 </main>
 
 <script>
-/* The buttons above link to the releases page in the markup, which cannot go
-   stale; this upgrades them to the exact file for the current release.
+/* The markup links to the releases page; this rewrites the links to the exact
+   files of the current release.
 
-   Read from /updates/<channel>.json rather than
-   github.com/.../releases/latest/download/<name>: that path only works while
-   the FILE NAME never changes, and it stopped being true when the release
-   process started stamping the version into names. The feed is same-origin
-   (xprs.dev/updates), refreshed by the site's own workflow, and names every
-   asset with its URL, size and sha256. If it is unreachable the links stay
-   pointing at the releases page, which always works. */
+   Source is /updates/<channel>.json, not
+   github.com/.../releases/latest/download/<name>: that path requires a fixed
+   asset name, and the names carry the version. The feed is same-origin, is
+   refreshed by the site's own workflow, and lists each asset with its URL,
+   size and sha256. On fetch failure the links keep pointing at the releases
+   page. */
 (function () {
   var pick = {
     android: function (n) { return /-android-arm64-v8a\.apk$/.test(n); },
