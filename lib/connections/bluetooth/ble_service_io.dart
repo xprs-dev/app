@@ -1362,6 +1362,8 @@ class BleService {
     final want = saving ? _scanModeLowPower : _scanModeBalanced;
     if (want == _appliedScanMode) return;
     _appliedScanMode = want;
+    debugPrint('BLE5: scan mode -> ${want == _scanModeLowPower ? 'low-power' : 'balanced'} '
+        '(tier ${PowerState.instance.tier.value.name})');
     LogService.instance.add(
       'BLE5: scan mode ${want == _scanModeLowPower ? 'low-power' : 'balanced'} '
       '(tier ${PowerState.instance.tier.value.name})',

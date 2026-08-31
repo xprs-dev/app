@@ -105,6 +105,7 @@ class PowerState with WidgetsBindingObserver {
       setForeground(state == AppLifecycleState.resumed);
 
   Future<void> _pushToNative() async {
+    debugPrint('PowerState: tier -> ${tier.value.name} $status');
     LogService.instance.add('power: tier ${tier.value.name} '
         '(screen=${_screenOn ? 'on' : 'off'} '
         '${_powered ? 'charging' : '$_level%'}'
@@ -134,6 +135,7 @@ class PowerState with WidgetsBindingObserver {
   /// The native service saw ACTION_SCREEN_ON/OFF.
   void setScreenOn(bool on) {
     if (_screenOn == on) return;
+    debugPrint('PowerState: screen ${on ? 'on' : 'off'}');
     _screenOn = on;
     _recompute();
   }
@@ -141,6 +143,7 @@ class PowerState with WidgetsBindingObserver {
   /// The Flutter binding's lifecycle: resumed vs anything else.
   void setForeground(bool foreground) {
     if (_foreground == foreground) return;
+    debugPrint('PowerState: ${foreground ? 'foreground' : 'background'}');
     _foreground = foreground;
     _recompute();
   }
