@@ -165,7 +165,7 @@ const rules = <Rule>[
         'service or a worker, never to a widget or a wapp-engine tick. On the '
         'UI isolate it is a dropped frame; on a tick it is a dropped frame '
         'every tick (docs/performance.md 8.1).',
-    appliesTo: ['lib/ui/**', 'lib/launcher/**', 'lib/wapp/geoui/**'],
+    appliesTo: ['lib/ui/**', 'lib/launcher/**', 'lib/wapp/**'],
     // A module whose NAME says it owns a store is where the statements
     // belong, wherever it happens to sit in the tree. The rule is about a
     // widget reaching for sqlite, not about a directory.
@@ -176,6 +176,39 @@ const rules = <Rule>[
     ],
     pattern: r'\.(select|execute)\(\s*[\x27"]\s*(SELECT|INSERT|UPDATE|DELETE)',
     message: 'Move the statement behind a service that owns the store.',
+  ),
+  Rule(
+    id: 'no-scan-for-one-row',
+    why: 'Fetching a whole recent() page and looping it to find one row by '
+        'key is a 300-row table scan through Dart maps, per lookup, on the UI '
+        'isolate. The archives keep a unique index for exactly this: use '
+        'byMid() (or add the keyed lookup to the owner). Found twice in '
+        'wapp_page.dart before this rule existed (docs/performance.md 4.2).',
+    appliesTo: ['lib/**'],
+    exempt: [
+      'lib/**/*_db.dart',
+      'lib/**/*_store.dart',
+      'lib/**/*_archive.dart',
+    ],
+    pattern: r'\bin\s+\w+[?!]?\.recent\(',
+    message: 'Looping recent() to find a key -- ask the store with byMid() '
+        'or a keyed lookup instead.',
+  ),
+  Rule(
+    id: 'no-unbounded-select',
+    why: 'A SELECT with no LIMIT returns however many rows the biggest '
+        'device has accumulated, materialised as Dart maps on whatever '
+        'isolate ran it. The store owner may page deliberately; anyone else '
+        'gets a bound or a COUNT. (Single-line literals only -- a multi-line '
+        'query lives in a store owner, where this rule does not look.)',
+    appliesTo: ['lib/**'],
+    exempt: [
+      'lib/**/*_db.dart',
+      'lib/**/*_store.dart',
+      'lib/**/*_archive.dart',
+    ],
+    pattern: r'\.select\(\s*[\x27"]\s*SELECT\b(?:(?!LIMIT)[^\x27"])*[\x27"]',
+    message: 'Bound it: LIMIT, a COUNT, or a keyed lookup behind the owner.',
   ),
 ];
 
