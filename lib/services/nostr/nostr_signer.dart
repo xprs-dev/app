@@ -24,6 +24,7 @@
  *   IwiProfile.devicePriv.
  */
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:reticulum/reticulum.dart' show NostrEvent, NostrCrypto, XprsCrypto;
@@ -121,9 +122,19 @@ class LocalSigner implements NostrSigner {
 
   @override
   Future<NostrEvent> signEvent(NostrEvent unsigned) async {
-    // NostrEvent.sign computes the id and the Schnorr signature in place. Same
-    // call the whole app made before this interface existed.
-    unsigned.sign(privHex);
+    // NostrEvent.sign computes the id and the Schnorr signature — pure-Dart
+    // BigInt math, tens of milliseconds on a budget phone. The vacuous-async
+    // version ran it on the CALLER'S isolate, which for most call paths is the
+    // UI thread: a dropped frame per signature. Isolate.run signs a copy off
+    // thread; the id and sig are copied back so the historical in-place
+    // contract (callers that keep using [unsigned]) still holds.
+    final key = privHex;
+    final signed = await Isolate.run(() {
+      unsigned.sign(key);
+      return unsigned;
+    });
+    unsigned.id = signed.id;
+    unsigned.sig = signed.sig;
     return unsigned;
   }
 
