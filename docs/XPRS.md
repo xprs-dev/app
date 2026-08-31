@@ -1,15 +1,5 @@
 # XPRS, eXtended Packet Radio System
 
-Protocol specification. Author: Max Brito.
-
-Copyright (c) 2026 Max Brito. Licensed under Creative Commons Attribution
-4.0 International (CC BY 4.0) -- share and adapt it for any purpose,
-including commercially, giving credit to Max Brito, linking the licence and
-stating what you changed. Full text in [LICENSE](LICENSE), notice in
-[NOTICE](NOTICE), or at
-<https://creativecommons.org/licenses/by/4.0/>. Implementations are separate
-works under their own licences.
-
 XPRS carries position, movement, weather, telemetry and messages between
 stations over licence-free spectrum, amateur bands and the internet. It
 extends and modernizes APRS. A packet is at most 250 bytes of `key:value`
@@ -8673,3 +8663,15 @@ mechanism.**
 | `rssi`, `snr` telemetry | implemented on the receive paths |
 | `uptime`, `lifetime` telemetry | implemented on the ESP32 T-Dongle beacon (`esp32/rns_ble5`, lifetime accumulated in NVS); the phone beacon does not carry them yet |
 | `dose`, `lifedose`, `radon`, `rf`, `efield`, `mfield` radiation (section 10.5.1), `odometer` | specified; no shipping station has a sensor for any of them yet |
+
+---
+
+## Credits
+
+XPRS is written by Max Brito. Copyright (c) 2026 Max Brito, licensed under
+Creative Commons Attribution 4.0 International (CC BY 4.0): share and adapt
+it for any purpose, including commercially, giving credit to Max Brito,
+linking the licence and stating what you changed. Full text in
+[LICENSE](LICENSE), notice in [NOTICE](NOTICE), or at
+<https://creativecommons.org/licenses/by/4.0/>. Implementations are
+separate works under their own licences.
