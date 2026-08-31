@@ -1,0 +1,44 @@
+name: publish the download page
+
+# xprs.dev/app -- the application's own page: what it runs on, every artifact
+# of the current release with its sha256, and how to install each one.
+#
+# It publishes `site/` and nothing else. The page has no build step and no
+# generated content: the version, the file names, the sizes and the digests are
+# read at load time from xprs.dev/updates/<channel>.json, the feed the site
+# already refreshes and the app itself updates from. So a release does not
+# rebuild this page, and this page cannot go stale.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and a queued one is not cancelled: the last push
+# must be what ends up served.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

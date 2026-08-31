@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XPRS app - download</title>
+<meta name="description" content="Download the XPRS application for Android, Linux and Windows: messages, files and positions over LoRa, Bluetooth, WiFi and the internet, with no account and no server.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #f4f1ea; --ink: #2a2620; --dim: #6b645a; --line: #d8d2c4;
+  --accent: #23557a; --code-bg: #ebe6da;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #232a2e; --ink: #e8e3d6; --dim: #9a938a; --line: #3a4248;
+    --accent: #7db4d8; --code-bg: #1b2124;
+  }
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 17px/1.6 Georgia, 'Times New Roman', serif;
+  padding: 0 1.2rem;
+}
+main { max-width: 44rem; margin: 0 auto; padding: 3rem 0 5rem; }
+header { margin-bottom: 2.5rem; }
+h1 {
+  font-family: 'Courier New', monospace; font-size: 2.4rem;
+  letter-spacing: 0.04em; margin-bottom: 0.3rem;
+}
+.tagline { color: var(--dim); font-size: 1.05rem; margin-top: 0.55rem; }
+.up { font-size: 0.9rem; color: var(--dim); margin-bottom: 1.6rem; }
+h2 {
+  font-family: 'Courier New', monospace; font-size: 1.15rem;
+  margin: 2.4rem 0 0.8rem; padding-top: 1.2rem;
+  border-top: 1px solid var(--line); scroll-margin-top: 0.8rem;
+}
+h2 a { color: inherit; text-decoration: none; }
+h2 a::after {
+  content: ' #'; color: var(--dim); opacity: 0.35;
+  font-weight: normal; transition: opacity 0.15s;
+}
+h2 a:hover { color: var(--accent); }
+h2 a:hover::after { opacity: 1; }
+h2 a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+h3 { font-family: 'Courier New', monospace; font-size: 1rem;
+     margin: 1.4rem 0 0.5rem; }
+p { margin-bottom: 0.9rem; }
+a { color: var(--accent); }
+code { font-family: 'Courier New', monospace; font-size: 0.92em; }
+pre {
+  background: var(--code-bg); border: 1px solid var(--line);
+  padding: 0.8rem 1rem; overflow-x: auto;
+  font: 13px/1.5 'Courier New', monospace;
+  margin: 1rem 0; border-radius: 3px;
+}
+ul { margin: 0 0 0.9rem 1.4rem; }
+li { margin-bottom: 0.45rem; }
+.links li { margin-bottom: 0.7rem; }
+.links span { color: var(--dim); }
+/* Download row. Wraps one-per-line on a narrow screen rather than shrinking
+   the tap targets. */
+.dl { list-style: none; margin: 0 0 0.9rem; display: flex;
+      flex-wrap: wrap; gap: 0.7rem; }
+.dl li { margin: 0; }
+.dl a {
+  display: flex; align-items: center; gap: 0.6rem;
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: 0.6rem 0.9rem; text-decoration: none; color: var(--ink);
+  background: var(--code-bg);
+}
+.dl a:hover { border-color: var(--accent); color: var(--accent); }
+.dl a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dl svg { flex: none; width: 1.6rem; height: 1.6rem; }
+.dl b { font-weight: normal; display: block; }
+.dl em { font-style: normal; color: var(--dim); font-size: 0.82rem;
+         display: block; }
+/* Every artifact of the release, for the person who wants a different ABI or
+   the digest. Scrolls inside itself on a phone; the page never does. */
+.wrap { overflow-x: auto; margin: 1rem 0; }
+table { border-collapse: collapse; font-size: 0.92rem; min-width: 34rem; }
+th, td { text-align: left; padding: 0.45rem 0.9rem 0.45rem 0;
+         border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: 'Courier New', monospace; font-weight: normal;
+     color: var(--dim); }
+td.sha { font-family: 'Courier New', monospace; font-size: 0.78rem;
+         color: var(--dim); word-break: break-all; }
+.chan { font-size: 0.9rem; color: var(--dim); margin-bottom: 1rem; }
+.chan button {
+  font: inherit; color: var(--accent); background: none; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 3px; padding: 0.15rem 0.5rem;
+}
+.chan button[aria-pressed="true"] { background: var(--code-bg);
+  border-color: var(--accent); }
+footer {
+  margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
+  color: var(--dim); font-size: 0.9rem;
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>XPRS for your devices</h1>
+  <div class="tagline">Messages, files and positions over LoRa, Bluetooth,
+  WiFi and the internet - no account, no server, no phone number.</div>
+</header>
+
+<p class="up"><a href="/">&larr; xprs.dev</a></p>
+
+<p>This is the application: an Android phone, a Linux or Windows desktop, and
+the same protocol on each. It talks to other phones directly over Bluetooth,
+to a station over LoRa, to the wider mesh over Reticulum, and to the internet
+when there is one. Anything it cannot deliver now, it carries until it can.</p>
+
+<h2 id="download"><a href="#download">Download</a></h2>
+
+<p class="chan">Channel:
+  <button type="button" data-chan="stable" aria-pressed="true">stable</button>
+  <button type="button" data-chan="beta" aria-pressed="false">beta</button>
+  <span data-release>reading the release feed&hellip;</span>
+</p>
+
+<ul class="dl">
+<li><a data-dl="android" href="https://github.com/xprs-dev/app/releases/latest">
+  <svg viewBox="0 0 24 24" role="img" aria-label="Android" fill="none"
+       stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+       stroke-linejoin="round">
+    <path d="M5.5 10.5h13v7a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5z"/>
+    <path d="M5.5 10.5a6.5 6.5 0 0 1 13 0"/>
+    <path d="M8 7.2 6.6 5M16 7.2 17.4 5"/>
+    <circle cx="9.6" cy="8.4" r=".9" fill="currentColor" stroke="none"/>
+    <circle cx="14.4" cy="8.4" r=".9" fill="currentColor" stroke="none"/>
+    <path d="M3.6 12v4M20.4 12v4M9.5 19v2M14.5 19v2"/>
+  </svg>
+  <span><b>Android</b><em data-sub>APK &middot; arm64</em></span></a></li>
+<li><a data-dl="linux" href="https://github.com/xprs-dev/app/releases/latest">
+  <svg viewBox="0 0 24 24" role="img" aria-label="Linux" fill="none"
+       stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+       stroke-linejoin="round">
+    <path d="M9 3.6c0-1.2.9-2.1 2-2.1h2c1.1 0 2 .9 2 2.1v3.1c0 1 .4 1.7 1.1 2.6
+             1.6 2 2.4 3.9 2.4 6.2 0 1.5-.4 2.9-1.1 4"/>
+    <path d="M6.6 19.5C5.9 18.1 5.5 16.7 5.5 15.2c0-2.3.8-4.2 2.4-6.2C8.6 8.1 9 7.4 9 6.4"/>
+    <path d="M6.6 19.5c-.6 1-.2 2 .9 2h9c1.1 0 1.5-1 .9-2"/>
+    <circle cx="10.4" cy="5.2" r=".9" fill="currentColor" stroke="none"/>
+    <circle cx="13.6" cy="5.2" r=".9" fill="currentColor" stroke="none"/>
+    <path d="M10.9 8.1c.6.5 1.6.5 2.2 0l-1.1-1.4z" fill="currentColor"/>
+  </svg>
+  <span><b>Linux</b><em data-sub>x64 &middot; tar.gz</em></span></a></li>
+<li><a data-dl="windows" href="https://github.com/xprs-dev/app/releases/latest">
+  <svg viewBox="0 0 24 24" role="img" aria-label="Windows" fill="currentColor">
+    <path d="M3 5.6l7.6-1.05v7.2H3zM11.6 4.4L21 3.1v8.65h-9.4z
+             M3 12.75h7.6v7.2L3 18.9zM11.6 12.75H21v8.65l-9.4-1.3z"/>
+  </svg>
+  <span><b>Windows</b><em data-sub>x64 &middot; installer</em></span></a></li>
+</ul>
+
+<p>macOS and iOS build from source; there is no signed build to hand out.
+Every version ever released is on the
+<a href="https://github.com/xprs-dev/app/releases">releases page</a>.</p>
+
+<h2 id="files"><a href="#files">Every file in this release</a></h2>
+<p>The digest is the point: an XPRS device fetches an update by content hash
+from whichever station has it, so the file it installs is the same file
+whether it came from GitHub or off the air.</p>
+<div class="wrap">
+<table>
+  <thead><tr><th>file</th><th>size</th><th>sha256</th></tr></thead>
+  <tbody data-files>
+    <tr><td colspan="3">reading the release feed&hellip;</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Check one before you install it:</p>
+<pre>sha256sum xprs-*-linux-x64.tar.gz
+certutil -hashfile xprs-*-setup.exe SHA256   # Windows</pre>
+
+<h2 id="install"><a href="#install">Installing</a></h2>
+
+<h3>Android</h3>
+<p>The APK is sideloaded, so the phone will ask once whether this browser may
+install applications. Take the ABI that matches the phone -
+<code>arm64-v8a</code> for anything made in the last several years - or the
+plain <code>xprs-&lt;version&gt;.apk</code>, which carries all three and is
+roughly twice the size. Android 8 or newer. Bluetooth scanning needs the
+location permission the system insists on for it; XPRS does not send your
+position anywhere unless you ask it to.</p>
+
+<h3>Linux</h3>
+<p>Unpack and run - no installer, nothing written outside the folder and
+<code>~/.local/share/xprs</code>:</p>
+<pre>tar xf xprs-*-linux-x64.tar.gz
+./xprs/xprs</pre>
+<p>x64 only. A LoRa or serial station is reached over USB, so your user needs
+to be in the <code>dialout</code> group for the port to open.</p>
+
+<h3>Windows</h3>
+<p>The installer is unsigned, so SmartScreen will interrupt on first run:
+"More info" and then "Run anyway". x64, Windows 10 or newer.</p>
+
+<h2 id="updates"><a href="#updates">Updates</a></h2>
+<p>The application checks the same feed this page reads and can install a new
+version in place - <strong>&#9776; &rarr; Updates</strong> inside the app, where
+the beta channel can be switched on. Builds installed from F-Droid update
+through F-Droid instead, and the in-app path is hidden.</p>
+
+<h2 id="source"><a href="#source">Source, and what it is built on</a></h2>
+<ul class="links">
+<li><a href="https://github.com/xprs-dev/app">xprs-dev/app</a>
+  <span>&mdash; this application, Flutter and Dart</span></li>
+<li><a href="https://github.com/xprs-dev/reticulum-dart">xprs-dev/reticulum-dart</a>
+  <span>&mdash; Reticulum, LXMF, the DHT and file transfer, in pure Dart</span></li>
+<li><a href="https://github.com/xprs-dev/wapps">xprs-dev/wapps</a>
+  <span>&mdash; the small WASM applications that ship inside it</span></li>
+<li><a href="https://github.com/xprs-dev/firmware">xprs-dev/firmware</a>
+  <span>&mdash; station firmware for ESP32 and nRF52840 boards</span></li>
+<li><a href="https://github.com/xprs-dev/spec/blob/main/XPRS.md">the specification</a>
+  <span>&mdash; the packet format all of it speaks</span></li>
+</ul>
+
+<footer>
+XPRS is free software. Nothing here phones home, and no download is counted.
+</footer>
+</main>
+
+<script>
+/* The buttons above link to the releases page in the markup, which cannot go
+   stale; this upgrades them to the exact file for the current release.
+
+   Read from /updates/<channel>.json rather than
+   github.com/.../releases/latest/download/<name>: that path only works while
+   the FILE NAME never changes, and it stopped being true when the release
+   process started stamping the version into names. The feed is same-origin
+   (xprs.dev/updates), refreshed by the site's own workflow, and names every
+   asset with its URL, size and sha256. If it is unreachable the links stay
+   pointing at the releases page, which always works. */
+(function () {
+  var pick = {
+    android: function (n) { return /-android-arm64-v8a\.apk$/.test(n); },
+    linux:   function (n) { return /-linux-x64\.tar\.gz$/.test(n); },
+    windows: function (n) { return /-setup\.exe$/.test(n); }
+  };
+  var FALLBACK = 'https://github.com/xprs-dev/app/releases/latest';
+  function mb(b) { return (b / 1048576).toFixed(0) + ' MB'; }
+  function text(el, s) { el.textContent = s; }
+
+  function render(d, channel) {
+    var note = document.querySelector('[data-release]');
+    var body = document.querySelector('[data-files]');
+    if (!d || !d.assets) {
+      text(note, 'the release feed is unreachable - the buttons go to GitHub');
+      body.innerHTML = '<tr><td colspan="3">' +
+        '<a href="' + FALLBACK + '">see the release on GitHub</a></td></tr>';
+      return;
+    }
+    var when = d.publishedAt ? new Date(d.publishedAt) : null;
+    text(note, d.version + (when && !isNaN(when) ?
+      ' · ' + when.toISOString().slice(0, 10) : '') +
+      (channel === 'beta' ? ' · pre-release' : ''));
+
+    document.querySelectorAll('a[data-dl]').forEach(function (a) {
+      var want = pick[a.getAttribute('data-dl')];
+      var hit = d.assets.filter(function (x) { return want(x.name); })[0];
+      a.href = (hit && hit.url) ? hit.url : FALLBACK;
+      var sub = a.querySelector('[data-sub]');
+      if (sub && hit) text(sub, d.version + ' · ' + mb(hit.size));
+    });
+
+    body.innerHTML = '';
+    d.assets.forEach(function (x) {
+      var tr = document.createElement('tr');
+      var a = document.createElement('a');
+      a.href = x.url || FALLBACK;
+      a.textContent = x.name;
+      var td = document.createElement('td');
+      td.appendChild(a);
+      tr.appendChild(td);
+      var size = document.createElement('td');
+      text(size, x.size ? mb(x.size) : '');
+      tr.appendChild(size);
+      var sha = document.createElement('td');
+      sha.className = 'sha';
+      text(sha, x.sha256 || '');
+      tr.appendChild(sha);
+      body.appendChild(tr);
+    });
+  }
+
+  function load(channel) {
+    document.querySelectorAll('[data-chan]').forEach(function (b) {
+      b.setAttribute('aria-pressed',
+        String(b.getAttribute('data-chan') === channel));
+    });
+    fetch('/updates/' + channel + '.json', { cache: 'no-cache' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { render(d, channel); })
+      .catch(function () { render(null, channel); });
+  }
+
+  document.querySelectorAll('[data-chan]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      load(b.getAttribute('data-chan'));
+    });
+  });
+  load('stable');
+})();
+</script>
+</body>
+</html>
