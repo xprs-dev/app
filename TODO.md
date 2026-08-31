@@ -75,7 +75,10 @@ Three candidates, in order of suspicion:
 `lib/services/power_state.dart` and `lib/connections/bluetooth/ble_service_io.dart`
 now `debugPrint` every tier decision, screen change and scan-mode change —
 `debugPrint` DOES reach logcat in release (tag `flutter`), `LogService` does not.
-Build number **1003813** was compiling when this was paused.
+
+**The trace APK is already built and saved**: `~/.xprs/xprs-trace-1003813.apk`
+(release, arm64, versionCode 1003813). Skip straight to the install below —
+the build block is only there for when the sources move on.
 
 ```sh
 # release builds OOM on this machine at the default 384m metaspace (below)
