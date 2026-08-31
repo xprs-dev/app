@@ -309,13 +309,13 @@ class _WelcomePageState extends State<WelcomePage> {
   Future<void> _importNsec() async {
     final controller = TextEditingController();
     // Both halves of a callsign are the holder's own choice (spec section 3):
-    // the prefix says what kind of holder this is -- X1 a person, X3 a station
-    // or unattended equipment -- and the length is "the holder's own choice,
+    // the prefix says what kind of holder this is -- X1 a person, X2 a movable
+    // station, X3 a fixed one -- and the length is "the holder's own choice,
     // and four is the default". Fixed once, at import, because the callsign is
     // how everyone who hears this device addresses and stores it.
-    var station = false;
+    var kind = CallsignKind.person;
     var length = reticulum.NostrCrypto.kDefaultCallsignLength;
-    final result = await showDialog<(String, bool, int)>(
+    final result = await showDialog<(String, CallsignKind, int)>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
@@ -348,17 +348,22 @@ class _WelcomePageState extends State<WelcomePage> {
                   children: [
                     const Text('This is a'),
                     const SizedBox(width: 10),
-                    DropdownButton<bool>(
-                      value: station,
-                      onChanged: (v) => setLocal(() => station = v ?? false),
+                    DropdownButton<CallsignKind>(
+                      value: kind,
+                      onChanged: (v) =>
+                          setLocal(() => kind = v ?? CallsignKind.person),
                       items: const [
                         DropdownMenuItem(
-                          value: false,
+                          value: CallsignKind.person,
                           child: Text('person (X1)'),
                         ),
                         DropdownMenuItem(
-                          value: true,
-                          child: Text('station (X3)'),
+                          value: CallsignKind.mobile,
+                          child: Text('movable station (X2)'),
+                        ),
+                        DropdownMenuItem(
+                          value: CallsignKind.station,
+                          child: Text('fixed station (X3)'),
                         ),
                       ],
                     ),
@@ -395,7 +400,7 @@ class _WelcomePageState extends State<WelcomePage> {
             ),
             FilledButton(
               onPressed: () =>
-                  Navigator.pop(ctx, (controller.text.trim(), station, length)),
+                  Navigator.pop(ctx, (controller.text.trim(), kind, length)),
               child: const Text('Import'),
             ),
           ],
@@ -403,13 +408,13 @@ class _WelcomePageState extends State<WelcomePage> {
       ),
     );
     if (result == null) return;
-    final (nsec, isStation, callsignLength) = result;
+    final (nsec, chosenKind, callsignLength) = result;
     if (nsec.isEmpty) return;
     try {
       final profile = ProfileService.instance.buildFromNsec(
         nsec,
         nickname: _nicknameController.text.trim(),
-        station: isStation,
+        kind: chosenKind,
         callsignLength: callsignLength,
       );
       setState(() {
