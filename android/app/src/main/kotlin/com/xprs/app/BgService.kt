@@ -184,6 +184,16 @@ class BgService : Service() {
             }
         }
         live = this
+        // Broadcasts only fire on a CHANGE. A service started at boot in the
+        // middle of the night would otherwise sit at the `active` tier until
+        // somebody happened to turn the screen on and off again, which is the
+        // exact night this work exists to make cheaper.
+        try {
+            val pm2 = getSystemService(POWER_SERVICE) as PowerManager
+            (XprsApplication.bgChannel ?: MainActivity.channel)
+                ?.invokeMethod("power.screen", pm2.isInteractive)
+        } catch (_: Throwable) {
+        }
         // A restart (START_STICKY, or a second start intent) must not silently
         // return the process to full price: re-apply whatever tier Dart last
         // published.
