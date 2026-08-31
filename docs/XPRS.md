@@ -7505,8 +7505,10 @@ configure; the grammar is the same at both ends.
 
 **One role, one word.** `serve:archive` covers everything an archiver does:
 keeping packets and answering for them (sections 36.1 to 36.6), holding mail
-for stations that are not here (section 36.7), and publishing the directory of
-who keeps what (section 36.9). There is no second service word for the pointer
+for stations that are not here (section 36.7) and saying how much it holds
+(sections 10.6.5 and 13.12.3), delivering that mail when the recipient turns
+up (sections 36.8.1 and 36.8.2), and publishing the directory of who keeps
+what (section 36.9). There is no second service word for the pointer
 half and no third for the storage half. A station that keeps only pointers and
 a station that keeps every byte it hears announce the same `serve:archive` and
 differ in what they answer, not in what they are -- which is the only
@@ -7828,8 +7830,10 @@ the bearer X was heard on, which is the freshest possible evidence of a
 working path (section 36.0). This is not a poll and must not be built as one:
 the trigger is the packet from X itself, because a station that checks every
 ten seconds spends its battery asking a question the air already answered.
-Retries back off; a verified `t:receipt` (section 13.7.1) ends them and
-releases the held copy -- and every OTHER holder that hears the receipt
+Retries of an unacknowledged copy back off -- that is the same packet aired
+again, and not to be confused with handing over the NEXT ones, which section
+36.8.2 says should be prompt. A verified `t:receipt` (section 13.7.1) ends
+them and releases the held copy -- and every OTHER holder that hears the receipt
 releases its copy too, which is how a chain of custodians drains instead of
 delivering twice. Airtime spent on delivery attempts is metered under
 section 31 like everything else.
@@ -7854,6 +7858,46 @@ a station forwards a given packet one time, and a forward that comes back
 (the `via:` list says so) is not forwarded again. What this buys over
 waiting: the mail migrates toward the recipient's radio horizon while both
 parties sleep, which is the whole difference between a mailbox and a pile.
+
+### 36.8.2 Draining a backlog, and what a holder must remember
+
+Section 36.8.1 releases mail when the recipient is heard. A station that has
+been away has more than one message waiting, and the two obvious readings of
+"delivers it" are both wrong: airing everything at once spends the channel a
+returning station is trying to use, and airing one and waiting for the next
+sighting takes as many sightings as there are messages.
+
+**A release is a page.** The holder hands over the newest few, and the rest
+wait for the next sighting -- which is usually seconds away, because a station
+that just spoke is about to speak again. What a page is worth is the holder's
+budget (section 31), not this document's business; what matters is that the
+holder REMEMBERS where the page stopped, so the next one continues instead of
+repeating. A holder that always answers with the newest four delivers the same
+four for ever, and the recipient never sees the fifth.
+
+**A short page ends the round.** When the holder reaches the end of what it
+has, it forgets the mark and the next sighting starts at the newest again --
+which is also how mail that arrived while the backlog drained gets its turn.
+
+**Two different waits, and confusing them is the bug.** Backing off applies to
+a delivery that was not acknowledged: the same packet, aired again, less often
+each time, because the recipient is not answering. Continuing a backlog is not
+that -- it is the NEXT packets, to a station that is demonstrably there -- and
+it should be prompt. A holder that applies its retry backoff to the backlog
+turns a returning station's mail into an afternoon of trickle.
+
+**An acknowledgement is durable or it is worthless.** A receipt releases the
+copy (13.7.1), and a holder that forgets the release when its power blinks
+re-airs mail the recipient already took -- at the next sighting, and at every
+sighting after that, because the archive survived the reboot and the memory of
+the receipt did not. A holder that keeps mail across a restart must keep the
+receipts across it too.
+
+**And the recipient may ask instead of waiting.** `q:mail` (section 13.12.3)
+says how much is held without moving any of it, so a station that comes back
+into range can tell in one packet whether waiting is worth it -- and the
+holder's `mail:` count (section 10.6.5) says the same thing to everybody in
+earshot without being asked.
 
 ### 36.9 Archivers among themselves
 
