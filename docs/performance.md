@@ -489,10 +489,9 @@ still on the LAN keeps its fast path despite interleaved hub announces.
 
 ### 6.3 Cheap wins not yet taken
 
-- **Pause UI-only timers when the app is not visible.** The connection indicator
-  polls `setState` every 2s and the carousel auto-advances every 6s regardless of
-  visibility. Harmless while the screen is off (Flutter stops rendering), but it
-  is pointless work and trivially lifecycle-gated.
+- ~~**Pause UI-only timers when the app is not visible.**~~ Taken: the status
+  bar and the carousel are lifecycle-gated now (`LauncherVisibility`), and every
+  `BackgroundService` coalesces its ticks to the power tier (§8.11).
 - **`nostr-engine` pushes a relays snapshot every 400ms tick** whether or not it
   changed. Send on change.
 - **`RnsService` still owns the LXMF / files / relay / DHT subsystems and ~10
@@ -632,14 +631,19 @@ off — a relay answering queries, a download, an APRS-IS mailbox — cannot rel
 Dart timers or on the Activity being alive. The stack that already solves this:
 
 - **A foreground service holds the process up.** `BgService.kt` is a `START_STICKY`
-  foreground service (persistent `aurora_bg` notification, `NOTIF_ID=7001`,
-  `FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE`). It acquires a `PARTIAL_WAKE_LOCK`
-  (`aurora:bg`) **and** a `WIFI_MODE_FULL_HIGH_PERF` WifiLock (`aurora:wifi`) so an
-  asleep device keeps CPU cycles and stays reachable for inbound connections. Don't
-  add a second foreground service for a new task — hold the existing one.
+  foreground service (persistent notification on channel `aurora_service`,
+  `NOTIF_ID=7001`, `FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE` — the old
+  `aurora_bg` channel was deleted because its badge setting was sticky). It
+  acquires a `PARTIAL_WAKE_LOCK` (`aurora:bg`), a WifiLock (`aurora:wifi`) and a
+  multicast lock, so an asleep device keeps CPU cycles, stays reachable for
+  inbound connections, and still hears Reticulum's LAN broadcast discovery.
+  **The first two are now tier-dependent (§8.11); the multicast lock is not —
+  dropping it makes the phone deaf to its neighbours.** Don't add a second
+  foreground service for a new task — hold the existing one.
 - **A native heartbeat drives Dart, because Dart timers can't drive themselves.**
-  `BgService` posts a `Handler` runnable every `TICK_MS = 2000` that calls
-  `onTick` over the `com.xprs.app/bg_service` MethodChannel. Dart side:
+  `BgService` posts a `Handler` runnable every `tickMs` (2 s active, 10 s on
+  battery, 30 s low — §8.11) that calls `onTick` over the
+  `com.xprs.app/bg_service` MethodChannel. Dart side:
   `AndroidForegroundService._onCall` → `BackgroundWappManager.tickAllFromNative()`
   → every `BackgroundService.tickNow()`. **This is why `BackgroundService` has both
   a Dart `Timer.periodic` and a `tickNow()`:** the timer runs foreground, the native
@@ -647,7 +651,7 @@ Dart timers or on the Activity being alive. The stack that already solves this:
   ride `onTick`/`tickNow` — a bare `Timer.periodic` you add yourself will silently
   stop in a pocket.
 - **The service is ref-counted, not owned.** `AndroidForegroundService` keeps a
-  `Set<String>` of holders (`'wapps'`, `'reticulum'`, `'player'`, …); `hold(reason)`
+  `Set<String>` of holders (`'ble'`, `'mesh'`, `'player'`, …); `hold(reason)`
   / `release(reason)` bring the native service up and down. A new always-on
   subsystem takes its own `hold('myThing')` and releases it when idle — it does not
   start or stop the service directly.
@@ -893,6 +897,13 @@ commit instead of being remembered:
 | `no-sub-minute-poll` | `Timer.periodic` under a minute — §6.5's battery setting |
 | `no-store-work-in-ui-layer` | raw SQL in `lib/ui`, `lib/launcher`, `lib/wapp/geoui` (modules named `*_db`/`*_store`/`*_archive` are exempt — they own the store) |
 | `no-whole-file-read` | `readAsBytes()` / `readAsBytesSync()` — the whole file on the heap (§8.9) |
+| `no-scan-for-one-row` | looping a `recent()` page to find one key — the store has an index (`byMid`) |
+| `no-unbounded-select` | `SELECT` with no `LIMIT` outside a `*_db`/`*_store`/`*_archive` owner |
+
+`no-store-work-in-ui-layer` covers all of `lib/wapp/**` since 2026-08-31: the
+11,330-line `wapp_page.dart` sat outside the old `lib/wapp/geoui/` glob, which
+is exactly where a dead ranking cache and a per-build 300-row `SELECT` survived
+unseen.
 
 `no-whole-file-read` baselined **18** existing calls when it was added. That is
 the point of the baseline, not a failure of it: each is now a recorded decision
@@ -963,6 +974,72 @@ behind a flag for when you are chasing one transfer.
 **How to spot it before it costs an afternoon**: the §8.7 recipe — count the log
 lines before reading them. If one message is most of the window, that is the
 bug, whether or not anything is failing.
+
+### 8.11 The power tier: what the phone is allowed to cost right now (2026-08-31)
+
+The always-on half of this app was proven and the battery half was a set of
+constants — all of them sized for the screen being on, all of them still paid
+for at 3 a.m.: a 2 s native heartbeat, a standing `PARTIAL_WAKE_LOCK`, a
+`WIFI_MODE_FULL_HIGH_PERF` WifiLock, one BLE scan mode, a GPS stream at best
+accuracy with no distance filter, and a hub-retry loop every 30 s forever.
+
+`lib/services/power_state.dart` publishes ONE tier, and everything else keys off
+it:
+
+| tier | when | heartbeat | wake lock | WifiLock | BLE scan | `BackgroundService` ticks |
+|---|---|---|---|---|---|---|
+| `active` | screen on / foreground | 2 s | standing | `FULL_HIGH_PERF` | BALANCED | declared |
+| `idle` | background, on charger | 2 s | standing | `FULL_HIGH_PERF` | BALANCED | declared |
+| `battery` | background, discharging | 10 s | 3 s per tick | `FULL` | LOW_POWER | ×5 |
+| `low` | background, under 20% | 30 s | 3 s per tick | `FULL` | LOW_POWER | ×10 |
+
+Inputs: `battery_plus` (charging + level), the lifecycle observer, and a NATIVE
+screen broadcast (`BgService.screenReceiver` → `power.screen`) — a headless
+engine gets no lifecycle events at all, so the broadcast is the only screen
+signal it ever sees.
+
+Four rules this design is bounded by, none of them negotiable:
+
+1. **The scan changes MODE, never state.** Suspending the scan during a GATT
+   link once measured 10-of-10 delivered down to 0-of-10 (docs/ble5.md §4).
+   LOW_POWER looks for ~0.5 s every 5 s instead of ~2 s of every 3; the misses
+   are what store-and-forward and the courier re-transmits already absorb
+   (docs/mesh.md §2).
+2. **Tier changes are rare on purpose.** Android throttles an app to roughly
+   five scan starts per thirty seconds, and a scan-mode change restarts the
+   scan. `PowerState.minDwell` holds a demotion for 60 s so battery-percent
+   noise cannot spend that budget. The promotion back to `active` is immediate
+   — somebody is waiting for it.
+3. **Delivery in flight is exempt.** `holdActive(reason)` pins the device at
+   `active` cost: a GATT link up, a mesh dial in progress. A loop that must
+   keep its cadence in every tier declares `tierThrottled: false` (or a
+   `critical` priority) — courier pumps, custody re-airs, transfer schedulers.
+4. **Receiving never waits for the heartbeat.** A scan result or socket data
+   wakes the process on its own; the heartbeat drives outbound and
+   housekeeping. That is why stretching it to 10 s does not cost receive
+   latency, and it is the assumption to re-check first if a message ever
+   arrives late in the `battery` tier.
+
+Also fixed while in `Ble5.kt`, the open defect docs/ble5.md §9.4 recorded: a
+scan whose registration fails (`SCAN_FAILED_APPLICATION_REGISTRATION_FAILED`
+after a Bluetooth restart) was retried every 60 s forever, with nothing
+anywhere saying so — a phone whose scan the controller was refusing looked
+exactly like a phone in an empty room. The retry now backs off (60 s, 2 min,
+4 min … capped at 15), the watchdog performs it instead of waiting for Dart to
+ask again, and `radioStatus()` reports `scanDead`, `scanFailures` and
+`scanLastFailCode`.
+
+**Measurement status, honestly:** the code changes are in and the app builds;
+the before/after numbers are NOT taken. No device was attached when this was
+written. The protocol to close it out — and the shape the next entry here
+should have — is §4's: `am force-stop`, relaunch, 5-min settle, release build,
+screen-off verified with `dumpsys power | grep mWakefulness`, then the §4.3
+per-thread sampler over ≥5-minute windows and an overnight
+`dumpsys batterystats` soak (wakelock hold time, BLE scan time, WiFi lock time,
+CPU ms), on C61 and TANK, before and after. Delivery is the gate, not the CPU
+number: BLE message 10-of-10 both directions screen-off in the `battery` tier,
+LAN reachability while asleep, hub round trip ≤ 5 s. Baseline to beat: 8% of
+one core screen-off, 0 main-isolate stalls, ~250-300 MB RES.
 
 ## Profiling native memory on a stock device (recipe)
 

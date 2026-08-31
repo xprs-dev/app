@@ -416,13 +416,24 @@ Code 2 is `SCAN_FAILED_APPLICATION_REGISTRATION_FAILED`. A Bluetooth toggle did
 not clear it, nor a force-stop, nor both together. **Only a reboot did.** The
 registration is stuck below the app, somewhere the app cannot reach.
 
-Two defects follow, both still open:
+Two defects followed. **Both fixed 2026-08-31** (`Ble5.kt`):
 
-- the retry has no backoff and no ceiling — every 2 s for the whole session,
-  filling the log ring with the one line that explains nothing else;
-- nothing surfaces "this radio is unrecoverably deaf". `/api/ble/status` has the
-  counters but no verdict, so the device looks exactly like a device in an empty
-  room. Report the scan-failure code and the consecutive-failure count.
+- the retry had no backoff and no ceiling — every 2 s for the whole session,
+  filling the log ring with the one line that explains nothing else. It now
+  backs off 60 s, 2 min, 4 min … capped at 15 min, and the scan watchdog
+  performs the retry itself: a failed registration left no callback behind and
+  nothing was re-arming it, so on a headless phone the scan waited for a Dart
+  call that might never come;
+- nothing surfaced "this radio is unrecoverably deaf". `radioStatus()` now
+  answers with a verdict — `scanDead` (the scan is WANTED, is not running, and
+  has failed at least twice), alongside `scanFailures` and `scanLastFailCode` —
+  so the deaf device stops looking like a device in an empty room.
+
+The scan MODE is also a dial now (`setScanMode`, 0 LOW_POWER / 1 BALANCED /
+2 LOW_LATENCY), driven by the app's power tier: BALANCED with the screen on or
+on a charger, LOW_POWER on battery in the background. It is a mode change and
+never a stop — §4 above is why — and it is rate-limited by a 60 s dwell,
+because a mode change restarts the scan and Android counts scan starts.
 
 ### 9.5 What an app update over Bluetooth actually costs
 
