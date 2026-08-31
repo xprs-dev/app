@@ -700,9 +700,9 @@
 "id": "621d62"
 },
 {
-"wire": "t:track f:X1QZ3N seq:7 pos:38.7301,-9.1355 spd:5.2m/s dir:41deg type:bike ts:2026-08-08_14:26:40",
+"wire": "t:track f:X1QZ3N seq:7 pos:38.7301,-9.1355 spd:5.2m/s dir:41deg type:bike",
 "bytes": null,
-"id": "74a5f9"
+"id": "df8a7e"
 },
 {
 "wire": "t:track f:X1QZ3N track:commute seq:7 pos:38.7301,-9.1355 spd:5.2m/s dir:41deg type:bike ts:2026-08-08_14:26:40",

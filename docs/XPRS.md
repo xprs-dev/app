@@ -12,11 +12,23 @@ works under their own licences.
 
 XPRS carries position, movement, weather, telemetry and messages between
 stations over licence-free spectrum, amateur bands and the internet. It
-extends and modernizes APRS. No licence is needed on licence-free spectrum;
-on amateur bands it operates under amateur rules -- plain text, a
-government-issued callsign, no ciphertext (sections 9.4 and 33).
+extends and modernizes APRS. A packet is at most 250 bytes of `key:value`
+text, readable on sight, signed by the key that generated the sender's
+callsign, and the same on every bearer -- LoRa, Bluetooth, WiFi, HF/VHF/UHF
+or the internet. No licence is needed on licence-free spectrum; on amateur
+bands it operates under amateur rules -- plain text, a government-issued
+callsign, no ciphertext (sections 9.4 and 33).
 
-Status: DRAFT 10. Section 36 states which parts are implemented.
+The document is in eleven parts. Parts I-III define the format: callsigns,
+the packet, identifiers, messages, requests, signatures and observations.
+Parts IV-V move packets and carry them to the absent, and state the safety
+traffic that outranks everything else. Parts VI-VIII are what stations
+publish, operate and organise: proofs, posts, services, commands, groups.
+Parts IX-XI are the rules of the shared air, the registries, and how
+archives federate. Section 1 states what changed from APRS and why;
+section 37 states what is implemented today.
+
+Status: DRAFT 10. Section 37 states which parts are implemented.
 
 ---
 
@@ -24,45 +36,85 @@ Status: DRAFT 10. Section 36 states which parts are implemented.
 
 Every section is linkable: `XPRS.md#3-callsigns` and so on.
 
+**Part I. Foundations**
+
 1. [Purpose](#1-purpose)
 2. [Design rules](#2-design-rules)
 3. [Callsigns](#3-callsigns)
 4. [Packet](#4-packet)
 5. [Message identifiers](#5-message-identifiers)
+
+**Part II. Correspondence**
+
 6. [Messages](#6-messages)
 7. [Asking and answering](#7-asking-and-answering)
 8. [Reserved words](#8-reserved-words)
 9. [Signing and privacy](#9-signing-and-privacy)
+
+**Part III. Observations**
+
 10. [Observations](#10-observations)
 11. [Examples](#11-examples)
 12. [Worked exchanges](#12-worked-exchanges)
+
+**Part IV. Delivery**
+
 13. [Relaying and carried messages](#13-relaying-and-carried-messages)
+
+**Part V. Position and safety**
+
 14. [Tracks](#14-tracks)
 15. [Calls for help](#15-calls-for-help)
 16. [Warnings](#16-warnings)
 17. [Notices](#17-notices)
+
+**Part VI. Identity and publishing**
+
 18. [Proving a callsign](#18-proving-a-callsign)
 19. [Blog posts](#19-blog-posts)
 20. [Passages](#20-passages)
 21. [Events](#21-events)
 22. [Offers and needs](#22-offers-and-needs)
 23. [Channels](#23-channels)
+
+**Part VII. Stations and automation**
+
 24. [Services](#24-services)
 25. [Commands](#25-commands)
 26. [Closed groups](#26-closed-groups)
+
+**Part VIII. Community**
+
 27. [Status](#27-status)
 28. [Polls](#28-polls)
 29. [Reporting](#29-reporting)
 30. [Places](#30-places)
+
+**Part IX. Operating rules**
+
 31. [Airtime](#31-airtime)
 32. [Adding a field, worked](#32-adding-a-field-worked)
 33. [Operating alongside APRS](#33-operating-alongside-aprs)
+
+**Part X. Reference**
+
 34. [Reserved](#34-reserved)
 35. [Cheat sheet](#35-cheat-sheet)
-36. [Publishing, and the archivers you choose](#36-publishing-and-the-archivers-you-choose)
+
+**Part XI. Archives and implementation**
+
+36. [Publishing, and the archivers you
+    choose](#36-publishing-and-the-archivers-you-choose)
 37. [Implementation status](#37-implementation-status)
 
 ---
+
+# Part I. Foundations
+
+What every other section stands on: what the network is for, the rules
+every field obeys, how a callsign is derived from a key, what a packet
+looks like on the wire, and how a packet is identified without ever
+transmitting the identifier.
 
 ## 1. Purpose
 
@@ -293,8 +345,8 @@ t:observation f:X1A67X-2 link:ble peers:2 lx:23698e7593f05e2053f5183580e2cf98
 use**, and when two would take the same one, the device whose own key sorts
 lower keeps it and the other picks again. Both sides compute that from what they
 have already heard, so there is no negotiation, no registry, no coordinator, and
-no state that can be lost -- only a rule that two devices apply to the same facts
-and reach the same answer.
+no state that can be lost -- only a rule that two devices apply to the same
+facts and reach the same answer.
 
 A number, once adopted, is kept across restarts. A device that has been alone
 for a long time may drop back to bare, and nothing breaks if it does not.
@@ -382,9 +434,9 @@ t:command f:X1A67X-1 d:X1A67X-2 ts:2026-08-12_17:28:52 cmd:status
 refuse it, and should, unless it is the only device wearing that callsign.
 
 **A station accepts a packet addressed to its own suffixed name or to the bare
-callsign, and no other.** Everything a receiver keys on a *person* -- a thread, a
-reputation, a block, a follow -- keys on the bare callsign, so numbering a device
-never splits a conversation in two.
+callsign, and no other.** Everything a receiver keys on a *person* -- a thread,
+a reputation, a block, a follow -- keys on the bare callsign, so numbering a
+device never splits a conversation in two.
 
 #### 3.1.4 Two devices, one recipient
 
@@ -397,8 +449,8 @@ t:receipt f:X1A67X-2 d:X1RD89 r:40f357 s:ack sig:<60 characters>
 ```
 
 109 bytes each, both naming the one message in `r:`. The sender collapses them
-on that identifier: one message, delivered -- and, if it cares to look, delivered
-to two of the three devices that person carries.
+on that identifier: one message, delivered -- and, if it cares to look,
+delivered to two of the three devices that person carries.
 
 Mail held for a bare callsign (section 13.3) is discharged by handing it to
 **any** device wearing it. The person has their message; the carrier's job is
@@ -617,8 +669,8 @@ rh:0.4        four tenths of a millimetre
 ```
 
 This is not a preference between conventions. A comma is already structural in
-this format: it separates latitude from longitude in `pos:38.7223,-9.1393` and it
-separates words in `q:ack,read`. A station writing `temp:14,2` for 14.2, or
+this format: it separates latitude from longitude in `pos:38.7223,-9.1393` and
+it separates words in `q:ack,read`. A station writing `temp:14,2` for 14.2, or
 `alt:11,240` for eleven thousand, produces a packet that reads as two values.
 
 - The decimal separator is `.`, always, in every field and every locale.
@@ -714,11 +766,11 @@ t:info f:X3RLY7 pos:38.7223,-9.1393 kind:event cw:flashing ts:2026-08-08_14:26:4
 
 117 bytes.
 
-It is a closed vocabulary rather than a `tag:`. A label means whatever the people
-using it agree it means (section 4.5), which is fine for a topic and useless for
-a filter: a receiver cannot hide adult content reliably if the word for it is
-whatever each sender chose, in whatever language. These ten words a receiver can
-act on, and translate.
+It is a closed vocabulary rather than a `tag:`. A label means whatever the
+people using it agree it means (section 4.5), which is fine for a topic and
+useless for a filter: a receiver cannot hide adult content reliably if the word
+for it is whatever each sender chose, in whatever language. These ten words a
+receiver can act on, and translate.
 
 It is several words rather than one rating, because a single scale cannot say
 why. Somebody avoiding graphic injury is not the same person as somebody
@@ -841,8 +893,8 @@ never assigned by this document.
 t:observation f:X3WX01 pos:38.7223,-9.1393 temp:14.2C zpm:8 ts:2026-08-08_14:26:40
 ```
 
-82 bytes. Every existing receiver reads `temp:14.2` and `ts:`, skips `zpm:8`, and
-is otherwise unaffected.
+82 bytes. Every existing receiver reads `temp:14.2` and `ts:`, skips `zpm:8`,
+and is otherwise unaffected.
 
 ### 4.10 JSON
 
@@ -953,6 +1005,12 @@ a receipt, or a withdrawal of the sender's own earlier packet (section 17.2).
 
 ---
 
+# Part II. Correspondence
+
+Packets between people: messages and replies, questions and answers, the
+reserved words they use, and the signatures and sealed bodies that make
+authorship checkable and content private.
+
 ## 6. Messages
 
 ### 6.1 Broadcast
@@ -1019,8 +1077,8 @@ reply, marked as answering a message it does not hold.
 t:message f:X32DVA d:LISBOA ts:2026-08-08_14:40:00 root:399227 r:8536fb m:no rush, we start at nine
 ```
 
-99 bytes. `r:` keeps exactly the meaning it had -- the packet being replied to --
-and `root:` names the packet the whole conversation hangs from.
+99 bytes. `r:` keeps exactly the meaning it had -- the packet being replied to
+-- and `root:` names the packet the whole conversation hangs from.
 
 A first-level reply carries `r:` alone, because its parent *is* the root. Only
 deeper replies carry both, so the eleven bytes are spent only where they buy
@@ -1128,8 +1186,8 @@ a conversation.
 
 ### 6.5.2 Mentioning somebody
 
-A mention is `@` followed by a callsign, written in the text where a person would
-write it:
+A mention is `@` followed by a callsign, written in the text where a person
+would write it:
 
 ```
 t:status f:X1QZ3N ts:2026-08-08_14:26:40 m:thanks @X1RD89 and @X32DVA for the relay last night
@@ -1159,8 +1217,8 @@ room left to say anything to them.
 
 Two things follow. A station that finds its own callsign after an `@` **raises a
 notification**, which is the entire point of the convention. And **anyone may
-mention anyone**: there is no consent, no blocking and no way to prevent it, so a
-client must let its operator mute a callsign whose mentions it does not want.
+mention anyone**: there is no consent, no blocking and no way to prevent it, so
+a client must let its operator mute a callsign whose mentions it does not want.
 
 A mention is also the strongest signal a station has for deciding what to keep
 (section 31.3). Being named is what makes a packet worth more than the traffic
@@ -1218,8 +1276,8 @@ t:message f:X1QZ3N d:LISBOA ts:2026-08-08_14:26:40 file:nYxKzGm4vT2pQ8dW5jR7cL0a
 base64url because the digest is the single most repeated expensive value in the
 format and 43 characters against 64 for hex is 21 bytes returned to every
 packet that carries one. A receiver also accepts the digest as 64 lowercase
-hexadecimal characters -- the earlier form of this field -- and treats the two as
-the same reference; a sender emits base64url.
+hexadecimal characters -- the earlier form of this field -- and treats the two
+as the same reference; a sender emits base64url.
 
 The hash identifies the file exactly, so any station holding those bytes can
 satisfy the reference and a receiver can verify what it obtained. The extension
@@ -1252,8 +1310,8 @@ quantity with its unit like every other measurement in this format.
 **`size:` is the field that earns its bytes.** `cmd:file` (section 25.2) asks a
 station to send the content, and on a bearer that owes seconds of silence per
 packet the difference between a 240 kB photograph and a 40 MB video is the
-difference between a fetch and a mistake. Knowing the size first is how a station
-declines politely instead of starting something it cannot finish.
+difference between a fetch and a mistake. Knowing the size first is how a
+station declines politely instead of starting something it cannot finish.
 
 Two optional fields complete the description:
 
@@ -1274,9 +1332,9 @@ the packet limit. Adding `name:` pushes it over, and that is fine: a `t:file`
 splits like any packet (section 6.6), and a description is not beacon traffic.
 
 A description packet is also the only thing that makes a file findable by
-**words**. `file:` alone can be looked up by somebody who already has the hash and
-by nobody else; a `t:file` gives a station something to index, so "that photo of
-the dipole" is a question with an answer.
+**words**. `file:` alone can be looked up by somebody who already has the hash
+and by nobody else; a `t:file` gives a station something to index, so "that
+photo of the dipole" is a question with an answer.
 
 `t:file` describes and never delivers. The bytes travel however they travel
 (above), and a description whose content nobody holds is a description of
@@ -1513,10 +1571,11 @@ attacker never held (section 13.7.1).
 ## 8. Reserved words
 
 `q:` and `s:` words assigned by this document: `ack`, `read`, `sign`, `pos`,
-`batt`, `identity`, `pong`, `have`, `state`, `no`, `owner`, `policy`. Command words assigned:
-`history`, `file`, `put`, `set`, `interpret`, `update`. Reactions assigned for `add:` and `remove:`:
-`like`, `repost`. All other words are reserved. A word beginning with `z` is private, as a
-key beginning with `z` is.
+`batt`, `identity`, `pong`, `have`, `state`, `no`, `owner`, `policy`. Command
+words assigned: `history`, `file`, `put`, `set`, `interpret`, `update`.
+Reactions assigned for `add:` and `remove:`: `like`, `repost`. All other words
+are reserved. A word beginning with `z` is private, as a key beginning with `z`
+is.
 
 ---
 
@@ -1530,10 +1589,10 @@ and a verifier reconstructs the signed text by deletion.
 
 **Both fields come out, and the reason for `via:` is not economy.** A relay
 appends itself to `via:` (section 13), so a signature covering it would break at
-the first hop and every relayed packet would read as forged -- on a network whose
-whole point is relaying, and where signing is the default. The signed text is
-therefore exactly the text the identifier is derived from (section 5), which
-leaves one canonical form to implement rather than two.
+the first hop and every relayed packet would read as forged -- on a network
+whose whole point is relaying, and where signing is the default. The signed
+text is therefore exactly the text the identifier is derived from (section 5),
+which leaves one canonical form to implement rather than two.
 
 ```
 t:message f:X1QZ3N d:LISBOA ts:2026-08-08_14:26:40 sig:<60 characters> m:net starts in ten minutes
@@ -1863,12 +1922,12 @@ The hidden parts travel in `xr:`, built like this:
    is carried: no field names, no offsets, no lengths. The wire's bars
    already say where and how big.
 2. The key is derived slowly and salted:
-   `key = first 16 bytes of PBKDF2-HMAC-SHA256(passphrase, "xprs-xr" || nonce, 100000 iterations)`.
-   The nonce is fresh per packet, so a fresh derivation is paid per message
-   even by someone who knows the passphrase -- a fraction of a second for
-   the reader, ruin at scale for a harvester or a brute-forcer. This is why
-   there is one profile and no strength levels: the derivation is the
-   strength, and it costs everyone the same per message.
+`key = first 16 bytes of PBKDF2-HMAC-SHA256(passphrase, "xprs-xr" || nonce,
+100000 iterations)`. The nonce is fresh per packet, so a fresh derivation is
+paid per message even by someone who knows the passphrase -- a fraction of a
+second for the reader, ruin at scale for a harvester or a brute-forcer. This is
+why there is one profile and no strength levels: the derivation is the
+strength, and it costs everyone the same per message.
 3. The cipher is AES-128-CTR: 12-byte random nonce, 32-bit big-endian block
    counter starting at zero.
 4. `xr:` = base64url, no padding, of nonce || ciphertext. Fourteen bytes of
@@ -1967,8 +2026,8 @@ t:identity f:X1QZ3N ts:2026-08-08_14:26:40 k:npub1qz3n7fu9j9uenmyva7ha6x9eqwymyt
 from that callsign. Answers `q:identity`.
 
 **An identity announcement is signed like everything else.** An earlier draft of
-this document said it was not, on the grounds that the signature would have to be
-verified with the key the packet carries and was therefore circular. That
+this document said it was not, on the grounds that the signature would have to
+be verified with the key the packet carries and was therefore circular. That
 reasoning was wrong, and the nickname below is what exposes it.
 
 A self-signature proves the sender **holds the private key**, which is not
@@ -1993,9 +2052,9 @@ t:identity f:X1QZ3N ts:2026-08-08_14:26:40 k:npub1qz3n7fu9j9uenmyva7ha6x9eqwymyt
 ```
 
 181 bytes. One to sixteen characters: ASCII letters, digits, `-` and `_`. No
-spaces, because no value except `m:` may contain one, and no accents, because the
-whole format is ASCII. A name that needs more than that belongs in a profile
-somewhere else, and this field is a label rather than a biography.
+spaces, because no value except `m:` may contain one, and no accents, because
+the whole format is ASCII. A name that needs more than that belongs in a
+profile somewhere else, and this field is a label rather than a biography.
 
 Three rules, and the third is the one that matters.
 
@@ -2017,8 +2076,8 @@ Show it as decoration next to the callsign, never instead of it.
 
 ### 9.3.2 A face and a line about yourself
 
-A townhall of callsigns is a spreadsheet. `file:` gives an identity a picture and
-`m:` a line of description, both optional and both signed with the rest:
+A townhall of callsigns is a spreadsheet. `file:` gives an identity a picture
+and `m:` a line of description, both optional and both signed with the rest:
 
 ```
 t:identity f:X1QZ3N ts:2026-08-08_14:26:40 nick:joao file:nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg sig:<60 characters> m:sailing the Algarve coast
@@ -2045,8 +2104,8 @@ nothing (section 18.1). The decoration is larger and changes once a year, so it
 goes out rarely -- which is section 31 applied to this format's own traffic.
 
 A packet without `k:` still verifies, against the key the receiver already holds
-for that callsign. One from a station whose key is unknown is ignored, exactly as
-the nickname rule above requires.
+for that callsign. One from a station whose key is unknown is ignored, exactly
+as the nickname rule above requires.
 
 ### 9.4 Permitted use by band
 
@@ -2075,18 +2134,20 @@ the format changes it.
 
 An `X1`, `X3`, `X4` or `X5` callsign is derived by its holder from its own key
 (section 3). No authority issued it, no register lists it, and it can be
-generated by anyone in a moment. That is as it should be on licence-free spectrum, where a callsign is
-a label. On licensed spectrum it identifies nobody, which is the thing an
-identification requirement exists to prevent, so a packet whose `f:` is `X1`,
-`X3`, `X4` or `X5` **must never be originated onto a licensed frequency**. A licensed operator
-transmits under the callsign on their licence, which the format already accepts
-at any length and with a suffix.
+generated by anyone in a moment. That is as it should be on licence-free
+spectrum, where a callsign is a label. On licensed spectrum it identifies
+nobody, which is the thing an identification requirement exists to prevent, so
+a packet whose `f:` is `X1`, `X3`, `X4` or `X5` **must never be originated onto
+a licensed frequency**. A licensed operator transmits under the callsign on
+their licence, which the format already accepts at any length and with a
+suffix.
 
 This binds gateways harder than it binds people, because a gateway does it
 automatically and at volume. **A station bridging licence-free traffic onto
 licensed spectrum must drop packets from self-generated callsigns rather than
 relay them.** Relaying one puts an unidentified transmission on the air under
-the gateway operator's licence, and the operator, not the sender, answers for it.
+the gateway operator's licence, and the operator, not the sender, answers for
+it.
 
 ### 9.4.2 Associating an issued callsign with a key
 
@@ -2104,10 +2165,10 @@ that the operator who announced that key wrote them.
 **Be exact about what this proves**, because the temptation to read more into it
 is strong. The self-signature proves the sender holds the private key for the
 announced `npub`. It proves nothing whatever about entitlement to `CT1ABC`: an
-`X1` callsign is checked against its key by arithmetic, an issued callsign has no
-arithmetic relationship to any key, and this format has no registry and issues no
-credentials. A second station can announce the same callsign with a different
-key, and both announcements will verify.
+`X1` callsign is checked against its key by arithmetic, an issued callsign has
+no arithmetic relationship to any key, and this format has no registry and
+issues no credentials. A second station can announce the same callsign with a
+different key, and both announcements will verify.
 
 | Question | Answered by |
 |---|---|
@@ -2130,8 +2191,9 @@ more weight than the sender's opinion deserves.
 
 Amateur regulations prohibit obscuring the meaning of a transmission, and a
 signature does not obscure it. `sig:` is detached: the message stays in clear in
-`m:`, legible to any receiver, and the signature sits beside it as evidence about
-authorship. Anyone monitoring reads the traffic exactly as they would unsigned.
+`m:`, legible to any receiver, and the signature sits beside it as evidence
+about authorship. Anyone monitoring reads the traffic exactly as they would
+unsigned.
 
 ```
 t:message f:CT1ABC d:G0XYZ ts:2026-08-08_14:26:40 sig:<60 characters> m:net starts at eight on the repeater
@@ -2153,6 +2215,11 @@ Three consequences follow, and they are the price of operating there:
 
 ---
 
+# Part III. Observations
+
+Packets about the world: positions, weather, telemetry and device
+readings, followed by worked examples of the format doing its job.
+
 ## 10. Observations
 
 Position, movement, weather and telemetry share one packet type and one
@@ -2162,8 +2229,8 @@ position.
 
 ### 10.1 Position
 
-`pos:` is decimal degrees, WGS84, latitude then longitude, negative for south and
-west. No hemisphere letters, no degrees-minutes-seconds, no compression.
+`pos:` is decimal degrees, WGS84, latitude then longitude, negative for south
+and west. No hemisphere letters, no degrees-minutes-seconds, no compression.
 
 ```
 p:38.7223,-9.1393
@@ -2182,8 +2249,8 @@ The number of decimal places states the precision claimed:
 A station sends only the digits its fix supports, and reports measured
 uncertainty separately in `acc:`.
 
-Absence of `pos:` means the position is unknown. It does not mean zero. `0,0` is a
-valid coordinate in the Gulf of Guinea.
+Absence of `pos:` means the position is unknown. It does not mean zero. `0,0`
+is a valid coordinate in the Gulf of Guinea.
 
 ### 10.2 Movement
 
@@ -2325,9 +2392,9 @@ t:observation f:X1BOA3 pos:38.6902,-9.4012 wave:1.8m seatemp:18.4C type:boat ts:
 Radiation readings -- ionizing and electromagnetic -- are their own family,
 section 10.5.1.
 
-`rssi` and `snr` describe the radio path a packet arrived on and are reported by the
-receiver, in a `pong` reply. A station does not transmit its own received signal
-strength.
+`rssi` and `snr` describe the radio path a packet arrived on and are reported
+by the receiver, in a `pong` reply. A station does not transmit its own
+received signal strength.
 
 `uptime` and `lifetime` are the station's account of its own stability, for
 whoever is deciding whether to route through it or nominate it a mailbox.
@@ -2457,11 +2524,12 @@ packet carrying any of them without it is discarded rather than guessed at.
 
 This is not pedantry. A station in this format is not one radio on one channel:
 the same phone may be on LoRa, Bluetooth, WiFi Direct, a LAN and the internet at
-once, and those bearers have nothing in common. On LoRa occupancy is a legal duty
-cycle measured in seconds of owed silence; on a LAN it is close to meaningless; on
-Bluetooth what binds is scan windows rather than airtime. A single number
-averaged across them is not a quantity at all, and `busy:41%` from a gateway
-would be a statement no receiver could act on and every receiver would graph.
+once, and those bearers have nothing in common. On LoRa occupancy is a legal
+duty cycle measured in seconds of owed silence; on a LAN it is close to
+meaningless; on Bluetooth what binds is scan windows rather than airtime. A
+single number averaged across them is not a quantity at all, and `busy:41%`
+from a gateway would be a statement no receiver could act on and every receiver
+would graph.
 
 `hears:` has the same defect for a better reason. Hearing `X1PZ4Q` over
 Bluetooth means it is in the room; hearing it over LoRa means it is somewhere in
@@ -2487,32 +2555,32 @@ So a station reports **once per bearer** and says nothing it cannot mean:
 | `satellite` | any satellite path |
 | `other` | something not in this list, named in `m:` |
 
-The list is the one section 31.1 and `spectrum.md` already work through; this key
-only gives it a name on the wire.
+The list is the one section 31.1 and `spectrum.md` already work through; this
+key only gives it a name on the wire.
 
-**Section 31.1 becomes computable because of this.** It already says a station is
-bound by the strictest bearer it transmits on, and with one undifferentiated
-number nothing could tell which bearer that was. Per-bearer readings can. A phone
-bridging LoRa and the internet publishes `link:lora busy:41%` and, if it cares,
-`link:internet busy:2%` -- two true statements where a single average would have
-been one false one.
+**Section 31.1 becomes computable because of this.** It already says a station
+is bound by the strictest bearer it transmits on, and with one undifferentiated
+number nothing could tell which bearer that was. Per-bearer readings can. A
+phone bridging LoRa and the internet publishes `link:lora busy:41%` and, if it
+cares, `link:internet busy:2%` -- two true statements where a single average
+would have been one false one.
 
 ### 10.6.2 Why `busy:` matters more than it looks
 
 Section 31 asks every station to be disciplined about airtime and gives it
-nothing to measure. `busy:` is that measurement, and it changes politeness from a
-rule of thumb into a decision.
+nothing to measure. `busy:` is that measurement, and it changes politeness from
+a rule of thumb into a decision.
 
 A duty cycle is a legal limit on **one** transmitter. It says nothing about
-whether forty other stations are already using the channel, and a station obeying
-its own 1 percent perfectly can still be the packet that collides with a call for
-help. A shared channel is a shared resource and the only station that can see the
-whole of it is the one listening to it.
+whether forty other stations are already using the channel, and a station
+obeying its own 1 percent perfectly can still be the packet that collides with
+a call for help. A shared channel is a shared resource and the only station
+that can see the whole of it is the one listening to it.
 
 So a station that hears `busy:` climbing should slow down what is discretionary
--- beacons, status posts, history replays -- before the channel stops working for
-what is not. **`urg:` (section 13.5) decides what survives that decision**, and
-this is the reading that tells a station when to start making it.
+-- beacons, status posts, history replays -- before the channel stops working
+for what is not. **`urg:` (section 13.5) decides what survives that decision**,
+and this is the reading that tells a station when to start making it.
 
 `txtime:` is the honest half of the same measurement. A station reporting
 `busy:60%` while contributing `txtime:45%` of it has identified the problem, and
@@ -2558,9 +2626,9 @@ t:observation f:X1A67X link:ble peers:12 hears:X1RD89,X32DVA,CT1ABC-9
 ```
 
 69 bytes. `peers:` is how many stations the sender can reach directly; `hears:`
-is the ones that fitted. **A busy street will not fit** -- about 29 six-character
-callsigns reach the 250-byte limit, and a shared bearer will offer less than
-that.
+is the ones that fitted. **A busy street will not fit** -- about 29
+six-character callsigns reach the 250-byte limit, and a shared bearer will
+offer less than that.
 
 Without the count, a truncated list is a lie by omission: a reader cannot tell
 "these three are all there is" from "these three of forty". With it, a station
@@ -2590,8 +2658,8 @@ reach one of the recipients ask for them directly, and lets everybody else
 ignore it.
 
 So the sequence is: a station beacons `mail:3`; a neighbour that recognises a
-recipient -- because it is one, or because its own `hears:` covers one -- opens a
-session and takes custody; everybody else spends nothing. The count is a hint
+recipient -- because it is one, or because its own `hears:` covers one -- opens
+a session and takes custody; everybody else spends nothing. The count is a hint
 for deciding whether a session is worth the battery, not a promise about what
 the session will contain.
 
@@ -2696,11 +2764,11 @@ day, it is a malformed value, and a receiver skips it rather than trying to make
 sense of it.
 
 **A receiver converts to the canonical unit before it compares, stores or plots
-anything.** Two stations reporting `spd:6kt` and `spd:3.1m/s` are reporting the same
-speed, and a receiver that sorts them by their digits has a bug. Conversion is
-the receiver's job precisely because the sender should not have to do it: a
-skipper who has to convert knots to metres per second before transmitting will
-eventually get it wrong, and nobody will notice.
+anything.** Two stations reporting `spd:6kt` and `spd:3.1m/s` are reporting the
+same speed, and a receiver that sorts them by their digits has a bug.
+Conversion is the receiver's job precisely because the sender should not have
+to do it: a skipper who has to convert knots to metres per second before
+transmitting will eventually get it wrong, and nobody will notice.
 
 The unit set is closed. A sender may not invent one, because a unit no receiver
 recognises makes the value unreadable rather than merely unfamiliar, and unlike
@@ -2935,6 +3003,12 @@ the higher uptime is later. Packet 3 makes the anchor explicit.
 
 ---
 
+# Part IV. Delivery
+
+How a packet travels further than the radio that sent it: relays and hop
+budgets, custody for the absent, receipts, mailboxes, and the scope rules
+that keep local traffic local.
+
 ## 13. Relaying and carried messages
 
 A packet may travel further than the radio that sent it. A message to a station
@@ -2961,10 +3035,10 @@ The hop count is not transmitted. It is the number of callsigns in `via:`, which
 every station can count for itself, and a packet with no `via:` has taken no
 hops.
 
-The identifier is `de9780` in all four. Both the identifier and the signature are
-computed with `via:` removed (sections 5 and 9.1), so relaying alters neither,
-and a station that already holds the message recognises the repeat and does not
-display it twice.
+The identifier is `de9780` in all four. Both the identifier and the signature
+are computed with `via:` removed (sections 5 and 9.1), so relaying alters
+neither, and a station that already holds the message recognises the repeat and
+does not display it twice.
 
 ### 13.1 How far a packet travels
 
@@ -2979,8 +3053,8 @@ for that packet type:
 The limit belongs to the type rather than to a field. A sender cannot ask the
 network for more of its airtime than its traffic warrants, and an emergency does
 not have to remember to ask: `sos` and `warning` travel nine relays because
-they are the packets worth spending a shared channel on, and a chat message travels
-three because it is not.
+they are the packets worth spending a shared channel on, and a chat message
+travels three because it is not.
 
 ### 13.2 Loops
 
@@ -3144,8 +3218,8 @@ stops carrying and starts airing it normally, because it has arrived.
 
 A packet with `dest:` is **not** bound by the three-relay limit of section 13.1.
 Three relays do not cross a continent. It is bound by `until:` instead, which is
-why `until:` is required here and optional everywhere else: a carried packet with
-no expiry is litter that outlives the reason it was sent.
+why `until:` is required here and optional everywhere else: a carried packet
+with no expiry is litter that outlives the reason it was sent.
 
 **`until:` is never more than one year after `ts:`.** A packet still being
 carried a year later is not in transit, it is lost, and a network that cannot
@@ -3153,8 +3227,8 @@ say so accumulates the difference for ever.
 
 There is no copy limit in the format. Each carrier decides what to hold, and
 `store-and-forward.md` already bounds that with a per-device quota and eviction
-by priority, so a limit here would duplicate one the carrier already enforces and
-cannot be trusted to obey anyway.
+by priority, so a limit here would duplicate one the carrier already enforces
+and cannot be trusted to obey anyway.
 
 ### 13.5 Urgency
 
@@ -3189,9 +3263,9 @@ carrier may hold one part and not another.
 
 **`dest:` tells every carrier roughly where your correspondent is**, and `d:`
 already told them who. Coarsen it deliberately: `dest:38,24 near:200km` says
-"somewhere around Athens" and is 2 decimal places short of a street. Section 10.1
-ties decimal places to precision, and here that is a privacy control rather than
-an accuracy claim.
+"somewhere around Athens" and is 2 decimal places short of a street. Section
+10.1 ties decimal places to precision, and here that is a privacy control
+rather than an accuracy claim.
 
 ### 13.7 Signed receipts
 
@@ -3202,11 +3276,11 @@ that they read something, not a device reporting that bytes arrived:
 t:receipt f:X1RD89 d:X1QZ3N ts:2026-08-20_09:12:00 r:766d3e s:sign dest:38.72,-9.14 near:50km until:2026-10-01_00:00:00 sig:<60 characters>
 ```
 
-184 bytes. `r:` names the original message -- `766d3e`, computed from its sender,
-timestamp and text -- and `sig:` signs the receipt, which covers `f:` and `r:`
-together (section 9.1). The result is evidence that the holder of `X1RD89`'s key
-acknowledged that exact message, and it is checkable by anyone holding the
-public key, not only by the sender.
+184 bytes. `r:` names the original message -- `766d3e`, computed from its
+sender, timestamp and text -- and `sig:` signs the receipt, which covers `f:`
+and `r:` together (section 9.1). The result is evidence that the holder of
+`X1RD89`'s key acknowledged that exact message, and it is checkable by anyone
+holding the public key, not only by the sender.
 
 The receipt carries its own `dest:` and `until:`, because it has to hitchhike
 home the same way the message came.
@@ -3217,14 +3291,14 @@ home the same way the message came.
 | `read` | it was opened | **by default** (section 13.7.1) |
 | `sign` | a person acknowledged it | **required** |
 
-**An `s:sign` receipt without a valid `sig:` is not a signed receipt.** A receiver
-discards it rather than showing it as one: the state exists because of the
-signature, and a state that can be claimed without proof is worth less than
+**An `s:sign` receipt without a valid `sig:` is not a signed receipt.** A
+receiver discards it rather than showing it as one: the state exists because of
+the signature, and a state that can be claimed without proof is worth less than
 no state at all.
 
-A signed receipt can be replayed by anyone who heard it, and that is harmless: it
-names one message and says one thing, so a second copy asserts exactly what the
-first did.
+A signed receipt can be replayed by anyone who heard it, and that is harmless:
+it names one message and says one thing, so a second copy asserts exactly what
+the first did.
 
 ### 13.7.1 Receipts without asking
 
@@ -3361,8 +3435,8 @@ Nothing new is needed for this. `d:` absent already meant "anyone in range"
 apply: a carrier takes it only if it gets closer, `until:` is required and is
 never more than a year out, and `urg:` decides what survives a full store.
 
-There is no recipient, so nothing is acknowledged. `q:sign` on a regional message
-is meaningless and ignored.
+There is no recipient, so nothing is acknowledged. `q:sign` on a regional
+message is meaningless and ignored.
 
 Any packet type can be delivered this way, and for a warning the two circles are
 genuinely different things:
@@ -3385,33 +3459,33 @@ t:message f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 dest:37.98,23.73 near:50km un
 t:message f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 dest:37.98,23.73 near:50km until:2026-09-08_00:00:00 q:sign via:X3RLY7,IT9ABC,SV2QRP m:are you still in Athens in September?
 ```
 
-177 and 175 bytes. Both are identifier `766d3e`, because an identifier is computed
-with `via:` removed (section 5) and that is the only field the two copies differ
-in.
+177 and 175 bytes. Both are identifier `766d3e`, because an identifier is
+computed with `via:` removed (section 5) and that is the only field the two
+copies differ in.
 
 So the recipient recognises the second copy as one it already holds and shows it
 once. This is not a rule that had to be added: it falls out of deriving
 identifiers from the message rather than the journey.
 
 It does **answer** each copy, with the same receipt. The two cases are
-indistinguishable on the air -- a resend after a lost acknowledgement carries the
-same identifier as the original, because the identifier describes the message
-and not the attempt -- so a recipient that answered only the first copy would
-leave a sender whose receipt was lost retrying against a silence it can never
-break. A receipt is idempotent (section 13.7): re-airing it asserts exactly what
-the first one did. Bound it at one receipt per message per sender per 20
-seconds, so a burst of copies is answered once rather than once each.
+indistinguishable on the air -- a resend after a lost acknowledgement carries
+the same identifier as the original, because the identifier describes the
+message and not the attempt -- so a recipient that answered only the first copy
+would leave a sender whose receipt was lost retrying against a silence it can
+never break. A receipt is idempotent (section 13.7): re-airing it asserts
+exactly what the first one did. Bound it at one receipt per message per sender
+per 20 seconds, so a burst of copies is answered once rather than once each.
 
 The difference between the copies is worth keeping rather than discarding. Each
 `via:` is a route that actually worked, which is knowledge no single copy
-carries: the recipient learns that both `SV1XYZ` and `SV2QRP` can reach it, and a
-reply can be sent back along the one that arrived first.
+carries: the recipient learns that both `SV1XYZ` and `SV2QRP` can reach it, and
+a reply can be sent back along the one that arrived first.
 
 ### 13.10 Recording the route in the receipt
 
-`via:` on a carried packet is appended to by each carrier, so on arrival it names
-everyone who moved it. A signed receipt copies that list into `route:` and signs
-it:
+`via:` on a carried packet is appended to by each carrier, so on arrival it
+names everyone who moved it. A signed receipt copies that list into `route:`
+and signs it:
 
 ```
 t:receipt f:X1RD89 d:X1QZ3N ts:2026-08-20_09:12:00 r:766d3e s:sign route:X32DVA,CT1ABC-9,SV1XYZ dest:38.72,-9.14 near:50km until:2026-10-01_00:00:00 sig:<60 characters>
@@ -3421,10 +3495,11 @@ t:receipt f:X1RD89 d:X1QZ3N ts:2026-08-20_09:12:00 r:766d3e s:sign route:X32DVA,
 different list and is still being written. `route:` is the journey the message
 made, fixed at the moment it arrived.
 
-Because `sig:` covers everything except itself (section 9.1), the signature binds
-the signer, the message identifier and the route together. The sender gets back
-a statement that this person read this message and that it came by these hands,
-which nobody along the way can alter without breaking the signature.
+Because `sig:` covers everything except itself (section 9.1), the signature
+binds the signer, the message identifier and the route together. The sender
+gets back a statement that this person read this message and that it came by
+these hands, which nobody along the way can alter without breaking the
+signature.
 
 A carrier that finds itself in a signed `route:` has evidence it delivered
 something, which is the only durable record any of this produces.
@@ -3434,8 +3509,8 @@ something, which is the only durable record any of this produces.
 ### 13.11 How far a packet may go
 
 `scope:` limits where a packet may be transmitted and repeated. It is optional
-and **the default is global**: a packet without it may go anywhere, which is what
-every packet in this document does.
+and **the default is global**: a packet without it may go anywhere, which is
+what every packet in this document does.
 
 | `scope:` | Meaning |
 |---|---|
@@ -3520,9 +3595,9 @@ be relayed in both countries because the smoke does not stop either.
 
 **Radio does not respect borders, and `scope:` cannot pretend otherwise.** A
 transmission near a frontier is heard across it whatever this field says. What
-`scope:` governs is what a station chooses to *relay*, to carry, and to gate onto
-another network. Reception is not restricted and cannot be: a station that hears
-an out-of-scope packet may read it, and simply does not pass it on.
+`scope:` governs is what a station chooses to *relay*, to carry, and to gate
+onto another network. Reception is not restricted and cannot be: a station that
+hears an out-of-scope packet may read it, and simply does not pass it on.
 
 A receiver that does not know where it is treats a country scope as global for
 reading and refuses to relay, which is the safe direction: it sees the packet
@@ -3570,9 +3645,9 @@ that must not travel uses both.
 at the relay limit of section 13.1, still expires at `until:`, and still gets
 carried only toward `dest:`. Whichever binds first, binds.
 
-Where `scope:` and `dest:` disagree -- a country scope with a destination outside
-it -- **`scope:` wins and the packet is not carried.** A sender that meant it to
-travel should not have restricted it.
+Where `scope:` and `dest:` disagree -- a country scope with a destination
+outside it -- **`scope:` wins and the packet is not carried.** A sender that
+meant it to travel should not have restricted it.
 
 ---
 
@@ -3614,18 +3689,18 @@ exactly that answer, in `hold:`'s order of preference.
 This is the one packet in the format where forgery pays directly. Anyone who can
 publish `t:mailbox f:X1QZ3N hold:<attacker>` collects that station's incoming
 mail from every polite sender, and the sender believes it delivered. Signing is
-the default everywhere (section 9.1) and here it is the reason the rule exists: an unsigned
-mailbox declaration is a request to misroute somebody's mail, and it should be
-ignored rather than displayed.
+the default everywhere (section 9.1) and here it is the reason the rule exists:
+an unsigned mailbox declaration is a request to misroute somebody's mail, and
+it should be ignored rather than displayed.
 
 ### 13.12.1 Several at once, each for a period
 
-**A station publishes as many mailboxes as it has, and they coexist.** An earlier
-draft said the newest declaration replaced the previous one, which made it
-impossible to say the true thing: that where you are found depends on when.
+**A station publishes as many mailboxes as it has, and they coexist.** An
+earlier draft said the newest declaration replaced the previous one, which made
+it impossible to say the true thing: that where you are found depends on when.
 
-`since:` and `until:` bound each one. A boat that knows its season says so months
-ahead:
+`since:` and `until:` bound each one. A boat that knows its season says so
+months ahead:
 
 ```
 t:mailbox f:X1BOA3 ts:2026-08-08_14:26:40 hold:X3RLY7,X32DVA sig:<60 characters>
@@ -3658,12 +3733,12 @@ t:mailbox f:X1BOA3 ts:2026-08-20_09:00:00 r:46b4ba remove:mailbox sig:<60 charac
 ```
 
 130 bytes. `r:46b4ba` is the identifier of the marina declaration and
-`remove:mailbox` says what is being withdrawn. The other two are untouched, which
-is why a cancellation names one instead of replacing all of them.
+`remove:mailbox` says what is being withdrawn. The other two are untouched,
+which is why a cancellation names one instead of replacing all of them.
 
-A cancellation must be signed like the declaration it cancels. An unsigned one is
-a request to stop delivering somebody's mail, which is an attack rather than an
-administrative act.
+A cancellation must be signed like the declaration it cancels. An unsigned one
+is a request to stop delivering somebody's mail, which is an attack rather than
+an administrative act.
 
 Re-publishing a declaration after cancelling it is allowed and produces a new
 identifier, because `ts:` differs. There is no way to un-cancel, and none is
@@ -3676,6 +3751,11 @@ nothing: it is under exactly the quota and priority rules of
 
 ---
 
+# Part V. Position and safety
+
+Movement and emergency traffic. A call for help is a packet type, not a
+flag, and it outranks everything else this document defines.
+
 ## 14. Tracks
 
 A track is a named sequence of positions: a flight, a ride, a crossing. Any
@@ -3687,15 +3767,16 @@ t:track f:X3BAL1 track:sagres-2026 seq:1 pos:38.9012,-9.0021 alt:11240m type:bal
 t:track f:X3BAL1 track:sagres-2026 seq:2 pos:38.9104,-8.9772 alt:14980m climb:4.8m/s type:balloon ts:2026-08-08_14:36:00
 ```
 
-107 and 120 bytes. `track:` names the track and `seq:` places the point within it.
+107 and 120 bytes. `track:` names the track and `seq:` places the point within
+it.
 
 - **`track:` is optional.** A track packet without one belongs to the station's
   current track, keyed on `f:` alone. A station that runs one track at a time
   never names it:
 
   ```
-  t:track f:X1QZ3N seq:7 pos:38.7301,-9.1355 spd:5.2m/s dir:41deg type:bike ts:2026-08-08_14:26:40
-  ```
+t:track f:X1QZ3N seq:7 pos:38.7301,-9.1355 spd:5.2m/s dir:41deg type:bike
+ts:2026-08-08_14:26:40 ```
 
   Naming becomes worth its bytes when a station runs more than one track, or
   when a track is worth referring to after it ends.
@@ -3723,9 +3804,9 @@ station's position, and a `track` is appended to a line.
 
 ### 14.1 Updating a track
 
-Later points are sent as further `track` packets carrying the same `track:` and a
-higher `seq:`. A point sent again with a `seq:` already held replaces it, which
-is how a station corrects a position it later computed more accurately.
+Later points are sent as further `track` packets carrying the same `track:` and
+a higher `seq:`. A point sent again with a `seq:` already held replaces it,
+which is how a station corrects a position it later computed more accurately.
 
 ### 14.2 What the station is riding on
 
@@ -3982,6 +4063,11 @@ A withdrawal carries no `pos:`, no `kind:` and no `m:`. It says one thing.
 
 ---
 
+# Part VI. Identity and publishing
+
+Binding a callsign to a key in public, and the durable content a station
+publishes under it: posts, passages, events, offers and channels.
+
 ## 18. Proving a callsign
 
 Anyone can write `f:CT1ABC-9` on a packet. Three things already limit what that
@@ -3993,18 +4079,19 @@ replayed later by anyone who heard it.
 
 An `X1` or `X3` callsign is derived from its own public key (section 3), so a
 station cannot announce one it does not hold: the characters would not match,
-at whatever length it announces. **This does not extend to a callsign issued by a radio authority.**
-`CT1ABC-9` has no arithmetic relationship to any key, so nothing in the format
-prevents a second station from claiming it.
+at whatever length it announces. **This does not extend to a callsign issued by
+a radio authority.** `CT1ABC-9` has no arithmetic relationship to any key, so
+nothing in the format prevents a second station from claiming it.
 
 None of them proves the holder is present now. `t:challenge` does.
 
 ### 18.1 Publishing a key
 
-A station transmits `t:identity` (section 9.3) periodically, not only once, because a
-receiver that has never heard the announcement cannot check a signature or issue
-a challenge. Every 30 minutes is a reasonable interval on a quiet channel; a
-station that changes its key announces immediately and does not wait.
+A station transmits `t:identity` (section 9.3) periodically, not only once,
+because a receiver that has never heard the announcement cannot check a
+signature or issue a challenge. Every 30 minutes is a reasonable interval on a
+quiet channel; a station that changes its key announces immediately and does
+not wait.
 
 `q:identity` (section 7) asks for one directly rather than waiting for the next
 period.
@@ -4018,9 +4105,9 @@ public key the claimed callsign has announced, and sends it:
 t:challenge f:X32DVA d:CT1ABC-9 ts:2026-08-08_14:26:40 k:npub1x32dva7fu9j9uenmyva7ha6x9eqwymytv2847ccv4vxdmn45y50q7hq2mv x:<64 characters>
 ```
 
-187 bytes. `k:` carries the challenger's own key so the answer can be sealed back
-to it without a prior exchange. Where the responder already holds that key, it
-is omitted:
+187 bytes. `k:` carries the challenger's own key so the answer can be sealed
+back to it without a prior exchange. Where the responder already holds that
+key, it is omitted:
 
 ```
 t:challenge f:X32DVA d:CT1ABC-9 ts:2026-08-08_14:26:40 x:<64 characters>
@@ -4177,8 +4264,9 @@ t:blog f:X1QZ3N ts:2026-08-08_14:26:40 title:antenna-notes n:2/3 m:The feed poin
 t:blog f:X1QZ3N ts:2026-08-08_14:26:40 title:antenna-notes file:nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg m:The finished dipole, feed point centred at last.
 ```
 
-162 bytes, of which 52 are the file reference and 43 of those the digest itself. The post reads on its own and the image
-is fetched by whoever wants it and can.
+162 bytes, of which 52 are the file reference and 43 of those the digest
+itself. The post reads on its own and the image is fetched by whoever wants it
+and can.
 
 About 1500 characters is a generous budget once a title, a few tags and an image
 reference are paid for, and it is the same 9 parts every other kind of text
@@ -4738,6 +4826,12 @@ then bracket a lane both actually chose.
 
 ---
 
+# Part VII. Stations and automation
+
+What a station does for others and how it is told to do it: announced
+services, signed commands and their results, device control, station
+ownership, and closed groups with signed membership.
+
 ## 24. Services
 
 `t:service` says what a station does for other stations.
@@ -4845,10 +4939,10 @@ traffic through a station, and forging one is the cheapest way to collect other
 people's packets.
 
 Even signed, an advertisement is a **claim about capability, not a promise of
-behaviour, and never evidence of good faith**. A station that truthfully gateways
-to the internet may also log everything that passes. Encrypt what should not be
-read (section 9.2) and set `scope:` on what should not travel (section 13.11);
-neither depends on trusting the station that carries it.
+behaviour, and never evidence of good faith**. A station that truthfully
+gateways to the internet may also log everything that passes. Encrypt what
+should not be read (section 9.2) and set `scope:` on what should not travel
+(section 13.11); neither depends on trusting the station that carries it.
 
 ### 24.4 One port on an IP network
 
@@ -4923,8 +5017,8 @@ stations and is not this document's business.
 
 This is not `t:request`. That asks for state from a closed vocabulary -- send me
 your position, send me your battery -- and reports. A command acts, its
-vocabulary is whatever the operator defines, and reporting a battery level is not
-the same act as unlocking a door.
+vocabulary is whatever the operator defines, and reporting a battery level is
+not the same act as unlocking a door.
 
 ### 25.1 The reply, immediately and again later
 
@@ -4963,8 +5057,9 @@ t:result f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:26:40 r:747ae8 code:403 sig:<60 char
 156 bytes. `m:` is detail for a person reading a log.
 
 Numbers sit oddly beside `sev:danger` and `kind:fire`, and are still right here.
-The outcome space is open-ended in a way a word list is not, and these particular
-numbers are understood by everyone who has ever written a web client.
+The outcome space is open-ended in a way a word list is not, and these
+particular numbers are understood by everyone who has ever written a web
+client.
 
 ### 25.2 The commands this document defines
 
@@ -4985,7 +5080,8 @@ were away.
 else. `only:` narrows the replay to one callsign or one group, which on a slow
 bearer is the difference between a useful answer and an unusable one.
 
-`kind:` narrows it to the packet types it names -- one, or a comma-separated list -- each named by the `t:` value it matches:
+`kind:` narrows it to the packet types it names -- one, or a comma-separated
+list -- each named by the `t:` value it matches:
 
 ```
 166  t:command f:X1BOA3 d:X3RLY7 ts:2026-08-08_14:26:40 cmd:history since:2026-08-04_00:00:00 kind:message sig:<60 characters>
@@ -5082,14 +5178,14 @@ requester, and `code:429` that it is over budget -- with, by section 31, the
 names of stations that might serve instead.
 
 **The replay is the original packets, unchanged.** `f:`, `ts:` and `sig:` are
-exactly as first transmitted, so authorship survives having been held for days by
-a station nobody trusts. It cannot alter what it replays without breaking a
+exactly as first transmitted, so authorship survives having been held for days
+by a station nobody trusts. It cannot alter what it replays without breaking a
 signature, and it cannot invent traffic that was never sent.
 
 **A station answers with as much as it can afford, and says there is more.**
-A week of a busy group will not fit in one exchange on a bearer that owes several
-seconds of silence per packet, and a station must not have to choose between
-sending everything and sending nothing.
+A week of a busy group will not fit in one exchange on a bearer that owes
+several seconds of silence per packet, and a station must not have to choose
+between sending everything and sending nothing.
 
 ```
 132  t:result f:X3RLY7 d:X1BOA3 ts:2026-08-08_14:31:02 r:747ae8 code:206 sig:<60 characters>
@@ -5106,10 +5202,10 @@ place means that was all of it.
 ```
 
 **A replay runs newest first**, so the requester always knows where the page
-stopped: it moves `until:` to the `ts:` of the oldest packet it received and asks
-again. Newest first is also the right order for a person -- somebody back from
-four days at sea wants last night before last Tuesday, and a page that never
-arrives costs them the least.
+stopped: it moves `until:` to the `ts:` of the oldest packet it received and
+asks again. Newest first is also the right order for a person -- somebody back
+from four days at sea wants last night before last Tuesday, and a page that
+never arrives costs them the least.
 
 Nothing here is stateful. The station keeps no cursor, remembers no session and
 owes the requester nothing between exchanges, so a request that is never
@@ -5118,8 +5214,8 @@ no promise. Repeating a boundary packet is free for the same reason everything
 else here is: duplicates collapse on their identifiers.
 
 **Derived identifiers make backfill safe by construction**, and this is the part
-worth understanding before implementing any of it. A replayed packet has the same
-identifier it always had (section 5), so a client that already holds it
+worth understanding before implementing any of it. A replayed packet has the
+same identifier it always had (section 5), so a client that already holds it
 recognises the duplicate and keeps one copy. That single property removes the
 machinery every comparable protocol needs: no cursors to persist, no sequence
 numbers to allocate, no agreement about where one station's history ends and
@@ -5127,9 +5223,9 @@ another's begins, and no bug at the boundary between two windows. Asking two
 stations for overlapping windows costs airtime and nothing else.
 
 A station that keeps a spool says so with `serve:archive` (section 24). What it
-keeps, for how long and for whom is its own to decide and to change: section 31.3
-says why this document sets no retention period, and section 31.2 what a station
-owes a stranger regardless.
+keeps, for how long and for whom is its own to decide and to change: section
+31.3 says why this document sets no retention period, and section 31.2 what a
+station owes a stranger regardless.
 
 ### 25.2.2 A file transfer, on the wire
 
@@ -5184,8 +5280,8 @@ Four rules, each closing a specific confusion.
 `t:command` and `t:result` are **distinct packet types**, so a station filters
 them on the first field without parsing anything else.
 
-**Neither is ever rendered as a message.** A command is not chat, and it must not
-appear in a conversation view even when it carries `m:`.
+**Neither is ever rendered as a message.** A command is not chat, and it must
+not appear in a conversation view even when it carries `m:`.
 
 **Neither is replied to or reacted to** (section 6.5). They are protocol
 machinery like a receipt or a challenge.
@@ -5223,12 +5319,12 @@ retransmitted command is unchanged, so a station that has acted on
 `747ae8` recognises the second copy and answers again without opening the
 door twice. Idempotency falls out of section 5 rather than needing a rule.
 
-**Authentication is not authorisation, and this format only provides the first.**
-A signature proves which callsign sent a command. Whether that callsign may open
-that door is an allow-list held by the station acting on it. Section 25.9 is
-how the owner puts that list on the wire; checking it is still the station's
-alone, and nothing in XPRS checks one for it. A bot that acts on any correctly
-signed command has an open door with extra steps.
+**Authentication is not authorisation, and this format only provides the
+first.** A signature proves which callsign sent a command. Whether that
+callsign may open that door is an allow-list held by the station acting on it.
+Section 25.9 is how the owner puts that list on the wire; checking it is still
+the station's alone, and nothing in XPRS checks one for it. A bot that acts on
+any correctly signed command has an open door with extra steps.
 
 Where bystanders should not learn what is being operated, seal it:
 
@@ -5245,8 +5341,8 @@ A command splits across parts exactly as a message does (section 6.6), which
 matters for the case that motivates it: a spoken instruction, transcribed, and
 handed to a station that interprets it.
 
-`cmd:interpret` says the text in `m:` is the instruction and is to be read rather
-than matched:
+`cmd:interpret` says the text in `m:` is the instruction and is to be read
+rather than matched:
 
 ```
 t:command f:X1QZ3N d:X3RLY7 ts:2026-08-08_14:26:40 cmd:interpret n:1/3 m:open the north door for thirty seconds then switch the yard light on
@@ -5273,9 +5369,9 @@ part. Each part has an identifier of its own and none of them is the command's.
 
 Three rules on top of section 6.6, all of them about not acting too early.
 
-**A station acts only on a complete, verified set.** The signature is on the last
-part and covers the reassembled packet, so a partial set proves nothing about who
-sent it. Half a command is not a smaller command.
+**A station acts only on a complete, verified set.** The signature is on the
+last part and covers the reassembled packet, so a partial set proves nothing
+about who sent it. Half a command is not a smaller command.
 
 **Parts are held for the command's freshness window, not the ten minutes a
 message gets.** A set still incomplete at 300 seconds is discarded, because a
@@ -5546,10 +5642,10 @@ that explains why.
 **What this section does not do.** It does not say where firmware comes
 from, who may publish it, or what a version string means -- those are the
 operator's, exactly as section 25.4 says authorisation is (the allow-list
-itself is set on the wire by section 25.9). And it defends nothing against somebody standing at
-the station with a cable, which is deliberate: the owner of a device is
-entitled to change what it runs, and a station that its owner cannot
-repair is not a station they own.
+itself is set on the wire by section 25.9). And it defends nothing against
+somebody standing at the station with a cable, which is deliberate: the owner
+of a device is entitled to change what it runs, and a station that its owner
+cannot repair is not a station they own.
 
 ### 25.9 Owning a station, and what the owner sets
 
@@ -5867,8 +5963,8 @@ person's name in somebody else's record.
 ### 26.4 Reading the log
 
 Every act is signed and they accumulate; a client replays what it has heard.
-Three rules decide what the result is, and they exist so that two implementations
-reach the same answer from the same packets.
+Three rules decide what the result is, and they exist so that two
+implementations reach the same answer from the same packets.
 
 **Authority is judged at the moment of the act.** A moderator's `revoke:` counts
 if that callsign held `role:mod` at the act's `ts:`, whatever their status now.
@@ -5968,11 +6064,11 @@ receiver never heard must not have their call for help hidden by their own
 group; section 15 makes the same argument about encryption, and it applies here
 with more force, because a missing grant is an accident rather than a choice.
 
-**A client that cannot verify fails open, and says so.** Without the group's key,
-or knowing its own grant set is incomplete, it shows everything and marks the
-group unverified. A closed group whose announcements have not arrived must look
-broken rather than empty, since the alternative is a silent, invisible failure
-that looks exactly like nobody talking.
+**A client that cannot verify fails open, and says so.** Without the group's
+key, or knowing its own grant set is incomplete, it shows everything and marks
+the group unverified. A closed group whose announcements have not arrived must
+look broken rather than empty, since the alternative is a silent, invisible
+failure that looks exactly like nobody talking.
 
 **The roster is public, permanent and non-repudiable.** Grants have to reach
 strangers for anyone to bootstrap, so they cannot be sealed with `x:` or held
@@ -6075,6 +6171,10 @@ an announcement could equally have asked.
 
 ---
 
+# Part VIII. Community
+
+Small social packets: presence, polls, reports and named places.
+
 ## 27. Status
 
 `t:status` is a short post about the sender, now. It is the packet a townhall is
@@ -6098,10 +6198,10 @@ kept, and read later by people who were not, which is the distinction section 19
 already draws between a message and a post.
 
 Everything else a status needs already exists. `pos:` says where it was written,
-`file:` attaches a photograph, `tag:` files it, `lang:` names its language, `cw:`
-warns what it contains, `scope:` keeps it off the internet, `n:` splits a long
-one across up to nine parts (section 6.6), and `sig:` signs it. A status takes
-replies and reactions, which is most of the point of publishing one.
+`file:` attaches a photograph, `tag:` files it, `lang:` names its language,
+`cw:` warns what it contains, `scope:` keeps it off the internet, `n:` splits a
+long one across up to nine parts (section 6.6), and `sig:` signs it. A status
+takes replies and reactions, which is most of the point of publishing one.
 
 ### 27.1 Mood
 
@@ -6170,8 +6270,9 @@ skips it without error.
 `mood:` is defined here and, like any key, may appear on any packet the sender
 chooses -- on a `t:blog` post it reads perfectly well. What it must never do is
 change how a packet is treated. A mood is not a priority, does not earn a relay,
-and does not raise a notification; `urg:` (section 13.5) is the field that speaks
-to the network, and `sev:` (section 16) is the one that speaks to danger.
+and does not raise a notification; `urg:` (section 13.5) is the field that
+speaks to the network, and `sev:` (section 16) is the one that speaks to
+danger.
 
 ### 27.2 What a status is not
 
@@ -6185,8 +6286,8 @@ is not an emergency and must not compete with one.
 **No follow packet.** A client keeps its own list of the callsigns whose
 statuses it shows, and that list stays on the device. Publishing it would put a
 permanent public record of who reads whom on the air -- the same leak section
-26.7 describes for rosters -- and buys nothing that a local list does not already
-give.
+26.7 describes for rosters -- and buys nothing that a local list does not
+already give.
 
 ---
 
@@ -6210,17 +6311,17 @@ the options, the question and the envelope share 250 bytes.
 ### 28.1 `until:` is required
 
 **A poll states when voting closes, always.** `until:` is the one field a poll
-may not omit, and a poll without it is incomplete: a counter does not count votes
-for it, and a client shows it as a question rather than a ballot.
+may not omit, and a poll without it is incomplete: a counter does not count
+votes for it, and a client shows it as a question rather than a ballot.
 
 This is the only field in the format that is required by its type rather than by
 its packet, and the reason is that the alternative is worse. A poll with no
-closing time never resolves. It sits in every spool that keeps it, collects votes
-from stations coming back into range for as long as anybody replays it, and has a
-different answer every time it is counted -- for ever, with no moment at which
-anyone may say what the answer was. Section 31.3 makes that concrete: a station
-may keep a followed callsign's traffic indefinitely, so "eventually it ages out"
-is not true here.
+closing time never resolves. It sits in every spool that keeps it, collects
+votes from stations coming back into range for as long as anybody replays it,
+and has a different answer every time it is counted -- for ever, with no moment
+at which anyone may say what the answer was. Section 31.3 makes that concrete:
+a station may keep a followed callsign's traffic indefinitely, so "eventually
+it ages out" is not true here.
 
 Nothing about the requirement changes how a receiver **parses** a poll. Design
 rule 4 stands: an unknown or absent field is skipped and the packet still reads.
@@ -6259,8 +6360,9 @@ A counter should therefore be honest about what it can actually check. `d:` and
 `lang:` it can read off the packets. `scope:` it can apply to its own bearers.
 **`rad:` it usually cannot check at all**, because a vote carries no position
 unless the voter chose to include one, and requiring a position to vote asks
-somebody to disclose where they are in order to answer a question. A poll bounded
-by radius is a poll asked politely of a region, not a constituency with a roll.
+somebody to disclose where they are in order to answer a question. A poll
+bounded by radius is a poll asked politely of a region, not a constituency with
+a roll.
 
 ### 28.3 Voting is a reaction
 
@@ -6272,10 +6374,10 @@ t:reaction f:X32DVA d:LISBOA r:7a9b50 vote:sagres
 t:reaction f:X32DVA d:LISBOA r:7a9b50 remove:vote
 ```
 
-49 bytes each. Section 6.5 already says a reaction is **counted once per callsign,
-is idempotent, is not displayed as a message and raises no notification**, which
-is the whole specification of a vote. `vote:` names the chosen option and `r:`
-names the poll.
+49 bytes each. Section 6.5 already says a reaction is **counted once per
+callsign, is idempotent, is not displayed as a message and raises no
+notification**, which is the whole specification of a vote. `vote:` names the
+chosen option and `r:` names the poll.
 
 **Changing your mind is voting again.** The newest verifiable vote from a
 callsign stands, decided by `ts:`, exactly as a nickname is replaced (section
@@ -6316,9 +6418,9 @@ bystanders and not from the counter, and a vote nobody can read is a vote nobody
 can count. Anonymity on a broadcast medium needs cryptography this document does
 not have and a trusted counter this network does not want.
 
-So: use `t:poll` for what time the net should start and where to meet. Do not use
-it to elect anybody, and do not use it for a question whose answer could cost
-somebody something.
+So: use `t:poll` for what time the net should start and where to meet. Do not
+use it to elect anybody, and do not use it for a question whose answer could
+cost somebody something.
 
 ---
 
@@ -6354,8 +6456,8 @@ warning, a channel and a place, and this is the fourth vocabulary it carries.
 **Nothing happens automatically because a report exists.** A report is not
 moderation: `hide:` (section 26.3) is the only packet in this format that hides
 anything, it works only inside one closed group, and only a moderator of that
-group may send it. A report is one station's opinion, offered to whoever finds it
-useful.
+group may send it. A report is one station's opinion, offered to whoever finds
+it useful.
 
 **A report must be signed.** An anonymous accusation is worth nothing to a
 receiver and costs the accused something, which is the worst possible ratio. An
@@ -6368,10 +6470,10 @@ built a way to silence anybody. **A report counts for as much as its signer's
 standing with the receiver and no more** -- which is a local judgement, like
 every other judgement in this format, and cannot be delegated to the network.
 
-**Reporting is not blocking.** A station that wants to stop seeing somebody mutes
-them locally and needs no packet and nobody's permission. A report is for telling
-other people, and the two should not be confused in a user interface: one is a
-private decision, the other is a public statement about somebody else.
+**Reporting is not blocking.** A station that wants to stop seeing somebody
+mutes them locally and needs no packet and nobody's permission. A report is for
+telling other people, and the two should not be confused in a user interface:
+one is a private decision, the other is a public statement about somebody else.
 
 ---
 
@@ -6448,6 +6550,12 @@ are the right packet when somebody could be hurt.
 
 ---
 
+# Part IX. Operating rules
+
+The budgets and boundaries every station honours: airtime arithmetic,
+how the format is extended without breaking a deployed receiver, and the
+line drawn where XPRS meets APRS.
+
 ## 31. Airtime
 
 Every other section says what a station **may** transmit. This one says how
@@ -6469,8 +6577,9 @@ each bearer:
 | the internet | nothing, which is the trap |
 
 **A station transmits unsolicited traffic no more often than the strictest
-bearer it is transmitting on allows.** A phone that gateways to both LoRa and the
-internet is bound by LoRa, not by the internet, for anything it sends to both.
+bearer it is transmitting on allows.** A phone that gateways to both LoRa and
+the internet is bound by LoRa, not by the internet, for anything it sends to
+both.
 
 Two consequences worth stating, because both have been got wrong in practice:
 **a beacon is not free**, so position, identity and service announcements go out
@@ -6496,7 +6605,7 @@ answer is not that they must be refused, and not that they must be honoured.
   precedent for challenges, and the reasoning transfers unchanged: an unlimited
   right to demand work from a battery-powered station is a way to flatten it.
 - **Refuse out loud.** Over budget, a station answers `code:429` rather than
-  going quiet, and names in `m:` any station it knows that serves the same thing:
+going quiet, and names in `m:` any station it knows that serves the same thing:
 
 ```
 t:result f:X3RLY7 d:X1BOA3 ts:2026-08-08_14:26:40 r:747ae8 code:429 sig:<60 characters> m:try X32DVA or CT1ABC-9
@@ -6521,13 +6630,13 @@ the first and an insult to the third, and it would be wrong again the day
 somebody adds a disk.
 
 **A spool is not a time window, and this is why no station can usefully publish
-one number for it.** Keeping is a judgement about worth, not about age. A station
-holds the notes of the people its operator follows and never drops them; it keeps
-whatever recorded something that mattered -- a rescue, a storm, a passage that
-went wrong -- long after everything around it is gone; and it discards a
-stranger's chatter within hours of hearing it. Ask such a station "how far back
-do you go" and there is no honest answer: it goes back a year for one callsign
-and an afternoon for the next.
+one number for it.** Keeping is a judgement about worth, not about age. A
+station holds the notes of the people its operator follows and never drops
+them; it keeps whatever recorded something that mattered -- a rescue, a storm,
+a passage that went wrong -- long after everything around it is gone; and it
+discards a stranger's chatter within hours of hearing it. Ask such a station
+"how far back do you go" and there is no honest answer: it goes back a year for
+one callsign and an afternoon for the next.
 
 So a station advertises `serve:archive` and nothing more. **The claim is "ask
 me", never "I hold everything since a date"**, and a station that keeps four
@@ -6596,6 +6705,11 @@ because obscured meaning is not permitted on amateur bands.
 
 ---
 
+# Part X. Reference
+
+The registries: every assigned type, key and word, and the whole format
+compressed onto a few pages.
+
 ## 34. Reserved
 
 Assigned packet types: `message`, `observation`, `receipt`, `reaction`,
@@ -6607,11 +6721,15 @@ All other lowercase words are reserved.
 
 Assigned keys: `t`, `f`, `d`, `ts`, `tz`, `q`, `s`, `r`, `n`, `via`, `track`,
 `seq`, `title`, `dest`, `onboard`, `price`, `cw`, `freq`, `bw`, `shift`,
-`urg`, `scope`, `lang`, `nick`, `hold`, `serve`, `cmd`, `arg`, `code`, `owner`, `use`, `first`, `near`, `route`, `relay`, `tone`, `input`, `power`, `mode`, `ch`, `range`, `site`, `supply`, `every`, `for`, `at`, `kind`, `sev`, `rad`, `tag`, `type`, `m`, `file`, `x`, `sig`, `k`, `add`,
-`remove`, `grant`, `revoke`, `role`, `hide`, `mood`, `only`, `opt`, `vote`, `root`, `size`, `since`, `until`, `pos`, `alt`, `acc`, `spd`, `dir`, `o`, `climb`,
-`temp`, `hum`,
-`intemp`, `inhum`, `wave`, `swell`, `seatemp`, `vis`, `press`, `wind`, `wdir`, `gust`, `rain1`, `rain24`, `solar`, `batt`, `volt`,
-`rssi`, `snr`, `link`, `busy`, `txtime`, `hears`, `peers`, `mail`, `age`, `epoch`.
+`urg`, `scope`, `lang`, `nick`, `hold`, `serve`, `cmd`, `arg`, `code`, `owner`,
+`use`, `first`, `near`, `route`, `relay`, `tone`, `input`, `power`, `mode`,
+`ch`, `range`, `site`, `supply`, `every`, `for`, `at`, `kind`, `sev`, `rad`,
+`tag`, `type`, `m`, `file`, `x`, `sig`, `k`, `add`, `remove`, `grant`,
+`revoke`, `role`, `hide`, `mood`, `only`, `opt`, `vote`, `root`, `size`,
+`since`, `until`, `pos`, `alt`, `acc`, `spd`, `dir`, `o`, `climb`, `temp`,
+`hum`, `intemp`, `inhum`, `wave`, `swell`, `seatemp`, `vis`, `press`, `wind`,
+`wdir`, `gust`, `rain1`, `rain24`, `solar`, `batt`, `volt`, `rssi`, `snr`,
+`link`, `busy`, `txtime`, `hears`, `peers`, `mail`, `age`, `epoch`.
 
 Assigned `q:` and `s:` words: section 8.
 
@@ -6883,8 +7001,9 @@ Assigned: `ack`, `read`, `sign`, `pos`, `batt`, `identity`, `pong`, `have`,
 what it satisfied.
 
 A direct message between two stations that have exchanged one before is answered
-with `t:receipt ... s:ack` **without** `q:ack` (section 13.7.1). Broadcasts, group
-and regional messages, receipts, and strangers are never answered automatically.
+with `t:receipt ... s:ack` **without** `q:ack` (section 13.7.1). Broadcasts,
+group and regional messages, receipts, and strangers are never answered
+automatically.
 
 ### What a station is, or is riding on
 
@@ -7005,9 +7124,9 @@ signature verifies, newest `ts:` wins, and never usable as an address.
 Answer at once with 202 even when the work takes minutes; any number of results
 may name one command. Splits across parts like a message; `cmd:interpret` puts a
 natural-language instruction in `m:` for a station that reads it, and a reply
-names the reassembled packet rather than any part. Must be signed, expires after 300 s unless `until:` says
-otherwise, never carried, never shown as a message. Authentication is not
-authorisation -- the allow-list is the bot's.
+names the reassembled packet rather than any part. Must be signed, expires
+after 300 s unless `until:` says otherwise, never carried, never shown as a
+message. Authentication is not authorisation -- the allow-list is the bot's.
 
 `cmd:set` makes a device state true (section 25.7): `state:` from the closed
 list `on off open closed locked unlocked` (`motion clear pressed` are report
@@ -7029,9 +7148,10 @@ automated device it operates is an `X4` station with its own keypair, held
 and signed for by the controller (section 25.7.1).
 
 `t:mailbox` names the stations that hold mail for the sender, `hold:` in order
-of preference. Several coexist, each optionally bounded by `since:` and `until:`;
-the narrowest window containing the moment wins. Cancel one with `r:` and
-`remove:mailbox`. All of it must be signed, and an unverifiable one ignored.
+of preference. Several coexist, each optionally bounded by `since:` and
+`until:`; the narrowest window containing the moment wins. Cancel one with `r:`
+and `remove:mailbox`. All of it must be signed, and an unverifiable one
+ignored.
 
 `scope:` limits where a packet goes: absent or `global` anywhere, `local` only
 on BLE, WiFi Direct, WiFi Aware and a LAN, or ISO country codes. Not carried
@@ -7055,9 +7175,9 @@ answers `code:202`, re-airs the **original packets unchanged**, then `code:200`.
 first**, so continue by moving `until:` to the oldest `ts:` you received and
 asking again. No cursor, no session. `404` nothing held, `403` refused, `429`
 over budget with alternatives in `m:`.
-Derived identifiers make the replay safe: a duplicate collapses on the identifier
-it already had, so there are no cursors and overlapping windows cost only
-airtime.
+Derived identifiers make the replay safe: a duplicate collapses on the
+identifier it already had, so there are no cursors and overlapping windows cost
+only airtime.
 
 **A continuation must make progress.** Two rules, one on each side, because
 this is the exchange that silently loops when either is missing:
@@ -7081,9 +7201,9 @@ telling it nothing.
 
 A mention is `@CALLSIGN` **inside `m:`** -- no key. `@` then uppercase letters,
 digits, `-` and `/`, ending at the first character that is not one; uppercase is
-why `me@example.com` is not a mention. No limit but the packet limit. Being named
-raises a notification and is the strongest signal for what to keep. Anyone may
-mention anyone, so a client must offer to mute.
+why `me@example.com` is not a mention. No limit but the packet limit. Being
+named raises a notification and is the strongest signal for what to keep.
+Anyone may mention anyone, so a client must offer to mute.
 
 `root:` names the packet a thread hangs from. A first-level reply carries `r:`
 alone; deeper replies carry both, so a lost middle packet no longer orphans
@@ -7122,14 +7242,16 @@ t:observation f:X3RLY7 ts:... link:lora busy:41% txtime:6% hears:X1QZ3N,X32DVA
 **`link:` names the bearer and is required** -- `lora` `ble` `wifi` `espnow`
 `halow` `lan` `internet` `vhf` `uhf` `hf` `cb` `pmr` `satellite` `other` --
 because a station
-here is not one radio on one channel, and a figure averaged across LoRa and a LAN
-is not a quantity. A reading without it is discarded; report once per bearer.
+here is not one radio on one channel, and a figure averaged across LoRa and a
+LAN is not a quantity. A reading without it is discarded; report once per
+bearer.
 
 `busy:` how much of the last hour that bearer was occupied by anybody, `txtime:`
-how much of it was **this** station, `hears:` callsigns heard **directly** on it,
-most relevant first (the sender decides what relevant means), `peers:` how many
-are reachable in total so a truncated list is honest. Window is one hour and is never on the wire, so numbers compare.
-Keys on `t:observation`, never a new type -- design rule 5.
+how much of it was **this** station, `hears:` callsigns heard **directly** on
+it, most relevant first (the sender decides what relevant means), `peers:` how
+many are reachable in total so a truncated list is honest. Window is one hour
+and is never on the wire, so numbers compare. Keys on `t:observation`, never a
+new type -- design rule 5.
 
 `busy:` is what section 31 was missing: a duty cycle limits one transmitter and
 says nothing about the forty others already on that bearer. Rising `busy:` means
@@ -7137,9 +7259,9 @@ slow down what is discretionary -- beacons, statuses, history replays -- and let
 `urg:` decide what survives. A station reporting `busy:60%` with
 `txtime:45%` has found the problem and it is itself.
 
-`hears:` says why a mesh is broken, who to route through, and who is worth naming
-in `hold:`. Hearing is often asymmetric -- two stations listing each other can
-reach each other; one listing the other cannot.
+`hears:` says why a mesh is broken, who to route through, and who is worth
+naming in `hold:`. Hearing is often asymmetric -- two stations listing each
+other can reach each other; one listing the other cannot.
 
 ### Reporting
 
@@ -7161,26 +7283,26 @@ t:reaction f:X32DVA d:LISBOA r:7a9b50 vote:sagres
 t:reaction f:X32DVA d:LISBOA r:7a9b50 remove:vote
 ```
 
-`opt:` is two to six labels. **`until:` is required** -- a poll without it is not
-counted, because a poll that never closes has a different answer every time
-anybody replays it. Narrow the audience with `d:` (a group), `scope:` (`local` or
-country codes), `pos:` with `rad:`, or `lang:`; those say who is being **asked**,
-never who may answer, and a counter usually cannot check `rad:` at all because a
-vote carries no position.
+`opt:` is two to six labels. **`until:` is required** -- a poll without it is
+not counted, because a poll that never closes has a different answer every time
+anybody replays it. Narrow the audience with `d:` (a group), `scope:` (`local`
+or country codes), `pos:` with `rad:`, or `lang:`; those say who is being
+**asked**, never who may answer, and a counter usually cannot check `rad:` at
+all because a vote carries no position.
 
 A vote is a reaction, so it is one per callsign,
-idempotent and withdrawable; voting again replaces the earlier vote. The count is
-**local and provisional** -- every station counts what it heard, the author's
-tally is not authoritative, and a client that shows "7 votes" where it means "7
-that reached me" has lied by rounding. **Not a secret ballot**: who voted for
-what is public and permanent.
+idempotent and withdrawable; voting again replaces the earlier vote. The count
+is **local and provisional** -- every station counts what it heard, the
+author's tally is not authoritative, and a client that shows "7 votes" where it
+means "7 that reached me" has lied by rounding. **Not a secret ballot**: who
+voted for what is public and permanent.
 
-Reply is `r:`. A **quote** is a reply that carries `m:` -- no separate mechanism.
-A **repost** is `add:repost` / `remove:repost` on a reaction, and what travels is
-the original packet with `f:`, `ts:` and `sig:` untouched, so duplicates collapse
-on the identifier and a post reposted by nine stations is still one post. A
-repost adds nothing and so cannot misrepresent; a quote is your own packet with
-your own words.
+Reply is `r:`. A **quote** is a reply that carries `m:` -- no separate
+mechanism. A **repost** is `add:repost` / `remove:repost` on a reaction, and
+what travels is the original packet with `f:`, `ts:` and `sig:` untouched, so
+duplicates collapse on the identifier and a post reposted by nine stations is
+still one post. A repost adds nothing and so cannot misrepresent; a quote is
+your own packet with your own words.
 
 ### Places
 
@@ -7217,8 +7339,8 @@ the rest.
 
 `t:status` is a short post about the sender, now -- the townhall packet. No
 `title:` and it never replaces an earlier one, which is what separates it from
-`t:blog`. `d:` absent publishes to anyone in range; `d:` on a group makes it that
-group's timeline. Three relays, never carried, replies and reactions both.
+`t:blog`. `d:` absent publishes to anyone in range; `d:` on a group makes it
+that group's timeline. Three relays, never carried, replies and reactions both.
 Following is a list on the client and never a packet.
 
 `mood:` is optional and one word from this list, for theming only:
@@ -7232,8 +7354,9 @@ mountain  summited breathless snowbound frostbitten footsore exposed sheltered
 ```
 
 An unrecognised mood is skipped and the post shown plainly. A mood never earns a
-relay, a priority or a notification -- `urg:` speaks to the network and `sev:` to
-danger. For a mood this list does not have, `zmood:` is private by section 4.9.
+relay, a priority or a notification -- `urg:` speaks to the network and `sev:`
+to danger. For a mood this list does not have, `zmood:` is private by section
+4.9.
 
 ### Closed groups
 
@@ -7305,8 +7428,8 @@ dropping the signature. Not signed: `challenge`, `response`.
 Never transmitted. Both ends compute
 `sha256(the packet, with sig: and via: removed)` and take the first 6
 hexadecimal characters. `r:` carries an identifier
-when referring to another packet, including the sender's own when withdrawing it.
-Signing and relaying do not change it, which is why those two fields come
+when referring to another packet, including the sender's own when withdrawing
+it. Signing and relaying do not change it, which is why those two fields come
 out before hashing.
 
 ### Limits
@@ -7329,6 +7452,12 @@ Keys, and `q:` and `s:` words, beginning with `z` are never assigned by this
 document.
 
 ---
+
+# Part XI. Archives and implementation
+
+How published packets outlive their transmission -- archivers each
+station chooses, federated by directories -- and the current state of the
+implementations.
 
 ## 36. Publishing, and the archivers you choose
 
@@ -7549,9 +7678,10 @@ One reading rule makes the reachability question askable without any new
 word: **`only:` matches a callsign wherever the packet carries it** -- as
 author, as addressee, or inside a list field (`hears:`, `hold:`, `via:`,
 `grant:`). It is a callsign and never a type; section 25.2's `kind:` is the
-field that names a type, and the two combine rather than compete. "Everything about X1BOA3" naturally includes the gateway
-observations that list it as heard, which is the answer to "where can X1BOA3
-be reached". Worked, against an archiver:
+field that names a type, and the two combine rather than compete. "Everything
+about X1BOA3" naturally includes the gateway observations that list it as
+heard, which is the answer to "where can X1BOA3 be reached". Worked, against an
+archiver:
 
 ```
 165  t:command f:X1QZ3N d:X3IDX1 ts:2026-08-17_14:00:00 cmd:history only:X1BOA3 since:2026-08-17_13:00:00 sig:<60 characters>
@@ -7575,8 +7705,8 @@ callsign answers `code:404` with `m:try` naming peers whose directories list
 it (section 36.9).
 
 The difference that matters is not the syntax. It is that the reader chose the
-archiver, the publisher chose the archiver, and neither had to be the same choice
-for the network to work.
+archiver, the publisher chose the archiver, and neither had to be the same
+choice for the network to work.
 
 ### 36.7 An archiver is also a mailbox
 
@@ -7590,8 +7720,8 @@ chosen deliberately.
 
 So **mail is handed to an archiver too**, and the archiver tells the recipient
 there is something waiting. An archiver is therefore a natural entry in a
-station's `hold:` list (section 13.12) -- that mechanism already exists and needs
-nothing added.
+station's `hold:` list (section 13.12) -- that mechanism already exists and
+needs nothing added.
 
 **Privacy is the content's problem, and the format already solved it.** Seal the
 body with `x:` (section 9.2) and the archiver stores something it cannot read:
@@ -7706,9 +7836,9 @@ parties sleep, which is the whole difference between a mailbox and a pile.
 ### 36.9 Archivers among themselves
 
 **An archiver never accepts content from another archiver.** This rule keeps
-a federation of archives from becoming one pool of spam. A peer's archive is that
-peer's admission decisions -- which callsigns its operator chose to keep, under
-which quotas -- and bulk-importing it imports every decision the other
+a federation of archives from becoming one pool of spam. A peer's archive is
+that peer's admission decisions -- which callsigns its operator chose to keep,
+under which quotas -- and bulk-importing it imports every decision the other
 operator got wrong, at zero cost to whoever got them made. Content enters an
 archiver exactly one way: section 36.3, from the callsigns its operator chose
 or agreed to receive. (The gateway pass-through of section 36.1 is the same
@@ -7734,13 +7864,14 @@ fetched with `cmd:file`, verified against its reference like anything else.
 184  t:service f:X3ARC1 serve:archive count:212 file:qA7dTf2mWx9bK4pZcV0yLuJ3gRhN8sE5iDoQ6vXaB1M.xdir ts:2026-08-17_15:00:00 sig:<60 characters>
 ```
 
-`count:` on the announcement stays what section 24.0.1 made it -- records held, never callsigns; how many callsigns the directory lists is learned by fetching the directory. The
-economics are section 36.2's, applied between archivers: a line costs about
-28 bytes, ten thousand callsigns cost about 280 kB, and an UNCHANGED
-directory has an unchanged hash -- so polling a quiet peer costs a
-`q:have`-sized question and moves nothing. What a consumer stores is
-pointers -- callsign, which archiver, how fresh -- never the content behind
-them, which stays where its operator admitted it.
+`count:` on the announcement stays what section 24.0.1 made it -- records held,
+never callsigns; how many callsigns the directory lists is learned by fetching
+the directory. The economics are section 36.2's, applied between archivers: a
+line costs about 28 bytes, ten thousand callsigns cost about 280 kB, and an
+UNCHANGED directory has an unchanged hash -- so polling a quiet peer costs a
+`q:have`-sized question and moves nothing. What a consumer stores is pointers
+-- callsign, which archiver, how fresh -- never the content behind them, which
+stays where its operator admitted it.
 
 A false directory line is priced like a false `hears:` (section 10.6.3): it
 buys its author one wasted redirect per reader and nothing else, because the
@@ -8011,12 +8142,13 @@ section 5 identifier. The peer re-airs its spool for
 that window under its own section 31 serving budget, on whichever path
 section 36.0 selects -- usually the bearer the ask arrived on, which is the
 freshest evidence of a path to the asker, but never that bearer merely because
-it is the one the code happens to reach for. The replayed packets are ORIGINALS: each carries its author's
-signature and verifies (or fails) on its own, and each is heard on the air
-like any other packet -- which is what keeps section 36.9's line intact.
-Nothing is imported; the returning station simply gets to hear what the
-air said while it was not listening. Both archives converge on the union
-of what either heard, deduplicated by the section 5 identifier.
+it is the one the code happens to reach for. The replayed packets are
+ORIGINALS: each carries its author's signature and verifies (or fails) on its
+own, and each is heard on the air like any other packet -- which is what keeps
+section 36.9's line intact. Nothing is imported; the returning station simply
+gets to hear what the air said while it was not listening. Both archives
+converge on the union of what either heard, deduplicated by the section 5
+identifier.
 
 Discipline, so a meeting is not a storm: ask once per peer per absence (a
 cooldown of at least ten minutes); do not ask without a synced clock (a
@@ -8073,10 +8205,10 @@ Ten minutes is not arbitrary: section 31's reference serving budget
 answers a known caller six times an hour, and a ten-minute poll is
 exactly that ceiling. It is the period for an ORDINARY archiver, and
 36.10.2 is what a station does with it once it can see which of its
-archivers are busy and which have been silent since spring. A device polling faster steals its own budget; a
-device polling slower merely learns the news later. Replayed packets
-deduplicate on the section 5 identifier, so a window asked twice costs
-airtime, never correctness.
+archivers are busy and which have been silent since spring. A device polling
+faster steals its own budget; a device polling slower merely learns the news
+later. Replayed packets deduplicate on the section 5 identifier, so a window
+asked twice costs airtime, never correctness.
 
 ### 36.10.2 The poll adapts to what it finds
 
