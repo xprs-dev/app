@@ -3875,7 +3875,13 @@ class _TestsPanelState extends State<_TestsPanel> {
         }
       }
     }
-    return ListView(children: items);
+    // .builder, not ListView(children:): a test run can produce hundreds of
+    // rows, and the eager form builds and lays out every one of them whether
+    // or not it is on screen.
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (_, i) => items[i],
+    );
   }
 
   Widget _summaryChip(ColorScheme cs) {

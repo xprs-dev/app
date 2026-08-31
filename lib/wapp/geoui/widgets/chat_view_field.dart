@@ -690,11 +690,11 @@ class _ChatViewFieldState extends State<ChatViewField> {
         children: [
           InkWell(
             onTap: () => setState(() => _threadRootMid = null),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 12, 2),
+            child: const Padding(
+              padding: EdgeInsets.fromLTRB(8, 8, 12, 2),
               child: Row(children: [
                 Icon(Icons.arrow_back, size: 18, color: ChatPalette.accent),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 Text('Back to chat',
                     style: TextStyle(
                         color: ChatPalette.accent,
@@ -749,10 +749,10 @@ class _ChatViewFieldState extends State<ChatViewField> {
                           fontWeight: FontWeight.w600)),
                   if (totalLikes > 0) ...[
                     const SizedBox(width: 12),
-                    Icon(Icons.favorite, size: 12, color: _likeColor),
+                    const Icon(Icons.favorite, size: 12, color: _likeColor),
                     const SizedBox(width: 4),
                     Text('$totalLikes',
-                        style: TextStyle(
+                        style: const TextStyle(
                             color: _likeColor,
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600)),
@@ -780,12 +780,12 @@ class _ChatViewFieldState extends State<ChatViewField> {
         ),
         child: Row(
           children: [
-            Icon(Icons.arrow_back, size: 18, color: ChatPalette.accent),
+            const Icon(Icons.arrow_back, size: 18, color: ChatPalette.accent),
             const SizedBox(width: 8),
-            Icon(Icons.forum_outlined, size: 15, color: ChatPalette.accent),
+            const Icon(Icons.forum_outlined, size: 15, color: ChatPalette.accent),
             const SizedBox(width: 6),
             Text('Thread · $count message${count == 1 ? '' : 's'}',
-                style: TextStyle(
+                style: const TextStyle(
                     color: ChatPalette.accent, fontSize: 13, fontWeight: FontWeight.w600)),
             const Spacer(),
             Text('Back to chat',
@@ -1323,7 +1323,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
       color: ChatPalette.windowBg,
       child: Row(
         children: [
-          Icon(Icons.reply, size: 14, color: ChatPalette.accent),
+          const Icon(Icons.reply, size: 14, color: ChatPalette.accent),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

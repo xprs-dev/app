@@ -52,7 +52,7 @@ class _AppDrawer extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.system_update),
                 title: const Text('Updates'),
-                subtitle: Text('Version $kAppVersion'),
+                subtitle: const Text('Version $kAppVersion'),
                 onTap: () => _open(context, const UpdatePage()),
               ),
             ListTile(
@@ -71,8 +71,8 @@ class _AppDrawer extends StatelessWidget {
               title: const Text('Settings'),
               onTap: onSettings,
             ),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
+            const ListTile(
+              leading: Icon(Icons.info_outline),
               title: Text('XPRS $kAppVersion+$kBuildNumber'),
             ),
           ],

@@ -751,7 +751,7 @@ class _ActivityFeedState extends State<ActivityFeed> {
                     ),
                   ),
                 ),
-                Icon(Icons.send, size: 18, color: ChatPalette.accent),
+                const Icon(Icons.send, size: 18, color: ChatPalette.accent),
               ],
             ),
           ),

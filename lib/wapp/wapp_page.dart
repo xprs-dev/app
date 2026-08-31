@@ -4893,9 +4893,9 @@ class _WappPageState extends State<WappPage>
               dense: true,
             ),
           ),
-          PopupMenuItem<String>(
+          const PopupMenuItem<String>(
             value: 'conv:close',
-            child: const ListTile(
+            child: ListTile(
               leading: Icon(Icons.close),
               title: Text('Close conversation'),
               contentPadding: EdgeInsets.zero,
@@ -10467,7 +10467,7 @@ class _WappPageState extends State<WappPage>
                             width: 90,
                             child: RichText(
                               text: TextSpan(
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 11,
                                   fontFamily: 'monospace',
                                 ),
