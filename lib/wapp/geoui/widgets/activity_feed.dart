@@ -479,6 +479,15 @@ class _ActivityFeedState extends State<ActivityFeed> {
               )
               .toList()
         : _filtered(_shown);
+    // Key→index map for findChildIndexCallback: Flutter probes that callback
+    // once per keyed child when the list shifts, and the old linear scan
+    // built O(n) key strings per probe — O(n²) string builds on a 200-post
+    // feed. `posts` is rebuilt each build, so one map per build makes every
+    // probe a lookup. Reverse iteration: on a (theoretical) duplicate key the
+    // LOWEST index wins, matching the old first-match scan.
+    final keyToIndex = <String, int>{
+      for (var i = posts.length - 1; i >= 0; i--) _postKey(posts[i], i): i,
+    };
     // Back while the composer is open means "close the composer" — NOT "leave
     // the app". Android's back gesture went straight past an expanded composer
     // and popped the whole wapp, taking the half-written post with it.
@@ -543,11 +552,9 @@ class _ActivityFeedState extends State<ActivityFeed> {
                           // above shifts every index and Flutter rebuilds the
                           // subtree from scratch, killing playback mid-video.
                           findChildIndexCallback: (key) {
-                            final v = (key as ValueKey<String>).value;
-                            for (var i = 0; i < posts.length; i++) {
-                              if (_postKey(posts[i], i) == v) return i * 2;
-                            }
-                            return null;
+                            final i =
+                                keyToIndex[(key as ValueKey<String>).value];
+                            return i == null ? null : i * 2;
                           },
                           separatorBuilder: (_, __) => Divider(
                             height: 1,

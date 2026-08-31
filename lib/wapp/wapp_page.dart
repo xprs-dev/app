@@ -7126,32 +7126,69 @@ class _WappPageState extends State<WappPage>
           ? _nomadnetArchive
           : _activityArchive;
 
+  // Per-revision memo for the sqlite-backed card stats. _actionRow asks for
+  // like and reply counts for EVERY visible card on EVERY frame, and the
+  // reply tally is a recursive CTE (threadReplyCount) — three FFI queries per
+  // card per frame before this cache. Every write path (archive adds,
+  // reactions, nostr stat arrivals) bumps _activityRev, so rev + tab is a
+  // complete invalidation key. The live in-memory source (_wappPostStats)
+  // stays UNCACHED in front of the like lookup — it is a map read.
+  int _statsCacheRev = -1;
+  String _statsCacheTab = '';
+  final Map<String, ({int count, bool mine})> _likeStatCache = {};
+  final Map<String, int> _replyStatCache = {};
+
+  void _statsCacheCheck() {
+    final tab = '$_wappName/$_socialFeedFilter';
+    if (_statsCacheRev == _activityRev.value && _statsCacheTab == tab) return;
+    _statsCacheRev = _activityRev.value;
+    _statsCacheTab = tab;
+    _likeStatCache.clear();
+    _replyStatCache.clear();
+  }
+
   ({int count, bool mine}) _likeInfoFor(String mid) {
+    _statsCacheCheck();
     // Nomadnet likes live in the Nomadnet archive (fetched/pushed over Reticulum
     // as kind-7), separate from the Internet archive.
     if (_wappName == 'social' && _socialFeedFilter == 'nomadnet') {
-      return _nomadnetArchive?.likeInfo(mid) ?? (count: 0, mine: false);
+      return _likeStatCache[mid] ??=
+          _nomadnetArchive?.likeInfo(mid) ?? (count: 0, mine: false);
     }
     final s = _wappPostStats[mid];
     if (s != null) return (count: s.likes, mine: s.mine);
+    final cached = _likeStatCache[mid];
+    if (cached != null) return cached;
     final a = _activityArchive?.likeInfo(mid) ?? (count: 0, mine: false);
-    if (a.count > 0) return a;
-    final hub = RnsService.instance.nostrStats(mid);
-    return hub.likes > 0 ? (count: hub.likes, mine: hub.mine) : a;
+    final hub = a.count > 0 ? null : RnsService.instance.nostrStats(mid);
+    final out = a.count > 0
+        ? a
+        : (hub!.likes > 0 ? (count: hub.likes, mine: hub.mine) : a);
+    _likeStatCache[mid] = out;
+    return out;
   }
 
   /// Reply tally, same source order as [_likeInfoFor]. Counts the WHOLE thread
   /// (nested replies included) so the badge matches the messages the thread view
   /// expands — a reply-to-reply shouldn't be invisible in the count.
   int _replyCountFor(String mid) {
+    _statsCacheCheck();
+    final cached = _replyStatCache[mid];
+    if (cached != null) return cached;
+    final int out;
     if (_wappName == 'social' && _socialFeedFilter == 'nomadnet') {
-      return _nomadnetArchive?.threadReplyCount(mid) ?? 0;
+      out = _nomadnetArchive?.threadReplyCount(mid) ?? 0;
+    } else {
+      final archived = _activityArchive?.threadReplyCount(mid) ?? 0;
+      final live = _wappPostStats[mid]?.replies;
+      out = archived > 0
+          ? archived
+          : (live != null && live > 0
+                ? live
+                : RnsService.instance.nostrStats(mid).replies);
     }
-    final archived = _activityArchive?.threadReplyCount(mid) ?? 0;
-    if (archived > 0) return archived;
-    final live = _wappPostStats[mid]?.replies;
-    if (live != null && live > 0) return live;
-    return RnsService.instance.nostrStats(mid).replies;
+    _replyStatCache[mid] = out;
+    return out;
   }
 
   /// Open the thread for [mid] as soon as its post exists in the activity
