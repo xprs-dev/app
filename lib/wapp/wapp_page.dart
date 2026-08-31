@@ -6090,10 +6090,7 @@ class _WappPageState extends State<WappPage>
           ),
         );
       } else {
-        final cm = _fieldValues[cname];
-        final msgs = cm is List
-            ? cm.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
-            : const <Map<String, dynamic>>[];
+        final msgs = _castList(cname);
         detail = ChatViewField(
           fieldName: cname,
           label: '',
@@ -6251,26 +6248,65 @@ class _WappPageState extends State<WappPage>
     return null;
   }
 
-  // Memoised curated list: recomputing the ranking (a likeInfo + replyCount
-  // sqlite pair for up to 400 posts) on EVERY build lagged the UI badly — build
-  // runs on scroll, image loads, any setState. Recompute only when the archive
-  // actually changed (its revision) or the tab switched.
+  // Identity-cached conversion of a _fieldValues list to the typed shape the
+  // feed/chat widgets take. The naked `.cast<String,dynamic>()` here used to
+  // run on EVERY build and defeated ChatViewField's identity-based memo
+  // (chat_view_field.dart _refreshDerived): Map.cast() allocates a fresh
+  // CastMap wrapper, so identityHashCode(first/last) changed every frame and
+  // the O(messages) reaction/threading walks — the exact regression that doc
+  // comment says was fixed — ran per frame again. Caching by the SOURCE
+  // list's identity restores the memo: the host replaces the list object when
+  // the thread changes, so identity is the correct invalidation key.
+  final Map<String, (Object?, List<Map<String, dynamic>>)> _castCache = {};
+
+  List<Map<String, dynamic>> _castList(String name) {
+    final raw = _fieldValues[name];
+    if (raw is! List) return const <Map<String, dynamic>>[];
+    final hit = _castCache[name];
+    if (hit != null && identical(hit.$1, raw)) return hit.$2;
+    final out = raw
+        .whereType<Map>()
+        .map((m) => m.cast<String, dynamic>())
+        .toList(growable: false);
+    _castCache[name] = (raw, out);
+    return out;
+  }
+
+  // Memoised feed list: fetching recent() (a 200-300 row synchronous sqlite
+  // SELECT) on EVERY build lagged the UI badly — build runs on scroll, image
+  // loads, any setState. Recompute only when the archive actually changed
+  // (_activityRev) or the tab switched (_rankedCacheFilter).
   List<Map<String, dynamic>>? _rankedCache;
   int _rankedCacheRev = -1;
   String _rankedCacheFilter = '';
 
   List<Map<String, dynamic>> _socialActivityPosts() {
+    // Cache hit: same archive revision, same tab. _activityRev is bumped at
+    // every write site (adds, reactions, profile updates), so rev+filter is a
+    // complete invalidation key. Without this, every build() ran a 200-300 row
+    // synchronous sqlite SELECT on the UI thread.
+    final filter = '$_wappName/$_socialFeedFilter';
+    if (_rankedCache != null &&
+        _rankedCacheRev == _activityRev.value &&
+        _rankedCacheFilter == filter) {
+      return _rankedCache!;
+    }
+    final List<Map<String, dynamic>> posts;
     if (_wappName != 'social') {
-      return _activityArchive?.recent() ?? const <Map<String, dynamic>>[];
+      posts = _activityArchive?.recent() ?? const <Map<String, dynamic>>[];
+    } else if (_socialFeedFilter == 'following') {
+      posts = _followingArchive?.recent() ?? const <Map<String, dynamic>>[];
+    } else {
+      // The Mesh feed: raw newest-first, NO curation/ranking. Statuses have no
+      // likes or replies, so ranking by engagement would sort by nothing and
+      // the 60-post cap would silently hide the rest.
+      posts = _activityArchive?.recent(limit: 200) ??
+          const <Map<String, dynamic>>[];
     }
-    if (_socialFeedFilter == 'following') {
-      return _followingArchive?.recent() ?? const <Map<String, dynamic>>[];
-    }
-    // The Mesh feed: raw newest-first, NO curation/ranking. Statuses have no
-    // likes or replies, so ranking by engagement would sort by nothing and the
-    // 60-post cap would silently hide the rest.
-    return _activityArchive?.recent(limit: 200) ??
-        const <Map<String, dynamic>>[];
+    _rankedCache = posts;
+    _rankedCacheRev = _activityRev.value;
+    _rankedCacheFilter = filter;
+    return posts;
   }
 
   Future<List<Map<String, dynamic>>> _loadOlderSocialPosts(int beforeMs) async {
@@ -6769,10 +6805,7 @@ class _WappPageState extends State<WappPage>
     // and their tap→thread / tap-author→profile wiring, fed from _fieldValues
     // (NOT the persisted archive), so it never pollutes the main feed.
     if (name == 'search_results') {
-      final raw = _fieldValues[name];
-      final results = raw is List
-          ? raw.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
-          : const <Map<String, dynamic>>[];
+      final results = _castList(name);
       return ActivityFeed(
         posts: results,
         readOnly: true,
@@ -6788,10 +6821,7 @@ class _WappPageState extends State<WappPage>
         likeInfo: _likeInfoFor,
       );
     }
-    final stored = _fieldValues[name];
-    final messages = stored is List
-        ? stored.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
-        : const <Map<String, dynamic>>[];
+    final messages = _castList(name);
     return ChatViewField(
       fieldName: name,
       label: '',
