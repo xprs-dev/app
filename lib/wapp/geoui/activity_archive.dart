@@ -422,35 +422,45 @@ class ActivityArchive {
     if (db == null) return;
     final follows = followedPubkeys.map((e) => e.toLowerCase()).toSet();
     try {
-      final rows = db.select(
-        'SELECT t,dir,from_call,author_pubkey,text,convo,kind,via,meta,lat,lon,time,mid,parent,pop,source,batch FROM activity',
-      );
-      for (final row in rows) {
-        final post = <String, dynamic>{
-          't': row['t'],
-          'dir': row['dir'],
-          'from': row['from_call'],
-          'author': row['author_pubkey'],
-          'text': row['text'],
-          'convo': row['convo'],
-          'kind': row['kind'],
-          'via': row['via'],
-          'meta': row['meta'],
-          'lat': row['lat'],
-          'lon': row['lon'],
-          'time': row['time'],
-          'mid': row['mid'],
-          'parent': row['parent'],
-          'pop': row['pop'],
-          'source': row['source'],
-          'batch': row['batch'],
-        };
-        final source = (row['source'] ?? '').toString();
-        final author = (row['author_pubkey'] ?? '').toString().toLowerCase();
-        if (source == 'firehose' || source == 'discovery') all.add(post);
-        if (source == 'following' || follows.contains(author)) {
-          following.add({...post, 'source': 'following'});
+      // Batched by rowid: the legacy table is whatever the biggest device
+      // accumulated, and one unbounded SELECT materialised all of it as Dart
+      // maps at startup. 500 rows at a time bounds the peak.
+      var lastRowid = 0;
+      while (true) {
+        final rows = db.select(
+          'SELECT rowid AS rid,t,dir,from_call,author_pubkey,text,convo,kind,via,meta,lat,lon,time,mid,parent,pop,source,batch FROM activity WHERE rowid > ? ORDER BY rowid LIMIT 500',
+          [lastRowid],
+        );
+        if (rows.isEmpty) break;
+        for (final row in rows) {
+          lastRowid = row['rid'] as int;
+          final post = <String, dynamic>{
+            't': row['t'],
+            'dir': row['dir'],
+            'from': row['from_call'],
+            'author': row['author_pubkey'],
+            'text': row['text'],
+            'convo': row['convo'],
+            'kind': row['kind'],
+            'via': row['via'],
+            'meta': row['meta'],
+            'lat': row['lat'],
+            'lon': row['lon'],
+            'time': row['time'],
+            'mid': row['mid'],
+            'parent': row['parent'],
+            'pop': row['pop'],
+            'source': row['source'],
+            'batch': row['batch'],
+          };
+          final source = (row['source'] ?? '').toString();
+          final author = (row['author_pubkey'] ?? '').toString().toLowerCase();
+          if (source == 'firehose' || source == 'discovery') all.add(post);
+          if (source == 'following' || follows.contains(author)) {
+            following.add({...post, 'source': 'following'});
+          }
         }
+        if (rows.length < 500) break;
       }
     } catch (e) {
       debugPrint('ActivityArchive: migration copy failed: $e');

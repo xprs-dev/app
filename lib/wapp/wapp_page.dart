@@ -499,18 +499,17 @@ class _WappPageState extends State<WappPage>
   /// author never learns about it — and then their notification panel is
   /// silent while people are voting on them.
   String _activityAuthorHex(String mid) {
-    final posts = _activityArchive?.recent() ?? const <Map<String, dynamic>>[];
-    for (final p in posts) {
-      if ((p['mid'] ?? '').toString() != mid) continue;
-      final short = (p['from'] ?? '').toString();
-      final prof = RnsService.instance.nostrProfileByShort12(short);
-      final npub = prof['npub'] ?? '';
-      if (npub.isNotEmpty) {
-        try {
-          return NostrCrypto.decodeNpub(npub);
-        } catch (_) {}
-      }
-      return '';
+    // byMid: the archive's unique index. This used to fetch recent() (a
+    // 300-row page) and scan it for the one mid — per reaction.
+    final p = _activityArchive?.byMid(mid);
+    if (p == null) return '';
+    final short = (p['from'] ?? '').toString();
+    final prof = RnsService.instance.nostrProfileByShort12(short);
+    final npub = prof['npub'] ?? '';
+    if (npub.isNotEmpty) {
+      try {
+        return NostrCrypto.decodeNpub(npub);
+      } catch (_) {}
     }
     return '';
   }
@@ -526,8 +525,8 @@ class _WappPageState extends State<WappPage>
     // section-5 id, and the vote lands in the core activity archive under our
     // callsign. The heard copy returning through the spool is idempotent.
     if (_wappName == 'social') {
-      final self =
-          (ProfileService.instance.activeProfile?.callsign ?? '').toUpperCase();
+      final self = (ProfileService.instance.activeProfile?.callsign ?? '')
+          .toUpperCase();
       if (self.isNotEmpty) {
         _activityArchive?.setReaction(mid, self, like, true);
         _followingArchive?.setReaction(mid, self, like, true);
@@ -550,10 +549,11 @@ class _WappPageState extends State<WappPage>
     if (like) {
       // Look the author up in whichever archive holds the post (Nomadnet posts
       // are only in the Nomadnet archive).
-      final author = (_activityArchive?.byMid(mid)?['author'] ??
-              _nomadnetArchive?.byMid(mid)?['author'] ??
-              '')
-          .toString();
+      final author =
+          (_activityArchive?.byMid(mid)?['author'] ??
+                  _nomadnetArchive?.byMid(mid)?['author'] ??
+                  '')
+              .toString();
       final ev = RnsService.instance.buildSignedReaction(mid, author);
       if (ev != null) {
         // Reticulum FIRST (store + fan-out to peer indexers) so the like reaches
@@ -758,8 +758,10 @@ class _WappPageState extends State<WappPage>
   // popup menus alike) into a tight ~3px cluster, matching the dense conversation
   // actions. Global: every wapp's app bar uses these.
   static const EdgeInsets _kAppBarIconPad = EdgeInsets.symmetric(horizontal: 2);
-  static const BoxConstraints _kAppBarIconConstraints =
-      BoxConstraints(minWidth: 0, minHeight: 40);
+  static const BoxConstraints _kAppBarIconConstraints = BoxConstraints(
+    minWidth: 0,
+    minHeight: 40,
+  );
 
   /// Open the conversation database and rebuild every stored field (called from
   /// _loadWapp once _wappData is set, before the first build).
@@ -768,7 +770,8 @@ class _WappPageState extends State<WappPage>
     if (data == null) return;
     try {
       _convDb = ConversationDb.open(
-          data.getAbsolutePath('conversations.sqlite3'));
+        data.getAbsolutePath('conversations.sqlite3'),
+      );
     } catch (e) {
       // Locked profile, wrong key, corrupt file. Say so — and leave _convDb
       // null so every store stays memory-only. Silence here is what used to
@@ -781,21 +784,24 @@ class _WappPageState extends State<WappPage>
     }
     final ghosts = _convDb!.pruneGhosts();
     if (ghosts > 0) {
-      LogService.instance
-          .add('wapp $_wappName: pruned $ghosts empty ghost conversation(s)');
+      LogService.instance.add(
+        'wapp $_wappName: pruned $ghosts empty ghost conversation(s)',
+      );
     }
     await _importLegacyConversations(data);
     for (final field in _convDb!.fields()) {
       final store = _convStores.putIfAbsent(field, () => ConversationStore());
       store
-        ..db = null // no write-through while we fill it
+        ..db =
+            null // no write-through while we fill it
         ..dbField = field
         ..loaded = false;
       try {
         _convDb!.loadInto(field, store);
       } catch (e) {
         LogService.instance.add(
-            'wapp $_wappName: could not read convo field "$field" ($e)');
+          'wapp $_wappName: could not read convo field "$field" ($e)',
+        );
         continue; // stays loaded:false → never written
       }
       store
@@ -839,15 +845,19 @@ class _WappPageState extends State<WappPage>
       if (!await data.directoryExists(_convDir)) return;
       for (final entry in await data.listDirectory(_convDir)) {
         if (entry.isDirectory || !entry.path.endsWith('.json')) continue;
-        final field =
-            entry.name.substring(0, entry.name.length - 5); // strip .json
+        final field = entry.name.substring(
+          0,
+          entry.name.length - 5,
+        ); // strip .json
         if (db.hasField(field)) continue;
         final json = await data.readJson(entry.path);
         if (json == null) continue;
         final legacy = ConversationStore()..loadJson(json);
         db.importStore(field, legacy);
-        final msgs =
-            legacy.items.values.fold<int>(0, (n, it) => n + it.messages.length);
+        final msgs = legacy.items.values.fold<int>(
+          0,
+          (n, it) => n + it.messages.length,
+        );
         await data.writeJson('${entry.path}.imported', json);
         await data.delete(entry.path);
         LogService.instance.add(
@@ -856,7 +866,9 @@ class _WappPageState extends State<WappPage>
         );
       }
     } catch (e) {
-      LogService.instance.add('wapp $_wappName: legacy convo import failed ($e)');
+      LogService.instance.add(
+        'wapp $_wappName: legacy convo import failed ($e)',
+      );
     }
   }
 
@@ -2045,12 +2057,14 @@ class _WappPageState extends State<WappPage>
           final field = data['field'] as String? ?? 'conversations';
           final liked = _convStore(field).react(data);
           if (liked != null) {
-            NotificationService.instance.show(likeNotification(
-              wappName: _wappName,
-              convo: liked.convo,
-              from: liked.from,
-              message: liked.message,
-            ));
+            NotificationService.instance.show(
+              likeNotification(
+                wappName: _wappName,
+                convo: liked.convo,
+                from: liked.from,
+                message: liked.message,
+              ),
+            );
           }
           changed = true;
         } else if (type == 'ui.convo.status') {
@@ -3143,8 +3157,9 @@ class _WappPageState extends State<WappPage>
   /// GENERATING QR codes is unaffected — that is qr_flutter, pure Dart, and it
   /// is what the other side of this exchange actually needs.
   Future<void> _handleQrScan() async {
-    _engine.sendMessage(jsonEncode(
-        {'type': 'qr.scanned', 'text': '', 'error': 'nocamera'}));
+    _engine.sendMessage(
+      jsonEncode({'type': 'qr.scanned', 'text': '', 'error': 'nocamera'}),
+    );
     _engine.handleEvent();
     _drainOutbox();
   }
@@ -3319,18 +3334,20 @@ class _WappPageState extends State<WappPage>
   /// list for members. All room/moderation meaning stays in the wapp.
   Widget _buildRoomsScreen(GeoUiBlock screen, GeoUiBlock group) {
     final field = group.name ?? 'rooms';
-    final store = _convStore('conversations'); // room messages arrive as ui.convo.*
+    final store = _convStore(
+      'conversations',
+    ); // room messages arrive as ui.convo.*
     final rooms = (_fieldValues[field] is List)
         ? (_fieldValues[field] as List)
-            .whereType<Map>()
-            .map((m) => m.cast<String, dynamic>())
-            .toList()
+              .whereType<Map>()
+              .map((m) => m.cast<String, dynamic>())
+              .toList()
         : const <Map<String, dynamic>>[];
     final members = (_fieldValues['room_members'] is List)
         ? (_fieldValues['room_members'] as List)
-            .whereType<Map>()
-            .map((m) => m.cast<String, dynamic>())
-            .toList()
+              .whereType<Map>()
+              .map((m) => m.cast<String, dynamic>())
+              .toList()
         : const <Map<String, dynamic>>[];
     // Default the open room to the one the wapp marked selected, else the first.
     var openId = _roomsOpenId;
@@ -3361,9 +3378,12 @@ class _WappPageState extends State<WappPage>
           best = r;
         }
       }
-      final sel = best ??
-          rooms.firstWhere((r) => r['selected'] == true,
-              orElse: () => rooms.first);
+      final sel =
+          best ??
+          rooms.firstWhere(
+            (r) => r['selected'] == true,
+            orElse: () => rooms.first,
+          );
       openId = '${sel['id'] ?? ''}';
       if (openId.isEmpty) openId = null;
       // Adopt the default as the REAL open room: its messages are on screen,
@@ -4003,7 +4023,8 @@ class _WappPageState extends State<WappPage>
     final open = _convStore('conversations').items[id];
     final title = (open?.title ?? '').isNotEmpty ? open!.title : fallback;
     final direct = !id.startsWith('#');
-    if (!direct) return Text(title, maxLines: 1, overflow: TextOverflow.ellipsis);
+    if (!direct)
+      return Text(title, maxLines: 1, overflow: TextOverflow.ellipsis);
     final reachable = _peerReachable(id);
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -4189,10 +4210,12 @@ class _WappPageState extends State<WappPage>
     // otherwise reading one message and pressing back drops you at the
     // launcher, losing the whole app. Only when the rail is hidden behind the
     // chat (narrow) does this matter; a wide window shows both at once.
-    final roomsOpen = _roomsOpenId != null &&
+    final roomsOpen =
+        _roomsOpenId != null &&
         MediaQuery.of(context).size.width < 640 &&
-        _tabScreens[idx].children
-            .any((c) => c.keyword == 'group' && c.type == 'rooms');
+        _tabScreens[idx].children.any(
+          (c) => c.keyword == 'group' && c.type == 'rooms',
+        );
 
     return PopScope(
       // Intercept system-back to close an open reticulum-graph panel, a
@@ -4508,12 +4531,13 @@ class _WappPageState extends State<WappPage>
           // A normal-sized IconButton: the shrunk app-bar constraints make the
           // tappable box noticeably smaller than the glyph, and a primary
           // action you reach for constantly must not need an accurate aim.
-          out.add(IconButton(
-            icon: Icon(_panelIcon(i)),
-            tooltip: _i18n.resolve(
-                actions.first.getString('label') ?? name),
-            onPressed: () => _onWappAction(actions.first.name!),
-          ));
+          out.add(
+            IconButton(
+              icon: Icon(_panelIcon(i)),
+              tooltip: _i18n.resolve(actions.first.getString('label') ?? name),
+              onPressed: () => _onWappAction(actions.first.name!),
+            ),
+          );
           continue;
         }
         out.add(
@@ -4707,7 +4731,10 @@ class _WappPageState extends State<WappPage>
   /// once. The wapp decides what blocking means (Mail drops the sender's key,
   /// Chat drops a callsign) — the host only asks and forwards.
   Future<void> _confirmBlockConversation(
-      String field, String id, String title) async {
+    String field,
+    String id,
+    String title,
+  ) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -4724,8 +4751,10 @@ class _WappPageState extends State<WappPage>
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Block',
-                style: TextStyle(color: Color(0xFFda3633))),
+            child: const Text(
+              'Block',
+              style: TextStyle(color: Color(0xFFda3633)),
+            ),
           ),
         ],
       ),
@@ -4743,9 +4772,7 @@ class _WappPageState extends State<WappPage>
   /// null when the screen has fields, groups or more than one action. Used to
   /// collapse "a panel containing one link" into the link itself.
   String? _soleAction(GeoUiBlock screen) {
-    final kids = screen.children
-        .where((c) => c.keyword != 'label')
-        .toList();
+    final kids = screen.children.where((c) => c.keyword != 'label').toList();
     if (kids.length != 1) return null;
     final a = kids.first;
     if (a.keyword != 'action') return null;
@@ -4770,8 +4797,9 @@ class _WappPageState extends State<WappPage>
     // conversation is open, in EVERY layout — the narrow-screen thread chrome
     // is a rendering detail, not a precondition for wanting to block.
     final convOpen = (convActionsId ?? '').isNotEmpty;
-    final convItem =
-        convOpen ? _convStore(convActionsField).items[convActionsId] : null;
+    final convItem = convOpen
+        ? _convStore(convActionsField).items[convActionsId]
+        : null;
     final convTitle = (convItem?.title.isNotEmpty ?? false)
         ? convItem!.title
         : (convActionsId ?? '');
@@ -4797,7 +4825,11 @@ class _WappPageState extends State<WappPage>
           // messages go with it. The wapp owns the list; this only fires the
           // same command the long-press sheet does.
           // ignore: discarded_futures
-          _confirmBlockConversation(convActionsField, convActionsId!, convTitle);
+          _confirmBlockConversation(
+            convActionsField,
+            convActionsId!,
+            convTitle,
+          );
         } else if (value == 'conv:mute') {
           final store = _convStore(convActionsField);
           final was = store.items[convActionsId]?.muted ?? false;
@@ -5612,13 +5644,8 @@ class _WappPageState extends State<WappPage>
     });
   }
 
-  Map<String, dynamic>? _postFromArchive(String mid) {
-    for (final p
-        in _activityArchive?.recent() ?? const <Map<String, dynamic>>[]) {
-      if ((p['mid'] ?? '').toString() == mid) return p;
-    }
-    return null;
-  }
+  Map<String, dynamic>? _postFromArchive(String mid) =>
+      _activityArchive?.byMid(mid);
 
   /// A raw NOSTR event as the feed's post shape.
   Map<String, dynamic> _postFromEvent(Map<String, dynamic> ev) {
@@ -5801,8 +5828,10 @@ class _WappPageState extends State<WappPage>
               title: Text(f.getString('label') ?? f.name!),
               subtitle: (f.getString('tip') ?? '').isEmpty
                   ? null
-                  : Text(f.getString('tip')!,
-                      style: Theme.of(context).textTheme.bodySmall),
+                  : Text(
+                      f.getString('tip')!,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
               onChanged: (v) {
                 setState(() => _fieldValues[f.name!] = v);
                 final apply = f.getString('apply');
@@ -6241,7 +6270,8 @@ class _WappPageState extends State<WappPage>
     // Last resort: any feed archive that holds a row by this author keeps the
     // full pubkey — resolves reticulum (Nomadnet) authors we have no profile
     // for, so their card shows a callsign instead of a hex prefix.
-    final fromArch = _nomadnetArchive?.authorForShort(short) ??
+    final fromArch =
+        _nomadnetArchive?.authorForShort(short) ??
         _activityArchive?.authorForShort(short) ??
         _followingArchive?.authorForShort(short);
     if (fromArch != null && fromArch.length == 64) return fromArch;
@@ -6300,7 +6330,8 @@ class _WappPageState extends State<WappPage>
       // The Mesh feed: raw newest-first, NO curation/ranking. Statuses have no
       // likes or replies, so ranking by engagement would sort by nothing and
       // the 60-post cap would silently hide the rest.
-      posts = _activityArchive?.recent(limit: 200) ??
+      posts =
+          _activityArchive?.recent(limit: 200) ??
           const <Map<String, dynamic>>[];
     }
     _rankedCache = posts;
@@ -6795,7 +6826,7 @@ class _WappPageState extends State<WappPage>
           if (_wappName == 'social' && body.isNotEmpty) {
             unawaited(XprsPublisher.instance.publishStatus(body));
           }
-          
+
           // No optimistic row: our own status comes back through the spool
           // like any other packet, so the feed shows it once rather than twice.
         },
@@ -7123,8 +7154,8 @@ class _WappPageState extends State<WappPage>
   /// Internet DB and shows no replies.
   ActivityArchive? get _activeActivityArchive =>
       (_wappName == 'social' && _socialFeedFilter == 'nomadnet')
-          ? _nomadnetArchive
-          : _activityArchive;
+      ? _nomadnetArchive
+      : _activityArchive;
 
   // Per-revision memo for the sqlite-backed card stats. _actionRow asks for
   // like and reply counts for EVERY visible card on EVERY frame, and the
@@ -7252,7 +7283,6 @@ class _WappPageState extends State<WappPage>
                 _fieldValues['activity_target_mid'] = parentMid;
                 _fieldValues['activity_input'] = body;
                 _sendCommand('activity_reply');
-  
               },
               onSenderTap: _feedSenderTap,
               profileFor: _feedProfileFor,
@@ -7346,15 +7376,16 @@ class _WappPageState extends State<WappPage>
     // is not the case for a peer the wapp discovered itself — the profile
     // displayed npub1rd8… while the host lookup returned nothing, so "Chat"
     // silently did nothing at all.
-    final id = _chatThreadIdFor(
-      (npub != null && npub.isNotEmpty) ? npub : target,
-    ) ??
+    final id =
+        _chatThreadIdFor((npub != null && npub.isNotEmpty) ? npub : target) ??
         _chatThreadIdFor(target);
     if (id == null) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(
-          content: Text('No messaging address known for $target yet — '
-              'they need to be heard on the network first.'),
+          content: Text(
+            'No messaging address known for $target yet — '
+            'they need to be heard on the network first.',
+          ),
         ),
       );
       return;
@@ -7493,8 +7524,9 @@ class _WappPageState extends State<WappPage>
               : () {
                   Navigator.of(context).pop();
                   _openMailWith(
-                      (resolvedNpub ?? '').isNotEmpty ? resolvedNpub! : c,
-                      name: c);
+                    (resolvedNpub ?? '').isNotEmpty ? resolvedNpub! : c,
+                    name: c,
+                  );
                 },
           following: _followedCalls.contains(c.toUpperCase()),
           blocked: _blockedCalls.contains(c.toUpperCase()),
