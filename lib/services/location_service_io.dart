@@ -11,6 +11,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:geolocator/geolocator.dart';
 
+import 'power_state.dart';
+
 class LocationService {
   LocationService._();
   static final LocationService instance = LocationService._();
@@ -19,11 +21,33 @@ class LocationService {
   double? _lon;
   bool _started = false;
   StreamSubscription<Position>? _sub;
+  DateTime _lastRead = DateTime.now();
+  Timer? _idleCheck;
+
+  /// Stop the stream when nothing has read a fix for this long. GPS is the
+  /// most expensive sensor on the phone and this cache is read by whichever
+  /// wapp happens to want a coordinate; once that wapp stops asking, the
+  /// stream was still running — all night, at best accuracy, with no distance
+  /// filter. The next [ensureStarted] (or [latE7] read) brings it back.
+  static const Duration _idleStop = Duration(minutes: 5);
 
   /// Latest fix as fixed-point degrees × 1e7 (fits int32 for ±90/±180), or
   /// null when there is no fix.
-  int? get latE7 => _lat == null ? null : (_lat! * 1e7).round();
-  int? get lonE7 => _lon == null ? null : (_lon! * 1e7).round();
+  int? get latE7 {
+    _touch();
+    return _lat == null ? null : (_lat! * 1e7).round();
+  }
+
+  int? get lonE7 {
+    _touch();
+    return _lon == null ? null : (_lon! * 1e7).round();
+  }
+
+  /// Somebody read the cache — the stream is earning its keep.
+  void _touch() {
+    _lastRead = DateTime.now();
+    if (!_started) ensureStarted();
+  }
 
   /// Kick off permission + position acquisition once. Fire-and-forget — the
   /// synchronous HAL just reads whatever is cached so far.
@@ -52,7 +76,18 @@ class LocationService {
       } catch (_) {
         // No immediate fix — the stream below may still deliver one.
       }
-      _sub = Geolocator.getPositionStream().listen(_set, onError: (_) {});
+      // Medium accuracy and a 25 m filter: this cache feeds position fields
+      // and map centring, not turn-by-turn navigation. Best-accuracy with no
+      // distance filter is a continuous GNSS fix — the default this used to
+      // take — for a value that is cosmetic between one street corner and the
+      // next (docs/performance.md 4.2).
+      _sub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          distanceFilter: 25,
+        ),
+      ).listen(_set, onError: (_) {});
+      _idleCheck ??= Timer.periodic(const Duration(minutes: 1), (_) => _idle());
     } catch (e) {
       // No location plugin on this platform (desktop Linux has none) or some
       // other failure — leave coords null so callers fall back.
@@ -83,6 +118,22 @@ class LocationService {
       debugPrint('LocationService.currentPosition: $e');
       return null;
     }
+  }
+
+  /// Stop the stream when nobody is reading it, or when the battery tier says
+  /// the phone is scraping by. Never stops it while a fix is being consumed.
+  void _idle() {
+    if (_sub == null) return;
+    final idle = DateTime.now().difference(_lastRead) >= _idleStop;
+    final low = PowerState.instance.tier.value == PowerTier.low;
+    if (!idle && !low) return;
+    debugPrint('LocationService: stopping GPS stream '
+        '(${low ? 'low battery' : 'unread for ${_idleStop.inMinutes} min'})');
+    _sub?.cancel();
+    _sub = null;
+    _idleCheck?.cancel();
+    _idleCheck = null;
+    _started = false; // the next read starts it again
   }
 
   void _set(Position p) {

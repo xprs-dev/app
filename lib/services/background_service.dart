@@ -19,6 +19,7 @@ import 'dart:async';
 import 'dart:isolate';
 
 import '../models/monitored_task.dart';
+import 'power_state.dart';
 import 'task_monitor_service.dart';
 
 // (TaskStateChangedEvent lives in monitored_task.dart, imported above.)
@@ -31,6 +32,7 @@ abstract class BackgroundService {
     this.serviceName = 'services',
     this.priority = TaskPriority.normal,
     this.runsInIsolate = false,
+    this.tierThrottled = true,
     this.description,
   });
 
@@ -44,10 +46,24 @@ abstract class BackgroundService {
   /// Registers as [TaskType.isolate] and signals that [onTick] offloads its
   /// heavy work onto a worker isolate (see [runOffThread]).
   final bool runsInIsolate;
+
+  /// Whether this loop may be slowed down in the battery-saving power tiers.
+  ///
+  /// A declared interval is a FRESHNESS setting written with the screen on; in
+  /// the background on battery it is a battery setting, spent 1,440+ times a
+  /// day for a result nobody is awake to read (docs/performance.md 6.5). Ticks
+  /// are coalesced to [_minGapMs] rather than cancelled, so the loop stays
+  /// alive and the next tick still happens — just less often.
+  ///
+  /// Set false for anything delivery-critical (a courier pump, a custody
+  /// re-air, a transfer scheduler): those keep their declared cadence in every
+  /// tier.
+  final bool tierThrottled;
   final String? description;
 
   Timer? _timer;
   StreamSubscription? _stateSub;
+  int _lastTickMs = 0;
   bool _started = false;
   bool _paused = false;
   bool get isRunning => _started;
@@ -116,8 +132,34 @@ abstract class BackgroundService {
   /// when the Dart timer is throttled in the background).
   Future<void> tickNow() => _runTick();
 
+  /// The shortest gap between two ticks right now: the declared interval,
+  /// stretched in the saving tiers. The multipliers are deliberately coarse —
+  /// five and ten — because the point is a different order of cost, not a
+  /// tuned one.
+  int get _minGapMs {
+    if (!tierThrottled || priority == TaskPriority.critical) {
+      return 0;
+    }
+    switch (PowerState.instance.tier.value) {
+      case PowerTier.battery:
+        return interval.inMilliseconds * 5;
+      case PowerTier.low:
+        return interval.inMilliseconds * 10;
+      case PowerTier.active:
+      case PowerTier.idle:
+        return 0;
+    }
+  }
+
   Future<void> _runTick() async {
     if (!_started) return;
+    // Both the Dart timer and the native heartbeat land here; coalescing on
+    // elapsed time throttles whichever is driving without either needing to
+    // know about the other.
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final gap = _minGapMs;
+    if (gap > 0 && nowMs - _lastTickMs < gap) return;
+    _lastTickMs = nowMs;
     final mon = TaskMonitorService.instance;
     // Honour governor / manual pause: skip the body, keep the loop alive.
     if (mon.getTask(id)?.status == TaskStatus.paused) return;

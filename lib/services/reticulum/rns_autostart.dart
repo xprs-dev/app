@@ -227,11 +227,32 @@ void startRnsAutostart() {
   // Periodic tick: brings the node up if it's down, AND tops up the hub mesh
   // (re-adds any uplink that dropped, or hubs that were unreachable earlier).
   // ensureRnsAutostart is idempotent, so this is safe to run while up.
-  _retryTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
+  //
+  // The cadence is adaptive. This ran every 30 s for the life of the process —
+  // 2,880 wakeups a day, almost all of them on a node that was already up and
+  // had nothing to do. onLinkDown above is the real recovery path (instant,
+  // event-driven); this is the net underneath it, so once the node is healthy
+  // it settles to five minutes and only tightens again when something is
+  // actually wrong.
+  _armRetry(const Duration(seconds: 30));
+}
+
+Duration _retryEvery = const Duration(seconds: 30);
+
+void _armRetry(Duration every) {
+  if (_retryTimer != null && _retryEvery == every) return;
+  _retryTimer?.cancel();
+  _retryEvery = every;
+  _retryTimer = Timer.periodic(every, (_) {
     final p = PreferencesService.instanceSync;
     if (p != null && !p.rnsAutoStart) return;
     if (RnsService.instance.isStarting) return;
     unawaited(_attempt());
+    // Healthy: back off to the slow net. Not up: keep looking often — this is
+    // the case the timer exists for.
+    _armRetry(RnsService.instance.isUp
+        ? const Duration(minutes: 5)
+        : const Duration(seconds: 30));
   });
 }
 
