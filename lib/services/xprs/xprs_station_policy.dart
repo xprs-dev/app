@@ -265,7 +265,8 @@ class XprsUnownedStations {
   bool note(XprsPacket p) {
     if (p.type != 'request' || p['q'] != 'owner') return false;
     final f = (p['f'] ?? '').toUpperCase();
-    if (!f.startsWith('X3')) return false;
+    // X2 or X3: a ship is claimed the way a rooftop relay is (section 3).
+    if (!f.startsWith('X2') && !f.startsWith('X3')) return false;
     _lastHeard[f] = p['ts'] ?? xprsIdentifier(p);
     return true;
   }

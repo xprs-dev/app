@@ -459,6 +459,7 @@ class XprsCatchup {
       // tank2, installed minutes earlier on a different network, already
       // resolved X3ARK to an LXMF destination two hops away through a public
       // hub. It could have asked at any moment; it just never knew it should.
+      ...RnsService.instance.announcedCallsigns(prefix: 'X2'),
       ...RnsService.instance.announcedCallsigns(prefix: 'X3'),
     ]) {
       final base = _base(c);
@@ -673,7 +674,7 @@ class XprsCatchup {
 
   static bool _looksLikeStation(String call) {
     final c = call.trim().toUpperCase();
-    return c.startsWith('X3');
+    return c.startsWith('X2') || c.startsWith('X3');
   }
 
   Future<void> _ask(String self, String archiver, int now,

@@ -228,6 +228,10 @@ void main() {
           isTrue);
       expect(r.note(_p('t:request f:X3RLY7 q:owner scope:local ts:$_later')),
           isTrue);
+      // A movable station (X2, section 3) is claimed like a fixed one.
+      expect(r.note(_p('t:request f:X2BOAT q:owner scope:local ts:$_ts')),
+          isTrue);
+      r.forget('X2BOAT');
       expect(r.heard, {'X3RLY7': _later});
       r.forget('X3RLY7');
       expect(r.heard, isEmpty);

@@ -954,7 +954,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           ((n.meta['callsign'] ?? n.label) as Object).toString().toUpperCase();
       if (call.startsWith('X1')) {
         users++;
-      } else if (call.startsWith('X3')) {
+      } else if (call.startsWith('X2') || call.startsWith('X3')) {
         stations++;
       } else {
         // X4 controlled devices, X5 groups, and any plain Reticulum peer that

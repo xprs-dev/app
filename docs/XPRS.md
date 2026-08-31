@@ -214,20 +214,34 @@ t:message f:X1QZ3N d:LISBOA ts:2026-08-08_14:26:40 m:net starts in ten minutes
 
 ## 3. Callsigns
 
-An XPRS callsign is `X1`, `X3`, `X4` or `X5` followed by two to five characters
-derived from the holder's public key:
+An XPRS callsign is `X1`, `X2`, `X3`, `X4` or `X5` followed by two to five
+characters derived from the holder's public key:
 
 ```
 X1 = person or operator
-X3 = station, relay or unattended equipment
+X2 = movable station: a ship, an aircraft, a bus, a car
+X3 = fixed station, relay or unattended equipment
 X4 = automated device, operated by a controller (section 25.7.1)
 X5 = group (section 26)
 ```
 
 A group holds a keypair like anything else, so it gets a callsign like anything
 else. What differs is only who holds the private half: a person for `X1`, a
-machine for `X3`, the controller that operates the device for `X4`, and
-whoever administers the group for `X5`.
+machine for `X2` and `X3`, the controller that operates the device for `X4`,
+and whoever administers the group for `X5`.
+
+`X2` and `X3` split on one question: is the station going anywhere. An `X2`
+moves -- a ship, an aircraft, a bus, a car -- so its position is a reading
+that expires and is worth asking for again. An `X3` is where it was: a relay
+on a roof, a buoy on a mooring, a repeater on a hill. A reader may cache an
+`X3`'s whereabouts and plan around them; an `X2`'s whereabouts are traffic.
+The choice is made at key generation and is a statement of intent, not a
+promise the network checks -- a fixed station trucked to a new site keeps its
+callsign and announces from where it now stands, and `site:` (section 23)
+still says per announcement whether a station stays put. Everything a station
+does in this document -- relaying, carrying, archiving, being owned and
+commanded (section 25.9) -- an `X2` does as an `X3` does; the prefix states
+what its position means, not what it may do.
 
 Those characters are taken from the bech32 encoding of the key, so the letters
 `b`, `i` and `o` and the digit `1` never appear in them.
@@ -261,7 +275,8 @@ label:
 Collisions can be produced deliberately at any of these lengths -- at two
 characters, in about a thousand tries. A receiver that needs to establish
 identity verifies a signature against the full public key (section 9). No
-authority issues, revokes or vouches for an `X1`, `X3`, `X4` or `X5` callsign.
+authority issues, revokes or vouches for an `X1`, `X2`, `X3`, `X4` or `X5`
+callsign.
 
 That last sentence has a consequence on the air: **a self-generated callsign may
 never be transmitted on licensed spectrum**, where identifying the station is a
@@ -1025,8 +1040,8 @@ t:message f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 m:meet at the bridge at six
 ### 6.3 Group
 
 `d:` holds a group name. Group names are uppercase, 1 to 16 characters. A
-station tells an open group from a person or a machine by the `X1`/`X3` prefix
-and the characters that follow, so an open group may not be named like one of
+station tells an open group from a person or a machine by the `X` prefixes of
+section 3 and the characters that follow, so an open group may not be named like one of
 those -- at any of the lengths section 3 allows, which is why a four-character
 group name such as `X1AB` is now as unusable as `X1ABCD` was.
 
@@ -2029,7 +2044,7 @@ check passes, and the extra fields are the attacker's. With one, they cannot,
 because they do not have the private half.
 
 What the signature does not establish is entitlement to the callsign. For an
-`X1` or `X3` callsign the derivation in section 3 does that. For a callsign
+`X1`, `X2` or `X3` callsign the derivation in section 3 does that. For a callsign
 issued by an authority nothing in this format does: section 18 proves that the
 key holder is present, and section 9.4.2 says where entitlement is checked
 instead, which is the authority's own register and not any packet.
@@ -2102,7 +2117,7 @@ as the nickname rule above requires.
 
 | Spectrum | Callsign in `f:` | Signing | Encryption |
 |---|---|---|---|
-| Licence-free (Bluetooth and LoRa ISM, WiFi), and the internet | any, including a self-generated `X1` or `X3` | permitted | permitted, and is the default for direct messages |
+| Licence-free (Bluetooth and LoRa ISM, WiFi), and the internet | any, including a self-generated `X1`, `X2` or `X3` | permitted | permitted, and is the default for direct messages |
 | Licensed spectrum, including the amateur bands | **only one issued by a competent authority to the operator transmitting** | permitted | not permitted on amateur bands |
 
 Amateur regulations prohibit obscuring the meaning of a transmission. A licensed
@@ -2123,13 +2138,13 @@ rule in this document that is not ours to relax: it comes from national
 regulation, it applies to the person keying the transmitter, and no property of
 the format changes it.
 
-An `X1`, `X3`, `X4` or `X5` callsign is derived by its holder from its own key
-(section 3). No authority issued it, no register lists it, and it can be
+An `X1`, `X2`, `X3`, `X4` or `X5` callsign is derived by its holder from its
+own key (section 3). No authority issued it, no register lists it, and it can be
 generated by anyone in a moment. That is as it should be on licence-free
 spectrum, where a callsign is a label. On licensed spectrum it identifies
 nobody, which is the thing an identification requirement exists to prevent, so
-a packet whose `f:` is `X1`, `X3`, `X4` or `X5` **must never be originated onto
-a licensed frequency**. A licensed operator transmits under the callsign on
+a packet whose `f:` is `X1`, `X2`, `X3`, `X4` or `X5` **must never be
+originated onto a licensed frequency**. A licensed operator transmits under the callsign on
 their licence, which the format already accepts at any length and with a
 suffix.
 
@@ -4068,8 +4083,8 @@ A signature (section 9.1) proves the packet was written by the holder of a key.
 It is optional, most traffic will not carry one, and a signed packet can be
 replayed later by anyone who heard it.
 
-An `X1` or `X3` callsign is derived from its own public key (section 3), so a
-station cannot announce one it does not hold: the characters would not match,
+An `X1`, `X2` or `X3` callsign is derived from its own public key (section
+3), so a station cannot announce one it does not hold: the characters would not match,
 at whatever length it announces. **This does not extend to a callsign issued by
 a radio authority.** `CT1ABC-9` has no arithmetic relationship to any key, so
 nothing in the format prevents a second station from claiming it.
@@ -6687,8 +6702,8 @@ negotiation.
 ## 33. Operating alongside APRS
 
 A licensed amateur may bridge XPRS and APRS under their own callsign and
-responsibility, subject to section 9.4. An `X1` or `X3` callsign is generated by
-the station itself and assigned by no authority, so traffic from such a callsign
+responsibility, subject to section 9.4. An `X1`, `X2` or `X3` callsign is generated
+by the station itself and assigned by no authority, so traffic from such a callsign
 must not be originated onto amateur infrastructure. Ciphertext must never be
 placed on APRS, both because APRS is a 7-bit protocol that would corrupt it and
 because obscured meaning is not permitted on amateur bands.
@@ -7383,7 +7398,7 @@ gatewayed, which is more exposure than an open group, not less.
 
 | | Licence-free and internet | Licensed spectrum |
 |---|---|---|
-| `f:` | any, `X1` and `X3` included | only a callsign issued to that operator |
+| `f:` | any, self-generated `X1`-`X5` included | only a callsign issued to that operator |
 | `sig:` | permitted | permitted |
 | `x:` | permitted, default on direct messages | never on amateur bands |
 | `t:challenge` | works | cannot: it seals a nonce |
