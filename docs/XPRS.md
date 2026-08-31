@@ -97,9 +97,9 @@ part leans on these five sections.
 
 ## 1. Purpose
 
-XPRS is APRS carried forward: not an alternative for unlicensed bands, but
-the whole design rebuilt with what three decades of running the original
-taught. APRS proved that a small text packet, heard by everyone and repeated
+XPRS is APRS with Store and Forward: provides an alternative for both
+licensed and unlicensed radio frequencies. The design is built with three
+decades of experience from APRS with features for the modern times. APRS proved that a small text packet, heard by everyone and repeated
 by volunteers, is enough to build a live map of who is where, doing what,
 needing what. XPRS keeps that idea whole and rebuilds the parts that
 three decades of use showed to be limits:
