@@ -1014,11 +1014,15 @@ Four rules this design is bounded by, none of them negotiable:
    `active` cost: a GATT link up, a mesh dial in progress. A loop that must
    keep its cadence in every tier declares `tierThrottled: false` (or a
    `critical` priority) — courier pumps, custody re-airs, transfer schedulers.
-4. **Receiving never waits for the heartbeat.** A scan result or socket data
-   wakes the process on its own; the heartbeat drives outbound and
-   housekeeping. That is why stretching it to 10 s does not cost receive
-   latency, and it is the assumption to re-check first if a message ever
-   arrives late in the `battery` tier.
+4. **The radio never waits for the heartbeat — the wapp drain does.** A scan
+   result or socket data wakes the process on its own, so nothing is *missed*
+   by a slower tick: the frame is ingested and stored when it lands. What the
+   tick drives is `_WappBackgroundService.onTick` → `engine.tick()` + `_drain()`,
+   which is where a headless wapp turns a received message into a notification.
+   So the honest figure is: **a background message can surface up to one tick
+   late — ~10 s in `battery`, ~30 s in `low`** (`active`/`idle` are unchanged at
+   2 s). That is the deliberate trade, and it is the first thing to shorten if
+   it reads as slow in the hand; it is not a dropped or missed message.
 
 Also fixed while in `Ble5.kt`, the open defect docs/ble5.md §9.4 recorded: a
 scan whose registration fails (`SCAN_FAILED_APPLICATION_REGISTRATION_FAILED`
