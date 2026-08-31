@@ -19,15 +19,6 @@ or the internet. No licence is needed on licence-free spectrum; on amateur
 bands it operates under amateur rules -- plain text, a government-issued
 callsign, no ciphertext (sections 9.4 and 33).
 
-The document is in eleven parts. Parts I-III define the format: callsigns,
-the packet, identifiers, messages, requests, signatures and observations.
-Parts IV-V move packets and carry them to the absent, and state the safety
-traffic that outranks everything else. Parts VI-VIII are what stations
-publish, operate and organise: proofs, posts, services, commands, groups.
-Parts IX-XI are the rules of the shared air, the registries, and how
-archives federate. Section 1 states what changed from APRS and why;
-section 37 states what is implemented today.
-
 Status: DRAFT 10. Section 37 states which parts are implemented.
 
 ---
@@ -111,10 +102,10 @@ Every section is linkable: `XPRS.md#3-callsigns` and so on.
 
 # Part I. Foundations
 
-What every other section stands on: what the network is for, the rules
-every field obeys, how a callsign is derived from a key, what a packet
-looks like on the wire, and how a packet is identified without ever
-transmitting the identifier.
+Why the network exists, the rules every field obeys, where a callsign
+comes from, what a packet looks like on the wire, and how a packet is
+named without the name ever being transmitted. Everything after this
+part leans on these five sections.
 
 ## 1. Purpose
 
@@ -1007,9 +998,9 @@ a receipt, or a withdrawal of the sender's own earlier packet (section 17.2).
 
 # Part II. Correspondence
 
-Packets between people: messages and replies, questions and answers, the
-reserved words they use, and the signatures and sealed bodies that make
-authorship checkable and content private.
+Messages and replies, questions and answers, the words reserved for
+them, and the signatures and sealed bodies. The part two people use to
+talk.
 
 ## 6. Messages
 
@@ -2217,8 +2208,8 @@ Three consequences follow, and they are the price of operating there:
 
 # Part III. Observations
 
-Packets about the world: positions, weather, telemetry and device
-readings, followed by worked examples of the format doing its job.
+Positions, weather, telemetry and device readings, and two sections of
+worked examples.
 
 ## 10. Observations
 
@@ -3005,9 +2996,9 @@ the higher uptime is later. Packet 3 makes the anchor explicit.
 
 # Part IV. Delivery
 
-How a packet travels further than the radio that sent it: relays and hop
-budgets, custody for the absent, receipts, mailboxes, and the scope rules
-that keep local traffic local.
+One section, the longest in the document. A packet outruns its radio
+by being repeated, or by being carried -- relays, custody, receipts,
+mailboxes, and the scope rules that keep local traffic local.
 
 ## 13. Relaying and carried messages
 
@@ -3753,8 +3744,8 @@ nothing: it is under exactly the quota and priority rules of
 
 # Part V. Position and safety
 
-Movement and emergency traffic. A call for help is a packet type, not a
-flag, and it outranks everything else this document defines.
+Movement, and the traffic that outranks everything else in this
+document. An sos is a packet type, not a flag on one.
 
 ## 14. Tracks
 
@@ -4065,8 +4056,8 @@ A withdrawal carries no `pos:`, no `kind:` and no `m:`. It says one thing.
 
 # Part VI. Identity and publishing
 
-Binding a callsign to a key in public, and the durable content a station
-publishes under it: posts, passages, events, offers and channels.
+A callsign proven in public, and the durable things published under
+one -- posts, passages, events, offers and needs, channels.
 
 ## 18. Proving a callsign
 
@@ -4828,9 +4819,9 @@ then bracket a lane both actually chose.
 
 # Part VII. Stations and automation
 
-What a station does for others and how it is told to do it: announced
-services, signed commands and their results, device control, station
-ownership, and closed groups with signed membership.
+Stations that do things for other stations. Announced services, signed
+commands and their results, operated devices, owned stations, and
+closed groups with signed membership.
 
 ## 24. Services
 
@@ -6173,7 +6164,7 @@ an announcement could equally have asked.
 
 # Part VIII. Community
 
-Small social packets: presence, polls, reports and named places.
+Presence, polls, reports and named places.
 
 ## 27. Status
 
@@ -6552,9 +6543,8 @@ are the right packet when somebody could be hurt.
 
 # Part IX. Operating rules
 
-The budgets and boundaries every station honours: airtime arithmetic,
-how the format is extended without breaking a deployed receiver, and the
-line drawn where XPRS meets APRS.
+Airtime budgets, how the format grows without breaking a deployed
+receiver, and the line drawn where XPRS meets APRS.
 
 ## 31. Airtime
 
@@ -6707,8 +6697,8 @@ because obscured meaning is not permitted on amateur bands.
 
 # Part X. Reference
 
-The registries: every assigned type, key and word, and the whole format
-compressed onto a few pages.
+The registries -- every assigned type, key and word -- and the whole
+format on a few pages.
 
 ## 34. Reserved
 
@@ -7455,9 +7445,9 @@ document.
 
 # Part XI. Archives and implementation
 
-How published packets outlive their transmission -- archivers each
-station chooses, federated by directories -- and the current state of the
-implementations.
+Where published packets live on: the archivers a station chooses,
+federated by directories rather than by copying each other. And what of
+all this is implemented today.
 
 ## 36. Publishing, and the archivers you choose
 
