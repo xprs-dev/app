@@ -9,8 +9,6 @@ or the internet. No licence is needed on licence-free spectrum; on amateur
 bands it operates under amateur rules -- plain text, a government-issued
 callsign, no ciphertext (sections 9.4 and 33).
 
-Status: DRAFT 10. Section 37 states which parts are implemented.
-
 ---
 
 ## Contents
