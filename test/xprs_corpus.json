@@ -690,6 +690,16 @@
 "id": "b8cdfd"
 },
 {
+"wire": "t:request f:X1QZ3N d:X3RLY7 ts:2026-08-08_14:26:40 q:mail only:X1QZ3N",
+"bytes": null,
+"id": "e07f0f"
+},
+{
+"wire": "t:observation f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:26:41 s:mail mail:3 only:X1QZ3N",
+"bytes": null,
+"id": "ac7484"
+},
+{
 "wire": "t:track f:X3BAL1 track:sagres-2026 seq:1 pos:38.9012,-9.0021 alt:11240m type:balloon ts:2026-08-08_14:26:40",
 "bytes": 107,
 "id": "10b74f"

@@ -1472,6 +1472,7 @@ q:sign       sign a receipt confirming you read this
 q:pong       reply to this reachability test
 q:have       say whether you hold the file named by file:
 q:state      send your device state: state:, level:, target: (section 25.7)
+q:mail       say how much mail you hold, for the callsign in only: (13.12.3)
 ```
 
 Several are separated by commas. An unknown word is ignored, so `q:pos,bat,co2`
@@ -1565,8 +1566,8 @@ attacker never held (section 13.7.1).
 ## 8. Reserved words
 
 `q:` and `s:` words assigned by this document: `ack`, `read`, `sign`, `pos`,
-`batt`, `identity`, `pong`, `have`, `state`, `no`, `owner`, `policy`. Command
-words assigned: `history`, `file`, `put`, `set`, `interpret`, `update`.
+`batt`, `identity`, `pong`, `have`, `state`, `no`, `owner`, `policy`, `mail`.
+Command words assigned: `history`, `file`, `put`, `set`, `interpret`, `update`.
 Reactions assigned for `add:` and `remove:`: `like`, `repost`. All other words
 are reserved. A word beginning with `z` is private, as a key beginning with `z`
 is.
@@ -3742,6 +3743,34 @@ Listing a station is not asking its permission. `hold:` records where the sender
 believes their mail will be seen, and a station named in one is free to carry
 nothing: it is under exactly the quota and priority rules of
 [store-and-forward.md](store-and-forward.md) as for any other traffic.
+
+### 13.12.3 Asking whether there is mail
+
+`q:mail` asks a station how much mail it holds. `only:` names whose, and its
+absence asks about the total the station is carrying for everybody.
+
+```
+t:request f:X1QZ3N d:X3RLY7 ts:2026-08-08_14:26:40 q:mail only:X1QZ3N
+t:observation f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:26:41 s:mail mail:3 only:X1QZ3N
+```
+
+The answer is the `mail:` of section 10.6.5, narrowed: how many messages this
+station holds for that callsign and would hand over if asked. Zero is answered
+`mail:0` rather than with silence, because "nothing for you" and "did not hear
+you" are different facts and a station coming back needs to tell them apart.
+
+**This exists because the alternative is expensive.** Without it the only way
+to learn whether a station holds anything is `cmd:history only:X kind:message`
+(section 25.2), which replays the mail itself -- a page of packets, and a place
+in the asker's hourly budget (section 31.2) -- to answer a question whose usual
+answer is nothing. A station returning to a valley asks every archiver in
+earshot before it asks one of them for contents.
+
+The count is a hint and not a promise, exactly as the beacon's `mail:` is:
+what a later `cmd:history` returns is bounded by the same eviction (section
+36.11) and the same budget as everything else. Any asker may be answered --
+knowing that mail exists is not reading it, and the mail itself is still
+served only to its two parties.
 
 ---
 

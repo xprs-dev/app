@@ -84,17 +84,25 @@ because the sender's LXMF address is a pure function of their public key, and
 deriving it is safer than trusting an address the sender wrote. `np:` because a
 sealed body already proves who the copy is for.
 
-**The dongle is ported** (xprs-firmware `models/tdongle-s3/firmware`, via
-`common/xprs_xprs` — a C
-mirror of `lib/services/xprs/` verified against the same 205-example corpus):
-it reads XPRS on both subtypes, parks 1:1 `t:message` mail keyed by the derived
-identifier at the stated (capped) urgency, refuses `scope:local` at admission,
-releases on `?ACK <id>` and on `t:receipt … r:<id> s:ack`, re-airs with itself
-appended to `via:`, answers `t:ping` with a rate-limited `t:pong rssi:`, and
-airs its own `t:observation … link:ble mail:N` beacon on `0x58`. It transmits
-unsigned (`sig:` is XPRS short-Schnorr over secp256k1, which TweetNaCl/mbedtls
-do not provide) and dates packets `epoch:<boots>.<uptime>` per XPRS.md §10.7,
-holding no wall clock.
+**The stations carry mail too, and differently.** An ESP32 keeps no separate
+custody queue: a record with `d:` is flagged mail in the ordinary archive
+(`common/xprs_index`), and delivery is triggered by hearing the recipient
+directly — §36.8.1, not a poll. It then airs that callsign's newest messages
+with itself appended to `via:`, paced, and stops re-airing an id once it has
+verified a `t:receipt s:ack` for it. What is held is announced two ways: as
+`mail:<n>` on the ten-minute `t:service` beacon (§10.6.5), and as a one-packet
+answer to `q:mail only:<call>` (§13.12.3).
+
+Retention when the store fills is XPRS.md §36.11: declared mail last, other
+people's mail before it, the spool first. A station signs what it originates,
+and dates packets `epoch:<boots>.<uptime>` (§10.7) until it has a clock — a
+receiver that has one anchors that epoch and dates the packets from it, so a
+clockless station is still reachable by a `since:` window.
+
+The older firmware described here — a store-carry-forward in
+`common/xprs_blemesh` and a C mirror at `common/xprs_xprs` — is not what runs:
+`xprs_blemesh` is built by no board under `models/`, and `xprs_xprs` no longer
+exists.
 
 `FROM` and `TO` are always public. A carrier that cannot read the recipient
 cannot determine where to relay the frame, which is what allows custody to
