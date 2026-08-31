@@ -19,6 +19,7 @@ import 'dart:async';
 
 import '../xprs/xprs_monitor.dart';
 import '../log_service.dart';
+import '../power_state.dart';
 import 'mesh_bulk_spool.dart';
 import 'mesh_beacon.dart';
 import 'mesh_custodian.dart';
@@ -119,6 +120,7 @@ class MeshTransferScheduler {
     _pendingSeen.clear();
     _emptyVisits.clear();
     _dialing = null;
+    PowerState.instance.releaseActive('mesh-dial');
     _starvedSince = null;
     _lastDialAttempt = DateTime.now();
   }
@@ -136,6 +138,7 @@ class MeshTransferScheduler {
   void dialResult(String peer, {required bool clean}) {
     final p = peer.toUpperCase();
     _dialing = null;
+    PowerState.instance.releaseActive('mesh-dial');
     if (clean) {
       _backoff.remove(p);
       _nextTry[p] = DateTime.now().add(_cleanQuiet);
@@ -369,6 +372,10 @@ class MeshTransferScheduler {
       // noticed work piling up behind a link that never forms.
       _lastDialAttempt = DateTime.now();
       _dialing = peer.toUpperCase();
+      // Delivery in flight: hold the device at its `active` cost until the
+      // dial resolves, so power tiering never widens the scan window (or
+      // stretches the heartbeat) underneath a handover in progress.
+      PowerState.instance.holdActive('mesh-dial');
       _dialStarted = DateTime.now();
     } else {
       // The transport refused and has already said why (BleService.meshDial

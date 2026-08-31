@@ -25,6 +25,7 @@ import '../../profile/profile_service.dart';
 import '../../services/android_permissions_service.dart';
 import '../../services/log_service.dart';
 import '../../services/mesh/mesh_custody.dart';
+import '../../services/power_state.dart';
 import '../../services/xprs/xprs_ingest.dart';
 import '../../services/xprs/xprs_packet.dart';
 import '../../services/mesh/mesh_transfer_scheduler.dart';
@@ -762,6 +763,7 @@ class BleService {
     _ngClientUp = true;
     _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
     _dbg('native GATT client link up to $_ngClientPeer');
+    _applyScanTier(); // a link in flight is never scanned around slowly
     // Extended scan stays up: docs/ble5.md section 4, "The scan is never
     // suspended". Stopping it here is what left the phone deaf — Ble5Bus.stopScan
     // tore down the EventChannel subscription, the native sink went null, and
@@ -774,6 +776,7 @@ class BleService {
 
   void _onNgDisconnected() {
     _dbg('native GATT client link down ($_ngClientPeer)');
+    _applyScanTier();
     _ngClientUp = false;
     _ngClientPeer = null;
     MeshSessionManager.instance.onLinkDown(serverSide: false);
@@ -1325,10 +1328,52 @@ class BleService {
 
   bool _serviceHeld = false;
 
+  // ── scan duty cycle by power tier ────────────────────────────────────────
+  //
+  // The scan is NEVER stopped for power (docs/ble5.md 4: stopping it during a
+  // GATT link measured 10-of-10 down to 0-of-10). What changes is how wide the
+  // window between looks is: BALANCED while somebody is looking or the phone
+  // is on a charger, LOW_POWER on battery with the screen off, where the
+  // courier re-transmits and store-and-forward absorb the slower hearing
+  // (docs/mesh.md 2).
+  //
+  // Two safeguards. Delivery in flight — a GATT link up, or any PowerState
+  // hold — keeps BALANCED regardless of tier. And the mode is only ever
+  // applied on a tier CHANGE (PowerState holds a one-minute dwell), because
+  // changing it restarts the scan and Android throttles an app to about five
+  // scan starts per thirty seconds.
+  static const int _scanModeLowPower = 0;
+  static const int _scanModeBalanced = 1;
+  int _appliedScanMode = _scanModeBalanced;
+  bool _scanTierArmed = false;
+
+  void _armScanTier() {
+    if (_scanTierArmed || !Platform.isAndroid || !_ble5) return;
+    _scanTierArmed = true;
+    PowerState.instance.tier.addListener(_applyScanTier);
+    _applyScanTier();
+  }
+
+  void _applyScanTier() {
+    if (!_ble5) return;
+    final saving = PowerState.instance.isBackgroundSaving &&
+        !PowerState.instance.hasActiveHold &&
+        !gattLinkUp;
+    final want = saving ? _scanModeLowPower : _scanModeBalanced;
+    if (want == _appliedScanMode) return;
+    _appliedScanMode = want;
+    LogService.instance.add(
+      'BLE5: scan mode ${want == _scanModeLowPower ? 'low-power' : 'balanced'} '
+      '(tier ${PowerState.instance.tier.value.name})',
+    );
+    unawaited(Ble5Bus.instance.setScanMode(want));
+  }
+
   Future<bool> startScan() async {
     await _ensure();
     await _holdService();
     _armServiceTick();
+    _armScanTier();
     // Start the shared BLE5 extended scan (also feeds Reticulum). Independent of
     // the legacy _central scan, which still runs for legacy/ESP32 peers.
     if (_ble5) await Ble5Bus.instance.startScan();

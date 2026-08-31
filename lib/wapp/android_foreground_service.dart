@@ -16,6 +16,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/services.dart';
 
+import '../services/power_state.dart';
 import 'background_wapp_manager.dart';
 
 class AndroidForegroundService {
@@ -48,6 +49,10 @@ class AndroidForegroundService {
       for (final listener in List<void Function()>.of(_tickListeners)) {
         listener();
       }
+    } else if (call.method == 'power.screen') {
+      // The native service saw ACTION_SCREEN_ON/OFF. This is the only screen
+      // signal a headless engine ever gets.
+      PowerState.instance.setScreenOn(call.arguments == true);
     } else if (call.method == 'media.action') {
       final action = (call.arguments is Map)
           ? (call.arguments['action']?.toString() ?? '')

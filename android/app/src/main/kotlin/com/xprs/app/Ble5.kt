@@ -142,6 +142,15 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     private val scanWatchdog = object : Runnable {
         override fun run() {
             if (disposed) return
+            // A scan that failed registration left no callback behind. Nothing
+            // was retrying it here — the app waited for Dart to ask again,
+            // which on a headless phone could be never.
+            if (scanCallback == null && wantScan &&
+                System.currentTimeMillis() >= nextScanRetryAt
+            ) {
+                android.util.Log.w(TAG, "scan not running (last failure code=$scanLastFailCode) — retrying")
+                startScan()
+            }
             if (scanCallback != null) {
                 val now = System.currentTimeMillis()
                 val lastSeen = maxOf(lastScanResultMs, scanStartedMs)
@@ -191,6 +200,25 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     private val advAttempts = java.util.concurrent.atomic.AtomicLong(0)
     private val advFailures = java.util.concurrent.atomic.AtomicLong(0)
     private val scanResults = java.util.concurrent.atomic.AtomicLong(0)
+
+    // ── scan mode and scan-failure recovery ─────────────────────────────────
+    //
+    // The mode is a BATTERY dial, never an on/off switch: pausing the scan
+    // during a GATT link once took delivery from 10-of-10 to 0-of-10
+    // (docs/ble5.md 4), so nothing here ever stops scanning to save power. It
+    // only widens the window between looks, which store-and-forward absorbs.
+    //
+    // The failure path is the other half. A scan that fails registration
+    // (SCAN_FAILED_APPLICATION_REGISTRATION_FAILED after a Bluetooth restart)
+    // used to drop its callback and be retried by the watchdog every 60 s
+    // forever, with no record that it was happening: a phone whose scan was
+    // permanently refused looked exactly like a phone in an empty room
+    // (docs/ble5.md 9.4). Now the retry backs off, and `scanDead` says so.
+    @Volatile private var scanMode = ScanSettings.SCAN_MODE_BALANCED
+    @Volatile private var wantScan = false
+    @Volatile private var scanFailures = 0
+    @Volatile private var scanLastFailCode = 0
+    @Volatile private var nextScanRetryAt = 0L
     @Volatile private var advLastError: String? = null
     @Volatile private var lastScanResultAt = 0L
 
@@ -300,6 +328,13 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
                 "stopAdvertise" -> onWorker(result) { stopAdvertise(); true }
                 "radioStatus" -> result.success(radioStatus())
                 "startScan" -> onWorker(result) { startScan() }
+                // 0 LOW_POWER, 1 BALANCED, 2 LOW_LATENCY. The tier system's
+                // battery dial; it cannot switch the scan off.
+                "setScanMode" -> {
+                    val m = (call.argument<Int>("mode") ?: ScanSettings.SCAN_MODE_BALANCED)
+                        .coerceIn(ScanSettings.SCAN_MODE_LOW_POWER, ScanSettings.SCAN_MODE_LOW_LATENCY)
+                    onWorker(result) { setScanMode(m) }
+                }
                 "stopScan" -> onWorker(result) { stopScan(); true }
                 else -> result.notImplemented()
             }
@@ -611,6 +646,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
      *  0x3E-marker frame as [subtype, payload...] so Dart demuxes by subtype. */
     private fun startScan(): Boolean {
         if (disposed) return false
+        wantScan = true
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         // Both of these used to return false with no line anywhere, which is
         // indistinguishable from "scanning fine but the air is empty". The
@@ -628,7 +664,12 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             // Balanced mode is deliberate for always-on/background operation:
             // low-latency scans can flood the main looper on rugged devices and
             // make the Flutter UI appear black/unresponsive.
-            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
+            // Balanced is the default and is deliberate for always-on
+            // operation: low-latency scans can flood the main looper on rugged
+            // devices and make the Flutter UI appear black. On battery with the
+            // screen off the tier drops this to LOW_POWER — a wider window
+            // between looks, never a pause (see [scanMode]).
+            .setScanMode(scanMode)
             .setLegacy(false) // receive extended advertisements
             .setPhy(ScanSettings.PHY_LE_ALL_SUPPORTED)
             .build()
@@ -638,7 +679,17 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
                 // e.g. APPLICATION_REGISTRATION_FAILED after a BT restart —
                 // drop the dead callback so the watchdog (or next startScan)
                 // can register a fresh one.
-                android.util.Log.e(TAG, "scan failed code=$errorCode — will re-register")
+                scanFailures += 1
+                scanLastFailCode = errorCode
+                // 60 s, 2 min, 4 min ... capped at 15. A controller that is
+                // refusing registration will not change its mind in a second,
+                // and asking it to is a wakeup an hour times sixty.
+                val backoff = minOf(60_000L shl minOf(scanFailures - 1, 4), 900_000L)
+                nextScanRetryAt = System.currentTimeMillis() + backoff
+                android.util.Log.e(
+                    TAG,
+                    "scan failed code=$errorCode (#$scanFailures) — re-register in ${backoff / 1000}s",
+                )
                 scanCallback = null
                 scanner = null
             }
@@ -691,6 +742,8 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             s.startScan(listOf(filter), settings, cb)
             scanner = s
             scanStartedMs = System.currentTimeMillis()
+            scanFailures = 0
+            nextScanRetryAt = 0L
             if (!scanWatchdogOn) {
                 scanWatchdogOn = true
                 bg.postDelayed(scanWatchdog, 60_000)
@@ -701,6 +754,28 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             scanCallback = null
             false
         }
+    }
+
+    /**
+     * Change the scan MODE (never whether it scans). A mode is fixed when the
+     * scan starts, so a change means a stop and a start — which is why the
+     * caller must not do this often: Android throttles an app to roughly five
+     * scan starts per thirty seconds (docs/mesh.md), and PowerState holds a
+     * one-minute dwell on every tier change for exactly this reason.
+     *
+     * Returns the mode in force afterwards.
+     */
+    private fun setScanMode(mode: Int): Int {
+        if (mode == scanMode) return scanMode
+        scanMode = mode
+        if (scanCallback != null) {
+            // Keep the watchdog armed across the restart: this is a mode
+            // change, not a shutdown.
+            stopScan(stopWatchdog = false)
+            startScan()
+        }
+        android.util.Log.i(TAG, "scan mode -> $mode")
+        return scanMode
     }
 
     private fun shouldEmitScan(key: String, now: Long): Boolean {
@@ -720,6 +795,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     }
 
     private fun stopScan(stopWatchdog: Boolean = true) {
+        if (stopWatchdog) wantScan = false
         val cb = scanCallback
         if (cb != null) {
             try { scanner?.stopScan(cb) } catch (_: Exception) {}
@@ -757,6 +833,12 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         "rxMarker" to rxMarker.get(),
         "rxDedup" to rxDedup.get(),
         "scanning" to (scanCallback != null),
+        "scanMode" to scanMode,
+        // The verdict this file used to withhold: the scan is WANTED and is
+        // not running because the controller keeps refusing it.
+        "scanDead" to (wantScan && scanCallback == null && scanFailures >= 2),
+        "scanFailures" to scanFailures,
+        "scanLastFailCode" to scanLastFailCode,
         "maxDataLen" to maxDataLen(),
         // The GATT endpoint: server + connectable advert + discovery scan.
         // All three come up together in startServer(), and until they were

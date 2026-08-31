@@ -52,6 +52,14 @@ object BgBridge {
                     ContextCompat.startForegroundService(appCtx, i)
                     result.success(true)
                 }
+                // Dart's PowerState published a new tier: heartbeat period,
+                // wake-lock policy and WiFi-lock strength follow it. Delivery
+                // does not — the scan, the service and the multicast lock are
+                // untouched by this.
+                "power.tier" -> {
+                    BgService.setTier(call.argument<String>("tier") ?: "active")
+                    result.success(true)
+                }
                 "stop" -> {
                     appCtx.stopService(Intent(appCtx, BgService::class.java))
                     result.success(true)
