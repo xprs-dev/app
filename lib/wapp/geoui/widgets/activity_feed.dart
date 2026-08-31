@@ -862,7 +862,14 @@ class _ActivityFeedState extends State<ActivityFeed> {
     if (ref.kind == MediaKind.image) {
       final bytes = sharedMediaArchive()?.get(ref.sha256);
       inner = bytes != null
-          ? Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true)
+          // A 64 px chip: decoding a 12-megapixel camera photo at full size
+          // costs ~48 MB of image cache for 4096 rendered pixels.
+          ? Image.memory(
+              bytes,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              cacheWidth: 192,
+            )
           : Container(color: Colors.black26);
     } else {
       inner = Container(

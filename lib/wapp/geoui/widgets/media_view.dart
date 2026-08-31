@@ -501,6 +501,7 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
                 widget.inlineThumb!,
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
+                cacheWidth: (_w * 2).toInt(), // drawn in a _w x _h box
                 errorBuilder: (_, __, ___) => _iconBox(cs),
               ),
               // Dim the preview so the overlay reads clearly.
@@ -1005,6 +1006,9 @@ class _GalleryMediaTileState extends State<GalleryMediaTile> {
         Image.memory(_preview!,
             fit: BoxFit.cover,
             gaplessPlayback: true,
+            // A gallery tile is at most half the screen wide; 512 px of
+            // decoded width covers that on any phone.
+            cacheWidth: 512,
             errorBuilder: (_, __, ___) =>
                 Container(color: cs.surfaceContainerHighest)),
         if (isVideo) Center(child: _playBadge(cs)),

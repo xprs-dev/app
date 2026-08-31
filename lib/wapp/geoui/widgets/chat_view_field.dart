@@ -1396,7 +1396,10 @@ class _ChatViewFieldState extends State<ChatViewField> {
     if (ref.kind == MediaKind.image) {
       final bytes = sharedMediaArchive()?.get(ref.sha256);
       inner = bytes != null
-          ? Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true)
+          // 56 px chip: decode to the size it is drawn at, not the size the
+          // camera took.
+          ? Image.memory(bytes,
+              fit: BoxFit.cover, gaplessPlayback: true, cacheWidth: 168)
           : Container(
               color: Colors.black26,
               child: const Icon(Icons.image, color: Colors.white70, size: 22));

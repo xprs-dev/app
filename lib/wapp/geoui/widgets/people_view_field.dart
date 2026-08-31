@@ -509,6 +509,8 @@ class _TokenAvatarState extends State<_TokenAvatar> {
         height: widget.size,
         fit: BoxFit.cover,
         gaplessPlayback: true,
+        // An avatar is drawn at `size`; 3x covers the densest phone screen.
+        cacheWidth: (widget.size * 3).toInt(),
         errorBuilder: (_, __, ___) =>
             GeneratedAvatar(seed: widget.seed, size: widget.size),
       ),
