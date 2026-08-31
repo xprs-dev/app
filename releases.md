@@ -11,7 +11,7 @@ is not one github.com string in `lib/`. What the app knows is a feed on
 ## 1. The shape: the web announces, Reticulum carries
 
 ```
-  xprs-dev/xprs-flutter                      xprs-dev/wapps
+  xprs-dev/app                              xprs-dev/wapps
         │  release.yml on tag vX.Y.Z               │ build-archive.sh commits binaries/
         │   build android/linux/windows            │
         │   attach as GitHub RELEASE ASSETS        │

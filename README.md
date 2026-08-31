@@ -20,16 +20,14 @@ four main ones: Chat, Social, Reticulum, and Torrents.
 
 ## Download
 
-The latest stable build:
+**[xprs.dev/app](https://xprs.dev/app)** — the current build for Android,
+Linux and Windows, every file with its sha256, and what each platform needs to
+install it. The page reads the same update feed the application itself updates
+from, so it is never a release behind.
 
-| Platform | Download |
-|----------|----------|
-| Linux (x64) | [XPRS for Linux (.tar.gz)](https://github.com/xprs-dev/xprs-flutter/releases/latest/download/aurora-linux-x64.tar.gz) |
-| Windows (x64) | [XPRS for Windows (installer)](https://github.com/xprs-dev/xprs-flutter/releases/latest/download/aurora-windows-x64-setup.exe) |
-| Android | [XPRS for Android (.apk)](https://github.com/xprs-dev/xprs-flutter/releases/latest/download/aurora.apk) |
-
-Every build, betas included, is on the
-[releases page](https://github.com/xprs-dev/xprs-flutter/releases). macOS builds from
+The direct links there are versioned (`xprs-1.2.4-android-arm64-v8a.apk`), so
+this table cannot hold a stable one. Every build, betas included, is on the
+[releases page](https://github.com/xprs-dev/app/releases). macOS builds from
 source (see [Build & run](#build--run)).
 
 ## What it does

@@ -33,7 +33,7 @@
 ; pointed at a file that was never there. It shipped that way in v1.1.0.
 #define MyAppExeName "xprs.exe"
 #define MyAppPublisher "XPRS"
-#define MyAppURL "https://github.com/xprs-dev/xprs-flutter"
+#define MyAppURL "https://github.com/xprs-dev/app"
 
 [Setup]
 AppId={{D2A7C4E1-9B3F-4E62-8A05-7F1C6B9E2A44}

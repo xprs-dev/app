@@ -116,7 +116,7 @@ Wapp source lives in `../wapps` (the `xprs-dev/wapps` repo), not here;
 ```sh
 cd ../wapps/<name> && WASI_SDK_PATH=~/wasi-sdk make          # -Werror
 cd ../ && ./build-archive.sh <name>
-cp binaries/<name>/<name>-<version>.wapp ../xprs-flutter/assets/wapps/<name>.wapp
+cp binaries/<name>/<name>-<version>.wapp ../app/assets/wapps/<name>.wapp
 ```
 
 Bump `manifest.json` version or installed copies never update.
