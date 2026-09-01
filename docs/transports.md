@@ -66,6 +66,12 @@ relay), and stamped with the packet's own `ts:` rather than when it was heard.
 
 ## 4. The receive funnel, and the mail nobody was carrying
 
+> This section ends where the funnel hands the packet on. The half after that
+> — inbox, wapp, notification, bubble — is drawn in
+> [diagrams/message-receive-flow.md](diagrams/message-receive-flow.md) and audited in
+> [message-receive.md](message-receive.md), which reports that the Reticulum lane
+> archives a 1:1 addressed to us and never delivers it.
+
 `XprsIngest.heard` is the one door every bearer enters by. It shows the packet to
 the monitor, files it, delivers it if it is ours — and now **carries it if it is
 somebody else's**.

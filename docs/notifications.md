@@ -21,6 +21,11 @@ travel from an in-app card all the way to an OS-level toast on the desktop or An
 
 ## Architecture
 
+> This pipeline begins at the wapp's outbox. What has to happen *before* a chat
+> message gets that far — and the three common cases where a received 1:1 raises
+> no notification at all — is
+> [message-receive.md](message-receive.md) §8.
+
 ```
 wapp C code
   hal_msg_send('{"type":"notify","level":"warning","title":"...","scope":"both"}')

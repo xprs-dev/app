@@ -23,6 +23,11 @@ for the whole picture and the state of play.
 
 ## 1. Architecture
 
+> For what reaches this contract from below — every bearer, the core funnel, and
+> the second door the wapp opens onto the raw radio stream — see
+> [message-receive.md](message-receive.md) and
+> [diagrams/message-receive-flow.md](diagrams/message-receive-flow.md).
+
 XPRS is a generic Flutter **host** that runs WebAssembly **wapps**. The host
 never contains app-specific logic; the Chat wapp is portable C compiled to
 `wasm32-wasi`, driven entirely through the host's HAL message bus.

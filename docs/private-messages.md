@@ -9,6 +9,12 @@ the life of a 1:1 message, sealed or plain.
 
 ---
 
+
+> This document is the send side. What happens to a private 1:1 on the way **in**
+> — and the four ways it can be received and still never appear — is
+> [message-receive.md](message-receive.md), with figures in
+> [diagrams/message-receive-flow.md](diagrams/message-receive-flow.md).
+
 ## 1. The whole mechanism is one field
 
 §9.2, in full:

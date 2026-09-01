@@ -8,6 +8,7 @@ is the source of truth, these are the map.
 |---|---|---|
 | [relay-gateway-flow.md](relay-gateway-flow.md) | The three roles that move somebody else's packet: **relay** (APRS' digipeater), **gateway** (its iGate) and **carrier** (new in XPRS). Where each one actually runs, what digipeats and what does not, and how a packet crosses from one bearer to another. Eight figures, including the bridged packet field by field. | [../XPRS.md](../XPRS.md) §13, §36.8, [../store-and-forward.md](../store-and-forward.md), [../aprs.md](../aprs.md) |
 | [transports-flow.md](transports-flow.md) | How an XPRS packet finds a radio: the component map, the send sequence and its fallback, the four per-bearer verdicts, the inbound demux and funnel, the life of a 1:1, and the bench instrument that switches a lane off. Seven figures. | [../transports.md](../transports.md), [../private-messages.md](../private-messages.md) |
+| [message-receive-flow.md](message-receive-flow.md) | **How a 1:1 gets from the air to a bubble.** Every bearer it can arrive on (and why LoRa is not one of them on a phone), the core it is supposed to converge in and the four lanes that go around it, the inbox-to-screen half nobody had drawn, where a notification can and cannot fire, why a message does not keep one identity, and the collected ways a 1:1 dies. Six figures. | [../message-receive.md](../message-receive.md), [../transports.md](../transports.md) |
 
 Each `.md` here has a `.html` beside it — the same figures, standalone, for
 opening in a browser when you want them big or want to show somebody.
