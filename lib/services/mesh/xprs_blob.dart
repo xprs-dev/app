@@ -63,7 +63,19 @@ const int _hdr = 2;
 const int _frameMax = 244;
 
 /// True when [d] is an XBLOB frame — the GATT rx demux test.
-bool xblobIsFrame(List<int> d) => d.length >= 2 && d[0] == kXblobMagic;
+///
+/// BOTH bytes decide. The magic alone (0x42 = 'B') collides with the legacy
+/// parcel lane, whose frames begin with a two-ASCII-LETTER message id: a
+/// parcel "BI…" starts 0x42 too, and matching on the first byte alone
+/// silently ate every parcel and receipt whose id began with B — measured
+/// as messages expiring unacked and the peer marked parcel-deaf. XBLOB type
+/// bytes stop at 0x0C, far below 'A' (0x41), so the second byte separates
+/// the two wires unambiguously.
+bool xblobIsFrame(List<int> d) =>
+    d.length >= 2 &&
+    d[0] == kXblobMagic &&
+    d[1] >= xblobTManifest &&
+    d[1] <= xblobTReady;
 
 /// The START sha, for a server whose app must look the image up before it can
 /// bind a session. Null unless [d] is a START frame.

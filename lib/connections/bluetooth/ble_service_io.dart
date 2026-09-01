@@ -279,6 +279,7 @@ class BleService {
     if (_meshHooksWired) return;
     _meshHooksWired = true;
     final hooks = MeshSessionManager.instance.hooks;
+    hooks.parcelLaneBusy = () => _queue.busy;
     hooks.clientSend = (data) async {
       _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
       if (_ble5) {

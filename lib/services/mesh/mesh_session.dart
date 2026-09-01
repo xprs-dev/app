@@ -736,6 +736,10 @@ enum MeshSessionState { hello, active, closed }
 
 /// One MSP session over one live GATT link.
 class MeshSession {
+  /// The transport's own lanes on this link (the legacy parcel queue). The
+  /// polite goodbye must not drop a link another lane is still using: `idle`
+  /// only sees MSP state, and a BYE mid-parcel killed the transfer under it.
+  final bool Function()? linkBusy;
   final bool dialer; // we initiated the connection
   final String selfCallsign;
   final int caps;
@@ -789,6 +793,7 @@ class MeshSession {
     this.spoolFreeKb = 0,
     this.pendingMsgs = 0,
     this.pendingBulk = 0,
+    this.linkBusy,
     this.helloTimeout = const Duration(seconds: 5),
     this.sessionCap = const Duration(seconds: 300),
     this.stallTimeout = const Duration(seconds: 30),
@@ -934,6 +939,7 @@ class MeshSession {
         return;
       }
       if (!idle) return; // work in flight — the stall timer owns this
+      if (linkBusy?.call() ?? false) return; // the parcel lane is mid-transfer
       if (DateTime.now().difference(_lastRx) < const Duration(seconds: 3)) {
         return; // the peer is still talking
       }

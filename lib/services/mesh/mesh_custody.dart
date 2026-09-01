@@ -66,6 +66,10 @@ class MeshTransportHooks {
   /// Drop the client GATT link (session over — free the radio).
   void Function()? dropClientLink;
 
+  /// True while the transport's parcel lane still has traffic in flight on
+  /// the shared link (queued parcels or unacked receipts).
+  bool Function()? parcelLaneBusy;
+
   /// Dial [callsign] for a custody session (native GATT connect). Returns
   /// false when the peer is stale/unknown or the radio is busy.
   bool Function(String callsign)? dial;
@@ -106,6 +110,7 @@ class MeshSessionManager {
       selfCallsign: self,
       send: send,
       delegate: MeshCustodyDelegate.instance,
+      linkBusy: hooks.parcelLaneBusy,
       maxFrame: frame,
       pendingMsgs: store.pendingCount().clamp(0, 0xFFFF),
       pendingBulk: MeshBulkSpool.instance.pendingCount().clamp(0, 255),

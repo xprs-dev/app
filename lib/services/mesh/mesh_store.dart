@@ -581,12 +581,26 @@ class MeshStore {
 
   // --- housekeeping --------------------------------------------------------------
 
+  /// How many undelivered frames this device will hold at once. A custody
+  /// store is a pocket, not a warehouse: the bench reached 7,070 parked rows
+  /// after a test marathon, every beacon then advertised mail:7070, and each
+  /// neighbour dialled forever to fetch mail that was never for it -- a
+  /// permanent connect/goodbye storm that chopped the link under real
+  /// traffic. TTL and byte-quota both passed; a row-count cap is what was
+  /// missing. Oldest, least-urgent rows shed first, same order as the quota.
+  static const int pendingRowsMax = 500;
+
   /// 7-day TTL + quota eviction (archives first, then oldest in-transit).
   void sweep() {
     final db = _db;
     if (db == null) return;
     final now = _now();
     db.execute('DELETE FROM mesh_store WHERE ts < ?', [now - retentionS]);
+    db.execute(
+        'DELETE FROM mesh_store WHERE state = 0 AND am NOT IN ('
+        'SELECT am FROM mesh_store WHERE state = 0 '
+        'ORDER BY urg DESC, ts DESC LIMIT ?)',
+        [pendingRowsMax]);
     db.execute(
         'DELETE FROM received_ams WHERE ts < ?', [now - receivedWindowS * 2]);
     db.execute('DELETE FROM bulk_handover WHERE ts < ?', [now - retentionS]);

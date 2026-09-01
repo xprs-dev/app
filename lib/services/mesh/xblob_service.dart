@@ -125,6 +125,11 @@ class XblobService {
   bool onFrame(Uint8List data, {required bool serverSide}) {
     if (!xblobIsFrame(data)) return false;
     final startSha = xblobStartSha(data);
+    if (startSha == null && _session == null) {
+      // No session and not a START: nothing of ours. Let it fall through to
+      // the other lanes rather than eating a frame we cannot act on.
+      return false;
+    }
     if (startSha != null && _session == null) {
       final img = _image, sha = _imgSha;
       final send = _sendFor(serverSide);
@@ -161,6 +166,10 @@ class XblobService {
 
   void _start(XblobSession s) {
     _session = s;
+    // Alive only while a transfer runs: created on session start, cancelled
+    // on completion/link-down/death seconds later. Costs nothing screen-off
+    // (no session exists then); 100ms is the stall-timer resolution (750ms).
+    // arch-ignore: no-sub-minute-poll alive only during an active transfer
     _tick ??= Timer.periodic(const Duration(milliseconds: 100), (_) {
       final ses = _session;
       if (ses == null) return _stopTick();
