@@ -11,7 +11,6 @@
 // scan-only and [advertiseSupported] is false.
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
@@ -26,14 +25,13 @@ import '../../services/android_permissions_service.dart';
 import '../../services/log_service.dart';
 import '../../services/mesh/mesh_custody.dart';
 import '../../services/power_state.dart';
-import '../../services/xprs/xprs_ingest.dart';
-import '../../services/xprs/xprs_packet.dart';
 import '../../services/mesh/mesh_transfer_scheduler.dart';
 import '../../services/mesh/mesh_service.dart';
 import '../../services/reticulum/rns_service.dart';
 import '../../services/wifi_direct/wifi_direct_coordinator.dart';
-import '../../services/mesh/mesh_session.dart' show mspIsFrame, MspCaps;
+import '../../services/mesh/mesh_session.dart' show MspCaps;
 import '../../services/mesh/xblob_service.dart';
+import '../../services/receive/packet_gateway.dart';
 import '../../services/preferences_service.dart';
 import '../../wapp/android_foreground_service.dart';
 import 'ble5_bus.dart';
@@ -179,15 +177,11 @@ class BleService {
     _armServiceTick();
     _gatt = BleGattClient(_central!, onData: (from, data) {
       _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
-      // MSP (mesh session) frames peel off before the legacy parcel queue.
-      if (XblobService.instance.onFrame(data, serverSide: false)) {
-        return;
+      if (PacketGateway.instance.receive(data,
+              bearer: 'ble', lane: RxLane.session, peer: from) ==
+          RxVerdict.parcel) {
+        _queue.onDataReceived(from, data);
       }
-      if (mspIsFrame(data) &&
-          MeshSessionManager.instance.onFrame(data, serverSide: false)) {
-        return;
-      }
-      _queue.onDataReceived(from, data);
     }, onLinkChange: (connected) {
       _gattLinkUp = connected;
       if (connected) {
@@ -209,14 +203,14 @@ class BleService {
       ..start();
     _gattServer = BleGattServer(onData: (from, data) {
       _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
-      if (XblobService.instance.onFrame(data, serverSide: true)) {
-        return;
+      if (PacketGateway.instance.receive(data,
+              bearer: 'ble',
+              lane: RxLane.session,
+              peer: from,
+              serverSide: true) ==
+          RxVerdict.parcel) {
+        _queue.onDataReceived(from, data);
       }
-      if (mspIsFrame(data) &&
-          MeshSessionManager.instance.onFrame(data, serverSide: true)) {
-        return;
-      }
-      _queue.onDataReceived(from, data);
     }, onClientsChanged: () {
       final n = _gattServer?.clientIds.length ?? 0;
       if (n > 0) {
@@ -264,7 +258,14 @@ class BleService {
         onGattRnsFrame?.call(rns);
         return;
       }
+      // A reassembled parcel is a received packet like any other. It used to
+      // go to the wapp stream and NOWHERE else -- never to the funnel, never
+      // to custody -- so a message that arrived over the parcel lane was
+      // seen by the chat wapp's own parser or by nobody at all.
+      PacketGateway.instance.receive(m.payload,
+          bearer: 'ble', lane: RxLane.datagram, peer: m.sourceDeviceId);
       if (!_inbound.isClosed) {
+        // arch-ignore: one-receive-door the wapp raw door closes in the next pass; see docs/message-receive.md
         _inbound.add(BleInboundFrame(m.sourceDeviceId, 0, m.payload));
       }
     });
@@ -805,14 +806,12 @@ class BleService {
 
   void _onNgClientData(Uint8List data) {
     _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
-    if (XblobService.instance.onFrame(data, serverSide: false)) {
-      return;
+    final peer = _ngClientPeer ?? 'gatt';
+    if (PacketGateway.instance.receive(data,
+            bearer: 'ble', lane: RxLane.session, peer: peer) ==
+        RxVerdict.parcel) {
+      _queue.onDataReceived(peer, data);
     }
-    if (mspIsFrame(data) &&
-        MeshSessionManager.instance.onFrame(data, serverSide: false)) {
-      return;
-    }
-    _queue.onDataReceived(_ngClientPeer ?? 'gatt', data);
   }
 
   void _onNgDiscovered(String address, String callsign) {
@@ -838,14 +837,14 @@ class BleService {
     _ngServerCentral = address;
     _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
     _dbg('native server rx #${++_ngServerRxCount} ${data.length}B from $address');
-    if (XblobService.instance.onFrame(data, serverSide: true)) {
-      return;
+    if (PacketGateway.instance.receive(data,
+            bearer: 'ble',
+            lane: RxLane.session,
+            peer: address,
+            serverSide: true) ==
+        RxVerdict.parcel) {
+      _queue.onDataReceived(address, data);
     }
-    if (mspIsFrame(data) &&
-        MeshSessionManager.instance.onFrame(data, serverSide: true)) {
-      return;
-    }
-    _queue.onDataReceived(address, data);
   }
 
   void _onNgServerConnected(String address) {
@@ -931,21 +930,9 @@ class BleService {
     // signature verify and a sealed-body unseal, two curve operations, before
     // the duplicate was caught. The funnel now does the parking too
     // (`XprsIngest.onCarry`), so the tap has nothing left to add for XPRS.
-    final xp = XprsPacket.parse(utf8.decode(f.data, allowMalformed: true));
-    if (xp == null) {
-      // Legacy compact frame: overheard `?ACK`s purge, our 1:1s feed the
-      // have-bloom, others' 1:1s get parked (docs/mesh.md §6).
-      MeshCustodyDelegate.onAirFrame(f.data, outbound: false);
-    }
-    // When it is xprs, show it to whoever is watching the air. Includes
-    // traffic addressed to other people — that is most of what a mesh carries,
-    // and seeing it is the point of the XPRS wapp.
-    if (xp != null) {
-      XprsIngest.heard(xp,
-          bearer: 'ble',
-          selfCallsign: MeshService.instance.tableCallsign,
-          rssi: f.rssi);
-    }
+    PacketGateway.instance.receive(f.data,
+        bearer: 'ble', lane: RxLane.advert, peer: f.addr, rssi: f.rssi);
+    // arch-ignore: one-receive-door the wapp raw door closes in the next pass; see docs/message-receive.md
     _inbound.add(BleInboundFrame(f.addr, f.rssi, f.data));
   }
 

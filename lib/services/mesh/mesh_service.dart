@@ -44,6 +44,7 @@ import '../xprs/xprs_lan.dart';
 import '../xprs/xprs_monitor.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_sig.dart';
+import '../receive/packet_gateway.dart';
 import '../xprs/xprs_vocab.dart';
 import 'mesh_beacon.dart';
 import 'mesh_courier.dart';
@@ -290,6 +291,9 @@ class MeshService {
           if (tsMs != null) {
             XprsCatchup.instance.noteReplay(p['f'] ?? '', tsMs);
           }
+          // This IS the funnel's delivery hook (XprsIngest.onDeliver): the
+          // packet has already come through the door to get here.
+          // arch-ignore: one-receive-door this is the funnel's own delivery hook
           MeshCourier.instance.deliverXprs(MeshFrame.fromXprs(p), via: bearer);
         };
         // Poll every station in reach once a minute, off the native heartbeat
@@ -317,6 +321,9 @@ class MeshService {
 
     Ble5Bus.instance.onFrame(Ble5Subtype.mesh, _onFrame);
     Ble5Bus.instance.onFrame(Ble5Subtype.xprs, _onXprsFrame);
+    // What to do with a packet once the funnel has seen it -- repeating and
+    // beacon reading -- for every bearer, not just this radio.
+    PacketGateway.onXprsPacket = _onXprsHeard;
     // Leaves listen too: extended SCANNING is a separate controller capability
     // from extended advertising, so a phone that can't beacon (e.g. C61) may
     // still hear the street. Idempotent; harmless where unsupported.
@@ -398,18 +405,22 @@ class MeshService {
   /// by [MeshCustodyDelegate.onAirFrame] on the transport's inbound path, which
   /// is where custody decisions belong.
   void _onXprsFrame(Ble5Frame f) {
+    // The radio's whole job: hand the bytes over with a label. Parsing,
+    // the funnel and everything after it are the gateway's.
+    PacketGateway.instance.receive(f.data,
+        bearer: 'ble', lane: RxLane.advert, peer: f.addr, rssi: f.rssi);
+  }
+
+  /// What this station does with an XPRS packet once the funnel has seen it:
+  /// repeat it (§13.1) and read it as a beacon. Registered on
+  /// [PacketGateway.onXprsPacket] so it runs for a packet heard on ANY
+  /// bearer, not only the one radio that used to call it directly.
+  void _onXprsHeard(
+      XprsPacket p, String bearer, String peer, int rssi, String wire) {
     final t = _table;
     if (t == null) return;
-    final p = XprsPacket.parse(utf8.decode(f.data, allowMalformed: true));
-    if (p == null) return;
     final from = (p['f'] ?? '').trim().toUpperCase();
     if (from.isEmpty || from == t.selfCallsign.toUpperCase()) return;
-
-    // EVERY XPRS packet on this subtype goes through the funnel, whatever its
-    // type — the monitor for whoever is watching the air, the archive for
-    // whoever asks next month, the responder when it is a command for us.
-    XprsIngest.heard(p,
-        bearer: 'ble', selfCallsign: t.selfCallsign, rssi: f.rssi);
 
     // 13.1: "repeats a packet on the medium it heard it". BLE is the one
     // bearer where not doing so leaves stations unreachable outright — two
@@ -417,7 +428,7 @@ class MeshService {
     // wired bearers this is on by default. Every hearing goes in, duplicates
     // included, because 13.2.1's cancel is driven by hearing the packet
     // again while our own copy waits.
-    digipeater.heard(p, utf8.decode(f.data, allowMalformed: true));
+    digipeater.heard(p, wire);
 
     // The rest of this is beacon handling, and only a beacon is a beacon.
     if (p.type != 'observation') return;
@@ -432,11 +443,11 @@ class MeshService {
         .where((c) => c.isNotEmpty)
         .toList();
     LogService.instance.add(
-        'Mesh: XPRS beacon from $from (${f.rssi} dBm) — '
+        'Mesh: XPRS beacon from $from ($rssi dBm) — '
         '${heard.length} of ${peers ?? heard.length} peers listed');
     // The sender is by definition directly heard, so this is a sighting like
     // any other: it registers the address for dialling.
-    onPeerSighting?.call(from, f.addr);
+    onPeerSighting?.call(from, peer);
 
     // `lx:` says where to write to this station (section 10.6). Hearing it is
     // not the same as being able to address it: that needs a Reticulum path,

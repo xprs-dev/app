@@ -183,8 +183,10 @@ The baseline is keyed on the offending line rather than the file. Keying on the
 file would also forgive the next violation added to that file, which was
 observed during the guard's own self-test before release.
 
-The baseline is currently empty. Every violation it originally recorded has been
-fixed or annotated, so any new violation fails the build immediately.
+The baseline currently holds 58 entries, and the guard reports them on every
+run (`arch_guard: clean (56 known, 58 baselined)`). A new violation still fails
+the build immediately; the baseline is what the rules found already in the tree
+when each was added, not a clean bill of health.
 
 ### What the pre-push hook refuses, and why
 
@@ -212,6 +214,7 @@ Rules enforced:
 | Rule | Detects |
 |---|---|
 | `no-blocking-io-on-ui` | `*Sync` file I/O and `sleep()` on the UI isolate |
+| `one-receive-door` | anything but `PacketGateway` reaching the receive funnel, the courier or the inbox — every bearer enters through one door |
 | `no-transport-in-wapp-layer` | `lib/wapp/**` reaching into radio or transport internals instead of a service facade |
 | `no-app-logic-in-core` | `lib/services/**` and `lib/connections/**` naming a specific wapp |
 | `no-transport-logic-in-wapps-repo` | wapp C source reimplementing custody, retry or reachability |

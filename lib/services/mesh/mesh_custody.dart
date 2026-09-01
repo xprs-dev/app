@@ -353,6 +353,9 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
       // once clean through the core and once with its `sig:` line glued to
       // the text (seen live on TANK2). A custody handover is a DELIVERY, not
       // an overheard frame; nothing at the transport level is owed a copy.
+      // Behind the door, not around it: ingest re-enters XprsIngest.heard, and
+      // the 'custody' label is what marks a handover rather than an overhear.
+      // arch-ignore: one-receive-door re-enters the funnel via MeshCourier.ingest
       MeshCourier.instance.ingest(m.wire, via: 'custody');
       return 0;
     }
@@ -559,6 +562,9 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
       // custodian is the OTHER half of store-and-forward, and arrives with no
       // session at all.
       if (am.isNotEmpty) store.recordReceivedAm(am);
+      // Downstream of the gateway, which is what routes a compact frame here:
+      // onAirFrame is only ever reached through the door.
+      // arch-ignore: one-receive-door downstream of the gateway's compact branch
       MeshCourier.instance.ingest(wire, via: 'mesh');
       return false;
     }

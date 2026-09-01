@@ -23,7 +23,7 @@ import '../log_service.dart';
 import '../mesh/mesh_service.dart';
 import 'xprs_history_server.dart';
 import 'xprs_id.dart';
-import 'xprs_ingest.dart';
+import '../receive/packet_gateway.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
 
@@ -54,12 +54,14 @@ class XprsTcp {
       if (selfCall.isEmpty) return;
       final selfBase = NostrCrypto.bareCallsign(selfCall);
 
+      final bytes = Uint8List.fromList(utf8.encode(wire));
       if (local) {
         // A LAN peer is a local bearer like any radio: sighting + spool.
-        XprsIngest.heard(p, bearer: 'lan', selfCallsign: selfCall);
+        PacketGateway.instance
+            .receive(bytes, bearer: 'lan', lane: RxLane.session, peer: label);
       } else {
         // The internet lane: declaration-gated, never a sighting.
-        XprsIngest.reticulum(label, Uint8List.fromList(utf8.encode(wire)));
+        PacketGateway.instance.receiveInternet(label, bytes);
       }
 
       void reply(String w) {

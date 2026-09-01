@@ -592,6 +592,25 @@ class XprsIngest {
     if (toC.isNotEmpty && toC == self ||
         XprsGroups.instance.concernsUs(p, self)) {
       XprsArchive.instance.admit(p, bearer: bearer);
+      // AND DELIVER IT. This lane archived a message addressed to us and
+      // stopped, because `onDeliver` was wired on the radio lane and had no
+      // counterpart here at all -- so a 1:1 that arrived over Reticulum was
+      // filed in the spool and never reached a person, with no log line and
+      // no counter to say so. The bearer a message came in on is not
+      // supposed to decide whether it is shown; that is the whole point of
+      // one funnel, and this branch was the proof it was not one.
+      //
+      // Same gate as the radio lane, deliberately: `xprsRendersToPerson`
+      // asks the whole question -- a message, addressed to a person -- so a
+      // group post that `concernsUs` keeps is still archived and NOT
+      // delivered as private correspondence.
+      if (onDeliver != null && xprsRendersToPerson(p)) {
+        try {
+          onDeliver!(p, bearer);
+        } catch (e) {
+          LogService.instance.add('XPRS: delivery failed (rns): $e');
+        }
+      }
       return;
     }
 

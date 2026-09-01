@@ -59,6 +59,32 @@ const rules = <Rule>[
     pattern: r'\b(readAsStringSync|readAsBytesSync|writeAsStringSync|'
         r'writeAsBytesSync|readAsLinesSync|sleep)\s*\(',
   ),
+  // ── the receive path ──────────────────────────────────────────────────────
+  Rule(
+    id: 'one-receive-door',
+    why: 'Every received packet enters through PacketGateway, whatever bearer '
+        'carried it. Reaching past it to the funnel, the courier or the inbox '
+        'is how four lanes came to deliver to a person without the core ever '
+        'seeing the packet -- an XPRS 1:1 over Reticulum was archived and '
+        'never delivered, and the chat wapp acknowledged messages it then '
+        'dropped. Nothing errored in either case, which is why this is a rule '
+        'and not a habit (docs/message-receive.md).',
+    appliesTo: ['lib/**'],
+    exempt: [
+      // The door itself, and the two funnels it is the door for.
+      'lib/services/receive/packet_gateway.dart',
+      'lib/services/xprs/xprs_ingest.dart',
+      'lib/services/mesh/mesh_courier.dart',
+      // RnsService owns the LXMF inbox, which is the door for messages that
+      // arrive already decoded rather than as a packet. Different layer, and
+      // it is fenced by being named here rather than by being forgotten.
+      'lib/services/reticulum/rns_service.dart',
+    ],
+    pattern: r'\b(XprsIngest\.(heard|reticulum)|MeshCourier\.instance\.ingest|'
+        r'\.deliverXprs|injectLxmf)\s*\(',
+    message: 'Call PacketGateway.instance.receive(bytes, bearer:, lane:) and '
+        'let the core decide what the packet is.',
+  ),
   Rule(
     id: 'no-platform-channel-off-main',
     why: 'Platform channels only exist on the main isolate. Called from a '

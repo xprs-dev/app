@@ -37,7 +37,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../log_service.dart';
-import 'xprs_ingest.dart';
+import '../receive/packet_gateway.dart';
 import 'xprs_packet.dart';
 
 /// A station whose datagram we have seen, so we can reach it by unicast.
@@ -206,27 +206,17 @@ class XprsLan {
     final src = dg.address.address;
     if (_selfAddrs.contains(src)) return; // our own broadcast, come back to us
 
-    String text;
-    try {
-      text = utf8.decode(dg.data, allowMalformed: true).trim();
-    } catch (_) {
-      dropped++;
-      return;
-    }
-    final p = XprsPacket.parse(text);
-    if (p == null) {
-      // Not XPRS. Nothing else should be on this port, but a datagram that
-      // does not parse is dropped without comment — that is what makes the
-      // bearer versionless (docs/lan.md).
-      dropped++;
-      return;
-    }
     rx++;
     _learnPeer(src, dg.address, dg.port);
 
-    // The one funnel: monitor, archive, command responder. Bearer `lan` is
-    // already what XprsTcp labels a local peer with, and is in `kBearers`.
-    XprsIngest.heard(p, bearer: 'lan', selfCallsign: _selfCallsign);
+    // One door. A datagram that is not XPRS is dropped by the gateway without
+    // comment — that is what makes the bearer versionless (docs/lan.md) — and
+    // is counted there rather than here.
+    if (PacketGateway.instance.receive(dg.data,
+            bearer: 'lan', lane: RxLane.advert, peer: src) !=
+        RxVerdict.xprs) {
+      dropped++;
+    }
   }
 
   void _learnPeer(String ip, InternetAddress addr, int fromPort) {
