@@ -26,6 +26,8 @@ import 'dart:typed_data';
 import '../../connections/bluetooth/ble5_bus.dart';
 import '../mesh/mesh_custody.dart';
 import '../mesh/mesh_service.dart';
+import '../mesh/mesh_custody.dart';
+import '../mesh/xblob_service.dart';
 import '../mesh/mesh_store.dart';
 import '../mesh/mesh_transfer_scheduler.dart';
 import '../../connections/lora/lora_connection.dart';
@@ -332,6 +334,20 @@ class XprsPublisher {
   /// Returns false on any doubt, and false means "air it as before". A wrong
   /// suppression is silence until the 120 s sweep re-airs it; an unnecessary
   /// broadcast is one advert. The asymmetry decides the default.
+  /// A directed wire whose destination is the station on the other end of
+  /// the live client GATT link goes over that link. Fire-and-forget: the
+  /// link's own pacing carries it, and the broadcast lane remains the
+  /// fallback the moment the link is gone.
+  bool _gattLinkTakes(String dest, List<String> wires) {
+    if (GattPeer.callsign.isEmpty || GattPeer.callsign != dest) return false;
+    final send = MeshSessionManager.instance.hooks.clientSend;
+    if (send == null) return false;
+    for (final w in wires) {
+      unawaited(send(Uint8List.fromList(utf8.encode(w))));
+    }
+    return true;
+  }
+
   bool _sessionTakes(String dest) {
     final ask = MeshSessionManager.instance.hooks.canTakeCustody;
     if (ask == null || !ask(dest)) return false;
@@ -436,6 +452,14 @@ class XprsPublisher {
       // lanes are untouched and "no better bearer" holds by itself. And only
       // when the peer has DECLARED it will take the handover — every ESP32
       // today says no, so boards need no special-casing.
+      if (b.name == 'ble5' && dest.isNotEmpty && _gattLinkTakes(dest, wires)) {
+        // A live 1:1 link to the destination station: the wire goes over the
+        // connection, private and immediate, not onto the shared advert
+        // channels (firmware docs/ble5-gatt.md). Stations do not speak MSP
+        // custody, so this is their session lane.
+        report[b.name] = 'gatt-1:1';
+        return false;
+      }
       if (b.name == 'ble5' && dest.isNotEmpty && _sessionTakes(dest)) {
         report[b.name] = 'session';
         return false;

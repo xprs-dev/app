@@ -89,20 +89,24 @@ class MeshSessionManager {
 
   /// A GATT link came up. [serverSide] true when a central connected to our
   /// server (we are "served"); false when our own dial completed.
-  void onLinkUp({required bool serverSide}) {
+  void onLinkUp({required bool serverSide, int mtu = 512}) {
     final self =
         MeshService.instance.tableCallsign;
     if (self.isEmpty) return; // profile not ready — plain parcel traffic only
     final send = serverSide ? hooks.serverSend : hooks.clientSend;
     if (send == null) return;
 
+    // One MSP frame must fit one ATT PDU: mtu - 3, and never above the 509
+    // the protocol was sized for. A tinynimble station negotiates 247, so a
+    // hardcoded 509 was a frame the station could never receive.
+    final frame = (mtu - 3).clamp(64, 509);
     final store = MeshStore.instance;
     final session = MeshSession(
       dialer: !serverSide,
       selfCallsign: self,
       send: send,
       delegate: MeshCustodyDelegate.instance,
-      maxFrame: 509,
+      maxFrame: frame,
       pendingMsgs: store.pendingCount().clamp(0, 0xFFFF),
       pendingBulk: MeshBulkSpool.instance.pendingCount().clamp(0, 255),
       log: (m) => LogService.instance.add('Mesh: $m'),

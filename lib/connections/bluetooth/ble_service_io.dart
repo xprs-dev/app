@@ -33,6 +33,7 @@ import '../../services/mesh/mesh_service.dart';
 import '../../services/reticulum/rns_service.dart';
 import '../../services/wifi_direct/wifi_direct_coordinator.dart';
 import '../../services/mesh/mesh_session.dart' show mspIsFrame, MspCaps;
+import '../../services/mesh/xblob_service.dart';
 import '../../services/preferences_service.dart';
 import '../../wapp/android_foreground_service.dart';
 import 'ble5_bus.dart';
@@ -179,6 +180,9 @@ class BleService {
     _gatt = BleGattClient(_central!, onData: (from, data) {
       _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
       // MSP (mesh session) frames peel off before the legacy parcel queue.
+      if (XblobService.instance.onFrame(data, serverSide: false)) {
+        return;
+      }
       if (mspIsFrame(data) &&
           MeshSessionManager.instance.onFrame(data, serverSide: false)) {
         return;
@@ -205,6 +209,9 @@ class BleService {
       ..start();
     _gattServer = BleGattServer(onData: (from, data) {
       _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
+      if (XblobService.instance.onFrame(data, serverSide: true)) {
+        return;
+      }
       if (mspIsFrame(data) &&
           MeshSessionManager.instance.onFrame(data, serverSide: true)) {
         return;
@@ -771,10 +778,21 @@ class BleService {
     _applyScan();
     _flushPendingGatt();
     _wireMeshHooks();
-    MeshSessionManager.instance.onLinkUp(serverSide: false);
+    if (GattPeer.callsign.isNotEmpty) {
+      // An explicit station dial (firmware push, 1:1 to a board). Stations
+      // do not speak MSP: starting a session here meant an unanswered HELLO,
+      // a 5 s timeout, and the link dropped under the transfer. The link
+      // carries raw XPRS wires and XBLOB frames instead.
+      _dbg('station link to ${GattPeer.callsign} — no MSP session');
+    } else {
+      MeshSessionManager.instance
+          .onLinkUp(serverSide: false, mtu: Ble5Bus.instance.clientMtu);
+    }
   }
 
   void _onNgDisconnected() {
+    XblobService.instance.onLinkDown();
+    GattPeer.callsign = '';
     _dbg('native GATT client link down ($_ngClientPeer)');
     _applyScanTier();
     _ngClientUp = false;
@@ -786,6 +804,9 @@ class BleService {
 
   void _onNgClientData(Uint8List data) {
     _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
+    if (XblobService.instance.onFrame(data, serverSide: false)) {
+      return;
+    }
     if (mspIsFrame(data) &&
         MeshSessionManager.instance.onFrame(data, serverSide: false)) {
       return;
@@ -816,6 +837,9 @@ class BleService {
     _ngServerCentral = address;
     _gattActivityMs = DateTime.now().millisecondsSinceEpoch;
     _dbg('native server rx #${++_ngServerRxCount} ${data.length}B from $address');
+    if (XblobService.instance.onFrame(data, serverSide: true)) {
+      return;
+    }
     if (mspIsFrame(data) &&
         MeshSessionManager.instance.onFrame(data, serverSide: true)) {
       return;
@@ -834,7 +858,9 @@ class BleService {
     _applyScan();
     _wireMeshHooks();
     _flushPendingGatt(); // a peer dialling US is just as good a route
-    MeshSessionManager.instance.onLinkUp(serverSide: true);
+    final smtu = Ble5Bus.instance.serverMtu;
+    MeshSessionManager.instance
+        .onLinkUp(serverSide: true, mtu: smtu > 23 ? smtu : 512);
   }
 
   void _onNgServerDisconnected(String address) {

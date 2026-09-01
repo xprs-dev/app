@@ -188,6 +188,10 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     private var gatt: BluetoothGatt? = null
     private var writeChar: BluetoothGattCharacteristic? = null
     private var notifyChar: BluetoothGattCharacteristic? = null
+    // Negotiated ATT MTU on the client link. 23 until onMtuChanged says more.
+    // Surfaced to Dart in the "connected" event: a session that sizes its
+    // frames to a hardcoded 509 against a 247-MTU station loses every frame.
+    @Volatile private var clientMtu: Int = 23
     // Read from the legacy-scan (binder) thread as well as the main thread.
     @Volatile private var gattEvents: EventChannel.EventSink? = null
 
@@ -891,6 +895,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             if (!linkReady && setupGen == gen && gatt != null) {
                 android.util.Log.w(TAG, "GATT setup stalled 12s — tearing down for retry")
                 gattDisconnect()
+                clientMtu = 23
                 emitGatt(mapOf("event" to "disconnected"))
             }
         }, 12000)
@@ -940,11 +945,22 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         val data = writeQueue.removeFirstOrNull() ?: return
         writeBusy = true
         val gen = ++writeGen
-        ch.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        // WITHOUT response when the peer offers it: one packet per write
+        // instead of an ATT round-trip per write -- the difference between
+        // ~14 and ~35+ frames a second on a bulk push (firmware
+        // docs/ble5-gatt.md). Still strictly one in flight: Android calls
+        // onCharacteristicWrite when the stack can take the next one, which
+        // is the flow control; the queue-overrun the old comment feared came
+        // from writing without waiting for that callback, not from WNR
+        // itself. Falls back to with-response where WNR is not declared.
+        val wnr = (ch.properties and
+            BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
+        val wtype = if (wnr) BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                    else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        ch.writeType = wtype
         val ok = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val rc = g.writeCharacteristic(ch, data,
-                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                val rc = g.writeCharacteristic(ch, data, wtype)
                 if (rc != BluetoothGatt.GATT_SUCCESS)
                     android.util.Log.w(TAG, "writeCharacteristic rc=$rc props=${ch.properties}")
                 rc == BluetoothGatt.GATT_SUCCESS
@@ -959,11 +975,12 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             writeQueue.addFirst(data)
             bg.postDelayed({ pumpWrites() }, 60)
         } else {
-            // Watchdog: if onCharacteristicWrite never fires, advance anyway. Give a
-            // with-response write longer (the ATT round-trip + peer processing).
+            // Watchdog: if onCharacteristicWrite never fires, advance anyway.
+            // WNR completes locally and fast; with-response waits a real ATT
+            // round-trip plus peer processing.
             bg.postDelayed({
                 if (writeBusy && writeGen == gen) { writeBusy = false; pumpWrites() }
-            }, 1500)
+            }, if (wnr) 300L else 1500L)
         }
     }
 
@@ -1009,6 +1026,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
                 try { g.close() } catch (_: Exception) {}
                 if (gatt === g) { gatt = null; writeChar = null }
                 writeQueue.clear(); writeBusy = false
+                clientMtu = 23
                 emitGatt(mapOf("event" to "disconnected"))
             }
         }
@@ -1016,22 +1034,36 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
             if (disposed) return
             android.util.Log.i(TAG, "client MTU=$mtu status=$status")
+            if (status == BluetoothGatt.GATT_SUCCESS && mtu >= 23) clientMtu = mtu
             try { g.discoverServices() } catch (_: Exception) {}
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
             if (disposed) return
             val svc = g.getService(SVC_UUID)
-            val write = svc?.getCharacteristic(FFF1_UUID)
-            val notify = svc?.getCharacteristic(FFF2_UUID)
-            if (write == null || notify == null) {
+            val fff1 = svc?.getCharacteristic(FFF1_UUID)
+            val fff2 = svc?.getCharacteristic(FFF2_UUID)
+            if (fff1 == null || fff2 == null) {
                 android.util.Log.e(TAG, "peer missing FFE0/FFF1/FFF2")
                 gattDisconnect(); emitGatt(mapOf("event" to "disconnected")); return
             }
+            // CHANNEL ORIENTATION BY PROPERTY, NOT BY UUID. Two worlds exist:
+            // this app's own server declares FFF1=write / FFF2=notify, while
+            // the tinynimble stations (tn_att.h) declare FFF1=notify /
+            // FFF2=write. Hardcoding one orientation made phone<->station GATT
+            // dead in both directions. The properties say which is which.
+            val wProps = BluetoothGattCharacteristic.PROPERTY_WRITE or
+                BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
+            val write: BluetoothGattCharacteristic
+            val notify: BluetoothGattCharacteristic
+            if ((fff1.properties and wProps) != 0) { write = fff1; notify = fff2 }
+            else                                   { write = fff2; notify = fff1 }
             writeChar = write
             notifyChar = notify
+            val stationOrientation = (write === fff2)
             android.util.Log.i(TAG, "GATT discovered FFE0 on ${g.device?.address} " +
-                "fff1.props=${write.properties}")
+                "write=${if (stationOrientation) "FFF2" else "FFF1"} " +
+                "props=${write.properties} mtu=$clientMtu")
             // Notifications are enabled LOCALLY ONLY — the CCCD is never written.
             //
             // setCharacteristicNotification is a local call: it tells our own
@@ -1057,8 +1089,32 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             } catch (e: Exception) {
                 android.util.Log.w(TAG, "local notify enable: ${e.message}")
             }
+            // THE CCCD, but only toward a station. The tinynimble ATT gates its
+            // notifies on the CCCD (tn_att.h) and its descriptor is PLAIN, so
+            // this write cannot escalate to bonding there. Toward another
+            // phone (our own server) the skip stands: pumpNotifies() notifies
+            // unconditionally, and not touching 0x2902 keeps the last bonding
+            // escalation surface closed on the path where it existed.
+            if (stationOrientation) {
+                val cccd = notify.getDescriptor(CCCD_UUID)
+                if (cccd != null) {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            g.writeDescriptor(cccd,
+                                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                        } else {
+                            @Suppress("DEPRECATION") run {
+                                cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                                g.writeDescriptor(cccd)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w(TAG, "cccd write: ${e.message}")
+                    }
+                }
+            }
             linkReady = true
-            emitGatt(mapOf("event" to "connected"))
+            emitGatt(mapOf("event" to "connected", "mtu" to clientMtu))
             pumpWrites()
         }
 
@@ -1078,7 +1134,10 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         @Deprecated("compat for < TIRAMISU")
         override fun onCharacteristicChanged(g: BluetoothGatt, ch: BluetoothGattCharacteristic) {
             if (disposed) return
-            if (ch.uuid == FFF2_UUID) {
+            // The notify characteristic is chosen by PROPERTY at discovery
+            // (FFF2 on our own servers, FFF1 on tinynimble stations); a
+            // hardcoded FFF2 here silently dropped every station notify.
+            if (ch.uuid == notifyChar?.uuid) {
                 @Suppress("DEPRECATION")
                 emitGatt(mapOf("event" to "data", "data" to (ch.value ?: ByteArray(0))))
             }
@@ -1088,7 +1147,9 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             g: BluetoothGatt, ch: BluetoothGattCharacteristic, value: ByteArray,
         ) {
             if (disposed) return
-            if (ch.uuid == FFF2_UUID) emitGatt(mapOf("event" to "data", "data" to value))
+            if (ch.uuid == notifyChar?.uuid) {
+                emitGatt(mapOf("event" to "data", "data" to value))
+            }
         }
 
         override fun onCharacteristicWrite(
@@ -1210,6 +1271,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         }
 
         override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
+            emitGatt(mapOf("event" to "server_mtu", "mtu" to mtu))
             if (disposed) return
             android.util.Log.i(TAG, "server MTU=$mtu (${device.address})")
         }

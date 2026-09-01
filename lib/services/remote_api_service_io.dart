@@ -13,6 +13,8 @@ import 'dart:typed_data';
 import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_publisher.dart';
+import 'mesh/xblob_service.dart';
+import '../connections/bluetooth/ble5_bus.dart';
 import 'xprs/xprs_gossip.dart';
 import 'xprs/xprs_group_ops.dart';
 import 'xprs/xprs_groups.dart';
@@ -129,6 +131,55 @@ class RemoteApiService {
       if (req.method == 'GET' && (path == '/api/log' || path == '/api/logs')) {
         final n = int.tryParse(req.uri.queryParameters['n'] ?? '') ?? 200;
         return _json(res, {'lines': LogService.instance.tail(n)});
+      }
+      // --- dev/bench: drive the 1:1 GATT lane from the desk ---------------
+      // These exist so the phone can be exercised as a station-facing GATT
+      // endpoint without UI: dial a station, push a firmware image over
+      // XBLOB, send one wire over the link. Plain HTTP on the device API,
+      // like everything else here.
+      if (req.method == 'POST' && path == '/api/dev/gattdial') {
+        final mac = req.uri.queryParameters['mac'] ?? '';
+        final call = req.uri.queryParameters['call'] ?? '';
+        if (mac.isEmpty) return _json(res, {'ok': false, 'err': 'mac='});
+        GattPeer.callsign = call;
+        await Ble5Bus.instance.gattConnect(mac);
+        return _json(res, {'ok': true, 'mac': mac, 'call': call});
+      }
+      if (req.method == 'POST' && path == '/api/dev/gattsend') {
+        final wire = await utf8.decoder.bind(req).join();
+        final send = MeshSessionManager.instance.hooks.clientSend;
+        if (wire.isEmpty || send == null) {
+          return _json(res, {'ok': false, 'err': 'no wire or no link'});
+        }
+        await send(Uint8List.fromList(utf8.encode(wire)));
+        return _json(res, {'ok': true, 'bytes': wire.length});
+      }
+      if (req.method == 'POST' && path == '/api/dev/serveimage') {
+        final sig = req.uri.queryParameters['sig'] ?? '';
+        final shaHex = req.uri.queryParameters['sha'] ?? '';
+        final chunks = <int>[];
+        await for (final c in req) {
+          chunks.addAll(c);
+        }
+        if (shaHex.length != 64 || chunks.isEmpty) {
+          return _json(res, {'ok': false, 'err': 'sha= and body required'});
+        }
+        final sha = Uint8List(32);
+        for (var i = 0; i < 32; i++) {
+          sha[i] = int.parse(shaHex.substring(2 * i, 2 * i + 2), radix: 16);
+        }
+        XblobService.instance
+            .serveImage(Uint8List.fromList(chunks), sha, sig85: sig);
+        return _json(res, {'ok': true, 'size': chunks.length});
+      }
+      if (req.method == 'GET' && path == '/api/dev/gatt') {
+        return _json(res, {
+          'clientMtu': Ble5Bus.instance.clientMtu,
+          'linkUp': Ble5Bus.instance.clientLinkUp,
+          'serverMtu': Ble5Bus.instance.serverMtu,
+          'blobActive': XblobService.instance.active,
+          'peer': GattPeer.callsign,
+        });
       }
       if (req.method == 'GET' && path == '/api/wapps') {
         return _json(res, {'wapps': await _listWapps()});
