@@ -2469,7 +2469,22 @@ class WappEngine {
         // message never arrives — only continuously-repeated beacons get through.
         // 120 s (< the 130 s receiver dedup, so it still delivers exactly once)
         // spans a full scan cycle. The wapp re-advertising replaces stale frames.
-        ble.enqueueAdvert(this, bytes,
+        // LABEL IT AS WHAT IT IS. `ble_pack` in the chat wapp already emits
+        // XPRS -- it calls `xprs_pack` and only falls back to the compact
+        // `FROM<US>TO<US>text` for the frames XPRS has no words for yet
+        // (?MAIL, ?IGATE, ?PING) or that will not fit. Every one of those
+        // XPRS wires was going out under subtype 0x41, which says "compact
+        // APRS frame", and a station's `on_ble` drops anything that is not
+        // 0x58 on its first line. So the phone's XPRS reached other phones --
+        // whose 0x41 handler parses XPRS out of it as compensation -- and no
+        // station at all.
+        //
+        // The core decides the lane, which is the rule (architecture.md 1):
+        // the wapp hands over content and does not choose a radio, a subtype
+        // or a format tag. Deciding it here from the payload also needs no
+        // new HAL endpoint and no wapp rebuild, so the wasm already on the
+        // phones gets it.
+        ble.enqueueWappAdvert(this, bytes,
             ttl: const Duration(seconds: 120));
         return 0;
       },

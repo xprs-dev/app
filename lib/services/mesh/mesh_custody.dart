@@ -18,6 +18,7 @@ import 'dart:typed_data';
 
 import '../../util/media_ref.dart';
 
+import '../../connections/bluetooth/ble5_bus.dart';
 import '../../connections/bluetooth/ble_service.dart';
 import '../log_service.dart';
 import '../reticulum/rns_service.dart';
@@ -787,7 +788,16 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
       LogService.instance.add(
           'Mesh: $am not handed over in ${suppressedGrace.inSeconds}s — '
           'airing it once');
-      BleService.instance.enqueueAdvert(_reAirOwner, s.wire);
+      // Air it under what it IS. A parked copy is an XPRS wire, and airing
+      // it as APRS put it on a subtype every station's `on_ble` drops before
+      // reading -- so re-aired mail reached other phones and no station at
+      // all. The legacy compact frame still exists and still goes out as
+      // APRS, which is exactly why the subtype has to be decided per wire.
+      final reAired = MeshFrame.parse(s.wire);
+      BleService.instance.enqueueAdvert(_reAirOwner, s.wire,
+          subtype: (reAired?.isXprs ?? false)
+              ? Ble5Subtype.xprs
+              : Ble5Subtype.aprs);
       // Straight to the advert bus, so the budget is charged here rather than
       // in the fan-out.
       XprsAirtime.instance.charge(const ['ble5']);

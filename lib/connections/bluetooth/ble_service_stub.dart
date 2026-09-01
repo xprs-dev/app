@@ -32,6 +32,8 @@ class BleService {
   Future<bool> startScan() async => false;
   Future<void> stopScan() async {}
   void enqueueAdvert(Object owner, Uint8List payload,
+      {required int subtype, Duration ttl = const Duration(seconds: 30)}) {}
+  void enqueueWappAdvert(Object owner, Uint8List payload,
       {Duration ttl = const Duration(seconds: 30)}) {}
   void clearAdverts(Object owner) {}
   Map<String, dynamic> gattStatus() => {'autoPair': false, 'clientLinkUp': false};

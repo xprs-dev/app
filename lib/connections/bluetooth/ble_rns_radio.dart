@@ -18,6 +18,7 @@ import 'package:reticulum/reticulum.dart'
 import '../../services/log_service.dart';
 import '../../services/reticulum/rns_ble_interface.dart';
 import 'ble_reassembler.dart' show kBleBcastMax;
+import 'ble5_bus.dart';
 import 'ble_service.dart';
 import 'rns_chunk.dart';
 
@@ -37,13 +38,14 @@ class BleServiceRnsRadio implements RnsBleRadio {
   int get broadcastCap => kBleBcastMax;
 
   @override
-  void broadcast(Uint8List frame) =>
-      BleService.instance.enqueueAdvert(_owner, frame);
+  void broadcast(Uint8List frame) => BleService.instance
+      .enqueueAdvert(_owner, frame, subtype: Ble5Subtype.rns);
 
   @override
   bool unicast(Uint8List frame) {
     // enqueueAdvert routes anything over the broadcast cap to GATT peers.
-    BleService.instance.enqueueAdvert(_owner, frame);
+    BleService.instance
+        .enqueueAdvert(_owner, frame, subtype: Ble5Subtype.rns);
     return true;
   }
 

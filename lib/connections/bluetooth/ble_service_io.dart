@@ -11,6 +11,7 @@
 // scan-only and [advertiseSupported] is false.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
@@ -31,6 +32,7 @@ import '../../services/reticulum/rns_service.dart';
 import '../../services/wifi_direct/wifi_direct_coordinator.dart';
 import '../../services/mesh/mesh_session.dart' show MspCaps;
 import '../../services/mesh/xblob_service.dart';
+import '../../services/xprs/xprs_packet.dart';
 import '../../services/receive/packet_gateway.dart';
 import '../../services/preferences_service.dart';
 import '../../wapp/android_foreground_service.dart';
@@ -1491,8 +1493,40 @@ class BleService {
   // transmits a frame as a brief burst when it actually has something to send.
   // Peers are listening, so a short burst is enough; we don't hold the radio
   // advertising indefinitely.
-  void enqueueAdvert(Object owner, Uint8List payload,
+  /// Air a frame a wapp handed us, under the subtype its CONTENT earns.
+  ///
+  /// A wapp hands over content and does not choose a radio, a lane or a
+  /// format tag (docs/architecture.md 1) -- so it does not name a subtype
+  /// either, and `lib/wapp/**` is barred from importing the bus that defines
+  /// them. The classification is the core's, and it belongs here.
+  ///
+  /// The chat wapp's `ble_pack` already emits XPRS via `xprs_pack`, falling
+  /// back to the compact `FROM<US>TO<US>text` only for frames XPRS has no
+  /// words for yet (?MAIL, ?IGATE, ?PING) or that will not fit. All of that
+  /// XPRS went out under 0x41 -- the byte that says "compact APRS frame" --
+  /// and a station's `on_ble` drops anything that is not 0x58 on its first
+  /// line. So the phone's XPRS reached other phones, whose 0x41 handler
+  /// parses XPRS out of it as compensation, and no station at all.
+  void enqueueWappAdvert(Object owner, Uint8List payload,
       {Duration ttl = const Duration(seconds: 10)}) {
+    final isXprs =
+        XprsPacket.parse(utf8.decode(payload, allowMalformed: true)) != null;
+    enqueueAdvert(owner, payload,
+        subtype: isXprs ? Ble5Subtype.xprs : Ble5Subtype.aprs, ttl: ttl);
+  }
+
+  /// Air [payload] under [subtype], routing by size.
+  ///
+  /// The subtype is REQUIRED and has no default. It used to be hardcoded to
+  /// `aprs`, which meant every caller aired under a byte that says "compact
+  /// APRS frame" whatever it was actually sending. That has now cost the same
+  /// bug twice: Reticulum packets were aired under it and "received by
+  /// nobody" (see [sendOverGatt]), and the custody re-air put XPRS wires on
+  /// it, where a station's `on_ble` drops them on its first line because the
+  /// subtype is not `0x58`. A default is what let both happen quietly, so
+  /// there is no default.
+  void enqueueAdvert(Object owner, Uint8List payload,
+      {required int subtype, Duration ttl = const Duration(seconds: 10)}) {
     _ensure();
     // Size router. SMALL → connectionless one-to-many broadcast (one sender,
     // many listeners, aired ONCE, never per-peer). LARGE → point-to-point GATT
@@ -1518,18 +1552,18 @@ class BleService {
     // register it as a single frame on the shared bus (no chunking, no NACK).
     // Keyed by payload hash so the wapp's periodic re-advertise refreshes it.
     if (_ble5Adverts) {
-      final key = 'aprs:${_hashHex(payload)}';
+      final key = '${subtype.toRadixString(16)}:${_hashHex(payload)}';
       final keys = _ble5Keys.putIfAbsent(owner, () => <String>{});
       final fresh = keys.add(key);
       if (keys.length > 64) keys.remove(keys.first);
-      if (fresh) _dbg('BLE5 APRS advert ${payload.length}B key=$key');
+      if (fresh) _dbg('BLE5 advert ${payload.length}B key=$key');
       // HONOUR the answer. A frame the controller refuses is aired nowhere;
       // ignoring the return left the app broadcasting into nothing, with
       // `ble5` still true, for the rest of the process. A refusal means this
       // payload does not fit the medium — send it the way an over-cap payload
       // is meant to go.
       unawaited(Ble5Bus.instance
-          .advertiseFrame(key, Ble5Subtype.aprs, payload, ttl: ttl)
+          .advertiseFrame(key, subtype, payload, ttl: ttl)
           .then((aired) {
         if (aired) return;
         LogService.instance.add(
@@ -1675,7 +1709,8 @@ class BleService {
       blob[i] = 0x41 + (i % 26); // A..Z filler
     }
     _dbg('gattSendTest: ${n}B');
-    enqueueAdvert(_testOwner, blob, ttl: const Duration(seconds: 30));
+    enqueueAdvert(_testOwner, blob,
+        subtype: Ble5Subtype.aprs, ttl: const Duration(seconds: 30));
   }
 
   /// Flush stashed large payloads to the freshly-connected peer.
