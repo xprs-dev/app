@@ -343,11 +343,17 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
       store.recordReceivedAm(key);
       MeshCustodyCounters.delivered++;
       _log('custody delivery from $peer: $from -> $to');
-      // The core owns delivery: unwrap it and put it in the inbox the wapps
-      // already read. The raw frame still goes down the broadcast stream for
-      // anything listening at the transport level.
+      // THE CORE OWNS DELIVERY, AND IT OWNS IT ALONE. `ingest` is the one
+      // receive funnel (docs/architecture.md): it reassembles parts (6.6),
+      // opens the seal (9.2), verifies what can be verified, dedups the
+      // copies, and hands the finished TEXT to the inbox the wapps read.
+      // The raw wire used to ALSO go down the broadcast stream here
+      // (`deliverLocal`), where the chat wapp parsed it a second time as if
+      // it had arrived off the radio — the same message then rendered twice,
+      // once clean through the core and once with its `sig:` line glued to
+      // the text (seen live on TANK2). A custody handover is a DELIVERY, not
+      // an overheard frame; nothing at the transport level is owed a copy.
       MeshCourier.instance.ingest(m.wire, via: 'custody');
-      MeshSessionManager.instance.hooks.deliverLocal?.call(m.wire);
       return 0;
     }
 

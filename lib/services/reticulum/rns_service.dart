@@ -2112,8 +2112,41 @@ class RnsService {
   }
 
   /// The callsign known for an LXMF delivery destination, or '' if none.
-  String callsignForLxmfDest(String destHex) =>
-      _lxmfCallsign[destHex.trim().toLowerCase()] ?? '';
+  ///
+  /// The beacon pairing (`lx:` beside `f:`) is the first source, but it only
+  /// exists for a peer we have heard DIRECTLY. A thread the rail can already
+  /// name (announce registry, persisted directory — [identityFor]'s sources)
+  /// must resolve here too: a private 1:1 was refused (hal_lxmf_send2 → -1,
+  /// "No key for them yet") for a dest whose callsign AND key were both on
+  /// disk, only because the peer's own beacon had never reached this phone
+  /// without a station in between.
+  String callsignForLxmfDest(String destHex) {
+    final want = destHex.trim().toLowerCase();
+    final hit = _lxmfCallsign[want] ?? '';
+    if (hit.isNotEmpty) return hit;
+    // identityFor's sources, WITHOUT its per-miss diagnostic line: this sits
+    // on the send path, where an unresolved peer is retried on a ladder — a
+    // log line per attempt is section 8.10's shape (docs/performance.md, the
+    // ring fills with the one miss it cannot fix). The announce scan is
+    // bounded by the registry and _lxmfDestHexForPub memoises per key.
+    var found = '';
+    for (final n in _observed.values) {
+      if (_lxmfDestHexForPub(n.publicKeyHex).toLowerCase() != want) continue;
+      found = (n.callsign ?? '').trim();
+      if (found.isEmpty) found = (n.lxmfName ?? '').trim();
+      if (found.isNotEmpty) break;
+    }
+    if (found.isEmpty) {
+      if (!_lxmfDirLoaded) {
+        _lxmfDirLoaded = true;
+        _loadLxmfDirectory();
+      }
+      found = (_lxmfNames[want] ?? '').trim();
+    }
+    // Remember a hit so the next send resolves on the map alone.
+    if (found.isNotEmpty) noteLxmfCallsign(want, found);
+    return found;
+  }
   String _lxmfDestHexForPub(String pubkeyHex) {
     final hit = _lxmfDestCache[pubkeyHex];
     if (hit != null) return hit;

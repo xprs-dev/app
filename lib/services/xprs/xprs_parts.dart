@@ -29,7 +29,7 @@ import 'xprs_packet.dart';
 
 /// A message rebuilt from its parts.
 class XprsReassembled {
-  const XprsReassembled(this.packet, this.text, this.privacy);
+  const XprsReassembled(this.packet, this.text, this.privacy, {this.sig});
 
   /// The packet the parts reassemble into: the first part's fields with `n:`
   /// removed and the body replaced by the joined text. Its section 5 identifier
@@ -40,6 +40,13 @@ class XprsReassembled {
   /// The form the parts arrived in. A set never mixes forms — see
   /// [XprsPartTable.offer].
   final XprsPrivacy privacy;
+
+  /// The `sig:` a part carried, if any. Section 9.1.1 signs a split PLAIN
+  /// message once, on the last part, over the packet the parts reassemble
+  /// into — so the packet it verifies against is [packet] with this value
+  /// re-attached, and only the caller (who knows the sender's key) can hold
+  /// it against anything. Null when no part carried one.
+  final String? sig;
 }
 
 class _Set {
@@ -49,6 +56,9 @@ class _Set {
   final XprsPrivacy privacy;
   final DateTime at;
   final Map<int, String> parts = {};
+
+  /// The signature seen on whichever part carried one (9.1.1: the last).
+  String? sig;
 }
 
 /// Buffers the parts of incoming split messages until each set is complete.
@@ -117,6 +127,9 @@ class XprsPartTable {
     }
     // "A repeated part number is ignored" — the first copy heard wins.
     set.parts.putIfAbsent(i, () => clear);
+    // Keep the joined-packet signature for the caller (9.1.1).
+    final psig = p['sig'];
+    if (psig != null && psig.isNotEmpty) set.sig = psig;
     // Keep the lowest-numbered part as the envelope donor: 6.6 builds the
     // reassembled packet from "every field from the first part", and parts
     // arrive in any order.
@@ -128,12 +141,14 @@ class XprsPartTable {
       for (var k = 1; k <= total; k++) set.parts[k]!,
     ].join(' ');
     final head = set.first.without({'n', 'sig', 'x', 'm'});
-    return XprsReassembled(head.with_('m', joined), joined, set.privacy);
+    return XprsReassembled(head.with_('m', joined), joined, set.privacy,
+        sig: set.sig);
   }
 
   _Set _adopt(_Set old, XprsPacket first, DateTime at) {
     final s = _Set(old.total, first, old.privacy, old.at);
     s.parts.addAll(old.parts);
+    s.sig = old.sig;
     return s;
   }
 

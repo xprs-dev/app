@@ -414,7 +414,19 @@ class MeshCourier {
     // sender's key a bad signature is not a glitch, it is someone else's words
     // under their callsign, and it stops here. Unsigned or unknown-key mail is
     // still delivered: most stations have never announced a key.
-    if (p.has('sig') && senderNpub.isNotEmpty) {
+    //
+    // PARTS ARE NOT VERIFIED HERE. Section 9.1.1 puts the signature of a
+    // split PLAIN message on its last part, computed over the packet the
+    // parts REASSEMBLE into — verifying that sig against the part's own
+    // bytes judged every signed split message forged, dropped its last
+    // part after the custody layer had already acked it, and left the set
+    // incomplete forever (observed live: 18 sets stuck, zero bubbles). The
+    // joined packet is verified after reassembly below. A SEALED part needs
+    // no signature check at all: its `x:` only opens against the sender's
+    // announced key (ECDH), so a successful unseal is a stronger proof of
+    // authorship than the schnorr line — and an unopenable one is held, not
+    // shown.
+    if (p.has('sig') && !p.has('n') && senderNpub.isNotEmpty) {
       final pubHex = NostrCrypto.decodeNpub(senderNpub);
       final state = pubHex.isEmpty
           ? XprsSigState.unverified
@@ -476,6 +488,27 @@ class MeshCourier {
           clear: (read.privacy == XprsPrivacy.sealed && !read.readable)
               ? null
               : read.clear);
+      // Section 9.1.1: the sig a part carried covers the REASSEMBLED plain
+      // packet (joined m:, no n:). Now that the set is whole, that is the
+      // packet we can finally hold the signature against. Sealed sets were
+      // authenticated by the unseal itself (see the note above).
+      if (whole != null &&
+          whole.privacy == XprsPrivacy.plain &&
+          whole.sig != null &&
+          senderNpub.isNotEmpty) {
+        final pubHex = NostrCrypto.decodeNpub(senderNpub);
+        if (pubHex.isNotEmpty) {
+          final state = xprsVerify(whole.packet.with_('sig', whole.sig!),
+              Uint8List.fromList(HEX.decode(pubHex)));
+          if (state == XprsSigState.forged) {
+            MeshCourierCounters.ingestDropped++;
+            LogService.instance.add(
+                'Courier: forged signature on a reassembled message claiming '
+                'to be from ${f.from} — dropped');
+            return false;
+          }
+        }
+      }
       if (whole != null) {
         _joined++;
         if (_joined <= 4 || _joined % 32 == 0) {

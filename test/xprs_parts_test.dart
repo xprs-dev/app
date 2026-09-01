@@ -35,6 +35,26 @@ void main() {
     expect(t.pending, 0);
   });
 
+  test('the sig a part carried survives reassembly (9.1.1)', () {
+    // Section 9.1.1 signs a split PLAIN message once, on the LAST part, over
+    // the packet the parts reassemble into. The courier verifies AFTER the
+    // join, so the table must hand the signature back — dropping it (as it
+    // used to) forced a per-part verify that judged every signed split
+    // message forged, and its acked last part left the set incomplete
+    // forever.
+    final t = XprsPartTable();
+    t.offer(_part('1/2', 'hello'), clear: 'hello');
+    final sig = 'S' * 60;
+    final last = XprsPacket.parse(
+        't:message f:X1VCVM d:X3ARK ts:2026-08-28_14:52:27 n:2/2 '
+        'sig:$sig m:world')!;
+    final done = t.offer(last, clear: 'world');
+    expect(done, isNotNull);
+    expect(done!.sig, sig, reason: 'the joined packet verifies against this');
+    expect(done.packet.has('sig'), isFalse,
+        reason: '6.6: the identifier comes from the sig-less joined packet');
+  });
+
   test('parts may arrive in any order, and a repeat is ignored', () {
     final t = XprsPartTable();
     expect(t.offer(_part('3/3', 'three'), clear: 'three'), isNull);
