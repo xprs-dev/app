@@ -283,6 +283,13 @@ class MeshService {
           // core (docs/message-receive.md section 10).
           XprsOutbox.instance.noteReceipt(id, state: r.state);
         };
+        // A reachability test answers on the lane it arrived on (§36.0: the
+        // packet that just came over it is the freshest evidence of a working
+        // path back). The funnel composes and signs; airing is the publisher's.
+        XprsIngest.onAnswerPing = (wire, bearer) {
+          unawaited(XprsPublisher.instance
+              .publishWire(wire, verbatim: true, prefer: bearer));
+        };
         XprsIngest.onResult = (p) {
           XprsCatchup.instance.onResult(p);
           XprsFileFetch.instance.onResult(p);

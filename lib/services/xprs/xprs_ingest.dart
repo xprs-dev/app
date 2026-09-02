@@ -98,6 +98,37 @@ class XprsIngest {
   /// The person, with any device suffix removed: `X1ABCD-1` -> `X1ABCD`
   /// (spec section 3.1). One definition, shared, so the person/device
   /// split cannot drift between the archive, the ingest and the server.
+  /// Compose and air the `t:pong` for a heard `t:ping`.
+  ///
+  /// [bearer] is the lane it arrived on, and the answer prefers it: §36.0's
+  /// freshest possible evidence of a working path back is the packet that just
+  /// came over it. The publisher falls back to the fan-out when that bearer
+  /// cannot carry the reply.
+  static void _answerPing(XprsPacket p,
+      {required String self, required String bearer}) {
+    final from = (p['f'] ?? '').trim().toUpperCase();
+    if (from.isEmpty || _base(from) == self) return;
+    final n = DateTime.now().toUtc();
+    String two(int v) => v.toString().padLeft(2, '0');
+    var pong = XprsPacket.parse('t:pong f:$self d:$from '
+        'ts:${n.year}-${two(n.month)}-${two(n.day)}_'
+        '${two(n.hour)}:${two(n.minute)}:${two(n.second)} '
+        'r:${xprsIdentifier(p)}');
+    if (pong == null) return;
+    final d = xprsProfileScalar();
+    if (d != null) pong = xprsSign(pong, d);
+    if (!pong.fits) return;
+    pongsSent++;
+    onAnswerPing?.call(pong.encode(), bearer);
+  }
+
+  /// Air a composed `t:pong`. Wired by the owner to the publisher, so the
+  /// funnel does not reach into a transport itself.
+  static void Function(String wire, String bearer)? onAnswerPing;
+
+  /// Reachability tests answered, for the diagnostics.
+  static int pongsSent = 0;
+
   static String _base(String c) => NostrCrypto.bareCallsign(c);
 
   /// The archive's name for how a packet arrived. A custody session and the
@@ -280,6 +311,30 @@ class XprsIngest {
       // transaction actually wrote — a forged packet is dropped there, and a
       // watermark advanced here would have stepped straight over it.
       XprsArchive.instance.admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
+    }
+
+    // ANSWER A REACHABILITY TEST, ON WHATEVER BEARER IT ARRIVED ON.
+    //
+    // §7's `t:ping` / `t:pong` is a core type and the core already answered it
+    // — inside xprs_tcp.dart, on the TCP socket, and nowhere else. So a ping
+    // heard over BLE, LAN or Reticulum went unanswered, and the chat wapp grew
+    // a `?PING`/`?PONG` dialect of its own, in the compact frame, with its own
+    // TTL forwarding, to ask the question the core would not answer. Answering
+    // here — in the one funnel every bearer reaches — is what makes that
+    // dialect redundant rather than merely unwanted.
+    //
+    // `r:` names the ping's §5 identifier, so the asker can tell its answers
+    // apart without a nonce of anybody's invention. Signed, like anything else
+    // that speaks as this station.
+    if (p.type == 'ping') {
+      final to = _base(p['d'] ?? '');
+      final self = _base(selfCallsign);
+      // Undirected is a question to the room; directed to somebody else is
+      // not ours to answer.
+      if (self.isNotEmpty && (to.isEmpty || to == self)) {
+        _answerPing(p, self: self, bearer: _archiveBearer(bearer));
+      }
+      return;
     }
 
     // And DELIVER it. Knowing a message is ours and only filing it is what
