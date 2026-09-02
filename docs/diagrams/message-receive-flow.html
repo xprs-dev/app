@@ -410,59 +410,66 @@ flowchart LR
 </section>
 
 <section id="f2">
-  <h2><span class="fig">FIG 2</span> One door: what goes through it, and what still does not</h2>
-  <p class="lede">Green is through the door. Amber is fenced by a declared permission but still open. Red is open and unfenced.</p>
+  <h2><span class="fig">FIG 2</span> One door: every bearer through it, two lanes still around it</h2>
+  <p class="lede">Green is through the door. Grey is a wapp’s own foreign protocol, which is the arrangement working. Red is an XPRS lane the core never sees.</p>
   <figure>
-    <div class="plate-bar"><span>Fig 2 · converged · fenced · open</span><span>xprs</span></div>
+    <div class="plate-bar"><span>Fig 2 · bearers done · 2 lanes left</span><span>xprs</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
-    subgraph THROUGH[&quot;through the door&quot;]
+    subgraph THROUGH[&quot;through the door — every bearer that carries XPRS&quot;]
         direction TB
         G[&quot;&lt;b&gt;PacketGateway&lt;/b&gt;&lt;br/&gt;&lt;i&gt;demux · provenance · route by type&lt;/i&gt;&quot;]
         GATT[&quot;GATT — 4 roles&quot;] --&gt; G
-        A58[&quot;BLE5 0x58&quot;] --&gt; G
-        A41[&quot;BLE5 0x41&quot;] --&gt; G
-        LANU[&quot;LAN UDP · TCP&quot;] --&gt; G
+        A58[&quot;BLE5 0x58 · 0x41 adverts&quot;] --&gt; G
         PARC[&quot;reassembled parcels&quot;] --&gt; G
-        RNS[&quot;&lt;b&gt;Reticulum / LXMF&lt;/b&gt;&lt;br/&gt;&lt;i&gt;both entrances — fixed&lt;/i&gt;&quot;] --&gt; G
+        LANU[&quot;LAN UDP · TCP&quot;] --&gt; G
+        RNS[&quot;Reticulum — LXMF router&quot;] --&gt; G
+        DGX[&quot;Reticulum — &lt;code&gt;xprs&lt;/code&gt; datagram tag&quot;] --&gt; G
+        RV2[&quot;Reticulum — rendezvous&quot;] --&gt; G
         G --&gt; FUN[&quot;XprsIngest · MeshCourier&quot;]
         G --&gt; BUS[&quot;event bus&lt;br/&gt;&lt;i&gt;xprs.&amp;lt;type&amp;gt; · calls the wapp&lt;/i&gt;&quot;]
     end
 
-    subgraph FENCED[&quot;open, but a declared permission is now required&quot;]
+    subgraph TEE[&quot;a copy, taken after the door&quot;]
         direction TB
         RAW[&quot;hal_ble_scan_read&lt;br/&gt;&lt;code&gt;transport.ble.raw&lt;/code&gt;&quot;]
-        DM[&quot;hal_relay_dm_recv&lt;br/&gt;&lt;code&gt;transport.nostr&lt;/code&gt;&quot;]
-        DGRAM[&quot;hal_rns_recv — non-xprs tags&lt;br/&gt;&lt;code&gt;transport.rns.raw&lt;/code&gt;&quot;]
     end
 
-    subgraph OPEN[&quot;open and unfenced&quot;]
+    subgraph PRIV[&quot;a wapp&#x27;s own protocol — not XPRS&quot;]
         direction TB
-        LEG[&quot;legacy BLE scan&lt;br/&gt;&lt;b&gt;sole path on non-BLE5&lt;/b&gt;&quot;]
-        RV[&quot;rendezvous → &lt;code&gt;&#x27;circles&#x27;&lt;/code&gt;&lt;br/&gt;&lt;i&gt;hardcoded, dropped if not running&lt;/i&gt;&quot;]
-        INJ[&quot;POST /api/wapp/inject&lt;br/&gt;&lt;b&gt;no auth, LAN-reachable&lt;/b&gt;&quot;]
+        DGRAM[&quot;hal_rns_recv — circles&lt;br/&gt;&lt;i&gt;k:msg/ks/key… JSON&lt;/i&gt;&quot;]
+        DM[&quot;hal_relay_dm_recv · nostr&lt;br/&gt;&lt;i&gt;kind-4 DM plaintext&lt;/i&gt;&quot;]
+        SOCK[&quot;hal_socket_recv&lt;br/&gt;&lt;i&gt;APRS-IS TNC2 lines&lt;/i&gt;&quot;]
+    end
+
+    subgraph OPEN[&quot;an XPRS lane the core never sees&quot;]
+        direction TB
+        CRNS[&quot;chat: hal_rns_recv on tag &lt;code&gt;chat&lt;/code&gt;&lt;br/&gt;&lt;b&gt;ble_pack wire → ble_handle&lt;/b&gt;&quot;]
+        LX[&quot;chat: hal_lxmf_recv&lt;br/&gt;&lt;i&gt;shared inbox, own cursor&lt;/i&gt;&quot;]
     end
 
     BUS --&gt; W[&quot;a wapp&quot;]
     RAW --&gt; W
-    DM --&gt; W
     DGRAM --&gt; W
-    LEG --&gt; W
-    RV --&gt; W
-    INJ --&gt; W
+    DM --&gt; W
+    SOCK --&gt; W
+    CRNS --&gt; W
+    LX --&gt; W
 
     classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
     classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
     classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
-    class G,FUN,BUS,RNS good
-    class RAW,DM,DGRAM warn
-    class LEG,RV,INJ bad
+    classDef neut fill:#E4E8EA,stroke:#64717A,color:#22292E
+    class G,FUN,BUS,RNS,DGX,RV2,GATT,A58,PARC,LANU good
+    class RAW warn
+    class DGRAM,DM,SOCK neut
+    class CRNS,LX bad
     class W warn
 </pre>
     </div>
   </figure>
-  <figcaption><strong>Not yet — one of seven is closed.</strong> The two direct <code>XprsIngest.reticulum</code> taps are gone, which mattered more than it sounds: a wapp subscribed to <code>xprs.message</code> was receiving from BLE and LAN and silently missing everything that arrived over the internet. Three more are now fenced by a manifest permission; three are still open, the legacy BLE scan worst of all because on a non-BLE5 device it is the whole receive path.</figcaption>
+  <figcaption><strong>Every bearer is centralized; two lanes inside one wapp are not.</strong> BLE, LAN, TCP and all three Reticulum entrances reach <code>PacketGateway</code> and nothing else. What remains is chat: an XPRS wire aired over its own RNS datagram tag and drained straight into <code>ble_handle</code>, and <code>hal_lxmf_recv</code>. Both close the same way — chat takes its packets from the event bus it already subscribes to.</figcaption>
 </section>
 
 <section id="f3">

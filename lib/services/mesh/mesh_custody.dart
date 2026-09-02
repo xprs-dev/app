@@ -60,10 +60,6 @@ class MeshTransportHooks {
   /// Send one MSP frame to the connected central (our server FFF2 notify).
   Future<void> Function(Uint8List data)? serverSend;
 
-  /// Deliver a custody-carried 1:1 frame into the normal inbound path (wapps
-  /// receive it exactly as if it had been heard on the broadcast plane).
-  void Function(Uint8List wire)? deliverLocal;
-
   /// Drop the client GATT link (session over — free the radio).
   void Function()? dropClientLink;
 

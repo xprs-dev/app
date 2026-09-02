@@ -268,11 +268,6 @@ class BleService {
         if (id != null) await _gattServer!.notify(id, data);
       }
     };
-    hooks.deliverLocal = (wire) {
-      // Custody-carried frame enters the same stream broadcast frames use, so
-      // the chat wapp (and any other consumer) needs no mesh awareness.
-      if (!_inbound.isClosed) _inbound.add(BleInboundFrame('mesh', 0, wire));
-    };
     hooks.dropClientLink = () {
       if (_ble5) {
         unawaited(Ble5Bus.instance.gattDisconnect());

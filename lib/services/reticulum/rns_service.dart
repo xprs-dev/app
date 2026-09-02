@@ -5791,6 +5791,11 @@ class RnsService {
   // re-announced every 8s (flood-exempt) so the hub keeps a fresh route to us.
   final Map<String, RnsIdentity> _rvInboundDests = {};
 
+  /// The wapp that owns the rendezvous aspect. It is the RNS destination's own
+  /// app name (see [_emitRvAnnounce]), so it cannot be derived from the packet —
+  /// naming it once here is better than spelling it at each use.
+  static const String kRvWappTag = 'circles';
+
   void _emitRvAnnounce(Uint8List seed, Uint8List appData) {
     final t = _transport;
     if (!_up || t == null) return;
@@ -6103,20 +6108,17 @@ class RnsService {
     if (id == null) return false;
     try {
       final plain = await id.decrypt(p.data);
-      final q = _wappInbox['circles'];
-      if (q != null) {
-        q.add({
-          'from': '',
-          'payload': base64.encode(plain),
-          'ts': DateTime.now().millisecondsSinceEpoch,
-        });
-        while (q.length > 1024) {
-          q.removeAt(0);
-        }
-        LogService.instance.add(
-          'RNS/rv: join request received on rendezvous dest ${_hex(p.destHash).substring(0, 8)} (${plain.length}B)',
-        );
-      }
+      // Through the same door every other wapp datagram uses, rather than
+      // reaching into a wapp's queue from here. The core used to write
+      // _wappInbox['circles'] directly, which meant this lane skipped the
+      // 'xprs' core tap, arrived with no bearer label, and named a wapp by
+      // string in the middle of the transport. The aspect name is still
+      // 'circles' — it is baked into the destination hash above — but it is
+      // now one argument to the shared delivery, not a private path.
+      _deliverWappDatagram(kRvWappTag, '', plain, via: 'rns');
+      LogService.instance.add(
+        'RNS/rv: join request received on rendezvous dest ${_hex(p.destHash).substring(0, 8)} (${plain.length}B)',
+      );
     } catch (_) {
       // Not addressed to us / undecryptable — ignore.
     }

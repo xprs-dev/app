@@ -85,7 +85,7 @@ flowchart LR
 
 ---
 
-## Fig. 2 — One door: what goes through it, and what still does not
+## Fig. 2 — One door: every bearer through it, two lanes still around it
 
 Audited 2026-09-02, re-checked after the gateway, the permission gate and the
 Reticulum fix. **Green is through the door. Amber is fenced but still open.
@@ -93,73 +93,95 @@ Red is open and unfenced.**
 
 ```mermaid
 flowchart TD
-    subgraph THROUGH["through the door"]
+    subgraph THROUGH["through the door — every bearer that carries XPRS"]
         direction TB
         G["<b>PacketGateway</b><br/><i>demux · provenance · route by type</i>"]
         GATT["GATT — 4 roles"] --> G
-        A58["BLE5 0x58"] --> G
-        A41["BLE5 0x41"] --> G
-        LANU["LAN UDP · TCP"] --> G
+        A58["BLE5 0x58 · 0x41 adverts"] --> G
         PARC["reassembled parcels"] --> G
-        RNS["<b>Reticulum / LXMF</b><br/><i>both entrances — fixed</i>"] --> G
+        LANU["LAN UDP · TCP"] --> G
+        RNS["Reticulum — LXMF router"] --> G
+        DGX["Reticulum — <code>xprs</code> datagram tag"] --> G
+        RV2["Reticulum — rendezvous"] --> G
         G --> FUN["XprsIngest · MeshCourier"]
         G --> BUS["event bus<br/><i>xprs.&lt;type&gt; · calls the wapp</i>"]
     end
 
-    subgraph FENCED["open, but a declared permission is now required"]
+    subgraph TEE["a copy, taken after the door"]
         direction TB
         RAW["hal_ble_scan_read<br/><code>transport.ble.raw</code>"]
-        DM["hal_relay_dm_recv<br/><code>transport.nostr</code>"]
-        DGRAM["hal_rns_recv — non-xprs tags<br/><code>transport.rns.raw</code>"]
     end
 
-    subgraph OPEN["open and unfenced"]
+    subgraph PRIV["a wapp's own protocol — not XPRS"]
         direction TB
-        LEG["legacy BLE scan<br/><b>sole path on non-BLE5</b>"]
-        RV["rendezvous → <code>'circles'</code><br/><i>hardcoded, dropped if not running</i>"]
-        INJ["POST /api/wapp/inject<br/><b>no auth, LAN-reachable</b>"]
+        DGRAM["hal_rns_recv — circles<br/><i>k:msg/ks/key… JSON</i>"]
+        DM["hal_relay_dm_recv · nostr<br/><i>kind-4 DM plaintext</i>"]
+        SOCK["hal_socket_recv<br/><i>APRS-IS TNC2 lines</i>"]
+    end
+
+    subgraph OPEN["an XPRS lane the core never sees"]
+        direction TB
+        CRNS["chat: hal_rns_recv on tag <code>chat</code><br/><b>ble_pack wire → ble_handle</b>"]
+        LX["chat: hal_lxmf_recv<br/><i>shared inbox, own cursor</i>"]
     end
 
     BUS --> W["a wapp"]
     RAW --> W
-    DM --> W
     DGRAM --> W
-    LEG --> W
-    RV --> W
-    INJ --> W
+    DM --> W
+    SOCK --> W
+    CRNS --> W
+    LX --> W
 
     classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
     classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
     classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
-    class G,FUN,BUS,RNS good
-    class RAW,DM,DGRAM warn
-    class LEG,RV,INJ bad
+    classDef neut fill:#E4E8EA,stroke:#64717A,color:#22292E
+    class G,FUN,BUS,RNS,DGX,RV2,GATT,A58,PARC,LANU good
+    class RAW warn
+    class DGRAM,DM,SOCK neut
+    class CRNS,LX bad
     class W warn
 ```
 
-> **Not yet. One of the seven is closed.** The two direct
-> `XprsIngest.reticulum` taps are gone — the LXMF router and the wapp-datagram
-> `xprs` tag both go through `PacketGateway.receiveInternet` now, and packets
-> off that lane are published by type like any other. That mattered more than
-> it sounds: **a wapp subscribed to `xprs.message` was receiving from BLE and
-> LAN and silently missing everything that came over the internet**, which is
-> how two stations out of radio range talk to each other.
+> **Every bearer is centralized. Two lanes inside one wapp are not.**
 >
-> **Three are fenced, not closed.** A transport HAL is now bound only if the
-> wapp's manifest declares the permission, and the default is refuse — so a
-> stranger's wapp gets the content APIs and the event bus and nothing else.
-> Chat still declares six of them, which is the debt, now written down in one
-> file instead of implied by a wasm symbol table.
+> **The bearers are done.** BLE (four GATT roles, both advert subtypes,
+> reassembled parcels), LAN UDP, TCP, and all three Reticulum entrances — the
+> LXMF router, the `xprs` datagram tag, and the rendezvous destination — now
+> reach `PacketGateway` and nothing else. Reticulum mattered most: a wapp
+> subscribed to `xprs.message` was receiving from BLE and LAN and silently
+> missing everything that came over the internet, which is how two stations out
+> of radio range talk to each other. WiFi Direct carries no packets of its own;
+> it forms an IP group and the RNS interfaces run over it. LoRa is not a lane
+> on a phone. The HTTP API composes and sends — it has no receive door.
 >
-> **Three are still open.** The legacy BLE scan is the worst: on any device
-> where `Ble5Bus.supported()` is false — desktop, iOS, older Android — it is
-> the *entire* BLE receive path and reaches `BleService._inbound` and nothing
-> else. Rendezvous datagrams go to a hardcoded `'circles'` and are dropped
-> silently if that wapp is not running. And `POST /api/wapp/inject` still lets
-> any unauthenticated host on the LAN put a message into any running wapp's
-> inbox.
-
----
+> **`hal_ble_scan_read` stopped being a door.** It used to be fed by the legacy
+> company-frame scan, which read the radio and delivered to `BleService._inbound`
+> and nowhere else. That scan is deleted. Every remaining `_inbound.add` runs
+> *after* `PacketGateway.receive` on the same bytes, so the wapp now gets a copy
+> of what the core already saw. Still a raw read, no longer a path the core
+> misses.
+>
+> **Three doors carry a wapp's own protocol, not XPRS.** `circles` exchanges its
+> `k:msg`/`k:ks`/`k:key` JSON over its RNS datagram tag; `mail` reads kind-4
+> Nostr DM plaintext; chat's socket reads APRS-IS TNC2 lines off the internet.
+> A wapp owning a foreign protocol is the arrangement working, not a leak — none
+> of it is an XPRS packet.
+>
+> **Two lanes are the real remainder, and both are chat's.**
+>
+> `hal_rns_recv` on the tag `chat` is the sharp one: `rns_tx_bulletin` and
+> `rns_tx_public` compose a wire with `ble_pack` — which emits **XPRS** — air it
+> with `hal_rns_broadcast`, and the receiving side drains it straight into
+> `ble_handle`. A full XPRS lane over Reticulum, both directions, that the core
+> never sees: no dedup against the copy that arrives by radio, no `via:`
+> accounting, no §5 identity, no receipt.
+>
+> `hal_lxmf_recv` is the known one, and step 5 of the current plan deletes it.
+>
+> Both close the same way: chat gets its packets from the event bus it is
+> already subscribed to, and the two imports go.
 
 ## Fig. 3 — Inbox to bubble: the half nobody had drawn
 
