@@ -40,6 +40,7 @@ import '../services/wapp_unread_service.dart';
 import '../services/hero/hero_inbox.dart';
 import '../services/preferences_service.dart';
 import 'android_foreground_service.dart';
+import 'hal_permissions.dart';
 import 'wapp_engine.dart';
 import '../services/mesh/mesh_service.dart';
 
@@ -125,6 +126,10 @@ class BackgroundWappManager {
       // this a headless engine can neither send nor receive Reticulum datagrams
       // (the page engine sets this in WappPage; the background path must too).
       engine.setAppId(name);
+      // Grant BEFORE load: imports are bound during instantiation, so a
+      // permission read afterwards would be a permission that did nothing.
+      engine.grantedPermissions =
+          declaredPermissions(await pkg.readString('manifest.json'));
       await engine.load(wasm);
       final svc = _WappBackgroundService(name, wappDir, engine, prefs);
       _running[name] = svc;

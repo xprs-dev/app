@@ -17,6 +17,7 @@ import '../connections/internet/http_transport.dart';
 import '../connections/bluetooth/ble_service.dart';
 import '../services/location_service.dart';
 import '../profile/profile_service.dart';
+import 'hal_permissions.dart';
 import 'wapp_event_broker.dart';
 import '../profile/storage_paths.dart';
 import '../services/android_permissions_service.dart';
@@ -362,6 +363,19 @@ class WappEngine {
   /// keep only the work that has a reason to run with the screen off (receiving,
   /// notifying, seeding).
   bool headless = false;
+
+  /// Permissions this wapp declared in its `manifest.json`, and the imports
+  /// refused for want of them. Empty by default: a wapp that declares
+  /// nothing gets the content APIs and the event bus, and no transport.
+  Set<String> _granted = const {};
+  final List<String> _refusedImports = [];
+
+  /// Grant the declared permissions. Called by the loader BEFORE `load()`,
+  /// because imports are bound during instantiation.
+  set grantedPermissions(Iterable<String> p) => _granted = p.toSet();
+
+  /// What was asked for and not granted — for the installer UI and the log.
+  List<String> get refusedImports => List.unmodifiable(_refusedImports);
 
   WappEngine({this.headless = false}) {
     _byId[engineId] = this;
@@ -4144,12 +4158,33 @@ class WappEngine {
 
     // Add imports one by one, skipping any the module doesn't declare.
     // wasm_run throws if we provide an import the module doesn't need.
+    //
+    // AND REFUSING ANY THE WAPP HAS NOT BEEN GRANTED. This loop used to offer
+    // every HAL import to every module, so the wasm's own import table was
+    // the access-control list -- written by whoever compiled the wasm. A wapp
+    // claimed a transport by importing its symbol: `hal_lxmf_recv` returned
+    // every private message on the device, `hal_ble_scan_read` every raw
+    // radio frame. Fine while every wapp is ours, and not fine at all once
+    // somebody else's can be installed.
+    //
+    // A refused import is left unbound. The module still instantiates; the
+    // call traps if it is actually made, which is the honest outcome for a
+    // wapp asking for something it did not declare.
     for (final imp in allImports) {
+      if (!halImportAllowed(imp.name, _granted)) {
+        _refusedImports.add(imp.name);
+        continue;
+      }
       try {
         builder.addImports([imp]);
       } catch (_) {
         // Module doesn't use this import — skip it
       }
+    }
+    if (_refusedImports.isNotEmpty) {
+      LogService.instance.add(
+          'Wapp $_appId: refused ${_refusedImports.length} ungranted HAL '
+          'import(s): ${_refusedImports.take(6).join(", ")}');
     }
 
     _instance = await builder.build();

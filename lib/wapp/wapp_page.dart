@@ -95,6 +95,7 @@ import 'functionality_registry.dart';
 import 'wapp_open.dart';
 import 'wapp_graph_scene.dart';
 import 'wapp_icons.dart';
+import 'hal_permissions.dart';
 import 'wapp_engine.dart';
 import '../services/mesh/mesh_service.dart';
 
@@ -1439,6 +1440,10 @@ class _WappPageState extends State<WappPage>
     }
 
     try {
+      // Grant BEFORE load: imports are bound during instantiation, so a
+      // permission read afterwards would be a permission that did nothing.
+      _engine.grantedPermissions =
+          declaredPermissions(await _pkg.readString('manifest.json'));
       await _engine.load(wasmBytes);
       // Route PCM the wapp decodes straight to the speaker. Degrades to silence
       // (never crashes) on platforms without the PCM plugin.
