@@ -479,59 +479,78 @@ flowchart TD
 ## Fig. 9 — What the polling costs
 
 The event bus exists — `WappEventBroker`, `HostEventBridge`, `system.*` topics.
-But a subscribed wapp drains its queue **on its next tick**. The bus is a
-delivery queue, not a wake-up, so the tick is still what burns the battery.
+A subscribed wapp is CALLED — the broker delivers straight into
+`module_handle_event`. What was left burning the battery was everything the bus
+did not carry: core state had no topic, so a wapp that drew it had to ask.
 
 ```mermaid
 flowchart LR
-    T["host timer<br/><i>per wapp interval</i>"] --> TICK["module_tick"]
-    TICK --> P1["ble_poll ×20"]
-    TICK --> P2["lxmf_drain ×10"]
-    TICK --> P3["rns drain"]
-    TICK --> P4["APRS socket"]
-    TICK --> P5["flush queues"]
-    P1 --> N{"anything there?"}
-    P2 --> N
-    P3 --> N
-    P4 --> N
-    P5 --> N
-    N -- "almost always" --> NO["nothing — CPU spent anyway"]
+    subgraph WAS["before"]
+        direction TB
+        T["host timer<br/><i>every 0.2–5 s, per wapp</i>"] --> TICK["module_tick"]
+        TICK --> P1["re-encode the traffic ring"]
+        TICK --> P2["re-encode the RNS graph"]
+        TICK --> P3["re-read the archive"]
+        TICK --> P4["ask: any datagram?"]
+        TICK --> P5["ask the host for the task list"]
+        P1 --> N{"anything changed?"}
+        P2 --> N
+        P3 --> N
+        P4 --> N
+        P5 --> N
+        N -- "almost always" --> NO["no — CPU spent anyway"]
+    end
 
-    EV["WappEventBroker<br/><i>system.* topics</i>"] -. "waits for the next tick" .-> TICK
+    subgraph NOW["after"]
+        direction TB
+        CH["something actually changes<br/><i>a packet, an announce, a flush</i>"]
+        CH --> CS["CoreState.changed<br/><i>coalesced 250 ms · silent with no subscriber</i>"]
+        CS --> BUS2["core.&lt;topic&gt;"]
+        BUS2 --> HE["module_handle_event<br/><i>read it, once, with a reason</i>"]
+    end
 
     classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
     classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
-    classDef off  fill:#E6E8EA,stroke:#6B7280,color:#2A2E33
+    classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
     class NO,N bad
     class TICK warn
-    class EV off
+    class CH,CS,BUS2,HE good
 ```
 
-| wapp | declared interval |
-|---|---|
-| `forum`, `movies` | **0 ms** |
-| `install`, `terminal` | 500 ms |
-| `social` | 700 ms |
-| `chat`, `circles`, `files`, `maps`, `tasks`, `torrents` | 1000 ms |
-| `mail` | 1500 ms |
-| `xprs` | 3000 ms |
-| `atm`, `wallet` | 60000 ms |
+| wapp | before | after | how |
+|---|---|---|---|
+| `archiver` | 5000 ms | **0** | `core.archive` |
+| `mesh` | 2000 ms | **0** | `core.rns.graph` |
+| `xprs` | 3000 ms | **0** | `core.monitor` |
+| `social` | 700 ms | **0** | `core.archive` |
+| `tasks` | 1000 ms | **0** | `core.tasks` |
+| `atm`, `wallet`, `maps`, `terminal`, `widget_demo` | 0.5–60 s | **0** | empty tick — no clock needed |
+| `circles` | 1000 ms | 15000 ms | `core.datagram.circles`; the clock left is a key retry |
+| `bluetooth` | 2000 ms | 10000 ms | `core.mesh.topology`; the clock left is the "seen 40s ago" chips |
+| `forum`, `movies` | **`Duration.zero`** | **0** | 0 now means no timer, not a hot loop |
+| `chat`, `mail`, `files`, `torrents`, `install`, `app-creator`, `tester` | unchanged | unchanged | still polling — see below |
 
-> Measured on the bench: `cpu tasks total 11250ms (18.8% of main)` —
-> `wapp.bg.xprs` 8.0%, `wapp.bg.torrents` 5.0%, `wapp.bg.mail` 4.8%. Ticks cost
-> 50–150 ms against intervals of 1000 ms, whether or not anything arrived.
+> **1252 wake-ups a minute across the wapps, down to 830** — and the two that
+> were unbounded are gone with them. `forum` and `movies` declared `return 0;`,
+> which passed straight into `Timer.periodic(Duration.zero, …)`, a hot loop for
+> a function with an empty body; the power-tier throttle is `interval × 5` and
+> zero times five is zero, so no battery tier could save it. Zero means no timer
+> at all now, and a positive value is clamped to 200 ms, because a wapp is
+> somebody else's code.
 >
-> **`forum` and `movies` declare `return 0;`.** `tickIntervalMs` only falls back
-> to 5000 when the export is *missing*, so zero passes straight through into
-> `Timer.periodic(Duration.zero, …)` — a hot loop. The power-tier throttle is
-> `interval × 5`, and zero times five is zero, so no battery tier can save it.
-> `arch_guard`'s `no-sub-minute-poll` cannot see any of this: it inspects Dart
-> `Timer.periodic` literals under `lib/**`, and these intervals are declared in
-> a wapp's C.
+> **What CoreState publishes is a revision, not the data.** The wapp reads what
+> it always read — `hal_xprs_traffic`, `hal_rns_nodes`, `hal_rns_recv` — just
+> when there is a reason to. Two properties carry it: changes coalesce inside a
+> 250 ms window, because a reader re-reads its whole view on each notification
+> and one-per-packet would cost more than the poll it replaces; and nothing is
+> armed for a topic nobody watches, so silence costs nothing.
 >
-> Routing and battery are the same fix. A handler that knows which wapp a
-> packet is for can wake that wapp; a wapp that is woken does not have to ask
-> sixty times a minute.
+> **What still polls, and why it is a different problem.** `chat` and `mail`
+> poll transports the core does not own (a propagation pull, Nostr relays).
+> `files`, `torrents`, `install` and `app-creator` poll the PROGRESS of a
+> host-side job — a download, a compile, a folder scan. That needs a
+> job-progress event with a shape of its own, not another state topic, and
+> guessing at it here would just be a fifth pattern.
 
 ---
 

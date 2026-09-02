@@ -460,7 +460,7 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption><strong>Every XPRS packet enters through one door.</strong> The two lanes that were left were both chat’s: an XPRS wire aired over its own Reticulum datagram tag, and a cursor over every private message on the device. The first is now one <code>hal_xprs_send</code>; the second is deleted rather than gated, because a permission is the wrong answer to a door that should not exist.</figcaption>
+  <figcaption><strong>Every XPRS packet enters through one door.</strong> The two lanes that were left were both chat’s: an XPRS wire aired over its own Reticulum datagram tag, and a cursor over every private message on the device.</figcaption>
 </section>
 
 <section id="f3">
@@ -579,7 +579,7 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption><strong>Fixed.</strong> A finished packet is carried unchanged, duplicate armings collapse, and the §5 identifier is now what a receipt names — and what a wapp keys its bubble on.</figcaption>
+  <figcaption><strong>Fixed.</strong> A finished packet is carried unchanged, and the §5 identifier is now what a receipt names — and what a wapp keys its bubble on.</figcaption>
 </section>
 
 <section id="f6">
@@ -661,7 +661,7 @@ flowchart LR
 </pre>
     </div>
   </figure>
-  <figcaption><strong>The shared pools are the debt that remains.</strong> <code>_admitToInbox</code> still never looks at the recipient. The datagram lane is the model: tag on the wire, private queue, durable mailbox, absent wapp woken on demand.</figcaption>
+  <figcaption><strong>The shared pools are the debt that remains.</strong> <code>_admitToInbox</code> still never looks at the recipient.</figcaption>
 </section>
 
 <section id="f8">
@@ -702,42 +702,51 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption><strong>chat is no longer a second digipeater.</strong> <code>ble_handle</code> returns on an XPRS wire, so the packets it used to repeat — while appending nothing to <code>via:</code> and paying no hop budget — are the core’s alone.</figcaption>
+  <figcaption><strong>chat is no longer a second digipeater.</strong> <code>ble_handle</code> returns on an XPRS wire, so the packets it used to repeat — appending nothing to <code>via:</code> — are the core’s alone.</figcaption>
 </section>
 
 <section id="f9">
   <h2><span class="fig">FIG 9</span> What the polling costs</h2>
-  <p class="lede">The bus calls the registered wapp straight into <code>module_handle_event</code>, so arrival drives the work rather than the clock.</p>
+  <p class="lede">The bus delivers by calling the wapp. What was left burning battery is everything the bus did not carry: core state had no topic, so a wapp that drew it had to ask.</p>
   <figure>
-    <div class="plate-bar"><span>Fig 9 · the bus calls now</span><span>xprs</span></div>
+    <div class="plate-bar"><span>Fig 9 · 1252 → 830 wakes/min</span><span>xprs</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart LR
-    T[&quot;host timer&lt;br/&gt;&lt;i&gt;per wapp interval&lt;/i&gt;&quot;] --&gt; TICK[&quot;module_tick&quot;]
-    TICK --&gt; P1[&quot;ble_poll ×20&quot;]
-    TICK --&gt; P2[&quot;lxmf_drain ×10&quot;]
-    TICK --&gt; P3[&quot;rns drain&quot;]
-    TICK --&gt; P4[&quot;APRS socket&quot;]
-    TICK --&gt; P5[&quot;flush queues&quot;]
-    P1 --&gt; N{&quot;anything there?&quot;}
-    P2 --&gt; N
-    P3 --&gt; N
-    P4 --&gt; N
-    P5 --&gt; N
-    N -- &quot;almost always&quot; --&gt; NO[&quot;nothing — CPU spent anyway&quot;]
+    subgraph WAS[&quot;before&quot;]
+        direction TB
+        T[&quot;host timer&lt;br/&gt;&lt;i&gt;every 0.2–5 s, per wapp&lt;/i&gt;&quot;] --&gt; TICK[&quot;module_tick&quot;]
+        TICK --&gt; P1[&quot;re-encode the traffic ring&quot;]
+        TICK --&gt; P2[&quot;re-encode the RNS graph&quot;]
+        TICK --&gt; P3[&quot;re-read the archive&quot;]
+        TICK --&gt; P4[&quot;ask: any datagram?&quot;]
+        TICK --&gt; P5[&quot;ask the host for the task list&quot;]
+        P1 --&gt; N{&quot;anything changed?&quot;}
+        P2 --&gt; N
+        P3 --&gt; N
+        P4 --&gt; N
+        P5 --&gt; N
+        N -- &quot;almost always&quot; --&gt; NO[&quot;no — CPU spent anyway&quot;]
+    end
 
-    EV[&quot;WappEventBroker&lt;br/&gt;&lt;i&gt;system.* topics&lt;/i&gt;&quot;] -. &quot;waits for the next tick&quot; .-&gt; TICK
+    subgraph NOW[&quot;after&quot;]
+        direction TB
+        CH[&quot;something actually changes&lt;br/&gt;&lt;i&gt;a packet, an announce, a flush&lt;/i&gt;&quot;]
+        CH --&gt; CS[&quot;CoreState.changed&lt;br/&gt;&lt;i&gt;coalesced 250 ms · silent with no subscriber&lt;/i&gt;&quot;]
+        CS --&gt; BUS2[&quot;core.&amp;lt;topic&amp;gt;&quot;]
+        BUS2 --&gt; HE[&quot;module_handle_event&lt;br/&gt;&lt;i&gt;read it, once, with a reason&lt;/i&gt;&quot;]
+    end
 
     classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
     classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
-    classDef off  fill:#E6E8EA,stroke:#6B7280,color:#2A2E33
+    classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
     class NO,N bad
     class TICK warn
-    class EV off
+    class CH,CS,BUS2,HE good
 </pre>
     </div>
   </figure>
-  <figcaption><strong><code>forum</code> and <code>movies</code> still declare <code>return 0;</code></strong>, which becomes <code>Timer.periodic(Duration.zero)</code>. The power-tier throttle multiplies the interval, and zero times five is zero.</figcaption>
+  <figcaption><strong>Eleven wapps stopped asking; five now have no clock at all.</strong> <code>CoreState</code> publishes a revision, not the data — the wapp reads what it always read, when there is a reason to. Changes coalesce in a 250&nbsp;ms window, and nothing is armed for a topic nobody watches, so silence costs nothing.</figcaption>
 </section>
 
 </div>
