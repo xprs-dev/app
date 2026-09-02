@@ -33,6 +33,7 @@ import '../mesh/mesh_service.dart';
 import '../mesh/mesh_courier.dart';
 import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_groups.dart';
+import '../receive/packet_gateway.dart';
 import '../receive/wapp_delivery.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_packet.dart';
@@ -3261,7 +3262,14 @@ class RnsService {
             final xprsWire = m.contentString;
             if (xprsLooksLikeWire(xprsWire)) {
               try {
-                XprsIngest.reticulum(_hex(m.sourceHash),
+                // Through the door, not around it. This is how two of our
+                // stations talk over the internet, so the packet gets the
+                // same treatment as one off a radio -- funnel AND delivery
+                // to the wapps that subscribed to its type. Calling
+                // XprsIngest directly skipped the second half, which is why
+                // a wapp saw messages from BLE and LAN but not from here.
+                PacketGateway.instance.receiveInternet(
+                    _hex(m.sourceHash),
                     Uint8List.fromList(utf8.encode(xprsWire)));
               } catch (_) {}
               // A wire the funnel cannot parse is still not correspondence, so
@@ -4323,7 +4331,7 @@ class RnsService {
     // as an air sighting. The wapp inbox below still gets its copy.
     if (tag == 'xprs') {
       try {
-        XprsIngest.reticulum(from, payload, bearer: bearer);
+        PacketGateway.instance.receiveInternet(from, payload, bearer: bearer);
       } catch (_) {}
     }
     final q = _wappInbox[tag];

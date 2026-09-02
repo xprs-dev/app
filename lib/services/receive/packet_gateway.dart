@@ -222,6 +222,37 @@ class PacketGateway {
     if (payload.isEmpty) return;
     xprsFrames++;
     XprsIngest.reticulum(from, payload, bearer: bearer);
+
+    // AND HAND IT TO THE WAPPS. Reticulum is how two of our stations talk
+    // over the internet -- `_ReticulumBearer` puts an XPRS wire in an LXMF
+    // message and the router feeds it to the funnel -- so for XPRS it is a
+    // link like BLE or LAN and a packet that arrives on it is delivered the
+    // same way.
+    //
+    // It was not. `receive` published every heard packet on its `xprs.<type>`
+    // topic and this path published nothing, so a wapp subscribed to
+    // `xprs.message` got everything from BLE and LAN and silently missed
+    // every message that came over the internet. That was mine, introduced
+    // when the bus was wired.
+    //
+    // Still NOT fired here: `onXprsPacket`, which drives §13.1 repeating.
+    // Handing a packet to a wapp and repeating it onto a radio are different
+    // questions, and only the first one applies to a packet off the internet
+    // (§13.11.3).
+    final p = XprsPacket.parse(utf8.decode(payload, allowMalformed: true));
+    if (p != null) {
+      try {
+        final self = MeshService.instance.tableCallsign.trim().toUpperCase();
+        final to = (p['d'] ?? '').trim().toUpperCase();
+        WappDelivery.instance.deliverPacket(
+          p,
+          bearer: bearer,
+          forUs: self.isNotEmpty && to == self,
+        );
+      } catch (e) {
+        LogService.instance.add('Gateway: wapp delivery threw (rns): $e');
+      }
+    }
     _done(bearer, RxLane.datagram, RxVerdict.xprs);
   }
 

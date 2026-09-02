@@ -14,9 +14,12 @@
  * delivers only to engines that asked for it.
  */
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xprs/services/receive/packet_gateway.dart';
 import 'package:xprs/services/receive/wapp_delivery.dart';
+import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/wapp/wapp_event_broker.dart';
 
@@ -75,6 +78,38 @@ void main() {
     expect(row['id'], isNotEmpty, reason: 'section 5 identifier, for dedup');
     // Every field, in order, so a wapp can read a type the core never parsed.
     expect(row['fields'], contains(equals(['m', 'on the hill'])));
+  });
+
+  test('a packet reaches a subscriber on EVERY link, Reticulum included', () {
+    // Reticulum is how two of our stations talk over the internet: an XPRS
+    // wire travels inside an LXMF message and the router hands it to the
+    // funnel. For XPRS it is a link like BLE or LAN.
+    //
+    // It was not treated like one. `receive` published every heard packet on
+    // its type topic and `receiveInternet` published nothing, so a wapp
+    // subscribed to xprs.message got everything off BLE and LAN and silently
+    // missed every message that came over the internet.
+    XprsArchive.instance.selfCallsign = 'X1SELF';
+    bus.registerEngine('chat');
+    bus.subscribe('chat', rxTopicFor('message'));
+
+    const wire = 't:message f:X1QZ3N d:X1RD89 ts:2026-09-02_10:00:00 m:hello';
+    final bytes = Uint8List.fromList(utf8.encode(wire));
+
+    PacketGateway.instance
+        .receive(bytes, bearer: 'ble', lane: RxLane.advert, rssi: -55);
+    PacketGateway.instance
+        .receive(bytes, bearer: 'lan', lane: RxLane.advert);
+    PacketGateway.instance.receiveInternet('hub', bytes);
+
+    expect(bus.queueDepth('chat'), 3,
+        reason: 'one delivery per link, Reticulum included');
+    final bearers = <String>[];
+    for (var i = 0; i < 3; i++) {
+      bearers.add(jsonDecode(bus.recv('chat')!.data)['bearer'] as String);
+    }
+    expect(bearers, ['ble', 'lan', 'rns'],
+        reason: 'and each says which link carried it');
   });
 
   test('an unknown type is published under its own name, not dropped', () {
