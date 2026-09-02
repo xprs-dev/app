@@ -33,7 +33,10 @@ import 'dart:convert';
 import '../../wapp/wapp_event_broker.dart';
 import '../log_service.dart';
 import '../xprs/xprs_id.dart';
+import '../../util/nostr_crypto.dart';
+import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_packet.dart';
+import '../xprs/xprs_sig.dart';
 
 /// The topic a packet of type [t] is published on. One per §4.2 type.
 String rxTopicFor(String t) => 'xprs.${t.trim().toLowerCase()}';
@@ -58,6 +61,7 @@ class WappDelivery {
   /// Test seam: what was published, without standing up an engine.
   static void Function(String topic, Map<String, dynamic> row)? onPublish;
 
+
   /// Publish a heard packet to whoever subscribed to its type.
   ///
   /// [bearer] is the word a radio person would use (`ble`, `lan`, `rns`);
@@ -70,6 +74,16 @@ class WappDelivery {
     required bool forUs,
     int rssi = 0,
   }) {
+    // §9.1's verdict, computed here rather than left to the wapp. The archive
+    // has always computed exactly this for its own rows; a wapp handed a packet
+    // and no verdict has to verify it itself, and chat did — with a signature
+    // scheme of its own invention, layered inside `m:`.
+    final sig = p.has('sig')
+        ? xprsVerify(p,
+                XprsArchive.instance.keyResolver
+                    ?.call(NostrCrypto.bareCallsign(p['f'] ?? '')))
+            .name
+        : XprsSigState.unsigned.name;
     final row = <String, dynamic>{
       // Section 5: derived from the packet, never transmitted, so a copy
       // heard twice over two bearers is recognised once. A wapp needs it to
@@ -93,6 +107,7 @@ class WappDelivery {
       'rssi': rssi,
       'via': p['via'] ?? '',
       'link': p['link'] ?? '',
+      'sig': sig,
     };
     return _publish(rxTopicFor(p.type), row);
   }
@@ -111,6 +126,7 @@ class WappDelivery {
     Object? ts,
     String id = '',
     String call = '',
+    String sig = '',
   }) =>
       _publish(rxTopicFor('message'), {
         'id': id,
@@ -121,6 +137,10 @@ class WappDelivery {
         // what a person is called — a wapp given only the hex had to keep its
         // own hex-to-name table and ask the host to fill it in.
         'call': call,
+        // §9.1's verdict, computed by the core and reported rather than
+        // discarded: verified | unverified | forged | unsigned. A wapp with
+        // no answer here invents a signature scheme of its own; chat did.
+        'sig': sig,
         'to': title.startsWith('#') ? title : '',
         'content': content,
         'title': title,

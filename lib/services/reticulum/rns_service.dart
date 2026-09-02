@@ -2320,6 +2320,7 @@ class RnsService {
     String via = 'mesh',
     String id = '',
     String call = '',
+    String sig = '',
   }) {
     if (sourceHex.isEmpty || content.isEmpty) return;
     final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -2332,6 +2333,7 @@ class RnsService {
       'via': via,
       'id': id,
       'call': call,
+      'sig': sig,
     })) {
       return;
     }
@@ -2390,6 +2392,7 @@ class RnsService {
         ts: row['ts'],
         id: (row['id'] ?? '').toString(),
         call: (row['call'] ?? '').toString(),
+        sig: (row['sig'] ?? '').toString(),
       );
     } catch (e) {
       LogService.instance.add('Delivery: publish failed, message kept: $e');

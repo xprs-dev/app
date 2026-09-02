@@ -523,11 +523,20 @@ class MeshCourier {
     // announced key (ECDH), so a successful unseal is a stronger proof of
     // authorship than the schnorr line — and an unopenable one is held, not
     // shown.
+    // THE VERDICT TRAVELS WITH THE MESSAGE.
+    //
+    // It used to be computed here, acted on, and thrown away — so a wapp that
+    // wanted to mark a bubble "verified" had no way to know, and chat grew a
+    // SECOND signature scheme (`~<sig>` over its own canonical form, checked
+    // with hal_verify) layered inside `m:`, running beside the §9.1 `sig:` the
+    // core had already checked and could not report.
+    var sigState = p.has('sig') ? XprsSigState.unverified : XprsSigState.unsigned;
     if (p.has('sig') && !p.has('n') && senderNpub.isNotEmpty) {
       final pubHex = NostrCrypto.decodeNpub(senderNpub);
       final state = pubHex.isEmpty
           ? XprsSigState.unverified
           : xprsVerify(p, Uint8List.fromList(HEX.decode(pubHex)));
+      sigState = state;
       if (state == XprsSigState.forged) {
         MeshCourierCounters.ingestDropped++;
         LogService.instance.add(
@@ -541,6 +550,12 @@ class MeshCourier {
     // plain — read off the wire, never from remembered state).
     final read = xprsReadBody(p, senderKeyHex: senderNpub);
     var body = read.clear ?? '';
+    // An unsplit sealed body that opened is authenticated by the unseal (9.2:
+    // it only opens against the sender's announced key). The split case says
+    // the same thing after reassembly, below.
+    if (read.privacy == XprsPrivacy.sealed && read.readable) {
+      sigState = XprsSigState.verified;
+    }
     if (read.privacy == XprsPrivacy.sealed && !read.readable) {
       // It arrived, and we cannot read it. Both of those are facts the operator
       // is owed, and this used to report neither: the packet was counted and
@@ -597,6 +612,7 @@ class MeshCourier {
         if (pubHex.isNotEmpty) {
           final state = xprsVerify(whole.packet.with_('sig', whole.sig!),
               Uint8List.fromList(HEX.decode(pubHex)));
+          sigState = state;
           if (state == XprsSigState.forged) {
             MeshCourierCounters.ingestDropped++;
             LogService.instance.add(
@@ -625,6 +641,10 @@ class MeshCourier {
       }
       p = whole.packet;
       body = whole.text;
+      // §9.2: a sealed body opens only against the sender's announced key, so a
+      // successful unseal is a stronger proof of authorship than the signature
+      // line — say so rather than reporting "unsigned".
+      if (whole.privacy == XprsPrivacy.sealed) sigState = XprsSigState.verified;
       // The set is identified by the packet the parts reassemble into, so the
       // same message completing twice (aired copy, then custody handover)
       // collapses onto one entry.
@@ -730,7 +750,8 @@ class MeshCourier {
         // is the identifier the SENDER's outbox is keyed on and the one a read
         // receipt has to name.
         id: xprsIdentifier(p),
-        call: f.from);
+        call: f.from,
+        sig: sigState.name);
     // REMEMBER it. `_alreadyDelivered` is checked on the way in, but nothing
     // ever recorded the delivery, so the guard read a flag no one set and the
     // same packet was delivered again on every arrival — once per bearer, and
