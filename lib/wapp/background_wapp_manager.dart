@@ -41,6 +41,7 @@ import '../services/hero/hero_inbox.dart';
 import '../services/preferences_service.dart';
 import 'android_foreground_service.dart';
 import 'hal_permissions.dart';
+import 'wapp_event_broker.dart';
 import 'wapp_engine.dart';
 import '../services/mesh/mesh_service.dart';
 
