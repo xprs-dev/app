@@ -22,7 +22,6 @@
 // at [PacketGateway]; nothing in this file delivers anywhere else.
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
@@ -40,7 +39,6 @@ import '../../services/reticulum/rns_service.dart';
 import '../../services/wifi_direct/wifi_direct_coordinator.dart';
 import '../../services/mesh/mesh_session.dart' show MspCaps;
 import '../../services/mesh/xblob_service.dart';
-import '../../services/xprs/xprs_packet.dart';
 import '../../services/receive/packet_gateway.dart';
 import '../../services/preferences_service.dart';
 import '../../wapp/android_foreground_service.dart';
@@ -1228,27 +1226,18 @@ class BleService {
   // transmits a frame as a brief burst when it actually has something to send.
   // Peers are listening, so a short burst is enough; we don't hold the radio
   // advertising indefinitely.
-  /// Air a frame a wapp handed us, under the subtype its CONTENT earns.
-  ///
-  /// A wapp hands over content and does not choose a radio, a lane or a
-  /// format tag (docs/architecture.md 1) -- so it does not name a subtype
-  /// either, and `lib/wapp/**` is barred from importing the bus that defines
-  /// them. The classification is the core's, and it belongs here.
-  ///
-  /// The chat wapp's `ble_pack` already emits XPRS via `xprs_pack`, falling
-  /// back to the compact `FROM<US>TO<US>text` only for frames XPRS has no
-  /// words for yet (?MAIL, ?IGATE, ?PING) or that will not fit. All of that
-  /// XPRS went out under 0x41 -- the byte that says "compact APRS frame" --
-  /// and a station's `on_ble` drops anything that is not 0x58 on its first
-  /// line. So the phone's XPRS reached other phones, whose 0x41 handler
-  /// parses XPRS out of it as compensation, and no station at all.
-  void enqueueWappAdvert(Object owner, Uint8List payload,
-      {Duration ttl = const Duration(seconds: 10)}) {
-    final isXprs =
-        XprsPacket.parse(utf8.decode(payload, allowMalformed: true)) != null;
-    enqueueAdvert(owner, payload,
-        subtype: isXprs ? Ble5Subtype.xprs : Ble5Subtype.aprs, ttl: ttl);
-  }
+  // enqueueWappAdvert is GONE, with the hal_ble_advertise that called it.
+  //
+  // It took bytes a wapp handed over and SNIFFED them to choose the subtype:
+  //
+  //     final isXprs = XprsPacket.parse(...) != null;
+  //     enqueueAdvert(payload, subtype: isXprs ? xprs : aprs);
+  //
+  // which is exactly the guess `enqueueAdvert`'s required `subtype:` exists to
+  // prevent -- its own comment says a default "is what let both happen
+  // quietly" -- reintroduced one call later with a parse in place of a
+  // constant. A wapp does not put bytes on this radio now: it says what it
+  // wants said, and the core composes the packet and names its own subtype.
 
   /// Air [payload] under [subtype], routing by size.
   ///

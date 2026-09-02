@@ -75,10 +75,12 @@ enum XprsSealRefusal {
 
 /// A body that was built, or the reason it was not.
 class XprsBodyResult {
-  const XprsBodyResult.ok(this.packets, this.privacy) : refusal = null;
+  const XprsBodyResult.ok(this.packets, this.privacy, {this.rejoined})
+      : refusal = null;
   const XprsBodyResult.refused(this.refusal)
       : packets = const [],
-        privacy = XprsPrivacy.sealed;
+        privacy = XprsPrivacy.sealed,
+        rejoined = null;
 
   /// The wires to air, in order. More than one when the body was split
   /// (section 6.6).
@@ -89,6 +91,18 @@ class XprsBodyResult {
   final XprsPrivacy privacy;
 
   final XprsSealRefusal? refusal;
+
+  /// The packet the parts reassemble into (joined `m:`/`x:`, no `n:`) when the
+  /// body was split, null when it was not.
+  ///
+  /// The §5 identifier of THAT is what the receiver derives and what a receipt
+  /// names in `r:`. A caller keying a bubble on `packets.first` would key it on
+  /// part one of nine, which no receipt will ever mention.
+  final XprsPacket? rejoined;
+
+  /// The packet whose identifier names this message, split or not.
+  XprsPacket? get identityPacket =>
+      rejoined ?? (packets.isEmpty ? null : packets.first);
 
   bool get ok => refusal == null;
 }
@@ -173,7 +187,7 @@ XprsBodyResult _plain(XprsPacket head, String text, BigInt? d) {
     if (i == chunks.length - 1 && sig != null) p = p.with_('sig', sig);
     out.add(p);
   }
-  return XprsBodyResult.ok(out, XprsPrivacy.plain);
+  return XprsBodyResult.ok(out, XprsPrivacy.plain, rejoined: joined);
 }
 
 XprsBodyResult _sealed(
@@ -232,7 +246,19 @@ XprsBodyResult _sealed(
     if (!p.fits) return const XprsBodyResult.refused(XprsSealRefusal.tooLong);
     out.add(p);
   }
-  return XprsBodyResult.ok(out, XprsPrivacy.sealed);
+  // What the RECEIVER ends up with, and it is NOT the ciphertexts joined.
+  //
+  // XprsPartTable opens each part's `x:` as it arrives and joins the
+  // PLAINTEXT, then builds `first.without({n, sig, x, m}).with_('m', joined)`.
+  // So the packet whose §5 identifier names this message carries `m:` even
+  // though every part carried `x:` — and a sender that derived its id from the
+  // ciphertext would key its bubble on a value no receipt will ever mention.
+  //
+  // §6.6 joins with exactly one space, so the sender must join the same way
+  // rather than reuse the original text: a body with a double space between
+  // two words reassembles with one.
+  final joined = head.with_('m', chunks.join(' '));
+  return XprsBodyResult.ok(out, XprsPrivacy.sealed, rejoined: joined);
 }
 
 int _b64Len(int bytes) => ((bytes + 2) ~/ 3) * 4;

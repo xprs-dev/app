@@ -36,6 +36,7 @@ import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_packet.dart';
 import '../services/xprs/xprs_receipt.dart';
+import '../services/xprs/xprs_send.dart';
 import '../services/xprs/xprs_publisher.dart';
 import '../services/xprs/xprs_vocab.dart';
 import '../services/torrent_service.dart';
@@ -330,14 +331,6 @@ class WappEngine {
   // (the wasm test runner can't await async I/O). Keyed by handle.
   final Map<int, RawSynchronousSocket> _syncSockets = {};
   int _nextSyncSocketHandle = 1;
-
-  // hal_ble_* state — this engine's view of the SHARED BleService. Inbound
-  // frames are buffered per-engine (each as JSON bytes) so every wapp receives
-  // every frame; advertising is multiplexed by the shared service keyed on
-  // this engine instance.
-  final List<List<int>> _bleRx = [];
-  StreamSubscription<BleInboundFrame>? _bleSub;
-  bool _bleScanning = false;
 
   /// Translation tables handed over by [WappPage._reloadI18n]. Used
   /// by the `hal_i18n_get` import to resolve `@key` / bare-key lookups
@@ -2427,86 +2420,32 @@ class WappEngine {
     // stream) and advertises through the shared multiplexed queue, so BLE is
     // never owned exclusively by one wapp.
     final ble = BleService.instance;
-    final halBleScanStart = WasmFunction(
-      () {
-        if (!_bleScanning) {
-          _bleScanning = true;
-          LogService.instance.add('WappEngine[$_appId]: BLE scan subscribe');
-          _bleSub = ble.inbound.listen((f) {
-            _bleRx.add(jsonEncode({
-              'from': f.from,
-              'rssi': f.rssi,
-              'data': String.fromCharCodes(f.data),
-            }).codeUnits);
-            if (_bleRx.length > 256) {
-              _bleRx.removeRange(0, _bleRx.length - 256);
-            }
-          });
-          ble.startScan();
-        }
-        return 0;
-      },
-      params: [], results: [ValueTy.i32],
-    );
-    final halBleScanStop = WasmFunction.voidReturn(
-      () {
-        if (_bleScanning) {
-          _bleScanning = false;
-          _bleSub?.cancel();
-          _bleSub = null;
-          ble.stopScan();
-        }
-      },
-      params: [],
-    );
-    final halBleScanRead = WasmFunction(
-      (int bufPtr, int bufLen) {
-        if (_bleRx.isEmpty || bufLen <= 0) return 0;
-        final rec = _bleRx.removeAt(0);
-        final n = rec.length < bufLen ? rec.length : bufLen;
-        final mem = _memory!.view;
-        for (var i = 0; i < n; i++) mem[bufPtr + i] = rec[i];
-        return n;
-      },
-      params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
-    );
-    final halBleAdvertise = WasmFunction(
-      (int bufPtr, int bufLen) {
-        if (bufLen <= 0) return -1;
-        final mem = _memory!.view;
-        final bytes = Uint8List(bufLen);
-        for (var i = 0; i < bufLen; i++) bytes[i] = mem[bufPtr + i];
-        // Keep wapp broadcasts on air long enough to span a receiver's
-        // duty-cycled scan. Android phones scan in bursts (~every 2 min), so a
-        // one-shot 10 s advert almost always falls between scan windows and the
-        // message never arrives — only continuously-repeated beacons get through.
-        // 120 s (< the 130 s receiver dedup, so it still delivers exactly once)
-        // spans a full scan cycle. The wapp re-advertising replaces stale frames.
-        // LABEL IT AS WHAT IT IS. `ble_pack` in the chat wapp already emits
-        // XPRS -- it calls `xprs_pack` and only falls back to the compact
-        // `FROM<US>TO<US>text` for the frames XPRS has no words for yet
-        // (?MAIL, ?IGATE, ?PING) or that will not fit. Every one of those
-        // XPRS wires was going out under subtype 0x41, which says "compact
-        // APRS frame", and a station's `on_ble` drops anything that is not
-        // 0x58 on its first line. So the phone's XPRS reached other phones --
-        // whose 0x41 handler parses XPRS out of it as compensation -- and no
-        // station at all.
-        //
-        // The core decides the lane, which is the rule (architecture.md 1):
-        // the wapp hands over content and does not choose a radio, a subtype
-        // or a format tag. Deciding it here from the payload also needs no
-        // new HAL endpoint and no wapp rebuild, so the wasm already on the
-        // phones gets it.
-        ble.enqueueWappAdvert(this, bytes,
-            ttl: const Duration(seconds: 120));
-        return 0;
-      },
-      params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
-    );
-    final halBleAdvertiseStop = WasmFunction.voidReturn(
-      () => ble.clearAdverts(this),
-      params: [],
-    );
+    // ── BLE ─────────────────────────────────────────────────────────────────
+    // THERE IS NO RAW BLE HAL, AND THERE MUST NEVER BE ONE AGAIN.
+    //
+    // `ble_scan_start` / `ble_scan_read` handed a wapp every 0x41 advert this
+    // radio heard and every reassembled GATT parcel, each with the advertiser's
+    // address and its RSSI — a transport address and a proximity signal, to a
+    // wapp, for traffic addressed to other people. The core delivered the lot
+    // and trusted the wapp to discard what was not its business.
+    //
+    // `ble_advertise` was worse. It took arbitrary bytes and made the core
+    // SNIFF them to pick the subtype byte for the wire:
+    //
+    //     final isXprs = XprsPacket.parse(...) != null;
+    //     enqueueAdvert(payload, subtype: isXprs ? xprs : aprs);
+    //
+    // which is precisely the guess `enqueueAdvert`'s required `subtype:`
+    // parameter exists to prevent, reintroduced one call later. Through it a
+    // wapp ran a digipeater of its own — re-airing other people's frames on a
+    // staggered schedule, three times for a 1:1, appending no `via:` and paying
+    // no hop budget, while the core's digipeater ran on the same radio — and
+    // aired frames under callsigns that were not this station's.
+    //
+    // A wapp says what it wants said, with hal_xprs_message or hal_xprs_send,
+    // and the core decides how it goes out. What comes back arrives on the
+    // event bus.
+
     // Report whether the physical Bluetooth adapter is powered ON right now (the
     // user can toggle it at the OS level at any time). A wapp uses this to avoid
     // claiming BLE is available when Bluetooth is off. Returns 1 = on, 0 = off.
@@ -2905,83 +2844,19 @@ class WappEngine {
     );
     // Pop the next fetched DM JSON {id, from(b64url), ts, text, mid}; 0 if none.
     // ── LXMF ────────────────────────────────────────────────────────────────
-    // THERE IS NO hal_lxmf_recv, AND THERE SHOULD NEVER BE ONE AGAIN.
+    // ── LXMF ────────────────────────────────────────────────────────────────
+    // THERE IS NO LXMF HAL AT ALL. Not recv, and now not send either.
     //
-    // It was a cursor over `RnsService._lxmfInbox` — every private message on
-    // this device, with no recipient test — handed to any wapp that named the
-    // symbol. And it was a second receive door: the same message reached the
-    // wapp both through the core's event bus and through this cursor, so a
-    // wapp had to dedup the core against itself, with a cursor that restarted
-    // at zero on every engine and a seen-ring it had to persist to compensate.
+    // `lxmf_recv` was a cursor over every private message on the device, with
+    // no recipient test. `lxmf_send` and `lxmf_send2` named ONE Reticulum
+    // destination — a wapp choosing a transport, and choosing the one transport
+    // that cannot reach a station standing in the same room.
     //
-    // A message reaches a wapp on the bus now — one publication per logical
-    // message, after reassembly (§6.6) and unsealing, with its §5 identifier.
-    // Sending stays: hal_lxmf_send addresses ONE named destination, which is a
-    // different thing from reading everybody's mail.
-    // Send an LXMF message to a delivery dest (32 hex) — how we answer a
-    // NomadNet user. Fire-and-forget; 1 if queued.
-    final halLxmfSend = WasmFunction(
-      (int dPtr, int dLen, int tPtr, int tLen, int cPtr, int cLen) {
-        final dest = _readStr(dPtr, dLen);
-        if (dest.isEmpty) return -1;
-        // ignore: discarded_futures
-        RnsService.instance.sendLxmf(
-          destHex: dest,
-          title: _readStr(tPtr, tLen),
-          content: _readStr(cPtr, cLen),
-          private: true,
-        );
-        return 1;
-      },
-      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32,
-        ValueTy.i32, ValueTy.i32],
-      results: [ValueTy.i32],
-    );
-    // hal_lxmf_send2: send a 1:1 and say which form it took.
-    //
-    //   want: 1 = private (the section 9.4 default for a direct message),
-    //         0 = plain text.
-    //   returns 1 sealed, 2 plain, -1 privacy asked for and not possible,
-    //           0 malformed.
-    //
-    // One call rather than a "set the mode, then send" pair, because privacy in
-    // XPRS is a property of ONE PACKET (9.2) -- there is no mode to set, and a
-    // flag left lying between two calls is exactly the remembered state the
-    // format does not have.
-    //
-    // The return value is what a bubble should be labelled with: what actually
-    // happened, never what was asked for. -1 is a real answer rather than an
-    // error -- the recipient's key has not been heard yet (9.3) and the host has
-    // just asked for it (18.1), so the next attempt will very likely seal.
-    final halLxmfSend2 = WasmFunction(
-      (int dPtr, int dLen, int cPtr, int cLen, int want) {
-        final dest = _readStr(dPtr, dLen);
-        final body = _readStr(cPtr, cLen);
-        if (dest.isEmpty || body.isEmpty) return 0;
-        final private = want != 0;
-        if (private) {
-          // Resolve now, so the caller is told the truth before it draws a
-          // bubble. Sealing later without a key would be the silent downgrade
-          // this whole change exists to remove (36.8).
-          final call = RnsService.instance.callsignForLxmfDest(dest);
-          final key = call.isEmpty
-              ? null
-              : RnsService.instance.pubkeyForCallsign(call);
-          if (key == null || key.isEmpty) {
-            if (call.isNotEmpty) {
-              unawaited(XprsPublisher.instance.askIdentity(call));
-            }
-            return -1;
-          }
-        }
-        // ignore: discarded_futures
-        RnsService.instance
-            .sendLxmf(destHex: dest, content: body, private: private);
-        return private ? 1 : 2;
-      },
-      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
-      results: [ValueTy.i32],
-    );
+    // Both directions are the core's. A message arrives on the event bus,
+    // reassembled and unsealed, with its §5 identifier; a message leaves
+    // through hal_xprs_message, which seals when it can, refuses out loud when
+    // it cannot (§36.8 — plaintext is disclosure, never a silent fallback),
+    // splits per §6.6, ranks the bearers per §36.0 and parks a custody copy.
     final halRelayDmRecv = WasmFunction(
       (int outPtr, int outCap) {
         if (_relayDmRx.isEmpty || outCap <= 0) return 0;
@@ -3628,6 +3503,47 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_message: say something to somebody. THE ONLY WAY A WAPP TALKS.
+    //
+    // The wapp supplies the words and the recipient. The core composes the
+    // packet, seals it (§9.2) when `want_private` and it holds the recipient's
+    // key, signs it, splits it (§6.6), ranks the bearers on §36.0 evidence,
+    // parks a custody copy and remembers the §5 identifier so a receipt can
+    // find it. None of that is the wapp's business and all of it used to be
+    // spread across one.
+    //
+    //   returns  1 sealed, 2 plain,
+    //           -1 privacy asked for and not possible (the key has not been
+    //              heard; the core has just asked for it, §18.1),
+    //            0 malformed.
+    //
+    // -1 is an ANSWER, not an error, and never a downgrade: §36.8 makes
+    // plaintext a disclosure, so a request to seal that cannot be met is
+    // refused and said out loud rather than quietly sent in the clear.
+    //
+    // On success the §5 identifier is written to [idOut] (7 bytes: 6 hex and a
+    // terminator) — what the caller keys its bubble on, what the core's outbox
+    // is keyed on, and what a `t:receipt` names in `r:`. One value, derived by
+    // both ends from the packet, instead of a token one end invents.
+    final halXprsMessage = WasmFunction(
+      (int toPtr, int toLen, int txtPtr, int txtLen, int want, int idOut,
+          int idCap) {
+        final to = _readStr(toPtr, toLen);
+        final text = _readStr(txtPtr, txtLen);
+        if (to.isEmpty || text.isEmpty) return 0;
+        final r = XprsSend.instance
+            .message(to, text, private: want != 0);
+        if (r.ok && idCap > 0) {
+          _writeBytes(idOut, idCap,
+              Uint8List.fromList(utf8.encode(r.id)));
+        }
+        return r.code;
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32,
+        ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+
     // hal_xprs_read: a person opened a message. THE ONE RECEIPT A WAPP OWNS.
     //
     // §13.7 has two states and the core can only know one of them. That a
@@ -3994,11 +3910,6 @@ class WappEngine {
       WasmImport('hal', 'socket_close_sync', halSocketCloseSync),
       // BLE (shared adapter via BleService — receive on all wapps, multiplexed
       // transmit). Real implementation, not a stub.
-      WasmImport('hal', 'ble_scan_start', halBleScanStart),
-      WasmImport('hal', 'ble_scan_stop', halBleScanStop),
-      WasmImport('hal', 'ble_scan_read', halBleScanRead),
-      WasmImport('hal', 'ble_advertise', halBleAdvertise),
-      WasmImport('hal', 'ble_advertise_stop', halBleAdvertiseStop),
       WasmImport('hal', 'ble_available', halBleAvailable),
       // HTTP HAL — real, backed by HttpTransport (so the Wapp Store can
       // fetch its remote catalog). Defined above; replaces the old stubs.
@@ -4097,8 +4008,6 @@ class WappEngine {
       WasmImport('hal', 'relay_dm_fetch', halRelayDmFetch),
       WasmImport('hal', 'relay_for', halRelayFor),
       WasmImport('hal', 'relay_dm_recv', halRelayDmRecv),
-      WasmImport('hal', 'lxmf_send', halLxmfSend),
-      WasmImport('hal', 'lxmf_send2', halLxmfSend2),
       WasmImport('hal', 'relay_dm_drop', halRelayDmDrop),
       WasmImport('hal', 'relay_identity_publish', halRelayIdentityPublish),
       WasmImport('hal', 'relay_resolve', halRelayResolve),
@@ -4145,6 +4054,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_groups', halXprsGroups),
       WasmImport('hal', 'xprs_send', halXprsSend),
       WasmImport('hal', 'xprs_read', halXprsRead),
+      WasmImport('hal', 'xprs_message', halXprsMessage),
       WasmImport('hal', 'xprs_set_pref', halXprsSetPref),
       WasmImport('hal', 'mesh_scf_status', halMeshScfStatus),
       WasmImport('hal', 'mesh_transfers', halMeshTransfers),
@@ -4323,15 +4233,6 @@ class WappEngine {
       RnsService.instance.wappUnregister(_appId!);
     }
     _rnsRx.clear();
-    // Release this wapp's share of the BLE adapter.
-    _bleSub?.cancel();
-    _bleSub = null;
-    if (_bleScanning) {
-      _bleScanning = false;
-      BleService.instance.stopScan();
-    }
-    BleService.instance.clearAdverts(this);
-    _bleRx.clear();
     _byId.remove(engineId);
     WappEventBroker.instance.unregisterEngine(engineId);
     _stopwatch.stop();

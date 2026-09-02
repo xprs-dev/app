@@ -41,18 +41,11 @@ import 'dart:convert';
 
 /// A capability a wapp must declare in `manifest.json` to be granted.
 class HalPermission {
-  /// Read raw frames off a radio, and write frames to it.
-  static const bleRaw = 'transport.ble.raw';
-
   /// Read and write Reticulum datagrams directly.
   static const rnsRaw = 'transport.rns.raw';
 
   /// Open arbitrary TCP sockets (the APRS-IS uplink is the only user).
   static const socket = 'transport.socket';
-
-  /// Write to a named Reticulum destination over LXMF. NOT the shared inbox:
-  /// that is no longer reachable from a wapp under any grant.
-  static const lxmf = 'transport.lxmf';
 
   /// Send and receive NOSTR events and relay DMs.
   static const nostr = 'transport.nostr';
@@ -60,7 +53,7 @@ class HalPermission {
   /// The whole heard-traffic spool and the live monitor ring.
   static const spool = 'archive.read';
 
-  static const all = [bleRaw, rnsRaw, socket, lxmf, nostr, spool];
+  static const all = [rnsRaw, socket, nostr, spool];
 }
 
 /// Every gated import, by the name the wasm imports it under, mapped to the
@@ -69,12 +62,21 @@ class HalPermission {
 /// Keyed on the import NAME rather than the Dart symbol, because that is what
 /// a wasm module actually asks for and what a reviewer reads in a manifest.
 const Map<String, String> kGatedImports = {
-  // Radio, in both directions.
-  'ble_scan_start': HalPermission.bleRaw,
-  'ble_scan_stop': HalPermission.bleRaw,
-  'ble_scan_read': HalPermission.bleRaw,
-  'ble_advertise': HalPermission.bleRaw,
-  'ble_advertise_stop': HalPermission.bleRaw,
+  // NO RADIO ENTRY, because there is no radio import left to gate.
+  //
+  // `ble_scan_*` and `ble_advertise*` are deleted from the host. A permission
+  // was the wrong answer to them: gated or not, they handed a wapp every frame
+  // this radio heard — with the advertiser's address and its RSSI, for traffic
+  // addressed to other people — and let it put arbitrary bytes on the air under
+  // a subtype the core had to GUESS from their content. Through them a wapp ran
+  // a second digipeater and aired frames under other stations' callsigns.
+  //
+  // NO LXMF ENTRY either. `lxmf_send`/`lxmf_send2` named one Reticulum
+  // destination, which is a wapp choosing a transport — and choosing the one
+  // that cannot reach a station standing in the same room.
+  //
+  // A wapp says what it wants said with hal_xprs_message. What it hears
+  // arrives on the event bus. Neither is gated, because neither is a lane.
 
   // Reticulum, raw.
   'rns_available': HalPermission.rnsRaw,
@@ -89,13 +91,6 @@ const Map<String, String> kGatedImports = {
   'socket_recv': HalPermission.socket,
   'socket_close': HalPermission.socket,
   'socket_status': HalPermission.socket,
-
-  // Addressing a named Reticulum destination directly. There is no `lxmf_recv`
-  // any more — the shared inbox this permission was named for is not reachable
-  // from a wapp at all now, in any grant. What is left is the send side, which
-  // writes to ONE destination the wapp already names.
-  'lxmf_send': HalPermission.lxmf,
-  'lxmf_send2': HalPermission.lxmf,
 
   // NOSTR, including decrypted relay DMs.
   'nostr_event_recv': HalPermission.nostr,

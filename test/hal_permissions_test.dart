@@ -19,12 +19,9 @@ void main() {
     test('a wapp that declares nothing gets no transport', () {
       const none = <String>{};
       for (final imp in [
-        'ble_scan_read',
-        'ble_advertise',
         'rns_recv',
         'rns_broadcast',
         'socket_open',
-        'lxmf_send',
         'nostr_event_recv',
         'relay_dm_recv',
         'xprs_history',
@@ -58,28 +55,49 @@ void main() {
 
   group('a declaration grants exactly what it names', () {
     test('one permission does not unlock another', () {
-      const onlyBle = {HalPermission.bleRaw};
-      expect(halImportAllowed('ble_scan_read', onlyBle), isTrue);
-      expect(halImportAllowed('lxmf_send', onlyBle), isFalse);
-      expect(halImportAllowed('nostr_event_recv', onlyBle), isFalse);
-      expect(halImportAllowed('socket_open', onlyBle), isFalse);
+      const onlyRns = {HalPermission.rnsRaw};
+      expect(halImportAllowed('rns_recv', onlyRns), isTrue);
+      expect(halImportAllowed('nostr_event_recv', onlyRns), isFalse);
+      expect(halImportAllowed('socket_open', onlyRns), isFalse);
+      expect(halImportAllowed('xprs_history', onlyRns), isFalse);
     });
 
-    test('writing to a named destination needs its own grant', () {
-      expect(halImportAllowed('lxmf_send', {HalPermission.lxmf}), isTrue);
-      expect(halImportAllowed('lxmf_send2', {HalPermission.lxmf}), isTrue);
-      expect(halImportAllowed('lxmf_send', {HalPermission.spool}), isFalse);
+    // THE DOORS THAT NO PERMISSION CAN OPEN, because they do not exist.
+    //
+    // A permission is the wrong answer to a door that should not be there.
+    // Each of these handed a wapp something no wapp may have: every raw frame
+    // this radio hears with its RSSI, the right to put arbitrary bytes on that
+    // radio under a subtype the core had to guess, one named Reticulum
+    // destination, and every private message on the device.
+    //
+    // They are ungated now — like any unknown import — because the host binds
+    // no such function at all. The test asserts BOTH halves: not in the gate
+    // table, and not in a grant.
+    test('the deleted doors cannot be granted by anything', () {
+      for (final imp in [
+        'ble_scan_start',
+        'ble_scan_read',
+        'ble_advertise',
+        'ble_advertise_stop',
+        'lxmf_recv',
+        'lxmf_send',
+        'lxmf_send2',
+      ]) {
+        expect(kGatedImports.containsKey(imp), isFalse,
+            reason: '$imp: no permission may unlock a door that is gone');
+        for (final p in HalPermission.all) {
+          expect(halImportAllowed(imp, {p}), isTrue,
+              reason: '$imp: ungated — and the host binds no such import');
+        }
+      }
     });
 
-    // The shared inbox is not a permission any more: the door is gone. A wapp
-    // that names the old symbol binds nothing, whatever it declares — which is
-    // what happens to any unknown import, and is the point.
-    test('the shared inbox cannot be granted at all', () {
-      for (final p in HalPermission.all) {
-        expect(kGatedImports.containsKey('lxmf_recv'), isFalse,
-            reason: 'no permission may unlock a door that no longer exists');
-        expect(halImportAllowed('lxmf_recv', {p}), isTrue,
-            reason: 'ungated now — and the host binds no such import');
+    // The one way a wapp talks, and it needs no grant: it is not a lane.
+    test('saying something needs no permission at all', () {
+      const none = <String>{};
+      for (final imp in ['xprs_message', 'xprs_send', 'xprs_read',
+        'event_subscribe', 'event_recv']) {
+        expect(halImportAllowed(imp, none), isTrue, reason: imp);
       }
     });
   });
@@ -87,8 +105,8 @@ void main() {
   group('reading a manifest', () {
     test('declared permissions are granted', () {
       final g = declaredPermissions(
-          '{"id":"x","permissions":["transport.ble.raw","archive.read"]}');
-      expect(g, {HalPermission.bleRaw, HalPermission.spool});
+          '{"id":"x","permissions":["transport.rns.raw","archive.read"]}');
+      expect(g, {HalPermission.rnsRaw, HalPermission.spool});
     });
 
     test('an absent, empty or broken manifest grants nothing', () {
@@ -104,7 +122,7 @@ void main() {
 
     test('unknown permission strings grant nothing they do not name', () {
       final g = declaredPermissions('{"permissions":["transport.everything"]}');
-      expect(halImportAllowed('lxmf_send', g), isFalse);
+      expect(halImportAllowed('rns_recv', g), isFalse);
     });
   });
 }
