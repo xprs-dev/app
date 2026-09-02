@@ -120,9 +120,26 @@ class XprsBridge {
   final Map<String, int> _sent = {};
   static const int maxSent = 256;
 
+  /// How long "already carried" lasts.
+  ///
+  /// It used to last FOREVER, and the bench showed what that costs: the
+  /// stations repeat an identical beacon, so after the first copy every later
+  /// one was suppressed silently and the LAN side never heard that station
+  /// again. The digipeater has always had a window ([XprsDigipeater.seenMs]);
+  /// this is the same idea and the same figure. A beacon repeating every
+  /// second is still bridged once a minute, not once ever.
+  static const int seenMs = 60000;
+
+  /// Copies suppressed because this lane already carried that packet. Counted,
+  /// because a bridge that is working and a bridge that is silently deduping
+  /// everything looked identical from outside — which is exactly how long it
+  /// took to notice.
+  static int alreadyCarried = 0;
+
   Map<String, dynamic> get json => {
         'bridged': bridged,
         'toArchivers': toArchivers,
+        'alreadyCarried': alreadyCarried,
         'refusedByRule': refusedByRule,
         'laneUnavailable': laneUnavailable,
         'skippedLocal': skippedLocal,
@@ -140,6 +157,7 @@ class XprsBridge {
 
     final id = xprsIdentifier(p);
     if (id.isEmpty) return;
+    _sweep();
 
     // §13.11.1: `local` names the bearers in range, not a distance. It may
     // cross between short-range lanes and must never reach the internet.
@@ -157,7 +175,10 @@ class XprsBridge {
       for (final target in shortRange) {
         if (target == _lane(bearer)) continue; // digipeat's job, not ours
         final key = '$target|$id';
-        if (_sent.containsKey(key)) continue;
+        if (_sent.containsKey(key)) {
+          alreadyCarried++;
+          continue;
+        }
         _remember(key);
         unawaited(_carry(out, target, id, bearer));
       }
@@ -230,16 +251,27 @@ class XprsBridge {
 
   void _remember(String key) {
     if (_sent.length >= maxSent) _sent.remove(_sent.keys.first);
-    _sent[key] = DateTime.now().millisecondsSinceEpoch;
+    _sent[key] = now();
   }
+
+  void _sweep() {
+    final cutoff = now() - seenMs;
+    _sent.removeWhere((_, t) => t < cutoff);
+  }
+
+  /// Test seam: the window is the mechanism, so a test that cannot move the
+  /// clock cannot test it.
+  int Function() now = () => DateTime.now().millisecondsSinceEpoch;
 
   static void debugReset() {
     bridged = 0;
     toArchivers = 0;
+    alreadyCarried = 0;
     refusedByRule = 0;
     laneUnavailable = 0;
     skippedLocal = 0;
     instance._sent.clear();
+    instance.now = () => DateTime.now().millisecondsSinceEpoch;
     instance.policy = const XprsBridgePolicy();
   }
 }

@@ -99,4 +99,29 @@ void main() {
     await heard('t:message f:X1QZ3N d:X3ARK ts:$_ts m:hello', 'espnow');
     expect(aired.map((a) => a.lane).toSet(), {'ble', 'lan'});
   });
+
+  test('a repeat inside the window is suppressed, after it is not', () async {
+    // The bench found this the hard way: the dedup had no window at all, so a
+    // station repeating an identical beacon was bridged exactly once and the
+    // LAN side never heard it again. Digipeat kept airing while the bridge sat
+    // frozen at bridged:1 — and nothing counted the suppression, so the two
+    // were indistinguishable from outside.
+    var clock = 1000000;
+    XprsBridge.instance.now = () => clock;
+    const w = 't:message f:X1QZ3N d:X3ARK ts:$_ts m:hello';
+
+    await heard(w, 'ble5');
+    expect(aired.length, 1);
+
+    clock += XprsBridge.seenMs ~/ 2; // still inside the window
+    await heard(w, 'ble5');
+    expect(aired.length, 1, reason: 'a repeat in the window is not re-carried');
+    expect(XprsBridge.alreadyCarried, 1, reason: 'and it is counted, not silent');
+
+    clock += XprsBridge.seenMs + 1; // past it
+    await heard(w, 'ble5');
+    expect(aired.length, 2,
+        reason: 'a beacon repeating for an hour reaches the LAN more than once');
+  });
 }
+
