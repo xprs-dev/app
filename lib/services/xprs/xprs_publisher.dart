@@ -747,9 +747,31 @@ class XprsPublisher {
       String? prefer}) async {
     LogService.instance.add('XPRS: publishWire <- $wireIn');
     var p = XprsPacket.parse(wireIn.trim());
-    if (p == null || !p.fits) {
-      LogService.instance.add('XPRS: publishWire rejected (parse/fit)');
+    if (p == null) {
+      LogService.instance.add('XPRS: publishWire rejected (parse)');
       return const {};
+    }
+    // TOO LONG IS NOT THE SAME AS MALFORMED. §6.6 is the format's own answer
+    // to a message that outgrows one packet, and the splitter that implements
+    // it has been here all along with exactly one caller (`publishStatus`).
+    // Everything else — every `hal_xprs_send` from every wapp — was refused on
+    // the same line as a wire that did not parse, so a wapp with 300 bytes to
+    // say had no way to say it and no way to find out why. A wapp then keeps
+    // its own long-message transport, which is precisely the lane this work
+    // is closing.
+    if (!p.fits) {
+      final parts = _splitOversize(p, verbatim: verbatim);
+      if (parts.isEmpty) {
+        LogService.instance.add('XPRS: publishWire rejected (cannot split)');
+        return const {};
+      }
+      lastWire = parts.last;
+      LogService.instance.add(
+          'XPRS: ${p.type} split into ${parts.length} part(s) — §6.6');
+      final air = await _fanOut(parts,
+          slot: slot ?? '${p.type}:${xprsIdentifier(p)}', ttl: ttl);
+      published++;
+      return air.report;
     }
     final call =
         (ProfileService.instance.activeProfile?.callsign ?? '').trim();
@@ -844,6 +866,31 @@ class XprsPublisher {
     LogService.instance.add(
         'XPRS: ${p.type} wire — ${report.entries.map((e) => '${e.key}:${e.value}').join(', ')}');
     return report;
+  }
+
+  /// §6.6 parts for a caller-composed wire that outgrew one packet.
+  ///
+  /// `m:` is greedy and last in the grammar, so the head is every other field
+  /// in order and the body is what `m:` holds. That is the same shape [_wires]
+  /// already splits for a status, signature placement (§9.1.1) included, so it
+  /// does the work — this only takes the packet apart into the two arguments
+  /// it wants.
+  ///
+  /// Empty when there is nothing to split (a packet with no `m:` is over the
+  /// limit on its envelope alone, which is not a §6.6 case), and empty for a
+  /// `verbatim` wire: re-splitting somebody else's packet would recompose it
+  /// under our own signature and give it a new §5 identity, which is not a
+  /// relay. A relayed oversize packet was already split by its author.
+  List<String> _splitOversize(XprsPacket p, {required bool verbatim}) {
+    if (verbatim) return const [];
+    final body = p['m'];
+    if (body == null || body.isEmpty) return const [];
+    final head = [
+      for (final f in p.fields)
+        if (f.key != 'm' && f.key != 'sig' && f.key != 'n') '${f.key}:${f.value}'
+    ].join(' ');
+    if (head.isEmpty) return const [];
+    return _wires(head, body);
   }
 
   /// Test seam: the exact wire [publishIdentity] would air, with [signingKey]

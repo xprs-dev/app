@@ -39,6 +39,7 @@ class _FakeBearer implements XprsBearer {
 
 void main() {
   _identityAndSlots();
+  _oversizeWires();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // No active profile in a unit test: the publisher must refuse politely.
@@ -167,5 +168,45 @@ void _identityAndSlots() {
     expect(b.slots, ['command:X3AAAA', 'command:X3BBBB']);
     expect(b.slots.toSet(), hasLength(2),
         reason: 'sharing one slot is what silently dropped every ask but one');
+  });
+}
+
+// A caller-composed wire that outgrew one packet.
+//
+// `hal_xprs_send` refused these on the same line as a wire that did not parse,
+// so a wapp with 300 bytes to say had no way to say it — which is one of the
+// reasons a wapp kept a long-message transport of its own.
+void _oversizeWires() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('publishWire: an oversize wire is split at spaces, not refused',
+      () async {
+    final ble = _FakeBearer('ble5', shortRange: true);
+    XprsPublisher.instance.bearers = [ble];
+    final words = List.generate(90, (i) => 'w$i').join(' ');
+    final wire = 't:message f:X1TEST d:X1PEER '
+        'ts:2026-09-02_12:00:00 m:$words';
+    expect(XprsPacket.parse(wire)!.fits, isFalse,
+        reason: 'the fixture has to be over the limit to test anything');
+
+    await XprsPublisher.instance.publishWire(wire, verbatim: true);
+    // verbatim relays somebody else's packet; re-splitting it would recompose
+    // it under a new §5 identity, so it stays refused.
+    expect(ble.sent, isEmpty);
+
+    await XprsPublisher.instance.publishWire(wire);
+    expect(ble.sent.length, greaterThan(1));
+    // Every part is a whole packet, carries n:i/total, and none exceeds the
+    // limit that made the original too long.
+    final bodies = <String>[];
+    for (var i = 0; i < ble.sent.length; i++) {
+      final p = XprsPacket.parse(ble.sent[i]);
+      expect(p, isNotNull);
+      expect(p!.fits, isTrue);
+      expect(p['n'], '${i + 1}/${ble.sent.length}');
+      expect(p['d'], 'X1PEER', reason: 'the envelope rides on every part');
+      bodies.add(p['m'] ?? '');
+    }
+    expect(bodies.join(' '), words, reason: 'rejoins to the original body');
   });
 }
