@@ -1454,6 +1454,10 @@ class _WappPageState extends State<WappPage>
 
       final interval = _engine.tickIntervalMs;
 
+      // 0 = no clock. A wapp whose work is entirely event-driven declares it,
+      // and gets no timer and no periodic task rather than a Duration.zero
+      // timer spinning on an empty function.
+      if (interval > 0) {
       // Register this wapp's tick loop with the task monitor.
       TaskMonitorService.instance.register(
         MonitoredTask(
@@ -1487,6 +1491,7 @@ class _WappPageState extends State<WappPage>
           );
         }
       });
+      } // interval > 0
 
       // "Open with…" delivery: hand the chosen file to the module via
       // a file.open message right after init so the wapp can react on

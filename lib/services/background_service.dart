@@ -124,7 +124,13 @@ abstract class BackgroundService {
     } catch (e) {
       TaskMonitorService.instance.reportFailure(id, e);
     }
-    _timer = Timer.periodic(interval, (_) => _runTick());
+    // A zero interval means this service has no clock -- it runs when
+    // something happens to it, through tickNow or a native heartbeat.
+    // Timer.periodic(Duration.zero) is not "off", it is "as fast as the event
+    // loop allows", which is the opposite of what a caller declaring 0 wants.
+    if (interval > Duration.zero) {
+      _timer = Timer.periodic(interval, (_) => _runTick());
+    }
   }
 
   /// Run one tick now (used by the timer and by external heartbeats such as

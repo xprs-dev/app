@@ -4229,10 +4229,26 @@ class WappEngine {
   /// `tests.complete` JSON via `hal_msg_send`, drained from [drainOutbox].
   void runTests() { _instance?.getFunction('module_run_tests')?.call([]); }
 
+  /// How often to call `module_tick`, or 0 for NEVER.
+  ///
+  /// Zero is a real answer and the right one for a wapp with no periodic work:
+  /// it says "wake me on an event, never on a clock". Seven wapps in this tree
+  /// have an empty tick body, and two of them already declared 0 — which the
+  /// callers turned into `Timer.periodic(Duration.zero)`, a timer that fires as
+  /// fast as the event loop will let it, forever, for a function that does
+  /// nothing. So 0 means no timer at all, and the callers must check.
+  ///
+  /// Anything positive is clamped to [minTickMs]. A wapp is not trusted to
+  /// declare a sane cadence: it is somebody else's code, and the cost of a
+  /// wrong number is paid by the whole device.
+  static const int minTickMs = 200;
+
   int get tickIntervalMs {
     final fn = _instance?.getFunction('module_tick_interval_ms');
     if (fn == null) return 5000;
-    return (fn.call([]).first as int?) ?? 5000;
+    final v = (fn.call([]).first as int?) ?? 5000;
+    if (v <= 0) return 0;
+    return v < minTickMs ? minTickMs : v;
   }
 
   /// Release a socket handle (a view onto a shared connection). The underlying
