@@ -28,6 +28,7 @@ import 'package:reticulum/reticulum.dart';
 
 import '../../profile/profile_service.dart';
 import '../../profile/profile_storage.dart';
+import '../../services/log_service.dart';
 import 'coin_host_bridge.dart' show CoinHostBridge, CoinMeta;
 
 /// A coin this device operates an ATM for.
@@ -317,15 +318,42 @@ class AtmHostBridge {
     ];
   }
 
+  /// Writes started and not yet finished.
+  ///
+  /// `writeJson` returns a Future and both persist calls threw it away, so
+  /// `atm.create` answered the UI before the coin was on disk — and a reload
+  /// inside that window found no coin at all. It surfaced as a test that slept
+  /// 80ms and hoped, failing about one run in five on a loaded machine, but
+  /// the sleep was covering for the app: kill it in that window and a minted
+  /// coin is simply gone.
+  final List<Future<void>> _writes = [];
+
+  /// Completes when every write started so far has landed. A caller that is
+  /// about to reload — or a test that is about to assert on what was
+  /// persisted — awaits this instead of guessing a delay.
+  Future<void> get flushed async {
+    while (_writes.isNotEmpty) {
+      final batch = List<Future<void>>.of(_writes);
+      _writes.clear();
+      await Future.wait(batch);
+    }
+  }
+
+  void _track(Future<void> write) {
+    _writes.add(write.catchError((Object e) {
+      LogService.instance.add('ATM: write failed: $e');
+    }));
+  }
+
   void _persistRegistry() {
-    _storage.writeJson(
-        _registryFile, {'coins': [for (final c in _coins.values) c.toReg()]});
+    _track(_storage.writeJson(
+        _registryFile, {'coins': [for (final c in _coins.values) c.toReg()]}));
   }
 
   void _persistChain(_AtmCoin coin, AtmChain chain) {
     final blocks = [for (final b in chain.blocks) b.toJson()];
     coin.blocksJson = blocks;
-    _storage.writeJson(_chainFile(coin.coinId), {'blocks': blocks});
+    _track(_storage.writeJson(_chainFile(coin.coinId), {'blocks': blocks}));
   }
 
   static int _int(Object? v, int fallback) {

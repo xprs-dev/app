@@ -60,8 +60,7 @@ void main() {
     final r = b.handle('atm.faucet',
         {'coinId': coinId, 'to': recipient.npub, 'amount': 5});
     expect(r['atm_status'].toString(), contains('Distributed 5'));
-    // Give the fire-and-forget chain persist a moment.
-    await Future<void>.delayed(const Duration(milliseconds: 80));
+    await b.flushed;
 
     // Re-open the persisted per-coin blockchain DB and verify the credit.
     final raw = File('$path/atm_chain_$coinId.json').readAsStringSync();
@@ -87,7 +86,11 @@ void main() {
     final created = b1.handle('atm.create', {'plural': 'Mesh', 'code': 'MSH', 'exp': 8});
     final coinId = (itemsOf(created).first as Map)['id'] as String;
     b1.handle('atm.faucet', {'coinId': coinId, 'to': recipient.npub, 'amount': 7});
-    await Future<void>.delayed(const Duration(milliseconds: 80));
+    // Await the writes, do not guess at them. This slept 80ms and failed about
+    // one run in five on a loaded machine — because the bridge answered before
+    // its registry write had landed, which is a fault in the bridge and not in
+    // the sleep.
+    await b1.flushed;
 
     final b2 = AtmHostBridge(storage, operatorPriv: operator.privateKeyHex);
     await b2.init();
