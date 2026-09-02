@@ -2302,11 +2302,18 @@ class RnsService {
   /// nothing about — carried by a custodian on the mesh (see MeshCourier).
   /// It enters the SAME inbox a directly-delivered LXMF message does, so the
   /// wapp that owns the conversation needs no notion of how it travelled.
+  /// [id] is the §5 identifier of the packet this text came out of, when it
+  /// came out of one. It travels to the wapp with the message because §13.7's
+  /// read receipt names it in `r:` — a wapp that cannot name the message it
+  /// has just shown somebody cannot report that it was read, which is how a
+  /// wapp ends up inventing a correlation id of its own.
   void injectLxmf({
     required String sourceHex,
     required String content,
     String title = '',
     String via = 'mesh',
+    String id = '',
+    String call = '',
   }) {
     if (sourceHex.isEmpty || content.isEmpty) return;
     final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -2317,6 +2324,8 @@ class RnsService {
       'hash': '',
       'ts': nowMs / 1000.0,
       'via': via,
+      'id': id,
+      'call': call,
     })) {
       return;
     }
@@ -2373,6 +2382,8 @@ class RnsService {
         content: (row['content'] ?? '').toString(),
         title: title,
         ts: row['ts'],
+        id: (row['id'] ?? '').toString(),
+        call: (row['call'] ?? '').toString(),
       );
     } catch (e) {
       LogService.instance.add('Delivery: publish failed, message kept: $e');

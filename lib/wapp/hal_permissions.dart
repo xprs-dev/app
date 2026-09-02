@@ -14,9 +14,12 @@ import 'dart:convert';
  * So the wasm's own import table was the access-control list, written by
  * whoever compiled the wasm. Any wapp that added `hal_lxmf_recv` received
  * every private message on the device -- `_lxmfInbox` has no recipient test --
- * and could raise its own notifications for them. `hal_ble_scan_read` handed
- * out every raw radio frame, with `from` and `rssi`, which is a transport
- * opinion a wapp is not supposed to have at all (docs/architecture.md §1).
+ * and could raise its own notifications for them. That one is gone outright:
+ * a permission is the wrong answer to a door that should not exist, and the
+ * core delivers a message on the event bus instead. `hal_ble_scan_read` hands
+ * out raw radio frames, with `from` and `rssi`, which is a transport opinion a
+ * wapp is not supposed to have at all (docs/architecture.md §1) -- that one is
+ * a copy taken after the receive door, so it is gated rather than removed.
  *
  * That is tolerable while every wapp in the tree is ours. It stops being
  * tolerable the moment somebody else's wapp can be installed, and designing
@@ -47,8 +50,9 @@ class HalPermission {
   /// Open arbitrary TCP sockets (the APRS-IS uplink is the only user).
   static const socket = 'transport.socket';
 
-  /// Read the shared LXMF inbox — every human message on the device.
-  static const lxmfInbox = 'transport.lxmf.inbox';
+  /// Write to a named Reticulum destination over LXMF. NOT the shared inbox:
+  /// that is no longer reachable from a wapp under any grant.
+  static const lxmf = 'transport.lxmf';
 
   /// Send and receive NOSTR events and relay DMs.
   static const nostr = 'transport.nostr';
@@ -56,7 +60,7 @@ class HalPermission {
   /// The whole heard-traffic spool and the live monitor ring.
   static const spool = 'archive.read';
 
-  static const all = [bleRaw, rnsRaw, socket, lxmfInbox, nostr, spool];
+  static const all = [bleRaw, rnsRaw, socket, lxmf, nostr, spool];
 }
 
 /// Every gated import, by the name the wasm imports it under, mapped to the
@@ -86,10 +90,12 @@ const Map<String, String> kGatedImports = {
   'socket_close': HalPermission.socket,
   'socket_status': HalPermission.socket,
 
-  // The shared inbox of everybody's correspondence.
-  'lxmf_recv': HalPermission.lxmfInbox,
-  'lxmf_send': HalPermission.lxmfInbox,
-  'lxmf_send2': HalPermission.lxmfInbox,
+  // Addressing a named Reticulum destination directly. There is no `lxmf_recv`
+  // any more — the shared inbox this permission was named for is not reachable
+  // from a wapp at all now, in any grant. What is left is the send side, which
+  // writes to ONE destination the wapp already names.
+  'lxmf_send': HalPermission.lxmf,
+  'lxmf_send2': HalPermission.lxmf,
 
   // NOSTR, including decrypted relay DMs.
   'nostr_event_recv': HalPermission.nostr,

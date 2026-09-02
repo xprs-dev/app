@@ -35,6 +35,7 @@ import '../services/xprs/xprs_groups.dart';
 import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_packet.dart';
+import '../services/xprs/xprs_receipt.dart';
 import '../services/xprs/xprs_publisher.dart';
 import '../services/xprs/xprs_vocab.dart';
 import '../services/torrent_service.dart';
@@ -317,8 +318,6 @@ class WappEngine {
   // drained one JSON entry at a time by hal_relay_resolve_recv.
   final List<String> _relayResolveRx = [];
 
-  // Read cursor into RnsService.lxmfInbox for hal_lxmf_recv.
-  int _lxmfCursor = 0;
 
   // Every NOSTR subscription this engine opened, so dispose() can close them.
   // An engine is disposed and recreated whenever its page opens or closes; a
@@ -2906,23 +2905,19 @@ class WappEngine {
     );
     // Pop the next fetched DM JSON {id, from(b64url), ts, text, mid}; 0 if none.
     // ── LXMF ────────────────────────────────────────────────────────────────
-    // Inbound LXMF (NomadNet / Sideband / any Reticulum client) drained one
-    // message at a time, newest-last, via a cursor over the host inbox. A cursor
-    // rather than a queue because the host inbox is the durable record — a wapp
-    // that restarts re-reads from where it left off instead of losing whatever
-    // arrived while it was down.
-    final halLxmfRecv = WasmFunction(
-      (int outPtr, int outCap) {
-        if (outCap <= 0) return 0;
-        final inbox = RnsService.instance.lxmfInbox;
-        if (_lxmfCursor >= inbox.length) return 0;
-        final m = inbox[_lxmfCursor++];
-        final bytes = utf8.encode(jsonEncode(m));
-        if (bytes.length > outCap) return 0; // oversized: skip, cursor advanced
-        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
-      },
-      params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
-    );
+    // THERE IS NO hal_lxmf_recv, AND THERE SHOULD NEVER BE ONE AGAIN.
+    //
+    // It was a cursor over `RnsService._lxmfInbox` — every private message on
+    // this device, with no recipient test — handed to any wapp that named the
+    // symbol. And it was a second receive door: the same message reached the
+    // wapp both through the core's event bus and through this cursor, so a
+    // wapp had to dedup the core against itself, with a cursor that restarted
+    // at zero on every engine and a seen-ring it had to persist to compensate.
+    //
+    // A message reaches a wapp on the bus now — one publication per logical
+    // message, after reassembly (§6.6) and unsealing, with its §5 identifier.
+    // Sending stays: hal_lxmf_send addresses ONE named destination, which is a
+    // different thing from reading everybody's mail.
     // Send an LXMF message to a delivery dest (32 hex) — how we answer a
     // NomadNet user. Fire-and-forget; 1 if queued.
     final halLxmfSend = WasmFunction(
@@ -3633,6 +3628,38 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_read: a person opened a message. THE ONE RECEIPT A WAPP OWNS.
+    //
+    // §13.7 has two states and the core can only know one of them. That a
+    // message arrived is a fact about bytes, so the core composes `s:ack`
+    // itself, at delivery. That a person READ it is a fact about a screen, and
+    // the wapp drawing that screen is the only thing in the process that knows.
+    //
+    // So the wapp reports the event and nothing else: an identifier, and the
+    // core does the rest — §13.7.1's exclusions, the signature, the lane. It
+    // does NOT compose a receipt, invent a correlation id, or choose a
+    // transport, all of which chat used to do in a private dialect of its own
+    // (`?ACK <am> r`) that no other station spoke.
+    //
+    // 0 = a read receipt was composed and aired. -1 = nothing was, which is
+    // ordinary: the message may have aged out of the remembered set, or
+    // §13.7.1 may refuse a receipt for it (a group, a broadcast, a stranger).
+    final halXprsRead = WasmFunction(
+      (int ptr, int len) {
+        final id = _readStr(ptr, len).trim().toLowerCase();
+        if (id.isEmpty) return -1;
+        final r = XprsReceipt.composeRead(id,
+            selfCallsign: MeshService.instance.tableCallsign);
+        if (r == null) return -1;
+        XprsReceiptCounters.readSent++;
+        unawaited(XprsPublisher.instance
+            .publishWire(r.encode(), slot: 'read:$id', verbatim: true));
+        return 0;
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+
     // hal_xprs_history: the persistent spool, past the monitor's 200-ring.
     // Read-only; the query is a JSON filter and the reply is rows newest
     // first. Runs synchronously on an indexed table with the limit clamped —
@@ -4070,7 +4097,6 @@ class WappEngine {
       WasmImport('hal', 'relay_dm_fetch', halRelayDmFetch),
       WasmImport('hal', 'relay_for', halRelayFor),
       WasmImport('hal', 'relay_dm_recv', halRelayDmRecv),
-      WasmImport('hal', 'lxmf_recv', halLxmfRecv),
       WasmImport('hal', 'lxmf_send', halLxmfSend),
       WasmImport('hal', 'lxmf_send2', halLxmfSend2),
       WasmImport('hal', 'relay_dm_drop', halRelayDmDrop),
@@ -4118,6 +4144,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_history', halXprsHistory),
       WasmImport('hal', 'xprs_groups', halXprsGroups),
       WasmImport('hal', 'xprs_send', halXprsSend),
+      WasmImport('hal', 'xprs_read', halXprsRead),
       WasmImport('hal', 'xprs_set_pref', halXprsSetPref),
       WasmImport('hal', 'mesh_scf_status', halMeshScfStatus),
       WasmImport('hal', 'mesh_transfers', halMeshTransfers),

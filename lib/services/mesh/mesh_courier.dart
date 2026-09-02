@@ -721,8 +721,16 @@ class MeshCourier {
           'Courier: #$_delivered to a person from ${f.from} '
           '(${body.length}B of text)');
     }
-    RnsService.instance
-        .injectLxmf(sourceHex: srcHex, content: body, title: '', via: via);
+    RnsService.instance.injectLxmf(
+        sourceHex: srcHex,
+        content: body,
+        title: '',
+        via: via,
+        // The packet this text came out of — reassembled and unsealed, so this
+        // is the identifier the SENDER's outbox is keyed on and the one a read
+        // receipt has to name.
+        id: xprsIdentifier(p),
+        call: f.from);
     // REMEMBER it. `_alreadyDelivered` is checked on the way in, but nothing
     // ever recorded the delivery, so the guard read a flag no one set and the
     // same packet was delivered again on every arrival — once per bearer, and
@@ -757,6 +765,11 @@ class MeshCourier {
     final self = MeshService.instance.tableCallsign;
     final r = XprsReceipt.compose(p, selfCallsign: self);
     if (r == null) return;
+    // Keep the packet: §13.7's other state, `s:read`, can only be composed
+    // once a person opens the message, and by then the only thing the wapp can
+    // name it by is its §5 identifier. Remembered HERE because a message that
+    // earned an `s:ack` is exactly the set that may later earn an `s:read`.
+    XprsReceipt.remember(p);
     XprsReceiptCounters.sent++;
     unawaited(XprsPublisher.instance.publishWire(r.encode(),
         slot: 'ack:${r['r']}', verbatim: true));

@@ -101,4 +101,40 @@ void main() {
       }
     });
   });
+
+  group('the read half, which only a wapp can know', () {
+    // The core composes `s:ack` at delivery because arrival is a fact about
+    // bytes. That a PERSON opened the message is a fact about a screen, so the
+    // wapp reports it — by identifier, and by nothing else. Composing the
+    // receipt, applying 13.7.1 and choosing the lane stay here.
+    test('composeRead needs the message it names, and answers by id', () {
+      XprsReceipt.debugForget();
+      final msg = _p('t:message f:X1QZ3N d:X1SELF ts:$_ts m:on my way');
+      final id = xprsIdentifier(msg);
+
+      // Nothing remembered yet: an id the core cannot place changes nothing.
+      // A wapp cannot conjure a receipt for a message we never handled.
+      expect(XprsReceipt.composeRead(id, selfCallsign: 'X1SELF'), isNull);
+
+      XprsReceipt.remember(msg);
+      // Still refused: 13.7.1 wants an exchange, and this test has no archive.
+      // What matters is that it is the EXCLUSION table refusing, not a missing
+      // packet — the counter tells the two apart.
+      final before = XprsReceiptCounters.readUnknown;
+      XprsReceipt.composeRead(id, selfCallsign: 'X1SELF');
+      expect(XprsReceiptCounters.readUnknown, before,
+          reason: 'the packet was found; any refusal came from 13.7.1');
+    });
+
+    test('a remembered id is the one the sender keyed its bubble on', () {
+      final msg = _p('t:message f:X1QZ3N d:X1SELF ts:$_ts m:on my way');
+      XprsReceipt.debugForget();
+      XprsReceipt.remember(msg);
+      // The sender derived the same value from the bytes it sent, which is why
+      // one identifier serves the outbox, the receipt and the wapp's bubble —
+      // and why the `am:` token this replaced was redundant.
+      expect(XprsReceipt.debugRemembers(xprsIdentifier(msg)), isTrue);
+      expect(XprsReceipt.debugRemembers('000000'), isFalse);
+    });
+  });
 }

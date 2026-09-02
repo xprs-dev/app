@@ -24,7 +24,7 @@ void main() {
         'rns_recv',
         'rns_broadcast',
         'socket_open',
-        'lxmf_recv',
+        'lxmf_send',
         'nostr_event_recv',
         'relay_dm_recv',
         'xprs_history',
@@ -60,14 +60,27 @@ void main() {
     test('one permission does not unlock another', () {
       const onlyBle = {HalPermission.bleRaw};
       expect(halImportAllowed('ble_scan_read', onlyBle), isTrue);
-      expect(halImportAllowed('lxmf_recv', onlyBle), isFalse);
+      expect(halImportAllowed('lxmf_send', onlyBle), isFalse);
       expect(halImportAllowed('nostr_event_recv', onlyBle), isFalse);
       expect(halImportAllowed('socket_open', onlyBle), isFalse);
     });
 
-    test('the inbox of everybody\'s correspondence needs its own grant', () {
-      expect(halImportAllowed('lxmf_recv', {HalPermission.lxmfInbox}), isTrue);
-      expect(halImportAllowed('lxmf_recv', {HalPermission.spool}), isFalse);
+    test('writing to a named destination needs its own grant', () {
+      expect(halImportAllowed('lxmf_send', {HalPermission.lxmf}), isTrue);
+      expect(halImportAllowed('lxmf_send2', {HalPermission.lxmf}), isTrue);
+      expect(halImportAllowed('lxmf_send', {HalPermission.spool}), isFalse);
+    });
+
+    // The shared inbox is not a permission any more: the door is gone. A wapp
+    // that names the old symbol binds nothing, whatever it declares — which is
+    // what happens to any unknown import, and is the point.
+    test('the shared inbox cannot be granted at all', () {
+      for (final p in HalPermission.all) {
+        expect(kGatedImports.containsKey('lxmf_recv'), isFalse,
+            reason: 'no permission may unlock a door that no longer exists');
+        expect(halImportAllowed('lxmf_recv', {p}), isTrue,
+            reason: 'ungated now — and the host binds no such import');
+      }
     });
   });
 
@@ -91,7 +104,7 @@ void main() {
 
     test('unknown permission strings grant nothing they do not name', () {
       final g = declaredPermissions('{"permissions":["transport.everything"]}');
-      expect(halImportAllowed('lxmf_recv', g), isFalse);
+      expect(halImportAllowed('lxmf_send', g), isFalse);
     });
   });
 }

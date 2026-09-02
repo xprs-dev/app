@@ -99,16 +99,28 @@ class WappDelivery {
 
   /// Publish a message that arrived already decoded rather than as a packet
   /// (the LXMF lane). It is a `t:message` in everything but framing.
+  /// [id] is the §5 identifier of the packet the text came out of, empty when
+  /// it did not come out of one (a foreign LXMF message has no packet). It is
+  /// what §13.7 puts in a receipt's `r:`, so a wapp reporting "a person read
+  /// this" has something to name.
   int deliverMessage({
     required String from,
     required String content,
     String title = '',
     String bearer = 'rns',
     Object? ts,
+    String id = '',
+    String call = '',
   }) =>
       _publish(rxTopicFor('message'), {
+        'id': id,
         'type': 'message',
         'from': from,
+        // The sender's CALLSIGN where we know it. `from` is a Reticulum
+        // delivery destination, which is what addresses a reply but is not
+        // what a person is called — a wapp given only the hex had to keep its
+        // own hex-to-name table and ask the host to fill it in.
+        'call': call,
         'to': title.startsWith('#') ? title : '',
         'content': content,
         'title': title,

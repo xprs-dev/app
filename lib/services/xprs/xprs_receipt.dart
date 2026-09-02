@@ -59,6 +59,14 @@ class XprsReceiptCounters {
   /// signer whose key we have never heard. Both change nothing.
   static int unverifiable = 0;
 
+  /// A wapp reported a message read that we no longer hold — it aged out of
+  /// the remembered set, or this build restarted since it arrived. Not an
+  /// error; the sender simply keeps the tick it already had.
+  static int readUnknown = 0;
+
+  /// Read receipts composed because a person opened the message.
+  static int readSent = 0;
+
   static Map<String, int> get json => {
         'sent': sent,
         'heard': heard,
@@ -80,6 +88,47 @@ class XprsReceipt {
   /// §13.7's table. `ack` is the core's to send when a message is accepted
   /// for render; `read` is the WAPP's to ask for, because only the thing
   /// drawing the conversation knows a person looked at it.
+  /// Messages we acknowledged, by §5 identifier, so a `s:read` can be composed
+  /// later from the id alone.
+  ///
+  /// The wapp knows one thing the core cannot: that a person actually opened
+  /// the message. It reports that with an identifier, which is all §13.7 puts
+  /// in `r:` — but composing the receipt needs the packet the identifier names
+  /// (its sender, and whether §13.7.1 allows a receipt at all). So the packet
+  /// is kept here at the moment it was delivered, which is also the moment we
+  /// established it qualifies.
+  ///
+  /// A pocket, not a ledger: an id that ages out costs a second tick on a
+  /// message from hours ago.
+  static const int _rememberMax = 200;
+  static final Map<String, XprsPacket> _delivered = {};
+
+  /// Remember [p] for a later `s:read`. Called where the delivery `s:ack` is
+  /// composed, so only messages that qualify for a receipt are held.
+  static void remember(XprsPacket p) {
+    final id = xprsIdentifier(p);
+    if (id.isEmpty || _delivered.containsKey(id)) return;
+    if (_delivered.length >= _rememberMax) {
+      _delivered.remove(_delivered.keys.first);
+    }
+    _delivered[id] = p;
+  }
+
+  /// Test seams for the remembered set.
+  static void debugForget() => _delivered.clear();
+  static bool debugRemembers(String id) => _delivered.containsKey(id);
+
+  /// The `s:read` for a message a person has now opened, or null when we no
+  /// longer hold it or §13.7.1 refuses one.
+  static XprsPacket? composeRead(String id, {required String selfCallsign}) {
+    final p = _delivered[id.trim().toLowerCase()];
+    if (p == null) {
+      XprsReceiptCounters.readUnknown++;
+      return null;
+    }
+    return compose(p, selfCallsign: selfCallsign, state: 'read');
+  }
+
   static XprsPacket? compose(XprsPacket p,
       {required String selfCallsign,
       BigInt? signingKey,
