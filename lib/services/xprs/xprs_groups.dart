@@ -25,6 +25,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'xprs_id.dart';
+import '../receive/core_state.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
@@ -235,6 +236,12 @@ class XprsGroups {
     _cache.remove(group);
     _nextChange.remove(group);
     if (_changes.hasListener) _changes.add(group);
+    // And onto the wapp bus. This stream's own doc says polling it "would be
+    // work per tick to discover that nothing happened" — and the chat wapp
+    // polled hal_xprs_groups every 30 seconds anyway, because nothing carried
+    // the change to a wapp. Group membership is a core feature every wapp can
+    // use, so it gets a core topic.
+    CoreState.instance.changed(CoreState.groups);
     return true;
   }
 

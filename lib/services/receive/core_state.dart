@@ -57,6 +57,11 @@ class CoreState {
   /// A background task started, finished, paused or failed.
   static const tasks = 'core.tasks';
 
+  /// Closed-group membership moved: an act was accepted, or a roster replayed
+  /// differently (§26). Group membership is a core feature every wapp can use,
+  /// so it is announced like any other core state.
+  static const groups = 'core.groups';
+
   /// A datagram arrived on a wapp's own Reticulum tag. Per tag, because two
   /// wapps' private protocols are not each other's business:
   /// `core.datagram.<tag>`.
@@ -75,6 +80,7 @@ class CoreState {
     meshTopology,
     archive,
     tasks,
+    groups,
   ];
 
   /// How long changes are collected before one publication goes out.
