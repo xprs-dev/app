@@ -85,61 +85,79 @@ flowchart LR
 
 ---
 
-## Fig. 2 — The core is supposed to be the only door. It is not.
+## Fig. 2 — One door: what goes through it, and what still does not
 
-The rule: everything converges on the core, and the core hands finished text to
-a wapp. Green is the rule working. **Red is a lane that reaches a person without
-passing it.**
+Audited 2026-09-02, re-checked after the gateway, the permission gate and the
+Reticulum fix. **Green is through the door. Amber is fenced but still open.
+Red is open and unfenced.**
 
 ```mermaid
 flowchart TD
-    B58["BLE5 0x58"] --> HEARD
-    B41x["BLE5 0x41"] --> HEARD
-    UDP["LAN UDP"] --> HEARD
-    TCPl["LAN TCP · local peer"] --> HEARD
-    HEARD["<b>XprsIngest.heard</b><br/><i>the intended funnel</i>"]
+    subgraph THROUGH["through the door"]
+        direction TB
+        G["<b>PacketGateway</b><br/><i>demux · provenance · route by type</i>"]
+        GATT["GATT — 4 roles"] --> G
+        A58["BLE5 0x58"] --> G
+        A41["BLE5 0x41"] --> G
+        LANU["LAN UDP · TCP"] --> G
+        PARC["reassembled parcels"] --> G
+        RNS["<b>Reticulum / LXMF</b><br/><i>both entrances — fixed</i>"] --> G
+        G --> FUN["XprsIngest · MeshCourier"]
+        G --> BUS["event bus<br/><i>xprs.&lt;type&gt; · calls the wapp</i>"]
+    end
 
-    HEARD --> FORUS{"addressed to us<br/>and renders to a person?"}
-    FORUS -- yes --> DELIV["MeshCourier.deliverXprs<br/><i>verify · unseal · rejoin</i>"]
-    FORUS -- no --> OTHER["carry · command · receipt"]
-    DELIV --> INJ["RnsService.injectLxmf"]
+    subgraph FENCED["open, but a declared permission is now required"]
+        direction TB
+        RAW["hal_ble_scan_read<br/><code>transport.ble.raw</code>"]
+        DM["hal_relay_dm_recv<br/><code>transport.nostr</code>"]
+        DGRAM["hal_rns_recv — non-xprs tags<br/><code>transport.rns.raw</code>"]
+    end
 
-    LXMFin["Reticulum · LXMF"] --> ADMIT["_admitToInbox<br/><i>the real single door</i>"]
-    INJ --> ADMIT
-    ADMIT --> INBOX[("_lxmfInbox<br/><i>in memory · unbounded · not persisted</i>")]
-    INBOX --> WAPP["chat wapp"]
+    subgraph OPEN["open and unfenced"]
+        direction TB
+        LEG["legacy BLE scan<br/><b>sole path on non-BLE5</b>"]
+        RV["rendezvous → <code>'circles'</code><br/><i>hardcoded, dropped if not running</i>"]
+        INJ["POST /api/wapp/inject<br/><b>no auth, LAN-reachable</b>"]
+    end
 
-    MSPin["GATT · MSP custody"] --> ING["MeshCourier.ingest"]
-    ING --> DELIV
-
-    RNSX["Reticulum · XPRS wire<br/>addressed to us"] --> RET["XprsIngest.reticulum"]
-    RET --> ARCHONLY["archive.admit<br/><b>then return</b>"]
-    ARCHONLY --> NOWHERE(["never delivered<br/><i>no onDeliver · no log · no counter</i>"])
-
-    PARC["GATT · BLEQueue parcels"] --> RAW
-    B41raw["BLE5 0x41<br/><i>the same frame again</i>"] --> RAW
-    RAW["BleService._inbound"] --> SCAN["hal_ble_scan_read"]
-    SCAN --> BH["ble_handle<br/><i>the wapp parses it a second time</i>"]
+    BUS --> W["a wapp"]
+    RAW --> W
+    DM --> W
+    DGRAM --> W
+    LEG --> W
+    RV --> W
+    INJ --> W
 
     classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
-    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
     classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
-    class HEARD,ADMIT,DELIV good
-    class RET,ARCHONLY,NOWHERE,RAW,SCAN,BH bad
-    class MSPin,ING warn
+    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    class G,FUN,BUS,RNS good
+    class RAW,DM,DGRAM warn
+    class LEG,RV,INJ bad
+    class W warn
 ```
 
-> **The Reticulum branch is the one to read twice.** An XPRS `t:message`
-> addressed to this station that arrives over Reticulum is filed in the archive
-> and returned from — `XprsIngest.reticulum`, `lib/services/xprs/xprs_ingest.dart`.
-> It is never delivered, never rendered and never notified, and nothing counts
-> it. Any peer whose bearer chose Reticulum can send you a message you will
-> never see.
+> **Not yet. One of the seven is closed.** The two direct
+> `XprsIngest.reticulum` taps are gone — the LXMF router and the wapp-datagram
+> `xprs` tag both go through `PacketGateway.receiveInternet` now, and packets
+> off that lane are published by type like any other. That mattered more than
+> it sounds: **a wapp subscribed to `xprs.message` was receiving from BLE and
+> LAN and silently missing everything that came over the internet**, which is
+> how two stations out of radio range talk to each other.
 >
-> **And the raw lane is a second door into the same screen.** Every `0x41`
-> frame is handed to the funnel *and* pushed onto `BleService._inbound`, where
-> the wapp parses it again with its own dedup, its own digipeat and its own
-> receipt.
+> **Three are fenced, not closed.** A transport HAL is now bound only if the
+> wapp's manifest declares the permission, and the default is refuse — so a
+> stranger's wapp gets the content APIs and the event bus and nothing else.
+> Chat still declares six of them, which is the debt, now written down in one
+> file instead of implied by a wasm symbol table.
+>
+> **Three are still open.** The legacy BLE scan is the worst: on any device
+> where `Ble5Bus.supported()` is false — desktop, iOS, older Android — it is
+> the *entire* BLE receive path and reaches `BleService._inbound` and nothing
+> else. Rendezvous datagrams go to a hardcoded `'circles'` and are dropped
+> silently if that wapp is not running. And `POST /api/wapp/inject` still lets
+> any unauthenticated host on the LAN put a message into any running wapp's
+> inbox.
 
 ---
 
@@ -238,7 +256,7 @@ flowchart TD
 
 ---
 
-## Fig. 5 — What stays the same about a message, and what does not
+## Fig. 5 — What stays the same about a message (fixed 2026-09-02)
 
 Everything downstream — dedup, receipts, custody release, reassembly — assumes
 a message keeps one identity. Sealing is per attempt, so it does not.
@@ -331,6 +349,178 @@ flowchart TD
 > tick, two ticks. Everything from *composed* through *on the air* is a single
 > indistinguishable blank, which is why "did it send?" has never been
 > answerable from the screen.
+
+---
+
+---
+
+## Fig. 7 — Who decides which wapp gets a packet
+
+Only **one** route is addressed. The rest are shared pools a wapp reads at will,
+and a wapp gets a route by importing its symbol — there is no permission gate.
+
+```mermaid
+flowchart LR
+    subgraph ADDRESSED["the core decides"]
+        DG["wapp datagram<br/><code>[tagLen][tag][payload]</code>"] --> Q["_wappInbox[tag]<br/><i>private per wapp</i>"]
+        Q --> MB[("WappMailbox<br/><i>durable · wakes the wapp</i>")]
+    end
+
+    subgraph POOLS["the wapp pulls"]
+        LX[("_lxmfInbox<br/><b>one flat list</b><br/><i>no recipient test</i>")]
+        AR[("XprsArchive<br/><i>wapp writes its own WHERE</i>")]
+        RING[("XprsMonitor ring<br/><i>whole ring</i>")]
+        BLE[("BleService._inbound<br/><i>every frame, every engine</i>")]
+    end
+
+    LX --> CHAT["chat"]
+    AR --> CHAT
+    AR --> SOC["social"]
+    RING --> XW["xprs"]
+    BLE --> CHAT
+    Q --> CHAT
+    Q --> CIR["circles"]
+
+    RV["rendezvous"] -. "hardcoded" .-> CIR
+
+    classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
+    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
+    class DG,Q,MB good
+    class LX,BLE bad
+    class AR,RING,RV warn
+```
+
+> **`_admitToInbox` tests two things: content is non-empty, content is not an
+> XPRS wire.** It never looks at the recipient. The decision "this belongs to
+> chat" is made nowhere in the core — chat is simply the only wapp that asks.
+> Verified against the shipped wasm import tables: chat reads the LXMF inbox,
+> BLE frames, the datagram lane, NOSTR and the archive; circles reads the
+> datagram lane; mail reads NOSTR and relay DMs; social reads the archive.
+> Nothing abuses it today. Nothing prevents it either — `wapp_engine` offers
+> every HAL import to every module and swallows the failure when the module
+> does not declare it, so a route is claimed by importing its symbol.
+>
+> **The datagram lane is the model.** Tag on the wire, core reads it, private
+> queue per wapp, durable mailbox, absent wapp started on demand. That is what
+> the other routes should look like.
+
+---
+
+## Fig. 8 — Rebroadcast, and whether `via:` is told the truth
+
+Five paths put a packet back on the air. Four append `via:` and pay the hop
+budget. One does not.
+
+```mermaid
+flowchart TD
+    H["a packet arrives"] --> D{"which re-air path?"}
+
+    D --> DIGI["digipeater §13.2.1<br/><i>jitter · cancel-on-hearing</i>"]
+    D --> REL["custody release §36.8.1"]
+    D --> SUP["suppressed re-air<br/><code>sweepSuppressed</code>"]
+    D --> FWD["XprsForwarder<br/><i>mail migration</i>"]
+    D --> HIST["history replay<br/><i>author's packet, by design</i>"]
+
+    DIGI --> V1["via: ✓ · budget ✓ · loop ✓"]
+    REL --> V1
+    FWD --> V1
+    SUP --> V2["<b>via: ✗ · budget ✗ · loop ✗</b><br/>goes out as if direct"]
+    HIST --> V3["via: — not a relay"]
+
+    V1 --> B{"onto which bearer?"}
+    B --> BLE5["<b>BLE only</b>"]
+    B -. "never" .-> LANX["LAN"]
+    B -. "never" .-> RNSX["Reticulum"]
+
+    classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
+    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
+    classDef off  fill:#E6E8EA,stroke:#6B7280,color:#2A2E33
+    class V1 good
+    class V2,SUP bad
+    class B,BLE5 warn
+    class V3,LANX,RNSX off
+```
+
+> **The digipeater throws the bearer away.** `heard()` is given the packet but
+> not the bearer it arrived on, and its only transmit path skips every bearer
+> whose name is not `ble5`. So a packet heard on **LAN is repeated on BLE** —
+> an unlabelled LAN→BLE gateway — and a packet heard on LAN is never repeated
+> on LAN. §13.1 says a station "repeats a packet on the medium it heard it".
+>
+> **The suppressed re-air airs the stashed bytes verbatim**, with no
+> `xprsAppendVia`, no budget and no loop check, so a carried message can go out
+> claiming to be a direct transmission. This is the same ambiguity the other
+> release path documents as having been fixed; it was never fixed here.
+>
+> **The digipeater's own re-air is off-ledger airtime** — no `owedBy` check and
+> no `XprsAirtime.charge`, so every repeat is spend nobody counted (§31.1).
+>
+> And the app has **no `bridge_out`**. The firmware has one: every arrival is
+> offered to every other bearer, with four named operator switches. In the app,
+> only 1:1 mail crosses bearers (via the forwarder). A `t:sos` heard on LAN
+> reaches BLE only by the accidental digipeat above; heard on Reticulum it
+> reaches nothing.
+
+---
+
+## Fig. 9 — What the polling costs
+
+The event bus exists — `WappEventBroker`, `HostEventBridge`, `system.*` topics.
+But a subscribed wapp drains its queue **on its next tick**. The bus is a
+delivery queue, not a wake-up, so the tick is still what burns the battery.
+
+```mermaid
+flowchart LR
+    T["host timer<br/><i>per wapp interval</i>"] --> TICK["module_tick"]
+    TICK --> P1["ble_poll ×20"]
+    TICK --> P2["lxmf_drain ×10"]
+    TICK --> P3["rns drain"]
+    TICK --> P4["APRS socket"]
+    TICK --> P5["flush queues"]
+    P1 --> N{"anything there?"}
+    P2 --> N
+    P3 --> N
+    P4 --> N
+    P5 --> N
+    N -- "almost always" --> NO["nothing — CPU spent anyway"]
+
+    EV["WappEventBroker<br/><i>system.* topics</i>"] -. "waits for the next tick" .-> TICK
+
+    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
+    classDef off  fill:#E6E8EA,stroke:#6B7280,color:#2A2E33
+    class NO,N bad
+    class TICK warn
+    class EV off
+```
+
+| wapp | declared interval |
+|---|---|
+| `forum`, `movies` | **0 ms** |
+| `install`, `terminal` | 500 ms |
+| `social` | 700 ms |
+| `chat`, `circles`, `files`, `maps`, `tasks`, `torrents` | 1000 ms |
+| `mail` | 1500 ms |
+| `xprs` | 3000 ms |
+| `atm`, `wallet` | 60000 ms |
+
+> Measured on the bench: `cpu tasks total 11250ms (18.8% of main)` —
+> `wapp.bg.xprs` 8.0%, `wapp.bg.torrents` 5.0%, `wapp.bg.mail` 4.8%. Ticks cost
+> 50–150 ms against intervals of 1000 ms, whether or not anything arrived.
+>
+> **`forum` and `movies` declare `return 0;`.** `tickIntervalMs` only falls back
+> to 5000 when the export is *missing*, so zero passes straight through into
+> `Timer.periodic(Duration.zero, …)` — a hot loop. The power-tier throttle is
+> `interval × 5`, and zero times five is zero, so no battery tier can save it.
+> `arch_guard`'s `no-sub-minute-poll` cannot see any of this: it inspects Dart
+> `Timer.periodic` literals under `lib/**`, and these intervals are declared in
+> a wapp's C.
+>
+> Routing and battery are the same fix. A handler that knows which wapp a
+> packet is for can wake that wapp; a wapp that is woken does not have to ask
+> sixty times a minute.
 
 ---
 

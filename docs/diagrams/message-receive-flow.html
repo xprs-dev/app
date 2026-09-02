@@ -324,79 +324,76 @@
 </head>
 <body>
 <div class="wrap">
-
 <header class="top">
-  <p class="eyebrow">XPRS · communication coordinator</p>
+  <p class="eyebrow">XPRS · receive path · audited 2026-09-02</p>
   <h1>Receiving a 1:1</h1>
   <p class="standfirst">
-    Every bearer a message can arrive on, the core it is supposed to converge in,
-    and the handoff into the chat wapp. Drawn because three rounds of fixes each
-    removed a real defect and left messages still <strong>vanishing without a
-    trace at either end</strong>.
+    Every bearer a packet can arrive on, the one door it is supposed to come
+    through, who decides which wapp sees it, what gets rebroadcast — and what
+    the polling costs a phone.
   </p>
-
   <nav class="toc">
     <a href="#f1"><span class="n">01</span><span class="t">How it arrives</span></a>
-    <a href="#f2"><span class="n">02</span><span class="t">The four bypasses</span></a>
+    <a href="#f2"><span class="n">02</span><span class="t">Where it stands</span></a>
     <a href="#f3"><span class="n">03</span><span class="t">Inbox → bubble</span></a>
     <a href="#f4"><span class="n">04</span><span class="t">Notifications</span></a>
     <a href="#f5"><span class="n">05</span><span class="t">Identity</span></a>
     <a href="#f6"><span class="n">06</span><span class="t">Where it dies</span></a>
+    <a href="#f7"><span class="n">07</span><span class="t">Wapp routing</span></a>
+    <a href="#f8"><span class="n">08</span><span class="t">Rebroadcast</span></a>
+    <a href="#f9"><span class="n">09</span><span class="t">Battery</span></a>
   </nav>
 </header>
 
 <section id="f1">
   <h2><span class="fig">FIG 1</span> Every way a 1:1 can arrive</h2>
-  <p class="lede">
-    Four inputs, drawn honestly. <strong>LoRa is not a lane on this device</strong> — <code>LoraConnection.status</code> is <code>unavailable</code> unconditionally and there is no serial or KISS Reticulum interface, so LoRa arrives only re-aired by a station.
-  </p>
-
+  <p class="lede">LoRa is not a lane on this device: <code>LoraConnection.status</code> is unconditionally <code>unavailable</code>, so LoRa arrives only re-aired by a station.</p>
   <figure>
-    <div class="plate-bar"><span>Fig 1 · component view</span><span>four inputs → core</span></div>
+    <div class="plate-bar"><span>Fig 1 · four inputs → core</span><span>xprs</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart LR
-    subgraph BLE["BLE5"]
+    subgraph BLE[&quot;BLE5&quot;]
         direction TB
-        B58["extended advert <code>0x58</code><br/><i>XPRS wire</i>"]
-        B41["extended advert <code>0x41</code><br/><i>legacy compact + wapp broadcast</i>"]
-        MSP["GATT · MSP session<br/><i>custody handover</i>"]
-        PARCEL["GATT · BLEQueue parcels<br/><i>0x41 lane</i>"]
-        XBL["GATT · XBLOB <code>0x42</code><br/><i>bulk files only</i>"]
+        B58[&quot;extended advert &lt;code&gt;0x58&lt;/code&gt;&lt;br/&gt;&lt;i&gt;XPRS wire&lt;/i&gt;&quot;]
+        B41[&quot;extended advert &lt;code&gt;0x41&lt;/code&gt;&lt;br/&gt;&lt;i&gt;legacy compact + wapp broadcast&lt;/i&gt;&quot;]
+        MSP[&quot;GATT · MSP session&lt;br/&gt;&lt;i&gt;custody handover&lt;/i&gt;&quot;]
+        PARCEL[&quot;GATT · BLEQueue parcels&lt;br/&gt;&lt;i&gt;0x41 lane&lt;/i&gt;&quot;]
+        XBL[&quot;GATT · XBLOB &lt;code&gt;0x42&lt;/code&gt;&lt;br/&gt;&lt;i&gt;bulk files only&lt;/i&gt;&quot;]
     end
 
-    subgraph LAN["LAN"]
+    subgraph LAN[&quot;LAN&quot;]
         direction TB
-        UDP["XprsLan · UDP 4242"]
-        TCP["XprsTcp · text port"]
+        UDP[&quot;XprsLan · UDP 4242&quot;]
+        TCP[&quot;XprsTcp · text port&quot;]
     end
 
-    subgraph RNS["Reticulum"]
+    subgraph RNS[&quot;Reticulum&quot;]
         direction TB
-        LXMF["LXMF delivery<br/><i>the ordinary 1:1</i>"]
-        WAPPD["wapp datagram<br/><code>tag: xprs</code>"]
-        RELAY["NOSTR kind-4 backstop"]
+        LXMF[&quot;LXMF delivery&lt;br/&gt;&lt;i&gt;the ordinary 1:1&lt;/i&gt;&quot;]
+        WAPPD[&quot;wapp datagram&lt;br/&gt;&lt;code&gt;tag: xprs&lt;/code&gt;&quot;]
+        RELAY[&quot;NOSTR kind-4 backstop&quot;]
     end
 
-    LORA["LoRa<br/><i>no radio on this device</i>"]
-    ST["a station<br/><i>bridges LoRa to BLE / LAN / RNS</i>"]
+    LORA[&quot;LoRa&lt;br/&gt;&lt;i&gt;no radio on this device&lt;/i&gt;&quot;]
+    ST[&quot;a station&lt;br/&gt;&lt;i&gt;bridges LoRa to BLE / LAN / RNS&lt;/i&gt;&quot;]
 
-    LORA -. "only via" .-> ST
-    ST --> B58
-    ST --> UDP
-    ST --> LXMF
+    LORA -. &quot;only via&quot; .-&gt; ST
+    ST --&gt; B58
+    ST --&gt; UDP
+    ST --&gt; LXMF
 
-    B58  --> F["core"]
-    B41  --> F
-    MSP  --> F
-    UDP  --> F
-    TCP  --> F
-    LXMF --> F
-    WAPPD --> F
+    B58  --&gt; F[&quot;core&quot;]
+    B41  --&gt; F
+    MSP  --&gt; F
+    UDP  --&gt; F
+    TCP  --&gt; F
+    LXMF --&gt; F
+    WAPPD --&gt; F
 
-    PARCEL -- "never reaches the core" --> W["chat wapp"]
-    RELAY  -- "renders in the Mail wapp" --> M["mail wapp"]
-    XBL --> SPOOL["MeshBulkSpool<br/><i>not a text lane</i>"]
+    PARCEL -- &quot;never reaches the core&quot; --&gt; W[&quot;chat wapp&quot;]
+    RELAY  -- &quot;renders in the Mail wapp&quot; --&gt; M[&quot;mail wapp&quot;]
+    XBL --&gt; SPOOL[&quot;MeshBulkSpool&lt;br/&gt;&lt;i&gt;not a text lane&lt;/i&gt;&quot;]
 
     classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
     classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
@@ -409,72 +406,70 @@ flowchart LR
 </pre>
     </div>
   </figure>
-  <figcaption>
-    <strong>An unbuilt lane gets no box.</strong> Drawing one would say the opposite — and two of the lanes that <em>are</em> drawn never reach the core at all.
-  </figcaption>
+  <figcaption><strong>An unbuilt lane gets no box.</strong></figcaption>
 </section>
 
 <section id="f2">
-  <h2><span class="fig">FIG 2</span> The core is supposed to be the only door. It is not.</h2>
-  <p class="lede">
-    Green is the rule working: converge on the core, hand finished text to a wapp. <strong>Red is a lane that reaches a person without passing it.</strong>
-  </p>
-
+  <h2><span class="fig">FIG 2</span> One door: what goes through it, and what still does not</h2>
+  <p class="lede">Green is through the door. Amber is fenced by a declared permission but still open. Red is open and unfenced.</p>
   <figure>
-    <div class="plate-bar"><span>Fig 2 · convergence</span><span>rule vs reality</span></div>
+    <div class="plate-bar"><span>Fig 2 · converged · fenced · open</span><span>xprs</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
-    B58["BLE5 0x58"] --> HEARD
-    B41x["BLE5 0x41"] --> HEARD
-    UDP["LAN UDP"] --> HEARD
-    TCPl["LAN TCP · local peer"] --> HEARD
-    HEARD["<b>XprsIngest.heard</b><br/><i>the intended funnel</i>"]
+    subgraph THROUGH[&quot;through the door&quot;]
+        direction TB
+        G[&quot;&lt;b&gt;PacketGateway&lt;/b&gt;&lt;br/&gt;&lt;i&gt;demux · provenance · route by type&lt;/i&gt;&quot;]
+        GATT[&quot;GATT — 4 roles&quot;] --&gt; G
+        A58[&quot;BLE5 0x58&quot;] --&gt; G
+        A41[&quot;BLE5 0x41&quot;] --&gt; G
+        LANU[&quot;LAN UDP · TCP&quot;] --&gt; G
+        PARC[&quot;reassembled parcels&quot;] --&gt; G
+        RNS[&quot;&lt;b&gt;Reticulum / LXMF&lt;/b&gt;&lt;br/&gt;&lt;i&gt;both entrances — fixed&lt;/i&gt;&quot;] --&gt; G
+        G --&gt; FUN[&quot;XprsIngest · MeshCourier&quot;]
+        G --&gt; BUS[&quot;event bus&lt;br/&gt;&lt;i&gt;xprs.&amp;lt;type&amp;gt; · calls the wapp&lt;/i&gt;&quot;]
+    end
 
-    HEARD --> FORUS{"addressed to us<br/>and renders to a person?"}
-    FORUS -- yes --> DELIV["MeshCourier.deliverXprs<br/><i>verify · unseal · rejoin</i>"]
-    FORUS -- no --> OTHER["carry · command · receipt"]
-    DELIV --> INJ["RnsService.injectLxmf"]
+    subgraph FENCED[&quot;open, but a declared permission is now required&quot;]
+        direction TB
+        RAW[&quot;hal_ble_scan_read&lt;br/&gt;&lt;code&gt;transport.ble.raw&lt;/code&gt;&quot;]
+        DM[&quot;hal_relay_dm_recv&lt;br/&gt;&lt;code&gt;transport.nostr&lt;/code&gt;&quot;]
+        DGRAM[&quot;hal_rns_recv — non-xprs tags&lt;br/&gt;&lt;code&gt;transport.rns.raw&lt;/code&gt;&quot;]
+    end
 
-    LXMFin["Reticulum · LXMF"] --> ADMIT["_admitToInbox<br/><i>the real single door</i>"]
-    INJ --> ADMIT
-    ADMIT --> INBOX[("_lxmfInbox<br/><i>in memory · unbounded · not persisted</i>")]
-    INBOX --> WAPP["chat wapp"]
+    subgraph OPEN[&quot;open and unfenced&quot;]
+        direction TB
+        LEG[&quot;legacy BLE scan&lt;br/&gt;&lt;b&gt;sole path on non-BLE5&lt;/b&gt;&quot;]
+        RV[&quot;rendezvous → &lt;code&gt;&#x27;circles&#x27;&lt;/code&gt;&lt;br/&gt;&lt;i&gt;hardcoded, dropped if not running&lt;/i&gt;&quot;]
+        INJ[&quot;POST /api/wapp/inject&lt;br/&gt;&lt;b&gt;no auth, LAN-reachable&lt;/b&gt;&quot;]
+    end
 
-    MSPin["GATT · MSP custody"] --> ING["MeshCourier.ingest"]
-    ING --> DELIV
-
-    RNSX["Reticulum · XPRS wire<br/>addressed to us"] --> RET["XprsIngest.reticulum"]
-    RET --> ARCHONLY["archive.admit<br/><b>then return</b>"]
-    ARCHONLY --> NOWHERE(["never delivered<br/><i>no onDeliver · no log · no counter</i>"])
-
-    PARC["GATT · BLEQueue parcels"] --> RAW
-    B41raw["BLE5 0x41<br/><i>the same frame again</i>"] --> RAW
-    RAW["BleService._inbound"] --> SCAN["hal_ble_scan_read"]
-    SCAN --> BH["ble_handle<br/><i>the wapp parses it a second time</i>"]
+    BUS --&gt; W[&quot;a wapp&quot;]
+    RAW --&gt; W
+    DM --&gt; W
+    DGRAM --&gt; W
+    LEG --&gt; W
+    RV --&gt; W
+    INJ --&gt; W
 
     classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
-    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
     classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
-    class HEARD,ADMIT,DELIV good
-    class RET,ARCHONLY,NOWHERE,RAW,SCAN,BH bad
-    class MSPin,ING warn
+    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    class G,FUN,BUS,RNS good
+    class RAW,DM,DGRAM warn
+    class LEG,RV,INJ bad
+    class W warn
 </pre>
     </div>
   </figure>
-  <figcaption>
-    <strong>Read the Reticulum branch twice.</strong> An XPRS <code>t:message</code> addressed to this station arriving over Reticulum is filed in the archive and returned from — no delivery, no log, no counter. Any peer whose fan-out chose Reticulum can send you a message you will never see.
-  </figcaption>
+  <figcaption><strong>Not yet — one of seven is closed.</strong> The two direct <code>XprsIngest.reticulum</code> taps are gone, which mattered more than it sounds: a wapp subscribed to <code>xprs.message</code> was receiving from BLE and LAN and silently missing everything that arrived over the internet. Three more are now fenced by a manifest permission; three are still open, the legacy BLE scan worst of all because on a non-BLE5 device it is the whole receive path.</figcaption>
 </section>
 
 <section id="f3">
-  <h2><span class="fig">FIG 3</span> Inbox to bubble: the half nobody had drawn</h2>
-  <p class="lede">
-    Lane A is the core's. Lane B is the wapp reading the radio itself — and it finishes the whole job before discovering it is not allowed to render the result.
-  </p>
-
+  <h2><span class="fig">FIG 3</span> Inbox to bubble</h2>
+  <p class="lede">Lane A is the core’s. Lane B is the wapp reading the radio itself.</p>
   <figure>
-    <div class="plate-bar"><span>Fig 3 · sequence</span><span>two doors, one screen</span></div>
+    <div class="plate-bar"><span>Fig 3 · two doors, one screen</span><span>xprs</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 sequenceDiagram
@@ -487,64 +482,59 @@ sequenceDiagram
     participant UI as screen
 
     Note over Core,Inbox: LANE A — through the core
-    Core->>Inbox: injectLxmf(source, content, hash:"")
-    Wapp->>HAL: poll on tick
-    HAL-->>Wapp: one row, cursor++
-    Note right of HAL: cursor is per-engine and starts at 0<br/>a new engine re-drains the whole inbox
-    Wapp->>Wapp: lxmf_drain — gseen(hash)
-    Note right of Wapp: injected rows carry hash:""<br/>gseen_add("") is a no-op — no dedup
-    Wapp->>Wapp: strip am: · answer ?ACK · thread_parse
-    Wapp->>Host: ui.convo.msg  (id = "lxmf:<dest>")
-    Wapp->>Host: notify
-    Host->>UI: bubble + unread++
+    Core-&gt;&gt;Inbox: injectLxmf(source, content, hash:&quot;&quot;)
+    Wapp-&gt;&gt;HAL: poll on tick
+    HAL--&gt;&gt;Wapp: one row, cursor++
+    Note right of HAL: cursor is per-engine and starts at 0&lt;br/&gt;a new engine re-drains the whole inbox
+    Wapp-&gt;&gt;Wapp: lxmf_drain — gseen(hash)
+    Note right of Wapp: injected rows carry hash:&quot;&quot;&lt;br/&gt;gseen_add(&quot;&quot;) is a no-op — no dedup
+    Wapp-&gt;&gt;Wapp: strip am: · answer ?ACK · thread_parse
+    Wapp-&gt;&gt;Host: ui.convo.msg  (id = &quot;lxmf:&lt;dest&gt;&quot;)
+    Wapp-&gt;&gt;Host: notify
+    Host-&gt;&gt;UI: bubble + unread++
 
     Note over Core,UI: LANE B — the wapp reads the radio itself
-    Core->>Wapp: hal_ble_scan_read (raw 0x41 frame)
-    Wapp->>Wapp: ble_handle — fseen · digipeat · reassemble
-    Wapp->>Wapp: convo_deliver — decrypt · verify signature
-    Wapp->>Core: send_receipt(from, am, 'd')
-    Note right of Wapp: the sender is now told "delivered"
-    Wapp->>Wapp: convo_msg(id = "<CALLSIGN>")
+    Core-&gt;&gt;Wapp: hal_ble_scan_read (raw 0x41 frame)
+    Wapp-&gt;&gt;Wapp: ble_handle — fseen · digipeat · reassemble
+    Wapp-&gt;&gt;Wapp: convo_deliver — decrypt · verify signature
+    Wapp-&gt;&gt;Core: send_receipt(from, am, &#x27;d&#x27;)
+    Note right of Wapp: the sender is now told &quot;delivered&quot;
+    Wapp-&gt;&gt;Wapp: convo_msg(id = &quot;&lt;CALLSIGN&gt;&quot;)
     Wapp--xUI: dropped — id is not #group / room / lxmf:
-    Note right of UI: nothing rendered, nothing counted,<br/>no log — after a receipt was already sent
+    Note right of UI: nothing rendered, nothing counted,&lt;br/&gt;no log — after a receipt was already sent
 </pre>
     </div>
   </figure>
-  <figcaption>
-    <strong>The tick that lies.</strong> On lane B the wapp reassembles, decrypts, verifies, and <strong>transmits a delivery receipt</strong> — then <code>convo_msg</code> returns because the conversation id is a bare callsign. The sender sees one tick; the recipient sees nothing.
-  </figcaption>
+  <figcaption><strong>The tick that lies.</strong> Lane B transmits a delivery receipt, then drops the message on <code>convo_msg</code>’s id filter.</figcaption>
 </section>
 
 <section id="f4">
   <h2><span class="fig">FIG 4</span> Where a notification fires, and where it cannot</h2>
-  <p class="lede">
-    Three common cases end in silence: no <code>scope</code> is ever emitted, no engine runs when the page is closed and autostart is off, and the announced-tag guard is permanent.
-  </p>
-
+  <p class="lede">Three common cases end in silence.</p>
   <figure>
-    <div class="plate-bar"><span>Fig 4 · decision</span><span>notify_msg → tray</span></div>
+    <div class="plate-bar"><span>Fig 4 · notify_msg → tray</span><span>xprs</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
-    ARR["message rendered by the wapp"] --> NM["notify_msg"]
-    NM --> G1{"id is #group / room / lxmf: ?"}
-    G1 -- no --> X1(["no notification"])
-    G1 -- yes --> G2{"60 s duplicate ring"}
-    G2 -- dup --> X2(["dropped"])
-    G2 -- new --> SEND["hal_msg_send<br/><i>no scope field is emitted</i>"]
+    ARR[&quot;message rendered by the wapp&quot;] --&gt; NM[&quot;notify_msg&quot;]
+    NM --&gt; G1{&quot;id is #group / room / lxmf: ?&quot;}
+    G1 -- no --&gt; X1([&quot;no notification&quot;])
+    G1 -- yes --&gt; G2{&quot;60 s duplicate ring&quot;}
+    G2 -- dup --&gt; X2([&quot;dropped&quot;])
+    G2 -- new --&gt; SEND[&quot;hal_msg_send&lt;br/&gt;&lt;i&gt;no scope field is emitted&lt;/i&gt;&quot;]
 
-    SEND --> WHERE{"which engine is running?"}
-    WHERE -- "page engine · foreground" --> APP["scope defaults to <b>app</b><br/>in-app card only"]
-    WHERE -- "headless · autostart ON" --> BOTH["scope forced to <b>both</b><br/>OS notification"]
-    WHERE -- "page closed · autostart OFF" --> NONE(["<b>no engine · no drain</b><br/>message sits in _lxmfInbox"])
+    SEND --&gt; WHERE{&quot;which engine is running?&quot;}
+    WHERE -- &quot;page engine · foreground&quot; --&gt; APP[&quot;scope defaults to &lt;b&gt;app&lt;/b&gt;&lt;br/&gt;in-app card only&quot;]
+    WHERE -- &quot;headless · autostart ON&quot; --&gt; BOTH[&quot;scope forced to &lt;b&gt;both&lt;/b&gt;&lt;br/&gt;OS notification&quot;]
+    WHERE -- &quot;page closed · autostart OFF&quot; --&gt; NONE([&quot;&lt;b&gt;no engine · no drain&lt;/b&gt;&lt;br/&gt;message sits in _lxmfInbox&quot;])
 
-    APP --> TAG{"tag already announced?"}
-    BOTH --> TAG
-    TAG -- yes --> X3(["suppressed <b>permanently</b><br/>persisted across restarts"])
-    TAG -- no --> SHOW["NotificationService.show"]
-    SHOW --> LIFE{"app lifecycle resumed?"}
-    LIFE -- yes --> INAPP["in-app only — tray suppressed"]
-    LIFE -- no --> TRAY["system tray"]
+    APP --&gt; TAG{&quot;tag already announced?&quot;}
+    BOTH --&gt; TAG
+    TAG -- yes --&gt; X3([&quot;suppressed &lt;b&gt;permanently&lt;/b&gt;&lt;br/&gt;persisted across restarts&quot;])
+    TAG -- no --&gt; SHOW[&quot;NotificationService.show&quot;]
+    SHOW --&gt; LIFE{&quot;app lifecycle resumed?&quot;}
+    LIFE -- yes --&gt; INAPP[&quot;in-app only — tray suppressed&quot;]
+    LIFE -- no --&gt; TRAY[&quot;system tray&quot;]
 
     classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
     classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
@@ -555,37 +545,32 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption>
-    <strong>Nothing in the core notifies on its own.</strong> <code>NotificationService.show</code> is never called from <code>RnsService</code>, <code>MeshCourier</code> or <code>MeshCustody</code> — so with no wapp engine there is no notification at all.
-  </figcaption>
+  <figcaption><strong>Nothing in the core notifies on its own.</strong></figcaption>
 </section>
 
 <section id="f5">
-  <h2><span class="fig">FIG 5</span> What stays the same about a message, and what does not</h2>
-  <p class="lede">
-    Dedup, receipts, custody release and reassembly all assume a message keeps one identity. Sealing is per <em>attempt</em>, so it does not.
-  </p>
-
+  <h2><span class="fig">FIG 5</span> What stays the same about a message</h2>
+  <p class="lede">Dedup, receipts and custody release all assume one identity. Until this week, sealing per attempt meant there wasn’t one.</p>
   <figure>
-    <div class="plate-bar"><span>Fig 5 · identity</span><span>one message, N identifiers</span></div>
+    <div class="plate-bar"><span>Fig 5 · fixed 2026-09-02</span><span>xprs</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
-    TXT["the words the user typed"] --> A1["attempt 1: seal"]
-    TXT --> A2["attempt 2: seal"]
-    TXT --> A3["attempt N: seal"]
+    TXT[&quot;the words the user typed&quot;] --&gt; A1[&quot;attempt 1: seal&quot;]
+    TXT --&gt; A2[&quot;attempt 2: seal&quot;]
+    TXT --&gt; A3[&quot;attempt N: seal&quot;]
 
-    A1 --> C1["ciphertext 1"] --> I1["§5 identifier 1"]
-    A2 --> C2["ciphertext 2"] --> I2["§5 identifier 2"]
-    A3 --> C3["ciphertext N"] --> I3["§5 identifier N"]
+    A1 --&gt; C1[&quot;ciphertext 1&quot;] --&gt; I1[&quot;§5 identifier 1&quot;]
+    A2 --&gt; C2[&quot;ciphertext 2&quot;] --&gt; I2[&quot;§5 identifier 2&quot;]
+    A3 --&gt; C3[&quot;ciphertext N&quot;] --&gt; I3[&quot;§5 identifier N&quot;]
 
-    I1 --> D{"dedup · receipts · custody release<br/><i>all key on the identifier</i>"}
-    I2 --> D
-    I3 --> D
-    D --> OUT(["N messages, not one"])
+    I1 --&gt; D{&quot;dedup · receipts · custody release&lt;br/&gt;&lt;i&gt;all key on the identifier&lt;/i&gt;&quot;}
+    I2 --&gt; D
+    I3 --&gt; D
+    D --&gt; OUT([&quot;N messages, not one&quot;])
 
-    STABLE["stable: sender · <code>ts:</code> · plaintext"] -.-> D
-    NOTE["reassembly keys on <code>(f, ts)</code><br/><i>so parts from different attempts mix</i>"] -.-> D
+    STABLE[&quot;stable: sender · &lt;code&gt;ts:&lt;/code&gt; · plaintext&quot;] -.-&gt; D
+    NOTE[&quot;reassembly keys on &lt;code&gt;(f, ts)&lt;/code&gt;&lt;br/&gt;&lt;i&gt;so parts from different attempts mix&lt;/i&gt;&quot;] -.-&gt; D
 
     classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
     classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
@@ -596,43 +581,38 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption>
-    <strong>Measured 2026-09-01 on TANK2 <code>X1VCVM</code>:</strong> 40 logical messages produced 394 packets carrying 394 distinct identifiers and zero correlation ids. A receipt names one identifier, so an ack releases one copy of thirty — custody cannot drain, the store overflows, and the row cap sheds real mail.
-  </figcaption>
+  <figcaption><strong>Fixed.</strong> A finished packet is carried unchanged, duplicate armings collapse, and the §5 identifier is now what a receipt names.</figcaption>
 </section>
 
 <section id="f6">
   <h2><span class="fig">FIG 6</span> Where a 1:1 dies</h2>
-  <p class="lede">
-    Every branch below discards a message the user believes was sent or received. Red is silent: no log, no counter, nothing on screen.
-  </p>
-
+  <p class="lede">Every branch discards a message the user believes was sent or received.</p>
   <figure>
-    <div class="plate-bar"><span>Fig 6 · failure map</span><span>silent unless marked</span></div>
+    <div class="plate-bar"><span>Fig 6 · silent unless marked</span><span>xprs</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
-    S["a 1:1 exists"] --> SEND{"sending"}
+    S[&quot;a 1:1 exists&quot;] --&gt; SEND{&quot;sending&quot;}
 
-    SEND --> S1["rooms_send with a bare callsign id<br/><b>bare return</b>"]
-    SEND --> S2["hal_lxmf_send2 returns -1<br/><i>no XPRS key for this peer</i>"]
-    SEND --> S3["sendLxmf: RNS not up<br/><b>nothing sent, nothing queued</b>"]
-    SEND --> S4["courier _air: BLE off · no callsign<br/>· cannot seal · too long"]
-    SEND --> S5["retry ladder: unreachable peer<br/><i>re-scheduled forever, no rung spent</i>"]
+    SEND --&gt; S1[&quot;rooms_send with a bare callsign id&lt;br/&gt;&lt;b&gt;bare return&lt;/b&gt;&quot;]
+    SEND --&gt; S2[&quot;hal_lxmf_send2 returns -1&lt;br/&gt;&lt;i&gt;no XPRS key for this peer&lt;/i&gt;&quot;]
+    SEND --&gt; S3[&quot;sendLxmf: RNS not up&lt;br/&gt;&lt;b&gt;nothing sent, nothing queued&lt;/b&gt;&quot;]
+    SEND --&gt; S4[&quot;courier _air: BLE off · no callsign&lt;br/&gt;· cannot seal · too long&quot;]
+    SEND --&gt; S5[&quot;retry ladder: unreachable peer&lt;br/&gt;&lt;i&gt;re-scheduled forever, no rung spent&lt;/i&gt;&quot;]
 
-    S --> RECV{"receiving"}
-    RECV --> R1["XPRS over Reticulum, addressed to us<br/><b>archived, never delivered</b>"]
-    RECV --> R2["raw lane: convo_msg id filter<br/><b>dropped after a receipt was sent</b>"]
-    RECV --> R3["post-join dedup asks for a key<br/>that is never written"]
-    RECV --> R4["part set incomplete<br/><i>expires at 10 min, silently</i>"]
-    RECV --> R5["sender's key unknown<br/><i>held 24 h, then dropped, no log</i>"]
-    RECV --> R6["channel toggle off<br/><i>continue AFTER the dedup ring was marked</i>"]
+    S --&gt; RECV{&quot;receiving&quot;}
+    RECV --&gt; R1[&quot;XPRS over Reticulum, addressed to us&lt;br/&gt;&lt;b&gt;archived, never delivered&lt;/b&gt;&quot;]
+    RECV --&gt; R2[&quot;raw lane: convo_msg id filter&lt;br/&gt;&lt;b&gt;dropped after a receipt was sent&lt;/b&gt;&quot;]
+    RECV --&gt; R3[&quot;post-join dedup asks for a key&lt;br/&gt;that is never written&quot;]
+    RECV --&gt; R4[&quot;part set incomplete&lt;br/&gt;&lt;i&gt;expires at 10 min, silently&lt;/i&gt;&quot;]
+    RECV --&gt; R5[&quot;sender&#x27;s key unknown&lt;br/&gt;&lt;i&gt;held 24 h, then dropped, no log&lt;/i&gt;&quot;]
+    RECV --&gt; R6[&quot;channel toggle off&lt;br/&gt;&lt;i&gt;continue AFTER the dedup ring was marked&lt;/i&gt;&quot;]
 
-    S1 --> D1(["the composer clears<br/>and nothing happens"])
-    S2 --> D2(["toast, no bubble,<br/>text unrecoverable"])
-    S3 --> D3(["bubble says sealed;<br/>nothing left the device"])
-    R1 --> D4(["never seen"])
-    R2 --> D5(["sender sees a tick,<br/>recipient sees nothing"])
+    S1 --&gt; D1([&quot;the composer clears&lt;br/&gt;and nothing happens&quot;])
+    S2 --&gt; D2([&quot;toast, no bubble,&lt;br/&gt;text unrecoverable&quot;])
+    S3 --&gt; D3([&quot;bubble says sealed;&lt;br/&gt;nothing left the device&quot;])
+    R1 --&gt; D4([&quot;never seen&quot;])
+    R2 --&gt; D5([&quot;sender sees a tick,&lt;br/&gt;recipient sees nothing&quot;])
 
     classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
     classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
@@ -641,9 +621,125 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption>
-    <strong>Three renderable states for eighteen real ones</strong> — nothing, one tick, two ticks. Everything from <em>composed</em> to <em>on the air</em> is one indistinguishable blank, which is why “did it send?” has never been answerable from the screen.
-  </figcaption>
+  <figcaption><strong>Three renderable states for eighteen real ones</strong> — though the core can now report delivered and read, per §13.7.1, instead of the wapp asserting them.</figcaption>
+</section>
+
+<section id="f7">
+  <h2><span class="fig">FIG 7</span> Who decides which wapp gets a packet</h2>
+  <p class="lede">The core routes by <code>t:</code> — one topic per XPRS.md §4.2 type — and calls the wapps that registered for it.</p>
+  <figure>
+    <div class="plate-bar"><span>Fig 7 · by packet type</span><span>xprs</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart LR
+    subgraph ADDRESSED[&quot;the core decides&quot;]
+        DG[&quot;wapp datagram&lt;br/&gt;&lt;code&gt;[tagLen][tag][payload]&lt;/code&gt;&quot;] --&gt; Q[&quot;_wappInbox[tag]&lt;br/&gt;&lt;i&gt;private per wapp&lt;/i&gt;&quot;]
+        Q --&gt; MB[(&quot;WappMailbox&lt;br/&gt;&lt;i&gt;durable · wakes the wapp&lt;/i&gt;&quot;)]
+    end
+
+    subgraph POOLS[&quot;the wapp pulls&quot;]
+        LX[(&quot;_lxmfInbox&lt;br/&gt;&lt;b&gt;one flat list&lt;/b&gt;&lt;br/&gt;&lt;i&gt;no recipient test&lt;/i&gt;&quot;)]
+        AR[(&quot;XprsArchive&lt;br/&gt;&lt;i&gt;wapp writes its own WHERE&lt;/i&gt;&quot;)]
+        RING[(&quot;XprsMonitor ring&lt;br/&gt;&lt;i&gt;whole ring&lt;/i&gt;&quot;)]
+        BLE[(&quot;BleService._inbound&lt;br/&gt;&lt;i&gt;every frame, every engine&lt;/i&gt;&quot;)]
+    end
+
+    LX --&gt; CHAT[&quot;chat&quot;]
+    AR --&gt; CHAT
+    AR --&gt; SOC[&quot;social&quot;]
+    RING --&gt; XW[&quot;xprs&quot;]
+    BLE --&gt; CHAT
+    Q --&gt; CHAT
+    Q --&gt; CIR[&quot;circles&quot;]
+
+    RV[&quot;rendezvous&quot;] -. &quot;hardcoded&quot; .-&gt; CIR
+
+    classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
+    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
+    class DG,Q,MB good
+    class LX,BLE bad
+    class AR,RING,RV warn
+</pre>
+    </div>
+  </figure>
+  <figcaption><strong>The shared pools are the debt that remains.</strong> <code>_admitToInbox</code> still never looks at the recipient, and chat is still the only wapp that asks. The datagram lane is the model: tag on the wire, private queue, durable mailbox, absent wapp woken on demand.</figcaption>
+</section>
+
+<section id="f8">
+  <h2><span class="fig">FIG 8</span> Rebroadcast, and whether via: is told the truth</h2>
+  <p class="lede">Five paths put a packet back on the air. Four append <code>via:</code> and pay the hop budget. One does not.</p>
+  <figure>
+    <div class="plate-bar"><span>Fig 8 · 5 paths, 1 lies</span><span>xprs</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart TD
+    H[&quot;a packet arrives&quot;] --&gt; D{&quot;which re-air path?&quot;}
+
+    D --&gt; DIGI[&quot;digipeater §13.2.1&lt;br/&gt;&lt;i&gt;jitter · cancel-on-hearing&lt;/i&gt;&quot;]
+    D --&gt; REL[&quot;custody release §36.8.1&quot;]
+    D --&gt; SUP[&quot;suppressed re-air&lt;br/&gt;&lt;code&gt;sweepSuppressed&lt;/code&gt;&quot;]
+    D --&gt; FWD[&quot;XprsForwarder&lt;br/&gt;&lt;i&gt;mail migration&lt;/i&gt;&quot;]
+    D --&gt; HIST[&quot;history replay&lt;br/&gt;&lt;i&gt;author&#x27;s packet, by design&lt;/i&gt;&quot;]
+
+    DIGI --&gt; V1[&quot;via: ✓ · budget ✓ · loop ✓&quot;]
+    REL --&gt; V1
+    FWD --&gt; V1
+    SUP --&gt; V2[&quot;&lt;b&gt;via: ✗ · budget ✗ · loop ✗&lt;/b&gt;&lt;br/&gt;goes out as if direct&quot;]
+    HIST --&gt; V3[&quot;via: — not a relay&quot;]
+
+    V1 --&gt; B{&quot;onto which bearer?&quot;}
+    B --&gt; BLE5[&quot;&lt;b&gt;BLE only&lt;/b&gt;&quot;]
+    B -. &quot;never&quot; .-&gt; LANX[&quot;LAN&quot;]
+    B -. &quot;never&quot; .-&gt; RNSX[&quot;Reticulum&quot;]
+
+    classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
+    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
+    classDef off  fill:#E6E8EA,stroke:#6B7280,color:#2A2E33
+    class V1 good
+    class V2,SUP bad
+    class B,BLE5 warn
+    class V3,LANX,RNSX off
+</pre>
+    </div>
+  </figure>
+  <figcaption><strong>The digipeater throws the bearer away</strong> — a packet heard on LAN is repeated on BLE, an unlabelled gateway, and never on LAN. Its re-air is also off-ledger airtime.</figcaption>
+</section>
+
+<section id="f9">
+  <h2><span class="fig">FIG 9</span> What the polling costs</h2>
+  <p class="lede">The bus calls the registered wapp straight into <code>module_handle_event</code>, so arrival drives the work rather than the clock.</p>
+  <figure>
+    <div class="plate-bar"><span>Fig 9 · the bus calls now</span><span>xprs</span></div>
+    <div class="plate-body">
+<pre class="mermaid">
+flowchart LR
+    T[&quot;host timer&lt;br/&gt;&lt;i&gt;per wapp interval&lt;/i&gt;&quot;] --&gt; TICK[&quot;module_tick&quot;]
+    TICK --&gt; P1[&quot;ble_poll ×20&quot;]
+    TICK --&gt; P2[&quot;lxmf_drain ×10&quot;]
+    TICK --&gt; P3[&quot;rns drain&quot;]
+    TICK --&gt; P4[&quot;APRS socket&quot;]
+    TICK --&gt; P5[&quot;flush queues&quot;]
+    P1 --&gt; N{&quot;anything there?&quot;}
+    P2 --&gt; N
+    P3 --&gt; N
+    P4 --&gt; N
+    P5 --&gt; N
+    N -- &quot;almost always&quot; --&gt; NO[&quot;nothing — CPU spent anyway&quot;]
+
+    EV[&quot;WappEventBroker&lt;br/&gt;&lt;i&gt;system.* topics&lt;/i&gt;&quot;] -. &quot;waits for the next tick&quot; .-&gt; TICK
+
+    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
+    classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
+    classDef off  fill:#E6E8EA,stroke:#6B7280,color:#2A2E33
+    class NO,N bad
+    class TICK warn
+    class EV off
+</pre>
+    </div>
+  </figure>
+  <figcaption><strong><code>forum</code> and <code>movies</code> still declare <code>return 0;</code></strong>, which becomes <code>Timer.periodic(Duration.zero)</code>. The power-tier throttle multiplies the interval, and zero times five is zero.</figcaption>
 </section>
 
 </div>
