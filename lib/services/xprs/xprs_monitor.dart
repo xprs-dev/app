@@ -20,6 +20,7 @@
  */
 import 'dart:convert';
 
+import '../receive/core_state.dart';
 import 'xprs_id.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
@@ -237,6 +238,19 @@ class XprsMonitor {
   /// trick `MeshService.revision` uses.
   int revision = 0;
 
+  /// One change to the table or the ring.
+  ///
+  /// Every mutation went through a bare `revision++`, which recorded that
+  /// something moved and told nobody — so the only way for a wapp to find out
+  /// was to ask on a timer, and the `xprs` wapp asked every three seconds
+  /// whether these numbers had changed, re-encoding two hundred sightings each
+  /// time to find out. Now the counter and the announcement are the same act,
+  /// and they cannot drift apart.
+  void _bump() {
+    revision++;
+    CoreState.instance.changed(CoreState.monitor);
+  }
+
   List<XprsSighting> get ring => List.unmodifiable(_ring);
   Map<String, XprsStation> get stations => Map.unmodifiable(_stations);
 
@@ -332,7 +346,7 @@ class XprsMonitor {
     // No `via:` means this arrived from the sender's own transmitter.
     if (!p.has('via')) st.lastDirectMs = now;
 
-    revision++;
+    _bump();
   }
 
   /// The callsigns this station can hear directly, most recent first — what
@@ -376,7 +390,7 @@ class XprsMonitor {
       case XprsSigState.unsigned:
         st.sigUnsigned++;
     }
-    revision++;
+    _bump();
   }
 
   /// Drop stations that have gone quiet. Called before rendering.
@@ -384,13 +398,13 @@ class XprsMonitor {
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
     final before = _stations.length;
     _stations.removeWhere((_, s) => now - s.lastMs > staleAfter.inMilliseconds);
-    if (_stations.length != before) revision++;
+    if (_stations.length != before) _bump();
   }
 
   void clear() {
     _ring.clear();
     _stations.clear();
-    revision++;
+    _bump();
   }
 
   /// The stations, shaped as people-widget sections so the wapp renders them

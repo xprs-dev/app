@@ -34,6 +34,7 @@ import '../mesh/mesh_courier.dart';
 import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_groups.dart';
 import '../receive/packet_gateway.dart';
+import '../receive/core_state.dart';
 import '../receive/wapp_delivery.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_packet.dart';
@@ -1741,6 +1742,11 @@ class RnsService {
   /// packet's hop count (RNS convention: +1 for the stored path hops). [via] is
   /// the interface label. Skips our own announces.
   void _observeAnnounce(RnsAnnounce ann, int wireHops, String via) {
+    // The graph moved. Coalesced by CoreState, which matters here more than
+    // anywhere: a hub dumps its whole cached announce table on connect, so
+    // this runs hundreds of times in a second and a wapp that redraws the
+    // graph must be told once, not hundreds of times.
+    CoreState.instance.changed(CoreState.rnsGraph);
     if (_id != null &&
         RnsCrypto.constantTimeEquals(ann.identity.hash, _id!.hash)) {
       return;
@@ -4344,6 +4350,14 @@ class RnsService {
       try {
         PacketGateway.instance.receiveInternet(from, payload, bearer: bearer);
       } catch (_) {}
+    }
+    // And TELL the wapp. Its queue is durable and read the same way as
+    // before; what this removes is the second-by-second question "did
+    // anything arrive", which on a quiet link is answered "no" 86,400 times a
+    // day. Coalesced like every other core topic: a burst is one wake-up, and
+    // the wapp drains its whole queue when it gets there.
+    if (_wappInbox.containsKey(tag)) {
+      CoreState.instance.changed(CoreState.datagram(tag));
     }
     final q = _wappInbox[tag];
     if (q != null) {

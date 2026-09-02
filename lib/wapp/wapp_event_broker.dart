@@ -130,6 +130,20 @@ class WappEventBroker {
 
   // ── Inspection helpers (debug API / future task monitor UI) ────────
 
+  /// Whether any engine is listening on [topic] right now.
+  ///
+  /// A publisher asks before it does work: with nobody subscribed there is
+  /// nothing to deliver, so arming a timer or encoding a payload is pure
+  /// waste. It also keeps a unit test — where no engine is ever registered —
+  /// from leaving a live timer behind after the test zone is torn down, which
+  /// is the shape of intermittent failure this tree has already paid for once.
+  bool hasSubscriber(String topic) {
+    for (final state in _engines.values) {
+      if (state.subscribedTopics.contains(topic)) return true;
+    }
+    return false;
+  }
+
   int subscriptionCount(String engineId) =>
       _engines[engineId]?.subscribedTopics.length ?? 0;
 

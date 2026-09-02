@@ -45,6 +45,7 @@ import '../xprs/xprs_lan.dart';
 import '../xprs/xprs_monitor.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_sig.dart';
+import '../receive/core_state.dart';
 import '../receive/packet_gateway.dart';
 import '../xprs/xprs_vocab.dart';
 import 'mesh_beacon.dart';
@@ -498,6 +499,10 @@ class MeshService {
     _beaconsHeard++;
     final isNew = !t.neighbors.containsKey(b.callsign);
     final changed = t.ingest(b, rssi: f.rssi);
+    // Only when the table actually moved. A beacon that says nothing new is
+    // the common case -- they repeat on a cadence -- and republishing on every
+    // one would be the 2-second poll it replaces, with extra steps.
+    if (changed || isNew) CoreState.instance.changed(CoreState.meshTopology);
     if (isNew && t.neighbors.containsKey(b.callsign)) {
       LogService.instance.add(
           'Mesh: heard ${b.callsign} (${b.deviceClass.label}, ${f.rssi} dBm, reaches ${b.dv.length})');

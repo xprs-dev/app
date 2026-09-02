@@ -31,6 +31,7 @@ import 'package:sqlite3/sqlite3.dart';
 import '../../profile/profile_db.dart';
 import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
+import '../receive/core_state.dart';
 import 'xprs_id.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
@@ -286,6 +287,11 @@ class XprsArchive {
       LogService.instance.add('XPRS archive: flush failed: $e');
     }
     _prune(db, nowMs: now);
+    // The archive's counters moved, and its dashboard is somebody's screen.
+    // Once per flush rather than once per row: a backlog drain writes hundreds
+    // in one transaction, and the reader re-reads the whole status anyway.
+    if (stored.isNotEmpty) CoreState.instance.changed(CoreState.archive);
+
     // Only now, and only for rows the transaction actually wrote.
     final notify = onStored;
     if (notify != null) {
