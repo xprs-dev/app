@@ -33,6 +33,7 @@ import '../mesh/mesh_service.dart';
 import '../mesh/mesh_courier.dart';
 import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_groups.dart';
+import '../receive/wapp_delivery.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_monitor.dart';
@@ -2351,6 +2352,28 @@ class RnsService {
       return false;
     }
     _lxmfInbox.add(row);
+
+    // AND PUBLISH IT, ADDRESSED. The list above is the old shared pool: one
+    // flat list of human correspondence with no recipient test, handed to
+    // whichever wapp called `hal_lxmf_recv` first. It stays for now because
+    // chat still drains it, and it goes the moment chat subscribes instead.
+    //
+    // The bus is the replacement: the core picks the topic, the broker fans
+    // it out to the engines that asked for that topic and wakes them, and a
+    // wapp that did not subscribe is not told. That is what makes installing
+    // somebody else's wapp safe.
+    final title = (row['title'] ?? '').toString();
+    WappDelivery.instance.deliver(
+      title.startsWith('#') ? RxTopic.group : RxTopic.message,
+      {
+        'from': row['from'],
+        'title': title,
+        'content': row['content'],
+        'ts': row['ts'],
+        // Deliberately NOT `via`/bearer: a wapp is not told which radio
+        // carried the message (docs/architecture.md section 1).
+      },
+    );
     return true;
   }
 

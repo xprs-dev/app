@@ -16,9 +16,12 @@
  * ── What comes through here ──────────────────────────────────────────────
  * The mesh/message-bearing lanes, whatever carried them:
  *   XPRS text wires · legacy compact frames · MSP session frames ·
- *   XBLOB blocks · BLE parcels · RNS-tagged GATT payloads
+ *   XBLOB blocks · BLE parcels
  * over BLE5 advertising, GATT (both roles, both stacks), LAN, TCP and
- * Reticulum. LoRa and ESPNow have no receive path on this device today --
+ * Reticulum. An RNS-tagged GATT payload does NOT come through here -- it is
+ * stripped and handed to the Reticulum interface before this point
+ * (`ble_service_io`), because Reticulum owns its own framing. This header
+ * claimed otherwise until an audit checked it. LoRa and ESPNow have no receive path on this device today --
  * both are bearer LABELS only (`kBearers`, `hal_lora_recv` is a stub) -- so a
  * packet of theirs arrives relayed by a station and enters as one of the
  * above. The bearer argument is ready for them the day a radio ships.
@@ -58,9 +61,6 @@ enum RxLane {
 
   /// A reassembled or routed payload handed up by a lower layer.
   datagram,
-
-  /// Injected by the local HTTP API, for bench work.
-  api,
 }
 
 /// What the gateway made of a frame. Returned so a caller can act on the
