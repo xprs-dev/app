@@ -4104,9 +4104,21 @@ class WappEngine {
     // radio frame. Fine while every wapp is ours, and not fine at all once
     // somebody else's can be installed.
     //
-    // A refused import is left unbound. The module still instantiates; the
-    // call traps if it is actually made, which is the honest outcome for a
-    // wapp asking for something it did not declare.
+    // A refused import is left unbound, and what that costs depends on whether
+    // the module asked for it.
+    //
+    // `allImports` is everything the HOST offers, so most refusals are for
+    // functions this wasm never mentions and cost nothing. But wasm requires
+    // every import a module DECLARES to be satisfied, so if the wapp does use
+    // one, instantiation fails outright with
+    //
+    //     unknown import: `hal::<name>` has not been defined
+    //
+    // which names one symbol and explains nothing. Measured on the bench: the
+    // bundled mail, social and xprs packages predated the permission gate —
+    // their manifests still said `network`, or nothing — so all three were
+    // dead on arrival with that message as the only clue. The log line below
+    // is what turns it back into a sentence.
     for (final imp in allImports) {
       if (!halImportAllowed(imp.name, _granted)) {
         _refusedImports.add(imp.name);
@@ -4119,9 +4131,19 @@ class WappEngine {
       }
     }
     if (_refusedImports.isNotEmpty) {
+      // What was withheld, and what the wapp holds. This list is every gated
+      // HOST import this wapp did not earn — not every one it asked for — so
+      // most of it is harmless. It matters only when the module actually
+      // declares one of these: wasm requires every declared import to be
+      // satisfied, so that case fails instantiation with "unknown import:
+      // hal::<name> has not been defined", which names one symbol and explains
+      // nothing. This line is what turns that back into a sentence.
       LogService.instance.add(
-          'Wapp $_appId: refused ${_refusedImports.length} ungranted HAL '
-          'import(s): ${_refusedImports.take(6).join(", ")}');
+          'Wapp $_appId: withheld ${_refusedImports.length} ungranted HAL '
+          'import(s). Granted: '
+          '${_granted.isEmpty ? "(none declared)" : _granted.join(", ")}. '
+          'If the wasm declares any of these the load FAILS: '
+          '${_refusedImports.take(8).join(", ")}');
     }
 
     _instance = await builder.build();

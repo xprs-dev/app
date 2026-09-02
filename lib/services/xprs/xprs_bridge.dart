@@ -101,7 +101,18 @@ class XprsBridge {
 
   static int bridged = 0;
   static int toArchivers = 0;
-  static int refused = 0;
+
+  /// §13 said no: the hop budget is spent, we are already in `via:`, or the
+  /// sender named its relays and we are not one.
+  static int refusedByRule = 0;
+
+  /// The target lane would not take it — on a phone with WiFi off, every
+  /// BLE→LAN attempt lands here. Counted apart from [refusedByRule] because
+  /// they are different faults: one is the specification working, the other is
+  /// a radio that is not there. The bench had 5 of these and no way to tell
+  /// which, which is why they are two numbers.
+  static int laneUnavailable = 0;
+
   static int skippedLocal = 0;
 
   /// Identifiers already carried, per target lane, so a packet heard twice is
@@ -112,7 +123,8 @@ class XprsBridge {
   Map<String, dynamic> get json => {
         'bridged': bridged,
         'toArchivers': toArchivers,
-        'refused': refused,
+        'refusedByRule': refusedByRule,
+        'laneUnavailable': laneUnavailable,
         'skippedLocal': skippedLocal,
         'policy': {'bridge': policy.bridge, 'archivers': policy.archivers},
       };
@@ -137,7 +149,7 @@ class XprsBridge {
     // that may not be relayed at all is not bridged either.
     final out = relay(wire);
     if (out == null) {
-      refused++;
+      refusedByRule++;
       return;
     }
 
@@ -173,7 +185,8 @@ class XprsBridge {
         LogService.instance
             .add('XPRS: bridged $id ${_lane(from)} -> $target');
       } else {
-        refused++;
+        // The lane is off, down, or refused the frame. Not a §13 decision.
+        laneUnavailable++;
       }
     } catch (e) {
       LogService.instance.add('XPRS: bridge to $target failed: $e');
@@ -223,7 +236,8 @@ class XprsBridge {
   static void debugReset() {
     bridged = 0;
     toArchivers = 0;
-    refused = 0;
+    refusedByRule = 0;
+    laneUnavailable = 0;
     skippedLocal = 0;
     instance._sent.clear();
     instance.policy = const XprsBridgePolicy();

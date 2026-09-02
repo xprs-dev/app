@@ -11,6 +11,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'xprs/xprs_archive.dart';
+import 'xprs/xprs_bridge.dart';
 import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_publisher.dart';
 import 'mesh/xblob_service.dart';
@@ -1898,6 +1899,10 @@ class RemoteApiService {
         // from, and what it refused. Without these a relay that never fires
         // and a relay that fires and is ignored look identical from outside.
         'digipeat': MeshService.instance.digipeater.json,
+        // The other half of §13: what was carried to a medium it had NOT been
+        // on, and what went to the operator's archivers. Without it a bridge
+        // that never fires and one that fires look identical from outside.
+        'bridge': XprsBridge.instance.json,
         'courier': {
           'aired': MeshCourierCounters.aired,
           'ingested': MeshCourierCounters.ingested,

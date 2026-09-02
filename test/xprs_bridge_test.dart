@@ -76,7 +76,7 @@ void main() {
     XprsBridge.instance.relayable = (_) => null;
     await heard('t:message f:X1QZ3N d:X3ARK ts:$_ts m:hello', 'ble5');
     expect(aired, isEmpty);
-    expect(XprsBridge.refused, 1);
+    expect(XprsBridge.refusedByRule, 1);
   });
 
   test('the same packet heard twice is bridged once', () async {

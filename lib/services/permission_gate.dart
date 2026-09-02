@@ -5,6 +5,7 @@ import '../profile/profile_db.dart';
 import '../profile/profile_encryption.dart';
 import '../profile/profile_service.dart';
 import '../services/log_service.dart';
+import '../connections/bluetooth/ble_service.dart';
 import '../services/reticulum/rns_autostart.dart';
 import '../wapp/background_wapp_manager.dart';
 import 'android_permissions_service.dart';
@@ -64,6 +65,23 @@ class PermissionGate {
     }
     LogService.instance.add('permissions: granted — starting gated services');
 
+    // THE CORE STARTS ITS OWN RADIO.
+    //
+    // This used to happen as a side effect of the chat wapp calling
+    // hal_ble_scan_start, and the note further down said so outright:
+    // "Bluetooth only exists because the chat wapp starts it". When the raw
+    // BLE HAL was deleted — a wapp has no business reading a radio — that took
+    // the only starter with it, and the whole mesh silently never came up:
+    // RNS reported `node up mode=ble5`, the advert bus carried its traffic,
+    // and MeshService.start was never reached because nothing had called
+    // BleService._ensure. Measured on the bench: no beacon, no digipeat, no
+    // bridge, and `mesh.running:false` with no error anywhere.
+    //
+    // Ref-counted and idempotent, so this coexists with every other BLE user;
+    // the core simply holds the first reference for the life of the process,
+    // which is what owning the transport means.
+    unawaited(BleService.instance.startScan());
+
     // Reticulum: brings up the BLE5 interface (scan + advertise).
     startRnsAutostart();
 
@@ -79,9 +97,8 @@ class PermissionGate {
     if (ProfileService.instance.activeProfile == null) {
       // NOT latched: on a fresh device this runs from the permission intro,
       // which comes BEFORE profile creation. Latching here left that whole
-      // session with no wapps — and since Bluetooth only exists because the
-      // chat wapp starts it, the device was silently invisible to every peer
-      // until the app was restarted.
+      // session with no wapps. (Bluetooth no longer depends on it: the core
+      // starts the radio above, as it should have all along.)
       LogService.instance
           .add('permissions: no profile yet — wapps wait for setup to finish');
       return;
