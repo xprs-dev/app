@@ -46,10 +46,26 @@ That is the design. Sections 3–10 are where the running code departs from it.
 
 ## 3. A message has no stable identity, so nothing that counts on one works
 
-**measured + verified.** Sealing happens per *attempt*.
-`RnsService.sendLxmf`'s retry ladder re-enters `MeshCourier.armLxmf`, and
-`MeshCourier._air` re-runs `xprsBuildDirect` on each arm, so every retry
-produces fresh ciphertext, fresh bytes, and therefore a **fresh §5 identifier**.
+**measured + verified. Fixed 2026-09-02 — and the mechanism was not what this
+section first said, which is worth correcting rather than quietly editing.**
+
+It is not primarily a *retry* problem. `RnsService.sendLxmf` arms
+`MeshCourier` with whatever it was asked to send, and on the publisher's path
+that is **already a finished XPRS wire**: `_ReticulumBearer.send` is called
+once per part (§6.6) and hands each part's own encoded packet.
+`MeshCourier._air` then sealed that wire as the **body of a fresh
+`t:message`** — a packet wrapped inside a packet, once per part. One 3-part
+message became nine or more on the air, each with fresh ciphertext, a fresh
+timestamp, and therefore a **fresh §5 identifier**.
+
+A smaller multiplier sat on top: `sendLxmf` arms **twice** for one send (an
+eager arming when the recipient is in earshot, then an unconditional one), and
+each arming sealed again.
+
+The give-away was already in the tree. `deliverXprs` unwraps nested wires
+recursively, `depth < 4`, and its comment says "unwrapping is how the message
+is found at all" — the receive side was repairing what the send side broke,
+which is why this never surfaced as an error anywhere.
 
 Measured on TANK2 `X1VCVM`, 2026-09-01, over the last 400 archived packets:
 
