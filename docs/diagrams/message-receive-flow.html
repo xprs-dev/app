@@ -410,10 +410,10 @@ flowchart LR
 </section>
 
 <section id="f2">
-  <h2><span class="fig">FIG 2</span> One door: every bearer through it, two lanes still around it</h2>
-  <p class="lede">Green is through the door. Grey is a wapp’s own foreign protocol, which is the arrangement working. Red is an XPRS lane the core never sees.</p>
+  <h2><span class="fig">FIG 2</span> One door, and everything now goes through it</h2>
+  <p class="lede">Green is through the door. Amber is a copy taken after it. Grey is a wapp’s own foreign protocol, which is the arrangement working.</p>
   <figure>
-    <div class="plate-bar"><span>Fig 2 · bearers done · 2 lanes left</span><span>xprs</span></div>
+    <div class="plate-bar"><span>Fig 2 · no red tier left</span><span>xprs</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
@@ -427,26 +427,21 @@ flowchart TD
         RNS[&quot;Reticulum — LXMF router&quot;] --&gt; G
         DGX[&quot;Reticulum — &lt;code&gt;xprs&lt;/code&gt; datagram tag&quot;] --&gt; G
         RV2[&quot;Reticulum — rendezvous&quot;] --&gt; G
-        G --&gt; FUN[&quot;XprsIngest · MeshCourier&quot;]
-        G --&gt; BUS[&quot;event bus&lt;br/&gt;&lt;i&gt;xprs.&amp;lt;type&amp;gt; · calls the wapp&lt;/i&gt;&quot;]
+        G --&gt; FUN[&quot;XprsIngest · MeshCourier&lt;br/&gt;&lt;i&gt;reassemble 6.6 · unseal · dedup&lt;/i&gt;&quot;]
+        FUN --&gt; BUS[&quot;event bus&lt;br/&gt;&lt;i&gt;xprs.&amp;lt;type&amp;gt; · xprs.status.tx&lt;/i&gt;&quot;]
+        G --&gt; BUS
     end
 
     subgraph TEE[&quot;a copy, taken after the door&quot;]
         direction TB
-        RAW[&quot;hal_ble_scan_read&lt;br/&gt;&lt;code&gt;transport.ble.raw&lt;/code&gt;&quot;]
+        RAW[&quot;hal_ble_scan_read&lt;br/&gt;&lt;i&gt;compact frames only now&lt;/i&gt;&quot;]
     end
 
     subgraph PRIV[&quot;a wapp&#x27;s own protocol — not XPRS&quot;]
         direction TB
-        DGRAM[&quot;hal_rns_recv — circles&lt;br/&gt;&lt;i&gt;k:msg/ks/key… JSON&lt;/i&gt;&quot;]
-        DM[&quot;hal_relay_dm_recv · nostr&lt;br/&gt;&lt;i&gt;kind-4 DM plaintext&lt;/i&gt;&quot;]
-        SOCK[&quot;hal_socket_recv&lt;br/&gt;&lt;i&gt;APRS-IS TNC2 lines&lt;/i&gt;&quot;]
-    end
-
-    subgraph OPEN[&quot;an XPRS lane the core never sees&quot;]
-        direction TB
-        CRNS[&quot;chat: hal_rns_recv on tag &lt;code&gt;chat&lt;/code&gt;&lt;br/&gt;&lt;b&gt;ble_pack wire → ble_handle&lt;/b&gt;&quot;]
-        LX[&quot;chat: hal_lxmf_recv&lt;br/&gt;&lt;i&gt;shared inbox, own cursor&lt;/i&gt;&quot;]
+        DGRAM[&quot;circles: hal_rns_recv&lt;br/&gt;&lt;i&gt;k:msg/ks/key… JSON&lt;/i&gt;&quot;]
+        DM[&quot;mail: hal_relay_dm_recv&lt;br/&gt;&lt;i&gt;kind-4 DM plaintext&lt;/i&gt;&quot;]
+        SOCK[&quot;chat: hal_socket_recv&lt;br/&gt;&lt;i&gt;APRS-IS TNC2 lines&lt;/i&gt;&quot;]
     end
 
     BUS --&gt; W[&quot;a wapp&quot;]
@@ -454,22 +449,18 @@ flowchart TD
     DGRAM --&gt; W
     DM --&gt; W
     SOCK --&gt; W
-    CRNS --&gt; W
-    LX --&gt; W
 
     classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
     classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
-    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
     classDef neut fill:#E4E8EA,stroke:#64717A,color:#22292E
     class G,FUN,BUS,RNS,DGX,RV2,GATT,A58,PARC,LANU good
     class RAW warn
     class DGRAM,DM,SOCK neut
-    class CRNS,LX bad
     class W warn
 </pre>
     </div>
   </figure>
-  <figcaption><strong>Every bearer is centralized; two lanes inside one wapp are not.</strong> BLE, LAN, TCP and all three Reticulum entrances reach <code>PacketGateway</code> and nothing else. What remains is chat: an XPRS wire aired over its own RNS datagram tag and drained straight into <code>ble_handle</code>, and <code>hal_lxmf_recv</code>. Both close the same way — chat takes its packets from the event bus it already subscribes to.</figcaption>
+  <figcaption><strong>Every XPRS packet enters through one door.</strong> The two lanes that were left were both chat’s: an XPRS wire aired over its own Reticulum datagram tag, and a cursor over every private message on the device. The first is now one <code>hal_xprs_send</code>; the second is deleted rather than gated, because a permission is the wrong answer to a door that should not exist.</figcaption>
 </section>
 
 <section id="f3">
@@ -588,7 +579,7 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption><strong>Fixed.</strong> A finished packet is carried unchanged, duplicate armings collapse, and the §5 identifier is now what a receipt names.</figcaption>
+  <figcaption><strong>Fixed.</strong> A finished packet is carried unchanged, duplicate armings collapse, and the §5 identifier is now what a receipt names — and what a wapp keys its bubble on.</figcaption>
 </section>
 
 <section id="f6">
@@ -628,7 +619,7 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption><strong>Three renderable states for eighteen real ones</strong> — though the core can now report delivered and read, per §13.7.1, instead of the wapp asserting them.</figcaption>
+  <figcaption><strong>Three renderable states for eighteen real ones</strong> — though the tick is now reported by the core off a signed <code>t:receipt</code>, instead of asserted by the wapp off a dialect it invented.</figcaption>
 </section>
 
 <section id="f7">
@@ -670,14 +661,14 @@ flowchart LR
 </pre>
     </div>
   </figure>
-  <figcaption><strong>The shared pools are the debt that remains.</strong> <code>_admitToInbox</code> still never looks at the recipient, and chat is still the only wapp that asks. The datagram lane is the model: tag on the wire, private queue, durable mailbox, absent wapp woken on demand.</figcaption>
+  <figcaption><strong>The shared pools are the debt that remains.</strong> <code>_admitToInbox</code> still never looks at the recipient. The datagram lane is the model: tag on the wire, private queue, durable mailbox, absent wapp woken on demand.</figcaption>
 </section>
 
 <section id="f8">
   <h2><span class="fig">FIG 8</span> Rebroadcast, and whether via: is told the truth</h2>
-  <p class="lede">Five paths put a packet back on the air. Four append <code>via:</code> and pay the hop budget. One does not.</p>
+  <p class="lede">Four paths put a packet back on the air and append <code>via:</code>. The fifth was chat’s, and it is gone.</p>
   <figure>
-    <div class="plate-bar"><span>Fig 8 · 5 paths, 1 lies</span><span>xprs</span></div>
+    <div class="plate-bar"><span>Fig 8 · 4 paths now</span><span>xprs</span></div>
     <div class="plate-body">
 <pre class="mermaid">
 flowchart TD
@@ -711,7 +702,7 @@ flowchart TD
 </pre>
     </div>
   </figure>
-  <figcaption><strong>The digipeater throws the bearer away</strong> — a packet heard on LAN is repeated on BLE, an unlabelled gateway, and never on LAN. Its re-air is also off-ledger airtime.</figcaption>
+  <figcaption><strong>chat is no longer a second digipeater.</strong> <code>ble_handle</code> returns on an XPRS wire, so the packets it used to repeat — while appending nothing to <code>via:</code> and paying no hop budget — are the core’s alone.</figcaption>
 </section>
 
 <section id="f9">

@@ -85,7 +85,7 @@ flowchart LR
 
 ---
 
-## Fig. 2 — One door: every bearer through it, two lanes still around it
+## Fig. 2 — One door, and everything now goes through it
 
 Audited 2026-09-02, re-checked after the gateway, the permission gate and the
 Reticulum fix. **Green is through the door. Amber is fenced but still open.
@@ -103,26 +103,21 @@ flowchart TD
         RNS["Reticulum — LXMF router"] --> G
         DGX["Reticulum — <code>xprs</code> datagram tag"] --> G
         RV2["Reticulum — rendezvous"] --> G
-        G --> FUN["XprsIngest · MeshCourier"]
-        G --> BUS["event bus<br/><i>xprs.&lt;type&gt; · calls the wapp</i>"]
+        G --> FUN["XprsIngest · MeshCourier<br/><i>reassemble 6.6 · unseal · dedup</i>"]
+        FUN --> BUS["event bus<br/><i>xprs.&lt;type&gt; · xprs.status.tx</i>"]
+        G --> BUS
     end
 
     subgraph TEE["a copy, taken after the door"]
         direction TB
-        RAW["hal_ble_scan_read<br/><code>transport.ble.raw</code>"]
+        RAW["hal_ble_scan_read<br/><i>compact frames only now</i>"]
     end
 
     subgraph PRIV["a wapp's own protocol — not XPRS"]
         direction TB
-        DGRAM["hal_rns_recv — circles<br/><i>k:msg/ks/key… JSON</i>"]
-        DM["hal_relay_dm_recv · nostr<br/><i>kind-4 DM plaintext</i>"]
-        SOCK["hal_socket_recv<br/><i>APRS-IS TNC2 lines</i>"]
-    end
-
-    subgraph OPEN["an XPRS lane the core never sees"]
-        direction TB
-        CRNS["chat: hal_rns_recv on tag <code>chat</code><br/><b>ble_pack wire → ble_handle</b>"]
-        LX["chat: hal_lxmf_recv<br/><i>shared inbox, own cursor</i>"]
+        DGRAM["circles: hal_rns_recv<br/><i>k:msg/ks/key… JSON</i>"]
+        DM["mail: hal_relay_dm_recv<br/><i>kind-4 DM plaintext</i>"]
+        SOCK["chat: hal_socket_recv<br/><i>APRS-IS TNC2 lines</i>"]
     end
 
     BUS --> W["a wapp"]
@@ -130,58 +125,52 @@ flowchart TD
     DGRAM --> W
     DM --> W
     SOCK --> W
-    CRNS --> W
-    LX --> W
 
     classDef good fill:#DCEFE3,stroke:#2E7D4F,color:#14351F
     classDef warn fill:#FBEFD6,stroke:#B7791F,color:#4A3208
-    classDef bad  fill:#F7DEDE,stroke:#A33A3A,color:#3F1414
     classDef neut fill:#E4E8EA,stroke:#64717A,color:#22292E
     class G,FUN,BUS,RNS,DGX,RV2,GATT,A58,PARC,LANU good
     class RAW warn
     class DGRAM,DM,SOCK neut
-    class CRNS,LX bad
     class W warn
 ```
 
-> **Every bearer is centralized. Two lanes inside one wapp are not.**
+> **Every XPRS packet now enters through one door.** There is no red tier left
+> on this figure.
 >
-> **The bearers are done.** BLE (four GATT roles, both advert subtypes,
-> reassembled parcels), LAN UDP, TCP, and all three Reticulum entrances — the
-> LXMF router, the `xprs` datagram tag, and the rendezvous destination — now
-> reach `PacketGateway` and nothing else. Reticulum mattered most: a wapp
-> subscribed to `xprs.message` was receiving from BLE and LAN and silently
-> missing everything that came over the internet, which is how two stations out
-> of radio range talk to each other. WiFi Direct carries no packets of its own;
-> it forms an IP group and the RNS interfaces run over it. LoRa is not a lane
-> on a phone. The HTTP API composes and sends — it has no receive door.
+> **The bearers.** BLE (four GATT roles, both advert subtypes, reassembled
+> parcels), LAN UDP, TCP, and all three Reticulum entrances — the LXMF router,
+> the `xprs` datagram tag, and the rendezvous destination — reach
+> `PacketGateway` and nothing else. WiFi Direct carries no packets of its own;
+> it forms an IP group and the RNS interfaces run over it. LoRa is not a lane on
+> a phone. The HTTP API composes and sends: it has no receive door.
 >
-> **`hal_ble_scan_read` stopped being a door.** It used to be fed by the legacy
-> company-frame scan, which read the radio and delivered to `BleService._inbound`
-> and nowhere else. That scan is deleted. Every remaining `_inbound.add` runs
-> *after* `PacketGateway.receive` on the same bytes, so the wapp now gets a copy
-> of what the core already saw. Still a raw read, no longer a path the core
-> misses.
+> **The two that were left were both chat's, and both are closed.**
 >
-> **Three doors carry a wapp's own protocol, not XPRS.** `circles` exchanges its
-> `k:msg`/`k:ks`/`k:key` JSON over its RNS datagram tag; `mail` reads kind-4
-> Nostr DM plaintext; chat's socket reads APRS-IS TNC2 lines off the internet.
-> A wapp owning a foreign protocol is the arrangement working, not a leak — none
-> of it is an XPRS packet.
+> `hal_rns_recv` on the tag `chat` was a complete XPRS lane inside a wapp:
+> `ble_pack` composed a wire (which is XPRS), `hal_rns_broadcast` aired it, and
+> the far side drained it straight into `ble_handle`. Transmit is now one
+> `hal_xprs_send` — and everything the wapp did by hand around it, a per-device
+> table with its own staleness TTL and a broadcast backstop for a peer behind
+> NAT, is `XprsPublisher`'s §36.0 bearer ranking, for every bearer rather than
+> for Reticulum alone. Receive is the bus.
 >
-> **Two lanes are the real remainder, and both are chat's.**
+> `hal_lxmf_recv` was a cursor over every private message on the device, with no
+> recipient test. It is deleted rather than gated: a permission is the wrong
+> answer to a door that should not exist. Foreign LXMF — a NomadNet or Sideband
+> peer writing plain text — is refused at the host's inbox door, which ends that
+> interop deliberately.
 >
-> `hal_rns_recv` on the tag `chat` is the sharp one: `rns_tx_bulletin` and
-> `rns_tx_public` compose a wire with `ble_pack` — which emits **XPRS** — air it
-> with `hal_rns_broadcast`, and the receiving side drains it straight into
-> `ble_handle`. A full XPRS lane over Reticulum, both directions, that the core
-> never sees: no dedup against the copy that arrives by radio, no `via:`
-> accounting, no §5 identity, no receipt.
+> **`hal_ble_scan_read` stopped being a door twice over.** Its feed is a copy
+> taken after `PacketGateway`, and `ble_handle` now returns on an XPRS wire
+> outright, so what it still reads is the compact frame: what the ESP32 airs,
+> and the control frames (`?PING`, `?MAIL`, `?IGATE`, HELLO) that have no XPRS
+> form. That also removed a second digipeater which repeated packets while
+> appending nothing to `via:`.
 >
-> `hal_lxmf_recv` is the known one, and step 5 of the current plan deletes it.
->
-> Both close the same way: chat gets its packets from the event bus it is
-> already subscribed to, and the two imports go.
+> **Three doors carry a wapp's own protocol, not XPRS** — circles' `k:msg`/`k:ks`
+> JSON, mail's kind-4 Nostr DM plaintext, chat's APRS-IS socket. A wapp owning a
+> foreign protocol is the arrangement working.
 
 ## Fig. 3 — Inbox to bubble: the half nobody had drawn
 
