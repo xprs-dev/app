@@ -118,6 +118,18 @@ class WappDelivery {
         'rssi': 0,
       });
 
+  /// The fate of a message THIS station sent: delivered, read.
+  ///
+  /// Its own topic, because it is not a packet somebody heard -- it is an
+  /// answer about one of ours. A wapp subscribes to draw the tick it used to
+  /// assert on its own.
+  int deliverStatus({
+    required String id,
+    required String peer,
+    required String state,
+  }) =>
+      _publish('xprs.status.tx', {'id': id, 'peer': peer, 'state': state});
+
   int _publish(String topic, Map<String, dynamic> row) {
     final n = WappEventBroker.instance.publish('core', topic, jsonEncode(row));
     published++;

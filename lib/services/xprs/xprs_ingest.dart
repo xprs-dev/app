@@ -32,6 +32,8 @@ import 'xprs_archive.dart';
 import 'xprs_groups.dart';
 import 'xprs_gossip.dart';
 import 'xprs_monitor.dart';
+import 'xprs_id.dart';
+import 'xprs_outbox.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
@@ -474,6 +476,13 @@ class XprsIngest {
     // preference. Our own PRESENCE is the exception: nobody has ever asked a
     // phone to replay its own beacons, and on the bench they were 139 of the
     // newest 200 rows in this device's archive.
+    // Remember a 1:1 we sent, so a `t:receipt r:<id>` naming it has something
+    // to advance. Keyed on the §5 identifier, so the copy that went out over
+    // Reticulum and the copy that went out over BLE are one row.
+    if (p.type == 'message' && xprsAddressesStation(p['d'] ?? '')) {
+      XprsOutbox.instance
+          .noteSent(xprsIdentifier(p), (p['d'] ?? '').trim().toUpperCase());
+    }
     if (!_worthKeeping(p, forUs: false)) return;
     XprsArchive.instance.admit(p, bearer: _archiveBearer(bearer), own: true);
   }
@@ -534,6 +543,26 @@ class XprsIngest {
     // was refused for want of a key that had also arrived over the hubs --
     // two strangers meeting on the internet could not bootstrap at all.
     if (p.type == 'identity') _bindIdentity(fromC, p);
+
+    // A RECEIPT OFF THE INTERNET LANE. This branch did not exist, so a
+    // `t:receipt` arriving over Reticulum released nothing and was not even
+    // counted -- and Reticulum is exactly the lane a receipt takes for a
+    // message that was delivered over it. The custody a receipt is supposed
+    // to end therefore stayed parked whenever the two stations were talking
+    // over the internet rather than over a radio.
+    //
+    // Same hook the radio lane uses, and ungated on "addressed to us" for the
+    // same reason: §13.3 has a carrier discard its copy on OVERHEARING an
+    // acknowledgement, which is how a chain of custodians drains instead of
+    // delivering the same message five times.
+    if (p.type == 'receipt') {
+      try {
+        onReceipt?.call(p);
+      } catch (e) {
+        LogService.instance.add('XPRS: receipt handling failed (rns): $e');
+      }
+      return;
+    }
 
     // Gossip off the internet lane (36.9.4): a replayed observation arriving
     // over the hubs is exactly the "asker verifies and caches into its own

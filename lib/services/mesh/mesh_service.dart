@@ -35,6 +35,7 @@ import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_gossip.dart';
 import '../xprs/xprs_group_keys.dart';
 import '../xprs/xprs_publisher.dart';
+import '../xprs/xprs_outbox.dart';
 import '../xprs/xprs_receipt.dart';
 import '../xprs/xprs_digipeat.dart';
 import '../xprs/xprs_forwarder.dart';
@@ -259,8 +260,9 @@ class MeshService {
         // consumed one, so a parked row had no terminal state and the store
         // grew to its quota: measured at 1739 parked, 0 purged, 0 delivered.
         XprsIngest.onReceipt = (p) {
-          final id = XprsReceipt.release(p, selfCallsign: tableCallsign);
-          if (id == null) return; // unverifiable changes nothing (13.7.1)
+          final r = XprsReceipt.release(p, selfCallsign: tableCallsign);
+          if (r == null) return; // unverifiable changes nothing (13.7.1)
+          final id = r.id;
           final n = MeshStore.instance.purgeAm(id);
           if (n > 0) {
             XprsReceiptCounters.released += n;
@@ -271,6 +273,14 @@ class MeshService {
           // Remember it even when we held nothing: a copy that reaches us
           // AFTER the receipt must not be parked all over again.
           MeshStore.instance.recordReceivedAm(id);
+
+          // AND TELL WHOEVER SENT IT. Releasing custody is only half of what
+          // a receipt is for: the other half is the sender learning that the
+          // message arrived, and being able to stop retrying it. Until now a
+          // verified receipt purged a store row and stopped, so the tick a
+          // person sees was asserted by the wapp rather than reported by the
+          // core (docs/message-receive.md section 10).
+          XprsOutbox.instance.noteReceipt(id, state: r.state);
         };
         XprsIngest.onResult = (p) {
           XprsCatchup.instance.onResult(p);

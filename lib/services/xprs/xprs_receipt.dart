@@ -76,8 +76,14 @@ class XprsReceipt {
   /// [p] must be the packet as it arrived: the `r:` value is its §5 identifier,
   /// computed over the wire with `sig:` and `via:` removed, so a relayed copy
   /// and a directly-heard one produce the same receipt.
+  /// [state] is `ack` (it reached a device) or `read` (it was opened) —
+  /// §13.7's table. `ack` is the core's to send when a message is accepted
+  /// for render; `read` is the WAPP's to ask for, because only the thing
+  /// drawing the conversation knows a person looked at it.
   static XprsPacket? compose(XprsPacket p,
-      {required String selfCallsign, BigInt? signingKey}) {
+      {required String selfCallsign,
+      BigInt? signingKey,
+      String state = 'ack'}) {
     if (p.type != 'message') return null;
 
     final self = _base(selfCallsign);
@@ -123,7 +129,7 @@ class XprsReceipt {
     // anything. That remains `s:sign`, which is still asked for explicitly.
     final r = XprsPacket.parse(
         't:receipt f:$self d:$from r:${xprsIdentifier(p)} ts:${_nowIso()} '
-        's:ack');
+        's:$state');
     if (r == null) return null;
     final signed = xprsSign(r, d);
     return signed.fits ? signed : null;
@@ -135,11 +141,17 @@ class XprsReceipt {
   /// [keyOf] resolves a callsign to its 32-byte x-only public key — the same
   /// resolver the archive verifies with. A signer we cannot check is treated
   /// exactly like a bad signature.
-  static String? release(XprsPacket p,
+  /// Returns the identifier it releases and WHICH state it reports, or null
+  /// when it releases nothing.
+  ///
+  /// `read` implies `ack`: a message cannot be opened without arriving, and a
+  /// peer that only ever sends `read` would otherwise never release custody.
+  static ({String id, String state})? release(XprsPacket p,
       {required String selfCallsign, Uint8List? Function(String)? keyOf}) {
     if (p.type != 'receipt') return null;
     final says = (p['s'] ?? '').split(',').map((w) => w.trim()).toSet();
-    if (!says.contains('ack')) return null;
+    final read = says.contains('read');
+    if (!says.contains('ack') && !read) return null;
     final id = (p['r'] ?? '').trim();
     if (id.length != 6) return null;
 
@@ -159,7 +171,7 @@ class XprsReceipt {
       return null;
     }
     XprsReceiptCounters.heard++;
-    return id;
+    return (id: id, state: read ? 'read' : 'ack');
   }
 
   /// The key the archive already resolves for signature checks. Null when this

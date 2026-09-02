@@ -107,7 +107,8 @@ void main() {
     test('a verified receipt releases the named message', () {
       final r = signedAck(dB);
       expect(
-          XprsReceipt.release(r, selfCallsign: 'X1RD89', keyOf: (_) => pubB),
+          XprsReceipt.release(r, selfCallsign: 'X1RD89', keyOf: (_) => pubB)
+              ?.id,
           '40f357');
     });
 
@@ -136,10 +137,26 @@ void main() {
           isNull);
     });
 
-    test('a receipt without s:ack releases nothing', () {
+    test('s:read releases too — reading implies arriving (13.7)', () {
+      // This test previously asserted that s:read released nothing. That was
+      // the implementation talking, not the specification: 13.7's table has
+      // `read` meaning "it was opened", which cannot happen to a message that
+      // did not arrive. A peer that sends only `read` would otherwise hold
+      // custody open forever.
       final r = xprsSign(
           XprsPacket.parse(
               't:receipt f:X1A67X d:X1RD89 r:40f357 ts:$_ts s:read')!,
+          dB);
+      final got =
+          XprsReceipt.release(r, selfCallsign: 'X1RD89', keyOf: (_) => pubB);
+      expect(got?.id, '40f357');
+      expect(got?.state, 'read');
+    });
+
+    test('a receipt that says neither ack nor read releases nothing', () {
+      final r = xprsSign(
+          XprsPacket.parse(
+              't:receipt f:X1A67X d:X1RD89 r:40f357 ts:$_ts s:sign')!,
           dB);
       expect(
           XprsReceipt.release(r, selfCallsign: 'X1RD89', keyOf: (_) => pubB),
