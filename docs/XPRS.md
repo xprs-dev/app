@@ -498,8 +498,8 @@ a message may contain spaces, colons, URLs and any punctuation.
 | Key | Type | Meaning |
 |---|---|---|
 | `t` | `enum` | packet type, always the first field |
-| `f` | `call` | sending callsign |
-| `d` | `addr` | recipient: a callsign, a group name, or absent for a broadcast |
+| `f` | `call` | from: the sending callsign |
+| `d` | `call` | destination: a callsign, a group name, or absent for a broadcast |
 | `ts` | `time` | when the packet was composed, UTC |
 | `tz` | `offset` | the sender's offset from UTC, for display |
 | `q` | `words` | what the sender wants back (section 7) |
@@ -529,7 +529,7 @@ a message may contain spaces, colons, URLs and any punctuation.
 | `role` | `enum` | what a grant confers: `mod`, `sub`, or absent for a member |
 | `hide` | `enum` | what a moderator withdraws from view: `message` |
 | `mood` | `enum` | how the sender feels (section 27.1) |
-| `only` | `addr` | narrows a replay to one callsign or group (section 25.2) |
+| `only` | `call` | narrows a replay to one callsign or group (section 25.2) |
 | `opt` | `labels` | the choices in a poll, two to six (section 28) |
 | `root` | `hex6` | the packet a thread hangs from (section 6.4) |
 | `size` | `qty` | how large a file is (section 6.7.1) |
@@ -624,8 +624,7 @@ The type is fixed by this document and is never transmitted.
 | `words` | one or more lowercase words separated by commas | `ack,read` |
 | `label` | lowercase letters, digits and `-`, at least one character | `field-day` |
 | `labels` | one or more `label`, separated by commas | `field-day,photos` |
-| `call` | uppercase letters, digits, `-` and `/` | `CT1ABC-9` |
-| `addr` | a `call` or a group name | `LISBOA` |
+| `call` | uppercase letters, digits, `-` and `/`; a group name has the same form | `CT1ABC-9` |
 | `path` | one or more `call`, separated by commas | `X32DVA,CT1ABC-9` |
 | `hex6` | exactly 6 lowercase hexadecimal characters | `399227` |
 | `time` | `YYYY-MM-DD_HH:MM:SS`, UTC | `2026-08-08_14:26:40` |
@@ -6816,8 +6815,8 @@ packet **250 bytes**, on every transport.
 | Key | Type | Meaning |
 |---|---|---|
 | `t` | `enum` | packet type, always the first field |
-| `f` | `call` | sending callsign |
-| `d` | `addr` | recipient: a callsign, a group name, or absent for a broadcast |
+| `f` | `call` | from: the sending callsign |
+| `d` | `call` | destination: a callsign, a group name, or absent for a broadcast |
 | `ts` | `time` | when the packet was composed, UTC |
 | `tz` | `offset` | the sender's offset from UTC, for display |
 | `q` | `words` | what the sender wants back (section 7) |
@@ -6847,7 +6846,7 @@ packet **250 bytes**, on every transport.
 | `role` | `enum` | what a grant confers: `mod`, `sub`, or absent for a member |
 | `hide` | `enum` | what a moderator withdraws from view: `message` |
 | `mood` | `enum` | how the sender feels (section 27.1) |
-| `only` | `addr` | narrows a replay to one callsign or group (section 25.2) |
+| `only` | `call` | narrows a replay to one callsign or group (section 25.2) |
 | `opt` | `labels` | the choices in a poll, two to six (section 28) |
 | `root` | `hex6` | the packet a thread hangs from (section 6.4) |
 | `size` | `qty` | how large a file is (section 6.7.1) |
