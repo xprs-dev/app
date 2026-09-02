@@ -851,17 +851,20 @@ class MeshService {
     // those names would be a wrong number rather than a missing one.
     try {
       final bytes = Uint8List.fromList(utf8.encode(p.encode()));
+      // `aired` now means the bytes REACHED THE CONTROLLER, not that the bus
+      // accepted them into its frame map. Those were the same value until the
+      // bench measured 2002 beacons "sent" here against zero on the air in an
+      // independent 185s capture — every number below was counting
+      // registrations. See Ble5.advertiseFrame.
       final aired = await Ble5Bus.instance
           .advertiseFrame('xprs', Ble5Subtype.xprs, bytes, ttl: _beaconTtl);
-    // §31.1: "a beacon is not free". This path goes straight to the advert bus
-    // rather than through the publisher, so it charges the shared budget here —
-    // otherwise the one packet a station sends most often would be the one
-    // packet the budget never sees.
-    if (aired) XprsAirtime.instance.charge(const ['ble5']);
-      // HONOUR the answer. A refused frame is aired nowhere, and counting it
-      // as sent is how a device ends up reporting a healthy beacon while
-      // broadcasting into nothing — the same trap the binary beacon above
-      // documents.
+      // §31.1: "a beacon is not free". This path goes straight to the advert
+      // bus rather than through the publisher, so it charges the shared budget
+      // here — otherwise the one packet a station sends most often would be the
+      // one packet the budget never sees. Charged only on a real airing: a
+      // ledger that bills for transmissions that did not happen throttles the
+      // station for nothing.
+      if (aired) XprsAirtime.instance.charge(const ['ble5']);
       // Ours, so it goes in our own log either way (section 36.5) — the
       // bearer says whether a radio actually took it.
       XprsIngest.own(p.encode(), bearer: aired ? 'ble' : 'none');

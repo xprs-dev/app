@@ -179,8 +179,25 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     // a stable round-robin). All access is on the WORKER thread — every entry
     // point that touches this map is dispatched there.
     private val frames = LinkedHashMap<String, Frame>()
-    private var rotateIdx = 0
-    private var rotateN = 0
+    // Which frame airs next. One cursor per list, and RotationCursor.kt has
+    // the bench measurement explaining why that sentence had to be written
+    // down: with a single shared cursor this station's own beacon never aired.
+    private val cursor = RotationCursor(PRESENCE_EVERY)
+
+    // WHAT ACTUALLY REACHED THE CONTROLLER, by subtype.
+    //
+    // `advertiseFrame` returns true once a frame is in the map, and every
+    // caller counted that as "sent" -- mesh_service even carries a comment
+    // saying "counting it as sent is how a device ends up reporting a healthy
+    // beacon while broadcasting into nothing", immediately above the line that
+    // did it. The bench measured 2002 beacons "sent" and zero on the air, with
+    // section 31.1 airtime charged for all 2002.
+    //
+    // airData is the only place bytes are handed to the stack, so it is the
+    // only honest place to count them.
+    private val airedBySubtype = java.util.concurrent.ConcurrentHashMap<Int, Long>()
+    private val airedTotal = java.util.concurrent.atomic.AtomicLong(0)
+    private val airedSuppressed = java.util.concurrent.atomic.AtomicLong(0)
     private var rotating = false
     private var lastHex: String? = null // last data put on air (skip redundant sets)
 
@@ -396,6 +413,16 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
      * Register/refresh a keyed broadcast frame. It is multiplexed onto the single
      * advertising set with all other active frames and aired until [ttlMs]
      * elapses (callers refresh periodically to keep it alive).
+     *
+     * Returns whether the bytes REACHED THE CONTROLLER, not whether they were
+     * accepted into the map. Those were the same value until now, and the
+     * difference was the whole fault: the phone reported 2002 beacons sent and
+     * an independent scanner heard none of them in 185 s, while section 31.1
+     * airtime was charged 2002 times for transmissions that never happened.
+     * The one caller that must not be lied to is the airtime ledger.
+     *
+     * A `false` here is not "Bluetooth is broken" -- the frame is still in the
+     * map and rotation will carry it. It means "do not book this as airtime".
      */
     private fun advertiseFrame(
         key: String,
@@ -421,12 +448,21 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         frames[key] = Frame(mfg, now + ttlMs, prio)
         ensureRotating()
         ensureAdvWindow()
-        // Air immediately so a just-sent message doesn't wait a full rotation.
-        rotateTick()
+        // R4: air THIS frame, not whatever the cursor happened to point at.
+        //
+        // This used to call rotateTick(), under the comment "air immediately so
+        // a just-sent message doesn't wait a full rotation" -- but rotateTick
+        // airs keys[cursor], which is somebody else's frame. The just-registered
+        // packet then waited for its turn after all, and with the cursor bug
+        // above its turn never came.
+        //
+        // Rotation still owns the cursor: this is one extra airing, and the next
+        // tick continues where it was.
+        val aired = airData(mfg)
         // Somebody just asked for this to go out: open the window now rather
         // than at the top of the next period. Still bounded, so the duty holds.
         if (!advWindowOpen) openAdvWindow()
-        return true
+        return aired
     }
 
     private fun removeFrame(key: String) {
@@ -519,33 +555,49 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         // here, and here is where to write to me" keeps reaching the air.
         val prioKeys = frames.filterValues { it.prio }.keys.toList()
         val presenceKeys = frames.filterValues { !it.prio }.keys.toList()
-        val usePresence = prioKeys.isEmpty() ||
-            (presenceKeys.isNotEmpty() && (++rotateN % PRESENCE_EVERY == 0))
-        val keys = if (usePresence) presenceKeys else prioKeys
-        if (keys.isEmpty()) return
-        if (rotateIdx >= keys.size) rotateIdx = 0
-        val frame = frames[keys[rotateIdx]] ?: return
-        rotateIdx = (rotateIdx + 1) % keys.size
+        val key = cursor.next(prioKeys, presenceKeys) ?: return
+        val frame = frames[key] ?: return
         airData(frame.mfg)
     }
 
-    /** Put one manufacturer-data blob on the single advertising set. */
-    private fun airData(mfg: ByteArray) {
-        if (disposed) return
-        val advertiser = adapter?.bluetoothLeAdvertiser ?: return
+    /**
+     * Put one manufacturer-data blob on the single advertising set.
+     *
+     * Returns whether this blob IS now what the controller is advertising —
+     * which is what a caller means by "sent". Registering a frame in the map is
+     * not sending it, and treating the two as the same is how this app reported
+     * 2002 beacons transmitted while an independent scanner saw none.
+     */
+    private fun airData(mfg: ByteArray): Boolean {
+        if (disposed) return false
+        val advertiser = adapter?.bluetoothLeAdvertiser ?: return false
         val data = AdvertiseData.Builder()
             .addManufacturerData(COMPANY_ID, mfg)
             .setIncludeDeviceName(false)
             .build()
+        // mfg is [marker][subtype][payload...]; count by what it is.
+        val sub = if (mfg.size >= 2) mfg[1].toInt() and 0xFF else -1
         val existing = advertisingSet
         if (existing != null) {
             val hex = mfg.joinToString("") { "%02x".format(it) }
-            if (hex == lastHex) return // already on air with this exact frame
+            if (hex == lastHex) {
+                // Already the data on air: not a NEW airing, but the caller's
+                // bytes are being transmitted, which is what it asked about.
+                airedSuppressed.incrementAndGet()
+                return true
+            }
             lastHex = hex
-            try { existing.setAdvertisingData(data) } catch (_: Exception) {}
-            return
+            return try {
+                existing.setAdvertisingData(data)
+                noteAired(sub)
+                true
+            } catch (_: Exception) {
+                false
+            }
         }
-        if (starting) return
+        // A start is already in flight; this frame is in the map and rotation
+        // will air it, but it is not on the air yet and we do not pretend it is.
+        if (starting) return false
         starting = true
         lastHex = mfg.joinToString("") { "%02x".format(it) }
         val params = AdvertisingSetParameters.Builder()
@@ -615,8 +667,13 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             }
         }
         advertiseCallback = cb
-        try {
+        return try {
+            // The start call carries this blob as the set's INITIAL data, so a
+            // start that is accepted airs exactly these bytes. Counted here and
+            // not before the call, so a throw does not book an airing.
             advertiser.startAdvertisingSet(params, data, null, null, null, cb)
+            noteAired(sub)
+            true
         } catch (e: Exception) {
             starting = false
             lastHex = null
@@ -625,6 +682,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             advLastError = "startAdvertisingSet: ${e.message}"
             android.util.Log.e(TAG, "startAdvertisingSet: ${e.message}")
             emitGatt(mapOf("event" to "advertFailed", "status" to -1))
+            false
         }
     }
 
@@ -634,7 +692,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         advWindowScheduled = false
         frames.clear()
         rotating = false
-        rotateIdx = 0
+        cursor.reset()
         lastHex = null
         starting = false
         val advertiser = adapter?.bluetoothLeAdvertiser
@@ -820,10 +878,22 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     // can only end in GATT_CONNECTION_TIMEOUT(147) thirty seconds later.
 
     /** Ground truth for the diagnostics: attempted vs refused, heard vs deaf. */
+    private fun noteAired(subtype: Int) {
+        airedTotal.incrementAndGet()
+        if (subtype >= 0) airedBySubtype.merge(subtype, 1L) { a, b -> a + b }
+    }
+
     private fun radioStatus(): Map<String, Any?> = mapOf(
         "advOnAir" to advOnAir,
         "advAttempts" to advAttempts.get(),
         "advFailures" to advFailures.get(),
+        // REGISTERED vs AIRED. advAttempts counts calls to advertiseFrame;
+        // advAired counts blobs handed to the controller. They differ by the
+        // rotation, and the gap between them is the bug this pair exists to
+        // make visible.
+        "advAired" to airedTotal.get(),
+        "advAiredBySubtype" to airedBySubtype.mapKeys { it.key.toString() },
+        "advAiredSuppressed" to airedSuppressed.get(),
         "advLastError" to advLastError,
         "scanResults" to scanResults.get(),
         "lastScanResultAgeMs" to

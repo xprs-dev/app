@@ -88,4 +88,8 @@ flutter {
 dependencies {
     // MediaSessionCompat + MediaStyle notification for lock-screen media controls.
     implementation("androidx.media:media:1.7.0")
+    // Plain JVM tests for the pure logic that used to hide inside Android
+    // classes -- see RotationCursorTest. Run with `./gradlew testDebugUnitTest`
+    // (under ~/bin/android-build-locked); assembleRelease does not run it.
+    testImplementation("junit:junit:4.13.2")
 }

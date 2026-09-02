@@ -134,6 +134,14 @@ class _Ble5Bearer implements XprsBearer {
         // rationale hal_ble_advertise documents for its 120 s. A caller that
         // knows better (a paced replay) says so.
         ttl: ttl ?? const Duration(seconds: 120),
+        // TRAFFIC, not presence. Everything on this path is a packet with
+        // somewhere to be: a message, a receipt, a relayed copy. The advert
+        // bus keeps a guaranteed share for the presence class (PRESENCE_EVERY
+        // in Ble5.kt), and that share exists for THIS station's own beacon —
+        // "I am here, and here is where to write to me". Lumping relayed
+        // traffic in with it meant the beacon competed with every packet the
+        // station forwarded for one slot in four, and lost.
+        prio: true,
       )
           ? XprsSendResult.sent
           : XprsSendResult.refused;
