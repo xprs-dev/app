@@ -76,6 +76,14 @@ Arrived → Acked → Released` — does not describe the running system.
 
 Ranked first because it is the only finding that *manufactures* traffic.
 
+**The fix (2026-09-02).** A finished packet is carried unchanged.
+`MeshCourier.carriableAsIs` names what qualifies — a `t:message` addressed to
+a station, since a group post is aired rather than couriered (§6.3) — and both
+routes into the store share one `_park`, so they cannot drift apart. Duplicate
+armings of one message collapse. §31.1 says a retry is not a new packet;
+neither is a carried copy. The receiver's unwrapping stays as recovery for
+peers still on the old build, but nothing depends on it now.
+
 ## 4. A 1:1 that arrives over Reticulum is archived and never delivered
 
 **verified.** In `XprsIngest.reticulum`
