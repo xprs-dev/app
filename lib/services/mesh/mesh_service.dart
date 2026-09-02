@@ -37,6 +37,7 @@ import '../xprs/xprs_group_keys.dart';
 import '../xprs/xprs_publisher.dart';
 import '../xprs/xprs_outbox.dart';
 import '../xprs/xprs_receipt.dart';
+import '../xprs/xprs_bridge.dart';
 import '../xprs/xprs_digipeat.dart';
 import '../xprs/xprs_forwarder.dart';
 import '../../util/nostr_crypto.dart';
@@ -286,6 +287,11 @@ class MeshService {
         // A reachability test answers on the lane it arrived on (§36.0: the
         // packet that just came over it is the freshest evidence of a working
         // path back). The funnel composes and signs; airing is the publisher's.
+        // The bridge shares the digipeater's §13 decision and its one way onto
+        // a bearer, so a relayed packet is decided and aired in one place
+        // whichever of the two carried it.
+        XprsBridge.instance.relayable = _relayable;
+        XprsBridge.instance.air = airOnLane;
         XprsIngest.onAnswerPing = (wire, bearer) {
           unawaited(XprsPublisher.instance
               .publishWire(wire, verbatim: true, prefer: bearer));
@@ -446,7 +452,12 @@ class MeshService {
     // wired bearers this is on by default. Every hearing goes in, duplicates
     // included, because 13.2.1's cancel is driven by hearing the packet
     // again while our own copy waits.
-    digipeater.heard(p, wire);
+    // Two different jobs, and the bearer is what separates them: repeat it on
+    // the medium it came from (§13.1), and carry it to the media it has not
+    // been on. Until `heard` took a bearer, only a degenerate version of the
+    // first was possible.
+    digipeater.heard(p, wire, bearer);
+    XprsBridge.instance.heard(p, wire, bearer);
 
     // The rest of this is beacon handling, and only a beacon is a beacon.
     if (p.type != 'observation') return;
@@ -574,22 +585,61 @@ class MeshService {
   /// one place whether a packet is being carried or merely repeated.
   late final XprsDigipeater digipeater = XprsDigipeater(
     relayable: _relayable,
-    enabled: () =>
-        digipeatBle && XprsPublisher.instance.isBearerEnabled('ble5'),
-    air: (wire) async {
-      for (final b in XprsPublisher.instance.bearers) {
-        if (b.name != 'ble5') continue;
-        if (!await b.active) return false;
-        return await b.send(wire, part: 1, slot: 'digi') ==
-            XprsSendResult.sent;
-      }
-      return false;
-    },
+    enabled: _mayRepeatOn,
+    air: airOnLane,
   );
 
-  /// The operator's switch. On by default (see the note at the call site);
-  /// off makes this station an endpoint again without touching the bearer.
+  /// Whether §13.1's repeat is allowed on [lane] right now.
+  ///
+  /// Per medium, because the media are not alike: Bluetooth is the one bearer
+  /// where refusing to repeat leaves two phones in a room unable to reach each
+  /// other at all, while a LAN repeat is cheap and a LoRa one is duty-cycled.
+  /// The operator's switch and the publisher's bearer state both land here.
+  bool _mayRepeatOn(String lane) {
+    switch (lane) {
+      case 'ble':
+      case 'ble5':
+        return digipeatBle && XprsPublisher.instance.isBearerEnabled('ble5');
+      case 'lan':
+        return digipeatLan && XprsPublisher.instance.isBearerEnabled('lan');
+      default:
+        // Reticulum is not a medium we repeat onto (§13.11.3), and no phone
+        // has a LoRa radio. An unknown lane is not repeated rather than
+        // guessed at.
+        return false;
+    }
+  }
+
+  /// THE ONE PLACE A RELAYED OR BRIDGED WIRE REACHES A BEARER.
+  ///
+  /// Both the digipeat and the bridge come through here, so airtime, the
+  /// operator's switches and the bearer's own refusal are decided once. It
+  /// used to reach into `XprsPublisher.bearers`, match `b.name != 'ble5'` and
+  /// call `send` itself — which is how the repeat became BLE-only.
+  Future<bool> airOnLane(String wire, String lane,
+      {String slot = 'digi'}) async {
+    final want = lane == 'ble' ? 'ble5' : lane;
+    for (final b in XprsPublisher.instance.bearers) {
+      if (b.name != want) continue;
+      if (!XprsPublisher.instance.isBearerEnabled(b.name)) return false;
+      if (!await b.active) return false;
+      final ok = await b.send(wire, part: 1, slot: slot) == XprsSendResult.sent;
+      // §31.1: "a beacon is not free", and neither is a repeat. Airtime is
+      // charged in _fanOut, which this path deliberately does not use — so a
+      // digipeat and a bridge were spending the shared budget without ever
+      // appearing in it. Charged here, once, for every wire that leaves by
+      // this door.
+      if (ok) XprsAirtime.instance.charge([b.name]);
+      return ok;
+    }
+    return false;
+  }
+
+  /// The operator's switches. On by default: a phone already listens on both
+  /// Bluetooth and the LAN to know who is around, so the packet is in memory
+  /// either way and only the airing costs anything.
   bool digipeatBle = true;
+  bool digipeatLan = true;
 
   String? _relayable(String wire) {
     final p = XprsPacket.parse(wire);
@@ -847,7 +897,11 @@ class MeshService {
   /// (section 9.1) and only the advert ceiling argues against it. Here there is
   /// room, and an unsigned beacon is a callsign anybody can write — an indexer
   /// deciding whether to spend airtime on us has nothing else to go on.
-  void _sendXprsLanBeacon() {
+  /// Fire-and-forget wrapper: airing now awaits the bearer, and neither the
+  /// timer nor the startup path has anything to do with the answer.
+  void _sendXprsLanBeacon() => unawaited(_airLanBeacon());
+
+  Future<void> _airLanBeacon() async {
     if (!XprsLan.instance.up) return;
     final self = (_table?.selfCallsign ?? '').trim();
     if (self.isEmpty) return;
@@ -885,8 +939,11 @@ class MeshService {
     if (fit.hears.isNotEmpty) p = p.with_('hears', fit.hears.join(','));
     if (d != null) p = xprsSign(p, d);
 
-    final aired = XprsLan.instance.send(p.encode());
-    if (aired) XprsAirtime.instance.charge(const ['lan']);
+    // Through the one lane door, so the beacon is charged and gated exactly
+    // like a repeat or a bridge. Deliberately ONE lane and not the fan-out:
+    // this packet claims `link:lan`, which is a statement about the LAN and
+    // would be a lie on any other bearer.
+    final aired = await airOnLane(p.encode(), 'lan', slot: 'beacon');
     XprsIngest.own(p.encode(), bearer: aired ? 'lan' : 'none');
     if (aired) {
       _xprsLanBeaconsSent++;

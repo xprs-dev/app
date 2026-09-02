@@ -29,18 +29,24 @@ void main() {
   late XprsDigipeater d;
   var clock = 1000000;
   var enabled = true;
+  late List<String> lanes;
 
   setUp(() {
     aired = [];
+    lanes = [];
     enabled = true;
     clock = 1000000;
     d = XprsDigipeater(
-      air: (w) async {
+      // The bearer is part of the answer now: §13.1 repeats "on the medium it
+      // heard it", and a repeater that takes no bearer can only ever honour
+      // that by accident.
+      air: (w, lane) async {
         aired.add(w);
+        lanes.add(lane);
         return true;
       },
       relayable: relayable,
-      enabled: () => enabled,
+      enabled: (_) => enabled,
     );
     // Separate statements, not a cascade: `..random` after `() => clock`
     // parses as a cascade on `clock` itself, which is an int.
@@ -51,7 +57,8 @@ void main() {
   tearDown(() => d.dispose());
 
   XprsPacket pkt(String wire) => XprsPacket.parse(wire)!;
-  void hear(String wire) => d.heard(pkt(wire), wire);
+  void hear(String wire, [String bearer = 'ble']) =>
+      d.heard(pkt(wire), wire, bearer);
   Future<void> advance(int ms) async {
     clock += ms;
     await d.pump();
@@ -210,5 +217,42 @@ void main() {
     expect(d.dropped, 4);
     await advance(2000);
     expect(aired, hasLength(XprsDigipeater.maxQueue));
+  });
+
+  group('the medium it heard it on (13.1)', () {
+    // The rule this class is named for, and the one it could not implement
+    // until `heard` took a bearer: the only caller matched `b.name != 'ble5'`
+    // and repeated everything onto Bluetooth, wherever it came from.
+    test('a packet heard on the LAN is repeated onto the LAN', () async {
+      hear(msg, 'lan');
+      await advance(2000);
+      expect(lanes, ['lan']);
+    });
+
+    test('a packet heard on BLE is repeated onto BLE', () async {
+      hear(msg, 'ble');
+      await advance(2000);
+      expect(lanes, ['ble']);
+    });
+
+    test('the same packet on two media is repeated on each', () async {
+      // Two separate hearings, two separate rooms: repeating onto Bluetooth
+      // does nothing for the machines on the LAN, so "already aired" is a fact
+      // about a lane and not about the packet.
+      hear(msg, 'ble');
+      hear(msg, 'lan');
+      await advance(2000);
+      expect(lanes.toSet(), {'ble', 'lan'});
+      expect(aired.length, 2);
+    });
+
+    test('a medium switched off does not repeat, and does not block others',
+        () async {
+      d.enabled = (lane) => lane != 'lan';
+      hear(msg, 'lan');
+      hear(msg, 'ble');
+      await advance(2000);
+      expect(lanes, ['ble']);
+    });
   });
 }

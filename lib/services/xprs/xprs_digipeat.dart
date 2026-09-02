@@ -45,9 +45,12 @@ import 'xprs_packet.dart';
 import 'xprs_vocab.dart';
 
 class _Pending {
-  _Pending(this.wire, this.dueMs);
+  _Pending(this.wire, this.dueMs, this.bearer);
   final String wire;
   final int dueMs;
+
+  /// The medium it was heard on, and therefore the only one it goes back on.
+  final String bearer;
 }
 
 class XprsDigipeater {
@@ -57,16 +60,25 @@ class XprsDigipeater {
     required this.enabled,
   });
 
-  /// Put one wire on the bearer. Returns false when the radio refused it.
-  final Future<bool> Function(String wire) air;
+  /// Put one wire back on the medium it was heard on. Returns false when that
+  /// bearer refused it.
+  ///
+  /// [bearer] is what makes this §13.1's digipeater rather than a repeater
+  /// that happens to use one radio. The rule is "repeats a packet on the
+  /// MEDIUM IT HEARD IT", and until this parameter existed the caller could
+  /// not honour it: `heard` took no bearer, so the only implementation
+  /// possible was one that airs everything on a single hardcoded lane. A
+  /// packet heard on the LAN was repeated onto Bluetooth and never back onto
+  /// the LAN — an unlabelled gateway, in the one place that must not be one.
+  final Future<bool> Function(String wire, String bearer) air;
 
   /// The 13.1/13.2 decision plus the `via:` append — MeshService._relayable,
   /// which is the same routine the 36.8.1 release uses. One rule, one place.
   final String? Function(String wire) relayable;
 
-  /// Whether this bearer may transmit at all right now (the operator's switch
-  /// and the API's `only:`/`disable:` test hook both land here).
-  final bool Function() enabled;
+  /// Whether [bearer] may repeat at all right now — the operator's switch per
+  /// medium, and the API's `only:`/`disable:` test hook.
+  bool Function(String bearer) enabled;
 
   /// Test seams. The jitter is the whole mechanism, so a test that cannot fix
   /// the clock and the dice cannot test it.
@@ -84,7 +96,8 @@ class XprsDigipeater {
   /// Waiting to be re-aired, by identifier.
   final Map<String, _Pending> _queue = {};
 
-  /// Identifiers we have put on this bearer, so we never repeat ourselves.
+  /// Identifiers we have already put back, keyed `<bearer>|<id>` so repeating
+  /// onto Bluetooth does not count as having repeated onto the LAN.
   final Map<String, int> _aired = {};
 
   /// Bounded: a busy room must not turn this into a memory leak.
@@ -107,9 +120,9 @@ class XprsDigipeater {
   ///
   /// Does the 13.2.1 cancel and the 13.1/13.2 decision in that order, because
   /// a packet that cancels ours must not then be queued by us.
-  void heard(XprsPacket p, String wire) {
+  void heard(XprsPacket p, String wire, String bearer) {
     final id = xprsIdentifier(p);
-    if (id.isEmpty) return;
+    if (id.isEmpty || bearer.isEmpty) return;
     _sweep();
 
     // Somebody ELSE got there first — and "else" is the load-bearing word.
@@ -125,14 +138,17 @@ class XprsDigipeater {
     final from = (p['f'] ?? '').trim().toUpperCase();
     final byOthers =
         xprsVia(p).where((c) => c.trim().toUpperCase() != from).isNotEmpty;
-    if (byOthers && _queue.remove(id) != null) {
+    final key = '$bearer|$id';
+    if (byOthers && _queue.remove(key) != null) {
       cancelled++;
       LogService.instance.add(
           'XPRS: digipeat $id cancelled — heard it relayed (13.2.1)');
       return;
     }
-    if (!enabled()) return;
-    if (_aired.containsKey(id) || _queue.containsKey(id)) return;
+    // Per medium: a repeat onto Bluetooth is not a repeat onto the LAN, and a
+    // station past our reach on one is not reachable on the other.
+    if (!enabled(bearer)) return;
+    if (_aired.containsKey(key) || _queue.containsKey(key)) return;
 
     final out = relayable(wire);
     if (out == null) {
@@ -144,7 +160,7 @@ class XprsDigipeater {
       return;
     }
     final wait = jitterMinMs + random(jitterMaxMs - jitterMinMs + 1);
-    _queue[id] = _Pending(out, now() + wait);
+    _queue[key] = _Pending(out, now() + wait, bearer);
     _arm();
   }
 
@@ -156,23 +172,24 @@ class XprsDigipeater {
       for (final e in _queue.entries)
         if (e.value.dueMs <= t) e.key
     ];
-    for (final id in due) {
-      final pend = _queue.remove(id);
+    for (final key in due) {
+      final pend = _queue.remove(key);
       if (pend == null) continue;
-      if (!enabled()) continue;
-      _aired[id] = t;
+      if (!enabled(pend.bearer)) continue;
+      _aired[key] = t;
       aired++;
       try {
-        if (!await air(pend.wire)) {
+        if (!await air(pend.wire, pend.bearer)) {
           refused++;
-          LogService.instance.add('XPRS: digipeat $id refused by the radio');
+          LogService.instance.add(
+              'XPRS: digipeat $key refused by ${pend.bearer}');
         } else {
           // The tail, because `via:` sits at the end of a wire. A digipeater
           // whose repeats cannot be seen is indistinguishable from one that
           // never repeats — which is exactly how an hour went into asking
           // whether a hop had fired.
           final w = pend.wire;
-          LogService.instance.add('XPRS: digipeat $id aired '
+          LogService.instance.add('XPRS: digipeat $key aired on ${pend.bearer} '
               '${w.length}B ...${w.substring(w.length > 60 ? w.length - 60 : 0)}');
         }
       } catch (e) {
