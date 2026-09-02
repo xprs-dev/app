@@ -54,6 +54,9 @@ class CoreState {
   /// The archive's counters and what this station is holding for others.
   static const archive = 'core.archive';
 
+  /// A background task started, finished, paused or failed.
+  static const tasks = 'core.tasks';
+
   /// A datagram arrived on a wapp's own Reticulum tag. Per tag, because two
   /// wapps' private protocols are not each other's business:
   /// `core.datagram.<tag>`.
@@ -66,7 +69,13 @@ class CoreState {
   /// Every fixed topic this file publishes, for the subscription UI and for a
   /// test that wants to assert the list rather than a literal. `datagram` is
   /// not here: its topics are named after a wapp, not after core state.
-  static const List<String> topics = [monitor, rnsGraph, meshTopology, archive];
+  static const List<String> topics = [
+    monitor,
+    rnsGraph,
+    meshTopology,
+    archive,
+    tasks,
+  ];
 
   /// How long changes are collected before one publication goes out.
   ///

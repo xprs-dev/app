@@ -17,6 +17,7 @@ import 'dart:async';
 
 import 'package:reticulum/reticulum.dart' show RnsCrypto;
 
+import 'receive/core_state.dart';
 import '../models/monitored_task.dart';
 import 'event_bus.dart';
 import 'log_service.dart';
@@ -352,6 +353,11 @@ class TaskMonitorService {
       oldStatus: oldStatus,
       newStatus: newStatus,
     ));
+    // And onto the wapp bus, so the tasks screen is told rather than asking.
+    // It sent the host a `system.tasks.list` request every second — a round
+    // trip whose answer, on a device where nothing is starting or stopping,
+    // is the same list sixty times a minute.
+    CoreState.instance.changed(CoreState.tasks);
   }
 }
 
