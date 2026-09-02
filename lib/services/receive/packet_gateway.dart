@@ -49,6 +49,7 @@ import '../mesh/mesh_service.dart';
 import '../mesh/mesh_session.dart' show mspIsFrame;
 import '../mesh/xblob_service.dart';
 import '../xprs/xprs_ingest.dart';
+import 'wapp_delivery.dart';
 import '../xprs/xprs_packet.dart';
 
 /// How the bytes reached us. Not the bearer — the shape of the arrival.
@@ -171,6 +172,21 @@ class PacketGateway {
         onXprsPacket?.call(p, bearer, peer, rssi, text);
       } catch (e) {
         LogService.instance.add('Gateway: post-funnel handler threw: $e');
+      }
+      // Hand it to whichever wapps asked for this TYPE (§4.2). One topic per
+      // `t:` value, so a feed wapp takes `t:status`, a poll wapp takes
+      // `t:poll`, and neither has to see the other's traffic to find its own.
+      try {
+        final self = MeshService.instance.tableCallsign.trim().toUpperCase();
+        final to = (p['d'] ?? '').trim().toUpperCase();
+        WappDelivery.instance.deliverPacket(
+          p,
+          bearer: bearer,
+          rssi: rssi,
+          forUs: self.isNotEmpty && to == self,
+        );
+      } catch (e) {
+        LogService.instance.add('Gateway: wapp delivery threw: $e');
       }
       return _done(bearer, lane, RxVerdict.xprs);
     }

@@ -1,61 +1,52 @@
 /*
- * wapp_delivery — the core hands a wapp a finished message, on the bus.
+ * wapp_delivery — the core hands a wapp the packets it asked for.
  *
- * The rule this file exists to make true: a wapp owns no transport. It does
- * not open a socket, read a radio, drain an inbox, or know which bearer
- * carried anything. It subscribes to a topic and is handed content.
+ * A wapp owns no transport: it does not open a socket, read a radio or drain
+ * a shared inbox. It names the PACKET TYPES it cares about and is handed
+ * those, with the provenance the specification already puts on the wire.
  *
- * What it replaces is a set of shared pools that any wapp could read at will:
- * `_lxmfInbox` was one flat list of human correspondence with no recipient
- * test on it -- `_admitToInbox` checks that the content is non-empty and is
- * not an XPRS wire, and nothing else -- exposed through `hal_lxmf_recv` to
- * whoever asked. The decision "this belongs to chat" was made nowhere in the
- * core; chat was simply the only wapp that asked. Every wapp also got every
- * raw BLE frame through `hal_ble_scan_read`, and a route was claimed by
- * importing its symbol, because the engine offers every HAL import to every
- * module and swallows the failure when the module does not declare it.
+ * ── Topics are packet types (XPRS.md §4.2) ───────────────────────────────
+ * One topic per `t:` value -- `xprs.message`, `xprs.observation`,
+ * `xprs.status`, `xprs.poll`, `xprs.receipt`, and so on for all thirty. The
+ * format already sorts traffic by kind, so inventing coarse buckets on top of
+ * it ("message / group / status") threw that away and made every wapp filter
+ * again on the far side of the bus. A feed wapp wants `t:status`; a poll wapp
+ * wants `t:poll` and `t:reaction`; chat wants `t:message` and `t:receipt`.
+ * None of them should have to see the others to find out.
  *
- * That is survivable while every wapp is ours. It is not survivable the
- * moment somebody else's wapp can be installed, which is the point of doing
- * this now rather than later.
+ * An unknown type is published under its own name and simply has no
+ * subscriber, which matches §4.2: "An unknown type is ignored. It is never an
+ * error." A wapp written for a type this build has never heard of works the
+ * day a peer starts sending it, with no host change.
  *
- * ── The shape ────────────────────────────────────────────────────────────
- * The core decides the TOPIC from the packet, publishes once, and the broker
- * fans it out to the engines that subscribed -- and wakes them. A wapp that
- * is not subscribed is not woken and is not told, which is what makes
- * installing a stranger's wapp safe: it can read exactly the topics it asked
- * for, and asking is visible.
- *
- * Waking matters as much as routing. `publish` used to only queue, so a wapp
- * found its event on the next `module_tick` -- which is why the responsive
- * ones declare 500-1000 ms intervals and spend 18.8% of the main isolate
- * (measured) asking whether anything arrived. Arrival now drives the tick.
+ * ── Provenance travels with the packet ───────────────────────────────────
+ * The row carries the packet's own fields plus how it reached us: the bearer,
+ * the signal where there was one, and the `via:` chain §13 puts on the wire.
+ * A wapp needs this -- "who sent it, how far away, by what route, and can I
+ * answer on the same path" are content questions, and §10.6 makes `link:` a
+ * first-class reading. What a wapp still does not get is a transport
+ * DECISION: which radio to answer on, whether to relay, what to hold. Those
+ * stay in the core (docs/architecture.md §1), and none of them is a field.
  */
 import 'dart:convert';
 
 import '../../wapp/wapp_event_broker.dart';
 import '../log_service.dart';
+import '../xprs/xprs_id.dart';
 import '../xprs/xprs_packet.dart';
-import '../xprs/xprs_vocab.dart';
 
-/// The topics the core publishes. Named for what the content IS, never for
-/// the radio that carried it — a wapp that could tell would be a wapp with a
-/// transport opinion.
-class RxTopic {
-  /// A 1:1 message addressed to this station.
-  static const message = 'xprs.message';
+/// The topic a packet of type [t] is published on. One per §4.2 type.
+String rxTopicFor(String t) => 'xprs.${t.trim().toLowerCase()}';
 
-  /// A message addressed to a group this station belongs to.
-  static const group = 'xprs.group';
-
-  /// Somebody's status/observation heard on the air — the feed material.
-  static const status = 'xprs.status';
-
-  /// A delivery or read receipt for something we sent.
-  static const receipt = 'xprs.receipt';
-
-  static const all = [message, group, status, receipt];
-}
+/// Every type §4.2 defines, for a wapp that wants the list rather than a
+/// literal, and for the subscription UI.
+const List<String> kXprsTypes = [
+  'message', 'observation', 'receipt', 'reaction', 'request', 'identity',
+  'track', 'sos', 'info', 'blog', 'poll', 'file', 'report', 'place',
+  'status', 'passage', 'event', 'offer', 'need', 'channel', 'mailbox',
+  'service', 'command', 'result', 'moderate', 'challenge', 'response',
+  'warning', 'ping', 'pong',
+];
 
 class WappDelivery {
   WappDelivery._();
@@ -64,46 +55,83 @@ class WappDelivery {
   static int published = 0;
   static int noSubscriber = 0;
 
-  /// Test seam: the last thing published, without standing up an engine.
+  /// Test seam: what was published, without standing up an engine.
   static void Function(String topic, Map<String, dynamic> row)? onPublish;
 
-  /// Hand a finished, human-readable message to whichever wapps asked for
-  /// this topic.
+  /// Publish a heard packet to whoever subscribed to its type.
   ///
-  /// [row] carries content and provenance a PERSON needs — who sent it, when,
-  /// whether it was sealed — and deliberately not which bearer carried it
-  /// (docs/architecture.md §1: "a wapp is not told which radio carried the
-  /// message"). `bearer` is available to the core's own views, not here.
-  int deliver(String topic, Map<String, dynamic> row) {
-    final data = jsonEncode(row);
-    final n = WappEventBroker.instance.publish('core', topic, data);
+  /// [bearer] is the word a radio person would use (`ble`, `lan`, `rns`);
+  /// [rssi] is 0 where the bearer has no signal to report, as a TCP byte does
+  /// not. [forUs] says whether `d:` names this station -- the wapp would
+  /// otherwise have to know our callsign to work it out.
+  int deliverPacket(
+    XprsPacket p, {
+    required String bearer,
+    required bool forUs,
+    int rssi = 0,
+  }) {
+    final row = <String, dynamic>{
+      // Section 5: derived from the packet, never transmitted, so a copy
+      // heard twice over two bearers is recognised once. A wapp needs it to
+      // dedup and to name the packet in a reply or a receipt.
+      'id': xprsIdentifier(p),
+      'type': p.type,
+      'from': p['f'] ?? '',
+      'to': p['d'] ?? '',
+      'ts': p['ts'] ?? '',
+      // Every field, verbatim and IN ORDER, as [key, value] pairs. A wapp
+      // reading `t:poll` needs its options and the core has no business
+      // enumerating them. Pairs rather than a map because the format allows
+      // duplicate keys and order is what the §5 identifier is derived from --
+      // collapsing either would quietly rename the packet.
+      'fields': [for (final f in p.fields) [f.key, f.value]],
+      'forUs': forUs,
+      'sealed': p.has('x'),
+      // How it got here. `via:` is the §13 relay chain and is already on the
+      // wire; `bearer` and `rssi` are what this station observed.
+      'bearer': bearer,
+      'rssi': rssi,
+      'via': p['via'] ?? '',
+      'link': p['link'] ?? '',
+    };
+    return _publish(rxTopicFor(p.type), row);
+  }
+
+  /// Publish a message that arrived already decoded rather than as a packet
+  /// (the LXMF lane). It is a `t:message` in everything but framing.
+  int deliverMessage({
+    required String from,
+    required String content,
+    String title = '',
+    String bearer = 'rns',
+    Object? ts,
+  }) =>
+      _publish(rxTopicFor('message'), {
+        'type': 'message',
+        'from': from,
+        'to': title.startsWith('#') ? title : '',
+        'content': content,
+        'title': title,
+        'ts': ts,
+        'forUs': !title.startsWith('#'),
+        'bearer': bearer,
+        'rssi': 0,
+      });
+
+  int _publish(String topic, Map<String, dynamic> row) {
+    final n = WappEventBroker.instance.publish('core', topic, jsonEncode(row));
     published++;
     if (n == 0) {
       noSubscriber++;
-      // Not an error, and not silent either: a message nobody subscribed to
-      // is exactly the state that used to be invisible, because the wapp
-      // pulled and nobody could see it had stopped.
-      if (noSubscriber <= 3 || noSubscriber % 50 == 0) {
+      if (noSubscriber <= 3 || noSubscriber % 100 == 0) {
         LogService.instance
-            .add('Delivery: $topic reached no subscriber ($noSubscriber so far)');
+            .add('Delivery: $topic reached no subscriber ($noSubscriber)');
       }
     }
     try {
       onPublish?.call(topic, row);
     } catch (_) {}
     return n;
-  }
-
-  /// The topic a packet belongs on. The core's decision, made from the
-  /// packet, in one place.
-  static String topicFor(XprsPacket p, {required bool forUs}) {
-    if (p.type == 'receipt') return RxTopic.receipt;
-    if (p.type == 'message') {
-      return xprsAddressesStation(p['d'] ?? '') && forUs
-          ? RxTopic.message
-          : RxTopic.group;
-    }
-    return RxTopic.status;
   }
 
   static void debugReset() {

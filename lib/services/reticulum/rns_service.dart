@@ -2363,21 +2363,15 @@ class RnsService {
     // wapp that did not subscribe is not told. That is what makes installing
     // somebody else's wapp safe.
     final title = (row['title'] ?? '').toString();
-    // Delivery must never be able to refuse admission. The message is in the
-    // inbox by the line above; a subscriber that throws, or a bus that is not
-    // up in a unit test, is a delivery problem and not a reason to lose the
-    // message or fail the caller.
+    // Delivery must never be able to refuse admission: the message is in the
+    // inbox by the line above, and a subscriber that throws is a delivery
+    // problem, not a reason to lose it.
     try {
-      WappDelivery.instance.deliver(
-        title.startsWith('#') ? RxTopic.group : RxTopic.message,
-        {
-          'from': row['from'],
-          'title': title,
-          'content': row['content'],
-          'ts': row['ts'],
-          // Deliberately NOT `via`/bearer: a wapp is not told which radio
-          // carried the message (docs/architecture.md section 1).
-        },
+      WappDelivery.instance.deliverMessage(
+        from: (row['from'] ?? '').toString(),
+        content: (row['content'] ?? '').toString(),
+        title: title,
+        ts: row['ts'],
       );
     } catch (e) {
       LogService.instance.add('Delivery: publish failed, message kept: $e');
