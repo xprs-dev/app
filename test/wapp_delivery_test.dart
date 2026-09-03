@@ -165,4 +165,68 @@ void main() {
     expect(bus.queueDepth('chat'), 2);
     expect(jsonDecode(bus.recv('chat')!.data)['content'], 'a');
   });
+  // ── Section 6.6: a part is not a message ───────────────────────────────
+  //
+  // A long message is aired as up to nine packets that each carry n:i/total
+  // and the full envelope. Every part is a t:message, so every part used to be
+  // published as a message of its own — and the chat wapp, correctly, dropped
+  // anything carrying n:. A long post in the Local room therefore rendered
+  // NOWHERE. The courier had joined the directed path for a while; nothing
+  // joined the undirected one, which is the path a broadcast takes.
+
+  test('a split broadcast arrives once, whole, and never as a fragment', () {
+    bus.registerEngine('chat');
+    bus.subscribe('chat', rxTopicFor('message'));
+
+    const head = 't:message f:X3WWAJ ts:2026-09-03_12:00:00 scope:local';
+    WappDelivery.instance.deliverPacket(
+        XprsPacket.parse('$head n:1/3 m:the quick')!,
+        bearer: 'ble', forUs: false);
+    expect(bus.queueDepth('chat'), 0, reason: 'a partial message is not shown');
+    WappDelivery.instance.deliverPacket(
+        XprsPacket.parse('$head n:3/3 m:the lazy dog')!,
+        bearer: 'ble', forUs: false);
+    expect(bus.queueDepth('chat'), 0, reason: 'still short, and still silent');
+
+    // Out of order on purpose: 6.6 says parts may arrive in any order.
+    WappDelivery.instance.deliverPacket(
+        XprsPacket.parse('$head n:2/3 m:brown fox')!,
+        bearer: 'ble', forUs: false);
+
+    expect(bus.queueDepth('chat'), 1, reason: 'one message, not three');
+    final row = jsonDecode(bus.recv('chat')!.data) as Map<String, dynamic>;
+    expect(row['fields'],
+        contains(equals(['m', 'the quick brown fox the lazy dog'])),
+        reason: 'joined in order, one space between parts');
+    expect(row['fields'].any((f) => (f as List).first == 'n'), isFalse,
+        reason: 'the reassembled packet carries no n:');
+    expect(row['scope'], 'local');
+    expect(WappDelivery.partsJoined, 1);
+  });
+
+  test('a repeated part does not complete a set', () {
+    bus.registerEngine('chat');
+    bus.subscribe('chat', rxTopicFor('message'));
+    const head = 't:message f:X3WWAJ ts:2026-09-03_12:05:00 scope:local';
+    for (var i = 0; i < 3; i++) {
+      WappDelivery.instance.deliverPacket(
+          XprsPacket.parse('$head n:1/2 m:only this one')!,
+          bearer: 'ble', forUs: false);
+    }
+    expect(bus.queueDepth('chat'), 0,
+        reason: 'the same part three times is still one part');
+  });
+
+  test('an unsplit message is untouched by the part table', () {
+    bus.registerEngine('chat');
+    bus.subscribe('chat', rxTopicFor('message'));
+    WappDelivery.instance.deliverPacket(
+        XprsPacket.parse(
+            't:message f:X3WWAJ ts:2026-09-03_12:10:00 scope:local m:short')!,
+        bearer: 'ble', forUs: false);
+    expect(bus.queueDepth('chat'), 1);
+    expect(WappDelivery.partsHeld, 0);
+    expect(WappDelivery.partsJoined, 0);
+  });
+
 }

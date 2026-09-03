@@ -36,6 +36,7 @@ import '../xprs/xprs_id.dart';
 import '../../util/nostr_crypto.dart';
 import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_packet.dart';
+import '../xprs/xprs_parts.dart';
 import '../xprs/xprs_sig.dart';
 import '../xprs/xprs_vocab.dart';
 
@@ -62,6 +63,64 @@ class WappDelivery {
   /// Test seam: what was published, without standing up an engine.
   static void Function(String topic, Map<String, dynamic> row)? onPublish;
 
+  /// §6.6: the parts of a split message, held until the set is whole.
+  ///
+  /// A long message is aired as up to nine packets that each carry `n:i/total`
+  /// and the full envelope. Every part is a `t:message`, so every part used to
+  /// be published to the wapps as a message of its own: one thing somebody
+  /// said arrived as four rows reading `n:3/4 …`, and the chat wapp — correctly
+  /// — dropped every packet carrying `n:`, so a long post in the Local room was
+  /// rendered NOWHERE, live or from the archive.
+  ///
+  /// [MeshCourier] has joined the DIRECTED path for a while, because a 1:1
+  /// reaches it through custody. Nothing joined the undirected one, which is
+  /// the path a broadcast takes. This is that caller, and it sits here because
+  /// this is the single door every wapp-facing packet passes through:
+  /// reassembly is the core's, and a wapp is handed a message, never a part.
+  final XprsPartTable _parts = XprsPartTable();
+
+  /// Sets still short, and messages this door has rejoined.
+  static int partsHeld = 0;
+  static int partsJoined = 0;
+
+  /// Rejoin [p] when it is a part, or return it unchanged when it is not.
+  ///
+  /// Null means the set is still short — and §6.6 is explicit that a partial
+  /// message is never displayed, so the caller publishes nothing at all.
+  XprsPacket? _whole(XprsPacket p, {required String bearer, required int rssi}) {
+    if (!p.has('n')) return p;
+    // A SEALED part is not ours to open. §9.2 seals to one recipient and the
+    // courier holds the key handling; offering null keeps the set short, which
+    // is the right answer here — a sealed set completes on the courier's path
+    // and reaches wapps as a finished message, never as packets.
+    final clear = p.has('x') ? null : (p['m'] ?? '');
+    final done = _parts.offer(p, clear: clear);
+    if (done == null) {
+      partsHeld++;
+      return null;
+    }
+    partsJoined++;
+    // §9.1.1: a split plain message is signed ONCE, on the last part, over the
+    // packet the parts reassemble into. Re-attach it so the verdict below is
+    // computed against the thing the signature actually covers.
+    final whole = done.sig == null
+        ? done.packet
+        : done.packet.with_('sig', done.sig!);
+    // The archive heard the parts and stored them as it heard them. Store the
+    // message they make as well, so a reader coming back later — the chat
+    // wapp refilling a room, `/api/xprs/history` — finds the message rather
+    // than nine fragments it is obliged to skip.
+    try {
+      XprsArchive.instance.admit(whole, bearer: bearer, rssi: rssi);
+    } catch (_) {
+      // Archiving is best-effort; a message that arrived still arrives.
+    }
+    LogService.instance.add(
+        'Delivery: rejoined ${p['n']} from ${whole['f'] ?? '?'} '
+        '(${(whole['m'] ?? '').length}B, ${_parts.pending} set(s) still short)');
+    return whole;
+  }
+
 
   /// Publish a heard packet to whoever subscribed to its type.
   ///
@@ -70,11 +129,15 @@ class WappDelivery {
   /// not. [forUs] says whether `d:` names this station -- the wapp would
   /// otherwise have to know our callsign to work it out.
   int deliverPacket(
-    XprsPacket p, {
+    XprsPacket pIn, {
     required String bearer,
     required bool forUs,
     int rssi = 0,
   }) {
+    // §6.6: a part is not a message. Held until the set is whole, and a set
+    // that is still short publishes nothing.
+    final p = _whole(pIn, bearer: bearer, rssi: rssi);
+    if (p == null) return 0;
     // §9.1's verdict, computed here rather than left to the wapp. The archive
     // has always computed exactly this for its own rows; a wapp handed a packet
     // and no verdict has to verify it itself, and chat did — with a signature
@@ -193,6 +256,9 @@ class WappDelivery {
   static void debugReset() {
     published = 0;
     noSubscriber = 0;
+    partsHeld = 0;
+    partsJoined = 0;
     onPublish = null;
+    instance._parts.clear();
   }
 }
