@@ -737,7 +737,9 @@ class _WappPageState extends State<WappPage>
 
   ConversationStore _convStore(String field) =>
       _convStores.putIfAbsent(field, () {
-        final store = ConversationStore()..dbField = field;
+        final store = ConversationStore()
+          ..dbField = field
+          ..owner = _wappName;
         final db = _convDb;
         if (db != null) {
           // A field first seen at runtime has no stored history to lose, so it
@@ -2106,6 +2108,17 @@ class _WappPageState extends State<WappPage>
           final field = data['field'] as String? ?? 'conversations';
           _convStore(field).setStatus(data);
           changed = true;
+        } else if (type == 'ui.convo.blocked') {
+          // The wapp STATES the blocked set, whole, the way it states the
+          // rail. Blocking hides; it does not delete, so unblocking gives the
+          // messages back. The wapp owns the list durably (its own KV) and
+          // re-states it at every start.
+          final field = data['field'] as String? ?? 'conversations';
+          final from = data['from'];
+          if (from is List) {
+            _convStore(field).setBlocked(from.map((e) => e.toString()));
+            changed = true;
+          }
         } else if (type == 'ui.convo.clear') {
           final field = data['field'] as String? ?? 'conversations';
           _convStore(field).clear(data['id'] as String?);

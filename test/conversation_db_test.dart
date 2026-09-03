@@ -3,6 +3,7 @@
 import 'dart:ffi';
 import 'dart:io';
 
+import 'package:xprs/services/log_service.dart';
 import 'package:xprs/wapp/geoui/conversation_db.dart';
 import 'package:xprs/wapp/geoui/conversation_store.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -301,4 +302,160 @@ void main() {
     expect(msgs.last['text'], 'm${kConvoMaxMessages + 24}');
     db2.close();
   });
+  // ── Losing history to a block, and to a wipe ───────────────────────────
+  //
+  // Message tails are read lazily, so a thread nobody has opened holds NO
+  // messages in memory. Blocking used to clear every thread on disk and write
+  // the in-memory copy back — which for those threads was nothing at all. One
+  // block emptied every room on the device, and the Local room went with it.
+
+  test("blocking a sender leaves an unopened thread's history alone", () {
+    final db = ConversationDb.open(dbPath);
+    var store = attached(db);
+    store.upsert({'id': '#LOCAL', 'title': 'Local chat'});
+    store.upsert({'id': '#NEWS', 'title': 'News'});
+    store.addMessage(
+        {'id': '#LOCAL', 'dir': 'in', 'from': 'X3WWAJ', 'text': 'hello here'});
+    store.addMessage(
+        {'id': '#NEWS', 'dir': 'in', 'from': 'X1BAD', 'text': 'noise'});
+    db.close();
+
+    // Reopen and open NOTHING: both tails are unhydrated, which is the state
+    // an app is in the moment it starts.
+    final db2 = ConversationDb.open(dbPath);
+    store = reopen(db2);
+    store.remove({'from': 'X1BAD'});
+    db2.close();
+
+    final db3 = ConversationDb.open(dbPath);
+    final after = reopen(db3);
+    expect(after.messagesOf('#LOCAL').map((m) => m['text']), ['hello here'],
+        reason: 'blocking somebody else must not empty this room');
+    db3.close();
+  });
+
+  test('a blocked sender is hidden, not deleted, and comes back', () {
+    final db = ConversationDb.open(dbPath);
+    final store = attached(db);
+    store.upsert({'id': '#LOCAL', 'title': 'Local chat'});
+    store.addMessage(
+        {'id': '#LOCAL', 'dir': 'in', 'from': 'X1BAD', 'text': 'rude'});
+    store.addMessage(
+        {'id': '#LOCAL', 'dir': 'in', 'from': 'X3WWAJ', 'text': 'fine'});
+
+    store.setBlocked(['X1BAD']);
+    expect(store.messagesOf('#LOCAL').map((m) => m['text']), ['fine']);
+
+    store.setBlocked(const []);
+    expect(store.messagesOf('#LOCAL').map((m) => m['text']), ['rude', 'fine'],
+        reason: 'the rows were never deleted, so unblocking gives them back');
+    db.close();
+  });
+
+  test('hiding one message takes one row, not the thread', () {
+    final db = ConversationDb.open(dbPath);
+    var store = attached(db);
+    store.upsert({'id': '#LOCAL', 'title': 'Local chat'});
+    store.addMessage(
+        {'id': '#LOCAL', 'dir': 'in', 'key': 'k1', 'text': 'keep me'});
+    store.addMessage(
+        {'id': '#LOCAL', 'dir': 'in', 'key': 'k2', 'text': 'hide me'});
+    db.close();
+
+    final db2 = ConversationDb.open(dbPath);
+    store = reopen(db2);
+    store.messagesOf('#LOCAL'); // hydrate, as opening the room does
+    store.remove({'id': '#LOCAL', 'key': 'k2'});
+    db2.close();
+
+    final db3 = ConversationDb.open(dbPath);
+    expect(reopen(db3).messagesOf('#LOCAL').map((m) => m['text']), ['keep me']);
+    db3.close();
+  });
+
+  test('a clear with no id is refused and the field survives', () {
+    final db = ConversationDb.open(dbPath);
+    var store = attached(db);
+    store.upsert({'id': '#LOCAL', 'title': 'Local chat'});
+    store.addMessage({'id': '#LOCAL', 'dir': 'in', 'text': 'still here'});
+
+    // The shape a wapp sent from its module_init for two releases.
+    store.clear(null);
+    store.clear('');
+    db.close();
+
+    final db2 = ConversationDb.open(dbPath);
+    expect(reopen(db2).messagesOf('#LOCAL').map((m) => m['text']),
+        ['still here'],
+        reason: 'a wapp clears one conversation at a time');
+    db2.close();
+  });
+
+  // ── Refilling a room from the core archive ─────────────────────────────
+
+  test('a backfilled row does not duplicate a live one', () {
+    final db = ConversationDb.open(dbPath);
+    var store = attached(db);
+    store.upsert({'id': '#LOCAL', 'title': 'Local chat'});
+    store.addMessage({
+      'id': '#LOCAL', 'dir': 'in', 'from': 'X3WWAJ',
+      'mid': 'ab12cd', 'key': '4149', 'text': 'said once',
+    });
+    db.close();
+
+    // Reopen with nothing hydrated — the state a refill runs in — and replay.
+    final db2 = ConversationDb.open(dbPath);
+    store = reopen(db2);
+    store.addMessage({
+      'id': '#LOCAL', 'dir': 'in', 'from': 'X3WWAJ',
+      'mid': 'ab12cd', 'key': '4149', 'text': 'said once', 'backfill': true,
+    });
+    expect(store.messagesOf('#LOCAL').length, 1);
+    db2.close();
+
+    final db3 = ConversationDb.open(dbPath);
+    expect(reopen(db3).messagesOf('#LOCAL').length, 1);
+    db3.close();
+  });
+
+  test('a backfilled row is stored but does not badge or bump', () {
+    final db = ConversationDb.open(dbPath);
+    final store = attached(db);
+    store.upsert({'id': '#LOCAL', 'title': 'Local chat'});
+    store.upsert({'id': '#NEWS', 'title': 'News'});
+    final before = store.items['#LOCAL']!.activityTs;
+    final orderBefore = [...store.order];
+
+    store.addMessage({
+      'id': '#LOCAL', 'dir': 'in', 'from': 'X3WWAJ',
+      'mid': 'ffee11', 'text': 'from the archive', 'backfill': true,
+    });
+
+    expect(store.items['#LOCAL']!.unread, 0,
+        reason: 'sixty replayed rows must not badge the room sixty times');
+    expect(store.items['#LOCAL']!.activityTs, before,
+        reason: 'a replay is not activity');
+    expect(store.order, orderBefore, reason: 'and it does not float the rail');
+    expect(store.messagesOf('#LOCAL').length, 1, reason: 'but it IS stored');
+    db.close();
+  });
+
+  test('a store with no database says so once', () {
+    // A field name of its own: the log is process-wide and other tests in this
+    // file also build memory-only stores.
+    final store = ConversationStore()
+      ..owner = 'chat'
+      ..dbField = 'silent_field_probe';
+    store.upsert({'id': '#LOCAL', 'title': 'Local chat'});
+    store.addMessage({'id': '#LOCAL', 'dir': 'in', 'text': 'lost'});
+    store.addMessage({'id': '#LOCAL', 'dir': 'in', 'text': 'also lost'});
+    expect(store.memoryOnly, isTrue);
+    final said = LogService.instance
+        .tail(200)
+        .where((l) =>
+            l.contains('MEMORY-ONLY') && l.contains('silent_field_probe'))
+        .length;
+    expect(said, 1, reason: 'said once per store, not once per message');
+  });
+
 }

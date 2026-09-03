@@ -8,6 +8,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import '../../services/log_service.dart';
 import 'conversation_db.dart';
 
 /// Short, stable key for a message: the first 8 hex characters of sha1(text),
@@ -172,7 +173,41 @@ class ConversationStore {
   /// not tell those apart and erased a phone's entire history on every launch.
   bool loaded = true;
 
-  bool get _wt => db != null && loaded;
+  /// True when this store cannot persist: no database, or a history that
+  /// could not be read. Exposed so a screen can say so, not only the log.
+  bool get memoryOnly => db == null || !loaded;
+
+  /// Which wapp this store belongs to, named in the warning below.
+  String owner = '';
+
+  bool _saidMemoryOnly = false;
+
+  bool get _wt {
+    if (db != null && loaded) return true;
+    if (!_saidMemoryOnly) {
+      _saidMemoryOnly = true;
+      // Open-time already said the database would not open. This is the only
+      // place that can say a MESSAGE was not written, which is the fact a
+      // person actually notices — and it is said once, not once per message.
+      LogService.instance.add(
+          'conversations: "$dbField"${owner.isEmpty ? '' : ' ($owner)'} is '
+          'MEMORY-ONLY (${db == null ? 'no database' : 'history unreadable'}) '
+          '— nothing said here survives this session');
+    }
+    return false;
+  }
+
+  /// Senders whose messages are hidden (§ blocking), stated by the wapp.
+  ///
+  /// Blocking used to DELETE. It ran `db.clear()` over every conversation and
+  /// then wrote back only the in-memory tail — which is empty for any thread
+  /// nobody had opened this session, so blocking one person destroyed the
+  /// stored history of every other room. Nothing is deleted now: the rows stay
+  /// and this set decides what is drawn, so unblocking gives them back.
+  ///
+  /// The wapp owns the list durably (its own KV) and re-states it at every
+  /// start, the way it re-states the rail. Nothing here is persisted.
+  final Set<String> blockedFrom = {};
 
   /// Most-recent-first display order.
   final List<String> order = [];
@@ -211,7 +246,7 @@ class ConversationStore {
   List<Map<String, dynamic>> messagesOf(String id) {
     final it = items[id];
     if (it == null) return const [];
-    if (_hydrated.contains(id) || !_wt) return it.messages;
+    if (_hydrated.contains(id) || !_wt) return _visible(it.messages);
     _hydrated.add(id);
     try {
       final rows = db!.loadMessages(dbField, id);
@@ -225,7 +260,27 @@ class ConversationStore {
       // Unreadable tail: show the thread empty rather than failing the screen,
       // and do not retry per frame.
     }
-    return it.messages;
+    return _visible(it.messages);
+  }
+
+  /// The tail minus whatever a blocked sender wrote. The rows are still there;
+  /// this is the only place blocking is applied, so unblocking is free.
+  List<Map<String, dynamic>> _visible(List<Map<String, dynamic>> msgs) {
+    if (blockedFrom.isEmpty) return msgs;
+    return msgs
+        .where((m) => !blockedFrom.contains((m['from'] ?? '').toString()))
+        .toList(growable: false);
+  }
+
+  /// Replace the blocked-sender set (the wapp states it whole, never a delta).
+  void setBlocked(Iterable<String> from) {
+    final next = from.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet();
+    if (next.length == blockedFrom.length && next.containsAll(blockedFrom)) {
+      return;
+    }
+    blockedFrom
+      ..clear()
+      ..addAll(next);
   }
 
   /// The conversation currently shown (set by the widget) so the store can
@@ -359,9 +414,19 @@ class ConversationStore {
         it.lastLine = who.isEmpty ? text : '$who: $text';
       }
     }
-    if (dir == 'in' && id != openId && d['sys'] != true) it.unread++;
-    it.activityTs = _nowMs();
-    _bump(id);
+    // A REPLAY IS NOT AN ARRIVAL.
+    //
+    // The wapp refills a room from the core's archive when its own copy was
+    // lost or was never written, and every one of those has already been
+    // seen, delivered and usually read. Stored, and nothing else: no badge, no
+    // bump, no activity stamp. Without this a refill of sixty rows would
+    // badge the room sixty times and float it to the top of the rail on every
+    // single launch, which is worse than the missing history it repairs.
+    if (d['backfill'] != true) {
+      if (dir == 'in' && id != openId && d['sys'] != true) it.unread++;
+      it.activityTs = _nowMs();
+      _bump(id);
+    }
     if (_wt) {
       db!.addMessage(dbField, id, it.messages.last);
       db!.upsertThread(dbField, it);
@@ -391,23 +456,24 @@ class ConversationStore {
   void remove(Map d) {
     final from = (d['from'] ?? '').toString();
     if (from.isNotEmpty) {
+      // BLOCKING DELETES NOTHING NOW.
+      //
+      // What stood here looped every conversation doing `db.clear(field, id)`
+      // and then re-added `it.messages` — and tails are hydrated lazily, so a
+      // thread nobody had opened this session wrote an empty list back over
+      // its whole stored history. Blocking one person emptied every room.
+      //
+      // The rows stay and [blockedFrom] decides what is drawn ([_visible]),
+      // which also makes unblocking give the messages back. The 1:1 row is
+      // dropped from view because it is a conversation the user ended; its
+      // messages remain on disk under that id.
+      blockedFrom.add(from);
       for (final it in items.values) {
         it.messages.removeWhere((m) => (m['from'] ?? '').toString() == from);
       }
-      // A 1:1 conversation with the blocked station goes away entirely; group
-      // rows stay (only that sender's messages were stripped).
       if (items.containsKey(from)) {
         items.remove(from);
         order.remove(from);
-      }
-      if (_wt) {
-        db!.removeThread(dbField, from);
-        for (final e in items.entries) {
-          db!.clear(dbField, e.key);
-          for (final m in e.value.messages) {
-            db!.addMessage(dbField, e.key, Map<String, dynamic>.from(m));
-          }
-        }
       }
       return;
     }
@@ -424,12 +490,9 @@ class ConversationStore {
     final it = items[id];
     if (it == null) return;
     it.messages.removeWhere((m) => (m['key'] ?? '').toString() == key);
-    if (_wt) {
-      db!.clear(dbField, id);
-      for (final m in it.messages) {
-        db!.addMessage(dbField, id, Map<String, dynamic>.from(m));
-      }
-    }
+    // One row asked for, one row deleted. The clear-and-rewrite this replaces
+    // wrote a lazily-hydrated (often empty) tail back over the whole thread.
+    if (_wt) db!.deleteMessageByKey(dbField, id, key);
   }
 
   /// Record a reaction (like) on a message. [d]: `{mid, from, remove?, mine?}`.
@@ -596,16 +659,36 @@ class ConversationStore {
   }
 
   /// Clear one conversation (id given) or all (id empty/null).
+  /// Clear ONE conversation. An empty or absent id is REFUSED.
+  ///
+  /// A wapp sent the empty form from its `module_init` for two releases and
+  /// emptied every room on the device at every start — `#LOCAL` included, which
+  /// it was never about. Destroying a whole field is [clearWholeField], which
+  /// is not reachable from the `ui.convo.*` protocol and has to say why.
   void clear([String? id]) {
     if (id == null || id.isEmpty) {
-      items.clear();
-      order.clear();
-      if (_wt) db!.clear(dbField);
-    } else {
-      items.remove(id);
-      order.remove(id);
-      if (_wt) db!.removeThread(dbField, id);
+      LogService.instance.add(
+          'conversations: refused a clear of the whole "$dbField" field — '
+          'a wapp clears one conversation at a time');
+      return;
     }
+    items.remove(id);
+    order.remove(id);
+    if (_wt) db!.removeThread(dbField, id);
+  }
+
+  /// Destroy every thread, message, reaction and status in this field.
+  ///
+  /// The host's own "clear chat" is the only caller. [reason] is logged,
+  /// because a wipe that nobody can attribute is how this took a day to find.
+  void clearWholeField({required String reason}) {
+    final n = items.length;
+    items.clear();
+    order.clear();
+    if (_wt) db!.clear(dbField);
+    LogService.instance.add(
+        'conversations: cleared the whole "$dbField" field '
+        '($n conversation(s)) — $reason');
   }
 
   /// Whether a notification about conversation [id] is worth raising.

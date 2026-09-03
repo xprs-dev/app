@@ -229,6 +229,10 @@ class WappEngine {
   final _stopwatch = Stopwatch();
   final _random = Random.secure();
   final Map<String, Uint8List> _kv = {};
+
+  /// Keys this engine deleted, so the merge in [_saveKv] does not read them
+  /// back off disk and resurrect them.
+  final Set<String> _kvDeleted = {};
   ProfileStorage? _storage;
   bool _loaded = false;
 
@@ -420,7 +424,30 @@ class WappEngine {
   void _saveKv() {
     final storage = _storage;
     if (storage == null) return;
+    // MERGE ONTO DISK, never replace it.
+    //
+    // Two engines hold one wapp's KV over a session — the page's and the
+    // headless one's — and each carries the snapshot it read at setStorage.
+    // A whole-file rewrite from memory therefore ROLLED BACK every key the
+    // other engine had written since. That is how a one-shot migration token
+    // came unset and re-armed a migration that had already run: chat's
+    // `grponly` guard, whose migration cleared the entire conversation field.
+    // The keys this engine touched win; everything else on disk survives.
     final data = <String, String>{};
+    final bytes = storage.readBytesSync('kv.json');
+    if (bytes != null) {
+      try {
+        final onDisk = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+        for (final e in onDisk.entries) {
+          data[e.key] = e.value.toString();
+        }
+      } catch (_) {
+        // Unreadable: this engine's own view is better than nothing.
+      }
+    }
+    for (final k in _kvDeleted) {
+      data.remove(k);
+    }
     for (final e in _kv.entries) {
       data[e.key] = String.fromCharCodes(e.value);
     }
@@ -445,7 +472,16 @@ class WappEngine {
   /// Set a KV key directly (before module is loaded).
   void kvSet(String key, String value) {
     _kv[key] = Uint8List.fromList(value.codeUnits);
+    _kvDeleted.remove(key);
     _saveKv();
+  }
+
+  /// Delete a KV key directly, the host-side twin of `hal_kv_delete`.
+  bool kvDelete(String key) {
+    if (_kv.remove(key) == null) return false;
+    _kvDeleted.add(key);
+    _saveKv();
+    return true;
   }
 
   void sendMessage(String msg) => _inbox.add(msg);
@@ -1667,6 +1703,7 @@ class WappEngine {
         final key = _readStr(kPtr, kLen);
         final mem = _memory!.view;
         _kv[key] = Uint8List.fromList(mem.buffer.asUint8List(vPtr, vLen));
+        _kvDeleted.remove(key);
         _saveKv();
         return 0;
       },
@@ -1675,8 +1712,12 @@ class WappEngine {
     );
     final halKvDelete = WasmFunction(
       (int kPtr, int kLen) {
-        final removed = _kv.remove(_readStr(kPtr, kLen)) != null;
-        if (removed) _saveKv();
+        final key = _readStr(kPtr, kLen);
+        final removed = _kv.remove(key) != null;
+        if (removed) {
+          _kvDeleted.add(key);
+          _saveKv();
+        }
         return removed ? 0 : -1;
       },
       params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],

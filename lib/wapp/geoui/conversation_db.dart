@@ -261,6 +261,20 @@ class ConversationDb {
     );
   }
 
+  /// Delete ONE stored message, by the wapp's content key.
+  ///
+  /// Hiding a message used to be `clear(field, id)` followed by re-adding the
+  /// in-memory tail — and tails are hydrated lazily, so on a thread nobody had
+  /// opened this session that rewrote an empty list over the whole history.
+  /// One row asked for, one row deleted.
+  void deleteMessageByKey(String field, String convoId, String ckey) {
+    if (_closed || ckey.isEmpty) return;
+    _db.execute(
+      'DELETE FROM messages WHERE field=? AND convo_id=? AND ckey=?',
+      [field, convoId, ckey],
+    );
+  }
+
   /// Clear one thread's messages, or (when [id] is null) the whole field.
   void clear(String field, [String? id]) {
     if (_closed) return;

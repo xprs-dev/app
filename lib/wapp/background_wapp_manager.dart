@@ -334,7 +334,9 @@ class _WappBackgroundService extends BackgroundService {
 
   ConversationStore _convStore(String field) =>
       _convStores.putIfAbsent(field, () {
-        final store = ConversationStore()..dbField = field;
+        final store = ConversationStore()
+          ..dbField = field
+          ..owner = name;
         final db = _convDb;
         if (db != null) {
           store.db = db;
@@ -520,6 +522,7 @@ class _WappBackgroundService extends BackgroundService {
           type == 'ui.convo.remove' ||
           type == 'ui.convo.react' ||
           type == 'ui.convo.clear' ||
+          type == 'ui.convo.blocked' ||
           type == 'ui.convo.status') {
         // Keep the persisted conversation stores current while headless so the
         // Messages tab shows what arrived in the background.
@@ -547,6 +550,13 @@ class _WappBackgroundService extends BackgroundService {
             }
           case 'ui.convo.status':
             store.setStatus(data);
+          case 'ui.convo.blocked':
+            // The wapp states the blocked set whole; blocking hides rather
+            // than deletes, so both engines only need to agree on the set.
+            final from = data['from'];
+            if (from is List) {
+              store.setBlocked(from.map((e) => e.toString()));
+            }
           case 'ui.convo.clear':
             // The page handles this; headless did not, so a wapp that cleared
             // its store on a migration was silently ignored and the stale
