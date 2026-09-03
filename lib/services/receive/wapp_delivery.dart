@@ -37,6 +37,7 @@ import '../../util/nostr_crypto.dart';
 import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_sig.dart';
+import '../xprs/xprs_vocab.dart';
 
 /// The topic a packet of type [t] is published on. One per §4.2 type.
 String rxTopicFor(String t) => 'xprs.${t.trim().toLowerCase()}';
@@ -101,6 +102,17 @@ class WappDelivery {
       'fields': [for (final f in p.fields) [f.key, f.value]],
       'forUs': forUs,
       'sealed': p.has('x'),
+      // §13.11's verdict, NORMALISED: 'global' | 'local' | 'country'.
+      //
+      // A wapp can read `scope:` out of `fields` and three of them will get it
+      // wrong the same way, because an ABSENT field, an empty one and the word
+      // `global` are one answer and only the third looks like it. The core
+      // already owns that reading -- `xprsScope` is the function the
+      // publisher's own reach gate calls -- so it states the verdict here, for
+      // the same reason it states `forUs`, `sealed` and `sig` rather than
+      // leaving each wapp to re-derive them. The country codes stay in
+      // `fields` for whoever needs the letters.
+      'scope': xprsScope(p).scope.name,
       // How it got here. `via:` is the §13 relay chain and is already on the
       // wire; `bearer` and `rssi` are what this station observed.
       'bearer': bearer,

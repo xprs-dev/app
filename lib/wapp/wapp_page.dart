@@ -1577,6 +1577,20 @@ class _WappPageState extends State<WappPage>
   }
 
   void _drainOutbox() {
+    // A wapp's own hal_log lines, into the app log (/api/log).
+    //
+    // The headless manager has done this since it was written, for a reason it
+    // states plainly: a wapp logging into an engine buffer nobody reads makes
+    // every delivery bug a blind hunt. The page had the same buffer and no
+    // drain — and because a page CLAIMS its wapp (BackgroundWappManager._claimed),
+    // the on-screen engine is the only one running, so the moment a wapp is
+    // open its logs were the ones going nowhere.
+    if (_engine.logs.isNotEmpty) {
+      for (final l in _engine.logs) {
+        LogService.instance.add('[$_wappName] ${l.message}');
+      }
+      _engine.logs.clear();
+    }
     final messages = _engine.drainOutbox();
     if (messages.isEmpty) return;
     var changed = false;
@@ -1755,22 +1769,18 @@ class _WappPageState extends State<WappPage>
           }
         } else if (type == 'rns.passive.set') {
           RnsService.instance.setPassive(data['value'] == true);
-        } else if (type == 'rns.lxmf.send') {
-          // Send a 1:1 LXMF message to an observed node the reticulum wapp picked
-          // in the graph. The peer is addressed by its public key (meta.pubkey);
-          // the service derives the LXMF delivery dest. Fire-and-forget — the
-          // graph shows an optimistic "queued" toast (LXMF stores-and-forwards).
-          final pubkey = (data['pubkey'] as String? ?? '').trim();
-          final content = (data['content'] as String? ?? '');
-          final title = (data['title'] as String? ?? '');
-          if (pubkey.isNotEmpty && content.isNotEmpty) {
-            // ignore: discarded_futures
-            RnsService.instance.sendLxmfToPubkey(
-              pubkeyHex: pubkey,
-              title: title,
-              content: content,
-            );
-          }
+        // THERE IS NO LXMF SEND ACTION HERE, and a test enforces its absence.
+        // The mesh wapp's graph panel used to compose a 1:1 and post it to the
+        // host addressed by public key, and this branch handed it to one
+        // Reticulum destination: hal_lxmf_send2 rebuilt as a JSON string — a
+        // wapp choosing a transport, and the one transport that cannot reach a
+        // station standing in the same room. A door does not stop being a door
+        // for travelling over the content channel instead of an import.
+        //
+        // Both halves are gone. A wapp that wants a person messaged uses
+        // mesh.message below, which names a CALLSIGN and hands the
+        // conversation to Chat, whose send goes through the core's own door
+        // and its §36.0 bearer ranking.
         } else if (type == 'mesh.message') {
           // Bluetooth wapp envelope button: jump into the Chat wapp's 1:1
           // conversation with that callsign (deep link via initialConvo).

@@ -34,6 +34,27 @@ void main() {
     WappDelivery.debugReset();
   });
 
+  // §13.11 decides which room a broadcast lands in, and three of its four
+  // spellings mean the same thing. A wapp reading `scope:` out of `fields`
+  // gets the ABSENT case wrong on its first try, and the Local room would then
+  // quietly show the world's traffic.
+  test('the row states the scope, normalised', () {
+    bus.registerEngine('chat');
+    bus.subscribe('chat', rxTopicFor('message'));
+
+    Map<String, dynamic> deliver(String wire) {
+      final p = XprsPacket.parse(wire)!;
+      WappDelivery.instance.deliverPacket(p, bearer: 'ble', forUs: false);
+      return jsonDecode(bus.recv('chat')!.data) as Map<String, dynamic>;
+    }
+
+    const head = 't:message f:X1QZ3N ts:2026-09-03_11:04:00';
+    expect(deliver('$head m:goes anywhere')['scope'], 'global',
+        reason: 'absent scope: IS global — the case a wapp gets wrong');
+    expect(deliver('$head scope:local m:the room')['scope'], 'local');
+    expect(deliver('$head scope:PT m:this country')['scope'], 'country');
+  });
+
   test('only a subscriber is told, and it is told once', () {
     bus.registerEngine('chat');
     bus.registerEngine('nosy');

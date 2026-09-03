@@ -3544,6 +3544,45 @@ class WappEngine {
       results: [ValueTy.i32],
     );
 
+    // hal_xprs_broadcast: say something to EVERYBODY IN REACH.
+    //
+    // The undirected half of hal_xprs_message, and the last place a wapp was
+    // still building an XPRS packet: the chat wapp assembled
+    // `t:message f:… ts:… scope:local m:…` by string concatenation, checked the
+    // 250-byte ceiling itself, derived its own §5 identifier and handed the
+    // result to hal_xprs_send. Every one of those is the core's, and the length
+    // check was actively wrong — the core splits per §6.6, so a long Local post
+    // now travels instead of being refused.
+    //
+    // `scope` is §13.11's reach, not a lane: `local` for the bearers in range
+    // (§13.11.1), `global`, or ISO 3166-1 codes. It can only ever NARROW where
+    // the words go; the core still ranks and picks the bearers.
+    //
+    //   returns  2 plain, 0 malformed.
+    //
+    // Never 1 and never -1. Both are answers about sealing, and §9.2 seals to
+    // one public key: a broadcast has no recipient, so there is no key, nothing
+    // to ask for (§18.1) and nothing to refuse.
+    final halXprsBroadcast = WasmFunction(
+      (int txtPtr, int txtLen, int scPtr, int scLen, int rPtr, int rLen,
+          int idOut, int idCap) {
+        final text = _readStr(txtPtr, txtLen);
+        if (text.isEmpty) return 0;
+        final r = XprsSend.instance.broadcast(
+          text,
+          scope: scLen > 0 ? _readStr(scPtr, scLen) : 'local',
+          replyTo: rLen > 0 ? _readStr(rPtr, rLen) : '',
+        );
+        if (r.ok && idCap > 0) {
+          _writeBytes(idOut, idCap, Uint8List.fromList(utf8.encode(r.id)));
+        }
+        return r.code;
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32,
+        ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+
     // hal_xprs_read: a person opened a message. THE ONE RECEIPT A WAPP OWNS.
     //
     // §13.7 has two states and the core can only know one of them. That a
@@ -4055,6 +4094,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_send', halXprsSend),
       WasmImport('hal', 'xprs_read', halXprsRead),
       WasmImport('hal', 'xprs_message', halXprsMessage),
+      WasmImport('hal', 'xprs_broadcast', halXprsBroadcast),
       WasmImport('hal', 'xprs_set_pref', halXprsSetPref),
       WasmImport('hal', 'mesh_scf_status', halMeshScfStatus),
       WasmImport('hal', 'mesh_transfers', halMeshTransfers),

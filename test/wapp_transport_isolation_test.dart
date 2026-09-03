@@ -45,6 +45,19 @@ void main() {
     }
   });
 
+  // A door does not have to be a HAL import to be a door. The mesh wapp posted
+  // {"type":"rns.lxmf.send","pubkey":…} over the ungated content channel and
+  // the host obligingly sent it to one Reticulum destination — `lxmf_send2`
+  // rebuilt as a JSON string, past a test that only ever read the import table.
+  test('the host handles no per-wapp transport action', () {
+    final src = File('lib/wapp/wapp_page.dart').readAsStringSync();
+    for (final action in ['rns.lxmf.send', 'ble.advertise', 'rns.send_to']) {
+      expect(src.contains("'$action'"), isFalse,
+          reason: "the host acts on '$action' — a wapp is choosing a lane "
+              'without importing anything');
+    }
+  });
+
   test('the permission list names no door that no longer exists', () {
     final bound = boundImports();
     for (final imp in kGatedImports.keys) {
@@ -55,8 +68,8 @@ void main() {
 
   test('a wapp says what it wants said, and that needs no permission', () {
     final bound = boundImports();
-    for (final imp in ['xprs_message', 'xprs_send', 'xprs_read',
-      'event_subscribe', 'event_recv', 'event_available']) {
+    for (final imp in ['xprs_message', 'xprs_broadcast', 'xprs_send',
+      'xprs_read', 'event_subscribe', 'event_recv', 'event_available']) {
       expect(bound, contains(imp), reason: '$imp must be available');
       expect(kGatedImports.containsKey(imp), isFalse,
           reason: '$imp is content, not a lane: it is not gated');

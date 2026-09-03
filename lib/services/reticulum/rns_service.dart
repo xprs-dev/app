@@ -5744,39 +5744,6 @@ class RnsService {
     return ok;
   }
 
-  /// Send a 1:1 LXMF message to a peer identified by its 64-byte public key hex
-  /// (as carried in graphSnapshot's meta.pubkey). Derives the peer's LXMF
-  /// delivery destination from the key — the same way the peer computes its own
-  /// ([LxmfRouter.deliveryDestHash]) — then delegates to [sendLxmf]. Lets the
-  /// reticulum wapp message an observed node straight from the graph without it
-  /// ever announcing a pre-computed delivery hash. Returns false on a malformed
-  /// key or when the stack is down.
-  Future<bool> sendLxmfToPubkey({
-    required String pubkeyHex,
-    String title = '',
-    String content = '',
-  }) async {
-    final pub = _bytesFromHex(pubkeyHex);
-    if (pub == null || pub.length != 64) return false;
-    final RnsIdentity id;
-    try {
-      id = RnsIdentity.fromPublicKey(pub);
-    } catch (_) {
-      return false;
-    }
-    final destHex = _hex(
-      RnsDestination.hash(id, kLxmfApp, kLxmfDeliveryAspects),
-    );
-    LogService.instance.add(
-      'RNS: lxmf.send -> $destHex (pubkey ${pubkeyHex.substring(0, 8)})',
-    );
-    final ok = await sendLxmf(destHex: destHex, title: title, content: content);
-    LogService.instance.add(
-      'RNS: lxmf.send ${ok ? 'ok' : 'failed'} -> $destHex',
-    );
-    return ok;
-  }
-
   /// This node's LXMF propagation (cooperative mailbox) destination hash, hex.
   String? get lxmfPropagationHex {
     final lx = _lxmf;
