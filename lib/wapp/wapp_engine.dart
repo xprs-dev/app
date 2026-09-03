@@ -245,6 +245,17 @@ class WappEngine {
       onAudioPcm;
   void Function()? onVideoEnd;
 
+  /// The wapp wrote to its outbox from OUTSIDE a host-driven pump.
+  ///
+  /// The event broker calls `module_handle_event` directly when a core event
+  /// lands, so the wasm runs, draws its bubble into the outbox -- and stops.
+  /// The headless manager drains on its own loop; a page with `tick 0` drained
+  /// only after ITS OWN calls, i.e. after a tap. So a message that arrived
+  /// while the room was open sat in the outbox until the user touched the
+  /// screen, and every "it works when I poke it" report was this. Set by the
+  /// page; null for the headless path, which does not need it.
+  void Function()? onOutbox;
+
   // hal_process_* state. Handles are positive ints; 0 is reserved so
   // callers can use 0 as an "absent" sentinel.
   final Map<int, _WappProcState> _procs = {};
@@ -1745,7 +1756,10 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
     );
     final halMsgSend = WasmFunction.voidReturn(
-      (int ptr, int len) => _outbox.add(_readStr(ptr, len)),
+      (int ptr, int len) {
+        _outbox.add(_readStr(ptr, len));
+        onOutbox?.call();
+      },
       params: [ValueTy.i32, ValueTy.i32],
     );
 

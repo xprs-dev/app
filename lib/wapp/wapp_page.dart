@@ -174,6 +174,7 @@ class _WappPageState extends State<WappPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final _engine = WappEngine();
   Timer? _tickTimer;
+  bool _outboxDrainScheduled = false;
   String _status = 'Loading...';
 
   /// Wapp folder name — used as a stable id for storage, task monitor,
@@ -1449,6 +1450,18 @@ class _WappPageState extends State<WappPage>
       // (never crashes) on platforms without the PCM plugin.
       _audioOut = WasmAudioOutput();
       _engine.onAudioPcm = _audioOut!.pushPcm;
+      // Drain when the wapp writes, not only when we poke it. Coalesced to
+      // one drain per frame: a burst of ui.convo.msg from one event is one
+      // repaint, and a drain scheduled from inside an ongoing drain is not a
+      // re-entrant one.
+      _engine.onOutbox = () {
+        if (_outboxDrainScheduled || !mounted) return;
+        _outboxDrainScheduled = true;
+        scheduleMicrotask(() {
+          _outboxDrainScheduled = false;
+          if (mounted) _drainOutbox();
+        });
+      };
       _engine.init();
       _drainOutbox();
 
