@@ -205,6 +205,18 @@ class RnsService {
   RnsTransportClient? _transport;
   final List<RnsInterface> _ifaces = [];
   RnsTcpServerInterface? _server;
+
+  /// The LAN hub a PROMOTED node accepts neighbours on, and the promotion
+  /// flag — see [_applyHubRole].
+  RnsTcpServerInterface? _lanHub;
+  bool _hubPromoted = false;
+  static const int _lanHubPort = 4242;
+
+  /// When this node last announced by request, so a burst can never trip a
+  /// public hub's announce_rate_grace and earn an announce_rate_penalty (hours
+  /// of being queued behind everyone else). The periodic re-announce is paced.
+  int _lastRequestedAnnounceMs = 0;
+  static const Duration _announceMinGap = Duration(seconds: 30);
   // Loopback "shared instance" so other XPRS apps (e.g. GNPA) route through
   // this node instead of each running their own Reticulum stack.
   RnsTcpServerInterface? _gateway;
@@ -1381,6 +1393,58 @@ class RnsService {
   /// so BLE air and the APRS traffic sharing it are protected. Automatic,
   /// idempotent, non-fatal: a device without BLE5 (e.g. desktop) just stays a
   /// leaf.
+  /// Promote or demote this node as a TRANSPORT hub for its neighbours, on the
+  /// same capacity gate that makes it an indexer (mains + Wi-Fi/Ethernet).
+  ///
+  /// Promoted: the transport rebroadcasts announces across ALL its interfaces
+  /// (not only edge→core as the BLE bridge does) and a LAN TCP hub is bound on
+  /// [_lanHubPort], so nearby stations route through this always-on node
+  /// instead of each dialling a third-party hub. Those hubs enforce
+  /// announce_rate_target / announce_rate_grace / announce_rate_penalty per
+  /// destination and an announce_cap (Reticulum interface config): a burst of
+  /// small announcers trips the grace and is queued for hours, after which
+  /// their paths never form — measured on two phones that could not see each
+  /// other. Traffic between LAN peers then never touches a public hub. The
+  /// passive governor still sheds under load. Demoted (unplugged / cellular):
+  /// back to the scoped edge bridge, LAN hub closed. Reticulum's limit, not
+  /// ours: a NAT'd node serves its LAN and forwards for peers it is linked to;
+  /// it is not reachable from another network without a public address.
+  Future<void> _applyHubRole(bool unlimited) async {
+    final t = _transport;
+    if (t == null || _id == null) return;
+    if (unlimited && !_hubPromoted) {
+      t
+        ..transportId = _id!.hash
+        ..edgeBridge = false;
+      try {
+        final hub = RnsTcpServerInterface(
+          port: _lanHubPort,
+          transport: t,
+          onPacket: _onInbound,
+          log: (m) => LogService.instance.add('RNS/lanhub: $m'),
+          labelPrefix: 'lanhub',
+          onPlainText: XprsTcp.attach,
+        );
+        await hub.bind();
+        _lanHub = hub;
+      } catch (e) {
+        LogService.instance.add(
+            'RNS: LAN hub not bound on $_lanHubPort ($e); forwarding only');
+      }
+      _hubPromoted = true;
+      LogService.instance.add('RNS: hub role ON — transport for neighbours'
+          '${_lanHub != null ? ", LAN hub on :$_lanHubPort" : ""}');
+    } else if (!unlimited && _hubPromoted) {
+      await _lanHub?.close();
+      _lanHub = null;
+      // Back to the scoped bridge: still relay BLE peers up if that is on,
+      // never re-air the hub flood across uplinks.
+      t.edgeBridge = true;
+      _hubPromoted = false;
+      LogService.instance.add('RNS: hub role OFF (capacity dropped)');
+    }
+  }
+
   Future<void> _enableBleBridge() async {
     if (_bleBridge || _transport == null || _id == null) return;
     try {
@@ -1621,6 +1685,8 @@ class RnsService {
     'verifyShed': verifyBudgetShed,
     'priVerifyShed': priVerifyBudgetShed,
     'connections': _server?.connectionCount ?? 0,
+    'hubRole': _hubPromoted,
+    'lanHubConns': _lanHub?.connectionCount ?? 0,
     'interfaces': _ifaces.length + (_server != null ? 1 : 0),
     'inbox': _inbox.length,
     'provided': _files?.providedCount ?? 0,
@@ -3850,6 +3916,11 @@ class RnsService {
               powered: p.unlimited || p.servingAllowed,
             );
             _relayRole?.applyCapacity(p);
+            // The same gate promotes this node to a transport hub for its
+            // neighbours (and demotes it when the charger goes).
+            unawaited(_applyHubRole(p.unlimited).catchError((Object e) {
+              LogService.instance.add('RNS: hub role change failed: $e');
+            }));
             // Keep the responder answering queries (so peers can fetch our published
             // profile/notes) regardless of capacity; only the heavy hosting role is
             // capacity-gated, via admitEvent.
@@ -4151,6 +4222,9 @@ class RnsService {
       // next retry reconnects without rebuilding or re-scanning anything.
       try {
         await _server?.close();
+        await _lanHub?.close();
+        _lanHub = null;
+        _hubPromoted = false;
       } catch (_) {}
       try {
         await _gateway?.close();
@@ -4224,6 +4298,19 @@ class RnsService {
   Future<void> announce(String text) async {
     if (!_up || _id == null) return;
     _announceText = text; /* remember for the periodic re-announce */
+    // Never burst. A public hub enforces announce_rate_target per destination
+    // and, past announce_rate_grace, adds announce_rate_penalty: hours in which
+    // this node's announces sit behind everyone else's, so a peer never learns
+    // its path. Measured: an API driven to re-announce every few seconds left
+    // two phones unable to see each other at all. The periodic re-announce is
+    // the paced one; a requested burst collapses to a single announce.
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs - _lastRequestedAnnounceMs < _announceMinGap.inMilliseconds) {
+      LogService.instance.add('RNS: announce throttled '
+          '(min ${_announceMinGap.inSeconds}s between requests, hub grace)');
+      return;
+    }
+    _lastRequestedAnnounceMs = nowMs;
     // Piggyback our relay/indexer announcement (role, services, hardware
     // capacity, pubkey, optional coords) onto the CHAT announce — the one that
     // reliably survives the public hubs' announce rate-limiting. The dedicated
@@ -10966,6 +11053,9 @@ class RnsService {
     _obStore = null;
     CapacityGovernor.instance.stop();
     await _server?.close();
+    await _lanHub?.close();
+    _lanHub = null;
+    _hubPromoted = false;
     await _gateway?.close();
     for (final c in _clients) {
       // ignore: discarded_futures
