@@ -23,7 +23,7 @@ import json
 import pathlib
 import re
 
-DOC = pathlib.Path("docs/XPRS.md")
+DOC = pathlib.Path("../spec/XPRS.md")
 OUT = pathlib.Path("test/xprs_corpus.json")
 
 # The document writes placeholders for values it does not spell out in full.
