@@ -60,6 +60,30 @@ void main() {
     expect(deliver('$head scope:PT m:this country')['scope'], 'country');
   });
 
+  // §9.2.1: the row flags obfuscated content from the PRESENCE of an `xr:`
+  // field (bars in the text are not the marker), and it does so whatever
+  // bearer carried the packet — a redacted group/Local post travels over BLE,
+  // LoRa, LAN or Reticulum alike, so the flag must not depend on the lane.
+  test('the row flags obfuscated content from xr:, on any bearer (9.2.1)', () {
+    bus.registerEngine('chat');
+    bus.subscribe('chat', rxTopicFor('message'));
+
+    Map<String, dynamic> deliver(String wire, String bearer) {
+      WappDelivery.instance
+          .deliverPacket(XprsPacket.parse(wire)!, bearer: bearer, forUs: false);
+      return jsonDecode(bus.recv('chat')!.data) as Map<String, dynamic>;
+    }
+
+    const xr = 'xr:AAECAwQFBgcICQoL5tqwc_xiDDNhLVD9YLDyKZnrvw';
+    const head = 't:message f:X1QZ3N ts:2026-09-03_11:04:00 scope:local';
+    // Heard over BLE.
+    expect(deliver('$head $xr m:meet ███ at █████', 'ble')['obfuscated'], true);
+    // The identical wire over the internet lane — the bearer must not matter.
+    expect(deliver('$head $xr m:meet ███ at █████', 'rns')['obfuscated'], true);
+    // A plain message is not flagged.
+    expect(deliver('$head m:in the clear', 'lan')['obfuscated'], false);
+  });
+
   // Section 26.7 at the RECEIVE door: a closed-group post from a proven
   // non-member is not handed to any wapp, a member's is, and a group whose
   // roster cannot be verified fails OPEN. Decided here, once, for every

@@ -402,6 +402,12 @@ class ConversationStore {
       if ((d['parent'] ?? '').toString().isNotEmpty) 'parent': d['parent'].toString(),
       if ((d['auth'] ?? '').toString().isNotEmpty) 'auth': d['auth'].toString(),
       if (d['enc'] == true) 'enc': true,
+      // Redacted content (docs/XPRS.md 9.2.1): the wapp says the message carries
+      // an `xr:` field, so its text renders as bars behind a tap. `tip` is the
+      // hint shown on the locked bubble. Persisted so a reopened conversation
+      // still starts locked — the reveal is never stored.
+      if (d['obfuscated'] == true) 'obfuscated': true,
+      if ((d['tip'] ?? '').toString().isNotEmpty) 'tip': d['tip'].toString(),
       // System note (not a real message): rendered as a centered, muted line —
       // no avatar/name/bubble. Used for in-chat status like "key unknown — sent
       // public; checking relays".
@@ -539,6 +545,35 @@ class ConversationStore {
   /// screen nobody is looking at is a like nobody receives. Null for our own
   /// votes, retractions, votes on other people's messages, and votes naming a
   /// message we do not hold.
+  /// Show a redacted message's plaintext in place (docs/XPRS.md 9.2.1). Set on
+  /// the in-memory message only and NOT persisted: a reopened conversation
+  /// re-locks (see [relock]), so the reader always taps, only the passphrase
+  /// persists (in the core).
+  void reveal(Map d) {
+    final id = (d['id'] ?? '').toString();
+    final mid = (d['mid'] ?? '').toString();
+    final text = (d['text'] ?? '').toString();
+    if (id.isEmpty || mid.isEmpty) return;
+    final it = items[id];
+    if (it == null) return;
+    for (final m in it.messages) {
+      if ((m['mid'] ?? '').toString() == mid) {
+        m['revealed'] = text;
+        break;
+      }
+    }
+  }
+
+  /// Drop every transient reveal in a conversation, so it starts locked when
+  /// reopened (9.2.1). Called when the conversation is opened.
+  void relock(String id) {
+    final it = items[id];
+    if (it == null) return;
+    for (final m in it.messages) {
+      m.remove('revealed');
+    }
+  }
+
   ({String convo, Map<String, dynamic> message, String from})? react(Map d) {
     var mid = (d['mid'] ?? '').toString();
     final from = (d['from'] ?? '').toString();

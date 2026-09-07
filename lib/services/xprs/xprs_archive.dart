@@ -69,6 +69,14 @@ class XprsArchive {
   /// -- rather than a wapp handing those fields across the door. Cheap: `id` is
   /// the packets table's primary key.
   XprsPacket? packetById(String id) {
+    final w = wireById(id);
+    return w == null ? null : XprsPacket.parse(w);
+  }
+
+  /// The raw wire of a received packet by its §5 id, or null. Used by the §9.2.1
+  /// unlock path, which must restore bars across the ORIGINAL wire (a re-parse
+  /// loses the exact bytes), so it needs the string, not the parsed packet.
+  String? wireById(String id) {
     final key = id.trim().toLowerCase();
     if (key.isEmpty) return null;
     final db = _db;
@@ -77,7 +85,7 @@ class XprsArchive {
       final rows =
           db.select('SELECT wire FROM packets WHERE id = ? LIMIT 1', [key]);
       if (rows.isEmpty) return null;
-      return XprsPacket.parse(rows.first.columnAt(0) as String);
+      return rows.first.columnAt(0) as String;
     } catch (_) {
       return null;
     }

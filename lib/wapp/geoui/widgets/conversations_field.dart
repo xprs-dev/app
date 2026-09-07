@@ -166,6 +166,7 @@ class ConversationsField extends StatefulWidget {
 
   /// Tapping a sender's name on an incoming bubble (e.g. open their profile).
   final void Function(String from)? onSenderTap;
+  final void Function(String mid)? onReveal;
 
   /// Attach a file to the open conversation — returns a `file:<sha>.<ext>`
   /// token to insert into the composer (host archives + advertises it).
@@ -220,6 +221,7 @@ class ConversationsField extends StatefulWidget {
     this.toggles = const [],
     this.onLocate,
     this.onSenderTap,
+    this.onReveal,
     this.onAttach,
     this.openId,
     this.onOpenChanged,
@@ -781,6 +783,7 @@ class _ConversationsFieldState extends State<ConversationsField> {
             composerAccessory: _toggleBar(context, id),
             onLocate: widget.onLocate,
             onSenderTap: widget.onSenderTap,
+            onReveal: widget.onReveal,
             onAttach: widget.onAttach,
             onSend: (text) => widget.onSend(id, text),
             onForward: widget.onForward == null

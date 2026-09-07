@@ -76,6 +76,10 @@ class ChatViewField extends StatefulWidget {
   /// Tapping a sender's name on an incoming bubble (e.g. open their profile).
   final void Function(String from)? onSenderTap;
 
+  /// A person tapped a redacted bubble (docs/XPRS.md 9.2.1): ask the core
+  /// to open the message with this section-5 id. Null = not tappable.
+  final void Function(String mid)? onReveal;
+
   /// Attach a file: when set, an attach (paperclip) button appears in the
   /// composer. Returns a `file:<sha>.<ext>` token to insert into the input
   /// (the host archives the file + advertises it), or null if cancelled.
@@ -113,6 +117,7 @@ class ChatViewField extends StatefulWidget {
     this.composerAccessory,
     this.onLocate,
     this.onSenderTap,
+    this.onReveal,
     this.onAttach,
     this.onForward,
     this.onHide,
@@ -811,6 +816,41 @@ class _ChatViewFieldState extends State<ChatViewField> {
   Widget _maybeIntrinsicWidth(bool tight, Widget child) =>
       tight ? IntrinsicWidth(child: child) : child;
 
+  /// A redacted message's body: the bars, a lock+tip line, and a tap that asks
+  /// the core to open it (9.2.1). The reveal is transient and comes back as a
+  /// ui.convo.reveal, so the reader taps every time; only the passphrase sticks.
+  Widget _lockedText(String mid, String bars, String tip, bool outgoing) {
+    return InkWell(
+      onTap: (widget.onReveal == null || mid.isEmpty)
+          ? null
+          : () => widget.onReveal!(mid),
+      borderRadius: BorderRadius.circular(4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(bars,
+              style: const TextStyle(color: Colors.white, fontSize: 14)),
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.lock_outline,
+                  size: 11, color: _onBubbleFg(outgoing, 150)),
+              const SizedBox(width: 3),
+              Flexible(
+                child: Text(tip,
+                    style: TextStyle(
+                        color: _onBubbleFg(outgoing, 150),
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic)),
+              ),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _bubble(Map<String, dynamic> m, {bool inThread = false}) {
     // System note: a centered, muted status line (no avatar/name/bubble/badges).
     if (m['sys'] == true) {
@@ -831,6 +871,17 @@ class _ChatViewFieldState extends State<ChatViewField> {
     final outgoing = (m['dir']?.toString() ?? 'in') == 'out';
     final from = m['from']?.toString() ?? '';
     final text = m['text']?.toString() ?? '';
+    // Redacted content (9.2.1): a message the wapp flagged obfuscated shows its
+    // bars behind a tap. `revealed` is set transiently after a successful open;
+    // it is never persisted, so a reopened conversation starts locked again.
+    final obf = m['obfuscated'] == true;
+    final revealed = m['revealed']?.toString();
+    final locked = obf && (revealed == null || revealed.isEmpty);
+    final revealTip = (m['tip']?.toString() ?? '').isNotEmpty
+        ? m['tip'].toString()
+        : 'Tap to reveal hidden text';
+    final revealMid = m['mid']?.toString() ?? '';
+    final shownText = (revealed != null && revealed.isNotEmpty) ? revealed : text;
     // XPRS section 16 media references: render each `file:<sha256>.<ext>` token as a
     // tappable thumbnail and drop the raw token from the visible text.
     final mediaRefs = MediaRef.findAll(text);
@@ -909,11 +960,13 @@ class _ChatViewFieldState extends State<ChatViewField> {
               ),
             ),
           if (mediaRefs.isEmpty)
-            Text(text,
-                style: const TextStyle(color: Colors.white, fontSize: 14))
+            (locked
+                ? _lockedText(revealMid, text, revealTip, outgoing)
+                : Text(shownText,
+                    style: const TextStyle(color: Colors.white, fontSize: 14)))
           else ...[
-            if (_textWithoutTokens(text).isNotEmpty)
-              Text(_textWithoutTokens(text),
+            if (_textWithoutTokens(shownText).isNotEmpty)
+              Text(_textWithoutTokens(shownText),
                   style: const TextStyle(color: Colors.white, fontSize: 14)),
             Padding(
               padding: const EdgeInsets.only(top: 4, bottom: 2),

@@ -45,6 +45,7 @@ class RoomsField extends StatefulWidget {
 
   final void Function(String id) onMemberTap;
   final void Function(String from)? onSenderTap;
+  final void Function(String mid)? onReveal;
 
   /// Flip the private/plain form for the next message (docs/XPRS.md 9.2).
   final VoidCallback? onTogglePrivacy;
@@ -76,6 +77,7 @@ class RoomsField extends StatefulWidget {
     this.onSearch,
     required this.onMemberTap,
     this.onSenderTap,
+    this.onReveal,
     this.onHide,
     this.onBlock,
     this.onDirectMessage,
@@ -675,6 +677,7 @@ class _RoomsFieldState extends State<RoomsField> {
                     onTogglePrivacy: isDirect ? widget.onTogglePrivacy : null,
                     privacyOn: widget.privacyOn,
                     onSenderTap: widget.onSenderTap,
+                    onReveal: widget.onReveal,
                     onHide: widget.onHide == null
                         ? null
                         : (m) =>

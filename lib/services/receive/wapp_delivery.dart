@@ -198,6 +198,11 @@ class WappDelivery {
       'fields': [for (final f in p.fields) [f.key, f.value]],
       'forUs': forUs,
       'sealed': p.has('x'),
+      // §9.2.1: an `xr:` field means part of the content is redacted (bars in
+      // the text). The one honest marker — set here regardless of which bearer
+      // (BLE, LoRa, LAN, Reticulum) carried the packet — so a wapp renders the
+      // message tappable and asks the core to open it. Never a guess from bars.
+      'obfuscated': p.has('xr'),
       // §13.11's verdict, NORMALISED: 'global' | 'local' | 'country'.
       //
       // A wapp can read `scope:` out of `fields` and three of them will get it

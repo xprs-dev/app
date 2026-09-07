@@ -74,6 +74,7 @@ import '../services/reticulum/rns_service.dart';
 import '../services/xprs/xprs_publisher.dart';
 import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_vocab.dart';
+import '../services/xprs/xprs_passphrases.dart';
 import '../util/time_ago.dart';
 import '../services/wapp_unread_service.dart';
 import '../services/hero/hero_inbox.dart';
@@ -2099,6 +2100,13 @@ class _WappPageState extends State<WappPage>
           // bubble text doesn't).
           MeshService.instance.noteConvoOutMessage(data);
           changed = true;
+        } else if (type == 'ui.convo.reveal') {
+          // Redacted text opened (docs/XPRS.md 9.2.1): show the plaintext in
+          // place for THIS view only. Transient — never persisted, so the
+          // message re-locks when the conversation is reopened.
+          final field = data['field'] as String? ?? 'conversations';
+          _convStore(field).reveal(data);
+          changed = true;
         } else if (type == 'ui.convo.remove') {
           final field = data['field'] as String? ?? 'conversations';
           _convStore(field).remove(data);
@@ -3495,6 +3503,7 @@ class _WappPageState extends State<WappPage>
         // badge the user already dismissed by reading.
         _syncAppBadge();
         _fieldValues['${field}_convo'] = id;
+        _convStore(field).relock(id); // reopened conversations start locked (9.2.1)
         _sendCommand('${field}_open');
       },
       onSend: (id, text) {
@@ -3513,6 +3522,13 @@ class _WappPageState extends State<WappPage>
         _sendCommand('room_members_tap');
       },
       onSenderTap: _showProfile,
+      onReveal: (mid) {
+        // Redacted bubble tapped (9.2.1): ask the wapp to open it by id. The
+        // wapp tries remembered passphrases, prompts if none fit, and sends
+        // back the plaintext on ui.convo.reveal.
+        _fieldValues['reveal_mid'] = mid;
+        _sendCommand('reveal');
+      },
       // Same wapp-side handlers the conversations layout uses — the store is
       // shared, so the hide keys and block ids mean the same thing here.
       onHide: (id, key) {
@@ -3608,6 +3624,10 @@ class _WappPageState extends State<WappPage>
       onToggle: (name, value) => setState(() => _fieldValues[name] = value),
       onLocate: _locateFromMessage,
       onSenderTap: _showProfile,
+      onReveal: (mid) {
+        _fieldValues['reveal_mid'] = mid;
+        _sendCommand('reveal');
+      },
       // Find-a-user search: the local database (known callsign↔key contacts +
       // follows) unioned with everyone currently visible on the Reticulum
       // network (observed announces). Tapping a result opens the full profile.
@@ -3620,6 +3640,7 @@ class _WappPageState extends State<WappPage>
         _syncAppBadge();
         // Tell the wapp a conversation opened so it can populate the folder rail.
         _fieldValues['${field}_convo'] = id;
+        _convStore(field).relock(id); // reopened conversations start locked (9.2.1)
         _sendCommand('${field}_open');
       },
       onSend: (id, text) {
@@ -3894,6 +3915,50 @@ class _WappPageState extends State<WappPage>
                         ),
               ],
             ),
+          // A picker of passphrases this device has used before (docs/XPRS.md
+          // 9.2.1), most-used first. The list is read from the core store HERE,
+          // in the host -- the wapp never sees a stored key. Tapping one fills
+          // the field below; the user can still type a new one. Shown only when
+          // the wapp asks (compose), and only if there is anything to offer.
+          if (data['passphrases'] == true) ...[
+            Builder(builder: (_) {
+              final keys = XprsPassphrases.instance.all();
+              if (keys.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Previously used',
+                        style:
+                            TextStyle(color: cs.onSurfaceVariant, fontSize: 11)),
+                    const SizedBox(height: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 132),
+                      child: SingleChildScrollView(
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final k in keys)
+                              ActionChip(
+                                label: Text(
+                                  k.length > 28 ? '${k.substring(0, 28)}\u2026' : k,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                onPressed: () =>
+                                    setLocal(() => controller.text = k),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
           if (input != null) ...[
             const SizedBox(height: 14),
             TextField(

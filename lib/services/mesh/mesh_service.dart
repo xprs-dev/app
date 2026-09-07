@@ -34,6 +34,7 @@ import '../xprs/xprs_history_server.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_gossip.dart';
 import '../xprs/xprs_group_keys.dart';
+import '../xprs/xprs_passphrases.dart';
 import '../xprs/xprs_publisher.dart';
 import '../xprs/xprs_outbox.dart';
 import '../xprs/xprs_receipt.dart';
@@ -231,6 +232,10 @@ class MeshService {
         // from it).
         XprsGroupKeys.instance.init(
             wappsDataStorage(prefs).getAbsolutePath('xprs_groups.sqlite3'));
+        // The passphrases a reader has used to open redacted text (9.2.1), so a
+        // tap can try them before prompting. Same profile-encrypted store.
+        XprsPassphrases.instance.init(
+            wappsDataStorage(prefs).getAbsolutePath('xprs_passphrases.sqlite3'));
         var n = 0;
         for (final g in XprsGroupKeys.instance.followedGroups()) {
           n += XprsGroups.instance.hydrate(XprsGroupKeys.instance.actsFor(g));

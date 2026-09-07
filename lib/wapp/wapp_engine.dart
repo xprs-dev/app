@@ -8,6 +8,7 @@ import 'dart:io'
     show Directory, File, FileMode, Platform, Process, Socket, RawSynchronousSocket,
         HttpClient;
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:wasm_run/wasm_run.dart';
 
 import 'i18n_context.dart';
@@ -39,6 +40,8 @@ import '../services/xprs/xprs_receipt.dart';
 import '../services/xprs/xprs_send.dart';
 import '../services/xprs/xprs_publisher.dart';
 import '../services/xprs/xprs_vocab.dart';
+import '../services/xprs/xprs_id.dart';
+import '../services/xprs/xprs_passphrases.dart';
 import '../services/torrent_service.dart';
 import '../util/media_archive.dart';
 import '../util/media_ref.dart';
@@ -596,6 +599,85 @@ class WappEngine {
     final mem = _memory!.view;
     for (var i = 0; i < n; i++) mem[ptr + i] = bytes[i];
     return n;
+  }
+
+  // ── §9.2.1 redacted text: open one, or air one ────────────────────────
+  //
+  // The heavy work (PBKDF2 100k) runs in a `compute` isolate; the fast work
+  // (the archive read, the passphrase store) stays here. The wapp is told the
+  // outcome on an event, never in the HAL return, so nothing blocks the UI.
+
+  Future<void> _xrUnlock(String id, String pass) async {
+    Map<String, dynamic> row;
+    var wire = XprsArchive.instance.wireById(id);
+    if (wire == null || wire.isEmpty) {
+      // The packet may be staged in the archive but not yet flushed to disk --
+      // a message just heard. Flush and look again.
+      XprsArchive.instance.flush();
+      wire = XprsArchive.instance.wireById(id);
+    }
+    if (wire == null || wire.isEmpty) {
+      // Our own composed post may not be in the archive yet (no bearer has
+      // carried it), so its wire is kept in the passphrase store too.
+      wire = XprsPassphrases.instance.redactionWire(id);
+    }
+    if (wire == null || wire.isEmpty) {
+      row = {'id': id, 'ok': false};
+    } else {
+      // A supplied passphrase is tried alone; otherwise the remembered ones and
+      // the default (which always costs the full derivation, §9.2.1).
+      final passes = pass.isNotEmpty
+          ? <String>[pass]
+          : <String>[
+              ...XprsPassphrases.instance.all(),
+              XprsCrypto.kXrDefaultPassphrase,
+            ];
+      final res = await compute(
+          _xrUnlockCompute, <String, dynamic>{'wire': wire, 'passes': passes});
+      if (res.isNotEmpty) {
+        final m = jsonDecode(res) as Map<String, dynamic>;
+        final okPass = m['pass'] as String? ?? '';
+        // Remember only a passphrase the reader just typed that worked -- never
+        // the default, and stored ones are already kept.
+        if (pass.isNotEmpty && okPass != XprsCrypto.kXrDefaultPassphrase) {
+          XprsPassphrases.instance.remember(okPass);
+        }
+        row = {'id': id, 'ok': true, 'text': m['text'] ?? ''};
+      } else {
+        row = {'id': id, 'ok': false};
+      }
+    }
+    WappEventBroker.instance.publish('core', 'xprs.unlock', jsonEncode(row));
+  }
+
+  Future<void> _xrRedact(String convo, String text, String pass) async {
+    final passphrase =
+        pass.isEmpty ? XprsCrypto.kXrDefaultPassphrase : pass;
+    final res = await compute(_xrRedactCompute,
+        <String, dynamic>{'text': text, 'passphrase': passphrase});
+    if (res.isEmpty) return; // nothing was marked
+    final m = jsonDecode(res) as Map<String, dynamic>;
+    final barred = m['barred'] as String;
+    final xr = m['xr'] as String;
+    final self = MeshService.instance.tableCallsign.trim();
+    if (self.isEmpty) return;
+    final dest = convo.startsWith('#') ? convo.substring(1) : convo;
+    // m: is last by grammar; xr: precedes it (as in the §9.2.1 worked packet).
+    final wire = 't:message f:$self d:$dest ts:${xprsNowTs()} xr:$xr m:$barred';
+    final p = XprsPacket.parse(wire);
+    if (p == null || !p.fits) return;
+    if (!XprsPublisher.instance.mayAir(p)) return;
+    if (pass.isNotEmpty) XprsPassphrases.instance.remember(pass);
+    // Keep our own barred wire so we can open our own bubble later. The core
+    // airs a post over whatever bearer carries it (BLE, LoRa, LAN, Reticulum)
+    // and archives its own send only once a bearer took it; nothing in range
+    // means no archived copy yet, so keep this one, bearer-independent.
+    XprsPassphrases.instance.rememberRedaction(xprsIdentifier(p), wire);
+    unawaited(XprsPublisher.instance.publishWire(wire));
+    WappEventBroker.instance.publish(
+        'core',
+        'xprs.redacted',
+        jsonEncode({'convo': convo, 'id': xprsIdentifier(p), 'm': barred}));
   }
 
   /// Read a UTF-8 string from wasm memory (correct for non-ASCII text, unlike
@@ -3563,6 +3645,46 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+
+    // hal_xprs_unlock: open a redacted message (§9.2.1). The wapp shows bars and
+    // taps; it never sees the `xr:` blob, a key, or the cipher — all of that is
+    // here. Asynchronous: the derivation (PBKDF2 100k) is heavy and must not
+    // block the UI isolate (architecture §2), so this returns 0 at once and the
+    // answer arrives on the `xprs.unlock` event. `pass` empty = try the
+    // remembered passphrases and the default; non-empty = try that one and
+    // remember it if it opens the message.
+    final halXprsUnlock = WasmFunction(
+      (int idPtr, int idLen, int passPtr, int passLen) {
+        final id = _readStr(idPtr, idLen).trim();
+        final pass = _readStr(passPtr, passLen);
+        if (id.isEmpty) return -1;
+        unawaited(_xrUnlock(id, pass));
+        return 0;
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+
+    // hal_xprs_redact: air a message with ((...)) spans hidden (§9.2.1). The
+    // wapp hands the marked text and a passphrase (blank = the default); the
+    // core builds the bars and the `xr:` blob, signs and airs the packet, and
+    // echoes the author's own barred copy back on `xprs.redacted`. Also async:
+    // the derivation is the same heavy PBKDF2.
+    final halXprsRedact = WasmFunction(
+      (int cPtr, int cLen, int tPtr, int tLen, int pPtr, int pLen) {
+        final convo = _readStr(cPtr, cLen).trim();
+        final text = _readStr(tPtr, tLen);
+        final pass = _readStr(pPtr, pLen);
+        if (convo.isEmpty || text.isEmpty) return 0;
+        unawaited(_xrRedact(convo, text, pass));
+        return 0;
+      },
+      params: [
+        ValueTy.i32, ValueTy.i32, ValueTy.i32,
+        ValueTy.i32, ValueTy.i32, ValueTy.i32
+      ],
+      results: [ValueTy.i32],
+    );
     // hal_xprs_message: say something to somebody. THE ONLY WAY A WAPP TALKS.
     //
     // The wapp supplies the words and the recipient. The core composes the
@@ -4202,6 +4324,8 @@ class WappEngine {
       WasmImport('hal', 'xprs_groups', halXprsGroups),
       WasmImport('hal', 'xprs_group_roster', halXprsGroupRoster),
       WasmImport('hal', 'xprs_send', halXprsSend),
+      WasmImport('hal', 'xprs_unlock', halXprsUnlock),
+      WasmImport('hal', 'xprs_redact', halXprsRedact),
       WasmImport('hal', 'xprs_read', halXprsRead),
       WasmImport('hal', 'xprs_message', halXprsMessage),
       WasmImport('hal', 'xprs_broadcast', halXprsBroadcast),
@@ -4414,4 +4538,39 @@ class WappEngine {
   /// provider path. Ordinary callers should use [drainOutbox] instead,
   /// which also clears the list.
   List<String> peekOutbox() => List<String>.unmodifiable(_outbox);
+}
+
+// ── §9.2.1 redacted-text crypto, run off the UI isolate via compute ─────────
+//
+// Top-level so `compute` can spawn them. Pure functions over primitives: no
+// database, no engine state — the caller does the archive read and the
+// passphrase store, these only derive keys and cipher, which is the part that
+// may exceed a few milliseconds (architecture §2).
+
+/// Try each passphrase against a redacted packet's whole wire; on the first that
+/// opens it (the `->` sentinel), return the restored MESSAGE body as
+/// `{"text":..,"pass":..}` JSON. Empty string = none opened it.
+String _xrUnlockCompute(Map<String, dynamic> args) {
+  final wire = args['wire'] as String;
+  final passes = (args['passes'] as List).cast<String>();
+  final p = XprsPacket.parse(wire);
+  final xr = p?['xr'] ?? '';
+  if (xr.isEmpty) return '';
+  for (final pass in passes) {
+    final restoredWire = XprsCrypto.restore(wire, xr, pass);
+    if (restoredWire == null) continue;
+    final rp = XprsPacket.parse(restoredWire);
+    return jsonEncode({'text': rp?['m'] ?? '', 'pass': pass});
+  }
+  return '';
+}
+
+/// Redact the ((...)) spans in [text] with [passphrase]; return
+/// `{"barred":..,"xr":..}` JSON, or empty string when nothing was marked.
+String _xrRedactCompute(Map<String, dynamic> args) {
+  final text = args['text'] as String;
+  final passphrase = args['passphrase'] as String;
+  final red = XprsCrypto.redact(text, passphrase: passphrase);
+  if (red == null) return '';
+  return jsonEncode({'barred': red.$1, 'xr': red.$2});
 }
