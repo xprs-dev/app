@@ -142,3 +142,33 @@ off to re-test, hit the failure, context-switch back, and re-explain — minutes
 their attention for seconds you saved. Validating first costs you the build-drive
 loop; skipping it costs them the loop *plus* the trust. Screenshot-verified, whole-
 workflow, honestly-statused is slower per task and far faster per accepted task.
+
+## Running the stress harness on real hardware
+
+The in-process federation harness (`test/support/xprs_sim.dart`) proves the
+control, gating and sync logic on a dev machine. To run the SAME harness on a
+connected phone — the acceptance bar above — use the integration test:
+
+```sh
+flutter test integration_test/xprs_federation_it.dart -d <device-id>
+```
+
+The federation scenarios it runs (group posts copied to favourites, the three
+large archivers finding each other and syncing via the real
+ProviderRecord/PointerSync, cross-archiver holder resolution) are pure Dart plus
+real crypto — no sqlite, no desktop-only sqlite override — so what passes on the
+device is byte-for-byte the code path that ships. The 50-machine scale sweep
+stays on the desktop (`flutter test test/xprs_scale_50_test.dart`); a device run
+proves portability, not scale (real keygen per node is slow on a phone).
+
+What the harness still cannot stand in for, and must be driven on two devices:
+the per-bearer byte MIDDLE and the LXMF push. Validate those on hardware:
+
+- **BLE, no internet.** Two phones, airplane mode + Bluetooth. Share a picture in
+  a group; confirm the file arrives over the GATT/MSP bulk lane.
+- **Two networks, one hub.** Two phones on different networks through a shared
+  Reticulum hub; confirm a `cmd:file` completes over the internet lane.
+- **A large archiver in the middle.** A plugged-in always-on archiver (Indexer
+  role) mirroring a leaf's media; a third station that never met the holder pings
+  its own favourite with `q:have` and is answered `m:try` naming the holder, then
+  fetches the bytes.

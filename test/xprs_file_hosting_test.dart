@@ -76,6 +76,7 @@ void main() {
     server.authorize = null;
     server.holderIndex = null;
     server.admit = null;
+    server.depositAlternates = null;
     XprsFileAcl.instance.close();
     tmp.deleteSync(recursive: true);
   });
@@ -166,6 +167,26 @@ void main() {
   test('cmd:put without size: is 400 (§11.2 size is mandatory)', () {
     server.admit = (from, bytes, via) => const ArchiveVerdict.yes();
     expect(put('X1AAA1', size: ''), 400);
+  });
+
+  test('a full store refuses 429 out loud with m:try alternates (§12.11)', () {
+    server.admit = (from, bytes, via) => const ArchiveVerdict.no('archive full');
+    server.depositAlternates = () => ['X3ARC7', 'X3ARC9'];
+    String? seenM;
+    final p = XprsPacket.parse('t:command f:X1AAA1 d:X3ARC '
+        'ts:2026-08-13_10:14:00 cmd:put file:${MediaRef.hexToB64u(
+            'cc33dd44ee55ff66aa11bb22cc33dd44ee55ff66aa11bb22cc33dd44ee55ff66')}.jpg '
+        'size:9MB')!;
+    final code = server.onPut(p,
+        selfBase: 'X3ARC',
+        from: 'X1AAA1',
+        cmdId: 'full01',
+        via: ArrivedOver.bluetooth,
+        air: (c, {String? m}) => seenM = m);
+    expect(code, 429);
+    expect(seenM, 'try X3ARC7,X3ARC9',
+        reason: 'refused rather than dropping declared content, names room');
+    server.depositAlternates = null;
   });
 
   test('q:have miss names holders from the sources index (§8.1, §12.9.2)', () {

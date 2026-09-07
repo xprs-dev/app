@@ -413,6 +413,14 @@ class MeshService {
               usedBytes: mediaArchive.hostedStats().totalBytes,
               via: via,
             );
+        // §12.11: a full store refuses a deposit out loud with m:try naming a
+        // peer that may have room — the other archivers this operator chose.
+        XprsFileServer.instance.depositAlternates = () => [
+              for (final c
+                  in PreferencesService.instanceSync?.xprsAlwaysOnArchivers ??
+                      const <String>[])
+                if (c.trim().toUpperCase() != cs.toUpperCase()) c.trim()
+            ];
         // The internet middle for a `cmd:file` fetch (§11.2.2): when the
         // archiver is reachable off-radio, race a Reticulum/DHT/swarm fetch
         // against the bulk lane. fetchContentAddressed archives and re-seeds

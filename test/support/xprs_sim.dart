@@ -29,7 +29,6 @@ import 'package:reticulum/src/services/files/dht/pointer_log.dart';
 import 'package:reticulum/src/services/files/dht/pointer_sync.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_sig.dart';
-import 'package:xprs/util/nostr_crypto.dart';
 
 String hexOf(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();

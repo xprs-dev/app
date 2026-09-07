@@ -248,6 +248,10 @@ class XprsFileServer {
   /// `admitToArchive` with the operator's policy and quota.
   ArchiveVerdict Function(String from, int bytes, ArrivedOver via)? admit;
 
+  /// Peers to name in `m:try` when a deposit is refused for fullness (§12.11):
+  /// other archivers the operator knows, which may have room. Null = none.
+  List<String> Function()? depositAlternates;
+
   int deposits = 0;
 
   /// Handle one `cmd:put`: a peer offers to deposit a file for us to host. The
@@ -285,8 +289,16 @@ class XprsFileServer {
     if (!v.accept) {
       final full = v.reason == 'archive full';
       refused++;
-      air(full ? 429 : 403, m: v.reason);
-      return full ? 429 : 403;
+      if (full) {
+        // §12.11: full is refused OUT LOUD, and this store refuses rather than
+        // evicting to fit a deposit, so declared/pinned content is never
+        // dropped for a stranger's bytes. Name a peer with room when we can.
+        final alts = depositAlternates?.call() ?? const <String>[];
+        air(429, m: alts.isEmpty ? v.reason : 'try ${alts.join(',')}');
+        return 429;
+      }
+      air(403, m: v.reason);
+      return 403;
     }
     deposits++;
     LogService.instance
