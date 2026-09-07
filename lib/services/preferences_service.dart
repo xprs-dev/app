@@ -963,8 +963,12 @@ class PreferencesService {
   static const List<String> _defaultRnsServers = [
     'rns.wisco.network:4242',    // 113 ms
     'rns.birdsnet.com.br:4242',  // 225 ms
-    'use.inertia.chat:4242',     // 285 ms
     'sydney.reticulum.au:4242',  // 287 ms
+    // use.inertia.chat is alpha software and unstable: measured on two phones
+    // its uplink went silent and reconnected repeatedly, and LXMF delivery
+    // through it kept dropping ("path ... dropped after failure: lxmf
+    // delivery"). Kept as a last-resort fallback, never a first choice.
+    'use.inertia.chat:4242',     // 285 ms, unstable — last resort
   ];
 
   /// Blossom servers (media over the internet: images in the feed come FROM
