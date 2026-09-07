@@ -300,6 +300,11 @@
 "id": "d34bd0"
 },
 {
+"wire": "t:file f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 file:Uc3nRw8kFa5xPd1qGz7mYb0tJe6vHs2iLoA9XfCqK4E.png size:5000 off:0 b:iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8z9A",
+"bytes": null,
+"id": "a8a451"
+},
+{
 "wire": "t:message f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 q:ack,read m:did you get the keys?",
 "bytes": 85,
 "id": "9821a4"

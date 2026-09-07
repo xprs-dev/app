@@ -513,6 +513,7 @@ class XprsPublisher {
     Duration? ttl,
     String? prefer,
     bool urgent = false,
+    Set<String>? onlyBearers,
   }) async {
     final report = <String, String>{};
     String? carriedBy;
@@ -531,6 +532,15 @@ class XprsPublisher {
     Future<bool> tryOne(XprsBearer b) async {
       if (_disabled.contains(b.name)) {
         report[b.name] = 'disabled';
+        return false;
+      }
+      // A caller that knows the peer is reachable on one lane only (a station
+      // present solely over the internet) restricts the fan-out to it, so a
+      // packet is not also spent on the shared advert channel it can never be
+      // heard on. The choice of lane stays HERE, in the one send path — the
+      // caller names a lane, it does not touch a bearer itself.
+      if (onlyBearers != null && !onlyBearers.contains(b.name)) {
+        report[b.name] = 'skipped';
         return false;
       }
       // A 1:1 to a phone in the room takes the session, not the street.
@@ -833,6 +843,10 @@ class XprsPublisher {
       {String? slot,
       Duration? ttl,
       bool verbatim = false,
+      /// Restrict this send to the named bearers (by [XprsBearer.name]), for a
+      /// peer reachable on one lane only. Null fans out as usual. The lane
+      /// choice stays in the publisher; a caller only names it.
+      Set<String>? onlyBearers,
       /// Force the section 36.0 path choice instead of deriving it from
       /// evidence.
       ///
@@ -880,7 +894,8 @@ class XprsPublisher {
       LogService.instance.add(
           'XPRS: ${p.type} split into ${parts.length} part(s) — §6.6');
       final air = await _fanOut(parts,
-          slot: slot ?? '${p.type}:${xprsIdentifier(p)}', ttl: ttl);
+          slot: slot ?? '${p.type}:${xprsIdentifier(p)}', ttl: ttl,
+          onlyBearers: onlyBearers);
       published++;
       return air.report;
     }
@@ -939,7 +954,8 @@ class XprsPublisher {
         slot: useSlot,
         ttl: ttl,
         prefer: chosen,
-        urgent: never.contains(p.type));
+        urgent: never.contains(p.type),
+        onlyBearers: onlyBearers);
     final report = air.report;
     final carriedBy = air.carriedBy;
 
@@ -1128,6 +1144,24 @@ class XprsPublisher {
     }
     if (netProven) return 'reticulum';
     return null;
+  }
+
+  /// The lanes that currently have a path to [callsign] — for a caller that
+  /// wants to send only where the peer can actually be reached, rather than
+  /// spend every bearer (a many-packet transfer to a peer present on one lane
+  /// only). The path choice stays HERE, in the one send path (§36.0); a caller
+  /// names WHOM, this answers WHERE. Empty means no known path — the caller
+  /// then fans out best-effort. As new bearers gain per-peer paths (a BLE
+  /// session, a LAN peer, LoRa) they appear here automatically.
+  Set<String> reachableLanes(String callsign) {
+    final c = callsign.trim().toUpperCase();
+    final out = <String>{};
+    if (c.isEmpty) return out;
+    if (_bleSessionProven(c)) out.add('ble5');
+    if (RnsService.instance.lxmfDestForCallsign(c).isNotEmpty) {
+      out.add('reticulum');
+    }
+    return out;
   }
 
   /// A LOCAL path we have PROVEN reaches [dest] this moment: a live GATT link,

@@ -36,6 +36,7 @@ import 'xprs_id.dart';
 import 'xprs_outbox.dart';
 import 'xprs_packet.dart';
 import 'xprs_file_acl.dart';
+import 'xprs_inline_file.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
 
@@ -210,6 +211,11 @@ class XprsIngest {
     final self = selfCallsign.trim().toUpperCase();
     final from = (p['f'] ?? '').trim().toUpperCase();
     if (from.isEmpty || from == self) return;
+
+    // A small binary chunked into t:file packets (§7.7.6) is reassembled here
+    // and, when whole and verified, handed to the media store. Safe for every
+    // packet: a non-file or non-chunk is ignored.
+    XprsInlineAsm.instance.feed(p);
 
     // A mailbox declaration heard on the street counts exactly like one that
     // arrived over a hub: the author is saying where their mail may rest.
@@ -584,6 +590,9 @@ class XprsIngest {
     // A station reached us over Reticulum: on the list, under that name and
     // no other (the air is [heard]'s, and stays so).
     XprsMonitor.instance.noteRemote(fromC);
+    // Inline-file chunks cross the internet the same way (§7.7.6, §12.12.1's
+    // directed lane): reassemble and store when whole.
+    XprsInlineAsm.instance.feed(p);
 
     // The hub lane serves too (docs/XPRS.md 36.0: the archiver role does not
     // change with the bearer). Commands and results route to the same hooks

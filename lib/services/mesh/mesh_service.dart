@@ -32,6 +32,7 @@ import '../xprs/xprs_groups.dart';
 import '../xprs/xprs_catchup.dart';
 import '../xprs/xprs_files.dart';
 import '../xprs/xprs_file_acl.dart';
+import '../xprs/xprs_inline_file.dart';
 import '../reticulum/rns_service.dart';
 import '../social/archiver_service.dart';
 import 'package:reticulum/src/services/social/archiver_policy.dart';
@@ -415,6 +416,15 @@ class MeshService {
             );
         // §12.11: a full store refuses a deposit out loud with m:try naming a
         // peer that may have room — the other archivers this operator chose.
+        // A small binary that arrived chunked across t:file packets (§7.7.6,
+        // the lane a text-only transport leaves) is stored in the media archive
+        // once whole and verified, so it renders like any other file: token.
+        XprsInlineAsm.instance.onFile = (ref, bytes) {
+          final ext = MediaRef.parse(ref)?.ext ?? 'bin';
+          mediaArchive.putBytes(bytes, ext);
+          LogService.instance
+              .add('XPRS: inline file $ref stored (${bytes.length} B)');
+        };
         XprsFileServer.instance.depositAlternates = () => [
               for (final c
                   in PreferencesService.instanceSync?.xprsAlwaysOnArchivers ??

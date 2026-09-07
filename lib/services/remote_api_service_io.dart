@@ -13,6 +13,7 @@ import 'dart:typed_data';
 import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_bridge.dart';
 import 'xprs/xprs_ingest.dart';
+import 'xprs/xprs_inline_file.dart';
 import 'receive/wapp_delivery.dart';
 import 'xprs/xprs_lan.dart';
 import 'xprs/xprs_publisher.dart';
@@ -1109,6 +1110,55 @@ class RemoteApiService {
           'sha256': sha,
           'from': from,
           'elapsedMs': DateTime.now().millisecondsSinceEpoch - began,
+        });
+      }
+      if (req.method == 'POST' && path == '/api/xprs/inline') {
+        // {"to":"X1ARKL","data":"<base64>","ext":"png"} — send a small binary
+        // as t:file packets over the directed lane (§7.7.6), the vehicle a
+        // text-only transport (public hubs that block the bulk lane) leaves.
+        final data = await _body(req);
+        final self = NostrCrypto.bareCallsign(MeshService.instance.tableCallsign);
+        if (self.isEmpty) {
+          return _json(res, {'ok': false, 'error': 'mesh not up'},
+              status: HttpStatus.serviceUnavailable);
+        }
+        Uint8List bytes;
+        try {
+          bytes = base64Decode((data['data'] ?? '').toString());
+        } catch (e) {
+          return _json(res, {'ok': false, 'error': 'bad base64 data'},
+              status: HttpStatus.badRequest);
+        }
+        final to = (data['to'] ?? '').toString().trim();
+        final wires = xprsInlineSplit(bytes,
+            from: self, to: to, ext: (data['ext'] ?? 'bin').toString());
+        if (wires.isEmpty) {
+          return _json(res,
+              {'ok': false, 'error': 'empty or over $kInlineMaxBytes bytes'},
+              status: HttpStatus.badRequest);
+        }
+        // Send each chunk only on the lanes that actually reach the peer
+        // (§36.0), whatever those are — reticulum for an internet-only station,
+        // a BLE session when one exists, both when both do. This avoids
+        // spending the advert channel on a peer that cannot be heard there (and
+        // its multi-second-per-packet pacing) WITHOUT fixing the lane: the
+        // publisher answers where the peer is reachable, and if it knows no
+        // path the send fans out best-effort. All TX still goes through the one
+        // send path.
+        final lanes = XprsPublisher.instance.reachableLanes(to);
+        final only = lanes.isEmpty ? null : lanes;
+        var sent = 0;
+        for (final w in wires) {
+          final rep =
+              await XprsPublisher.instance.publishWire(w, onlyBearers: only);
+          if (rep.values.any((v) => v == 'sent' || v == 'queued')) sent++;
+        }
+        return _json(res, {
+          'ok': sent > 0,
+          'packets': wires.length,
+          'sent': sent,
+          'lanes': lanes.isEmpty ? 'fanout' : lanes.join(','),
+          'bytes': bytes.length,
         });
       }
       // What this station holds and seeds for the phones around it.
