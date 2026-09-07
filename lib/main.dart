@@ -405,7 +405,7 @@ Future<void> _boot() async {
   // the feed once and seed it over Reticulum, so the phones around this station
   // update without fetching 60 MB over the internet themselves.
   // The service decides whether it is on -- the preference is one of two
-  // reasons (a super-archiver is the other), and reading the preference here
+  // reasons (an always-on archiver is the other), and reading the preference here
   // meant the second reason never started it.
   if (UpdateMirrorService.instance.enabled) {
     unawaited(UpdateMirrorService.instance.start());

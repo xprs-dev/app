@@ -96,14 +96,14 @@ void main() {
     XprsMonitor.instance.clear();
   });
 
-  test('serve:archive,super survives parsing and reads as a super-archiver',
+  test('serve:archive,super survives parsing and reads as an always-on archiver',
       () {
     XprsMonitor.instance.clear();
     // The word is section 24 vocabulary and this device AIRS it (MeshService
-    // puts `serve:archive,super` on both beacons when super-archiver mode is
+    // puts `serve:archive,super` on both beacons when always-on archiver mode is
     // on). It used to be missing from kXprsServices, so our own receiver threw
     // away a word our own transmitter sent, and nothing downstream could ever
-    // answer "is this a super-archiver".
+    // answer "is this an always-on archiver".
     expect(kXprsServices.contains('super'), true);
     final p = XprsPacket.parse('t:service f:X3SUPR serve:archive,super');
     expect(xprsServices(p!), ['archive', 'super']);
@@ -118,7 +118,7 @@ void main() {
         .cast<Map<String, dynamic>>()
         .firstWhere((n) => n['id'] == 'xprs:X3SUPR');
     expect((node['services'] as List), containsAll(['archive', 'super']));
-    expect((node['meta'] as Map)['role'], 'super-archiver');
+    expect((node['meta'] as Map)['role'], 'always-on archiver');
     XprsMonitor.instance.clear();
   });
 

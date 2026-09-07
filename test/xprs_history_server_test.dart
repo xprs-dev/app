@@ -154,6 +154,29 @@ void main() {
     });
   });
 
+  test('a direct cmd:history kind:mailbox replays the station own t:mailbox (13.12/36.5)',
+      () {
+    // The station's own declaration, archived like its daily airing would.
+    a.admit(_p('t:mailbox f:X1SELF ts:2026-08-13_10:30:00 hold:X3RLY7,X32DVA'),
+        bearer: 'ble', own: true, nowMs: 5000);
+    a.flush(nowMs: 100000);
+    fakeAsync((async) {
+      ask('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+          'kind:mailbox only:X1SELF until:2026-08-13_11:00:00');
+      async.elapse(const Duration(seconds: 30));
+      final wires = [
+        for (final e in aired)
+          if (!e.$1.startsWith('xprs-hist:c')) e.$2
+      ];
+      expect(results().first['code'], '202');
+      expect(
+          wires.any((w) =>
+              w.contains('t:mailbox') && w.contains('hold:X3RLY7,X32DVA')),
+          isTrue,
+          reason: 'a direct ask is answered with the station mailbox list');
+    });
+  });
+
   test('only: filters by sender or addressee', () {
     seed(3, from: 'X1AAA');
     seed(2, from: 'X1CCC', startMin: 30);

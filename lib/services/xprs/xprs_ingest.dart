@@ -147,7 +147,7 @@ class XprsIngest {
   /// Chatter: traffic a station may reasonably decline to spool for strangers.
   ///
   /// **`identity` is deliberately NOT in this set.** It used to be, which meant
-  /// a station that was not a super-archiver and had not opted into keeping
+  /// a station that was not an always-on archiver and had not opted into keeping
   /// chatter stored no key bindings at all — and a key binding is not chatter,
   /// it is the thing that makes every other packet from that station checkable.
   /// Without it this station cannot verify a signature (§9.1 leaves it
@@ -175,13 +175,13 @@ class XprsIngest {
     if (forUs) return true; // our own mail, whatever shape it takes
     if (!_isPresence(p.type)) return true; // conversation, always
     final prefs = PreferencesService.instanceSync;
-    // A super-archiver's stock in trade IS the chatter: signed observations
+    // An always-on archiver's stock in trade IS the chatter: signed observations
     // are the wires a `cmd:history kind:observation only:X` replay serves
     // (36.9.4's bulk gossip). A super that discards them answers every such
     // ask with a 404 by construction, whatever its gossip table knows —
     // gossip stores digests, and a replay may only re-air original packets
     // (36.1).
-    if (prefs?.xprsSuperArchiver ?? false) return true;
+    if (prefs?.xprsAlwaysOnArchiver ?? false) return true;
     return prefs?.xprsKeepChatter ?? false;
   }
 
@@ -634,7 +634,7 @@ class XprsIngest {
 
     // Gossip off the internet lane (36.9.4): a replayed observation arriving
     // over the hubs is exactly the "asker verifies and caches into its own
-    // L3" step — the answer to a super-archiver ask lands HERE, not on any
+    // L3" step — the answer to an always-on archiver ask lands HERE, not on any
     // radio, and without this feed the ask was paid for and the answer
     // discarded. noteHears' walls hold unchanged: an unverified claim feeds
     // nothing, and L2 stays radio-truth-only because the packet's own
@@ -727,7 +727,7 @@ class XprsIngest {
 
     if (!_archiveOn) return;
 
-    // A super-archiver keeps the chatter (36.12.1): observations and
+    // An always-on archiver keeps the chatter (36.12.1): observations and
     // identities are the wires its bulk-gossip replays serve, they are
     // publications a gateway passes verbatim (36.1), and on a super they
     // mostly ARRIVE over this lane — the boards dial in over Reticulum.
@@ -735,7 +735,7 @@ class XprsIngest {
     // MAIL off the internet; presence is not mail, and a super that
     // refused it could never answer `kind:observation` about anyone.
     final superKeeps =
-        (PreferencesService.instanceSync?.xprsSuperArchiver ?? false) &&
+        (PreferencesService.instanceSync?.xprsAlwaysOnArchiver ?? false) &&
         (p.type == 'observation' ||
             p.type == 'identity' ||
             p.type == 'service');

@@ -57,7 +57,7 @@ void main() {
     // not reopen §18.1's half-hour hole.
     //
     // Measured on the bench before this changed: a phone that was not a
-    // super-archiver held ZERO key bindings, and so could not verify a single
+    // always-on archiver held ZERO key bindings, and so could not verify a single
     // receipt — fifteen of them arrived and all fifteen counted as
     // `unverifiable`, which §13.7.1 correctly treats as changing nothing. The
     // station was doing exactly what it was told and getting nowhere.

@@ -3969,6 +3969,24 @@ class WappEngine {
     );
     // hal_xprs_set_pref("key=value"): archive / archiveMaxMb / archiveMaxDays
     // / serveHistory. Persisted and live-applied.
+    // hal_xprs_archivers: read back the station's chosen archiver devices (the
+    // unified XPRS 36/13.12 list) as a JSON array of callsigns, so a wapp can
+    // show and edit it. Negated-size protocol when the buffer is too small.
+    final halXprsArchivers = WasmFunction(
+      (int outPtr, int outCap) {
+        if (outCap <= 0) return 0;
+        final prefs = PreferencesService.instanceSync;
+        final bytes = utf8.encode(jsonEncode({
+          'list': prefs?.xprsArchivers ?? const [],
+          'auto': prefs?.xprsArchiverAuto ?? true,
+        }));
+        if (bytes.length > outCap) return -bytes.length;
+        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+
     final halXprsSetPref = WasmFunction(
       (int ptr, int len) {
         final kv = _readUtf8(ptr, len);
@@ -3996,6 +4014,21 @@ class WappEngine {
             if (n == null || n <= 0) return -1;
             prefs.xprsArchiveMaxDays = n;
             XprsArchive.instance.maxAgeDays = n;
+            return 0;
+          case 'archivers':
+            // The station's chosen archiver devices (XPRS 36 push + 13.12
+            // hold: — one unified list). CSV of callsigns in preference order;
+            // empty clears it. The daily t:mailbox beacon airs from this.
+            prefs.xprsArchivers = v
+                .split(',')
+                .map((c) => c.trim().toUpperCase())
+                .where((c) => c.isNotEmpty)
+                .toList();
+            return 0;
+          case 'archiverAuto':
+            // Auto-select an archiver when none is chosen (user-side flag; the
+            // selection mechanism is decided elsewhere).
+            prefs.xprsArchiverAuto = v == '1' || v == 'true';
             return 0;
         }
         return -1;
@@ -4330,6 +4363,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_message', halXprsMessage),
       WasmImport('hal', 'xprs_broadcast', halXprsBroadcast),
       WasmImport('hal', 'xprs_set_pref', halXprsSetPref),
+      WasmImport('hal', 'xprs_archivers', halXprsArchivers),
       WasmImport('hal', 'mesh_scf_status', halMeshScfStatus),
       WasmImport('hal', 'mesh_transfers', halMeshTransfers),
       WasmImport('hal', 'mesh_held', halMeshHeld),

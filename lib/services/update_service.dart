@@ -68,7 +68,7 @@ class UpdateService {
   // The feed announces; it does not host. Each channel is a small JSON document
   // naming the newest version and, for every artifact, its size, its absolute
   // download URL and its sha256. The sha256 is the address: the bytes normally
-  // arrive over Reticulum from a super-archiver that has already mirrored them,
+  // arrive over Reticulum from an always-on archiver that has already mirrored them,
   // so an ordinary phone never makes an HTTPS request for a binary at all. The
   // URL is the fallback for a device with no Reticulum path to any mirror.
   // Overridable at runtime for self-hosters.
@@ -385,7 +385,7 @@ class UpdateService {
 
     // Reticulum second, whenever the feed told us the artifact's sha256.
     //
-    // The sha IS the address: a super-archiver that mirrored this release
+    // The sha IS the address: an always-on archiver that mirrored this release
     // published a DHT provider record keyed on exactly this value, so the bytes
     // come peer-to-peer and this device never makes an HTTPS request for a
     // 60 MB binary. The URL below is the fallback for a device that cannot
@@ -569,7 +569,7 @@ class UpdateService {
     lastSource = 'reticulum';
     UpdateNative.serviceStart('Fetching XPRS ${release.version} over Reticulum');
     try {
-      // A super-archiver already holds every release it mirrors, verified at
+      // An always-on archiver already holds every release it mirrors, verified at
       // ingest. The DHT probe below asks for OTHER providers by design, so
       // without this a mirror that was the only holder concluded nobody had
       // it and went to the web for bytes sitting on its own disk.
@@ -588,21 +588,21 @@ class UpdateService {
         return true;
       }
       // Is there anybody to fetch FROM? The fetch's timeout is sized for
-      // moving the bytes, and with no super-archiver holding this release it
+      // moving the bytes, and with no always-on archiver holding this release it
       // spent all five minutes learning that nobody did -- after the mesh had
       // already spent its share. Ask the DHT the cheap question first.
-      phase.value = 'Looking for a super-archiver holding ${release.version}';
+      phase.value = 'Looking for an always-on archiver holding ${release.version}';
       final providers = await RnsService.instance
           .contentProviderCount(shaHex, timeout: providerProbeTimeout);
       if (providers == 0) {
         LogService.instance.add(
-            'update: no super-archiver holds ${release.version} yet — web');
+            'update: no always-on archiver holds ${release.version} yet — web');
         lastSource = null;
         status.value = UpdateStatus.checking;
         return false;
       }
       phase.value =
-          'Fetching from $providers super-archiver${providers == 1 ? '' : 's'}';
+          'Fetching from $providers always-on archiver${providers == 1 ? '' : 's'}';
       // Show what is arriving. The fetch reports pieces (or bytes) as they
       // land; a bar that sat at 0% for the whole transfer is what "not
       // starting" looked like from the outside.

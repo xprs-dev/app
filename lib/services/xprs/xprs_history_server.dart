@@ -279,11 +279,11 @@ class XprsHistoryServer {
   }
 
   bool _budgetAllows(String from, int now) {
-    // A super-archiver (36.9.4) exists to be leaned on: thousands of asks a
+    // An always-on archiver (36.9.4) exists to be leaned on: thousands of asks a
     // minute is its design point, so the reference budgets scale rather
     // than apply.
     final superScale =
-        (PreferencesService.instanceSync?.xprsSuperArchiver ?? false)
+        (PreferencesService.instanceSync?.xprsAlwaysOnArchiver ?? false)
             ? 1000
             : 1;
     void trim(List<int> l) => l.removeWhere((t) => now - t > 3600000);

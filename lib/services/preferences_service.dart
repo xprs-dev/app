@@ -323,11 +323,11 @@ class PreferencesService {
 
   bool get xprsServeHistory => _prefs.getBool('xprs.serveHistory') ?? true;
 
-  /// Super-archiver mode (XPRS.md 36.9.4): gossip for every callsign, no
+  /// Always-on archiver mode (XPRS.md 36.9.4): gossip for every callsign, no
   /// need-to-know cap, raised budgets, `serve:archive,super` on the air.
   /// Off by default — this is a deliberate offer for a server-class node.
-  bool get xprsSuperArchiver => _prefs.getBool('xprs.superArchiver') ?? false;
-  set xprsSuperArchiver(bool v) => _prefs.setBool('xprs.superArchiver', v);
+  bool get xprsAlwaysOnArchiver => _prefs.getBool('xprs.superArchiver') ?? false;
+  set xprsAlwaysOnArchiver(bool v) => _prefs.setBool('xprs.superArchiver', v);
 
   /// Mirror app releases over Reticulum for the phones around this station.
   ///
@@ -338,14 +338,48 @@ class PreferencesService {
   bool get updateMirrorEnabled => _prefs.getBool('update.mirror') ?? false;
   set updateMirrorEnabled(bool v) => _prefs.setBool('update.mirror', v);
 
-  /// Callsigns of super-archivers this station may lean on (36.9.4): asked
+  /// Callsigns of always-on archivers this station may lean on (36.9.4): asked
   /// on a gossip miss, and used as the custody deposit hop when no gateway
   /// resolves. Reached over the directed LXMF lane -- the one the public
   /// hubs actually permit.
-  List<String> get xprsSuperArchivers =>
+  List<String> get xprsAlwaysOnArchivers =>
       _prefs.getStringList('xprs.superArchivers') ?? const [];
-  set xprsSuperArchivers(List<String> v) =>
+  set xprsAlwaysOnArchivers(List<String> v) =>
       _prefs.setStringList('xprs.superArchivers', v);
+
+  /// The ONE set of archiver devices this station chose: the stations it sends
+  /// copies of its own publications to (XPRS 36) AND declares as its mailboxes
+  /// with a signed `t:mailbox hold:` (36.7 — an archiver is also a mailbox).
+  /// Unifies the two legacy lists so there is a single "my archivers" list:
+  /// callsigns in preference order, `xprsAlwaysOnArchivers` first (they drive the
+  /// 36 push and the gossip/custody lane), then any `xprsMailboxHold`-only ones
+  /// so an existing hold declaration is never lost.
+  List<String> get xprsArchivers {
+    final out = <String>[...xprsAlwaysOnArchivers];
+    for (final h in xprsMailboxHold
+        .split(',')
+        .map((c) => c.trim())
+        .where((c) => c.isNotEmpty)) {
+      if (!out.contains(h)) out.add(h);
+    }
+    return out;
+  }
+
+  /// Set the unified list, keeping both legacy keys in step so the 36 push
+  /// (reads `xprsAlwaysOnArchivers`) and the 13.12 declaration (aired from this)
+  /// agree — one list, two roles.
+  set xprsArchivers(List<String> v) {
+    xprsAlwaysOnArchivers = v;
+    xprsMailboxHold = v.join(',');
+  }
+
+  /// Auto-select an archiver when the operator has chosen none (36.3 keeps zero
+  /// a valid choice; this offers the other default). ON by default so a fresh
+  /// station's messages are kept by SOME volunteer node without the user having
+  /// to pick one. HOW a volunteer is chosen is decided elsewhere; this is only
+  /// the operator's yes/no. Ignored once an explicit archiver is listed.
+  bool get xprsArchiverAuto => _prefs.getBool('xprs.archiverAuto') ?? true;
+  set xprsArchiverAuto(bool v) => _prefs.setBool('xprs.archiverAuto', v);
 
   Future<void> setXprsServeHistory(bool v) async {
     await _prefs.setBool('xprs.serveHistory', v);

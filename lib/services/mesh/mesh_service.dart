@@ -256,7 +256,7 @@ class MeshService {
         XprsHistoryServer.instance.install();
         XprsGossip.instance
             .init(wappsDataStorage(prefs).getAbsolutePath('xprs_gossip.sqlite3'));
-        if (prefs.xprsSuperArchiver) {
+        if (prefs.xprsAlwaysOnArchiver) {
           // The super budget (36.9.4): the table stops being pocket-sized.
           XprsGossip.instance.maxBytes = 256 * 1024 * 1024;
         }
@@ -828,7 +828,7 @@ class MeshService {
       // `super` beside `archive`, never instead of it (24, 36.9.4).
       envelope = envelope.with_(
           'serve',
-          (PreferencesService.instanceSync?.xprsSuperArchiver ?? false)
+          (PreferencesService.instanceSync?.xprsAlwaysOnArchiver ?? false)
               ? 'archive,super'
               : 'archive');
     }
@@ -962,7 +962,7 @@ class MeshService {
       // `super` beside `archive`, never instead of it (24, 36.9.4).
       envelope = envelope.with_(
           'serve',
-          (PreferencesService.instanceSync?.xprsSuperArchiver ?? false)
+          (PreferencesService.instanceSync?.xprsAlwaysOnArchiver ?? false)
               ? 'archive,super'
               : 'archive');
     }

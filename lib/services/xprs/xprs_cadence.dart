@@ -3,7 +3,7 @@
  *
  * Every station used to ask every archiver on the same clock, forever: a room
  * nobody had spoken in for three months cost the same metered replay as one
- * with a conversation running. On a super-archiver -- the station everybody
+ * with a conversation running. On an always-on archiver -- the station everybody
  * pulls Global chat from -- that fixed clock IS the load.
  *
  * So the interval follows the room. What an archiver returns is the only
@@ -18,8 +18,8 @@
  *  - The FLOOR is what the peer permits. Section 31.2 lets an ordinary
  *    archiver answer a known caller six times an hour, and section 36.10.1
  *    says plainly that the ten-minute poll is exactly that ceiling and not an
- *    arbitrary number. Only a super-archiver's raised budgets (36.9.4) can
- *    serve a fast caller, so only a super-archiver gets one. A station that
+ *    arbitrary number. Only an always-on archiver's raised budgets (36.9.4) can
+ *    serve a fast caller, so only an always-on archiver gets one. A station that
  *    polls an ordinary peer faster steals that peer's whole cross-caller
  *    allowance and 429-starves everyone else asking it.
  *
@@ -140,7 +140,7 @@ class XprsCadence {
   /// have never asked is polite by default and earns its speed.
   static Duration get initial => ordinaryFloor;
 
-  /// Spread the herd. Many devices pulling one super-archiver on the same
+  /// Spread the herd. Many devices pulling one always-on archiver on the same
   /// interval arrive together, which is the load pattern this file exists to
   /// avoid; a tenth either way is enough to smear them and is invisible to a
   /// reader. [rand] is a 0..1 sample, injected so tests are deterministic.

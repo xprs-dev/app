@@ -2576,7 +2576,7 @@ class RnsService {
   }) {
     sweepObserved();
     final q = (search ?? '').trim().toLowerCase();
-    // What a node is FOR: 'super' (a super-archiver, XPRS.md 36.9.4),
+    // What a node is FOR: 'super' (an always-on archiver, XPRS.md 36.9.4),
     // 'archive' (an archiver that is not a super -- the two buckets are
     // disjoint, or neither answers a question), 'normal' (neither), null for
     // any. Hubs are exempt: they are emitted before this filter runs, because
@@ -2589,7 +2589,7 @@ class RnsService {
     // XprsCatchup records). Computed once, outside both filter sites.
     final namedSupers = <String>{
       for (final c
-          in PreferencesService.instanceSync?.xprsSuperArchivers ??
+          in PreferencesService.instanceSync?.xprsAlwaysOnArchivers ??
               const <String>[])
         _bareUpper(c),
     }..remove('');
@@ -2834,7 +2834,7 @@ class RnsService {
             // kXprsServices -- so the role was unreachable and every archiver
             // on the air rendered as an ordinary station.
             'role': isSuper
-                ? 'super-archiver'
+                ? 'always-on archiver'
                 : s.services.contains('archive')
                     ? 'indexer'
                     : '',
@@ -10746,7 +10746,7 @@ class RnsService {
   /// The question the updater has to ask BEFORE fetching: a content-addressed
   /// fetch is given a timeout sized for moving 60 MB, and when nobody holds
   /// the bytes it spends that whole timeout finding out. This is the DHT
-  /// lookup on its own, bounded by [timeout], so "is there a super-archiver
+  /// lookup on its own, bounded by [timeout], so "is there an always-on archiver
   /// to fetch from" costs seconds and a "no" falls straight through to the web.
   Future<int> contentProviderCount(String shaHex,
       {Duration timeout = const Duration(seconds: 20)}) async {

@@ -656,18 +656,18 @@ class XprsPublisher {
     final report = air.report;
     final carriedBy = air.carriedBy;
 
-    // Push to the super-archivers this operator CHOSE (36.3, 36.4).
+    // Push to the always-on archivers this operator CHOSE (36.3, 36.4).
     //
     // A public wire goes out as a broadcast announce, and the community hubs
     // do not cross-forward those between their own clients -- so a station
     // whose neighbours are all on the far side of the internet published into
-    // silence. A super-archiver is the one place that holds everything
+    // silence. An always-on archiver is the one place that holds everything
     // everybody said (36.9.4), which is what makes Global chat global: every
     // other station pulls it from there. Pushing is one addressed copy per
     // configured super, on the lane the hubs do carry (36.12.1), and only for
     // wires meant for everybody -- mail has a d: and its own custody path.
     final supers =
-        PreferencesService.instanceSync?.xprsSuperArchivers ?? const <String>[];
+        PreferencesService.instanceSync?.xprsAlwaysOnArchivers ?? const <String>[];
     if (supers.isNotEmpty) {
       for (final w in wires) {
         final p = XprsPacket.parse(w);

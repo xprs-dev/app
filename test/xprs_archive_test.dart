@@ -410,7 +410,7 @@ void main() {
   });
   group('a key binding is not chatter (9.3.2, 18.1)', () {
     // It used to be grouped with `observation` and `service`, so a station that
-    // was not a super-archiver kept NO identities at all — measured on the
+    // was not an always-on archiver kept NO identities at all — measured on the
     // bench as a phone with zero key bindings and fifteen receipts it could not
     // verify. Without the binding this station can check no signature (9.1),
     // seal no private message (9.2) and trust no receipt (13.7.1).

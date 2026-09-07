@@ -127,7 +127,7 @@ class XprsCatchup {
   /// battery on news no one is awake to read (docs/performance.md 6.5).
   bool get _visible => LauncherVisibility.instance.visible.value;
 
-  /// What this peer will tolerate. Only a super-archiver's raised budgets
+  /// What this peer will tolerate. Only an always-on archiver's raised budgets
   /// (36.9.4) can serve a fast caller; our own other devices are not metered
   /// at all by the responder, so they count as fast too.
   XprsPeerClass _classOf(String base, String selfCallsign) {
@@ -150,7 +150,7 @@ class XprsCatchup {
   bool _operatorTrusted(String base, String selfCallsign) {
     if (base == _base(selfCallsign)) return true;
     final chosen =
-        PreferencesService.instanceSync?.xprsSuperArchivers ?? const <String>[];
+        PreferencesService.instanceSync?.xprsAlwaysOnArchivers ?? const <String>[];
     for (final c in chosen) {
       if (_base(c) == base) return true;
     }
@@ -167,7 +167,7 @@ class XprsCatchup {
     // ask for less; nobody gets to ask an ordinary archiver for more than its
     // six replays an hour.
     //
-    // The knob is waived only for a super this operator CHOSE. A super-archiver
+    // The knob is waived only for a super this operator CHOSE. An always-on archiver
     // is a claim, not a fact -- anything in earshot can beacon
     // `serve:archive,super` and a phone can say it -- so honouring a stranger's
     // claim here would let one beacon override the battery setting and turn a
@@ -272,6 +272,12 @@ class XprsCatchup {
   /// identifier, so re-airing the same bytes is not a second chance.
   static const Duration identityEvery = Duration(minutes: 30);
 
+  /// Re-announce the chosen archivers (t:mailbox, 13.12) once a day. Unlike
+  /// identity this is not urgent (36.4 — publishing waits for a cheap link),
+  /// and mail routing changes on the scale of days, not minutes.
+  static const Duration mailboxEvery = Duration(hours: 24);
+  int _mailboxAtMs = 0;
+
   /// The longest this device will go without asking a station it can hear.
   ///
   /// Ten minutes is section 36.10.1's own catch-up cadence and it lands exactly
@@ -288,6 +294,7 @@ class XprsCatchup {
     _selfCallsign = selfCallsign;
     if (selfCallsign.isEmpty) return;
     unawaited(_airIdentity());
+    unawaited(_airMailbox());
     unawaited(tick(selfCallsign));
     if (_armed || !Platform.isAndroid) return;
     _armed = true;
@@ -316,6 +323,10 @@ class XprsCatchup {
     if (now - _identityAtMs >= identityEvery.inMilliseconds) {
       _identityAtMs = now;
       unawaited(_airIdentity());
+    }
+    if (now - _mailboxAtMs >= mailboxEvery.inMilliseconds) {
+      _mailboxAtMs = now;
+      unawaited(_airMailbox());
     }
     _ticking = true;
     unawaited(tick(_selfCallsign).whenComplete(() => _ticking = false));
@@ -361,6 +372,7 @@ class XprsCatchup {
     _sawRows.clear();
     _lastResumeMs.clear();
     _identityAtMs = 0;
+    _mailboxAtMs = 0;
     _backfillStation = null;
     _backfillFetched = 0;
     _backfillSettled = false;
@@ -385,6 +397,29 @@ class XprsCatchup {
     } catch (e) {
       LogService.instance.add('XPRS: identity airing failed: $e');
       _identityAtMs = 0;
+    }
+  }
+
+  /// Announce this station's chosen archiver devices as a signed `t:mailbox`
+  /// (13.12) — the same stations it sends copies of its publications to (36),
+  /// so others and those archivers know where this station can be reached.
+  /// Aired on every bearer the station has (36.0), never internet-only. Zero
+  /// archivers is a valid configuration (36.3): then there is nothing to
+  /// announce. Fire-once at start then on the daily period; retry on the next
+  /// tick if no bearer took it, exactly like [_airIdentity].
+  Future<void> _airMailbox() async {
+    _mailboxAtMs = nowMs();
+    final list = PreferencesService.instanceSync?.xprsArchivers ?? const [];
+    if (list.isEmpty) return;
+    try {
+      final report =
+          await XprsPublisher.instance.publishMailboxDecl(list.join(','));
+      if (!report.values.any((v) => v == 'sent')) {
+        _mailboxAtMs = 0; // nothing took it: retry on the next tick
+      }
+    } catch (e) {
+      LogService.instance.add('XPRS: mailbox airing failed: $e');
+      _mailboxAtMs = 0;
     }
   }
 
@@ -425,10 +460,10 @@ class XprsCatchup {
             .toList(growable: false))
         : const <XprsStation>[];
 
-    // ── The super-archivers (36.9.4) ────────────────────────────────────
+    // ── The always-on archivers (36.9.4) ────────────────────────────────────
     // A station in earshot holds what IT heard, which is the neighbourhood.
     // Global chat is not a neighbourhood: it is everything everybody said,
-    // and the place that holds all of it is a super-archiver on the internet
+    // and the place that holds all of it is an always-on archiver on the internet
     // (36.9.4's deep memory). It is asked whether or not any radio is up --
     // that is the whole point of it -- and it is asked the same metered
     // question, on the addressed lane, which is the one the public hubs
@@ -444,7 +479,7 @@ class XprsCatchup {
     // whatever announced `serve:…,super` while this device was listening.
     final knownSupers = <String>[];
     for (final c in [
-      ...prefs.xprsSuperArchivers,
+      ...prefs.xprsAlwaysOnArchivers,
       // Every station this node has learned from a Reticulum ANNOUNCE.
       //
       // This is the list that makes a fresh install work, and the one that was
@@ -486,7 +521,7 @@ class XprsCatchup {
     final asked = <String>[];
     for (final st in [
       ...fresh,
-      // A super-archiver we have never heard on the air has no station record
+      // An always-on archiver we have never heard on the air has no station record
       // and so no count:/mail: to compare -- which the news check below reads
       // as "no news", leaving the every-period backstop to carry it.
       for (final c in supers) XprsStation(c, 'rns', now),

@@ -1113,7 +1113,7 @@ class RemoteApiService {
       }
       // What this station holds and seeds for the phones around it.
       // Who holds this content? The question the whole update design turns
-      // on -- a phone fetches by sha256 from a super-archiver -- and until now
+      // on -- a phone fetches by sha256 from an always-on archiver -- and until now
       // the only way to ask it was to start a download and watch it hang.
       if (req.method == 'GET' && path == '/api/files/providers') {
         final sha = (req.uri.queryParameters['sha'] ?? '').trim().toLowerCase();
@@ -1454,7 +1454,7 @@ class RemoteApiService {
           'disabled': pub.disabledBearers.toList(),
         });
       }
-      // Configure the super-archivers this station leans on (36.9.4).
+      // Configure the always-on archivers this station leans on (36.9.4).
       if (req.method == 'POST' && path == '/api/xprs/super') {
         final data = await _body(req);
         final list = (data['supers'] as List?)
@@ -1463,16 +1463,16 @@ class RemoteApiService {
                 .toList() ??
             const <String>[];
         final prefs = PreferencesService.instanceSync;
-        if (data.containsKey('supers')) prefs?.xprsSuperArchivers = list;
-        // {"be": true} — BE one. A super-archiver keeps every callsign's
+        if (data.containsKey('supers')) prefs?.xprsAlwaysOnArchivers = list;
+        // {"be": true} — BE one. An always-on archiver keeps every callsign's
         // gossip and every public wire, announces `serve:archive,super`, and
         // is what a station with no radio in earshot asks for Global chat
         // (36.9.4). Somebody on the internet has to be one or there is
         // nowhere for the rest to pull from.
         if (data.containsKey('be')) {
-          prefs?.xprsSuperArchiver = data['be'] == true;
-          // A super-archiver mirrors releases (docs: the phone fetches by sha
-          // from a super-archiver, which fetched from xprs.dev). Becoming one
+          prefs?.xprsAlwaysOnArchiver = data['be'] == true;
+          // An always-on archiver mirrors releases (docs: the phone fetches by sha
+          // from an always-on archiver, which fetched from xprs.dev). Becoming one
           // at runtime starts the mirror now rather than at the next boot.
           final m = UpdateMirrorService.instance;
           if (m.enabled && !m.isRunning) {
@@ -1483,8 +1483,8 @@ class RemoteApiService {
         }
         return _json(res, {
           'ok': true,
-          'supers': prefs?.xprsSuperArchivers ?? const <String>[],
-          'be': prefs?.xprsSuperArchiver ?? false,
+          'supers': prefs?.xprsAlwaysOnArchivers ?? const <String>[],
+          'be': prefs?.xprsAlwaysOnArchiver ?? false,
         });
       }
       // Where can a callsign be reached (36.9.4 gossip + 13.12): the

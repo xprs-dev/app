@@ -80,6 +80,20 @@ void main() {
     XprsMonitor.instance.debugReset();
   });
 
+  test('xprsArchivers unifies the push list and the mailbox-hold list', () {
+    final prefs = PreferencesService.instanceSync!;
+    prefs.xprsAlwaysOnArchivers = const ['X3RLY7', 'X32DVA'];
+    prefs.xprsMailboxHold = 'X32DVA,CT1ABC'; // one overlap, one new
+    // Supers first (they drive the 36 push), hold-only appended, deduped.
+    expect(prefs.xprsArchivers, ['X3RLY7', 'X32DVA', 'CT1ABC']);
+    // The unified setter keeps both legacy keys in step — one list, two roles.
+    prefs.xprsArchivers = const ['X5AAA', 'X5BBB'];
+    expect(prefs.xprsAlwaysOnArchivers, ['X5AAA', 'X5BBB']);
+    expect(prefs.xprsMailboxHold, 'X5AAA,X5BBB');
+    // Leave no state for the shared singleton's next test.
+    prefs.xprsArchivers = const [];
+  });
+
   test('a station whose beacon has not changed is not asked twice', () async {
     _beacon(now, count: 10);
     await XprsCatchup.instance.tick(_self);
@@ -349,11 +363,11 @@ void main() {
   /// A device with nothing configured and nothing fetched yet.
   void freshInstall() {
     final prefs = PreferencesService.instanceSync!;
-    prefs.xprsSuperArchivers = const [];
+    prefs.xprsAlwaysOnArchivers = const [];
     prefs.xprsCatchupMarks = const {};
   }
 
-  /// A beacon from [call] that claims the super-archiver role.
+  /// A beacon from [call] that claims the always-on archiver role.
   void superBeacon(String call, int nowMs) {
     final p = XprsPacket.parse(
         't:observation f:$call link:ble peers:1 serve:archive,super count:9');
@@ -369,7 +383,7 @@ void main() {
     await XprsCatchup.instance.tick(_self);
     expect(aired.where((w) => w.contains('d:X3SUPR')), hasLength(1),
         reason: 'a station in earshot is already in the heard list');
-    expect(PreferencesService.instanceSync!.xprsSuperArchivers, isEmpty,
+    expect(PreferencesService.instanceSync!.xprsAlwaysOnArchivers, isEmpty,
         reason: 'and nothing the radio heard may edit the operator list');
   });
 

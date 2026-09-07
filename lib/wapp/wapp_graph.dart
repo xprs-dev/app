@@ -795,14 +795,14 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   /// so each bucket answers a question the other does not.
   ///
   /// Honest limit, and the reason the menu says "named or heard": on the RNS
-  /// lane there is no super-archiver concept to read at all, so a node there
+  /// lane there is no always-on archiver concept to read at all, so a node there
   /// counts as one only because the operator listed it. On the air, the word
   /// arrives in `serve:`.
   Future<void> _pickRole() async {
     const opts = ['', 'super', 'archive', 'normal'];
     const help = {
       '': 'any role',
-      'super': 'super-archivers',
+      'super': 'always-on archivers',
       'archive': 'archivers',
       'normal': 'normal nodes',
     };
@@ -1177,7 +1177,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   /// Section 24's `serve:` words, as a person would say them. The wire word is
   /// terse on purpose (250 bytes); a panel has room to say what it means.
   static const Map<String, String> _serviceLabels = {
-    'super': 'Super-archiver',
+    'super': 'Always-on archiver',
     'relay': 'Relay',
     'archive': 'Archiver',
     'internet': 'Internet gateway',

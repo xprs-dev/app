@@ -404,20 +404,20 @@ class XprsGossip {
   }
 
   /// The miss path of 36.9.4: gossip knows nothing of [call], so ask a
-  /// configured super-archiver -- over the directed lane, because the
+  /// configured always-on archiver -- over the directed lane, because the
   /// public hubs throttle everything else. Throttled per callsign; the
   /// answer flows back through the ordinary funnel and lands here.
   final Map<String, int> _askedSuperMs = {};
   int superAsks = 0;
 
-  void askSuper(
+  void askAlwaysOn(
     String call, {
     required Future<void> Function(String wire) publish,
-    required List<String> superArchivers,
+    required List<String> alwaysOnArchivers,
     required String selfBase,
     int? nowMs,
   }) {
-    if (superArchivers.isEmpty) return;
+    if (alwaysOnArchivers.isEmpty) return;
     final c = call.trim().toUpperCase();
     if (c.isEmpty || c == selfBase) return;
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
@@ -434,7 +434,7 @@ class XprsGossip {
     final sinceS =
         '${since.year}-${two(since.month)}-${two(since.day)}_'
         '${two(since.hour)}:${two(since.minute)}:${two(since.second)}';
-    for (final sa in superArchivers) {
+    for (final sa in alwaysOnArchivers) {
       final g = sa.trim().toUpperCase();
       if (g.isEmpty || g == selfBase) continue;
       // identity first in the kind list: the observation that answers the

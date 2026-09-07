@@ -17,6 +17,7 @@ import 'widgets/log_view_field.dart';
 import 'widgets/stats_grid_field.dart';
 import 'widgets/popularity_chart_field.dart';
 import 'widgets/chat_view_field.dart';
+import 'widgets/people_view_field.dart';
 import 'widgets/details_field.dart';
 
 /// Bindings interface for reading/writing field values.
@@ -358,6 +359,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
       'code' => _renderCodeField(fieldName, label, tip, field),
       'log' => _renderLogField(fieldName, label, tip, field),
       'chat' => _renderChatField(fieldName, label, tip, field),
+      'people' => _renderPeopleField(fieldName, label, tip, field),
       'icon' => _renderIconField(fieldName, label, tip, field),
       'qr' => _renderQrField(fieldName, label, tip, field),
       'stats' => _renderStatsField(fieldName),
@@ -842,6 +844,69 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
         widget.bindings.setValue('${name}_input', text);
         widget.onAction?.call('${name}_send');
       },
+    );
+  }
+
+  /// `$type:"people"` — the generic callsign/people picker (the same widget the
+  /// chat rooms use), now available to ANY declarative wapp screen. Sections
+  /// come from a `ui.people.set` the wapp pushes into this field; a tap fires
+  /// `<name>_tap` with `<name>_id`, a row action fires `<name>_<action>` with
+  /// `<name>_id`, and (when `"search": true`) the search box fires
+  /// `<name>_search` with `<name>_query`. Wapps build the rows with the shared
+  /// ../hal/people_finder.h helper. Bounded height so it lives inside a
+  /// scrolling settings screen rather than demanding the whole viewport.
+  Widget _renderPeopleField(
+      String name, String label, String? tip, GeoUiBlock field) {
+    final raw = widget.bindings.getValue(name);
+    final sections = raw is List
+        ? raw.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
+        : const <Map<String, dynamic>>[];
+    final wantSearch = field.getBool('search') ?? false;
+    final hint = field.getString('search-hint') ??
+        field.getString('hint') ??
+        'Search a callsign';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (tip != null && tip.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(tip, style: Theme.of(context).textTheme.bodySmall),
+          ),
+        if (wantSearch)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: hint,
+                prefixIcon: const Icon(Icons.search, size: 18),
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (q) {
+                widget.bindings.setValue('${name}_query', q);
+                widget.onAction?.call('${name}_search');
+              },
+            ),
+          ),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 460),
+          child: PeopleViewField(
+            fieldName: name,
+            sections: sections,
+            emptyText: field.getString('empty'),
+            onTap: (id) {
+              widget.bindings.setValue('${name}_id', id);
+              widget.onAction?.call('${name}_tap');
+            },
+            onAction: (action, id) {
+              widget.bindings.setValue('${name}_id', id);
+              widget.onAction?.call(action);
+            },
+          ),
+        ),
+      ],
     );
   }
 
