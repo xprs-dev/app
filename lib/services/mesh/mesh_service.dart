@@ -14,7 +14,7 @@
  */
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, File, Directory;
 import 'dart:typed_data';
 
 import 'package:battery_plus/battery_plus.dart';
@@ -23,6 +23,7 @@ import '../../connections/bluetooth/ble5_bus.dart';
 import '../../profile/profile_service.dart';
 import '../../profile/storage_paths.dart';
 import '../../util/media_archive.dart';
+import '../../util/media_ref.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
 import '../xprs/xprs_airtime.dart';
@@ -31,6 +32,7 @@ import '../xprs/xprs_groups.dart';
 import '../xprs/xprs_catchup.dart';
 import '../xprs/xprs_files.dart';
 import '../xprs/xprs_file_acl.dart';
+import '../reticulum/rns_service.dart';
 import '../social/archiver_service.dart';
 import 'package:reticulum/src/services/social/archiver_policy.dart';
 import 'package:reticulum/src/services/social/retention_tier.dart';
@@ -411,6 +413,33 @@ class MeshService {
               usedBytes: mediaArchive.hostedStats().totalBytes,
               via: via,
             );
+        // The internet middle for a `cmd:file` fetch (§11.2.2): when the
+        // archiver is reachable off-radio, race a Reticulum/DHT/swarm fetch
+        // against the bulk lane. fetchContentAddressed archives and re-seeds
+        // what it gets, so we become a provider too. Writes are async — no
+        // blocking I/O on the UI isolate (docs/architecture.md §2).
+        XprsFileFetch.instance.internetFetch =
+            (shaHex, ext, archiver, destDir) async {
+          final bytes = await RnsService.instance.fetchContentAddressed(
+              _hexBytes(shaHex),
+              ext: ext,
+              fromCallsign: archiver);
+          if (bytes == null || bytes.isEmpty) return null;
+          if (destDir != null) {
+            try {
+              await Directory(destDir).create(recursive: true);
+              final path = '$destDir${Platform.pathSeparator}$shaHex'
+                  '${ext.isNotEmpty ? '.$ext' : ''}';
+              await File(path).writeAsBytes(bytes);
+              return path;
+            } catch (_) {
+              return null;
+            }
+          }
+          // No destination named: it is archived and re-seeded already, so the
+          // token is the "path" the waiter completes on (chat reads the blob).
+          return 'file:${MediaRef.hexToB64u(shaHex)}.$ext';
+        };
         // The XPRS bracket around the bulk lane (section 25.2.2): the closing
         // `code:200` is aired from the sender's FILE_OK, and a requester's
         // wait ends when the bytes land and verify on this side.
@@ -1336,4 +1365,13 @@ class MeshService {
   /// delivery (today: queue any attachment it references on the bulk lane).
   void noteConvoOutMessage(Map<String, dynamic> data) =>
       MeshCustodyDelegate.onConvoOutMessage(data);
+}
+
+/// 64 hex chars → 32 bytes, for the content-addressed fetch APIs.
+Uint8List _hexBytes(String hex) {
+  final out = Uint8List(hex.length ~/ 2);
+  for (var i = 0; i < out.length; i++) {
+    out[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+  }
+  return out;
 }

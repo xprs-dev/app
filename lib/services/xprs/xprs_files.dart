@@ -415,6 +415,15 @@ class XprsFileFetch {
   /// honoured by [claimInbound] so the artifact never becomes a sqlite blob.
   final Map<String, String> _destDir = {};
 
+  /// The internet middle (§11.2.2): fetch the bytes over Reticulum/DHT/torrent
+  /// when the archiver is reachable off-radio, racing the BLE bulk lane. Returns
+  /// the local path once the bytes verify, or null. mesh_service wires it to
+  /// `RnsService.fetchContentAddressed` and the shared-media resolve ladder.
+  /// Null means no internet lane (a BLE-only build or bench).
+  Future<String?> Function(
+          String shaHex, String ext, String archiver, String? destDir)?
+      internetFetch;
+
   /// How long to wait for the bytes once a peer said `202`.
   ///
   /// The bulk lane moves ~27 kB/s and MSP ends a session politely at 300 s,
@@ -459,6 +468,18 @@ class XprsFileFetch {
 
     LogService.instance.add('XPRS: asking $archiver for ${sha.substring(0, 8)}');
     await XprsPublisher.instance.publishWire(wire);
+
+    // Race the internet middle. The XPRS bracket stays authoritative for
+    // control, but the bytes take whichever lane delivers a verified copy
+    // first: over the internet a Reticulum resource or a swarm usually beats
+    // the ~27 kB/s bulk lane, and on a foreign network it is the only lane.
+    // The completer guards against a double-complete, so the loser is a no-op.
+    final net = internetFetch;
+    if (net != null) {
+      unawaited(net(sha, ext, archiver, _destDir[sha]).then((path) {
+        if (path != null) _completeFromInternet(sha, path);
+      }).catchError((_) => null));
+    }
 
     // Re-air the ask until it is answered.
     //
@@ -581,6 +602,21 @@ class XprsFileFetch {
       LogService.instance.add('XPRS: claim of ${sha.substring(0, 8)} failed: $e');
       return null; // fall back to the archive path rather than lose the file
     }
+  }
+
+  /// The internet middle delivered and verified the bytes first (§11.2.2).
+  /// Completes the same waiter the bulk lane would; a later bulk arrival for
+  /// the same digest finds the waiter gone and is a no-op.
+  void _completeFromInternet(String shaHex, String path) {
+    final sha = shaHex.toLowerCase();
+    _destDir.remove(sha);
+    _accepted.remove(sha);
+    final w = _waiting.remove(sha);
+    _pending.removeWhere((_, a) => a.sha == sha);
+    if (w == null || w.isCompleted) return;
+    LogService.instance
+        .add('XPRS: ${sha.substring(0, 8)} arrived over the internet');
+    w.complete(path);
   }
 
   /// The bulk lane finished and the file verified against its digest.

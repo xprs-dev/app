@@ -33,7 +33,10 @@ void main() {
   setUp(() {
     air = _Recorder();
     XprsPublisher.instance.bearers = [air];
+    XprsFileFetch.instance.internetFetch = null;
   });
+
+  tearDown(() => XprsFileFetch.instance.internetFetch = null);
 
   String askId() {
     final ask = air.sent.firstWhere((w) => w.contains('cmd:file'));
@@ -78,5 +81,55 @@ void main() {
     // The holder then refuses after all: that still ends the wait.
     XprsFileFetch.instance.onResult(result(askId(), 404));
     expect(await fut, isNull);
+  });
+
+  test('the internet lane wins the race and completes the fetch (§11.2.2)',
+      () async {
+    XprsFileFetch.instance.internetFetch =
+        (sha, ext, archiver, destDir) async {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      return '/tmp/from-internet.apk';
+    };
+    final path = await XprsFileFetch.instance.fetch(
+      archiver: 'X3GSLC',
+      shaHex: _sha,
+      selfCallsign: 'X1SELF',
+      ext: 'apk',
+      timeout: const Duration(seconds: 30),
+      acceptWithin: const Duration(seconds: 5),
+    );
+    expect(path, '/tmp/from-internet.apk',
+        reason: 'no 202, no bulk bytes — the internet middle delivered first');
+  });
+
+  test('a later bulk arrival after the internet won is a harmless no-op',
+      () async {
+    XprsFileFetch.instance.internetFetch =
+        (sha, ext, archiver, destDir) async => '/tmp/net.bin';
+    final path = await XprsFileFetch.instance.fetch(
+      archiver: 'X3GSLC',
+      shaHex: _sha,
+      selfCallsign: 'X1SELF',
+      ext: 'bin',
+      timeout: const Duration(seconds: 30),
+    );
+    expect(path, '/tmp/net.bin');
+    // The bulk lane finishes second; the waiter is gone, so this does nothing.
+    XprsFileFetch.instance.noteInboundComplete(_sha, '/tmp/bulk.bin');
+  });
+
+  test('internetFetch returning null falls through to the ordinary flow',
+      () async {
+    XprsFileFetch.instance.internetFetch =
+        (sha, ext, archiver, destDir) async => null;
+    final path = await XprsFileFetch.instance.fetch(
+      archiver: 'X3GSLC',
+      shaHex: _sha,
+      selfCallsign: 'X1SELF',
+      ext: 'apk',
+      timeout: const Duration(seconds: 30),
+      acceptWithin: const Duration(milliseconds: 200),
+    );
+    expect(path, isNull, reason: 'no internet, no answer — unchanged behaviour');
   });
 }
