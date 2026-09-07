@@ -41,14 +41,23 @@ Future<void> ensureRnsAutostart() async {
 
   final servers = prefs.rnsBootstrapServers;
 
+  final ws = wappsDataStorage(prefs);
+  final arch = MediaArchive.forDirectory(ws.getAbsolutePath(''));
+  // Serve our media archive over Reticulum ALWAYS, not only on first bring-up.
+  // This assignment used to sit inside `if (!rns.isUp)`, so a node whose RNS
+  // was already up when autostart ran left fileServeSource null (an empty
+  // source) and answered every files-link with "provider does not have the
+  // file" — even for blobs it held. The internet `cmd:file` lane then served
+  // nothing (found on two phones on different networks: the fetch opened the
+  // files link and the holder replied it had nothing). Idempotent, and a
+  // composite source installed later by the DiskFolderManager is not clobbered.
+  rns.fileServeSource ??= MediaFileSource(arch);
+
   // 1) Bring the node up via the FIRST reachable hub (this also builds the local
   //    services once). Skipped when already up — then we only top up the mesh.
   if (!rns.isUp) {
     // Serve the media we already hold (received files, imports; disk-folder
     // bytes are added later by the DiskFolderManager into the composite source).
-    final ws = wappsDataStorage(prefs);
-    final arch = MediaArchive.forDirectory(ws.getAbsolutePath(''));
-    rns.fileServeSource = MediaFileSource(arch);
 
     // Serve our hosted blobs over Blossom (GET /<sha256>). This used to start
     // only from inside hal_media_infohash — i.e. only on a device that had

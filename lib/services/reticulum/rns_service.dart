@@ -3064,7 +3064,13 @@ class RnsService {
         // folders (added later by the DiskFolderManager) — disk bytes are never
         // copied into sqlite.
         _composite = CompositeFileSource([
-          fileServeSource ?? const EmptyFileSource(),
+          // Read the serve source LIVE. It used to capture `fileServeSource` at
+          // this moment, so a node that had it assigned only AFTER start (the
+          // autostart ordering) served an empty source forever and answered an
+          // internet fetcher "provider does not have the file" for blobs it
+          // held — found on two phones on different networks. The live wrapper
+          // means a later assignment takes effect without rebuilding the node.
+          _LiveFileSource(() => fileServeSource),
         ]);
         // Resumable downloads: persist completed segments so a fetch resumes after a
         // drop or app restart. Generic — every fetch consumer (media, folders, wapp
@@ -11053,4 +11059,15 @@ class _ObservedNode {
     required this.publicKeyHex,
     required this.firstSeenMs,
   }) : lastSeenMs = firstSeenMs;
+}
+
+/// A [FileSource] that delegates to whatever [RnsService.fileServeSource] is at
+/// call time, so the serve node built once at start still reflects a source
+/// assigned later (autostart ordering, a later /api/rns/start). Whole-file
+/// read only — the interface's single method.
+class _LiveFileSource implements FileSource {
+  _LiveFileSource(this._get);
+  final FileSource? Function() _get;
+  @override
+  Uint8List? read(Uint8List fileHash) => _get()?.read(fileHash);
 }
