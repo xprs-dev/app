@@ -35,6 +35,7 @@ import 'xprs_monitor.dart';
 import 'xprs_id.dart';
 import 'xprs_outbox.dart';
 import 'xprs_packet.dart';
+import 'xprs_file_acl.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
 
@@ -311,6 +312,12 @@ class XprsIngest {
       // transaction actually wrote — a forged packet is dropped there, and a
       // watermark advanced here would have stepped straight over it.
       XprsArchive.instance.admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
+      // A message referencing a file binds that file's audience (§11.2): if we
+      // come to hold the picture, we serve it to exactly the people the message
+      // reached. No-op unless the body carries a `file:` token.
+      if (p.type == 'message') {
+        XprsFileAcl.instance.bindFromMessage(p, selfCallsign: selfCallsign);
+      }
     }
 
     // ANSWER A REACHABILITY TEST, ON WHATEVER BEARER IT ARRIVED ON.
@@ -540,6 +547,12 @@ class XprsIngest {
     }
     if (!_worthKeeping(p, forUs: false)) return;
     XprsArchive.instance.admit(p, bearer: _archiveBearer(bearer), own: true);
+    // Our own message binds the audience of any file it carries, so we serve
+    // our own shared pictures to the same people we sent them to (§11.2).
+    if (p.type == 'message') {
+      XprsFileAcl.instance
+          .bindFromMessage(p, selfCallsign: XprsArchive.instance.selfCallsign);
+    }
   }
 
   /// An XPRS datagram off the Reticulum 'xprs' tag. Never shown as a sighting

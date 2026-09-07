@@ -135,7 +135,7 @@ class UpdateMirrorService extends BackgroundService {
     // Answer `cmd:file` for anything we hold. The artifacts are already on
     // disk, already verified, and already keyed by the sha256 the feed
     // published — which is the same digest a peer will ask for.
-    XprsFileServer.instance.resolver = heldFile;
+    XprsFileServer.instance.addResolver(heldFile);
     for (final d in [stableDir, betaDir]) {
       if (d != null) _loadDigests(d);
     }

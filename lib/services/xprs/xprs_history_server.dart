@@ -28,6 +28,7 @@ import '../log_service.dart';
 import '../preferences_service.dart';
 import 'xprs_archive.dart';
 import 'xprs_files.dart';
+import '../social/archiver_service.dart';
 import 'xprs_gossip.dart';
 import '../reticulum/rns_service.dart';
 import 'xprs_id.dart';
@@ -121,6 +122,26 @@ class XprsHistoryServer {
       XprsUnownedStations.instance.note(p);
       return;
     }
+    // `q:have` (§8.1): who holds a file? Answered broadcast or directed, before
+    // the addressed-to-us gate — a station asks the street, and whoever holds
+    // the bytes replies. It moves nothing and is not gated on the audience (the
+    // hash is public); the BYTES are gated later, at `cmd:file`.
+    if ((p['q'] ?? '') == 'have') {
+      final from = _base(p['f'] ?? '');
+      if (from.isEmpty) return;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final id = xprsIdentifier(p);
+      _answeredIds.removeWhere((_, t) => now - t > answeredWindow.inMilliseconds);
+      if (_answeredIds.containsKey(id)) return;
+      _answeredIds[id] = now;
+      final directed = _base(p['d'] ?? '') == selfBase;
+      // A directed ask is metered like any other command; a broadcast answer
+      // only goes out when we actually hold it, so it needs no budget of its own.
+      if (directed && from != selfBase && !_budgetAllows(from, now)) return;
+      XprsFileServer.instance
+          .onHave(p, selfBase: selfBase, from: from, directed: directed);
+      return;
+    }
     if (_base(p['d'] ?? '') != selfBase) return;
     // `q:identity` (section 18.1) asks for the key binding directly instead of
     // waiting up to thirty minutes for the next announcement. Answering costs
@@ -131,7 +152,7 @@ class XprsHistoryServer {
       return;
     }
     final cmd = p['cmd'] ?? '';
-    if (cmd != 'history' && cmd != 'file') return;
+    if (cmd != 'history' && cmd != 'file' && cmd != 'put') return;
     // The rns lane is served like every other (36.0). The refusal that used
     // to sit here guarded a reply lane that did not exist; _air now goes
     // through the publisher, whose reticulum bearer IS that lane.
@@ -181,10 +202,34 @@ class XprsHistoryServer {
     // forged, within budget — and everything below is the history reader.
     if (cmd == 'file') {
       if (!selfIsAsking) _recordAsk(from, now);
+      // A private file is served only to a caller whose signature verifies as
+      // the callsign it claims (§11.2). Compute that here, where the key
+      // resolver lives; the server gates on it. The preamble above already
+      // dropped a FORGED sig; this asks the stronger question, VERIFIED.
+      final sigVerified = p.has('sig') &&
+          xprsVerify(p, archive.keyResolver?.call(from)) ==
+              XprsSigState.verified;
       XprsFileServer.instance.onCommand(p,
           selfBase: selfBase,
           from: from,
           cmdId: cmdId,
+          sigVerified: sigVerified,
+          air: (code, {String? m}) =>
+              _airControl(selfBase, from, cmdId, code, m: m));
+      return;
+    }
+
+    // `cmd:put` (§11.2): a peer offers to deposit a file for us to host,
+    // blossom style. Gated by the operator's archiver policy (§34.3) — silence
+    // is not consent. The bytes follow on the per-bearer middle; the 202 here
+    // only authorises and picks the lane.
+    if (cmd == 'put') {
+      if (!selfIsAsking) _recordAsk(from, now);
+      XprsFileServer.instance.onPut(p,
+          selfBase: selfBase,
+          from: from,
+          cmdId: cmdId,
+          via: ArchiverService.arrivedOver(bearer),
           air: (code, {String? m}) =>
               _airControl(selfBase, from, cmdId, code, m: m));
       return;

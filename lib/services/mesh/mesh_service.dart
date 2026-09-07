@@ -30,6 +30,10 @@ import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_groups.dart';
 import '../xprs/xprs_catchup.dart';
 import '../xprs/xprs_files.dart';
+import '../xprs/xprs_file_acl.dart';
+import '../social/archiver_service.dart';
+import 'package:reticulum/src/services/social/archiver_policy.dart';
+import 'package:reticulum/src/services/social/retention_tier.dart';
 import '../xprs/xprs_history_server.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_gossip.dart';
@@ -236,6 +240,11 @@ class MeshService {
         // tap can try them before prompting. Same profile-encrypted store.
         XprsPassphrases.instance.init(
             wappsDataStorage(prefs).getAbsolutePath('xprs_passphrases.sqlite3'));
+        // Who may fetch the BYTES behind a shared file: the audience of the
+        // message that carried it (§11.2). The hash is public; this gates the
+        // bytes. Same profile-encrypted store.
+        XprsFileAcl.instance.init(
+            wappsDataStorage(prefs).getAbsolutePath('xprs_file_acl.sqlite3'));
         var n = 0;
         for (final g in XprsGroupKeys.instance.followedGroups()) {
           n += XprsGroups.instance.hydrate(XprsGroupKeys.instance.actsFor(g));
@@ -346,11 +355,62 @@ class MeshService {
         // Poll every station in reach once a minute, off the native heartbeat
         // so it survives a pocket (docs/performance.md section 8.2).
         XprsCatchup.instance.start(cs);
+        final mediaArchive = MediaArchive.forDirectory(
+            wappsDataStorage(prefs).getAbsolutePath(''));
         MeshBulkSpool.instance.init(
-            wappsDataStorage(prefs).getAbsolutePath('mesh/bulk'),
-            MediaArchive.forDirectory(
-                wappsDataStorage(prefs).getAbsolutePath('')));
+            wappsDataStorage(prefs).getAbsolutePath('mesh/bulk'), mediaArchive);
         MeshBulkSpool.instance.sweep();
+        // Any archiver serves the chat media it holds on `cmd:file`, blossom
+        // style (§12.9.2). The lookup is a MediaArchive metadata read by
+        // digest — no blob load, so it is UI-isolate-safe (docs/architecture.md
+        // §2); the bytes go out on the bulk lane. Update-mirror artifacts keep
+        // their own resolver (the chain consults both).
+        XprsFileServer.instance.addResolver((shaHex) {
+          final meta = mediaArchive.getMeta(shaHex);
+          if (meta == null) return null;
+          return XprsHeldFile(
+            archiveToken: 'file:${meta.sha256}.${meta.ext}',
+            shaHex: shaHex,
+            size: meta.size,
+            name: meta.name ?? meta.sha256,
+            ext: meta.ext,
+          );
+        });
+        // The bytes are gated by the file's audience (§11.2): a public file to
+        // anyone, a private one only to a caller whose signature verifies as a
+        // member/participant. An unbound hash is public.
+        XprsFileServer.instance.authorize =
+            (sha, requester, {required bool sigVerified}) {
+          final scope = XprsFileAcl.instance.scopeOf(sha);
+          if (scope == null || scope == XprsFileScope.public) return true;
+          if (!sigVerified) return false; // a private file needs a proven caller
+          return XprsFileAcl.instance.authorized(sha, requester);
+        };
+        // The seeder index (§12.9.2): a `q:have` MISS names who else holds the
+        // bytes, from the MediaArchive `sources` table (callsign holders we
+        // learned from gossip or a re-seed). A large archiver bridges this to
+        // the provider-record/DHT lookup (Phase E) so a hash resolves network-
+        // wide; a leaf answers with what its own store knows.
+        XprsFileServer.instance.holderIndex = (shaHex) {
+          final out = <String>[];
+          for (final (kind, value) in mediaArchive.getSources(shaHex)) {
+            if (kind == 'callsign' && value.trim().isNotEmpty) {
+              out.add(value.trim().toUpperCase());
+            }
+          }
+          return out;
+        };
+        // `cmd:put` deposits are gated by the operator's archiver policy
+        // (§34.3): off until a quota is set, then a direct-link neighbour or a
+        // followed author gets in, under the quota ceiling. The bytes land on
+        // the bulk lane; this only authorises.
+        XprsFileServer.instance.admit = (from, bytes, via) => admitToArchive(
+              policy: ArchiverService.instance.policy,
+              tier: Tier.stranger,
+              bytes: bytes,
+              usedBytes: mediaArchive.hostedStats().totalBytes,
+              via: via,
+            );
         // The XPRS bracket around the bulk lane (section 25.2.2): the closing
         // `code:200` is aired from the sender's FILE_OK, and a requester's
         // wait ends when the bytes land and verify on this side.
@@ -829,8 +889,8 @@ class MeshService {
       envelope = envelope.with_(
           'serve',
           (PreferencesService.instanceSync?.xprsAlwaysOnArchiver ?? false)
-              ? 'archive,super'
-              : 'archive');
+              ? 'archive,super,files'
+              : 'archive,files');
     }
 
     // Most relevant first, and this station's idea of relevant (section
@@ -963,8 +1023,8 @@ class MeshService {
       envelope = envelope.with_(
           'serve',
           (PreferencesService.instanceSync?.xprsAlwaysOnArchiver ?? false)
-              ? 'archive,super'
-              : 'archive');
+              ? 'archive,super,files'
+              : 'archive,files');
     }
 
     // Leave room for the signature the fit cannot know about: ` sig:` plus 60

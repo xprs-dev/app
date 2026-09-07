@@ -30,6 +30,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:reticulum/src/services/social/archiver_policy.dart';
+
 import '../../util/media_ref.dart';
 import '../log_service.dart';
 import '../mesh/mesh_bulk_spool.dart';
@@ -42,8 +44,14 @@ import 'xprs_vocab.dart';
 
 /// A file this station holds, as the answer to a `file:` reference.
 class XprsHeldFile {
-  /// Absolute path. The spool reads it with seek+read and never copies it.
+  /// Absolute path for a file on disk. The spool reads it with seek+read and
+  /// never copies it. Empty when the bytes are a MediaArchive blob instead —
+  /// then [archiveToken] names them. Exactly one of the two is set.
   final String path;
+
+  /// `file:<b64u>.<ext>` token when the bytes live in the MediaArchive (a chat
+  /// picture) rather than on disk. Served with `enqueueFromArchive`.
+  final String? archiveToken;
 
   /// Lowercase hex SHA-256 — already known and trusted by the holder.
   final String shaHex;
@@ -52,7 +60,8 @@ class XprsHeldFile {
   final String ext;
 
   const XprsHeldFile({
-    required this.path,
+    this.path = '',
+    this.archiveToken,
     required this.shaHex,
     required this.size,
     required this.name,
@@ -90,13 +99,35 @@ class XprsFileServer {
   XprsFileServer._();
   static final XprsFileServer instance = XprsFileServer._();
 
-  /// What do we hold for this digest? Null means "not held" — a `404`.
+  /// What do we hold for this digest? Null from all means "not held" — a `404`.
   ///
-  /// Set by whoever owns files worth serving; the update mirror registers its
-  /// channel directories. Several owners chain by wrapping.
-  XprsHeldFile? Function(String shaHex)? resolver;
+  /// Registered by whoever owns files worth serving: the update mirror its
+  /// channel directories, the mesh its MediaArchive of chat media. Consulted in
+  /// registration order after [_held]; the first non-null wins.
+  final List<XprsHeldFile? Function(String shaHex)> _resolvers = [];
 
-  /// Files pinned explicitly, by digest. Consulted before [resolver], so an
+  /// Add a lookup consulted after the pinned files. Several owners coexist.
+  void addResolver(XprsHeldFile? Function(String shaHex) fn) =>
+      _resolvers.add(fn);
+
+  /// Legacy single-slot setter: REPLACES the chain (its old semantics), and
+  /// `= null` clears it. Production code registers with [addResolver] so owners
+  /// coexist; this stays for the tests and callers that owned the one slot.
+  set resolver(XprsHeldFile? Function(String shaHex)? fn) {
+    _resolvers.clear();
+    if (fn != null) _resolvers.add(fn);
+  }
+
+  /// Decides whether [requester] may receive the BYTES for [shaHex]. Null means
+  /// open — every held file public, the update-mirror default. Set to gate
+  /// private chat media by the audience of the message that shared it (§11.2).
+  /// [sigVerified] says whether the ask carried a signature that verified as
+  /// [requester]; a private file is served only to a verified, authorised
+  /// caller.
+  bool Function(String shaHex, String requester, {required bool sigVerified})?
+      authorize;
+
+  /// Files pinned explicitly, by digest. Consulted before the resolvers, so an
   /// operator (or a bench run) can offer one file without displacing whatever
   /// service owns the dynamic lookup.
   final Map<String, XprsHeldFile> _held = {};
@@ -106,8 +137,15 @@ class XprsFileServer {
   bool drop(String shaHex) => _held.remove(shaHex.toLowerCase()) != null;
   List<XprsHeldFile> get pinned => _held.values.toList(growable: false);
 
-  XprsHeldFile? _lookUp(String shaHex) =>
-      _held[shaHex] ?? resolver?.call(shaHex);
+  XprsHeldFile? _lookUp(String shaHex) {
+    final pinned = _held[shaHex];
+    if (pinned != null) return pinned;
+    for (final r in _resolvers) {
+      final f = r(shaHex);
+      if (f != null) return f;
+    }
+    return null;
+  }
 
   /// Largest file this station will offer a peer. A transfer is minutes of
   /// somebody's radio and battery (section 31.2), so there has to be a number;
@@ -135,6 +173,7 @@ class XprsFileServer {
     required String from,
     required String cmdId,
     required void Function(int code, {String? m}) air,
+    bool sigVerified = false,
   }) {
     final shaHex = xprsFileSha(p['file']);
     if (shaHex == null) {
@@ -147,6 +186,16 @@ class XprsFileServer {
       air(404);
       return 404;
     }
+    // WHO MAY FETCH THE BYTES (§11.2): the hash is public, the bytes are not. A
+    // private file is served only to a caller whose signed callsign is in the
+    // file's audience. An unauthorised ask is refused like a too-large one, so
+    // the asker learns not to retry. Null [authorize] = every file public.
+    final gate = authorize;
+    if (gate != null && !gate(shaHex, from, sigVerified: sigVerified)) {
+      refused++;
+      air(403, m: 'not authorized');
+      return 403;
+    }
     if (held.size > maxServeBytes) {
       refused++;
       // What `size:` on a description exists to prevent (section 6.7.1): say
@@ -158,15 +207,21 @@ class XprsFileServer {
     // `off:` resumes (section 25.2). We do not act on it here: the spool keeps
     // the receiver's offset and MSP's FILE_ACCEPT carries it, which is the
     // same resume the spec describes, decided by the side that knows.
-    final ok = MeshBulkSpool.instance.enqueueFromFile(
-      held.path,
-      held.shaHex,
-      held.size,
-      target: from,
-      origin: selfBase,
-      name: held.name,
-      ext: held.ext.isNotEmpty ? held.ext : xprsFileExt(p['file']),
-    );
+    //
+    // Chat media is a MediaArchive blob with no path — served with
+    // enqueueFromArchive; a file on disk (an update artifact) with enqueueFromFile.
+    final ok = held.archiveToken != null
+        ? MeshBulkSpool.instance
+            .enqueueFromArchive(held.archiveToken!, from, selfBase)
+        : MeshBulkSpool.instance.enqueueFromFile(
+            held.path,
+            held.shaHex,
+            held.size,
+            target: from,
+            origin: selfBase,
+            name: held.name,
+            ext: held.ext.isNotEmpty ? held.ext : xprsFileExt(p['file']),
+          );
     if (!ok) {
       // Already queued for this peer is success, not failure: the transfer it
       // is waiting for is the one it just asked for.
@@ -188,6 +243,116 @@ class XprsFileServer {
     return 202;
   }
 
+  /// Admission decision for a `cmd:put` deposit (§11.2, §34.3). Null = deposits
+  /// off (every put refused `403 not an archiver`). mesh_service wires this to
+  /// `admitToArchive` with the operator's policy and quota.
+  ArchiveVerdict Function(String from, int bytes, ArrivedOver via)? admit;
+
+  int deposits = 0;
+
+  /// Handle one `cmd:put`: a peer offers to deposit a file for us to host. The
+  /// XPRS ask authorises and picks the lane; the bytes then arrive on the
+  /// per-bearer middle (MSP bulk / RNS Resource) and the closing `200` — a
+  /// custody receipt for bytes — is aired when they land and verify. The
+  /// preamble already did the shared work (for us, not a dup, not forged).
+  int onPut(
+    XprsPacket p, {
+    required String selfBase,
+    required String from,
+    required String cmdId,
+    required ArrivedOver via,
+    required void Function(int code, {String? m}) air,
+  }) {
+    final shaHex = xprsFileSha(p['file']);
+    if (shaHex == null) {
+      air(400, m: 'file: must be a digest');
+      return 400;
+    }
+    final size = _bytesOf(p['size']);
+    if (size <= 0) {
+      // §11.2: size: is mandatory — accepting bytes unseen is how a small
+      // station is filled by a stranger.
+      air(400, m: 'size: required');
+      return 400;
+    }
+    if (size > maxServeBytes) {
+      air(403, m: 'too large: ${size}B');
+      return 403;
+    }
+    final decide = admit;
+    final v = decide?.call(from, size, via) ??
+        const ArchiveVerdict.no('not an archiver');
+    if (!v.accept) {
+      final full = v.reason == 'archive full';
+      refused++;
+      air(full ? 429 : 403, m: v.reason);
+      return full ? 429 : 403;
+    }
+    deposits++;
+    LogService.instance
+        .add('XPRS: cmd:put from $from (${size}B) accepted (202)');
+    air(202);
+    return 202;
+  }
+
+  /// A `size:` value in bytes: a bare integer, or a number with a `kB`/`MB`/`GB`
+  /// suffix (§6.7.1 writes them that way). 0 on anything unparseable.
+  static int _bytesOf(String? v) {
+    final s = (v ?? '').trim();
+    if (s.isEmpty) return 0;
+    final m = RegExp(r'^(\d+)\s*([kKmMgG]?)[bB]?$').firstMatch(s);
+    if (m == null) return 0;
+    final n = int.tryParse(m.group(1)!) ?? 0;
+    switch (m.group(2)!.toLowerCase()) {
+      case 'k':
+        return n * 1024;
+      case 'm':
+        return n * 1024 * 1024;
+      case 'g':
+        return n * 1024 * 1024 * 1024;
+      default:
+        return n;
+    }
+  }
+
+  /// Do we hold the bytes for this digest? (Pinned or any resolver.)
+  bool holds(String shaHex) => _lookUp(shaHex.toLowerCase()) != null;
+
+  /// "Who else holds this hash" — the seeder index (§12.9.2, Phase E): the
+  /// sources table and, on an indexer, the provider-record/DHT lookup. Returns
+  /// callsigns to name in a `q:have` miss's `m:try`. Null = nothing indexed.
+  List<String> Function(String shaHex)? holderIndex;
+
+  int qHave = 0;
+
+  /// Answer a `q:have` (§8.1): who holds the bytes for a `file:` reference. The
+  /// hash is public, so this is not gated — it moves no bytes, it only says
+  /// where they are. Held → `have:full`. A directed miss → `code:404` with
+  /// `m:try` naming indexed holders. A broadcast we cannot answer stays silent
+  /// (§8.1: a station holding nothing does not reply to the street).
+  void onHave(
+    XprsPacket p, {
+    required String selfBase,
+    required String from,
+    required bool directed,
+  }) {
+    final shaHex = xprsFileSha(p['file']);
+    if (shaHex == null) return;
+    final id = xprsIdentifier(p);
+    if (holds(shaHex)) {
+      qHave++;
+      unawaited(XprsPublisher.instance.publishWire('t:result f:$selfBase '
+          'd:$from ts:${xprsNowTs()} r:$id have:full'));
+      return;
+    }
+    if (!directed) return; // silent on a broadcast miss (§8.1)
+    final tries = holderIndex?.call(shaHex) ?? const <String>[];
+    final b = StringBuffer(
+        't:result f:$selfBase d:$from ts:${xprsNowTs()} r:$id code:404');
+    if (tries.isNotEmpty) b.write(' m:try ${tries.join(',')}');
+    unawaited(XprsPublisher.instance.publishWire(b.toString()));
+  }
+
   /// The peer verified the bytes and sent FILE_OK. Close the exchange with the
   /// `200` the spec makes conditional on exactly that.
   void noteHandedOver(String shaHex, String peer) {
@@ -206,7 +371,8 @@ class XprsFileServer {
         'notHeld': notHeld,
         'inFlight': _inFlight.length,
         'maxServeBytes': maxServeBytes,
-        'resolver': resolver != null,
+        'resolvers': _resolvers.length,
+        'gated': authorize != null,
         'pinned': [
           for (final f in _held.values)
             {'sha': f.shaHex, 'name': f.name, 'size': f.size}
