@@ -460,11 +460,22 @@ class XprsArchive {
       final avg = (bytes / rows).clamp(64, 1 << 20);
       var drop = ((bytes - maxBytes) / avg).ceil() + 500;
       if (drop > 20000) drop = 20000;
+      // §12.11: class first, age second. The spool (ordinary heard traffic,
+      // no `d:`) goes before custody mail (`d:` for a station that did NOT
+      // name us), which goes before declared mail (`d:` for a callsign whose
+      // `t:mailbox hold:` names us) — the last thing an archiver may drop. So
+      // the eviction order is (class asc, pts asc), not pts alone: a declared
+      // recipient's message outlives a stranger's chatter even when it is
+      // older. own/mine/identity/protected stay exempt as before.
       db.execute(
           'DELETE FROM packets WHERE id IN '
           "(SELECT id FROM packets WHERE own=0 AND mine=0 AND type != 'identity'"
-          '$protSql ORDER BY pts ASC LIMIT ?)',
-          [...protList, drop]);
+          '$protSql ORDER BY (CASE '
+          "WHEN toc = '' THEN 1 "
+          'WHEN EXISTS(SELECT 1 FROM mailbox_decl md WHERE md.fromc = packets.toc '
+          'AND md.pos >= 0 AND (md.until IS NULL OR md.until >= ?)) THEN 3 '
+          'ELSE 2 END) ASC, pts ASC LIMIT ?)',
+          [...protList, now, drop]);
       db.execute('PRAGMA incremental_vacuum;');
     } catch (e) {
       LogService.instance.add('XPRS archive: cap prune failed: $e');
