@@ -43,6 +43,7 @@ import '../mesh/mesh_custody.dart';
 import '../reticulum/rns_service.dart';
 import 'xprs_airtime.dart';
 import 'xprs_body.dart';
+import 'xprs_file_lift.dart';
 import 'xprs_id.dart';
 import 'xprs_outbox.dart';
 import 'xprs_packet.dart';
@@ -94,6 +95,15 @@ class XprsSend {
 
   static int sent = 0;
   static int refused = 0;
+
+  /// A message this station just sent references a file it holds. The core
+  /// decides what to do about the BYTES: hand a small one to the recipient on
+  /// the packet lane so it arrives with the words, offer a large one on the
+  /// bulk lane only where a link exists, and advertise it either way. Injected
+  /// (mesh_service) because the lane and the store are the core's, not this
+  /// composer's — this file only knows a reference went out and to whom.
+  /// [dest] is empty for a broadcast.
+  static void Function(String fileValue, String dest)? onFileShared;
 
   /// Messages that got their first-minute re-airings on BLE (see [_repeat]).
   static int repeated = 0;
@@ -154,16 +164,35 @@ class XprsSend {
       return XprsSendOutcome.malformed;
     }
 
-    final head = XprsPacket.parse('t:message f:$self d:$dest ts:${_now()}');
+    var head = XprsPacket.parse('t:message f:$self d:$dest ts:${_now()}');
     if (head == null) {
       refused++;
       return XprsSendOutcome.malformed;
     }
 
+    // A shared file's reference goes in the envelope, not in the sentence
+    // (§7.7). It has to happen HERE, before the body is built: a sealed 1:1
+    // hides `m:` inside `x:`, and a reference nobody can read is a reference
+    // nobody can fetch. §11.2 already says the hash is public and only the
+    // bytes are gated.
+    final lift = xprsLiftFile(text);
+    var body = text;
+    if (lift.found) {
+      head = head.with_('file', lift.file!);
+      if (lift.size != null) head = head.with_('size', '${lift.size}');
+      if (lift.name != null) {
+        final withName = head.with_('name', lift.name!);
+        if (withName.fits) head = withName;
+      }
+      body = lift.text;
+    }
+
     final built = xprsBuildDirect(
       head: head,
-      text: text,
-      private: private,
+      // Nothing left to seal once the words are gone: a file with no caption
+      // is a plain packet whose one statement is its `file:` field.
+      text: body,
+      private: private && body.isNotEmpty,
       // The key the recipient published in their own `t:identity` (§9.3),
       // learned from the air and re-announced every half hour (§18.1).
       recipientKeyHex: private
@@ -189,6 +218,7 @@ class XprsSend {
     final id = xprsIdentifier(built.rejoined ?? built.packets.first);
 
     unawaited(airDirect(built.packets, dest: dest, id: id));
+    if (lift.found) onFileShared?.call(lift.file!, dest);
     sent++;
     return XprsSendOutcome(
       form: built.privacy == XprsPrivacy.sealed ? 'x' : 'm',
@@ -229,7 +259,14 @@ class XprsSend {
       return XprsSendOutcome.malformed;
     }
 
+    // The same lift as a 1:1 (§7.7): the reference is a field, the caption is
+    // words. A broadcast is never sealed, so this is only about the wire form.
+    final lift = xprsLiftFile(text);
     var head = 't:message f:$self ts:${_now()}';
+    if (lift.found) {
+      head += ' file:${lift.file}';
+      if (lift.size != null) head += ' size:${lift.size}';
+    }
     // §13.11: global IS the absent field. Writing `scope:global` would be
     // twelve bytes saying the default on a bearer that charges by the byte.
     if (reach.isNotEmpty && reach != 'global') head += ' scope:$reach';
@@ -245,7 +282,7 @@ class XprsSend {
     // The same plain path a 1:1 gets — §9.1 signing, §6.6 splitting at spaces
     // with the signature over the reassembled packet (§9.1.1) — minus the seal
     // it cannot have.
-    final built = xprsBuildDirect(head: h, text: text, private: false);
+    final built = xprsBuildDirect(head: h, text: lift.text, private: false);
     if (!built.ok) {
       refused++;
       LogService.instance
@@ -256,6 +293,7 @@ class XprsSend {
 
     final id = xprsIdentifier(built.rejoined ?? built.packets.first);
     unawaited(airBroadcast(built.packets, id: id));
+    if (lift.found) onFileShared?.call(lift.file!, '');
     sent++;
     return XprsSendOutcome(form: 'm', id: id, parts: built.packets.length);
   }

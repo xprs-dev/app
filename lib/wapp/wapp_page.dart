@@ -2097,10 +2097,6 @@ class _WappPageState extends State<WappPage>
         } else if (type == 'ui.convo.msg') {
           final field = data['field'] as String? ?? 'conversations';
           _convStore(field).addMessage(data);
-          // Bulk-lane tap: outgoing 1:1 with a hosted file: token queues the
-          // payload for mesh delivery (encrypted wires hide the token, the
-          // bubble text doesn't).
-          MeshService.instance.noteConvoOutMessage(data);
           changed = true;
         } else if (type == 'ui.convo.reveal') {
           // Redacted text opened (docs/XPRS.md 9.2.1): show the plaintext in

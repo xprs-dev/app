@@ -38,6 +38,7 @@ import '../reticulum/rns_service.dart';
 import 'xprs_ingest.dart';
 import 'xprs_lan.dart';
 import 'xprs_airtime.dart';
+import 'xprs_file_lift.dart';
 import '../../util/nostr_crypto.dart';
 import 'xprs_archive.dart';
 import 'xprs_body.dart';
@@ -906,6 +907,11 @@ class XprsPublisher {
       LogService.instance.add('XPRS: publishWire rejected (parse)');
       return const {};
     }
+    // A wapp that put a `file:` token in its own wire's `m:` gets the same
+    // lift XprsSend does (§7.7): the reference becomes a field and the caption
+    // stays words. A wire this station did not write (`verbatim`) and a
+    // datagram chunk are left exactly as they are.
+    if (!verbatim && !datagram) p = xprsLiftFileOnPacket(p);
     // WHO MAY POST IN A CLOSED GROUP IS DECIDED HERE, ONCE. 26.7 says
     // membership decides display; the sending side of that is this station
     // not airing a post to a group it does not belong to. It used to be the

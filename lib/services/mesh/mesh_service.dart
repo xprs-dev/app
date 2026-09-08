@@ -32,6 +32,8 @@ import '../xprs/xprs_groups.dart';
 import '../xprs/xprs_catchup.dart';
 import '../xprs/xprs_files.dart';
 import '../xprs/xprs_file_acl.dart';
+import '../xprs/xprs_file_lift.dart';
+import '../xprs/xprs_send.dart';
 import '../xprs/xprs_inline_file.dart';
 import '../xprs/xprs_inline_sender.dart';
 import '../media/media_fetch.dart';
@@ -379,6 +381,46 @@ class MeshService {
         MediaFetch.instance
           ..archive = (() => mediaArchive)
           ..selfCallsign = (() => tableCallsign);
+        // What the wire says about a shared file (§7.7.1): the size a receiver
+        // decides with, and the name, read from the store at send time.
+        XprsFileLift.meta = (sha) {
+          final m = mediaArchive.getMeta(sha);
+          return m == null ? null : (size: m.size, name: m.name);
+        };
+        // A file this station just shared: what happens to the BYTES.
+        //
+        // Small enough for the packet lane and addressed to one station: send
+        // it now, so it arrives with the words even across a public hub, which
+        // is the one lane that crosses one (§7.7.6). Larger: offer it on the
+        // bulk lane only where a link actually exists — a photo pushed at a
+        // peer reachable only over BLE jams a channel everyone shares — and
+        // let the recipient ask when it wants it. Either way advertise the
+        // hash, so any holder can serve it later (§12.9.2).
+        XprsSend.onFileShared = (fileValue, dest) {
+          final ref = MediaRef.parse('file:$fileValue');
+          if (ref == null) return;
+          final meta = mediaArchive.getMeta(ref.sha256);
+          final sha = xprsFileSha(fileValue);
+          if (sha != null) {
+            unawaited(RnsService.instance.dhtPublish(_hexBytes(sha)));
+          }
+          if (dest.isEmpty || meta == null) return; // a broadcast: members pull
+          final self = tableCallsign.trim().toUpperCase();
+          if (self.isEmpty) return;
+          if (meta.size <= kInlineMaxBytes) {
+            final bytes = mediaArchive.get(ref.sha256);
+            if (bytes != null) {
+              XprsInlineSender.instance
+                  .send(bytes, from: self, to: dest, ext: ref.ext);
+            }
+            return;
+          }
+          final lanes = XprsPublisher.instance.reachableLanes(dest);
+          final linked = lanes.contains('ble5') || XprsLan.instance.peerCount > 0;
+          if (linked && MeshBulkSpool.instance.ready) {
+            MeshBulkSpool.instance.enqueueFromArchive(ref.token, dest, self);
+          }
+        };
         MeshBulkSpool.instance.init(
             wappsDataStorage(prefs).getAbsolutePath('mesh/bulk'), mediaArchive);
         MeshBulkSpool.instance.sweep();
@@ -1431,8 +1473,6 @@ class MeshService {
 
   /// A wapp echoed an outgoing 1:1 bubble. The core decides what that means for
   /// delivery (today: queue any attachment it references on the bulk lane).
-  void noteConvoOutMessage(Map<String, dynamic> data) =>
-      MeshCustodyDelegate.onConvoOutMessage(data);
 }
 
 /// 64 hex chars → 32 bytes, for the content-addressed fetch APIs.

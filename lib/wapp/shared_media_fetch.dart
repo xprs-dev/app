@@ -251,9 +251,10 @@ Future<String?> attachMediaFile(Uint8List bytes, String ext, {String? name}) asy
     }
   }
   LogService.instance.add('SharedMedia: attached $token (advertised on RNS)');
-  // Carry the size on the wire ("sz:<bytes>") so the receiver can show it and
-  // decide whether to auto-download.
-  return '$token sz:${bytes.length}';
+  // Just the token. The size travels as the packet's own `size:` field now
+  // (§7.7.1), lifted out of the caption by the core at send; `sz:` in the body
+  // was this app's own invention and is only read, never written.
+  return token;
 }
 
 /// Publish the bytes behind every media token in an OUTGOING message [text] to

@@ -541,9 +541,6 @@ class _WappBackgroundService extends BackgroundService {
             store.upsert(data);
           case 'ui.convo.msg':
             store.addMessage(data);
-            // Bulk-lane tap: outgoing 1:1 with a hosted file: token queues
-            // the payload for mesh delivery (see MeshCustodyDelegate).
-            MeshService.instance.noteConvoOutMessage(data);
           case 'ui.convo.remove':
             store.remove(data);
           case 'ui.convo.react':

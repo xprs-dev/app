@@ -166,7 +166,11 @@ Uint8List? _pubBytes(String? hexOrNpub) {
 }
 
 XprsBodyResult _plain(XprsPacket head, String text, BigInt? d) {
-  final whole = head.with_('m', text);
+  // A message whose only content was a file reference has no words left once
+  // the reference is lifted into `file:` (§7.7). `m:` is then omitted rather
+  // than written empty — §4 says a value is never empty, and the packet says
+  // everything it has to say in its fields.
+  final whole = text.isEmpty ? head : head.with_('m', text);
   final signed = d != null ? xprsSign(whole, d) : whole;
   if (signed.fits) {
     return XprsBodyResult.ok([signed], XprsPrivacy.plain);
