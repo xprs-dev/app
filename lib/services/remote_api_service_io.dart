@@ -1113,6 +1113,26 @@ class RemoteApiService {
           'elapsedMs': DateTime.now().millisecondsSinceEpoch - began,
         });
       }
+      if (req.method == 'GET' && path == '/api/xprs/inline') {
+        // The packet lane's state on this station: what the sender queued and
+        // aired, what the assembler heard and still waits for.
+        final snd = XprsInlineSender.instance;
+        final asm = XprsInlineAsm.instance;
+        return _json(res, {
+          'ok': true,
+          'sent': snd.sent,
+          'refused': snd.refused,
+          'resent': snd.resent,
+          'queued': snd.queued,
+          'chunksHeard': asm.chunksHeard,
+          'filesReceived': asm.received,
+          'reports': asm.reports,
+          'inFlight': [
+            for (final f in asm.inFlight)
+              {'from': f.$1, 'ref': f.$2, 'held': f.$3, 'total': f.$4},
+          ],
+        });
+      }
       if (req.method == 'POST' && path == '/api/xprs/inline') {
         // {"to":"X1ARKL","data":"<base64>","ext":"png"} — send a small binary
         // as t:file packets over the directed lane (§7.7.6), the vehicle a

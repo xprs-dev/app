@@ -1709,6 +1709,12 @@ class RnsService {
     'lanSelfDropped': _lan?.selfDropped ?? 0,
     'lanNobodyDropped': _lan?.nobodyDropped ?? 0,
     'lanPeers': _lan?.peerCount ?? 0,
+    'datagrams': {
+      'sent': datagramsSent,
+      'noPath': datagramsNoPath,
+      'tooBig': datagramsTooBig,
+      'opened': singlePacketsOpened,
+    },
     'interfaces': _ifaces.length + (_server != null ? 1 : 0),
     'inbox': _inbox.length,
     'provided': _files?.providedCount ?? 0,
@@ -4665,8 +4671,10 @@ class RnsService {
     if (!_up || _id == null || t == null) return false;
     final dh = _bytesFromHex(destHex);
     if (dh == null) return false;
-    final rid = t.pathFor(dh)?.identity;
+    final path = t.pathFor(dh);
+    final rid = path?.identity;
     if (rid == null) {
+      datagramsNoPath++;
       t.requestPath(dh);
       return false;
     }
@@ -4677,11 +4685,23 @@ class RnsService {
         _kWappLxmfField: [tag, payload],
       },
     );
-    if (msg.packed.length > kRnsEncryptedMdu) return false;
+    if (msg.packed.length > kRnsEncryptedMdu) {
+      datagramsTooBig++;
+      return false;
+    }
     final ct = await rid.encrypt(msg.packed);
     t.sendDataTo(dh, ct);
+    datagramsSent++;
+    LogService.instance.add('RNS: datagram ${ct.length} B -> '
+        '${destHex.substring(0, 8)} via ${path!.via} (${path.hops} hops)');
     return true;
   }
+
+  /// Packet-lane accounting, in /api/rns/status: what left, and why not.
+  int datagramsSent = 0;
+  int datagramsNoPath = 0;
+  int datagramsTooBig = 0;
+  int get singlePacketsOpened => _lxmf?.singlePacketsOpened ?? 0;
 
   /// Pull store-and-forwarded wapp datagrams a peer holds for us from its
   /// propagation dest [propDestHex]. Delivered datagrams land on [_wappInbox].
