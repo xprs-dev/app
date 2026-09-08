@@ -62,6 +62,12 @@ class RoomsField extends StatefulWidget {
   /// open (or create) the 1:1 with that callsign.
   final void Function(String from)? onDirectMessage;
 
+  /// Pick a file to send with the next message. Returns the `file:` token the
+  /// core minted for it, or null when the user backed out. The rooms layout is
+  /// the one most people ever see, and without this it was the only chat in
+  /// the app that could not send a picture.
+  final Future<String?> Function()? onAttach;
+
   const RoomsField({
     super.key,
     this.onTogglePrivacy,
@@ -81,6 +87,7 @@ class RoomsField extends StatefulWidget {
     this.onHide,
     this.onBlock,
     this.onDirectMessage,
+    this.onAttach,
   });
 
   @override
@@ -686,6 +693,7 @@ class _RoomsFieldState extends State<RoomsField> {
                         ? null
                         : (m) => widget.onBlock!((m['from'] ?? '').toString()),
                     onDirectMessage: widget.onDirectMessage,
+                    onAttach: widget.onAttach,
                   ),
                 ),
         ),

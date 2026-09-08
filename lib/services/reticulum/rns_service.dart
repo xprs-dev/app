@@ -10705,20 +10705,34 @@ class RnsService {
     final onDisk = _diskMgr?.filePathOf(folderId, sha);
     if (onDisk != null) return openFileWithSystem(onDisk);
 
+    return openArchivedFile(sha, name: name, group: folderId.substring(0, 12));
+  }
+
+  /// Materialise one archived file and hand it to whatever the system uses to
+  /// view that type. The archive keeps content as a database blob, so it has
+  /// to become a real file first; the copy is streamed on a worker isolate
+  /// straight out of sqlite (docs/performance.md §8.9), never read whole here.
+  ///
+  /// [group] keeps exports apart, so two folders each holding "readme.txt" do
+  /// not overwrite each other. Used by the folders lane and by a wapp opening
+  /// a file it was shown in a conversation.
+  Future<bool> openArchivedFile(String shaHex,
+      {String? name, String group = 'media'}) async {
+    final sha = _normShaHex(shaHex);
+    if (sha.length != 64) return false;
     final archive = sharedMediaArchive();
     if (archive == null || !archive.has(sha)) return false;
     final key = MediaArchive.storageKeyOf(sha);
     if (key == null) return false;
 
-    // Keep the file's real name (and therefore its extension — the OS routes on
-    // it) and keep folders apart, so two torrents holding "readme.txt" do not
-    // overwrite each other's export.
+    // Keep the file's real name, and therefore its extension — the OS routes
+    // on it.
     final leaf = (name == null || name.isEmpty)
         ? sha
         : name.split('/').last.replaceAll(RegExp(r'[^\w.\- ]'), '_');
     final dir = _folderExportDir;
     if (dir == null) return false;
-    final outPath = '$dir/${folderId.substring(0, 12)}/$leaf';
+    final outPath = '$dir/$group/$leaf';
 
     final path = await exportArchiveFile(
       dbPath: archive.dbPath,
@@ -10726,14 +10740,14 @@ class RnsService {
       outPath: outPath,
     );
     if (path == null) {
-      LogService.instance.add('folders: export of $leaf failed (archive read)');
+      LogService.instance.add('media: export of $leaf failed (archive read)');
       return false;
     }
     final opened = await openFileWithSystem(path);
     LogService.instance.add(
       opened
-          ? 'folders: opened $leaf with the system viewer'
-          : 'folders: no app on this device opens $leaf',
+          ? 'media: opened $leaf with the system viewer'
+          : 'media: no app on this device opens $leaf',
     );
     return opened;
   }

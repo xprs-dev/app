@@ -897,6 +897,64 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // What the core is doing about one reference → JSON. A wapp shows this;
+    // it never learns which lane carries the bytes, because that is the core's
+    // decision to make and to change (docs/architecture.md §3).
+    //
+    //   {state, received, total, size, name, ext, original}
+    //
+    // `state` is absent | seeking | fetching | ready | failed. `received` and
+    // `total` are bytes (0 when the size was never announced). `original` is
+    // the full-resolution reference a carried preview stands for, empty when
+    // the message carries the file itself (XPRS.md 7.7.7).
+    final halMediaState = WasmFunction(
+      (int tokenPtr, int tokenLen, int outPtr, int outCap) {
+        if (tokenLen <= 0 || outCap <= 0) return 0;
+        final raw = _readStr(tokenPtr, tokenLen);
+        final ref = MediaRef.parse(raw);
+        if (ref == null) return 0;
+        final fetch = MediaFetch.instance;
+        final p = fetch.progress(ref.sha256);
+        final info = fetch.describe(ref.sha256);
+        final meta = mediaArchive()?.getMeta(ref.sha256);
+        final original = fetch.originalOf(ref.sha256);
+        return _writeStr(
+            outPtr,
+            outCap,
+            jsonEncode({
+              'state': p.state.name,
+              'received': p.received,
+              'total': p.total,
+              'size': meta?.size ?? info?.size ?? p.total,
+              'name': meta?.name ?? info?.name ?? '',
+              'ext': info?.ext ?? ref.ext,
+              'original': original == null ? '' : '${original.sha}.${original.ext}',
+            }));
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // Hand a held file to whatever this device uses to view that type. The
+    // export runs on a worker isolate straight out of sqlite, so a 40 MB video
+    // never passes through this call (docs/performance.md §8.9). 1 = the
+    // export started; the viewer opening is up to the system.
+    final halMediaOpen = WasmFunction(
+      (int tokenPtr, int tokenLen) {
+        if (tokenLen <= 0) return 0;
+        final ref = MediaRef.parse(_readStr(tokenPtr, tokenLen));
+        if (ref == null) return 0;
+        final archive = mediaArchive();
+        if (archive == null || !archive.has(ref.sha256)) return 0;
+        final meta = archive.getMeta(ref.sha256);
+        unawaited(RnsService.instance
+            .openArchivedFile(ref.sha256,
+                name: meta?.name ?? '${ref.sha256}.${ref.ext}')
+            .catchError((_) => false));
+        return 1;
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     // Import a host file into the archive → wire token.
     final halMediaPutFile = WasmFunction(
       (int pathPtr, int pathLen, int outPtr, int outCap) {
@@ -915,6 +973,14 @@ class WappEngine {
               ? path.substring(dot + 1).toLowerCase()
               : 'bin';
           final name = path.substring(slash + 1);
+          // A conversation is not a file server. Above the cap the answer is
+          // "share it from a folder", where the bulk lane streams from disk
+          // instead of turning the file into a database blob.
+          if (f.lengthSync() > kMediaPutMaxBytes) {
+            LogService.instance.add(
+                'media: $name is larger than ${kMediaPutMaxBytes >> 20} MB — share it from a folder');
+            return 0;
+          }
           final token = archive.putBytes(
               // arch-ignore: no-blocking-io-on-ui WASI path_open ingest, synchronous by contract
               f.readAsBytesSync(),
@@ -4123,6 +4189,8 @@ class WappEngine {
       WasmImport('hal', 'verify', halVerify),
       WasmImport('hal', 'media_list', halMediaList),
       WasmImport('hal', 'media_meta', halMediaMeta),
+      WasmImport('hal', 'media_state', halMediaState),
+      WasmImport('hal', 'media_open', halMediaOpen),
       WasmImport('hal', 'media_put_file', halMediaPutFile),
       WasmImport('hal', 'media_set_meta', halMediaSetMeta),
       WasmImport('hal', 'media_delete', halMediaDelete),

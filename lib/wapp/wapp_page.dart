@@ -43,6 +43,7 @@ import 'geoui/widgets/stats_grid_field.dart';
 import 'geoui/widgets/chat_palette.dart';
 import 'geoui/widgets/chat_view_field.dart';
 import '../services/social/nostr_all_poller.dart';
+import '../services/media/media_fetch.dart';
 import '../services/social/nomadnet_poller.dart';
 import 'geoui/widgets/activity_feed.dart';
 import 'geoui/widgets/micron_view.dart';
@@ -3188,6 +3189,17 @@ class _WappPageState extends State<WappPage>
       const any = XTypeGroup(label: 'All files');
       final file = await openFile(acceptedTypeGroups: const [images, any]);
       if (file == null) return null;
+      // Same ceiling as the wapp verb: a conversation carries files a phone
+      // can hold once; anything bigger is shared from a folder.
+      if (await file.length() > kMediaPutMaxBytes) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                  '${file.name} is larger than ${kMediaPutMaxBytes >> 20} MB. '
+                  'Share it from a folder instead.')));
+        }
+        return null;
+      }
       final bytes = await file.readAsBytes();
       if (bytes.isEmpty) return null;
       final dot = file.name.lastIndexOf('.');
@@ -3541,6 +3553,11 @@ class _WappPageState extends State<WappPage>
       // Chat is a group client — the 1:1 lives wherever the profile's
       // "Message" button goes (the lxmf/npub thread), so route there.
       onDirectMessage: (from) => _openChatWithPeer(from),
+      // The same host-side pick the conversations layout uses: the core reads
+      // the file, stores it once and mints the reference. The wapp is handed a
+      // token in the text it is about to send and never sees a byte
+      // (docs/architecture.md §3).
+      onAttach: _attachFileToChat,
     );
     // A message still on its way says so where it happened — on its own bubble,
     // by having no tick yet (chat_view_field's _statusBadge: nothing while

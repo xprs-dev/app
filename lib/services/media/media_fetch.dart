@@ -44,6 +44,14 @@ import '../xprs/xprs_publisher.dart';
 import '../xprs/xprs_vocab.dart';
 import 'media_ref_index.dart';
 
+/// The largest file a conversation will take into the archive.
+///
+/// Attaching copies the bytes into a database blob, so the ceiling is what a
+/// phone can hold in memory once, for one deliberate user action. Anything
+/// bigger is shared from a folder, where the bulk lane streams it off disk
+/// (docs/performance.md §8.9).
+const int kMediaPutMaxBytes = 16 * 1024 * 1024;
+
 /// Where the bytes of a referenced file are, right now.
 enum MediaState { absent, seeking, fetching, ready, failed }
 

@@ -240,6 +240,9 @@ class WappDelivery {
     String id = '',
     String call = '',
     String sig = '',
+    String file = '',
+    String size = '',
+    String name = '',
   }) {
     // An XPRS wire is protocol, not correspondence: a `t:...`/`x:...` body
     // that leaked this far is a bug upstream, and it must never surface as a
@@ -273,6 +276,14 @@ class WappDelivery {
         'forUs': !title.startsWith('#'),
         'bearer': bearer,
         'rssi': 0,
+        // XPRS.md 7.7.7: the reference to an attached file travels as its own
+        // field, not inside the caption, so it survives a sealed 1:1 where the
+        // caption does not. The packet shape hands the wapp every field
+        // verbatim; this decoded shape has to name them, or the 1:1 path would
+        // be the one place a picture could arrive and not be rendered.
+        'file': file,
+        'size': size,
+        'name': name,
       });
   }
 

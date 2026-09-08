@@ -740,6 +740,12 @@ class MeshCourier {
         bearer: via,
         id: xprsIdentifier(p),
         sig: sigState.name,
+        // The attachment reference and what was said about it (XPRS.md 7.7.7).
+        // It rides outside the caption, so it is here even when the caption
+        // arrived sealed.
+        file: p['file'] ?? '',
+        size: p['size'] ?? '',
+        name: p['name'] ?? '',
         ts: xprsParseTs(p['ts']));
     // REMEMBER it. `_alreadyDelivered` is checked on the way in, but nothing
     // ever recorded the delivery, so the guard read a flag no one set and the
