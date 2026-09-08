@@ -3525,6 +3525,18 @@ class RnsService {
           // ever learns from failure. Forget the entry and ask again, so the
           // retry is not posted into the same dead hub route.
           ..pathFailed = ((h) {
+            // Once a minute per peer, not once per failed handshake. Measured:
+            // every control reply whose link timed out dropped the path, four
+            // times in two minutes, and the datagrams that were flowing fine
+            // between the drops were refused for want of a path.
+            final key = _hex(h);
+            final nowMs = DateTime.now().millisecondsSinceEpoch;
+            final last = _lastPathDropMs[key] ?? 0;
+            if (nowMs - last < 60 * 1000) return;
+            if (_lastPathDropMs.length >= 64) {
+              _lastPathDropMs.remove(_lastPathDropMs.keys.first);
+            }
+            _lastPathDropMs[key] = nowMs;
             _wantPathOverBle(h); // the re-ask must not queue behind the sweep
             _transport?.pathFailed(h, reason: 'lxmf delivery');
           })
@@ -4678,24 +4690,46 @@ class RnsService {
       t.requestPath(dh);
       return false;
     }
+    final sw = Stopwatch()..start();
+    // Unsigned: the wire authenticates itself and the receiver delivers it
+    // under its self-authenticating rule. One Ed25519 sign per chunk was
+    // seconds on a phone.
     final msg = await LxmfMessage.create(
       destinationHash: dh,
       source: _id!,
       fields: {
         _kWappLxmfField: [tag, payload],
       },
+      sign: false,
     );
+    final createMs = sw.elapsedMilliseconds;
     if (msg.packed.length > kRnsEncryptedMdu) {
       datagramsTooBig++;
       return false;
     }
-    final ct = await rid.encrypt(msg.packed);
+    // One ephemeral key per peer per ten minutes: the curve is paid once for
+    // the stream, each packet gets its own IV.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    var enc = _datagramEnc[destHex];
+    if (enc == null || now - enc.$2 > 10 * 60 * 1000) {
+      enc = (await rid.encryptor(), now);
+      if (_datagramEnc.length >= 16) _datagramEnc.remove(_datagramEnc.keys.first);
+      _datagramEnc[destHex] = enc;
+    }
+    final ct = enc.$1.encrypt(msg.packed);
+    final encryptMs = sw.elapsedMilliseconds - createMs;
     t.sendDataTo(dh, ct);
     datagramsSent++;
-    LogService.instance.add('RNS: datagram ${ct.length} B -> '
-        '${destHex.substring(0, 8)} via ${path!.via} (${path.hops} hops)');
+    if (datagramsSent % 25 == 1) {
+      LogService.instance.add('RNS: datagram ${ct.length} B -> '
+          '${destHex.substring(0, 8)} via ${path!.via} (${path.hops} hops; '
+          'pack $createMs ms, encrypt $encryptMs ms)');
+    }
     return true;
   }
+
+  final Map<String, (RnsEncryptor, int)> _datagramEnc = {};
+  final Map<String, int> _lastPathDropMs = {};
 
   /// Packet-lane accounting, in /api/rns/status: what left, and why not.
   int datagramsSent = 0;
