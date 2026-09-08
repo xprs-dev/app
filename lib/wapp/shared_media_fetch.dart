@@ -38,6 +38,7 @@ import '../services/preferences_service.dart';
 import '../services/reticulum/rns_service.dart';
 import '../services/torrent_service.dart';
 import '../util/media_archive.dart';
+import '../services/media/media_fetch.dart';
 import '../util/media_ref.dart';
 import '../util/nostr_crypto.dart';
 import 'geoui/widgets/media_view.dart' show sharedMediaArchive;
@@ -53,7 +54,6 @@ int? mediaSizeHint(String text) =>
 // A peer's I2P destination, carried in messages/beacons as `dest:<b32>.b32.i2p`.
 // Learning these populates the I2P roster used for content discovery.
 final RegExp _destRe = RegExp(r'\bdest:([a-z2-7]{52})\.b32\.i2p\b');
-final Set<String> _inFlight = {};
 
 /// Learn a peer's I2P destination from an incoming message carrying a
 /// `dest:<b32>` token, so we can fetch from / route discovery through it.
@@ -86,33 +86,22 @@ void maybeFetchSharedMedia(String text, String dir, {String? from}) {
   _learnPeerDest(text, from); // populate the I2P roster from dest: tokens
   final ih = _ihRe.firstMatch(text)?.group(1)?.toLowerCase();
   final prefs = PreferencesService.instanceSync;
-  // Don't auto-download files larger than the user's threshold (default 10 MB);
-  // those wait for an explicit tap (MediaThumbnail shows size + a download chip).
-  final size = mediaSizeHint(text);
-  final maxMb = prefs?.mediaAutoMaxMb ?? 10;
-  if (size != null && maxMb > 0 && size > maxMb * 1024 * 1024) return;
-  if (maxMb == 0) return; // auto-download disabled — always require a tap
+  final hint = mediaSizeHint(text); // older messages carried `sz:` in the body
   for (final ref in refs) {
-    if (archive.has(ref.sha256) || _inFlight.contains(ref.sha256)) continue;
-    _inFlight.add(ref.sha256);
+    if (archive.has(ref.sha256)) continue;
     if (ih != null) archive.addSource(ref.sha256, 'infohash', ih);
     if (prefs != null) {
       TorrentService.instance
           .configure(archive, wappsDataStorage(prefs).getAbsolutePath('share'));
     }
-    _resolve(ref, ih, archive, fromCallsign: from).then((ok) {
-      if (ok) {
-        // Re-seed: now that we hold the verified bytes, advertise ourselves as a
-        // provider in the DHT so any other chat participant can fetch this file
-        // from us over Reticulum. This is what makes every downloader a seeder —
-        // the swarm of holders grows with each download, with no central server.
-        _reseed(ref, archive);
-      } else {
-        // Clear the in-flight mark on failure so a later render/arrival retries
-        // (e.g. once the Files wapp's next LAN scan finds a server that has it).
-        _inFlight.remove(ref.sha256);
-      }
-    });
+    // ONE DOOR. Whether to fetch at all, and on which lane, is the core's
+    // decision (docs/architecture.md §3): it knows the file's size, whether a
+    // link or only a shared radio reaches the holder, and what the operator
+    // allows to arrive unasked. This render path only says which file is on
+    // screen and who sent it.
+    unawaited(MediaFetch.instance
+        .want(ref, from: from, size: hint)
+        .catchError((_) => false));
   }
 }
 

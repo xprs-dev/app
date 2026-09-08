@@ -57,6 +57,7 @@ import 'blossom_server.dart';
 import 'files/media_file_source.dart';
 import 'i2p/i2p_service.dart';
 import 'log_service.dart';
+import 'media/media_fetch.dart';
 import 'reticulum/rns_service.dart';
 import 'folders/folder_event.dart' show FolderShareType;
 import 'preferences_service.dart';
@@ -294,8 +295,20 @@ class RemoteApiService {
         // Full tiered resolution: cache → LAN Blossom → public Blossom →
         // BitTorrent. Fire-and-forget (the swarm tier can run for minutes);
         // poll /api/media/has and /api/media/torrents to observe completion.
-        resolveSharedMedia(sha256, ext, ih: ih).then((ok) => LogService.instance
-            .add('RemoteApi: media resolve $sha256 -> ${ok ? 'ok' : 'failed'}'));
+        final ref = MediaRef.parse(
+            'file:${sha256.length == 64 ? MediaRef.hexToB64u(sha256) : sha256}.$ext');
+        if (ref == null) {
+          return _json(res, {'ok': false, 'error': 'bad sha256'},
+              status: HttpStatus.badRequest);
+        }
+        if (ih != null) _mediaArchive()?.addSource(ref.sha256, 'infohash', ih);
+        // Explicit ask: the core takes any lane, including the ones a size
+        // ceiling would otherwise hold back.
+        unawaited(MediaFetch.instance
+            .want(ref, userTapped: true)
+            .then((ok) => LogService.instance
+                .add('RemoteApi: media $sha256 -> ${ok ? 'ok' : 'failed'}'))
+            .catchError((_) => false));
         return _json(res, {'ok': true, 'started': true, 'sha256': sha256, 'ih': ih});
       }
       if (req.method == 'POST' && path == '/api/media/put') {

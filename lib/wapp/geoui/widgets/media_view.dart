@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 
 import '../../../profile/storage_paths.dart';
 import '../../../services/preferences_service.dart';
+import '../../../services/media/media_fetch.dart';
 import '../../../services/reticulum/rns_service.dart';
 import '../../../util/media_archive.dart';
 import '../../../util/media_ref.dart';
@@ -234,7 +235,8 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
     _lastReceived = 0;
     _lastByteMs = _nowMs;
     // ignore: discarded_futures
-    resolveSharedMedia(ref.sha256, ref.ext, fromCallsign: widget.from);
+    MediaFetch.instance.want(ref,
+        from: widget.from, size: widget.size, userTapped: _requested);
     _startPoll();
   }
 
@@ -270,7 +272,8 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
         // resolve is content-addressed + guarded, so repeats are harmless).
         if (t.tick % 20 == 0) {
           // ignore: discarded_futures
-          resolveSharedMedia(ref.sha256, ref.ext, fromCallsign: widget.from);
+          MediaFetch.instance.want(ref,
+              from: widget.from, size: widget.size, userTapped: _requested);
         }
       } else if (_nowMs - _lastByteMs >= _windowSec * 1000) {
         // Transfer started but stalled (no new bytes for 5 min) — abandon.
@@ -286,10 +289,12 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
   /// Current download progress (received bytes; total from the live transfer or,
   /// failing that, the message's `sz:` hint), or null if none yet.
   ({int received, int total})? _progress() {
-    final sha = _shaBytes();
-    if (sha == null) return null;
-    final p = RnsService.instance.fileFetchProgress(sha);
-    if (p == null) return null;
+    // Every lane, one reading: the packet lane's assembled bytes, the bulk
+    // lane's .part, or an internet fetch. Before this it asked Reticulum only,
+    // so a file arriving over Bluetooth or in chunks showed no progress at all
+    // and the card gave up while the bytes were landing.
+    final p = MediaFetch.instance.progress(ref.sha256);
+    if (p.received <= 0) return null;
     final total = p.total > 0 ? p.total : (widget.size ?? 0);
     return (received: p.received, total: total);
   }

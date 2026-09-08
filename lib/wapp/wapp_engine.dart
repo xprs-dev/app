@@ -27,6 +27,7 @@ import '../services/preferences_service.dart';
 import '../services/folders/folder_meta.dart';
 import '../services/reticulum/rns_service.dart';
 import '../services/log_service.dart';
+import '../services/media/media_fetch.dart';
 import '../services/social/email_resolve_service.dart';
 import '../services/social/node_role_api.dart';
 import '../services/mesh/mesh_carry_broker.dart';
@@ -1606,23 +1607,14 @@ class WappEngine {
           TorrentService.instance.configure(
               archive, wappsDataStorage(prefs).getAbsolutePath('share'));
         }
-        () async {
-          // 1. LAN: scan nearby devices on the Blossom port.
-          if (await BlossomServer.scanLan(
-                  ref.sha256Hex, ref.ext, archive,
-                  port: BlossomServer.instance.port) !=
-              null) {
-            return;
-          }
-          // 2. Internet: any infohash we learned for this hash → the swarm.
-          for (final (kind, value) in archive.getSources(ref.sha256)) {
-            if (kind == 'infohash') {
-              final token = await TorrentService.instance
-                  .fetch(value, expectedSha256: ref.sha256, ext: ref.ext);
-              if (token != null) return;
-            }
-          }
-        }();
+        // The core's one door: it checks the store, picks the lane by size and
+        // by what reaches a holder, and reports progress. A wapp asking for a
+        // file used to get a strictly worse resolver than a Flutter widget
+        // asking for the same file — a LAN scan and the swarm, with no
+        // Reticulum, no packet lane and no bulk lane. Asking is a capability;
+        // choosing the lane is not (docs/architecture.md §3).
+        unawaited(
+            MediaFetch.instance.want(ref, userTapped: true).catchError((_) => false));
         return 1;
       },
       params: [ValueTy.i32, ValueTy.i32],
