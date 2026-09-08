@@ -305,6 +305,11 @@
 "id": "a8a451"
 },
 {
+"wire": "t:command f:X1RD89 d:X1QZ3N ts:2026-08-08_14:27:12 cmd:file file:Uc3nRw8kFa5xPd1qGz7mYb0tJe6vHs2iLoA9XfCqK4E.png have:-_3_____Hw sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 193,
+"id": "201937"
+},
+{
 "wire": "t:message f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 q:ack,read m:did you get the keys?",
 "bytes": 85,
 "id": "9821a4"
@@ -336,7 +341,7 @@
 },
 {
 "wire": "t:receipt f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:26:40 s:no",
-"bytes": null,
+"bytes": 55,
 "id": "dd21ff"
 },
 {

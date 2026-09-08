@@ -33,6 +33,7 @@ import '../xprs/xprs_catchup.dart';
 import '../xprs/xprs_files.dart';
 import '../xprs/xprs_file_acl.dart';
 import '../xprs/xprs_inline_file.dart';
+import '../xprs/xprs_inline_sender.dart';
 import '../reticulum/rns_service.dart';
 import '../social/archiver_service.dart';
 import 'package:reticulum/src/services/social/archiver_policy.dart';
@@ -43,6 +44,7 @@ import '../xprs/xprs_gossip.dart';
 import '../xprs/xprs_group_keys.dart';
 import '../xprs/xprs_passphrases.dart';
 import '../xprs/xprs_publisher.dart';
+import '../../wapp/android_foreground_service.dart';
 import '../xprs/xprs_outbox.dart';
 import '../xprs/xprs_receipt.dart';
 import '../xprs/xprs_bridge.dart';
@@ -425,6 +427,37 @@ class MeshService {
           LogService.instance
               .add('XPRS: inline file $ref stored (${bytes.length} B)');
         };
+        // The sending half of the same lane. What this station sends it also
+        // keeps (it self-hosts what it authored), bound to the pair so a
+        // re-ask is served to the recipient and nobody else; and a re-ask is
+        // answered from those bytes.
+        XprsInlineSender.instance.store = (bytes, ext, to) {
+          final token = mediaArchive.putBytes(bytes, ext);
+          final sha = xprsFileSha(
+              token.startsWith('file:') ? token.substring(5) : token);
+          final self = tableCallsign.trim().toUpperCase();
+          if (sha != null && self.isNotEmpty) {
+            XprsFileAcl.instance.bind(sha,
+                scope: XprsFileScope.pair, members: [self, to.toUpperCase()]);
+          }
+          return token;
+        };
+        XprsFileServer.instance.bytesOf = (shaHex) => mediaArchive.get(shaHex);
+        // A transfer that went quiet before it was whole: say what we hold
+        // (section 8.1's map) in a signed cmd:file, on the one send path, and
+        // the sender re-sends the rest. On Android the foreground timer sleeps
+        // with the app, so the native tick runs the same sweep.
+        XprsInlineAsm.instance.onStalled = (from, ref, have) {
+          final self = tableCallsign.trim().toUpperCase();
+          if (self.isEmpty || from.isEmpty) return;
+          final wire = 't:command f:$self d:$from ts:${xprsNowTs()} '
+              'cmd:file file:$ref have:$have';
+          LogService.instance
+              .add('XPRS: inline $ref from $from stalled — asking for the rest');
+          unawaited(XprsPublisher.instance.publishWire(wire));
+        };
+        AndroidForegroundService.instance.addTickListener(
+            () => XprsInlineAsm.instance.sweepStalled(DateTime.now()));
         XprsFileServer.instance.depositAlternates = () => [
               for (final c
                   in PreferencesService.instanceSync?.xprsAlwaysOnArchivers ??

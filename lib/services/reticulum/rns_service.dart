@@ -1345,6 +1345,9 @@ class RnsService {
       host: host,
       port: port,
       label: tag,
+      // A shared hub somebody else runs: an announce heard here is never
+      // re-aired onto another such hub (RnsInterface.uplink).
+      uplink: true,
       onPacket: (raw) => _onInbound(raw, tag),
       log: (m) => LogService.instance.add('RNS/tcp: $m'),
       onDisconnect: () => _onUplinkDown(c, 'socket closed'),
@@ -1701,6 +1704,11 @@ class RnsService {
     // Path requests answered for OTHER stations: what the hub role is worth.
     'pathAnswers': _transport?.pathAnswersServed ?? 0,
     'selfEcho': _transport?.selfEchoDropped ?? 0,
+    // The LAN interface's own accounting: frames of ours it refused to hand
+    // back, relayed announces it had nobody to give to, peers it knows.
+    'lanSelfDropped': _lan?.selfDropped ?? 0,
+    'lanNobodyDropped': _lan?.nobodyDropped ?? 0,
+    'lanPeers': _lan?.peerCount ?? 0,
     'interfaces': _ifaces.length + (_server != null ? 1 : 0),
     'inbox': _inbox.length,
     'provided': _files?.providedCount ?? 0,
@@ -4632,6 +4640,47 @@ class RnsService {
         _kWappLxmfField: [tag, payload],
       },
     );
+  }
+
+  /// One connectionless packet to [destHex], carrying [payload] as a wapp
+  /// datagram, and nothing else: no link handshake, no copy held for relay, no
+  /// retry ladder, no courier, no chat row. The receiver's path is the one
+  /// every wapp datagram already takes (a single-packet LXMF to the delivery
+  /// destination, routed to the wapp inbox), so nothing changes on that side.
+  ///
+  /// This is the lane for something that is sent many times and verified as a
+  /// whole at the far end, a chunk of a small file (XPRS.md 7.7.6): the
+  /// receiver says what it lacks and the sender re-sends that, so a lost
+  /// packet costs one packet later, not a ten-second handshake now. Measured
+  /// before this existed: fifty-one chunks, each awaiting a fresh link, took
+  /// thirty-eight minutes.
+  ///
+  /// Refused, and the path requested, when we hold no path: a datagram with
+  /// nowhere to go would fall back to a broadcast that no hub forwards. The
+  /// caller sends that chunk again on its next pass. Refused over
+  /// [kRnsEncryptedMdu]: a bigger payload needs a link, and this is not one.
+  Future<bool> sendDatagramTo(String destHex, Uint8List payload,
+      {String tag = 'xprs'}) async {
+    final t = _transport;
+    if (!_up || _id == null || t == null) return false;
+    final dh = _bytesFromHex(destHex);
+    if (dh == null) return false;
+    final rid = t.pathFor(dh)?.identity;
+    if (rid == null) {
+      t.requestPath(dh);
+      return false;
+    }
+    final msg = await LxmfMessage.create(
+      destinationHash: dh,
+      source: _id!,
+      fields: {
+        _kWappLxmfField: [tag, payload],
+      },
+    );
+    if (msg.packed.length > kRnsEncryptedMdu) return false;
+    final ct = await rid.encrypt(msg.packed);
+    t.sendDataTo(dh, ct);
+    return true;
   }
 
   /// Pull store-and-forwarded wapp datagrams a peer holds for us from its

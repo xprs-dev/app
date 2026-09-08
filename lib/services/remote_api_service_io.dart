@@ -14,6 +14,7 @@ import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_bridge.dart';
 import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_inline_file.dart';
+import 'xprs/xprs_inline_sender.dart';
 import 'receive/wapp_delivery.dart';
 import 'xprs/xprs_lan.dart';
 import 'xprs/xprs_publisher.dart';
@@ -1130,33 +1131,23 @@ class RemoteApiService {
               status: HttpStatus.badRequest);
         }
         final to = (data['to'] ?? '').toString().trim();
-        final wires = xprsInlineSplit(bytes,
-            from: self, to: to, ext: (data['ext'] ?? 'bin').toString());
-        if (wires.isEmpty) {
+        // The core sender splits, stores (self-hosts) and paces the chunks as
+        // datagrams on the one send path; the receiver reports what it lacks
+        // and only that is re-sent. This returns when the chunks are queued;
+        // completion is the receiver's to observe (/api/media/has).
+        final ext = (data['ext'] ?? 'bin').toString();
+        final ref = XprsInlineSender.instance
+            .send(bytes, from: self, to: to, ext: ext);
+        if (ref == null) {
           return _json(res,
               {'ok': false, 'error': 'empty or over $kInlineMaxBytes bytes'},
               status: HttpStatus.badRequest);
         }
-        // Send each chunk only on the lanes that actually reach the peer
-        // (§36.0), whatever those are — reticulum for an internet-only station,
-        // a BLE session when one exists, both when both do. This avoids
-        // spending the advert channel on a peer that cannot be heard there (and
-        // its multi-second-per-packet pacing) WITHOUT fixing the lane: the
-        // publisher answers where the peer is reachable, and if it knows no
-        // path the send fans out best-effort. All TX still goes through the one
-        // send path.
         final lanes = XprsPublisher.instance.reachableLanes(to);
-        final only = lanes.isEmpty ? null : lanes;
-        var sent = 0;
-        for (final w in wires) {
-          final rep =
-              await XprsPublisher.instance.publishWire(w, onlyBearers: only);
-          if (rep.values.any((v) => v == 'sent' || v == 'queued')) sent++;
-        }
         return _json(res, {
-          'ok': sent > 0,
-          'packets': wires.length,
-          'sent': sent,
+          'ok': true,
+          'ref': ref,
+          'packets': xprsInlineSplit(bytes, from: self, to: to, ext: ext).length,
           'lanes': lanes.isEmpty ? 'fanout' : lanes.join(','),
           'bytes': bytes.length,
         });

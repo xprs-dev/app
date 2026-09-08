@@ -105,8 +105,17 @@ abstract class XprsBearer {
   /// apart: at the advertiser's 120 s default they would all still be on air
   /// long after the page ended, holding twelve rotation slots against
   /// everything else this station has to say.
+  ///
+  /// [datagram] asks for one packet and no bookkeeping: no link, no retry, no
+  /// custody, no chat copy. For a wire that is one of many and is verified as
+  /// a whole at the far end (a chunk of a small file, section 7.7.6), where
+  /// the receiver reports what it lacks and the sender re-sends that. A bearer
+  /// with only one way to send ignores it.
   Future<XprsSendResult> send(String wire,
-      {required int part, String slot = 'status', Duration? ttl});
+      {required int part,
+      String slot = 'status',
+      Duration? ttl,
+      bool datagram = false});
 }
 
 class _Ble5Bearer implements XprsBearer {
@@ -125,7 +134,10 @@ class _Ble5Bearer implements XprsBearer {
       await Ble5Bus.instance.supported() && await Ble5Bus.instance.adapterOn();
   @override
   Future<XprsSendResult> send(String wire,
-          {required int part, String slot = 'status', Duration? ttl}) async =>
+          {required int part,
+          String slot = 'status',
+          Duration? ttl,
+          bool datagram = false}) async =>
       await Ble5Bus.instance.advertiseFrame(
         'xprs-$slot:$part',
         Ble5Subtype.xprs,
@@ -158,7 +170,10 @@ class _ReticulumBearer implements XprsBearer {
   Future<bool> get active async => RnsService.instance.isUp;
   @override
   Future<XprsSendResult> send(String wire,
-      {required int part, String slot = 'status', Duration? ttl}) async {
+      {required int part,
+      String slot = 'status',
+      Duration? ttl,
+      bool datagram = false}) async {
     // A wire addressed to one station rides the LXMF lane when the network
     // can name that station. The distinction is not cosmetic: wappBroadcast
     // is an ANNOUNCE, and the public community hubs do not cross-forward
@@ -193,6 +208,13 @@ class _ReticulumBearer implements XprsBearer {
     }
     if (dest.isNotEmpty) {
       final hex = RnsService.instance.lxmfDestForCallsign(dest);
+      if (hex.isNotEmpty && datagram) {
+        // One packet, no bookkeeping (see XprsBearer.send). `queued` because
+        // nothing acknowledges it; the receiver's map says what got there.
+        return await RnsService.instance.sendDatagramTo(hex, bytes)
+            ? XprsSendResult.queued
+            : XprsSendResult.refused;
+      }
       if (hex.isNotEmpty) {
         // Belt and braces, because these two lanes fail differently. The wapp
         // datagram is cheap and usually right; LXMF rides a LINK, and links
@@ -318,7 +340,10 @@ class _LanBearer implements XprsBearer {
   Future<bool> get active async => XprsLan.instance.up;
   @override
   Future<XprsSendResult> send(String wire,
-          {required int part, String slot = 'status', Duration? ttl}) async =>
+          {required int part,
+          String slot = 'status',
+          Duration? ttl,
+          bool datagram = false}) async =>
       // The socket accepted it. A UDP broadcast is never acknowledged, so this
       // is the most any LAN send can honestly claim.
       XprsLan.instance.send(wire)
@@ -341,7 +366,10 @@ class _LoraBearer implements XprsBearer {
       _lora.status == LoraStatus.available;
   @override
   Future<XprsSendResult> send(String wire,
-          {required int part, String slot = 'status', Duration? ttl}) async =>
+          {required int part,
+          String slot = 'status',
+          Duration? ttl,
+          bool datagram = false}) async =>
       XprsSendResult.refused;
 }
 
@@ -514,6 +542,7 @@ class XprsPublisher {
     String? prefer,
     bool urgent = false,
     Set<String>? onlyBearers,
+    bool datagram = false,
   }) async {
     final report = <String, String>{};
     String? carriedBy;
@@ -596,7 +625,8 @@ class XprsPublisher {
       // refused did not go, whatever the first two did.
       var worst = XprsSendResult.sent;
       for (var i = 0; i < wires.length; i++) {
-        final r = await b.send(wires[i], part: i + 1, slot: slot, ttl: ttl);
+        final r = await b.send(wires[i],
+            part: i + 1, slot: slot, ttl: ttl, datagram: datagram);
         if (r.index > worst.index) worst = r;
       }
       report[b.name] = worst.name;
@@ -857,8 +887,12 @@ class XprsPublisher {
       ///
       /// Falls back to the fan-out like any other preference when the named
       /// bearer does not carry it.
-      String? prefer}) async {
-    LogService.instance.add('XPRS: publishWire <- $wireIn');
+      String? prefer,
+      /// One packet, no bookkeeping, not filed as ours (see
+      /// [XprsBearer.send]): a chunk of a small file is reproducible from the
+      /// file, and three hundred of them are not history.
+      bool datagram = false}) async {
+    if (!datagram) LogService.instance.add('XPRS: publishWire <- $wireIn');
     var p = XprsPacket.parse(wireIn.trim());
     if (p == null) {
       LogService.instance.add('XPRS: publishWire rejected (parse)');
@@ -955,7 +989,8 @@ class XprsPublisher {
         ttl: ttl,
         prefer: chosen,
         urgent: never.contains(p.type),
-        onlyBearers: onlyBearers);
+        onlyBearers: onlyBearers,
+        datagram: datagram);
     final report = air.report;
     final carriedBy = air.carriedBy;
 
@@ -985,7 +1020,7 @@ class XprsPublisher {
             NostrCrypto.bareCallsign(XprsArchive.instance.selfCallsign)
                 .toUpperCase();
     if (ours && took != null) {
-      XprsIngest.own(wire, bearer: took);
+      if (!datagram) XprsIngest.own(wire, bearer: took);
     }
     published++;
     // One line per caller-composed wire: which bearers took it. A wire that

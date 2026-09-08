@@ -29,6 +29,7 @@
  */
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:reticulum/src/services/social/archiver_policy.dart';
 
@@ -38,6 +39,7 @@ import '../mesh/mesh_bulk_spool.dart';
 import 'xprs_id.dart';
 import 'xprs_airtime.dart';
 import 'xprs_monitor.dart';
+import 'xprs_inline_sender.dart';
 import 'xprs_packet.dart';
 import 'xprs_publisher.dart';
 import 'xprs_vocab.dart';
@@ -204,6 +206,28 @@ class XprsFileServer {
       return 403;
     }
 
+    // `have:` (§7.7.6, §8.1): a packet-lane receiver saying what it holds of
+    // this file. Re-send only what the map lacks, as datagrams, from the same
+    // deterministic split; 200 when the map is already complete, 404 when we
+    // no longer have the bytes so the asker stops. No spool, no bulk lane.
+    final have = p['have'];
+    if (have != null && have.isNotEmpty) {
+      final bytes = bytesOf?.call(shaHex);
+      if (bytes == null) {
+        notHeld++;
+        air(404);
+        return 404;
+      }
+      final ext = held.ext.isNotEmpty ? held.ext : (xprsFileExt(p['file']) ?? 'bin');
+      final n = XprsInlineSender.instance
+          .onHave(bytes, from: selfBase, to: from, ext: ext, have: have);
+      LogService.instance
+          .add('XPRS: cmd:file have: from $from -> re-send $n chunk(s)');
+      final code = n == 0 ? 200 : 202;
+      air(code);
+      return code;
+    }
+
     // `off:` resumes (section 25.2). We do not act on it here: the spool keeps
     // the receiver's offset and MSP's FILE_ACCEPT carries it, which is the
     // same resume the spec describes, decided by the side that knows.
@@ -242,6 +266,12 @@ class XprsFileServer {
     air(202);
     return 202;
   }
+
+  /// The bytes of a held file, for re-sending the chunks a packet-lane
+  /// receiver says it lacks (§7.7.6, `cmd:file ... have:`). Set by the core to
+  /// the media archive's blob read; a small file (the lane's cap) on the
+  /// calling isolate is the same cost the store pays on arrival.
+  Uint8List? Function(String shaHex)? bytesOf;
 
   /// Admission decision for a `cmd:put` deposit (§11.2, §34.3). Null = deposits
   /// off (every put refused `403 not an archiver`). mesh_service wires this to

@@ -34,7 +34,7 @@ class _UpBearer implements XprsBearer {
   Future<bool> get active async => true;
   @override
   Future<XprsSendResult> send(String wire,
-          {required int part, String slot = 'status', Duration? ttl}) async =>
+          {required int part, String slot = 'status', Duration? ttl, bool datagram = false}) async =>
       XprsSendResult.sent;
 }
 

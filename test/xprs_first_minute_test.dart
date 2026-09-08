@@ -40,7 +40,7 @@ class _FakeBearer implements XprsBearer {
   Future<bool> get active async => true;
   @override
   Future<XprsSendResult> send(String wire,
-      {required int part, String slot = 'status', Duration? ttl}) async {
+      {required int part, String slot = 'status', Duration? ttl, bool datagram = false}) async {
     sent.add(wire);
     slots.add('$slot:$part');
     atS.add(_clock.nowMs ~/ 1000);

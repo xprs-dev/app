@@ -214,8 +214,10 @@ class XprsIngest {
 
     // A small binary chunked into t:file packets (§7.7.6) is reassembled here
     // and, when whole and verified, handed to the media store. Safe for every
-    // packet: a non-file or non-chunk is ignored.
+    // packet: a non-file or non-chunk is ignored. A chunk is nobody's history:
+    // it ends here, in the assembler, and is not filed.
     XprsInlineAsm.instance.feed(p);
+    if (xprsIsInlineChunk(p)) return;
 
     // A mailbox declaration heard on the street counts exactly like one that
     // arrived over a hub: the author is saying where their mail may rest.
@@ -591,8 +593,9 @@ class XprsIngest {
     // no other (the air is [heard]'s, and stays so).
     XprsMonitor.instance.noteRemote(fromC);
     // Inline-file chunks cross the internet the same way (§7.7.6, §12.12.1's
-    // directed lane): reassemble and store when whole.
+    // directed lane): reassemble and store when whole, and file none of them.
     XprsInlineAsm.instance.feed(p);
+    if (xprsIsInlineChunk(p)) return;
 
     // The hub lane serves too (docs/XPRS.md 36.0: the archiver role does not
     // change with the bearer). Commands and results route to the same hooks
