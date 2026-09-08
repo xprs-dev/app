@@ -642,12 +642,20 @@ class XprsPublisher {
     }
 
     var done = false;
+    var preferTried = false;
     if (prefer != null) {
       final pick = bearers.where((b) => b.name == prefer);
-      if (pick.isNotEmpty) done = await tryOne(pick.first);
+      if (pick.isNotEmpty) {
+        preferTried = true;
+        done = await tryOne(pick.first);
+      }
     }
     for (final b in bearers) {
-      if (done && b.name == prefer) continue;
+      // Tried already, whatever it answered. A `queued` answer (a datagram, an
+      // LXMF handed to store-and-forward) is not `sent`, and used to send the
+      // packet a second time on the same bearer: every chunk of a file went
+      // out twice, 542 datagrams for 271 chunks.
+      if (preferTried && b.name == prefer) continue;
       if (done) {
         report[b.name] = 'unused';
         continue;

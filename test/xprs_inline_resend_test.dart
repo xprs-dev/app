@@ -192,4 +192,14 @@ int base64Len(String wire) {
         .toSet();
     expect(offs.length, all.length, reason: 'every chunk got through in the end');
   });
+
+  test('the preferred bearer is tried once, whatever it answers', () async {
+    final bearer = _LossyBearer({});
+    XprsPublisher.instance.bearers = [bearer];
+    final w = xprsInlineSplit(_blob(200, 1), from: 'X1SEND', to: 'X1RECV', ext: 'bin').first;
+    final rep = await XprsPublisher.instance.publishWire(w,
+        prefer: 'reticulum', onlyBearers: {'reticulum'}, datagram: true);
+    expect(rep['reticulum'], 'queued');
+    expect(bearer.everything.length, 1, reason: 'not sent twice');
+  });
 }
