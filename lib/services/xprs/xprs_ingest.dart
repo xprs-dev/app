@@ -641,7 +641,7 @@ class XprsIngest {
     if (fromC.isEmpty || (self.isNotEmpty && fromC == self)) return;
     // A station reached us over Reticulum: on the list, under that name and
     // no other (the air is [heard]'s, and stays so).
-    XprsMonitor.instance.noteRemote(fromC);
+    XprsMonitor.instance.noteRemote(fromC, saying: p);
     // Inline-file chunks cross the internet the same way (§7.7.6, §12.12.1's
     // directed lane): reassemble and store when whole, and file none of them.
     XprsInlineAsm.instance.feed(p);
@@ -703,6 +703,20 @@ class XprsIngest {
         onReceipt?.call(p);
       } catch (e) {
         LogService.instance.add('XPRS: receipt handling failed (rns): $e');
+      }
+      // A RECEIPT IS ALSO MAIL. It releases whatever we were holding, and then
+      // it still has to reach the sender — who is, in the case an archiver
+      // exists for at all, the station that went to sleep. Returning here left
+      // the sender's own copy retrying for ever and their screen showing a
+      // message that never got its tick, because the one packet that would
+      // have settled it was dropped by the station best placed to hold it.
+      final relayTo = _base(p['d'] ?? '');
+      if (relayTo.isNotEmpty && relayTo != self && xprsIsMail(p)) {
+        try {
+          onCarry?.call(p.encode(), relayTo);
+        } catch (e) {
+          LogService.instance.add('XPRS: receipt carry failed (rns): $e');
+        }
       }
       return;
     }
@@ -792,7 +806,12 @@ class XprsIngest {
     //
     // A group is not mail: it has no mailbox to carry toward, and
     // `docs/store-and-forward.md` is explicit that groups are never carried.
-    if (p.type == 'message' && xprsAddressesStation(toC) && toC != self) {
+    // ANY mail, not only a chat message. The core carries packets on a
+    // person's behalf and does not read them (docs/architecture.md 3): the
+    // description of a shared picture, the ask for its bytes, a group act and
+    // — above all — the RECEIPT that tells a sleeping sender their message
+    // arrived are every bit as lost as a `t:message` when nobody holds them.
+    if (xprsIsMail(p) && toC != self) {
       try {
         onCarry?.call(p.encode(), toC);
       } catch (e) {

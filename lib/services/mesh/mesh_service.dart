@@ -50,6 +50,8 @@ import '../xprs/xprs_group_keys.dart';
 import '../xprs/xprs_passphrases.dart';
 import '../xprs/xprs_publisher.dart';
 import '../../wapp/android_foreground_service.dart';
+import '../xprs/xprs_archiver_choice.dart';
+import '../xprs/xprs_mailbox.dart';
 import '../xprs/xprs_outbox.dart';
 import '../xprs/xprs_receipt.dart';
 import '../xprs/xprs_bridge.dart';
@@ -533,6 +535,73 @@ class MeshService {
         };
         AndroidForegroundService.instance.addTickListener(
             () => XprsInlineAsm.instance.sweepStalled(DateTime.now()));
+        // What we adopted last time we ran. Restored BEFORE the first
+        // reconsider, or that reconsider reads our own adoption as the
+        // operator's choice and stands itself down.
+        _adoptedArchiver = (prefs.xprsArchiverAdopted).trim().isEmpty
+            ? null
+            : prefs.xprsArchiverAdopted.trim().toUpperCase();
+        // ── The archiver in the middle (12.7, 12.8.1) ────────────────────
+        //
+        // Three joins, and the message that started this was lost because none
+        // of them existed: a copy left with an always-on station so it
+        // outlives the sender, that station's duty to deliver it when it can
+        // reach the recipient, and the receipt that tells it to stop. The
+        // logic is in XprsMailbox (core, testable against a virtual air); what
+        // belongs here is only the wiring to this device's lanes and stores.
+        XprsMailbox.instance
+          ..selfCallsign = (() => NostrCrypto.bareCallsign(tableCallsign))
+          ..archivers =
+              (() => PreferencesService.instanceSync?.xprsArchivers ?? const [])
+          ..outboxState = ((id) => XprsOutbox.instance.stateOf(id))
+          ..holdersOf = ((call) => XprsArchive.instance.holdersFor(call))
+          // REACHABLE MEANS THIS station, not "some station".
+          //
+          // The first version read "a Reticulum path, OR any LAN peer at all",
+          // which makes every callsign in the world reachable the moment one
+          // neighbour is on the wire — and the bench duly re-aired mail to a
+          // callsign that does not exist, once a minute, for ever. A LAN peer
+          // counts only when the peer IS the recipient.
+          ..reachable = ((call) =>
+              RnsService.instance.reachableByCallsign(call) ||
+              XprsMonitor.instance.heardDirectly(call,
+                  within: const Duration(minutes: 10)))
+          ..held = (() => [
+                for (final target in MeshStore.instance.heldTargets())
+                  for (final row in MeshStore.instance.releasableFor(target,
+                      selfCallsign: NostrCrypto.bareCallsign(tableCallsign)))
+                    if (utf8
+                        .decode(row.wire, allowMalformed: true)
+                        .startsWith('t:'))
+                      HeldMail(
+                          key: row.key,
+                          target: target,
+                          wire: utf8.decode(row.wire, allowMalformed: true)),
+              ])
+          ..noteAttempt = ((key) => MeshStore.instance.noteReleased(key))
+          ..publish = ((wire) async {
+            await XprsPublisher.instance.publishWire(wire, slot: 'mailbox');
+          })
+          // One directed lane, chosen by the core: Reticulum where the
+          // station has a letterbox (which every always-on archiver does),
+          // and the ordinary fan-out otherwise. The wire crosses UNCHANGED —
+          // a deposit is not a relay and spends none of 13.1's hops.
+          ..sendTo = ((call, wire) async {
+            final hex = RnsService.instance.lxmfDestForCallsign(call);
+            if (hex.isNotEmpty &&
+                await RnsService.instance.wappSendTo(
+                    'xprs', hex, Uint8List.fromList(utf8.encode(wire)))) {
+              return true;
+            }
+            // The directed lane failing is ordinary — a letterbox we know of
+            // is not a link we have right now — and it must not end the
+            // attempt: measured on the bench, the deposit reported failure
+            // while the ordinary fan-out delivered the same wire to the same
+            // archiver a second later. So fall through rather than give up.
+            final r = await XprsPublisher.instance
+                .publishWire(wire, verbatim: true, slot: 'deposit:$call');
+            return r.values.any((v) => v == 'sent');
+          });
         XprsFileServer.instance.depositAlternates = () => [
               for (final c
                   in PreferencesService.instanceSync?.xprsAlwaysOnArchivers ??
@@ -631,6 +700,17 @@ class MeshService {
         MeshStore.instance.sweep(); // TTL + quota
         MeshBulkSpool.instance.sweep();
       }
+      // Deliver what we hold to recipients we can reach NOW (12.8.1). The
+      // release-on-hearing trigger covers the station that speaks to us, which
+      // is the right rule on a radio; an always-on archiver mostly never hears
+      // its recipients speak, it simply gains a path to them, and without this
+      // minute it would hold their mail for ever while they sat online.
+      unawaited(XprsMailbox.instance.sweepHeld());
+      // Who we lean on, reconsidered every minute (12.3). Cheap — a scan of a
+      // station table that is bounded at a few hundred entries — and the first
+      // minutes are exactly when it matters: a phone that has just met the
+      // network should not spend five of them with nowhere to leave its mail.
+      _reconsiderArchiver();
       // lifetime: accumulate service time every 15 min (section 10.5). A kill
       // loses at most that tail, same trade the dongle makes with its NVS.
       if (sweepTick % 15 == 0 && _lifeBaseSec >= 0) {
@@ -1326,7 +1406,104 @@ class MeshService {
       // Custody counters: relaying asserted as a number, not grepped out of a
       // rolling log that holds twenty minutes on a busy device.
       ...MeshCustodyCounters.toJson(),
+      // The archiver in the middle: who we lean on, and whether the three
+      // joins are actually happening. A message that quietly went nowhere is
+      // the whole subject, so it has to be a number and not a log line.
+      'archiver': PreferencesService.instanceSync?.xprsArchivers ?? const [],
+      'archiverAdopted': _adoptedArchiver ?? '',
+      // Who is volunteering, as this station heard it. Empty here with a
+      // volunteer on the air means the claim never reached the station table,
+      // which is a different fault from "nobody offered".
+      'archiverOffers': [
+        for (final st in XprsMonitor.instance.stations.values)
+          if (st.services.contains('archive'))
+            '${st.callsign}/${st.bearer}/${(DateTime.now().millisecondsSinceEpoch - st.lastMs) ~/ 1000}s'
+      ],
+      'heldFor': MeshStore.instance.heldTargets(max: 8),
+      'mailbox': XprsMailboxCounters.json,
     });
+  }
+
+  /// The archiver this station adopted for itself, so it can be told apart
+  /// from one the operator named (12.3: an explicit choice is never
+  /// second-guessed) and stood down the moment they name one.
+  String? _adoptedArchiver;
+
+  /// Who this station leans on, reconsidered from what it has heard.
+  ///
+  /// The preference for this has existed since the archiver work started and
+  /// nothing ever chose: a fresh phone had an empty list, so its mail was
+  /// deposited nowhere and a message written while the recipient slept died
+  /// with the sender's next screen lock. Now a station that named none adopts
+  /// the one volunteer it can hear — which, on a network with a single
+  /// always-on node, is that node, without anybody configuring anything.
+  void _reconsiderArchiver() {
+    final prefs = PreferencesService.instanceSync;
+    if (prefs == null) return;
+    final self = NostrCrypto.bareCallsign(tableCallsign);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final offers = <ArchiverOffer>[
+      for (final st in XprsMonitor.instance.stations.values)
+        if (st.services.contains('archive'))
+          ArchiverOffer(
+            callsign: NostrCrypto.bareCallsign(st.callsign),
+            lastHeardMs: st.lastMs,
+            bearer: st.bearer,
+            uptimeS: _uptimeSeconds(st.uptime),
+          ),
+    ];
+    // What the operator configured, minus whatever WE adopted last time — an
+    // adopted archiver is written to the same list so every reader (the
+    // deposit, the mailbox declaration, the gossip ask) sees one list.
+    final configured = [
+      for (final c in prefs.xprsArchivers)
+        if (c.trim().toUpperCase() != _adoptedArchiver) c,
+    ];
+    final before = prefs.xprsArchivers;
+    XprsArchiverChoice.instance.reconsider(
+      offers: offers,
+      selfBase: self,
+      autoEnabled: prefs.xprsArchiverAuto,
+      configured: configured,
+      adoptedNow: _adoptedArchiver,
+      nowMs: now,
+      adopt: (call) {
+        _adoptedArchiver = call;
+        // Persisted, or a restart turns an ADOPTED archiver into what looks
+        // like the operator's own choice: it would then never be reconsidered,
+        // and a volunteer that went away for good would be leaned on for ever.
+        prefs.xprsArchiverAdopted = call ?? '';
+        final list = [...configured];
+        if (call != null && !list.contains(call)) list.add(call);
+        prefs.xprsArchivers = list;
+        LogService.instance.add(call == null
+            ? 'Archiver: stood down the adopted one — the operator named their own'
+            : 'Archiver: adopted $call, the volunteer this station can hear (12.3)');
+      },
+    );
+    // Say where our mail should be left, but only when the answer changed:
+    // a declaration is how the far side knows where to send its receipt
+    // (13.12), and repeating an unchanged one is airtime for nothing.
+    final after = prefs.xprsArchivers;
+    if (after.join(',') != before.join(',') && after.isNotEmpty) {
+      unawaited(XprsMailbox.instance.declare());
+    }
+  }
+
+  /// `uptime:` as seconds. The wire writes a quantity with its unit (4.5):
+  /// `9day`, `36hour`, `900s`. Unknown or absent reads as zero, which only
+  /// costs a station its place in a tie-break.
+  static int _uptimeSeconds(String? v) {
+    if (v == null || v.isEmpty) return 0;
+    final m = RegExp(r'^(\d+)\s*([a-z]*)$').firstMatch(v.trim().toLowerCase());
+    if (m == null) return 0;
+    final n = int.tryParse(m.group(1)!) ?? 0;
+    return switch (m.group(2)) {
+      'day' || 'days' || 'd' => n * 86400,
+      'hour' || 'hours' || 'h' => n * 3600,
+      'min' || 'mins' || 'm' => n * 60,
+      _ => n,
+    };
   }
 
   /// 36.8.1's release-on-hearing, throttled: one attempt per callsign per
@@ -1391,8 +1568,13 @@ class MeshService {
         // without this it would be re-aired here as a broadcast, minutes late,
         // which is precisely the airtime the session lane exists to save.
         // A no-op today, by construction, and the guard that keeps it one.
+        // Mail, by shape rather than by the one type chat uses (12.7). A
+        // `t:file` describing a picture, the `t:command` asking for its bytes
+        // and the `t:receipt` that ends somebody's retry ladder are all lost
+        // in exactly the same way as a `t:message` when the holder refuses to
+        // hand them over.
         final held = XprsPacket.parse(wire);
-        if (held == null || held.type != 'message') continue;
+        if (held == null || !xprsIsMail(held)) continue;
         final out = _relayable(wire);
         if (out == null) continue;
         // Attempt recorded BEFORE the air, so a throw or a refused bearer

@@ -215,6 +215,27 @@ answers a burst with hours of silence. `/api/rns/status` reports `hubRole`,
 `datagrams{sent,noPath,tooBig,opened}` so the role can be read off a device
 rather than asserted.
 
+### The archiver in the middle (2026-09-08)
+
+A message is not delivered by the sender trying harder. Two people who are
+never awake at the same moment need a third station that is, and the core owns
+every part of that: choosing it, leaving a copy with it, holding other
+people's copies, delivering them, and ending the obligation.
+
+**The wapp is not told any of this exists.** Chat sends a message and is called
+back when one arrives; the deposit, the hold, the retry and the receipt fan-out
+happen underneath it, for `t:message` and for everything else the core carries
+on a person's behalf (docs/store-and-forward.md 5.1, XPRS.md 12.8.3). A wapp
+that had to know which archiver held its mail would be a wapp making a
+transport decision, which is the rule this file exists to state.
+
+The logic sits in `XprsMailbox` and `XprsArchiverChoice` with their sends
+INJECTED, so the whole loop runs in a simulation against a virtual air
+(`test/xprs_mail_relay_sim_test.dart`) — three stations, real funnel, real
+store, no radio. That is how the dance was made to work before any of it
+reached a device, and it is the pattern for anything whose failure only shows
+up between machines.
+
 ### How a file is shared in chat (2026-09-08)
 
 A picture in a conversation is the case that touches every lane at once, so it

@@ -433,6 +433,28 @@ class MeshStore {
     return out;
   }
 
+  /// Every callsign this station is holding mail for, the one with the oldest
+  /// waiting packet first.
+  ///
+  /// The release path of 12.8.1 is driven by HEARING a station, which is the
+  /// right trigger on a radio: the packet from X is the evidence a path to X
+  /// exists. An always-on archiver on the internet mostly never hears its
+  /// recipients speak — it simply gains a path to them — so it needs the other
+  /// question, "who am I holding for", to ask whether that path exists now.
+  /// Without it an internet mailbox holds mail forever while the recipient is
+  /// online three hops away.
+  List<String> heldTargets({int max = 64}) {
+    final db = _db;
+    if (db == null) return const [];
+    return [
+      for (final r in db.select(
+          'SELECT target, MIN(ts) t FROM mesh_store WHERE state = 0 '
+          'GROUP BY UPPER(target) ORDER BY t ASC LIMIT ?',
+          [max]))
+        (r['target'] as String).toUpperCase(),
+    ];
+  }
+
   /// How long before a released-but-unreceipted row may be released again.
   ///
   /// A release is an ATTEMPT (§36.8.1); only a receipt ends custody. Without a

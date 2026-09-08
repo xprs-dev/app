@@ -320,6 +320,37 @@ enum XprsScope {
 /// not at transmission, or a parked copy leaks later.
 bool xprsMayCarry(XprsPacket p) => xprsScope(p).scope != XprsScope.local;
 
+/// Types that are PRESENCE, not correspondence: true of a packet that says
+/// where a station is, what it hears or what it offers, right now.
+///
+/// Holding one for later is worse than dropping it — an observation delivered
+/// an hour after the fact is a statement about a moment that has passed, and
+/// a `t:identity` or `t:service` replayed at a recipient is noise it will hear
+/// again from the source within the beacon interval.
+const Set<String> kXprsPresenceTypes = {
+  'observation', 'identity', 'service', 'track', 'ping', 'pong', 'challenge',
+  'response', 'status',
+};
+
+/// Is this packet MAIL — something addressed to one station that is worth
+/// holding until that station can take it?
+///
+/// The archiver's admission rule (XPRS.md 12.7). It used to be "a `t:message`
+/// and nothing else", which was never what the specification said and made an
+/// archiver useless for everything the core carries on a person's behalf: the
+/// `t:file` describing a picture, the `t:command` asking for it, the
+/// `t:result` answering, the `t:moderate` that adds somebody to a group — and,
+/// worst of all, the `t:receipt` that tells a sleeping sender their message
+/// arrived and tells every holder to stop.
+///
+/// So the rule is by SHAPE, not by a list of the types chat happens to use:
+/// addressed to a station, not a group; not `scope:local` (13.11.1); and not
+/// presence, which is only true while it is fresh.
+bool xprsIsMail(XprsPacket p) =>
+    xprsAddressesStation(p['d']) &&
+    xprsMayCarry(p) &&
+    !kXprsPresenceTypes.contains(p.type);
+
 /// The bearer a reading is about (`docs/XPRS.md` section 10.6.1).
 ///
 /// Required on any packet carrying `busy:`, `txtime:` or `hears:`, because a

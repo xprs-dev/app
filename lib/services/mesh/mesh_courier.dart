@@ -63,6 +63,7 @@ import '../xprs/xprs_vocab.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_body.dart';
 import '../xprs/xprs_publisher.dart';
+import '../xprs/xprs_mailbox.dart';
 import '../xprs/xprs_receipt.dart';
 import '../xprs/xprs_id.dart';
 import '../xprs/xprs_packet.dart';
@@ -798,6 +799,28 @@ class MeshCourier {
     XprsReceiptCounters.sent++;
     unawaited(XprsPublisher.instance.publishWire(r.encode(),
         slot: 'ack:${r['r']}', verbatim: true, prefer: lane));
+
+    // AND TO WHOEVER IS HOLDING A COPY (12.7, 12.8.1).
+    //
+    // The receipt above goes to the sender, and the sender is the one station
+    // we know was not there — that is why an archiver had the message. A
+    // holder never told to stop re-delivers at every sighting until its copy
+    // expires, and the copy it re-delivers is one we already have. So the same
+    // signed receipt is also sent, directly, to the stations named in `via:`
+    // (they carried it, so they hold it) and to the sender's declared
+    // mailboxes (13.12: where they said their mail is kept).
+    // The wire is handed over UNCHANGED — not re-addressed to the holder.
+    // `d:` is inside what the signature covers, so a receipt readdressed on
+    // the way would arrive unverifiable, and 9.7.1 requires the signature
+    // precisely so that a stranger cannot delete other people's mail. A
+    // holder does not need to be the addressee: 13.3 has a carrier release on
+    // OVERHEARING an acknowledgement, and this is that, delivered by hand.
+    final wire = r.encode();
+    for (final h in XprsMailbox.instance.receiptFanout(p, selfBase: self)) {
+      XprsMailboxCounters.receiptsToHolders++;
+      unawaited(XprsMailbox.instance.sendTo?.call(h, wire) ??
+          Future<bool>.value(false));
+    }
   }
 
   /// The publisher bearer name for a receipt answering a message heard on

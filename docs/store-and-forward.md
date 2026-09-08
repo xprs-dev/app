@@ -296,6 +296,63 @@ message into the LXMF inbox through `RnsService.injectLxmf`. This is the same
 inbox used by directly delivered messages, so the receiving wapp renders the
 existing conversation without distinguishing the delivery path.
 
+## 5.1 The always-on archiver in the middle (2026-09-08)
+
+Everything above carries mail between stations that eventually meet. The case
+it does not cover is the one people actually hit: **two telephones that are
+never awake at the same moment.** A writes, B is asleep, A's screen locks. The
+only copy was on A, and A is the station that left.
+
+Reported from the field, and the cause was three missing joins rather than a
+broken part. XPRS.md 12.8.3 is the whole loop; here is where each join lives:
+
+| Join | Where |
+|---|---|
+| adopt an archiver when the operator named none | `XprsArchiverChoice`, applied each minute from the station table |
+| leave a copy with it when nothing acknowledges | `XprsMailbox.armDeposit`, armed for every directed packet at `XprsPublisher.publishWire` |
+| say where your mailbox is (`t:mailbox hold:`) | `XprsMailbox.declare`, aired when the archiver list changes |
+| hold anything that is mail, not only chat | `xprsIsMail` at the carry gate (`XprsIngest.reticulum`) |
+| deliver when the recipient becomes REACHABLE | `XprsMailbox.sweepHeld`, once a minute |
+| tell the holders they can stop | `XprsMailbox.receiptFanout`, from `MeshCourier._acknowledge` |
+| carry the receipt to the sender who is still away | the receipt is mail like anything else |
+
+Four things this got wrong on the way, each of which looked like it worked:
+
+- **Reachable must mean THIS station.** The first version read "a Reticulum
+  path, or any LAN peer at all", which makes every callsign on earth reachable
+  the moment one neighbour is on the wire. The bench duly re-aired mail to a
+  callsign that has never existed, once a minute. `XprsMonitor.heardDirectly`
+  is the honest test.
+- **Never sweep mail addressed to yourself.** Our own outbound copy sits in the
+  same store as the carried ones, so an unguarded sweep puts a packet on the
+  air addressed to this station and every neighbour hears us relay to nobody.
+- **A receipt is never re-addressed.** `d:` is inside what the signature
+  covers, so a receipt readdressed to the holder arrives unverifiable — and
+  9.7.1 wants that signature precisely so a stranger cannot delete other
+  people's mail. The holder gets the identical wire and releases on
+  overhearing it (13.3).
+- **A failed deposit must be a counter.** The directed lane failing is
+  ordinary; without `mailbox.depositFailed` it is indistinguishable from
+  "there was nobody to deposit with", which is a different fault with a
+  different fix. The deposit now falls through to the ordinary fan-out.
+
+Observables, all in `/api/status` under `mesh`:
+
+```sh
+curl -s localhost:3456/api/status | jq '.mesh | {archiver, archiverAdopted, archiverOffers, heldFor, mailbox}'
+```
+
+`archiverOffers` empty while a volunteer is on the air means the claim never
+reached the station table — a different fault from "nobody offered". That was
+real: `serve:` was recorded only at the radio door, so an archiver heard over
+Reticulum (which is every always-on archiver) offered nothing as far as any
+station could tell.
+
+The three-station dance is simulated on this machine before it goes near a
+radio: `test/xprs_mail_relay_sim_test.dart` on `test/support/mail_relay_sim.dart`
+runs the real funnel, store, receipts and mailbox for each station in turn over
+an air that drops what is addressed to somebody offline.
+
 ## 6. Releasing carried copies
 
 The recipient's `?ACK <am>` purges carriers still holding a copy. The have-bloom

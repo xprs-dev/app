@@ -467,10 +467,25 @@ class XprsMonitor {
   /// [stationsJson] -- and nowhere else: not the traffic ring, not the
   /// in-earshot table, not the this-hour memory. A station also heard on the
   /// air is listed as local and not here; the air is the better answer.
-  void noteRemote(String callsign, {int? nowMs}) {
+  void noteRemote(String callsign, {int? nowMs, XprsPacket? saying}) {
     final c = callsign.trim().toUpperCase();
     if (c.isEmpty) return;
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    // WHAT IT SAYS IT DOES, even when we only ever hear it over the internet.
+    //
+    // `services` was written in [offer], which is the AIR's door: a station
+    // whose beacons reach us over Reticulum — every always-on archiver, by
+    // definition — was remembered as present and as offering nothing at all.
+    // A station looking for a volunteer to keep its mail therefore never found
+    // one, however loudly that volunteer announced `serve:archive`.
+    if (saying != null && (saying.has('serve') || saying.has('uptime'))) {
+      final st = _stations[c] ?? XprsStation(c, 'rns', now);
+      if (saying.has('serve')) st.services = xprsServices(saying);
+      if (saying.has('uptime')) st.uptime = saying['uptime'];
+      st.lastMs = now;
+      st.bearers['rns'] = now;
+      _stations[c] = st;
+    }
     _remote.remove(c); // re-insert: the map keeps insertion order, oldest first
     _remote[c] = now;
     while (_remote.length > rememberedMax) {
@@ -480,6 +495,24 @@ class XprsMonitor {
   }
 
   Map<String, int> get remote => Map.unmodifiable(_remote);
+
+  /// Have we heard THIS station, ourselves, within [within]?
+  ///
+  /// The honest half of reachability. A holder deciding whether to hand mail
+  /// over needs evidence about the recipient and not about the network: "a LAN
+  /// peer exists" makes every callsign on earth look reachable, which is how a
+  /// station ends up re-airing mail once a minute to a callsign that has never
+  /// existed.
+  bool heardDirectly(String callsign,
+      {Duration within = const Duration(minutes: 10), int? nowMs}) {
+    final c = callsign.trim().toUpperCase();
+    if (c.isEmpty) return false;
+    final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    final st = _stations[c];
+    if (st != null && now - st.lastMs <= within.inMilliseconds) return true;
+    final r = _remote[c];
+    return r != null && now - r <= within.inMilliseconds;
+  }
 
   void clear() {
     _ring.clear();

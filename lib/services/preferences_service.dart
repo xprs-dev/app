@@ -377,6 +377,13 @@ class PreferencesService {
   /// station's messages are kept by SOME volunteer node without the user having
   /// to pick one. HOW a volunteer is chosen is decided elsewhere; this is only
   /// the operator's yes/no. Ignored once an explicit archiver is listed.
+  /// The archiver this station adopted for ITSELF (12.3), as against one the
+  /// operator named. Kept apart so a restart does not silently promote an
+  /// automatic choice into a permanent one — and so the operator naming their
+  /// own archiver still stands the adopted one down.
+  String get xprsArchiverAdopted => _prefs.getString('xprs.archiverAdopted') ?? '';
+  set xprsArchiverAdopted(String v) => _prefs.setString('xprs.archiverAdopted', v);
+
   bool get xprsArchiverAuto => _prefs.getBool('xprs.archiverAuto') ?? true;
   set xprsArchiverAuto(bool v) => _prefs.setBool('xprs.archiverAuto', v);
 

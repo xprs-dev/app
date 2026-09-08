@@ -45,6 +45,7 @@ import 'xprs_body.dart';
 import 'xprs_group_keys.dart';
 import 'xprs_id.dart';
 import 'xprs_monitor.dart';
+import 'xprs_mailbox.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
 import 'xprs_groups.dart';
@@ -967,6 +968,14 @@ class XprsPublisher {
     }
     final wire = p.encode();
     lastWire = wire;
+    // EVERY directed packet this station originates gets a copy left with an
+    // archiver if nothing acknowledges it (12.7). Armed here because this is
+    // the one place all of them pass — a chat message, a file description, a
+    // group act, a receipt — and because the core moves packets on a person's
+    // behalf without reading them: the chat wapp neither knows nor needs to
+    // know that any of this happens (docs/architecture.md 3). The arm itself
+    // is a guarded no-op for anything that is not ours and directed.
+    if (!datagram) XprsMailbox.instance.armDeposit(wire);
     // `<type>` alone would still collide across destinations, which is exactly
     // the catch-up sweep's case: N asks, one slot, one survivor.
     //
