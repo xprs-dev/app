@@ -52,11 +52,34 @@ if [[ "$YES" -ne 1 ]]; then
   read -r -p ">> proceed? [y/N] " ans; [[ "$ans" == "y" || "$ans" == "Y" ]] || exit 1
 fi
 
+# The tree CI checks out has to compile, and the surest way it does not is an
+# import naming a file that never got committed. That is invisible here — the
+# file is on disk, so the build and the analyzer are happy — and fatal there.
+# It cost v1.2.9: a rename staged in a shared working tree went into a commit
+# that meant to change something else, and all three platforms failed on an
+# import that had not changed in a release.
+dart tool/check_tracked_imports.dart HEAD
+
 sed -i "s/^version:.*/version: ${VERSION}+${CODE}/" pubspec.yaml
 dart run tool/update_version.dart
 
-git add pubspec.yaml lib/version.dart
-git commit -m "Release v${VERSION}"
+# Commit ONLY the version bump. This working tree may hold somebody else's work
+# in progress — pubspec.yaml included — and a release must never carry it. So
+# the commit is built from HEAD plus these two files, and the working tree is
+# left exactly as it was found.
+tmpidx="$(mktemp -u)"
+pubblob=$(git show HEAD:pubspec.yaml | sed "s/^version:.*/version: ${VERSION}+${CODE}/" | git hash-object -w --stdin)
+verblob=$(git hash-object -w lib/version.dart)
+GIT_INDEX_FILE="$tmpidx" git read-tree HEAD
+GIT_INDEX_FILE="$tmpidx" git update-index --cacheinfo 100644,"$pubblob",pubspec.yaml
+GIT_INDEX_FILE="$tmpidx" git update-index --cacheinfo 100644,"$verblob",lib/version.dart
+tree=$(GIT_INDEX_FILE="$tmpidx" git write-tree)
+rm -f "$tmpidx"
+git update-ref HEAD "$(git commit-tree "$tree" -p HEAD -m "Release v${VERSION}")"
+# Keep the real index in step with the new HEAD, or the next `git status` in
+# this tree shows a phantom revert of the version.
+git update-index --cacheinfo 100644,"$pubblob",pubspec.yaml
+git update-index --cacheinfo 100644,"$verblob",lib/version.dart
 git tag "v${VERSION}"
 
 branch=$(git rev-parse --abbrev-ref HEAD)
