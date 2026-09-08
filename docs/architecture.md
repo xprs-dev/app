@@ -249,6 +249,16 @@ for the packet lane goes out as a ~24 kB preview the message carries, plus a
 companion `t:file r:<message id>` describing the original; the preview is made
 with `package:image` on a worker isolate, never on the UI isolate.
 
+**Every sender owes the same three things**, so they are three shared
+functions rather than three copies: `xprsLiftOntoHead` writes the fields before
+the body is built, `XprsSend.airFileCompanion` describes the original a preview
+stands for, and `XprsSend.onFileShared` advertises the hash and pushes the
+bytes where a lane exists. The remote API had its own version of all three and
+each one was subtly wrong — a reference sealed inside `x:` where nobody could
+read it, no companion, and a file shared without telling the network it
+existed. `xprsBuildWithFile` is the fourth: it drops `name:` and rebuilds
+rather than refuse a five-word message because the FILENAME did not fit.
+
 **The wapp's whole surface is three things**: a token in the text it sends,
 `hal_media_state` for what the core is doing about a reference, and
 `hal_media_open` to hand a held file to the system viewer. It never receives
