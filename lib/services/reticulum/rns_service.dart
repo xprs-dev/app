@@ -1406,9 +1406,15 @@ class RnsService {
   /// their paths never form — measured on two phones that could not see each
   /// other. Traffic between LAN peers then never touches a public hub. The
   /// passive governor still sheds under load. Demoted (unplugged / cellular):
-  /// back to the scoped edge bridge, LAN hub closed. Reticulum's limit, not
-  /// ours: a NAT'd node serves its LAN and forwards for peers it is linked to;
-  /// it is not reachable from another network without a public address.
+  /// back to the scoped edge bridge, LAN hub closed.
+  ///
+  /// A promoted node is a transport node for the whole network it can reach,
+  /// not merely for its own LAN. Reticulum routes on announce-derived hop
+  /// memory keyed on the destination hash, so the stations attached here become
+  /// reachable from anywhere their announces propagate, and packets for them
+  /// come back down the links this node already established. Whether it dialled
+  /// out or was dialled decides nothing about routing; it only decides who can
+  /// open the next connection.
   Future<void> _applyHubRole(bool unlimited) async {
     final t = _transport;
     if (t == null || _id == null) return;
