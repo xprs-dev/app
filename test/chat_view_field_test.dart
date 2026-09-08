@@ -238,4 +238,35 @@ void main() {
       expect(find.byIcon(Icons.done_all), findsNothing);
     });
   });
+
+  group('the day a message fell on', () {
+    // Pinned "now": a Wednesday, so the weekday branch is unambiguous.
+    final now = DateTime(2026, 9, 9, 15, 30);
+
+    test('today and yesterday are named, not dated', () {
+      expect(chatDayLabel('2026-09-09', now: now), 'Today');
+      expect(chatDayLabel('2026-09-08', now: now), 'Yesterday');
+    });
+
+    test('the last week reads as a weekday', () {
+      expect(chatDayLabel('2026-09-07', now: now), 'Monday');
+      expect(chatDayLabel('2026-09-04', now: now), 'Friday');
+    });
+
+    test('older this year drops the year; older still keeps it', () {
+      expect(chatDayLabel('2026-09-02', now: now), '2 September');
+      expect(chatDayLabel('2026-01-31', now: now), '31 January');
+      expect(chatDayLabel('2025-12-25', now: now), '25 December 2025');
+    });
+
+    test('a time of day never changes the answer', () {
+      expect(chatDayLabel('2026-09-09', now: DateTime(2026, 9, 9, 0, 0)), 'Today');
+      expect(chatDayLabel('2026-09-09', now: DateTime(2026, 9, 9, 23, 59)), 'Today');
+    });
+
+    test('something unparseable is returned as it came, not invented', () {
+      expect(chatDayLabel('', now: now), '');
+      expect(chatDayLabel('not a date', now: now), 'not a date');
+    });
+  });
 }

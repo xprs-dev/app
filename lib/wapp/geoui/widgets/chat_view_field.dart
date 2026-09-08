@@ -23,6 +23,37 @@ import 'chat_palette.dart';
 import 'generated_avatar.dart';
 import 'media_view.dart';
 
+/// `2026-09-08` as somebody would say it: today and yesterday by name, the
+/// last week by weekday, this year without the year, anything older in full.
+/// A day separator is only useful if it reads like a person talking.
+///
+/// [now] exists so the answer can be pinned in a test; it defaults to the
+/// clock. An unparseable date is returned as it came, which is better than
+/// inventing a day.
+String chatDayLabel(String ymd, {DateTime? now}) {
+  final d = DateTime.tryParse(ymd);
+  if (d == null) return ymd;
+  final n = now ?? DateTime.now();
+  final today = DateTime(n.year, n.month, n.day);
+  final that = DateTime(d.year, d.month, d.day);
+  final days = today.difference(that).inDays;
+  if (days == 0) return 'Today';
+  if (days == 1) return 'Yesterday';
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  const weekdays = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+    'Friday', 'Saturday', 'Sunday',
+  ];
+  // Inside the last week a weekday is the clearest thing to read.
+  if (days > 1 && days < 7) return weekdays[that.weekday - 1];
+  final month = months[that.month - 1];
+  if (that.year == today.year) return '${that.day} $month';
+  return '${that.day} $month ${that.year}';
+}
+
 /// Stable colour for a transport/channel label ("NET", "BLE", "LORA", …),
 /// derived from the string so each gets a distinct, consistent hue with no
 /// domain knowledge. Shared by the chat origin chips and the AppBar channel
@@ -669,9 +700,56 @@ class _ChatViewFieldState extends State<ChatViewField> {
       controller: _scroll,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       itemCount: messages.length,
-      itemBuilder: (context, i) => _bubble(messages[i]),
+      itemBuilder: (context, i) {
+        final bubble = _bubble(messages[i]);
+        final head = _dayHeader(messages, i);
+        if (head == null) return bubble;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [head, bubble],
+        );
+      },
     );
   }
+
+  /// The day separator above message [i], or null when it belongs to the same
+  /// day as the one before it.
+  ///
+  /// A bubble carries a time and no day, which is unreadable the moment you
+  /// scroll: 09:41 could be this morning or last month. The wapp tags every
+  /// message with the calendar day it fell on, in the reader's own time, and
+  /// the run of messages sharing one day gets a single heading — the way every
+  /// messenger does it. A message stored before the wapp sent a date has none,
+  /// and simply gets no heading rather than a wrong one.
+  Widget? _dayHeader(List<Map<String, dynamic>> messages, int i) {
+    final day = (messages[i]['date'] ?? '').toString();
+    if (day.isEmpty) return null;
+    if (i > 0 && (messages[i - 1]['date'] ?? '').toString() == day) return null;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: ChatPalette.inBubble,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            _dayLabel(day),
+            style: const TextStyle(
+              color: ChatPalette.secondary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// `2026-09-08` as somebody would say it: today and yesterday by name, this
+  /// week by weekday, this year without the year, anything older in full.
+  static String _dayLabel(String ymd) => chatDayLabel(ymd);
 
   /// Forum-style topic header: the thread's root message rendered as the topic,
   /// with a back arrow, the original post in full, and a summary line ("N

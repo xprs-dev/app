@@ -393,6 +393,11 @@ class ConversationStore {
       'from': (d['from'] ?? '').toString(),
       'text': (d['text'] ?? '').toString(),
       'time': (d['time'] ?? '').toString(),
+      // The calendar day the wapp says this message fell on (YYYY-MM-DD, the
+      // reader's own time). The view draws a separator wherever it changes.
+      // Absent on messages stored before the wapp sent it — the view simply
+      // draws no separator for those.
+      if ((d['date'] ?? '').toString().isNotEmpty) 'date': d['date'].toString(),
       'meta': (d['meta'] ?? '').toString(),
       'key': (d['key'] ?? '').toString(),
       if ((d['via'] ?? '').toString().isNotEmpty) 'via': d['via'].toString(),
