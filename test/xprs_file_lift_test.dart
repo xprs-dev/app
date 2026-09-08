@@ -130,4 +130,32 @@ void main() {
       expect(lift.original, isNull);
     });
   });
+
+  group('the name gives way before the words (7.7.1)', () {
+    test('a long filename is dropped rather than refuse a short message', () {
+      XprsFileLift.meta = (sha) =>
+          (size: 581873, name: 'a-very-long-filename-for-one-mast-plan.pdf');
+      addTearDown(() => XprsFileLift.meta = null);
+      const token =
+          'file:RcvSaLp4Y5xu4O5LXgjvMkw0OzcQ6xzpBq7lWlBRfMs.pdf';
+      final lift = xprsLiftFile('the plan for the mast $token');
+      final head =
+          XprsPacket.parse('t:message f:X16JK8 d:X1ARKL ts:2026-09-08_16:17:56')!;
+      final withFields = xprsLiftOntoHead(head, lift);
+      expect(withFields['name'], isNotNull);
+
+      final built = xprsBuildWithFile(
+        head: withFields,
+        lift: lift,
+        text: lift.text,
+        private: false,
+      );
+      expect(built.ok, isTrue,
+          reason: 'the message was five words; the FILENAME is what did not fit');
+      final wire = (built.rejoined ?? built.packets.first).encode();
+      expect(wire, contains('file:'));
+      expect(wire, contains('size:581873'),
+          reason: 'size: is what a receiver declines with — it never gives way');
+    });
+  });
 }

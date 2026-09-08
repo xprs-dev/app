@@ -404,13 +404,21 @@ class MeshService {
         // peer reachable only over BLE jams a channel everyone shares — and
         // let the recipient ask when it wants it. Either way advertise the
         // hash, so any holder can serve it later (§12.9.2).
-        XprsSend.onFileShared = (fileValue, dest) {
+        XprsSend.onFileShared = (fileValue, dest, {original}) {
           final ref = MediaRef.parse('file:$fileValue');
           if (ref == null) return;
           final meta = mediaArchive.getMeta(ref.sha256);
           final sha = xprsFileSha(fileValue);
           if (sha != null) {
             unawaited(RnsService.instance.dhtPublish(_hexBytes(sha)));
+          }
+          // The ORIGINAL behind a preview is what a tap asks for, and it is
+          // never the hash that went out with the words. Advertised here or
+          // the far station asks a network that never heard of the file.
+          final origSha =
+              original == null ? null : xprsFileSha(original);
+          if (origSha != null) {
+            unawaited(RnsService.instance.dhtPublish(_hexBytes(origSha)));
           }
           if (dest.isEmpty || meta == null) return; // a broadcast: members pull
           final self = tableCallsign.trim().toUpperCase();

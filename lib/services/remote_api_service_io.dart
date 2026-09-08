@@ -69,6 +69,10 @@ import 'torrent_service.dart';
 import '../version.dart';
 import 'update_mirror_service.dart';
 import 'xprs/xprs_files.dart';
+import 'media/media_preview.dart';
+import 'xprs/xprs_file_lift.dart';
+import 'xprs/xprs_id.dart';
+import 'xprs/xprs_send.dart';
 import 'update_service.dart';
 import 'update_models.dart';
 import 'update_native.dart';
@@ -325,6 +329,13 @@ class RemoteApiService {
           final token = archive.putBytes(
               bytes, (data['ext'] ?? 'bin').toString(),
               name: data['name']?.toString());
+          // The same preview the attach doors make: a picture the packet lane
+          // cannot carry gets a small one, off the UI isolate, ready for
+          // whenever it is shared (XPRS.md 7.7.7). Without it this endpoint
+          // was a door into the archive that behaved differently from every
+          // other door into the archive.
+          unawaited(
+              MediaPreviews.instance.ensureFor(token).catchError((_) => null));
           return _json(res, {'ok': true, 'token': token, 'size': bytes.length});
         } catch (e) {
           return _json(res, {'ok': false, 'error': '$e'},
@@ -1294,16 +1305,26 @@ class RemoteApiService {
             (relay.isEmpty ? 0 : 4);
 
         if (wantPrivate) {
-          final head =
+          var head =
               XprsPacket.parse('t:$type f:$self d:$dest ts:$ts$relayField');
           if (head == null) {
             return _json(res, {'ok': false, 'error': 'malformed'},
                 status: HttpStatus.badRequest);
           }
-          final built = xprsBuildDirect(
+          // A shared file's reference belongs in the envelope, and it has to
+          // be written BEFORE the body is sealed: `m:` disappears into `x:`,
+          // and a lift attempted on the built packet would find no caption to
+          // take the token out of. The plain branch below needs none of this,
+          // because the publisher lifts a readable `m:` on its way out.
+          final lift = xprsLiftFile(text);
+          head = xprsLiftOntoHead(head, lift);
+          final built = xprsBuildWithFile(
             head: head,
-            text: text,
-            private: true,
+            lift: lift,
+            text: lift.found ? lift.text : text,
+            // Nothing is left to seal once the words are gone: a file with no
+            // caption is a plain packet whose one statement is its reference.
+            private: !lift.found || lift.text.isNotEmpty,
             // The key the recipient published in their `t:identity` (9.3),
             // learned from the air and re-announced every 30 minutes (18.1).
             recipientKeyHex: RnsService.instance.pubkeyForCallsign(dest) ?? '',
@@ -1321,6 +1342,23 @@ class RemoteApiService {
               'private': true,
               'error': 'cannot seal: ${built.refusal!.name}',
             }, status: HttpStatus.conflict);
+          }
+          // A picture too large for the packet lane went out as its preview;
+          // say what the original is, in the packet that exists to describe a
+          // file (7.7.7). Aired once, after the message it names.
+          if (lift.hasPreview) {
+            XprsSend.airFileCompanion(self, dest,
+                xprsIdentifier(built.rejoined ?? built.packets.first), lift);
+          }
+          // And do what sharing a file obliges: advertise that we hold it, and
+          // push it to the recipient where a lane exists. The composer does
+          // this through one hook so the core decides how; this endpoint used
+          // to share a reference to bytes it never told anybody it had, which
+          // left the far station asking a network that had never heard of the
+          // file.
+          if (lift.found) {
+            XprsSend.onFileShared
+                ?.call(lift.file!, dest, original: lift.original);
           }
           final reports = <Map<String, String>>[];
           for (final part in built.packets) {

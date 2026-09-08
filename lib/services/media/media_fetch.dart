@@ -157,11 +157,27 @@ class MediaFetch {
       return Future.value(true);
     }
     final existing = _inflight[sha];
-    if (existing != null) return existing.future;
+    if (existing != null) {
+      // One request per hash, and one completer — but a PERSON tapping again
+      // is not a duplicate, it is "try again". The asks are idempotent (a
+      // `cmd:file` the holder already answered costs one packet) and the
+      // holder may have become reachable, or the file may have been advertised,
+      // since the first attempt. Without this the first tap owned the hash for
+      // half an hour and every later tap was silently dropped on the floor.
+      if (userTapped) _runLanes(ref, from, size, userTapped: true);
+      return existing.future;
+    }
 
-    // Fill an unknown size from what the message said (the index), so the lane
-    // choice is right even when the caller did not pass one.
-    size ??= MediaRefIndex.instance.describe(sha)?.size;
+    // Fill an unknown size and an unknown holder from what the message said
+    // (the index), so the lane choice is right even when the caller did not
+    // pass them. A tap on a thumbnail knows the hash and rarely knows who
+    // shared it; without this, the one lane that can always answer — asking
+    // the sender — was the one lane a tap could not use.
+    final said = MediaRefIndex.instance.describe(sha);
+    size ??= said?.size;
+    if ((from == null || from.isEmpty) && (said?.from ?? '').isNotEmpty) {
+      from = said!.from;
+    }
 
     final link = (from != null && from.isNotEmpty &&
             RnsService.instance.reachableByCallsign(from)) ||
@@ -189,18 +205,7 @@ class MediaFetch {
     // completes `done`. A lane that fails on its own (404, ladder false) does
     // NOT complete it — a slower lane may still win — so a timeout guards the
     // whole request.
-    switch (lane) {
-      case MediaLane.packet:
-        _askPacketLane(ref, from);
-        _runInternet(ref, from);
-      case MediaLane.bulkAndInternet:
-        _askBulkLane(ref, from);
-        _runInternet(ref, from);
-      case MediaLane.internetOnly:
-        _runInternet(ref, from);
-      case MediaLane.wait:
-        break; // handled above
-    }
+    _runLanes(ref, from, size, userTapped: userTapped, lane: lane);
 
     Timer(const Duration(minutes: 30), () {
       final w = _inflight.remove(sha);
@@ -211,6 +216,35 @@ class MediaFetch {
       }
     });
     return done.future;
+  }
+
+  /// Set every lane [decide] chose going. Separate from [want] because a
+  /// person tapping a picture that is already being fetched is asking for
+  /// another attempt, not for a second transfer: the asks repeat, the
+  /// completer does not.
+  void _runLanes(MediaRef ref, String? from, int? size,
+      {required bool userTapped, MediaLane? lane}) {
+    final chosen = lane ??
+        decide(
+            size: size ?? MediaRefIndex.instance.describe(ref.sha256)?.size,
+            link: (from != null && from.isNotEmpty &&
+                    RnsService.instance.reachableByCallsign(from)) ||
+                XprsLan.instance.peerCount > 0,
+            bleOnly: false,
+            maxMb: PreferencesService.instanceSync?.mediaAutoMaxMb ?? 10,
+            userTapped: userTapped);
+    switch (chosen) {
+      case MediaLane.packet:
+        _askPacketLane(ref, from);
+        _runInternet(ref, from);
+      case MediaLane.bulkAndInternet:
+        _askBulkLane(ref, from);
+        _runInternet(ref, from);
+      case MediaLane.internetOnly:
+        _runInternet(ref, from);
+      case MediaLane.wait:
+        break;
+    }
   }
 
   /// Ask the holder to send the whole file over the packet lane: a `cmd:file`

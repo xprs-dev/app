@@ -28,6 +28,7 @@
  * injects, so this is testable on its own and the core owns the archive.
  */
 import '../../util/media_ref.dart';
+import 'xprs_body.dart';
 import 'xprs_packet.dart';
 
 /// What a lift found: the text with the token removed, and the fields to put
@@ -140,4 +141,60 @@ XprsPacket xprsLiftFileOnPacket(XprsPacket p) {
     if (withName.fits) out = withName;
   }
   return out;
+}
+
+/// Write a lifted reference onto a message's HEAD packet, before the body is
+/// built.
+///
+/// This is the half that cannot wait for [xprsLiftFileOnPacket]: a sealed 1:1
+/// hides `m:` inside `x:`, so by the time the built packet exists there is no
+/// caption left to lift a token out of. Every sender that seals — the chat
+/// composer and the remote API alike — writes the fields here instead, and
+/// they agree because it is one function rather than two copies.
+///
+/// `name:` is dropped when the packet has no room for it: it is a convenience,
+/// while `size:` is what a receiver declines with (XPRS.md 7.7.1).
+XprsPacket xprsLiftOntoHead(XprsPacket head, XprsFileLift lift) {
+  if (!lift.found) return head;
+  var out = head.with_('file', lift.file!);
+  if (lift.size != null) out = out.with_('size', '${lift.size}');
+  if (lift.name != null) {
+    final withName = out.with_('name', lift.name!);
+    if (withName.fits) out = withName;
+  }
+  return out;
+}
+
+/// Build a message that carries a file reference, dropping the courtesy field
+/// before the words.
+///
+/// `name:` is 1–64 characters on the head, and a sealed body has whatever the
+/// head leaves it. A picture with a long filename and a short caption would
+/// otherwise be refused as `tooLong` — which reads to the sender as "your
+/// message was too long" when the message was five words and the FILENAME was
+/// what did not fit. XPRS.md 7.7.1 says which one gives way: the extension
+/// already advises presentation and `size:` is what a receiver decides with,
+/// so the name is the courtesy and goes first.
+XprsBodyResult xprsBuildWithFile({
+  required XprsPacket head,
+  required String text,
+  required bool private,
+  required XprsFileLift lift,
+  String? recipientKeyHex,
+}) {
+  final built = xprsBuildDirect(
+      head: head,
+      text: text,
+      private: private,
+      recipientKeyHex: recipientKeyHex);
+  if (built.ok ||
+      built.refusal != XprsSealRefusal.tooLong ||
+      !head.has('name')) {
+    return built;
+  }
+  return xprsBuildDirect(
+      head: head.without(const {'name'}),
+      text: text,
+      private: private,
+      recipientKeyHex: recipientKeyHex);
 }

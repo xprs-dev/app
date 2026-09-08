@@ -102,8 +102,12 @@ class XprsSend {
   /// bulk lane only where a link exists, and advertise it either way. Injected
   /// (mesh_service) because the lane and the store are the core's, not this
   /// composer's — this file only knows a reference went out and to whom.
-  /// [dest] is empty for a broadcast.
-  static void Function(String fileValue, String dest)? onFileShared;
+  /// [dest] is empty for a broadcast. [original] is the full-resolution file
+  /// a carried preview stands for (§7.7.7) — the one the far station will ask
+  /// for when somebody taps the picture, so it needs advertising even though
+  /// it is not what went out with the words.
+  static void Function(String fileValue, String dest, {String? original})?
+      onFileShared;
 
   /// Messages that got their first-minute re-airings on BLE (see [_repeat]).
   static int repeated = 0;
@@ -176,19 +180,12 @@ class XprsSend {
     // nobody can fetch. §11.2 already says the hash is public and only the
     // bytes are gated.
     final lift = xprsLiftFile(text);
-    var body = text;
-    if (lift.found) {
-      head = head.with_('file', lift.file!);
-      if (lift.size != null) head = head.with_('size', '${lift.size}');
-      if (lift.name != null) {
-        final withName = head.with_('name', lift.name!);
-        if (withName.fits) head = withName;
-      }
-      body = lift.text;
-    }
+    head = xprsLiftOntoHead(head, lift);
+    final body = lift.found ? lift.text : text;
 
-    final built = xprsBuildDirect(
+    final built = xprsBuildWithFile(
       head: head,
+      lift: lift,
       // Nothing left to seal once the words are gone: a file with no caption
       // is a plain packet whose one statement is its `file:` field.
       text: body,
@@ -218,8 +215,10 @@ class XprsSend {
     final id = xprsIdentifier(built.rejoined ?? built.packets.first);
 
     unawaited(airDirect(built.packets, dest: dest, id: id));
-    if (lift.hasPreview) _airCompanion(self, dest, id, lift);
-    if (lift.found) onFileShared?.call(lift.file!, dest);
+    if (lift.hasPreview) airFileCompanion(self, dest, id, lift);
+    if (lift.found) {
+      onFileShared?.call(lift.file!, dest, original: lift.original);
+    }
     sent++;
     return XprsSendOutcome(
       form: built.privacy == XprsPrivacy.sealed ? 'x' : 'm',
@@ -294,8 +293,10 @@ class XprsSend {
 
     final id = xprsIdentifier(built.rejoined ?? built.packets.first);
     unawaited(airBroadcast(built.packets, id: id));
-    if (lift.hasPreview) _airCompanion(self, '', id, lift);
-    if (lift.found) onFileShared?.call(lift.file!, '');
+    if (lift.hasPreview) airFileCompanion(self, '', id, lift);
+    if (lift.found) {
+      onFileShared?.call(lift.file!, '', original: lift.original);
+    }
     sent++;
     return XprsSendOutcome(form: 'm', id: id, parts: built.packets.length);
   }
@@ -431,7 +432,11 @@ class XprsSend {
   /// describing it, pointed at the message that carried the preview with `r:`
   /// (§7.7.1 describes and never delivers; §5's `r:` refers). The receiver
   /// renders the preview immediately and fetches this one when asked.
-  void _airCompanion(
+  /// Describe the ORIGINAL a carried preview stands for: `t:file r:<message
+  /// id> file:<original> size: name:` (XPRS.md 7.7.7). Public because every
+  /// sender that seals owes it — the composer and the remote API both — and
+  /// two copies of it would drift.
+  static void airFileCompanion(
       String self, String dest, String msgId, XprsFileLift lift) {
     final b = StringBuffer('t:file f:$self');
     if (dest.isNotEmpty) b.write(' d:$dest');

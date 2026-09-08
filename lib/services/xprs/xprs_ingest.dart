@@ -20,6 +20,7 @@
  * whole mesh's chatter and fill its disk with strangers (section 36.3: a
  * station pushes to the indexers its operator CHOSE).
  */
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -35,6 +36,8 @@ import 'xprs_monitor.dart';
 import 'xprs_id.dart';
 import 'xprs_outbox.dart';
 import 'xprs_packet.dart';
+import '../../util/media_ref.dart';
+import '../media/media_fetch.dart';
 import '../media/media_ref_index.dart';
 import 'xprs_file_acl.dart';
 import 'xprs_inline_file.dart';
@@ -332,6 +335,17 @@ class XprsIngest {
     if (_describesFile(p)) {
       XprsFileAcl.instance.bindFromMessage(p, selfCallsign: selfCallsign);
       MediaRefIndex.instance.note(p, msgId: xprsIdentifier(p));
+      // AND FETCH IT, HERE, IF THE BEARER ALLOWS.
+      //
+      // The reference travels as a field now (§7.7.7), so nothing in the text
+      // triggers a fetch any more — and every trigger there ever was lived in
+      // a widget or a wapp bridge, which meant a picture arrived only if
+      // somebody happened to be looking at that conversation. Wanting it is
+      // the core's, at the one door every bearer reaches; WHETHER to fetch is
+      // MediaFetch.decide's, which is where the rule about a shared radio is
+      // written down. `want` is idempotent per hash and returns at once for a
+      // file already held, so a message heard twice costs one lookup.
+      if (forUs) _fetchOnSight(p);
     }
 
     // ANSWER A REACHABILITY TEST, ON WHATEVER BEARER IT ARRIVED ON.
@@ -568,6 +582,27 @@ class XprsIngest {
           .bindFromMessage(p, selfCallsign: XprsArchive.instance.selfCallsign);
       MediaRefIndex.instance.note(p, msgId: xprsIdentifier(p));
     }
+  }
+
+  /// Ask the core for the bytes a heard packet referenced, on sight.
+  ///
+  /// Only for a message addressed to us or to a group we are in: an archiver
+  /// indexing the world's traffic must not fetch the world's files. The lane
+  /// (and whether there is one at all) is [MediaFetch.decide]'s answer, from
+  /// the size the sender announced and what actually reaches the sender.
+  static void _fetchOnSight(XprsPacket p) {
+    if (p.type != 'message') return;
+    final field = (p['file'] ?? '').trim();
+    final ref = MediaRef.parse(field.isEmpty ? '' : 'file:$field') ??
+        // An older sender left the token in the caption.
+        (MediaRef.findAll(p['m'] ?? '').isEmpty
+            ? null
+            : MediaRef.findAll(p['m'] ?? '').first);
+    if (ref == null) return;
+    final from = (p['f'] ?? '').trim().toUpperCase();
+    unawaited(MediaFetch.instance
+        .want(ref, from: from.isEmpty ? null : from)
+        .catchError((_) => false));
   }
 
   /// A packet that says something about a file's audience or description: a

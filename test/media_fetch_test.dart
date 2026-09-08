@@ -9,6 +9,9 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 import 'package:xprs/services/media/media_fetch.dart';
+import 'package:xprs/services/xprs/xprs_archive.dart';
+import 'package:xprs/services/xprs/xprs_ingest.dart';
+import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/util/media_archive.dart';
 import 'package:xprs/util/media_ref.dart';
 
@@ -117,6 +120,49 @@ void main() {
       expect(await MediaFetch.instance.want(ref), isTrue);
       expect(MediaFetch.instance.served, before + 1);
       expect(MediaFetch.instance.progress(ref.sha256).state, MediaState.ready);
+    });
+
+    test('the receive door asks for a file the message referenced', () {
+      // The reference is a FIELD now (§7.7.7), so nothing in the text triggers
+      // a fetch, and every trigger there used to be lived in a widget: a
+      // picture arrived only if somebody happened to be looking at the
+      // conversation. The core wants it at the funnel, or nobody does.
+      final bytes = Uint8List.fromList(List.generate(400, (i) => i % 251));
+      final token = MediaArchive.forDirectory(
+              Directory.systemTemp.createTempSync('probe_').path)
+          .putBytes(bytes, 'png');
+      final ref = MediaRef.parse(token)!;
+      final field = token.substring(5); // `file:` value, as it rides the wire
+
+      XprsArchive.instance.selfCallsign = 'X1SELF';
+      XprsIngest.heard(
+          XprsPacket.parse('t:message f:X1PEER d:X1SELF '
+              'ts:2026-09-08_14:26:40 file:$field size:400 m:look')!,
+          bearer: 'lan',
+          selfCallsign: 'X1SELF');
+
+      expect(MediaFetch.instance.progress(ref.sha256).state,
+          isNot(MediaState.absent),
+          reason: 'a message addressed to us starts the fetch on sight');
+    });
+
+    test('somebody else\'s mail is not fetched — an archiver is not a hoarder',
+        () {
+      final bytes = Uint8List.fromList(List.generate(400, (i) => (i * 7) % 251));
+      final token = MediaArchive.forDirectory(
+              Directory.systemTemp.createTempSync('probe2_').path)
+          .putBytes(bytes, 'png');
+      final ref = MediaRef.parse(token)!;
+      final field = token.substring(5);
+
+      XprsArchive.instance.selfCallsign = 'X1SELF';
+      XprsIngest.heard(
+          XprsPacket.parse('t:message f:X1PEER d:X1OTHER '
+              'ts:2026-09-08_14:26:40 file:$field size:400 m:look')!,
+          bearer: 'lan',
+          selfCallsign: 'X1SELF');
+
+      expect(MediaFetch.instance.progress(ref.sha256).state, MediaState.absent);
     });
 
     test('onPut completes a waiter — the bytes landing is the completion',
