@@ -304,6 +304,17 @@ class MeshBulkSpool {
               ],
       };
 
+  /// Byte progress of an inbound transfer: (bytes on disk, declared size), or
+  /// null when nothing inbound is known for [hex]. The `.part` length is the
+  /// only honest figure; the size is what the offer declared.
+  ({int received, int total})? inboundProgress(String hex) {
+    final m = _meta(hex.toLowerCase());
+    if (m == null) return null;
+    final st = (m['state'] ?? '').toString();
+    if (st == 'done') return null;
+    return (received: _haveBytes(hex.toLowerCase()), total: (m['size'] as int?) ?? 0);
+  }
+
   /// Bytes of an inbound transfer already on disk (its resume offset).
   int _haveBytes(String hex) {
     try {

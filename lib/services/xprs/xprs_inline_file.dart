@@ -288,6 +288,19 @@ class XprsInlineAsm {
           (f.from, f.ref, f.spans.length,
               xprsInlineChunkCount(f.size, f.chunkLen)),
       ];
+
+  /// Byte progress of one transfer in flight, by its `file:` ref value
+  /// (`<sha>.<ext>`) or bare sha: (held bytes, total bytes). Null when nothing
+  /// is being assembled for it. What a progress bar wants.
+  ({int received, int total})? progressOf(String refOrSha) {
+    final want = refOrSha.startsWith('file:') ? refOrSha.substring(5) : refOrSha;
+    final sha = want.contains('.') ? want.substring(0, want.indexOf('.')) : want;
+    for (final f in _files.values) {
+      final fs = f.ref.contains('.') ? f.ref.substring(0, f.ref.indexOf('.')) : f.ref;
+      if (fs == sha) return (received: f.filled, total: f.size);
+    }
+    return null;
+  }
 }
 
 class _Inbound {
@@ -311,6 +324,7 @@ class _Inbound {
   Timer? idle;
 
   Set<int> get spans => _spans;
+  int get filled => _filled;
 
   void place(int off, Uint8List chunk) {
     if (_spans.contains(off)) return; // a repeated chunk is ignored

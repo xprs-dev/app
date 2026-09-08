@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import 'models/monitored_task.dart';
 import 'editor/editor_install.dart';
 import 'wapp/host_event_bridge.dart';
+import 'services/media/media_fetch.dart';
+import 'wapp/shared_media_fetch.dart';
 import 'wapp/native/media_capability.dart';
 import 'wapp/native/wasm_video_player.dart' show warmVideoDecoderModule;
 import 'wapp/native/wasm_video_session.dart';
@@ -183,6 +185,20 @@ Future<void> _boot() async {
     mode: BootStart.parallel,
     init: () async {
       HostEventBridge.instance.install();
+    },
+  );
+  BootOrchestrator.instance.register(
+    id: 'media-fetch-ladder',
+    name: 'Media fetch: internet ladder',
+    description:
+        'Injects the internet resolution ladder (Reticulum content fetch, LAN '
+        'Blossom, I2P, BitTorrent) into the core MediaFetch entry point. The '
+        'ladder lives in the wapp layer; wiring it here keeps the core from '
+        'importing it while still owning the lane choice.',
+    mode: BootStart.parallel,
+    init: () async {
+      MediaFetch.instance.internetResolve =
+          (sha, ext, {from}) => resolveSharedMedia(sha, ext, fromCallsign: from);
     },
   );
   BootOrchestrator.instance.register(

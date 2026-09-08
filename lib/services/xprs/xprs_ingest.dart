@@ -35,6 +35,7 @@ import 'xprs_monitor.dart';
 import 'xprs_id.dart';
 import 'xprs_outbox.dart';
 import 'xprs_packet.dart';
+import '../media/media_ref_index.dart';
 import 'xprs_file_acl.dart';
 import 'xprs_inline_file.dart';
 import 'xprs_sig.dart';
@@ -320,12 +321,17 @@ class XprsIngest {
       // transaction actually wrote — a forged packet is dropped there, and a
       // watermark advanced here would have stepped straight over it.
       XprsArchive.instance.admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
-      // A message referencing a file binds that file's audience (§11.2): if we
-      // come to hold the picture, we serve it to exactly the people the message
-      // reached. No-op unless the body carries a `file:` token.
-      if (p.type == 'message') {
-        XprsFileAcl.instance.bindFromMessage(p, selfCallsign: selfCallsign);
-      }
+    }
+    // A message referencing a file binds that file's audience (§11.2): if we
+    // come to hold the picture, we serve it to exactly the people the message
+    // reached. A `t:file r:` describing a preview's original binds the same.
+    // OUTSIDE the archive gate above: an unbound hash is public by default,
+    // so a closed-group post this station chose not to archive would have
+    // left its picture open to anyone once fetched. Binding is one indexed
+    // write and is about audience, not about keeping the words.
+    if (_describesFile(p)) {
+      XprsFileAcl.instance.bindFromMessage(p, selfCallsign: selfCallsign);
+      MediaRefIndex.instance.note(p, msgId: xprsIdentifier(p));
     }
 
     // ANSWER A REACHABILITY TEST, ON WHATEVER BEARER IT ARRIVED ON.
@@ -557,11 +563,20 @@ class XprsIngest {
     XprsArchive.instance.admit(p, bearer: _archiveBearer(bearer), own: true);
     // Our own message binds the audience of any file it carries, so we serve
     // our own shared pictures to the same people we sent them to (§11.2).
-    if (p.type == 'message') {
+    if (_describesFile(p)) {
       XprsFileAcl.instance
           .bindFromMessage(p, selfCallsign: XprsArchive.instance.selfCallsign);
+      MediaRefIndex.instance.note(p, msgId: xprsIdentifier(p));
     }
   }
+
+  /// A packet that says something about a file's audience or description: a
+  /// message (its `file:` field, or a token in its caption), or a `t:file`
+  /// carrying `r:` — the companion that names a preview's original. A chunk
+  /// of the packet lane is neither.
+  static bool _describesFile(XprsPacket p) =>
+      p.type == 'message' ||
+      (p.type == 'file' && p.has('r') && !xprsIsInlineChunk(p));
 
   /// An XPRS datagram off the Reticulum 'xprs' tag. Never shown as a sighting
   /// (the monitor's no-internet invariant is structural, and this lane does

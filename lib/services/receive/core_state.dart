@@ -54,6 +54,12 @@ class CoreState {
   /// The archive's counters and what this station is holding for others.
   static const archive = 'core.archive';
 
+  /// A shared file's fetch state moved: absent → seeking → fetching → ready
+  /// (or failed). The event carries {topic, rev}; the wapp reads the file's
+  /// state with hal_media_state. Coalesced like the rest, so a burst of chunks
+  /// arriving is one publication.
+  static const media = 'core.media';
+
   /// A background task started, finished, paused or failed.
   static const tasks = 'core.tasks';
 
@@ -79,6 +85,7 @@ class CoreState {
     rnsGraph,
     meshTopology,
     archive,
+    media,
     tasks,
     groups,
   ];

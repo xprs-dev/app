@@ -94,9 +94,14 @@ class XprsFileAcl {
   /// exactly the people the message reached. [own] adds the author's own
   /// callsign to a pair so the author can fetch back their own picture.
   void bindFromMessage(XprsPacket msg, {String? selfCallsign}) {
-    final body = msg['m'] ?? '';
-    if (body.isEmpty) return;
-    final refs = MediaRef.findAll(body);
+    // The reference is a FIELD on the wire (7.7, 7.7.7) — and, in messages
+    // older than that rule, a token inside the caption. Both bind. A
+    // companion `t:file r:` naming a preview's original binds the same way,
+    // so the full-resolution picture is served to exactly the people the
+    // message reached.
+    final refs = <MediaRef>[...MediaRef.findAll(msg['m'] ?? '')];
+    final field = MediaRef.parse('file:${msg['file'] ?? ''}');
+    if (field != null) refs.add(field);
     if (refs.isEmpty) return;
     final d = _base(msg['d'] ?? '');
     final from = _base(msg['f'] ?? '');

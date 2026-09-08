@@ -34,6 +34,8 @@ import '../xprs/xprs_files.dart';
 import '../xprs/xprs_file_acl.dart';
 import '../xprs/xprs_inline_file.dart';
 import '../xprs/xprs_inline_sender.dart';
+import '../media/media_fetch.dart';
+import '../media/media_ref_index.dart';
 import '../reticulum/rns_service.dart';
 import '../social/archiver_service.dart';
 import 'package:reticulum/src/services/social/archiver_policy.dart';
@@ -250,6 +252,10 @@ class MeshService {
         // bytes. Same profile-encrypted store.
         XprsFileAcl.instance.init(
             wappsDataStorage(prefs).getAbsolutePath('xprs_file_acl.sqlite3'));
+        // What the conversation said about each shared file (size, name,
+        // which original a preview stands for), by hash. Same store.
+        MediaRefIndex.instance.init(
+            wappsDataStorage(prefs).getAbsolutePath('media_refs.sqlite3'));
         var n = 0;
         for (final g in XprsGroupKeys.instance.followedGroups()) {
           n += XprsGroups.instance.hydrate(XprsGroupKeys.instance.actsFor(g));
@@ -362,6 +368,15 @@ class MeshService {
         XprsCatchup.instance.start(cs);
         final mediaArchive = MediaArchive.forDirectory(
             wappsDataStorage(prefs).getAbsolutePath(''));
+        // The one entry point for getting a file's bytes: it checks the
+        // archive first, picks the lane by size and reachability, reports
+        // progress. Every lane ends in this archive, so onPut is where "the
+        // file is here now" is said once — to whoever asked (MediaFetch) and,
+        // through the core.media topic, to the wapps.
+        mediaArchive.onPut = MediaFetch.instance.notePut;
+        MediaFetch.instance
+          ..archive = (() => mediaArchive)
+          ..selfCallsign = (() => tableCallsign);
         MeshBulkSpool.instance.init(
             wappsDataStorage(prefs).getAbsolutePath('mesh/bulk'), mediaArchive);
         MeshBulkSpool.instance.sweep();
