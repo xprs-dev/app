@@ -13,7 +13,7 @@
  */
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:typed_data';
 
 import '../../util/nostr_crypto.dart';
@@ -24,6 +24,7 @@ import 'folder_event.dart' show pieceSizeForFile, FileEntry;
 import 'folder_service.dart';
 import 'folder_state.dart';
 import 'piece_hashes.dart';
+import '../../platform/fs.dart';
 
 class DiskFolderManager {
   final FolderService folders;
@@ -142,7 +143,7 @@ class DiskFolderManager {
   /// Register [dirPath] as an owned folder and synchronize it. Returns folderId,
   /// or '' if the path is a whole-storage root (never shareable as one folder).
   Future<String> addFromDisk(String dirPath) async {
-    final dir = Directory(dirPath).absolute.path;
+    final dir = fs.directory(dirPath).absolute.path;
     if (_isUnsafeShareRoot(dir)) {
       log?.call('disk folder: refusing to share whole-storage root $dir');
       return '';
@@ -151,7 +152,7 @@ class DiskFolderManager {
     var isNew = false;
     if (key == null) {
       final kp = NostrCrypto.generateKeyPair();
-      final name = dir.split(Platform.pathSeparator).last;
+      final name = dir.split(pathSeparator).last;
       key = (kp.privateKeyHex, name, kp.publicKeyHex);
       _writeKeyFile(dir, folderId: kp.publicKeyHex, priv: kp.privateKeyHex, name: name);
       isNew = true;
@@ -241,7 +242,7 @@ class DiskFolderManager {
       if (store != null && f.size > 0) {
         try {
           final size = pieceSizeForFile(f.size);
-          final hashes = await pieceHashesOfFile(File(f.path), size);
+          final hashes = await pieceHashesOfFile(fs.file(f.path), size);
           if (hashes.isNotEmpty) {
             final sha = await store(packPieceHashes(hashes));
             if (sha != null && sha.length == 64) {
@@ -323,7 +324,7 @@ class DiskFolderManager {
   /// Null when we do not serve this folder from disk.
   String? dataDirOf(String folderId) {
     final dir = _dirs[folderId];
-    return dir == null ? null : '$dir${Platform.pathSeparator}$kFolderDataDir';
+    return dir == null ? null : '$dir${pathSeparator}$kFolderDataDir';
   }
 
   /// The listing this folder publishes, read from `data/meta.json`. An empty
@@ -333,7 +334,7 @@ class DiskFolderManager {
     final data = dataDirOf(folderId);
     if (data == null) return const FolderMeta();
     try {
-      final f = File('$data${Platform.pathSeparator}$kFolderMetaFile');
+      final f = fs.file('$data${pathSeparator}$kFolderMetaFile');
       if (!f.existsSync()) return const FolderMeta();
       return FolderMeta.parse(f.readAsStringSync());
     } catch (e) {
@@ -348,9 +349,9 @@ class DiskFolderManager {
     final data = dataDirOf(folderId);
     if (data == null) return false;
     try {
-      final dir = Directory(data);
+      final dir = fs.directory(data);
       if (!dir.existsSync()) dir.createSync(recursive: true);
-      final f = File('$data${Platform.pathSeparator}$kFolderMetaFile');
+      final f = fs.file('$data${pathSeparator}$kFolderMetaFile');
       await f.writeAsString(meta.encode(), flush: true);
       return true;
     } catch (e) {
@@ -418,12 +419,12 @@ class DiskFolderManager {
   String? get downloadRoot => _downloadRoot ?? defaultDownloadRoot;
 
   String get _rootFilePath =>
-      '${File(registryPath).parent.path}/download_root.txt';
+      '${fs.file(registryPath).parent.path}/download_root.txt';
 
   void _loadDownloadRoot() {
     if (registryPath == ':memory:') return;
     try {
-      final f = File(_rootFilePath);
+      final f = fs.file(_rootFilePath);
       if (f.existsSync()) {
         final s = f.readAsStringSync().trim();
         if (s.isNotEmpty) _downloadRoot = s;
@@ -434,18 +435,18 @@ class DiskFolderManager {
   /// Choose the download folder. Creates it, persists the choice, and adopts any
   /// torrents already sitting under it (real files from a previous install).
   Future<void> setDownloadRoot(String path) async {
-    final dir = Directory(path).absolute.path;
+    final dir = fs.directory(path).absolute.path;
     if (_isUnsafeShareRoot(dir)) {
       log?.call('download root: refusing a whole-storage root $dir');
       return;
     }
     _downloadRoot = dir;
     try {
-      await Directory(dir).create(recursive: true);
+      await fs.directory(dir).create(recursive: true);
     } catch (_) {}
     if (registryPath != ':memory:') {
       try {
-        File(_rootFilePath).writeAsStringSync(dir);
+        fs.file(_rootFilePath).writeAsStringSync(dir);
       } catch (_) {}
     }
     await adoptRoot();
@@ -457,7 +458,7 @@ class DiskFolderManager {
   Future<void> adoptRoot() async {
     final root = downloadRoot;
     if (root == null) return;
-    final base = Directory(root);
+    final base = fs.directory(root);
     if (!base.existsSync()) return;
     var found = false;
     try {
@@ -496,7 +497,7 @@ class DiskFolderManager {
     final rel = _normRel(subPath);
     final dir = rel.isEmpty ? '$root/$leaf' : '$root/$rel/$leaf';
     try {
-      await Directory(dir).create(recursive: true);
+      await fs.directory(dir).create(recursive: true);
     } catch (e) {
       log?.call('download root: cannot create $dir: $e');
       return null;
@@ -517,7 +518,7 @@ class DiskFolderManager {
     final rel = _normRel(relName);
     if (rel.isEmpty) return false;
     try {
-      final f = File('$dir/$rel');
+      final f = fs.file('$dir/$rel');
       if (!f.parent.existsSync()) f.parent.createSync(recursive: true);
       await f.writeAsBytes(bytes);
       unawaited(_sources[folderId]?.scanAsync() ?? Future.value());
@@ -556,12 +557,12 @@ class DiskFolderManager {
     if (root != null) {
       final base = rel.isEmpty ? root : '$root/$rel';
       try {
-        for (final e in Directory(base).listSync(followLinks: false)) {
+        for (final e in fs.directory(base).listSync(followLinks: false)) {
           if (e is! Directory) continue;
           final leaf = _leafOf(e.path);
           if (leaf.startsWith('.')) continue;
-          final isTorrent = File('${e.path}/$kFolderKeyFile').existsSync() ||
-              File('${e.path}/$_kTorrentSidecar').existsSync();
+          final isTorrent = fs.file('${e.path}/$kFolderKeyFile').existsSync() ||
+              fs.file('${e.path}/$_kTorrentSidecar').existsSync();
           if (!isTorrent) dirs.add(leaf);
         }
       } catch (_) {}
@@ -585,7 +586,7 @@ class DiskFolderManager {
     final rel = _normRel(relPath);
     if (rel.isEmpty) return false;
     try {
-      await Directory('$root/$rel').create(recursive: true);
+      await fs.directory('$root/$rel').create(recursive: true);
       return true;
     } catch (e) {
       log?.call('download root: mkdir $rel failed: $e');
@@ -603,17 +604,17 @@ class DiskFolderManager {
     final leaf = _leafOf(dir);
     final rel = _normRel(newRelPath);
     final destDir = rel.isEmpty ? '$root/$leaf' : '$root/$rel/$leaf';
-    if (Directory(destDir).absolute.path == Directory(dir).absolute.path) {
+    if (fs.directory(destDir).absolute.path == fs.directory(dir).absolute.path) {
       return true;
     }
     try {
-      final parent = Directory(rel.isEmpty ? root : '$root/$rel');
+      final parent = fs.directory(rel.isEmpty ? root : '$root/$rel');
       if (!parent.existsSync()) parent.createSync(recursive: true);
-      if (Directory(destDir).existsSync()) {
+      if (fs.directory(destDir).existsSync()) {
         log?.call('download root: $destDir already exists');
         return false;
       }
-      await Directory(dir).rename(destDir);
+      await fs.directory(dir).rename(destDir);
     } catch (e) {
       log?.call('download root: move failed: $e');
       return false;
@@ -684,7 +685,7 @@ class DiskFolderManager {
 
   String? _readSidecar(String dir) {
     try {
-      final f = File('$dir/$_kTorrentSidecar');
+      final f = fs.file('$dir/$_kTorrentSidecar');
       if (!f.existsSync()) return null;
       final m = jsonDecode(f.readAsStringSync());
       if (m is Map && m['folderId'] is String) return m['folderId'] as String;
@@ -694,9 +695,9 @@ class DiskFolderManager {
 
   void _writeSidecar(String dir, String folderId, String name) {
     try {
-      final d = Directory(dir);
+      final d = fs.directory(dir);
       if (!d.existsSync()) d.createSync(recursive: true);
-      File('$dir/$_kTorrentSidecar').writeAsStringSync(
+      fs.file('$dir/$_kTorrentSidecar').writeAsStringSync(
           jsonEncode({'folderId': folderId, 'name': name}));
     } catch (e) {
       log?.call('disk folder: cannot write sidecar: $e');
@@ -708,7 +709,7 @@ class DiskFolderManager {
   // returns (privHex, name, folderId) or null
   (String, String, String)? _readKeyFile(String dir) {
     try {
-      final f = File('$dir/$kFolderKeyFile');
+      final f = fs.file('$dir/$kFolderKeyFile');
       if (!f.existsSync()) return null;
       final m = jsonDecode(f.readAsStringSync());
       if (m is! Map) return null;
@@ -723,9 +724,9 @@ class DiskFolderManager {
   void _writeKeyFile(String dir,
       {required String folderId, required String priv, required String name}) {
     try {
-      final d = Directory(dir);
+      final d = fs.directory(dir);
       if (!d.existsSync()) d.createSync(recursive: true);
-      File('$dir/$kFolderKeyFile').writeAsStringSync(
+      fs.file('$dir/$kFolderKeyFile').writeAsStringSync(
           jsonEncode({'folderId': folderId, 'priv': priv, 'name': name}));
     } catch (e) {
       log?.call('disk folder: cannot write key file: $e');
@@ -735,7 +736,7 @@ class DiskFolderManager {
   Map<String, String> _readRegistry() {
     if (registryPath == ':memory:') return {};
     try {
-      final f = File(registryPath);
+      final f = fs.file(registryPath);
       if (!f.existsSync()) return {};
       final m = jsonDecode(f.readAsStringSync());
       if (m is Map) return {for (final e in m.entries) '${e.key}': '${e.value}'};
@@ -746,9 +747,9 @@ class DiskFolderManager {
   void _writeRegistry() {
     if (registryPath == ':memory:') return;
     try {
-      final parent = File(registryPath).parent;
+      final parent = fs.file(registryPath).parent;
       if (!parent.existsSync()) parent.createSync(recursive: true);
-      File(registryPath).writeAsStringSync(jsonEncode(_dirs));
+      fs.file(registryPath).writeAsStringSync(jsonEncode(_dirs));
     } catch (_) {}
   }
 

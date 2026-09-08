@@ -10,13 +10,14 @@
 // every cache hit. The kept set is persisted so it survives restarts.
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import '../platform/fs.dart';
 
 class MediaDiskCache {
   MediaDiskCache._();
@@ -45,10 +46,10 @@ class MediaDiskCache {
     }
     try {
       final base = await getApplicationSupportDirectory();
-      final d = Directory('${base.path}/media_cache');
+      final d = fs.directory('${base.path}/media_cache');
       if (!d.existsSync()) d.createSync(recursive: true);
       _dir = d;
-      _keptFile = File('${d.path}/.kept');
+      _keptFile = fs.file('${d.path}/.kept');
       if (_keptFile!.existsSync()) {
         for (final l in _keptFile!.readAsLinesSync()) {
           final s = l.trim();
@@ -70,7 +71,7 @@ class MediaDiskCache {
     if (hot != null) return hot;
     final dir = _dir;
     if (dir != null) {
-      final f = File('${dir.path}/$h');
+      final f = fs.file('${dir.path}/$h');
       if (f.existsSync()) {
         try {
           final bytes = await f.readAsBytes();
@@ -100,7 +101,7 @@ class MediaDiskCache {
       final dir2 = _dir;
       if (dir2 != null) {
         try {
-          await File('${dir2.path}/$h').writeAsBytes(bytes, flush: false);
+          await fs.file('${dir2.path}/$h').writeAsBytes(bytes, flush: false);
           unawaited(_evictIfNeeded());
         } catch (_) {}
       }
@@ -120,7 +121,7 @@ class MediaDiskCache {
     if (hot != null) return hot;
     final dir = _dir;
     if (dir == null) return null;
-    final f = File('${dir.path}/$h');
+    final f = fs.file('${dir.path}/$h');
     if (!f.existsSync()) return null;
     try {
       final bytes = await f.readAsBytes();
@@ -139,7 +140,7 @@ class MediaDiskCache {
     final dir = _dir;
     if (dir != null) {
       try {
-        await File('${dir.path}/$h').writeAsBytes(bytes, flush: false);
+        await fs.file('${dir.path}/$h').writeAsBytes(bytes, flush: false);
         unawaited(_evictIfNeeded());
       } catch (_) {}
     }
@@ -182,7 +183,7 @@ class MediaDiskCache {
     }
     final dir = _dir;
     if (dir != null) {
-      final f = File('${dir.path}/$h');
+      final f = fs.file('${dir.path}/$h');
       if (f.existsSync()) {
         try {
           final bytes = await f.readAsBytes();
@@ -216,7 +217,7 @@ class MediaDiskCache {
       final dir2 = _dir;
       if (dir2 != null) {
         try {
-          await File('${dir2.path}/$h').writeAsBytes(bytes, flush: false);
+          await fs.file('${dir2.path}/$h').writeAsBytes(bytes, flush: false);
           unawaited(_evictIfNeeded());
         } catch (_) {}
       }

@@ -167,10 +167,10 @@ class I2pCrypto {
   static int sipHash24(Uint8List key16, List<int> data) {
     final k0 = _readU64LE(key16, 0);
     final k1 = _readU64LE(key16, 8);
-    var v0 = 0x736f6d6570736575 ^ k0;
-    var v1 = 0x646f72616e646f6d ^ k1;
-    var v2 = 0x6c7967656e657261 ^ k0;
-    var v3 = 0x7465646279746573 ^ k1;
+    var v0 = ((0x736f6d65 << 32) | 0x70736575) ^ k0;
+    var v1 = ((0x646f7261 << 32) | 0x6e646f6d) ^ k1;
+    var v2 = ((0x6c796765 << 32) | 0x6e657261) ^ k0;
+    var v3 = ((0x74656462 << 32) | 0x79746573) ^ k1;
 
     void round() {
       v0 += v1; v1 = _rotl(v1, 13); v1 ^= v0; v0 = _rotl(v0, 32);

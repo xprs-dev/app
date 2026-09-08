@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 
 import 'package:flutter/foundation.dart';
 
 import '../log_service.dart';
 import 'hero_item.dart';
 import 'hero_source.dart';
+import '../../platform/fs.dart';
 
 /// Where wapps' hero cards live.
 ///
@@ -247,7 +248,7 @@ class HeroInbox {
       for (final e in _byWapp.entries) {
         json[e.key] = [for (final i in e.value.values) _toJson(i)];
       }
-      File(path).writeAsStringSync(jsonEncode(json));
+      fs.file(path).writeAsStringSync(jsonEncode(json));
     } catch (e) {
       LogService.instance.add('hero: inbox save failed: $e');
     }
@@ -258,7 +259,7 @@ class HeroInbox {
     if (path == null) return;
     _loaded = true;
     try {
-      final f = File(path);
+      final f = fs.file(path);
       if (!f.existsSync()) return;
       final json = jsonDecode(f.readAsStringSync());
       if (json is! Map) return;

@@ -344,7 +344,7 @@ class _Builder extends WasmInstanceBuilder {
             memory: (memory) => (memory as _Memory).memory,
             table: (table) => (table as _Table).table,
             global: (global) => (global as _Global).global,
-            function: (function) => function.inner,
+            function: (function) => _importFunction(function),
           );
           return MapEntry(key, mapped);
         }),
@@ -634,6 +634,71 @@ WasmExternal _makeWasmFunction(Function value, String? name) {
     results: ty?.results,
   );
   return function;
+}
+
+/// PATCHED (xprs): the i64 boundary of an imported host function.
+///
+/// The browser's WebAssembly API hands an `i64` parameter to a JS import as a
+/// `BigInt` and requires a `BigInt` back for an `i64` result. A Dart `int`
+/// compiled by dart2js is a JS `Number`, so a host function declared
+/// `results: [ValueTy.i64]` that returns a plain int made every call throw
+/// `TypeError: Cannot convert 1788797831 to a BigInt` (hal_time_epoch, once a
+/// second, on every wapp). Functions whose declared signature has no i64 are
+/// passed through untouched.
+Function _importFunction(WasmFunction f) {
+  final params = f.params;
+  final results = f.results;
+  final anyI64 = params.contains(ValueTy.i64) ||
+      (results != null && results.contains(ValueTy.i64));
+  if (!anyI64) return f.inner;
+  final i64Param = params.map((p) => p == ValueTy.i64).toList();
+  final i64Result =
+      results != null && results.length == 1 && results.first == ValueTy.i64;
+  Object? call(List<Object?> args) {
+    final converted = List<Object?>.generate(
+      args.length,
+      (i) => i < i64Param.length && i64Param[i] && args[i] != null
+          ? i64.toInt(args[i]!)
+          : args[i],
+    );
+    final r = Function.apply(f.inner, converted);
+    return i64Result && r is int ? i64.fromInt(r) : r;
+  }
+
+  switch (params.length) {
+    case 0:
+      return js_util.allowInterop(() => call(const []));
+    case 1:
+      return js_util.allowInterop((Object? a) => call([a]));
+    case 2:
+      return js_util.allowInterop((Object? a, Object? b) => call([a, b]));
+    case 3:
+      return js_util
+          .allowInterop((Object? a, Object? b, Object? c) => call([a, b, c]));
+    case 4:
+      return js_util.allowInterop(
+          (Object? a, Object? b, Object? c, Object? d) => call([a, b, c, d]));
+    case 5:
+      return js_util.allowInterop(
+          (Object? a, Object? b, Object? c, Object? d, Object? e) =>
+              call([a, b, c, d, e]));
+    case 6:
+      return js_util.allowInterop(
+          (Object? a, Object? b, Object? c, Object? d, Object? e, Object? g) =>
+              call([a, b, c, d, e, g]));
+    case 7:
+      return js_util.allowInterop((Object? a, Object? b, Object? c, Object? d,
+              Object? e, Object? g, Object? h) =>
+          call([a, b, c, d, e, g, h]));
+    case 8:
+      return js_util.allowInterop((Object? a, Object? b, Object? c, Object? d,
+              Object? e, Object? g, Object? h, Object? i) =>
+          call([a, b, c, d, e, g, h, i]));
+    default:
+      throw UnsupportedError(
+          'imported function ${f.name} has ${params.length} params with an '
+          'i64 among them; the web bridge converts up to 8');
+  }
 }
 
 class _SharedMemory extends _Memory implements WasmSharedMemory {

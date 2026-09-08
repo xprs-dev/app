@@ -53,7 +53,8 @@ dependencies:
   hex: ^0.2.0                            # hex ↔ bytes
   http: ^1.2.0                           # Cross-platform HTTP (native + web)
   archive: ^3.6.1                        # Pure-Dart zip extraction for .wapp bundles
-  web: ^0.5.1                            # window.localStorage for web profile persistence
+  web: ^0.5.1                            # IndexedDB / DOM interop for the web build
+  file: ^7.0.1                           # FileSystem seam (lib/platform/fs.dart): local disk natively, memory+IndexedDB on web
   sqlite3: ^2.4.0                        # SQLite for wapp social store (reactions, comments)
   sqlcipher_flutter_libs: ^0.6.4         # Native SQLCipher libs (replaces sqlite3_flutter_libs; opens plain DBs too, encrypts profile DBs)
   # Video playback (media_kit / libmpv) is NOT bundled — it bloats the app

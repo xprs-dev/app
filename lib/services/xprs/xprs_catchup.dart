@@ -28,7 +28,6 @@
  * holds — stays gated on a station actually saying it holds something.
  */
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -44,6 +43,7 @@ import 'xprs_id.dart';
 import 'xprs_monitor.dart';
 import 'xprs_packet.dart';
 import 'xprs_publisher.dart';
+import '../../platform/platform.dart' as platform;
 
 class XprsCatchup {
   XprsCatchup._();
@@ -296,7 +296,7 @@ class XprsCatchup {
     unawaited(_airIdentity());
     unawaited(_airMailbox());
     unawaited(tick(selfCallsign));
-    if (_armed || !Platform.isAndroid) return;
+    if (_armed || !platform.isAndroid) return;
     _armed = true;
     AndroidForegroundService.instance.addTickListener(_onNativeTick);
   }

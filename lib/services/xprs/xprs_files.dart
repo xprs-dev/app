@@ -28,8 +28,8 @@
  * only after the receiving station verified the bytes itself and sent FILE_OK.
  */
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
+import 'package:file/file.dart';
 
 import 'package:reticulum/src/services/social/archiver_policy.dart';
 
@@ -44,6 +44,7 @@ import 'xprs_inline_sender.dart';
 import 'xprs_packet.dart';
 import 'xprs_publisher.dart';
 import 'xprs_vocab.dart';
+import '../../platform/fs.dart';
 
 /// A file this station holds, as the answer to a `file:` reference.
 class XprsHeldFile {
@@ -643,11 +644,11 @@ class XprsFileFetch {
     final dir = _destDir[sha];
     if (dir == null || !_waiting.containsKey(sha)) return null;
     try {
-      Directory(dir).createSync(recursive: true);
+      fs.directory(dir).createSync(recursive: true);
       final name = (meta['name'] as String?)?.trim();
       final base = (name == null || name.isEmpty) ? sha : name;
-      final dest = '$dir${Platform.pathSeparator}$base';
-      File(partPath).renameSync(dest);
+      final dest = '$dir${pathSeparator}$base';
+      fs.file(partPath).renameSync(dest);
       return dest;
     } catch (e) {
       LogService.instance.add('XPRS: claim of ${sha.substring(0, 8)} failed: $e');

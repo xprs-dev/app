@@ -19,10 +19,10 @@
  * lowest-urgency-oldest-first ([MeshUrgency]).
  */
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:typed_data';
 
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
 
 import '../../profile/profile_db.dart';
 
@@ -31,6 +31,7 @@ import 'mesh_beacon.dart';
 import 'mesh_bloom.dart';
 import 'mesh_session.dart';
 import 'mesh_table.dart';
+import '../../platform/fs.dart';
 
 /// How much a carried message is worth keeping when the store is full.
 ///
@@ -76,7 +77,7 @@ class MeshStore {
   MeshStore._();
   static final MeshStore instance = MeshStore._();
 
-  Database? _db;
+  CommonDatabase? _db;
   int quotaBytes = 100 * 1024 * 1024;
 
   /// Whether this device carries other people's mail at all.
@@ -99,7 +100,7 @@ class MeshStore {
   void init(String path) {
     close();
     try {
-      Directory(File(path).parent.path).createSync(recursive: true);
+      fs.directory(fs.file(path).parent.path).createSync(recursive: true);
       final db = openProfileDb(path);
       db.execute('PRAGMA journal_mode=WAL');
       db.execute('''
@@ -303,7 +304,7 @@ class MeshStore {
   /// receipt ends custody — so the row stays `state = 0` and these two columns
   /// are what stop it being re-aired every time the recipient's beacon lands,
   /// which on a live bearer is every thirty seconds.
-  static void _migrateReleaseCols(Database db) {
+  static void _migrateReleaseCols(CommonDatabase db) {
     final cols = db
         .select('PRAGMA table_info(mesh_store)')
         .map((r) => r['name'] as String)
@@ -316,7 +317,7 @@ class MeshStore {
     }
   }
 
-  static void _migratePrioToUrg(Database db) {
+  static void _migratePrioToUrg(CommonDatabase db) {
     final cols = db
         .select('PRAGMA table_info(mesh_store)')
         .map((r) => r['name'] as String)

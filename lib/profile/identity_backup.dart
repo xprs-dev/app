@@ -24,7 +24,7 @@
  */
 
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
@@ -33,6 +33,7 @@ import '../platform/platform.dart' as platform;
 import '../services/android_permissions_service.dart';
 import '../services/log_service.dart';
 import 'iwi_profile.dart';
+import '../platform/fs.dart';
 
 /// One identity restorable from a backup file.
 class RestorableIdentity {
@@ -85,8 +86,8 @@ class IdentityBackup {
         return null;
       }
       for (final root in const ['/storage/emulated/0', '/sdcard']) {
-        if (!await Directory(root).exists()) continue;
-        final d = Directory('$root/XPRS');
+        if (!await fs.directory(root).exists()) continue;
+        final d = fs.directory('$root/XPRS');
         if (await d.exists()) return d.path;
         if (create) {
           try {
@@ -101,7 +102,7 @@ class IdentityBackup {
     }
     final home = platform.homeDir();
     if (home == null || home.isEmpty) return null;
-    final d = Directory('$home/.config/xprs');
+    final d = fs.directory('$home/.config/xprs');
     if (create && !await d.exists()) {
       try {
         await d.create(recursive: true);
@@ -115,7 +116,7 @@ class IdentityBackup {
   Future<File?> _file({bool create = false}) async {
     final dir = await backupDir(create: create);
     if (dir == null) return null;
-    return File('$dir/$_fileName');
+    return fs.file('$dir/$_fileName');
   }
 
   /// Human-readable path of the backup file (for the UI), or null if unreachable.
@@ -194,7 +195,7 @@ class IdentityBackup {
       }
       payload['version'] = 1;
       payload['savedAt'] = DateTime.now().toUtc().toIso8601String();
-      final tmp = File('${f.path}.tmp');
+      final tmp = fs.file('${f.path}.tmp');
       await tmp.writeAsString(jsonEncode(payload), flush: true);
       await tmp.rename(f.path);
     } catch (e) {

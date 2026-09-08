@@ -3,14 +3,16 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/open.dart' as sqlite_open;
+import 'package:sqlite3/common.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// SQLite loader for pure Dart/CLI contexts.
 ///
 /// Tries to load a bundled SQLite dynamic library so we can run fully offline.
 /// If no bundled library is found, falls back to the system loader.
-class SQLiteLoader {
-  SQLiteLoader._();
+/// Native library bootstrap for the Dart VM (CLI, tests).
+class _NativeSqlite {
+  _NativeSqlite._();
 
   static bool _initialized = false;
 
@@ -41,15 +43,7 @@ class SQLiteLoader {
     _initialized = true;
   }
 
-  static Database openDatabase(String dbPath) {
-    _ensureInitialized();
-    return sqlite3.open(dbPath);
-  }
-
-  static Database openInMemory() {
-    _ensureInitialized();
-    return sqlite3.openInMemory();
-  }
+  static void ensureInitialized() => _ensureInitialized();
 
   static String? _resolveLibPath() {
     // Allow explicit override.
@@ -128,4 +122,14 @@ class SQLiteLoader {
     }
     return null;
   }
+}
+
+CommonDatabase openDatabase(String dbPath) {
+  _NativeSqlite.ensureInitialized();
+  return sqlite3.open(dbPath);
+}
+
+CommonDatabase openInMemory() {
+  _NativeSqlite.ensureInitialized();
+  return sqlite3.openInMemory();
 }

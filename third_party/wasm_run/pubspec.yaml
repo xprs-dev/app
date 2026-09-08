@@ -16,6 +16,10 @@ environment:
 flutter:
   assets:
     - lib/assets/
+    # Vendored @bjorn3/browser_wasi_shim 0.2.9 (Apache-2.0); the loader above
+    # imported it from a CDN, so a web build needed the internet to run a
+    # wapp (README.xprs.md).
+    - lib/assets/browser_wasi_shim/
 
 dependencies:
   meta: ^1.8.0

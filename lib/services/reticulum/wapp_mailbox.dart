@@ -19,12 +19,15 @@
  * claiming to be a store-and-forward node is the worst failure this file has.
  */
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:typed_data';
 
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
+
+import '../../profile/profile_db.dart';
 
 import '../log_service.dart';
+import '../../platform/fs.dart';
 
 /// Disk budget for everything held for not-yet-running wapps.
 const int kWappMailboxMaxBytes = 100 * 1024 * 1024; // 100 MB
@@ -67,7 +70,7 @@ class WappMailbox {
   WappMailbox._();
   static final WappMailbox instance = WappMailbox._();
 
-  Database? _db;
+  CommonDatabase? _db;
   String? _path;
   int _dropped = 0;
 
@@ -80,8 +83,8 @@ class WappMailbox {
     if (_db != null && _path == path) return;
     close();
     try {
-      Directory(dir).createSync(recursive: true);
-      final db = sqlite3.open(path);
+      fs.directory(dir).createSync(recursive: true);
+      final db = openPlainDb(path);
       db.execute('''
         CREATE TABLE IF NOT EXISTS mail (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,8 +104,8 @@ class WappMailbox {
       }
       _db = db;
       _path = path;
-    } catch (e) {
-      LogService.instance.add('wapp mailbox: cannot open $path: $e');
+    } catch (e, st) {
+      LogService.instance.add('wapp mailbox: cannot open $path: $e\n$st');
       _db = null;
       _path = null;
     }

@@ -11,7 +11,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 
-import 'package:xprs/profile/profile_storage_io.dart';
+import 'package:xprs/profile/profile_storage_fs.dart';
 import 'package:xprs/services/files/composite_file_source.dart';
 import 'package:xprs/services/files/file_node.dart';
 import 'package:xprs/services/files/file_transfer.dart';

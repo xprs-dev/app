@@ -9,18 +9,19 @@
  * chosen by the wiring layer (rns_autostart points it at the reticulum wapp's
  * per-profile data folder).
  */
-import 'dart:io';
+import 'package:file/file.dart';
 
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
 
 import '../../profile/profile_db.dart';
 
 import '../log_service.dart';
+import '../../platform/fs.dart';
 
 class ObservedStore {
   ObservedStore(this.path);
   final String path;
-  Database? _db;
+  CommonDatabase? _db;
 
   bool get isOpen => _db != null;
 
@@ -29,7 +30,7 @@ class ObservedStore {
     if (_db != null) return true;
     try {
       // sqlite3.open creates the file but not parent dirs.
-      final parent = File(path).parent;
+      final parent = fs.file(path).parent;
       if (!parent.existsSync()) parent.createSync(recursive: true);
       final db = openProfileDb(path);
       db.execute('PRAGMA journal_mode = WAL;');
@@ -97,7 +98,7 @@ class ObservedStore {
   void upsertMany(Iterable<Map<String, Object?>> rows) {
     final db = _db;
     if (db == null) return;
-    PreparedStatement? stmt;
+    CommonPreparedStatement? stmt;
     try {
       db.execute('BEGIN');
       stmt = db.prepare('''

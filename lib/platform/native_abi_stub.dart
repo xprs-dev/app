@@ -1,0 +1,3 @@
+library;
+
+String? nativeBinaryKey() => null;

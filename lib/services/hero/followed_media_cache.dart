@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 
 import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 import '../log_service.dart';
@@ -8,6 +8,7 @@ import '../media_disk_cache.dart';
 import '../reticulum/rns_service.dart';
 import 'hero_item.dart';
 import 'launcher_visibility.dart';
+import '../../platform/fs.dart';
 
 /// Keeps the pictures of the people you follow.
 ///
@@ -161,7 +162,7 @@ class FollowedMediaCache {
       final path = _path;
       if (path == null) return;
       try {
-        File(path).writeAsStringSync(jsonEncode({
+        fs.file(path).writeAsStringSync(jsonEncode({
           'done': _done.toList(),
           'misses': {
             for (final e in _misses.entries)
@@ -176,7 +177,7 @@ class FollowedMediaCache {
     final path = _path;
     if (path == null) return;
     try {
-      final f = File(path);
+      final f = fs.file(path);
       if (!f.existsSync()) return;
       final j = jsonDecode(f.readAsStringSync());
       if (j is! Map) return;

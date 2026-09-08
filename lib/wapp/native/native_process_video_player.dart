@@ -16,13 +16,15 @@
  */
 
 import 'dart:async';
-import 'dart:ffi' show Abi;
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../../launcher/launcher.dart' show WappManifest;
+import '../../platform/native_abi.dart';
+
+export '../../platform/native_abi.dart' show nativeBinaryKey;
 import '../../services/log_service.dart';
 import 'video_keys.dart';
 import 'video_time_bar.dart';
@@ -34,20 +36,6 @@ void _log(String line) {
   debugPrint('[wvp] $line');
 }
 
-/// `<platform>-<arch>` key for the running host, matching the manifest's
-/// `provides.native_binaries` keys. Null on platforms we don't map.
-String? nativeBinaryKey() {
-  final abi = Abi.current();
-  return switch (abi) {
-    Abi.linuxX64 => 'linux-x86_64',
-    Abi.linuxArm64 => 'linux-arm64',
-    Abi.windowsX64 => 'windows-x86_64',
-    Abi.windowsArm64 => 'windows-arm64',
-    Abi.macosX64 => 'macos-x86_64',
-    Abi.macosArm64 => 'macos-arm64',
-    _ => null,
-  };
-}
 
 /// Absolute path of [manifest]'s native decoder binary for this host, or
 /// null when the wapp doesn't ship one for this platform/arch (or the file

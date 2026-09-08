@@ -17,7 +17,8 @@
  */
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:io' hide File, Directory, FileSystemEntity, Link;
+import 'package:file/file.dart';
 import 'dart:math' show Random;
 import 'dart:typed_data';
 
@@ -128,6 +129,8 @@ import 'rns_tcp_interface.dart';
 import 'rns_tcp_server_interface.dart';
 import 'rns_transport.dart';
 import 'wapp_mailbox.dart';
+import '../../platform/fs.dart';
+import '../../platform/platform.dart' as platform;
 
 // Our Reticulum destination namespace is "xprs" (the platform); XPRS is one
 // branch of it. All overlay services share it: xprs/chat, xprs/files,
@@ -3171,7 +3174,7 @@ class RnsService {
         // store, updates, profiles) inherits it through fetch/resolveAndFetch.
         _partialStore = partialStoreDir == null
             ? null
-            : FilePartialStore(Directory(partialStoreDir!));
+            : FilePartialStore(fs.directory(partialStoreDir!));
         _files =
             FileTransferNode(
                 identity: _id!,
@@ -5863,7 +5866,7 @@ class RnsService {
   /// scan is a no-op when nothing is due, so a shared tick costs nil.
   bool _lxmfBgArmed = false;
   void _armLxmfBackground() {
-    if (_lxmfBgArmed || !Platform.isAndroid) return;
+    if (_lxmfBgArmed || !platform.isAndroid) return;
     _lxmfBgArmed = true;
     AndroidForegroundService.instance.addTickListener(_onLxmfNativeTick);
   }
@@ -6709,7 +6712,7 @@ class RnsService {
     try {
       final m = <String, String>{};
       _callIdentity.forEach((cs, id) => m[cs] = _hex(id.getPublicKey()));
-      await File(path).writeAsString(jsonEncode(m), flush: true);
+      await fs.file(path).writeAsString(jsonEncode(m), flush: true);
     } catch (_) {
       // best-effort cache; ignore write errors
     }
@@ -6722,7 +6725,7 @@ class RnsService {
     final path = callPeersPath;
     if (path == null || path.isEmpty) return;
     try {
-      final f = File(path);
+      final f = fs.file(path);
       if (!f.existsSync()) return;
       final m = jsonDecode(f.readAsStringSync());
       if (m is! Map) return;
@@ -7037,7 +7040,7 @@ class RnsService {
     final path = relayCursorsPath;
     if (path == null || path.isEmpty) return;
     try {
-      await File(path).writeAsString(jsonEncode(_relayCursor), flush: true);
+      await fs.file(path).writeAsString(jsonEncode(_relayCursor), flush: true);
     } catch (_) {
       // best-effort cache
     }
@@ -7047,7 +7050,7 @@ class RnsService {
     final path = relayCursorsPath;
     if (path == null || path.isEmpty) return;
     try {
-      final f = File(path);
+      final f = fs.file(path);
       if (!f.existsSync()) return;
       final m = jsonDecode(f.readAsStringSync());
       if (m is! Map) return;
@@ -10158,9 +10161,9 @@ class RnsService {
   /// external storage on Android, the home dir elsewhere.
   String? _defaultDownloadRoot() {
     try {
-      if (Platform.isAndroid) {
+      if (platform.isAndroid) {
         for (final r in const ['/storage/emulated/0', '/sdcard']) {
-          if (Directory(r).existsSync()) return '$r/XPRS/Torrents';
+          if (fs.directory(r).existsSync()) return '$r/XPRS/Torrents';
         }
         return null;
       }
@@ -10266,12 +10269,12 @@ class RnsService {
     final dataDir = mgr.dataDirOf(folderId);
     if (dataDir == null) return null;
 
-    final src = File(sourcePath);
+    final src = fs.file(sourcePath);
     if (!src.existsSync()) return null;
     final size = src.lengthSync();
     if (size <= 0 || size > kMetaMediaMaxBytes) {
       LogService.instance.add(
-        'folders: ${sourcePath.split(Platform.pathSeparator).last} is '
+        'folders: ${sourcePath.split(pathSeparator).last} is '
         '${size ~/ (1024 * 1024)}MB — the listing caps media at '
         '${kMetaMediaMaxBytes ~/ (1024 * 1024)}MB',
       );
@@ -10326,7 +10329,7 @@ class RnsService {
     }
 
     try {
-      final dir = Directory(dataDir);
+      final dir = fs.directory(dataDir);
       if (!dir.existsSync()) dir.createSync(recursive: true);
       // A slot holds ONE file: replace any previous cover/banner/trailer/icon
       // whose extension differed, or the folder would publish two and the listing
@@ -10335,11 +10338,11 @@ class RnsService {
         final stem = name.substring(0, name.lastIndexOf('.'));
         for (final f in dir.listSync()) {
           if (f is! File) continue;
-          final leaf = f.path.split(Platform.pathSeparator).last;
+          final leaf = f.path.split(pathSeparator).last;
           if (leaf.startsWith('$stem.') && leaf != name) f.deleteSync();
         }
       }
-      await src.copy('$dataDir${Platform.pathSeparator}$name');
+      await src.copy('$dataDir${pathSeparator}$name');
     } catch (e) {
       LogService.instance.add('folders: could not add $name: $e');
       return null;
@@ -10486,7 +10489,7 @@ class RnsService {
         final diskPath = _diskMgr?.filePathOf(folderId, sha);
         if (diskPath != null && archive != null) {
           try {
-            final bytes = File(diskPath).readAsBytesSync();
+            final bytes = fs.file(diskPath).readAsBytesSync();
             final token = archive.putBytes(bytes, ext.isEmpty ? 'bin' : ext);
             have = archive.has(sha);
             LogService.instance.add(
@@ -10665,7 +10668,7 @@ class RnsService {
       if (diskPath != null && archive != null) {
         try {
           final ext = _extOf(name);
-          archive.putBytes(File(diskPath).readAsBytesSync(),
+          archive.putBytes(fs.file(diskPath).readAsBytesSync(),
               ext.isEmpty ? 'bin' : ext);
         } catch (_) {}
       } else {

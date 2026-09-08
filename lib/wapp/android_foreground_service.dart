@@ -11,13 +11,13 @@
  * No-op on every non-Android platform (desktop keeps the process alive anyway).
  */
 
-import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/services.dart';
 
 import '../services/power_state.dart';
 import 'background_wapp_manager.dart';
+import '../platform/platform.dart' as platform;
 
 class AndroidForegroundService {
   AndroidForegroundService._() {
@@ -35,7 +35,7 @@ class AndroidForegroundService {
   final Set<String> _holders = {};
   final Set<void Function()> _tickListeners = {};
 
-  bool get _supported => !kIsWeb && Platform.isAndroid;
+  bool get _supported => platform.isAndroid;
   bool get isRunning => _running;
 
   /// Set by the wapp page that currently owns media playback; the native

@@ -238,10 +238,14 @@ The baseline is keyed on the offending line rather than the file. Keying on the
 file would also forgive the next violation added to that file, which was
 observed during the guard's own self-test before release.
 
-The baseline currently holds 58 entries, and the guard reports them on every
-run (`arch_guard: clean (56 known, 58 baselined)`). A new violation still fails
-the build immediately; the baseline is what the rules found already in the tree
-when each was added, not a clean bill of health.
+The baseline currently holds 89 entries, and the guard reports them on every
+run (`arch_guard: clean (89 known, 89 baselined)`). Thirty-one of them are the
+`no-native-import-outside-io-file` rule's: the native-only services (sockets,
+I2P, torrents, bulk spool, video) and reticulum-dart's socket interfaces and
+isolate workers, which compile for web and throw when reached ([web.md](web.md)
+lists what a browser cannot do). A new violation still fails the build
+immediately; the baseline is what the rules found already in the tree when each
+was added, not a clean bill of health.
 
 ### What the pre-push hook refuses, and why
 
@@ -275,6 +279,7 @@ Rules enforced:
 | `no-transport-logic-in-wapps-repo` | wapp C source reimplementing custody, retry or reachability |
 | `no-platform-channel-off-main` | `MethodChannel` or `Ble5Bus` in isolate entry points |
 | `hal-budget` | a `hal_*` endpoint whose name describes a transport decision (reach, path, pending, custody, forward) rather than a capability |
+| `no-native-import-outside-io-file` | an unconditional `dart:io`, `dart:ffi`, `dart:isolate` or FFI `package:sqlite3` import outside a `*_io.dart` file, in `lib/` and in the reticulum-dart sibling: the web build compiles `lib/` with dart2js, where FFI is a compile error and the rest throw at runtime ([web.md](web.md)) |
 
 To add a rule, extend the table in `tool/arch_guard.dart`. It is a single Dart
 file with no dependencies, which is deliberate.

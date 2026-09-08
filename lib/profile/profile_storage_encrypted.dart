@@ -26,7 +26,7 @@ import 'package:encrypted_archive/encrypted_archive.dart';
 
 import 'profile_db.dart';
 import 'profile_storage.dart';
-import 'profile_storage_io.dart';
+import 'profile_storage_fs.dart';
 
 /// Name of the per-profile encrypted archive file.
 const String profileArchiveName = 'profile.ear';

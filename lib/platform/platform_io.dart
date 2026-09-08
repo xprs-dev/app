@@ -137,6 +137,15 @@ Future<PlatformProcessResult> runSubprocess(
 
 String get pathSeparator => Platform.pathSeparator;
 
+/// OS predicates, so a service can ask "am I on Android" without importing
+/// dart:io (which compiles on web and then throws on every Platform call).
+bool get isAndroid => Platform.isAndroid;
+bool get isIOS => Platform.isIOS;
+bool get isLinux => Platform.isLinux;
+bool get isMacOS => Platform.isMacOS;
+bool get isWindows => Platform.isWindows;
+bool get isWeb => false;
+
 /// Canonical OS name used for wapp `platforms` advertisement matching:
 /// one of linux/macos/windows/android/ios/fuchsia/unknown (web returns
 /// 'web' from the stub).

@@ -1,8 +1,9 @@
 /// Compression utilities for archive data.
 library;
 
-import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:archive/archive.dart' show GZipDecoder, GZipEncoder;
 
 import 'options.dart';
 
@@ -54,13 +55,11 @@ class Compression {
     // Clamp level to valid range
     level = level.clamp(1, 9);
 
-    final codec = GZipCodec(level: level);
-    return Uint8List.fromList(codec.encode(data));
+    return Uint8List.fromList(GZipEncoder().encode(data, level: level)!);
   }
 
   static Uint8List _decompressGzip(Uint8List data) {
-    final codec = GZipCodec();
-    return Uint8List.fromList(codec.decode(data));
+    return Uint8List.fromList(GZipDecoder().decodeBytes(data));
   }
 
   /// Estimate compression ratio for data.

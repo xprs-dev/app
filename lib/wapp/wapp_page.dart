@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show File, Platform;
+import 'dart:io' hide File, Directory, FileSystemEntity, Link;
+import 'package:file/file.dart';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -100,6 +101,7 @@ import 'wapp_icons.dart';
 import 'hal_permissions.dart';
 import 'wapp_engine.dart';
 import '../services/mesh/mesh_service.dart';
+import '../platform/fs.dart';
 
 part '../editor/wapp_editor.dart';
 part '../editor/wapp_robot.dart';
@@ -1106,7 +1108,7 @@ class _WappPageState extends State<WappPage>
   Future<void> _loadWappProfilesCache() async {
     try {
       final dir = await getApplicationSupportDirectory();
-      final f = File('${dir.path}/wapp_profiles.json');
+      final f = fs.file('${dir.path}/wapp_profiles.json');
       _wappProfilesFile = f;
       if (!f.existsSync()) return;
       final j = jsonDecode(await f.readAsString());
@@ -7844,7 +7846,7 @@ class _WappPageState extends State<WappPage>
         final path = ProfileService.instance
             .storageForProfile(p.id)
             .getAbsolutePath(p.avatar);
-        final f = File(path);
+        final f = fs.file(path);
         if (f.existsSync()) avatar = FileImage(f);
       } catch (_) {}
     }
@@ -7868,7 +7870,7 @@ class _WappPageState extends State<WappPage>
         final path = ProfileService.instance
             .storageForProfile(edited.id)
             .getAbsolutePath(edited.avatar);
-        await FileImage(File(path)).evict();
+        await FileImage(fs.file(path)).evict();
       } catch (_) {}
     }
     await _publishOwnProfileMetadata();
@@ -7887,7 +7889,7 @@ class _WappPageState extends State<WappPage>
         final path = ProfileService.instance
             .storageForProfile(p.id)
             .getAbsolutePath(p.avatar);
-        final f = File(path);
+        final f = fs.file(path);
         if (await f.exists()) {
           final bytes = await f.readAsBytes();
           final thumb = await _thumbnailPng(bytes, 96);
@@ -10035,7 +10037,7 @@ class _WappPageState extends State<WappPage>
   ///
   /// Returns null when no `.svg` path is declared or the sidecar
   /// doesn't exist in the storage. Using `readBytesSync` instead of
-  /// a `File(path).existsSync()` lookup means the web fetch-based
+  /// a `fs.file(path).existsSync()` lookup means the web fetch-based
   /// [MemoryProfileStorage] resolves identically to the desktop
   /// [FilesystemProfileStorage].
   /// Reduce a .wapp leaf filename to its stable slug — the install directory

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../platform/platform.dart' as platform;
@@ -298,7 +297,7 @@ class PreferencesService {
 
   static bool get _isPocketDevice {
     try {
-      return Platform.isAndroid || Platform.isIOS;
+      return platform.isAndroid || platform.isIOS;
     } catch (_) {
       return false; // web and tests: behave like a desktop
     }

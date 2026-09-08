@@ -1,7 +1,7 @@
-/// Database schema and migrations.
+/// CommonDatabase schema and migrations.
 library;
 
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
 
 import 'options.dart';
 
@@ -12,7 +12,7 @@ const int currentSchemaVersion = 1;
 const String archiveMagic = 'EARCH01';
 
 /// Configure SQLite pragmas for optimal performance.
-void configurePragmas(Database db, ArchiveOptions options) {
+void configurePragmas(CommonDatabase db, ArchiveOptions options) {
   db.execute('PRAGMA page_size = ${options.pageSize};');
   db.execute('PRAGMA cache_size = ${options.cacheSize};');
   db.execute('PRAGMA temp_store = MEMORY;');
@@ -32,7 +32,7 @@ void configurePragmas(Database db, ArchiveOptions options) {
 }
 
 /// Create all tables for a new archive.
-void createSchema(Database db) {
+void createSchema(CommonDatabase db) {
   // Archive header (singleton)
   db.execute('''
     CREATE TABLE archive_header (
@@ -135,7 +135,7 @@ void createSchema(Database db) {
 }
 
 /// Create triggers to maintain stats automatically.
-void _createStatsTriggers(Database db) {
+void _createStatsTriggers(CommonDatabase db) {
   // After inserting a file (not deleted)
   db.execute('''
     CREATE TRIGGER tr_files_insert AFTER INSERT ON files

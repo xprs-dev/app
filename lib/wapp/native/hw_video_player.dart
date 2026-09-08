@@ -10,7 +10,7 @@
  */
 
 import 'dart:async';
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 import '../../services/log_service.dart';
 import 'video_keys.dart';
 import 'video_time_bar.dart';
+import '../../platform/fs.dart';
 
 void _log(String line) => LogService.instance.add('[wvp] $line');
 
@@ -132,9 +133,9 @@ class _HwVideoPlayerState extends State<HwVideoPlayer> {
   Future<void> _start() async {
     try {
       _log('hw start .${widget.ext} ${widget.mediaBytes.length} B');
-      final dir = await Directory.systemTemp.createTemp('xprs_hwvid_');
+      final dir = await fs.systemTempDirectory.createTemp('xprs_hwvid_');
       _tempDir = dir;
-      final f = File('${dir.path}/v.${widget.ext}');
+      final f = fs.file('${dir.path}/v.${widget.ext}');
       await f.writeAsBytes(widget.mediaBytes, flush: true);
       if (!mounted) {
         _cleanup();

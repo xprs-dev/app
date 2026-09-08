@@ -60,3 +60,21 @@ delete this directory. `example/` and `test/` were removed to keep the tree
 small; `native/` is kept for reference only — the prebuilt
 `libwasm_run_dart.so` comes from `wasm_run_flutter` and is NOT rebuilt here
 (these patches are Dart-side only).
+
+## 3. Web: the i64 boundary of imported host functions
+
+`lib/src/wasm_bindings/_wasm_interop_web.dart`, `_importFunction`, marked
+`PATCHED (xprs)`. The browser's WebAssembly API passes an `i64` parameter to a
+JS import as a `BigInt` and requires a `BigInt` back for an `i64` result.
+Upstream handed the Dart closure straight to the import object, so a host
+function declared `results: [ValueTy.i64]` returned a JS `Number` and every
+call threw `TypeError: Cannot convert 1788797831 to a BigInt` (`hal_time_epoch`,
+once a second, on every wapp). Functions whose signature names an `i64` are now
+wrapped at the boundary; the rest pass through untouched.
+
+## 4. Web: the WASI shim is vendored
+
+`lib/assets/browser_wasi_shim.js` imported `@bjorn3/browser_wasi_shim@0.2.9`
+from jsdelivr at runtime, so a web build needed the internet to start a wapp.
+The package's `dist/` (Apache-2.0) is vendored under
+`lib/assets/browser_wasi_shim/` and the import points there.

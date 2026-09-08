@@ -9,7 +9,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
 import 'package:path/path.dart' as p;
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
 
 import 'compression.dart';
 import 'sqlite_loader.dart';
@@ -23,7 +23,7 @@ import 'schema.dart';
 /// A high-performance encrypted archive using SQLite for storage.
 class EncryptedArchive {
   final String _path;
-  final Database _db;
+  final CommonDatabase _db;
   final ArchiveOptions _options;
   final KeyDerivation _keyDerivation;
   final MasterKeyMaterial _keys;
@@ -33,7 +33,7 @@ class EncryptedArchive {
 
   EncryptedArchive._({
     required String path,
-    required Database db,
+    required CommonDatabase db,
     required ArchiveOptions options,
     required MasterKeyMaterial keys,
   })  : _path = path,

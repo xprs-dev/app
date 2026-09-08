@@ -25,13 +25,14 @@
  */
 
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../platform/platform.dart' as platform;
 import 'profile_crypto.dart';
 import 'profile_db.dart';
+import '../platform/fs.dart';
 
 class DeviceKeyStore {
   DeviceKeyStore._();
@@ -63,7 +64,7 @@ class DeviceKeyStore {
     if (_useKeychain) {
       return _secure.read(key: _devicePasswordKey(profileId));
     }
-    final f = File(_devicePasswordFile(profileId));
+    final f = fs.file(_devicePasswordFile(profileId));
     return await f.exists() ? await f.readAsString() : null;
   }
 
@@ -75,7 +76,7 @@ class DeviceKeyStore {
     if (_useKeychain) {
       await _secure.write(key: _devicePasswordKey(profileId), value: secret);
     } else {
-      File(_devicePasswordFile(profileId))
+      fs.file(_devicePasswordFile(profileId))
           // arch-ignore: no-blocking-io-on-ui ~100 bytes, flushed: losing it locks the user out of their own profile
           .writeAsStringSync(secret, flush: true);
     }
@@ -117,7 +118,7 @@ class DeviceKeyStore {
       await _secure.write(key: _cacheKey(profileId), value: raw);
     } else {
       // arch-ignore: no-blocking-io-on-ui small key cache, flushed at unlock: a partial write is an unopenable profile
-      File(_cacheFile(profileId)).writeAsStringSync(raw, flush: true);
+      fs.file(_cacheFile(profileId)).writeAsStringSync(raw, flush: true);
     }
   }
 
@@ -134,7 +135,7 @@ class DeviceKeyStore {
       final raw = await _secure.read(key: _cacheKey(profileId));
       return raw != null && raw.isNotEmpty;
     }
-    return File(_cacheFile(profileId)).existsSync();
+    return fs.file(_cacheFile(profileId)).existsSync();
   }
 
   /// Everything for this profile is gone — called when encryption is
@@ -146,7 +147,7 @@ class DeviceKeyStore {
 
   void _tryDelete(String path) {
     try {
-      final f = File(path);
+      final f = fs.file(path);
       if (f.existsSync()) f.deleteSync();
     } catch (_) {}
   }
@@ -155,7 +156,7 @@ class DeviceKeyStore {
   /// the UI isolate during unlock, and a blocked isolate is a dropped frame
   /// (docs/architecture.md §2).
   Future<String?> _readCacheFile(String profileId) async {
-    final f = File(_cacheFile(profileId));
+    final f = fs.file(_cacheFile(profileId));
     if (!await f.exists()) return null;
     try {
       return await f.readAsString();

@@ -22,7 +22,7 @@
  * two is safe to write into.
  */
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 
 import 'package:sqlite3/common.dart';
 
@@ -30,6 +30,7 @@ import '../../profile/profile_db.dart';
 import '../../services/log_service.dart';
 import '../../services/xprs/xprs_vocab.dart';
 import 'conversation_store.dart';
+import '../../platform/fs.dart';
 
 /// Per-thread message cap, mirroring [ConversationStore]'s in-memory cap.
 const int kConvoMaxMessages = 500;
@@ -50,7 +51,7 @@ class ConversationDb {
     // sqlite reports that as a bare "unable to open database file".
     final slash = absPath.lastIndexOf('/');
     if (slash > 0) {
-      final dir = Directory(absPath.substring(0, slash));
+      final dir = fs.directory(absPath.substring(0, slash));
       if (!dir.existsSync()) dir.createSync(recursive: true);
     }
     // openProfileDb sets a busy_timeout, so a lock met at the page->headless

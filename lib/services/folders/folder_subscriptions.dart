@@ -8,7 +8,8 @@
  * path-injectable (':memory:' for tests). Headless.
  */
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
+import '../../platform/fs.dart';
 
 class FolderSub {
   bool autoSync;
@@ -54,7 +55,7 @@ class FolderSubscriptions {
   void _load() {
     if (_path == ':memory:') return;
     try {
-      final f = File(_path);
+      final f = fs.file(_path);
       if (!f.existsSync()) return;
       final m = jsonDecode(f.readAsStringSync());
       if (m is Map) {
@@ -66,9 +67,9 @@ class FolderSubscriptions {
   void _save() {
     if (_path == ':memory:') return;
     try {
-      final parent = File(_path).parent;
+      final parent = fs.file(_path).parent;
       if (!parent.existsSync()) parent.createSync(recursive: true);
-      File(_path).writeAsStringSync(
+      fs.file(_path).writeAsStringSync(
           jsonEncode({for (final e in _subs.entries) e.key: e.value.toJson()}));
     } catch (_) {}
   }

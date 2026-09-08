@@ -27,7 +27,6 @@
  *     [holdActive] to be treated as `active` regardless of the tier.
  */
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -35,6 +34,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'log_service.dart';
+import '../platform/platform.dart' as platform;
 
 enum PowerTier { active, idle, battery, low }
 
@@ -43,7 +43,7 @@ class PowerState with WidgetsBindingObserver {
   static final PowerState instance = PowerState._();
 
   static const _channel = MethodChannel('com.xprs.app/bg_service');
-  bool get _android => !kIsWeb && Platform.isAndroid;
+  bool get _android => platform.isAndroid;
 
   /// The published tier. Consumers listen; nothing polls.
   final ValueNotifier<PowerTier> tier = ValueNotifier(PowerTier.active);

@@ -19,7 +19,7 @@
  */
 
 import 'dart:async';
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 
@@ -42,6 +42,7 @@ import 'xprs/xprs_publisher.dart';
 import 'xprs/xprs_monitor.dart';
 import 'xprs/xprs_files.dart';
 import 'notification_service.dart';
+import '../platform/fs.dart';
 
 enum UpdateStatus { idle, checking, available, downloading, downloaded, error }
 
@@ -577,8 +578,8 @@ class UpdateService {
       if (mine != null) {
         phase.value = 'Held by this station\'s mirror';
         final dir = await UpdateNative.supportDir();
-        final dest = '$dir${Platform.pathSeparator}${asset.name}';
-        await File(mine).copy(dest);
+        final dest = '$dir${pathSeparator}${asset.name}';
+        await fs.file(mine).copy(dest);
         _downloadedPath = dest;
         progress.value = 1;
         lastSource = 'mirror';

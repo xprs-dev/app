@@ -8,6 +8,9 @@
 # i18n / store / App Creator / signing stack as the desktop build,
 # only hosted in the browser instead of a GTK window.
 #
+# What works in a browser and what cannot, how to test it headless, and the
+# seams the web build stands on: docs/web.md.
+#
 # Usage: ./launch-web.sh [port]
 
 set -e

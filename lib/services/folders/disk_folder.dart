@@ -7,12 +7,13 @@
  * Headless: dart:io + crypto only. Used by disk_folder_manager (owner sync) and
  * registered into the file node's serve source via CompositeFileSource.
  */
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 
 import '../files/file_transfer.dart' show FileSource, PieceMask, RangedFileSource;
+import '../../platform/fs.dart';
 
 /// The hidden key file kept inside an owned folder (excluded from sharing).
 const String kFolderKeyFile = '.folder.json';
@@ -68,7 +69,7 @@ class DiskFolderSource implements RangedFileSource {
   List<DiskFile> scan() {
     final out = <DiskFile>[];
     _byHash.clear();
-    final root = Directory(dirPath);
+    final root = fs.directory(dirPath);
     if (!root.existsSync()) {
       _files = const [];
       return _files;
@@ -163,7 +164,7 @@ class DiskFolderSource implements RangedFileSource {
   Future<List<DiskFile>> scanAsync() async {
     final out = <DiskFile>[];
     final byHash = <String, String>{};
-    final root = Directory(dirPath);
+    final root = fs.directory(dirPath);
     if (!root.existsSync()) {
       _byHash.clear();
       _files = const [];
@@ -216,7 +217,7 @@ class DiskFolderSource implements RangedFileSource {
     final path = _byHash[_hex(fileHash)];
     if (path == null) return null;
     try {
-      return File(path).readAsBytesSync();
+      return fs.file(path).readAsBytesSync();
     } catch (_) {
       return null;
     }
@@ -241,7 +242,7 @@ class DiskFolderSource implements RangedFileSource {
     if (path == null) return null;
     RandomAccessFile? raf;
     try {
-      final f = File(path);
+      final f = fs.file(path);
       final size = f.lengthSync();
       if (offset < 0 || offset >= size) return null;
       final end = (offset + length > size) ? size : offset + length;
@@ -262,7 +263,7 @@ class DiskFolderSource implements RangedFileSource {
     try {
       // We hold the whole file (it is on disk and its hash is in our index), so
       // we hold every piece of it.
-      return PieceMask.full(File(path).lengthSync(), pieceSize);
+      return PieceMask.full(fs.file(path).lengthSync(), pieceSize);
     } catch (_) {
       return null;
     }

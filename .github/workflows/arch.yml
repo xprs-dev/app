@@ -31,6 +31,15 @@ jobs:
           repository: xprs-dev/wapps
           path: wapps
 
+      # The web-build rule is also checked in reticulum-dart (a path dependency
+      # of the app); without the sibling the guard silently checks less.
+      - name: Checkout reticulum-dart (sibling rules)
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          repository: xprs-dev/reticulum-dart
+          path: reticulum-dart
+
       - uses: dart-lang/setup-dart@v1
 
       - name: Architecture guard

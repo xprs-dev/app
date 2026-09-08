@@ -48,6 +48,24 @@ class Rule {
   final String? message;
 }
 
+// ── the web build ───────────────────────────────────────────────────────────
+const webBuildRule = Rule(
+  id: 'no-native-import-outside-io-file',
+  why: 'lib/ also compiles with dart2js (flutter build web). dart:ffi and '
+      'the FFI half of package:sqlite3 are hard compile errors there; '
+      'dart:io and dart:isolate compile and then throw on every call. Put '
+      'the native half in a *_io.dart behind a conditional export '
+      '(lib/platform/fs.dart, lib/profile/profile_db.dart are the pattern) '
+      'and reach files through `fs`, databases through openProfileDb '
+      '(docs/web.md).',
+  appliesTo: ['lib/**'],
+  exempt: ['lib/**/*_io.dart'],
+  // An unconditional import: the URI and its show/hide/as on ONE line ending
+  // in `;`. A conditional one continues on the next line with `if (...)`, so
+  // it does not end here and is not matched.
+  pattern: r'''^\s*import\s+'(dart:io|dart:ffi|dart:isolate|package:sqlite3/sqlite3\.dart|package:sqlite3/open\.dart)'(\s+(show|hide|as)\s+[^;]*)?;''',
+);
+
 const rules = <Rule>[
   // ── isolates ──────────────────────────────────────────────────────────────
   Rule(
@@ -236,9 +254,16 @@ const rules = <Rule>[
     pattern: r'\.select\(\s*[\x27"]\s*SELECT\b(?:(?!LIMIT)[^\x27"])*[\x27"]',
     message: 'Bound it: LIMIT, a COUNT, or a keyed lookup behind the owner.',
   ),
+  webBuildRule,
 ];
 
-/// Rules for the sibling wapps repo (C sources). Checked only when it is there.
+/// Rules also checked in the reticulum-dart sibling (scanned with its own
+/// lib/ as the root, so the same globs apply). The app cannot build for web
+/// unless the library does.
+const siblingRules = <Rule>[
+  webBuildRule,
+];
+
 const wappRules = <Rule>[
   Rule(
     id: 'no-transport-logic-in-wapps-repo',
@@ -312,6 +337,10 @@ void main(List<String> args) {
 
   scan(Directory('lib'), rules, '');
   scan(Directory('tool'), rules, '');
+  final sibling = Directory('../reticulum-dart');
+  if (sibling.existsSync()) {
+    scan(sibling, siblingRules, '../reticulum-dart/', inner: true);
+  }
   final wapps = Directory('../wapps');
   if (wapps.existsSync()) scan(wapps, wappRules, '../wapps/', inner: true);
 
@@ -336,7 +365,7 @@ void main(List<String> args) {
 
   final fresh = uniq.where((k) => !baseline.contains(k)).toList();
   final byId = <String, Rule>{
-    for (final r in [...rules, ...wappRules]) r.id: r,
+    for (final r in [...rules, ...siblingRules, ...wappRules]) r.id: r,
   };
 
   if (list) {

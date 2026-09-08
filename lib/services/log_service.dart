@@ -12,6 +12,10 @@
 /// and logged at startup in main().
 const String kXprsBuildTag = 'msgorigin-20260607a';
 
+/// True in a browser. Kept as a compile-time constant (no Flutter import) so
+/// this file stays pure Dart.
+const bool _kWeb = bool.fromEnvironment('dart.library.js_interop');
+
 /// Process-wide recent-log buffer.
 class LogService {
   LogService._();
@@ -61,6 +65,9 @@ class LogService {
     }
     _lastLine = capped;
     _repeats = 0;
+    // On web there is no /api/log: the browser console IS the log window,
+    // so every line the ring keeps is also printed there (docs/web.md).
+    if (_kWeb) print(capped); // ignore: avoid_print
     _lines.add('${DateTime.now().toIso8601String()}  $capped');
     if (_lines.length > _max) {
       _lines.removeRange(0, _lines.length - _max);

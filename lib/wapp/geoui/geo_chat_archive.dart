@@ -18,15 +18,16 @@
 // Native only — SQLite needs dart:ffi. Every call is a no-op on web (kIsWeb),
 // matching wapp_social_store.
 
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
 
 import '../../profile/profile_db.dart';
 
 import '../../profile/profile_storage.dart';
+import '../../platform/fs.dart';
 
 class GeoChatArchive {
   GeoChatArchive._(this._dbPath);
@@ -41,7 +42,7 @@ class GeoChatArchive {
   static const String _fileName = 'geochat.sqlite3';
 
   final String _dbPath;
-  Database? _db;
+  CommonDatabase? _db;
   bool _failed = false; // a fatal open error → operate degraded, never wipe
 
   // Keep the archive bounded (pruned with atomic DELETEs, no rewrite).
@@ -56,13 +57,13 @@ class GeoChatArchive {
 
   // ── DB lifecycle ────────────────────────────────────────────────────────
 
-  Database? _ensureDb() {
+  CommonDatabase? _ensureDb() {
     if (kIsWeb || _failed) return null;
     final existing = _db;
     if (existing != null) return existing;
     try {
       // sqlite3.open creates the file but not parent dirs.
-      final parent = File(_dbPath).parent;
+      final parent = fs.file(_dbPath).parent;
       if (!parent.existsSync()) parent.createSync(recursive: true);
       final db = openProfileDb(_dbPath);
       db.execute('PRAGMA journal_mode = WAL;'); // crash-safe, concurrent reads
@@ -215,7 +216,7 @@ class GeoChatArchive {
 
   /// One prune per session: drop rows older than [_maxAgeMs] and cap the row
   /// count at [_maxRows]. Both are atomic DELETEs — no risky file rewrite.
-  void _pruneOnce(Database db) {
+  void _pruneOnce(CommonDatabase db) {
     if (_prunedThisSession) return;
     _prunedThisSession = true;
     try {

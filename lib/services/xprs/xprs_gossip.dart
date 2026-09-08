@@ -26,7 +26,9 @@
  */
 import 'dart:async';
 
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
+
+import '../../profile/profile_db.dart';
 
 import '../log_service.dart';
 
@@ -101,7 +103,7 @@ class XprsGossip {
     'hf',
   };
 
-  Database? _db;
+  CommonDatabase? _db;
   int maxBytes = defaultMaxBytes;
   int accepted = 0, refusedUnsigned = 0, refusedQuota = 0;
 
@@ -116,7 +118,7 @@ class XprsGossip {
 
   void init(String path) {
     try {
-      final db = sqlite3.open(path);
+      final db = openPlainDb(path);
       db.execute('PRAGMA journal_mode=WAL');
       db.execute(
         'CREATE TABLE IF NOT EXISTS gossip_visits('
@@ -231,7 +233,7 @@ class XprsGossip {
   }
 
   void _noteLive(
-    Database db,
+    CommonDatabase db,
     String call,
     String gw,
     String bearer,
@@ -253,7 +255,7 @@ class XprsGossip {
     );
   }
 
-  void _noteVisit(Database db, String call, String gw, String bearer, int now) {
+  void _noteVisit(CommonDatabase db, String call, String gw, String bearer, int now) {
     db.execute(
       'INSERT INTO gossip_visits(callsign,gateway,bearer,first_ts,last_ts) '
       'VALUES(?,?,?,?,?) ON CONFLICT(callsign,gateway) DO UPDATE SET '
@@ -271,7 +273,7 @@ class XprsGossip {
 
   /// TTL for L3 and the byte budget, at most once a minute, on the insert
   /// path (no timers — performance.md 8.2).
-  void _maybeSweep(Database db, int now) {
+  void _maybeSweep(CommonDatabase db, int now) {
     if (now - _lastSweepMs < 60000) return;
     _lastSweepMs = now;
     db.execute('DELETE FROM gossip_live WHERE ts < ?', [

@@ -17,6 +17,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:encrypted_archive/encrypted_archive.dart' show SQLiteLoader;
 import 'package:reticulum/reticulum.dart' as reticulum;
 
 import 'iwi_profile.dart';
@@ -91,6 +92,12 @@ class ProfileService {
     // happen before any store is constructed; this boot task runs before
     // wapp/reticulum autostart on both UI and headless engines.
     reticulum.dbOpener = openProfileDb;
+    reticulum.dbMemoryOpener = openMemoryDb;
+    // encrypted_archive cannot load sqlite3.wasm itself; on web it opens
+    // through the same engine. Natively it keeps its own default, because a
+    // profile.ear inside an encrypted profile must NOT get a SQLCipher key
+    // on top of its own encryption.
+    if (kIsWeb) SQLiteLoader.override = openPlainDb;
     final root = xprsRootStorage();
     await root.createDirectory('');
     final existing = await root.readJson(_profilesFile);

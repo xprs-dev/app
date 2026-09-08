@@ -66,6 +66,14 @@ String get pathSeparator => '/';
 /// lookups should gate on [kIsWeb] and skip that path entirely.
 String currentDirectory() => '';
 
+/// OS predicates: a browser is none of these.
+bool get isAndroid => false;
+bool get isIOS => false;
+bool get isLinux => false;
+bool get isMacOS => false;
+bool get isWindows => false;
+bool get isWeb => true;
+
 /// Web build → 'web'. Matches wapp `platforms` advertisement.
 String platformName() => 'web';
 

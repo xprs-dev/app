@@ -21,7 +21,7 @@
  */
 
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:ui' show PlatformDispatcher;
 
 import 'device_key_store.dart';
@@ -31,6 +31,8 @@ import 'profile_db.dart';
 import 'profile_service.dart';
 import 'profile_storage_encrypted.dart';
 import '../services/log_service.dart';
+import '../platform/fs.dart';
+import '../platform/platform.dart' as platform;
 
 class ProfileEncryption {
   ProfileEncryption._();
@@ -83,6 +85,14 @@ class ProfileEncryption {
   /// (it deletes it, same as [enable] — but a fresh profile has none).
   static Future<void> enableWithDeviceKey(String id) async {
     if (isEncrypted(id)) return;
+    // No SQLCipher in sqlite3.wasm and no keychain in a browser: a web
+    // profile stays plain, and says so once where /api/log would have shown
+    // it (docs/web.md).
+    if (platform.isWeb) {
+      LogService.instance.add(
+          'encryption: not available on web -- profile $id stays plain');
+      return;
+    }
     final password = await DeviceKeyStore.instance.ensureDevicePassword(id);
     try {
       await enable(id, password, remember: true);
@@ -106,6 +116,10 @@ class ProfileEncryption {
       throw StateError('Profile has no nsec — cannot enable encryption');
     }
     if (isEncrypted(id)) return;
+    if (platform.isWeb) {
+      throw UnsupportedError(
+          'profile encryption is not available on web (docs/web.md)');
+    }
 
     final secrets =
         await ProfileCrypto.createProfileSecrets(password, profile.nsec);
@@ -114,7 +128,7 @@ class ProfileEncryption {
     // effort; on flash the real protection is enabling encryption early.
     _deleteProfileUserData(id);
 
-    File(_keyslotPath(id))
+    fs.file(_keyslotPath(id))
       ..parent.createSync(recursive: true)
       // arch-ignore: no-blocking-io-on-ui the keyslot must be on disk before the profile is announced as created
       ..writeAsStringSync(jsonEncode(secrets.keyslot.toJson()), flush: true);
@@ -258,7 +272,7 @@ class ProfileEncryption {
     final changed = await ProfileCrypto.changePassword(
         oldPassword, newPassword, envelope, keyslot);
 
-    await File(_keyslotPath(id)).writeAsString(
+    await fs.file(_keyslotPath(id)).writeAsString(
         jsonEncode(changed.keyslot.toJson()),
         flush: true);
     await service.update(profile.copyWith(
@@ -311,7 +325,7 @@ class ProfileEncryption {
   }
 
   static ProfileKeyslot _readKeyslot(String id) {
-    final f = File(_keyslotPath(id));
+    final f = fs.file(_keyslotPath(id));
     if (!f.existsSync()) {
       throw const ProfileKeyslotCorrupt('keyslot.json missing');
     }
@@ -345,7 +359,7 @@ class ProfileEncryption {
     for (final suffix in ['', '-wal', '-shm', '-journal']) {
       _tryDelete('$base/$profileArchiveName$suffix');
     }
-    final wapps = Directory('$base/wapps');
+    final wapps = fs.directory('$base/wapps');
     if (wapps.existsSync()) {
       for (final f in wapps.listSync(recursive: true).whereType<File>()) {
         if (f.path.contains('.sqlite3')) _tryDelete(f.path);
@@ -355,14 +369,14 @@ class ProfileEncryption {
 
   static void _tryDelete(String path) {
     try {
-      final f = File(path);
+      final f = fs.file(path);
       if (f.existsSync()) f.deleteSync();
     } catch (_) {}
   }
 
   static void _tryDeleteDir(String path) {
     try {
-      final d = Directory(path);
+      final d = fs.directory(path);
       if (d.existsSync()) d.deleteSync(recursive: true);
     } catch (_) {}
   }

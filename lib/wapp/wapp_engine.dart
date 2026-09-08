@@ -4,9 +4,9 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'dart:io'
-    if (dart.library.html) '../platform/io_stub.dart'
-    show Directory, File, FileMode, Platform, Process, Socket, RawSynchronousSocket,
-        HttpClient;
+    show FileMode, Platform, Process, Socket, RawSynchronousSocket, HttpClient;
+
+import 'package:file/file.dart' show File, Directory;
 
 import 'package:flutter/foundation.dart' show compute;
 import 'package:wasm_run/wasm_run.dart';
@@ -50,11 +50,13 @@ import '../util/nostr_crypto.dart';
 import '../util/xprs_crypto.dart';
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:hex/hex.dart';
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
 
 import '../profile/profile_db.dart';
 import '../profile/profile_storage_encrypted.dart';
 import 'package:pointycastle/export.dart' as pc;
+import '../platform/fs.dart';
+import '../platform/platform.dart' as platform;
 
 /// State for a single hal_process_exec subprocess. Lives in
 /// [WappEngine._procs] keyed by handle. The wapp polls hal_process_poll
@@ -174,11 +176,11 @@ class _WappStreamState {
 }
 
 /// State for a single hal_sqlite_* handle. Lives in [WappEngine._sqlite] keyed
-/// by handle. Wraps one open [Database] (a file under the wapp's private data
+/// by handle. Wraps one open [CommonDatabase] (a file under the wapp's private data
 /// dir) and the last error string for hal_sqlite_error.
 class _WappSqliteState {
   _WappSqliteState(this.db);
-  final Database db;
+  final CommonDatabase db;
   String? lastError;
 }
 
@@ -281,7 +283,7 @@ class WappEngine {
       final enc = EncryptedProfileStorage.routeAbsolutePath(s.path);
       if (enc == null) {
         // arch-ignore: no-blocking-io-on-ui WASI fd_write is a synchronous contract — a wasm import cannot await
-        File(s.path).writeAsBytesSync(
+        fs.file(s.path).writeAsBytesSync(
           s.writeBuf,
           mode: s.mode == 2 ? FileMode.append : FileMode.write,
         );
@@ -900,7 +902,7 @@ class WappEngine {
         if (archive == null || pathLen <= 0 || outCap <= 0) return 0;
         try {
           final path = _readStr(pathPtr, pathLen);
-          final f = File(path);
+          final f = fs.file(path);
           if (!f.existsSync()) return 0;
           final dot = path.lastIndexOf('.');
           final slash =
@@ -1429,12 +1431,12 @@ class WappEngine {
       (int pPtr, int pLen, int outPtr, int outCap) {
         if (pLen <= 0 || outCap <= 0) return 0;
         try {
-          final dir = Directory(_readStr(pPtr, pLen));
+          final dir = fs.directory(_readStr(pPtr, pLen));
           if (!dir.existsSync()) return 0;
           final items = <Map<String, dynamic>>[];
           for (final e in dir.listSync(followLinks: false)) {
             items.add({
-              'name': e.path.split(Platform.pathSeparator).last,
+              'name': e.path.split(pathSeparator).last,
               'path': e.path,
               'dir': e is Directory,
             });
@@ -1471,13 +1473,13 @@ class WappEngine {
         try {
           if (Platform.isAndroid) {
             for (final c in const ['/storage/emulated/0', '/sdcard']) {
-              if (Directory(c).existsSync()) { root = c; break; }
+              if (fs.directory(c).existsSync()) { root = c; break; }
             }
           } else {
-            final h = Platform.environment['HOME'];
-            root = (h != null && h.isNotEmpty && Directory(h).existsSync())
+            final h = platform.homeDir();
+            root = (h != null && h.isNotEmpty && fs.directory(h).existsSync())
                 ? h
-                : Directory.current.path;
+                : fs.currentDirectory.path;
           }
         } catch (_) {}
         return _writeStr(outPtr, outCap, root);
@@ -2210,14 +2212,14 @@ class WappEngine {
             s.readBuf = enc != null
                 ? enc.storage.readBytesSync(enc.rel)
                 // arch-ignore: no-blocking-io-on-ui WASI fd_read is a synchronous contract — a wasm import cannot await
-                : File(path).readAsBytesSync();
+                : fs.file(path).readAsBytesSync();
             if (s.readBuf == null) return -1;
           } catch (_) {
             return -1;
           }
         } else if (enc == null) {
           try {
-            final parent = File(path).parent;
+            final parent = fs.file(path).parent;
             if (!parent.existsSync()) parent.createSync(recursive: true);
           } catch (_) {
             return -1;
@@ -2601,14 +2603,16 @@ class WappEngine {
         try {
           final slash = p.lastIndexOf('/');
           if (slash > 0) {
-            Directory(p.substring(0, slash)).createSync(recursive: true);
+            fs.directory(p.substring(0, slash)).createSync(recursive: true);
           }
           final db = openProfileDb(p);
           db.execute('PRAGMA journal_mode=WAL;');
           final h = _nextSqliteHandle++;
           _sqlite[h] = _WappSqliteState(db);
           return h;
-        } catch (_) {
+        } catch (e, st) {
+          // The wapp only sees -1; the reason is the host's to keep.
+          LogService.instance.add('hal_sqlite_open $p failed: $e\n$st');
           return -1;
         }
       },

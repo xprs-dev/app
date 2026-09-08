@@ -14,7 +14,7 @@
  */
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform, File, Directory;
+import 'package:file/file.dart';
 import 'dart:typed_data';
 
 import 'package:battery_plus/battery_plus.dart';
@@ -68,6 +68,8 @@ import 'mesh_frame.dart';
 import 'mesh_bulk_spool.dart';
 import 'mesh_store.dart';
 import 'mesh_table.dart';
+import '../../platform/fs.dart';
+import '../../platform/platform.dart' as platform;
 
 class MeshService {
   MeshService._();
@@ -493,10 +495,10 @@ class MeshService {
           if (bytes == null || bytes.isEmpty) return null;
           if (destDir != null) {
             try {
-              await Directory(destDir).create(recursive: true);
-              final path = '$destDir${Platform.pathSeparator}$shaHex'
+              await fs.directory(destDir).create(recursive: true);
+              final path = '$destDir${pathSeparator}$shaHex'
                   '${ext.isNotEmpty ? '.$ext' : ''}';
-              await File(path).writeAsBytes(bytes);
+              await fs.file(path).writeAsBytes(bytes);
               return path;
             } catch (_) {
               return null;
@@ -865,7 +867,7 @@ class MeshService {
   }
 
   MeshDeviceClass _deviceClass() {
-    if (Platform.isAndroid || Platform.isIOS) return MeshDeviceClass.phone;
+    if (platform.isAndroid || platform.isIOS) return MeshDeviceClass.phone;
     return MeshDeviceClass.computer;
   }
 

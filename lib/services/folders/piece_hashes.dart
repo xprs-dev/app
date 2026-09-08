@@ -21,10 +21,11 @@
  * it is fetched like any other blob, from anyone.
  */
 
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
+import '../../platform/fs.dart';
 
 /// The piece hashes of [file], read in bounded chunks so a 4 GB file costs one
 /// piece of memory rather than four gigabytes. Yields between pieces, so a big

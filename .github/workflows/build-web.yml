@@ -1,0 +1,36 @@
+name: build-web
+
+# The browser build compiles the same lib/ with dart2js, and it is the one
+# target where an unconditional dart:ffi import is a hard compile error rather
+# than a runtime throw. This job exists so that error is found here, not on the
+# next person who runs launch-web.sh (docs/web.md).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pubspec.yaml has a path dependency on ../reticulum-dart; clone it next to
+      # the workspace so pub get can resolve it.
+      - name: Fetch reticulum-dart (path dependency)
+        shell: bash
+        run: git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter build web --release --no-tree-shake-icons --pwa-strategy=none
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xprs-web
+          path: build/web

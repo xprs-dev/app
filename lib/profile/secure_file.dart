@@ -12,7 +12,7 @@
  */
 
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:typed_data';
 
 import 'package:encrypted_archive/encrypted_archive.dart'
@@ -20,6 +20,7 @@ import 'package:encrypted_archive/encrypted_archive.dart'
 
 import 'profile_crypto.dart';
 import 'profile_db.dart';
+import '../platform/fs.dart';
 
 /// Reads/writes profile files with transparent at-rest encryption for
 /// encrypted profiles. All methods are synchronous (call sites are sync).
@@ -53,7 +54,7 @@ class SecureProfileFile {
   /// [ProfileLockedException] / [ArchiveCryptoException] on locked profile
   /// or tampered content.
   static Uint8List? readBytes(String absPath) {
-    final f = File(absPath);
+    final f = fs.file(absPath);
     if (!f.existsSync()) return null;
     // arch-ignore: no-blocking-io-on-ui sync by contract: the WASI fd_* shims read encrypted profile files through here
     final raw = f.readAsBytesSync();
@@ -78,13 +79,13 @@ class SecureProfileFile {
   /// Write [bytes] to [absPath], encrypting when it belongs to an unlocked
   /// encrypted profile.
   static void writeBytes(String absPath, Uint8List bytes) {
-    final parent = File(absPath).parent;
+    final parent = fs.file(absPath).parent;
     if (!parent.existsSync()) parent.createSync(recursive: true);
 
     final keys = _keysFor(absPath);
     if (keys == null) {
       // arch-ignore: no-blocking-io-on-ui sync by contract: called from the WASI fd_write shim
-      File(absPath).writeAsBytesSync(bytes);
+      fs.file(absPath).writeAsBytesSync(bytes);
       return;
     }
     final loc = locateProfileDb(absPath)!;
@@ -97,7 +98,7 @@ class SecureProfileFile {
       ..add(enc.ciphertext)
       ..add(enc.authTag);
     // arch-ignore: no-blocking-io-on-ui sync by contract: called from the WASI fd_write shim
-    File(absPath).writeAsBytesSync(out.toBytes());
+    fs.file(absPath).writeAsBytesSync(out.toBytes());
   }
 
   static String? readString(String absPath) {

@@ -15,12 +15,13 @@
  *
  * show() returns a [FilePickResult] (path + isDir) or null if cancelled.
  */
-import 'dart:io';
+import 'package:file/file.dart';
 
 import 'package:flutter/material.dart';
 
 import '../services/android_permissions_service.dart';
 import '../platform/platform.dart' as platform;
+import '../platform/fs.dart';
 
 class FilePickResult {
   final String path;
@@ -88,19 +89,19 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
   @override
   void initState() {
     super.initState();
-    _dir = Directory(widget.initialDirectory ?? _defaultRoot());
+    _dir = fs.directory(widget.initialDirectory ?? _defaultRoot());
     _init();
   }
 
   String _defaultRoot() {
     if (_isAndroid) {
       for (final c in const ['/storage/emulated/0', '/sdcard']) {
-        if (Directory(c).existsSync()) return c;
+        if (fs.directory(c).existsSync()) return c;
       }
       return '/';
     }
-    final h = Platform.environment['HOME'];
-    if (h != null && h.isNotEmpty && Directory(h).existsSync()) return h;
+    final h = platform.homeDir();
+    if (h != null && h.isNotEmpty && fs.directory(h).existsSync()) return h;
     return '/';
   }
 
@@ -153,7 +154,7 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
   }
 
   void _enter(String path) {
-    _dir = Directory(path);
+    _dir = fs.directory(path);
     _selectedFile = null; // selection is folder-scoped; reset on navigation
     _load();
   }
@@ -242,7 +243,7 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
 
   List<(String, String)> _shortcuts() {
     final out = <(String, String)>[];
-    final h = Platform.environment['HOME'];
+    final h = platform.homeDir();
     if (_isAndroid) {
       out.add(('Internal storage', '/storage/emulated/0'));
       out.add(('SD / USB (/storage)', '/storage'));

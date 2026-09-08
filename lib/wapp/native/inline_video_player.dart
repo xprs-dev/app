@@ -13,7 +13,6 @@
  * diagnosable from /api/log.
  */
 
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -22,6 +21,7 @@ import '../../services/log_service.dart';
 import 'hw_video_player.dart';
 import 'native_process_video_player.dart';
 import 'wasm_video_player.dart';
+import '../../platform/platform.dart' as platform;
 
 Widget inlineVideoPlayer({
   required Uint8List mediaBytes,
@@ -42,7 +42,7 @@ Widget inlineVideoPlayer({
 
   if (isAudio) return wasm();
 
-  if (Platform.isAndroid) {
+  if (platform.isAndroid) {
     return _FastWithWasmFallback(
       buildFast: (onFailed) => HwVideoPlayer(
         mediaBytes: mediaBytes,
@@ -56,7 +56,7 @@ Widget inlineVideoPlayer({
     );
   }
 
-  if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+  if (platform.isLinux || platform.isWindows || platform.isMacOS) {
     final matches = framePushPlayersFor(ext);
     if (matches.isNotEmpty) {
       final bin = nativeDecoderPathFor(matches.first.manifest);

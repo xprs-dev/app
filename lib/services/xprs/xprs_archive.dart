@@ -23,10 +23,10 @@
  * Reticulum-borne traffic may enter at all — see XprsIngest for the rule.
  */
 import 'dart:async';
-import 'dart:io';
+import 'package:file/file.dart';
 import 'dart:typed_data';
 
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
 
 import '../../profile/profile_db.dart';
 import '../../util/nostr_crypto.dart';
@@ -36,6 +36,7 @@ import 'xprs_id.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
+import '../../platform/fs.dart';
 
 /// Packet types that are never spooled.
 ///
@@ -59,7 +60,7 @@ class XprsArchive {
   XprsArchive._();
   static final XprsArchive instance = XprsArchive._();
 
-  Database? _db;
+  CommonDatabase? _db;
   bool get ready => _db != null;
 
   /// The stored packet whose §5 identifier is [id], or null when the spool
@@ -123,7 +124,7 @@ class XprsArchive {
   void init(String path) {
     close();
     try {
-      Directory(File(path).parent.path).createSync(recursive: true);
+      fs.directory(fs.file(path).parent.path).createSync(recursive: true);
       final db = openProfileDb(path);
       // INCREMENTAL auto-vacuum must precede table creation, or deletes never
       // shrink the file and the byte cap caps nothing.
@@ -353,7 +354,7 @@ class XprsArchive {
   /// callsign would let a key-only announcement evict the avatar and the
   /// description. So: newest key-bearing row, and newest decoration row. Two
   /// per station, for ever.
-  static void _collapseIdentities(Database db, String fromc) {
+  static void _collapseIdentities(CommonDatabase db, String fromc) {
     if (fromc.isEmpty) return;
     for (final bearing in [1, 0]) {
       final rows = db.select(
@@ -402,7 +403,7 @@ class XprsArchive {
   String selfCallsign = '';
   String get _selfBase => _base(selfCallsign);
 
-  void _prune(Database db, {int? nowMs}) {
+  void _prune(CommonDatabase db, {int? nowMs}) {
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
     // Age, once per session. Our own side of the conversation is exempt, the
     // same way the byte cap below already exempts it: this station IS its own
@@ -501,7 +502,7 @@ class XprsArchive {
     return db.updatedRows;
   }
 
-  int _dataBytes(Database db) {
+  int _dataBytes(CommonDatabase db) {
     try {
       final pc =
           (db.select('PRAGMA page_count').first.values.first as num).toInt();

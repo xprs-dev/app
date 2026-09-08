@@ -27,9 +27,12 @@ import '../preferences_service.dart';
 import '../social/email_resolve_service.dart';
 import '../../util/media_archive.dart';
 import 'rns_service.dart';
+import '../../platform/platform.dart' as platform;
 
 /// Start the Reticulum node if it isn't already running, connecting to the
 /// configured public testnet bootstrap as a TCP client. Safe to call repeatedly.
+bool _webRefusalLogged = false;
+
 Future<void> ensureRnsAutostart() async {
   final rns = RnsService.instance;
   if (rns.isStarting) return;
@@ -63,7 +66,7 @@ Future<void> ensureRnsAutostart() async {
     // only from inside hal_media_infohash — i.e. only on a device that had
     // *shared* something — so a device that merely followed people cached their
     // media and then served it to nobody. start() is idempotent.
-    if (prefs.hostEnabled) {
+    if (prefs.hostEnabled && !platform.isWeb) {
       unawaited(BlossomServer.instance.start(arch));
     }
 
@@ -110,6 +113,19 @@ Future<void> ensureRnsAutostart() async {
     // presence beacon, same as the manual start path).
     final cs = (ProfileService.instance.activeProfile?.callsign ?? '').trim();
     final name = cs.isNotEmpty ? cs : 'xprs';
+
+    // A page has no socket to reach a hub with and no radio to fall back to.
+    // Say so once and leave the stores above wired; docs/web.md names the
+    // WebSocket interface that would change this.
+    if (platform.isWeb) {
+      if (!_webRefusalLogged) {
+        _webRefusalLogged = true;
+        LogService.instance.add(
+            'RNS autostart: Reticulum is not available on web (no TCP/UDP/BLE '
+            'transport in a browser) -- see docs/web.md');
+      }
+      return;
+    }
 
     for (final entry in servers) {
       final hp = _parseHostPort(entry);

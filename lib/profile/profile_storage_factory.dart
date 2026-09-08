@@ -1,14 +1,9 @@
 /*
- * Conditional factory that returns the right ProfileStorage
- * implementation for the current target. Native (desktop / mobile)
- * hits profile_storage_io.dart and wraps a real filesystem path;
- * web hits profile_storage_web.dart and returns a
- * MemoryProfileStorage rooted at the same virtual path.
- *
- * Every caller that previously constructed a
- * FilesystemProfileStorage directly now goes through
- * [makeFilesystemStorage] so the dart:io import stays isolated.
+ * Where storage_paths.dart gets its ProfileStorage. One backend now
+ * (profile_storage_fs.dart, over lib/platform/fs.dart), so this is a plain
+ * re-export; it stays a separate file so the call sites -- and the name
+ * [makeFilesystemStorage] -- did not have to change when the web backend
+ * moved from localStorage to the filesystem seam.
  */
 
-export 'profile_storage_web.dart'
-    if (dart.library.io) 'profile_storage_io.dart';
+export 'profile_storage_fs.dart';

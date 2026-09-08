@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 
 import 'package:xprs/profile/profile_storage.dart';
-import 'package:xprs/profile/profile_storage_io.dart';
+import 'package:xprs/profile/profile_storage_fs.dart';
 import 'package:xprs/wapp/coin/atm_host_bridge.dart';
 import 'package:xprs/wapp/coin/coin_host_bridge.dart';
 import 'package:reticulum/reticulum.dart';

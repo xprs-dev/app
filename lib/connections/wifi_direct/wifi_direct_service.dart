@@ -8,9 +8,9 @@
 // Android-only for now; Linux/ESP32 get different implementations behind the
 // same API later.
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/services.dart';
+import '../../platform/platform.dart' as platform;
 
 /// Live group credentials (GO side) or join target (client side).
 class WfdGroupCredentials {
@@ -53,7 +53,7 @@ class WifiDirectService {
   }
 
   Future<bool> supported() async {
-    if (!Platform.isAndroid) return false;
+    if (!platform.isAndroid) return false;
     try {
       return await _method.invokeMethod<bool>('supported') ?? false;
     } catch (_) {

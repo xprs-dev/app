@@ -8,15 +8,16 @@
 // Native only (SQLite via dart:ffi); every call is a no-op on web.
 
 import 'dart:convert';
-import 'dart:io';
+import 'package:file/file.dart';
 
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
 
 import '../../services/log_service.dart';
 import '../../profile/profile_db.dart';
 
 import '../../profile/profile_storage.dart';
+import '../../platform/fs.dart';
 
 class ActivityArchive {
   ActivityArchive._(this._dbPath);
@@ -33,7 +34,7 @@ class ActivityArchive {
   static const String _fileName = 'activity.sqlite3';
 
   final String _dbPath;
-  Database? _db;
+  CommonDatabase? _db;
   bool _failed = false;
 
   static const int _maxAgeMs = 183 * 24 * 60 * 60 * 1000; // 6 months
@@ -57,12 +58,12 @@ class ActivityArchive {
   // event from several relays is byte-identical, so we keep exactly one copy.
   final Set<String> _seenMids = {};
 
-  Database? _ensureDb() {
+  CommonDatabase? _ensureDb() {
     if (kIsWeb || _failed) return null;
     final existing = _db;
     if (existing != null) return existing;
     try {
-      final parent = File(_dbPath).parent;
+      final parent = fs.file(_dbPath).parent;
       if (!parent.existsSync()) parent.createSync(recursive: true);
       final db = openProfileDb(_dbPath);
       // INCREMENTAL auto-vacuum (must precede table creation) so firehose
@@ -851,7 +852,7 @@ class ActivityArchive {
     }
   }
 
-  void _pruneOnce(Database db) {
+  void _pruneOnce(CommonDatabase db) {
     // Protected (followed / follower) authors are never firehose-evicted.
     final prot = protectedAuthors?.call() ?? const <String>{};
     final protList = prot.toList();
@@ -919,7 +920,7 @@ class ActivityArchive {
   /// On-disk database size (page_count × page_size) — O(1), so it is safe to
   /// call on the add() hot path. With INCREMENTAL auto-vacuum the freed pages
   /// return after a delete, so this tracks the real file the user cares about.
-  int _dataBytes(Database db) {
+  int _dataBytes(CommonDatabase db) {
     try {
       final pc = (db.select('PRAGMA page_count').first.values.first as num)
           .toInt();

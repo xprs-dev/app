@@ -13,7 +13,7 @@
  */
 
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
 
 import '../profile/profile_db.dart';
 
@@ -22,13 +22,13 @@ class WappSocialStore {
   static final WappSocialStore instance = WappSocialStore._();
 
   /// Cache of open databases keyed by wapp directory path.
-  final Map<String, Database> _dbs = {};
+  final Map<String, CommonDatabase> _dbs = {};
 
   /// Open (or reuse) the social database for a specific wapp.
   /// [wappDirPath] is the absolute path to the wapp's package
   /// directory (e.g. `~/.local/share/xprs/devices/X1/apps/maps/`
   /// or `<repo>/wapps/maps/`).
-  Database? open(String wappDirPath) {
+  CommonDatabase? open(String wappDirPath) {
     if (kIsWeb) return null;
     if (_dbs.containsKey(wappDirPath)) return _dbs[wappDirPath]!;
 
@@ -43,7 +43,7 @@ class WappSocialStore {
     }
   }
 
-  void _migrate(Database db) {
+  void _migrate(CommonDatabase db) {
     db.execute('''
       CREATE TABLE IF NOT EXISTS reactions (
         id         TEXT PRIMARY KEY,
