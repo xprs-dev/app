@@ -936,7 +936,15 @@ class XprsPublisher {
     final call =
         (ProfileService.instance.activeProfile?.callsign ?? '').trim();
     final from = (p['f'] ?? '').toUpperCase();
+    // A datagram is not signed. Section 7.7.6 says so of a chunk ("there is no
+    // per-chunk signature ... the integrity is the whole-file hash"), and the
+    // arithmetic agrees: a chunk is cut to fill 250 bytes exactly, and sixty
+    // characters of signature on top of that put it past the one-packet
+    // ceiling, so every chunk was refused. The transport still authenticates
+    // the sender (the LXMF envelope is signed by the identity); the file
+    // authenticates itself.
     if (!verbatim &&
+        !datagram &&
         call.isNotEmpty &&
         from.split('-').first == call.toUpperCase().split('-').first &&
         !p.has('sig')) {
