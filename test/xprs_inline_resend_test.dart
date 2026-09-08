@@ -45,6 +45,33 @@ class _LossyBearer implements XprsBearer {
   }
 }
 
+class _FlakyBearer implements XprsBearer {
+  _FlakyBearer({required this.refuseFirst});
+  int refuseFirst;
+  final List<String> delivered = [];
+  @override
+  String get name => 'reticulum';
+  @override
+  String get archiveBearer => 'rns';
+  @override
+  bool get shortRange => false;
+  @override
+  Future<bool> get active async => true;
+  @override
+  Future<XprsSendResult> send(String wire,
+      {required int part,
+      String slot = 'status',
+      Duration? ttl,
+      bool datagram = false}) async {
+    if (refuseFirst > 0) {
+      refuseFirst--;
+      return XprsSendResult.refused;
+    }
+    delivered.add(wire);
+    return XprsSendResult.queued;
+  }
+}
+
 Uint8List _blob(int n, int seed) {
   final r = Random(seed);
   return Uint8List.fromList(List.generate(n, (_) => r.nextInt(256)));
@@ -147,4 +174,22 @@ void main() {
 int base64Len(String wire) {
   final b = XprsPacket.parse(wire)!['b']!;
   return (b.length * 3) ~/ 4;
+
+  test('a chunk refused for want of a path is tried again, not dropped',
+      () async {
+    final bytes = _blob(600, 3);
+    final all = xprsInlineSplit(bytes, from: 'X1SEND', to: 'X1RECV', ext: 'bin');
+    final bearer = _FlakyBearer(refuseFirst: 4);
+    XprsPublisher.instance.bearers = [bearer];
+    final sender = XprsInlineSender.instance
+      ..gap = Duration.zero
+      ..retryAfter = const Duration(milliseconds: 20);
+    expect(sender.send(bytes, from: 'X1SEND', to: 'X1RECV', ext: 'bin'),
+        isNotNull);
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    final offs = bearer.delivered
+        .map((w) => int.parse(XprsPacket.parse(w)!['off']!))
+        .toSet();
+    expect(offs.length, all.length, reason: 'every chunk got through in the end');
+  });
 }

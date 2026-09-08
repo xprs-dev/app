@@ -5925,7 +5925,10 @@ class RnsService {
         MeshStore.instance.txDrop(e['key'] as String? ?? '');
         continue;
       }
-      final outcome = await r.deliver(msg, timeout: const Duration(seconds: 12));
+      // A rung of the ladder is not fresh evidence about the route: it must
+      // not drop the path everything else to this peer is using.
+      final outcome = await r.deliver(msg,
+          timeout: const Duration(seconds: 12), dropPathOnFailure: false);
       // Only a CONFIRMED delivery retires a retry. An unacknowledged single
       // packet keeps its place in the ladder, which is the whole point.
       final ok = outcome == LxmfDelivery.confirmed;

@@ -85,6 +85,13 @@ class XprsInlineSender {
     return missing.length;
   }
 
+  /// A chunk the bearer refused (no path this instant) is tried again after
+  /// [retryAfter], up to [maxAttempts] passes, before the receiver's own report
+  /// is the only thing left to bring it. A path over public hubs comes and
+  /// goes; measured: 144 refusals in one transfer while the route flapped.
+  Duration retryAfter = const Duration(seconds: 2);
+  static const int maxAttempts = 6;
+
   Future<void> _drain() async {
     if (_draining) return;
     _draining = true;
@@ -96,6 +103,7 @@ class XprsInlineSender {
         // channel it cannot be heard on.
         final lanes = XprsPublisher.instance.reachableLanes(job.to);
         final only = lanes.isEmpty ? null : lanes;
+        final again = <String>[];
         for (final w in job.wires) {
           final rep = await XprsPublisher.instance
               .publishWire(w, onlyBearers: only, datagram: true);
@@ -103,8 +111,16 @@ class XprsInlineSender {
             sent++;
           } else {
             refused++;
+            again.add(w);
           }
           await Future<void>.delayed(gap);
+        }
+        if (again.isNotEmpty && job.attempt + 1 < maxAttempts) {
+          LogService.instance.add('XPRS: inline ${again.length} chunk(s) '
+              'refused -> ${job.to}; pass ${job.attempt + 2} in '
+              '${retryAfter.inSeconds}s');
+          await Future<void>.delayed(retryAfter);
+          _queue.add(_Job(job.to, again, attempt: job.attempt + 1));
         }
       }
     } finally {
@@ -123,7 +139,8 @@ class XprsInlineSender {
 }
 
 class _Job {
-  _Job(this.to, this.wires);
+  _Job(this.to, this.wires, {this.attempt = 0});
   final String to;
   final List<String> wires;
+  final int attempt;
 }
