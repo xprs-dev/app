@@ -133,6 +133,7 @@ the hard way (2026-08-26), and the answer is short:
 | **BLE5 extended advertising** | **XPRS packets only**, subtype `0x58` | 250 B, one packet per advert, never fragmented |
 | **GATT + MSP** | file bytes and parked mail | ~10 kB/s, offset resume, sha-verified |
 | **Reticulum** | the internet path: LXMF, folders, DHT | not a radio lane |
+| **Reticulum datagram** | one connectionless packet to one destination, no link — the packet-lane file (XPRS.md §7.7.6) and anything else sent many times and verified whole | 383 B plaintext, 250 B XPRS wire; forwarded by every transport node on the path |
 
 **BLE5 carries XPRS. Reticulum is the internet path.** Pushing a Reticulum
 resource through the advert channel does not work and cannot be made to work: a
@@ -159,6 +160,60 @@ the specification leaves it out.
 **Test for a transport question**: name the lane before writing code. If the
 answer is "bytes between two stations in radio range", it is MSP with an XPRS
 bracket, and both halves already exist — see `docs/mesh.md` §14.
+
+**How a small file crosses a public hub** (2026-09-08) is the second way, and
+it uses the packet grammar itself, because the shared hubs pass directed
+packets and drop the bulk link. XPRS.md §7.7.6 chunks the raw bytes into
+ordinary `t:file ... off: b:` packets, one fixed chunk length per transfer:
+
+```
+->  t:file off:0 b:…   t:file off:96 b:…   …      (datagrams, paced 80 ms, unsigned)
+    [silence ~10 s at the receiver]
+<-  t:command cmd:file file:<ref> have:<bitfield>   (§8.1's map: bit k = chunk k)
+->  the chunks the map lacks, again as datagrams; t:result 202 / 200 / 404
+```
+
+Three core pieces, none of them a wapp's: `XprsInlineSender` (split, store —
+the sender self-hosts what it sent — pace, re-send the gaps),
+`XprsInlineAsm` (assemble, learn the grid, report after silence, hand the
+verified whole to the media archive), and `XprsBearer.send(datagram: true)`
+through `publishWire`, which on Reticulum is `RnsService.sendDatagramTo`: one
+LXMF wapp datagram, unsigned, encrypted under one ephemeral key per peer, one
+connectionless packet on the path's interface. No link, no retry ladder, no
+courier, no chat row, not archived. A chunk costs no curve operation; that
+sentence is the whole difference between 38 minutes and 26 seconds for the same
+file ([performance.md](performance.md) §8.13).
+
+**The receive door is the same door.** A chunk enters through `PacketGateway`
+like every packet, is fed to the assembler in `XprsIngest`, and is filed
+nowhere: three hundred of them per meme are not history.
+
+### The station as a Reticulum transport node
+
+Reticulum forwards by announce-taught paths keyed on the destination hash, not
+by address: a station that only ever dialled out is a full transport node for
+everything attached to it (XPRS.md §12.12.3). The core takes that role on the
+same capacity gate that makes a node an indexer — mains power plus Wi-Fi or
+Ethernet, `CapacityProfile.unlimited` — in `RnsService._applyHubRole`:
+
+| | leaf (default) | promoted |
+|---|---|---|
+| rebroadcast | `edgeBridge`: BLE-heard announces up to the hubs, nothing back down | `edgeQuiet`: everything onward, never onto an edge bearer |
+| path requests | answered for our own destinations only | answered for every destination held, from the stored announce (`RnsTransport._answerPathRequestForOthers`) |
+| forwarding | for links we bridge | for anything addressed through us |
+| LAN | UDP discovery + unicast data | plus a TCP hub on :4242 for standard Reticulum clients |
+
+Four rules hold in both roles and each one is a measured defect:
+`RnsInterface.uplink` — an announce from one shared hub is never re-aired to
+another; a relayed announce is unicast to LAN peers and dropped with none
+(`RnsLanInterface.planTx`); our own frame coming back is dropped at the
+interface and, failing that, at the transport (`selfEchoDropped`) — a path
+whose next hop is ourselves once routed a peer on another network into
+nothing; and `announce()` collapses requests inside 30 s, because a hub
+answers a burst with hours of silence. `/api/rns/status` reports `hubRole`,
+`pathAnswers`, `selfEcho`, `lanSelfDropped`, `lanNobodyDropped` and
+`datagrams{sent,noPath,tooBig,opened}` so the role can be read off a device
+rather than asserted.
 
 ---
 

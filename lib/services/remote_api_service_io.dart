@@ -1123,6 +1123,7 @@ class RemoteApiService {
           'sent': snd.sent,
           'refused': snd.refused,
           'resent': snd.resent,
+          'slow': snd.slowChunks,
           'queued': snd.queued,
           'chunksHeard': asm.chunksHeard,
           'filesReceived': asm.received,

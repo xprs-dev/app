@@ -1116,6 +1116,91 @@ which is why the guard, not review, has to catch these.
 > network.** Every hour spent in the transport this day was spent before
 > asking those two.
 
+### 8.13 A file over the packet lane: what the C61 taught (2026-09-08)
+
+The same 4.9 kB PNG, C61 on Wi-Fi to a phone on cellular through public
+Reticulum hubs: **38 minutes in the morning, 26 seconds by noon, 11 seconds
+after the last fix; 20 kB in 43 seconds.** Nothing about the network changed.
+Every minute of the difference was found by a counter, not by reading code,
+and each lesson below reads as free at the call site.
+
+**The chunks were never the slow part.** The first version sent each chunk as
+an ordinary directed wire: twice (a chat copy and a wapp copy), each copy
+opening a fresh Reticulum link (10 s timeout, then 8 s broadcast fallback), the
+awaited one serialising the loop, and the chat copy leaving behind a retry
+ladder entry (serial pump, 12 s per rung — the 25-minute tail), a courier
+custody parking re-signed as a 282 B `t:message`, a chat row, two archive rows
+and two relay-mailbox entries. `lxmf: stored message for relay (140 held)` was
+the number that said so. **A datagram is the right shape for something sent
+many times and verified as a whole** (§8.6's connectionless rule again): one
+packet, no bookkeeping, and the receiver says what it lacks.
+
+**Count the curve operations per packet, then multiply by the slow phone.**
+`perf: crypto-worker` showed an idle worker — six verifies a minute — and yet
+`sign 1.5–8 s, encrypt 1.4–10 s` per chunk once the timing was put in the log
+line. Pure-Dart Ed25519 and X25519 on the C61 are not "tens of ms" (§6.1's
+figure is from a faster phone); three of them per 250-byte packet, serialised,
+is seconds. The fix is arithmetic, not a faster library: **zero curve
+operations per chunk.** The LXMF envelope is unsigned (the file authenticates
+itself by its hash; the receiver's `acceptUnverified` rule already existed for
+self-authenticating wapp datagrams), and `RnsIdentity.encryptor()` keeps one
+ephemeral key and derived secret per peer for ten minutes with a fresh IV per
+packet, so both ends pay one ECDH per transfer and `decrypt` caches the derived
+key by ephemeral public key. `pack 0 ms, encrypt 0–1 ms` afterwards.
+
+> **Rule: a per-packet asymmetric operation is a per-packet cost you cannot
+> buy back with a queue.** Before sending N of anything, count the signs,
+> ECDHs and keygens per item and ask whether the item needs them or whether
+> the stream does.
+
+**A signature is bytes as well as CPU.** `publishWire` signed every wire whose
+`f:` was ours. A chunk is cut to fill 250 bytes exactly; sixty characters of
+`sig:` made it 315, 436 inside LXMF, past the 383-byte single-packet ceiling —
+and `reticulum:refused` for all fifty-two. The spec had said "no per-chunk
+signature" all along. `kRnsEncryptedMdu` now exists so a sender can refuse
+what the codec would happily pack.
+
+**A failed link handshake is not evidence about the route.** Every control
+reply whose link timed out dropped the peer's path, four times in two minutes,
+and the retry ladder did the same on every rung for a hundred stale messages.
+Between the drops the datagrams flowed; during them, `noPath: 233`. A ladder
+rung never drops a path now (`deliver(dropPathOnFailure: false)`), and the
+`pathFailed` hook drops one at most once a minute per peer. §8.6 says treat
+reachability as evidence with an expiry; it does not say one failure is a
+verdict.
+
+**The fan-out sent everything twice.** A preferred bearer answering `queued`
+(a datagram, or an LXMF handed to store-and-forward) is not `sent`, and the
+loop then tried every bearer again, including the one it had just used: 542
+datagrams for 271 chunks. Nobody noticed for as long as the double was a
+double link handshake, because that path was slow for other reasons.
+
+**The promoted phone heard itself 19 211 times in forty minutes.** A
+transport node re-airs announces onto its LAN; the LAN interface's loopback
+filter deliberately let self-sourced announces through; each copy was parsed
+twice, shipped across the isolate, and thrown away — and one of them taught a
+path to a peer on another network whose next hop was the phone itself. The
+counter that made it visible (`selfEcho`) was added the same hour as the
+guard that made it harmless; the interface fix (`lanSelfDropped`, a ring of
+sent-frame digests, relayed announces unicast-only) came the next morning and
+took the number to zero.
+
+**The tools, again** (§8.12's list, extended): the log ring's default 200
+lines roll over in *seconds* under hub chatter — `?n=2000`, dumped within
+five seconds of the act; a phone that is dozing ignores `monkey`, `am start -n`
+wakes it; `pgrep`/`kill` by a pattern that matches `bash -c source …snapshot`
+kills the shell issuing it; and "not complete after 488 s" from a run the next
+install killed halfway is not a result. What made the difference was
+`GET /api/xprs/inline` (sender and assembler counters, in-flight transfers) and
+`datagrams{sent,noPath,tooBig,opened}` in `/api/rns/status`: with those two,
+every one of the faults above was a five-minute read.
+
+> **Rule: instrument the new lane before the first field run, not after the
+> first failure.** Counters at the send verdict, the wire, and the receive
+> door, plus one timing figure per stage — the §8.12 rule ("what did the
+> sender's publisher say about *that* packet") is only answerable if the
+> counters exist.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile

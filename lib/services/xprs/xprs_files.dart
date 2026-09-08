@@ -39,6 +39,7 @@ import '../mesh/mesh_bulk_spool.dart';
 import 'xprs_id.dart';
 import 'xprs_airtime.dart';
 import 'xprs_monitor.dart';
+import 'xprs_inline_file.dart';
 import 'xprs_inline_sender.dart';
 import 'xprs_packet.dart';
 import 'xprs_publisher.dart';
@@ -212,6 +213,14 @@ class XprsFileServer {
     // no longer have the bytes so the asker stops. No spool, no bulk lane.
     final have = p['have'];
     if (have != null && have.isNotEmpty) {
+      // Only a packet-lane file has a chunk map; anything larger lives on the
+      // bulk lane, and reading it whole here is the shape performance.md 8.9
+      // forbids. Say so, so the asker uses cmd:file without have:.
+      if (held.size > kInlineMaxBytes) {
+        refused++;
+        air(403, m: 'not a packet-lane file: ${held.size}B');
+        return 403;
+      }
       final bytes = bytesOf?.call(shaHex);
       if (bytes == null) {
         notHeld++;
