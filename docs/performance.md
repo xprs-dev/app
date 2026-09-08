@@ -1201,6 +1201,42 @@ every one of the faults above was a five-minute read.
 > sender's publisher say about *that* packet") is only answerable if the
 > counters exist.
 
+### 8.14 Sharing a picture: the four costs, and where each one is paid (2026-09-08)
+
+**A preview is worth its CPU only off the UI isolate.** A 12 MP JPEG decoded
+with `package:image` is hundreds of milliseconds of pure Dart, which is ten
+dropped frames if it runs where the widget tree runs. It goes through
+`BackgroundService.runOffThread`, and the bound is stated rather than hoped
+for: no source above 20 MB, longest side stepped 512 → 384 → 256 → 192 and
+quality 60 → 45 → 30 → 20 until the encode is under 24 kB, and null (no
+preview, original only) when nothing fits or the format does not decode — HEIC
+does not. `dart:ui` would be far faster and cannot be used: it is PNG-only and
+main-isolate-only.
+
+**A preview is worth its bytes because of what it replaces.** 24 kB crosses a
+public hub over the packet lane in about a minute; the 3 MB original crosses it
+never. The alternative was not a slower picture, it was a grey box.
+
+**Automatic fetching is bounded by the BEARER, not by the file.** Packet-lane
+sized on sight; anything larger only where a LAN peer or a Reticulum path can
+carry it, and inside the operator's ceiling; on BLE, LoRa or any shared radio,
+never without a tap. This is §8.11's power tier applied to somebody else's
+airtime: one 10 MB transfer over a channel everybody shares is minutes during
+which nobody else's packet gets through.
+
+**Attaching reads the whole file, once, at 16 MB.** The store keeps content as
+a database blob, so `hal_media_put_file` and the Flutter picker both have to
+hold the bytes to insert them — the §8.9 rule bent, deliberately, for one
+deliberate user action, and refused with a message above the cap. The real fix
+is a path column in `MediaArchive` so large content is referenced on disk and
+streamed; until that exists, a folder is where a large file is shared from.
+
+**Progress is an event, not a clock.** `core.media` coalesces, and the
+thumbnail reads `MediaFetch.progress` when told to. It used to run two 1 Hz
+timers per visible attachment and give up on a 60-second clock of its own,
+which reported "no holder" while the bytes were arriving — §8.10's rule for
+logs is the same rule for polls.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile

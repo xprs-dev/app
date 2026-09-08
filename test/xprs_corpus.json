@@ -310,6 +310,26 @@
 "id": "201937"
 },
 {
+"wire": "t:message f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 file:nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg size:23kB m:the antenna after the storm",
+"bytes": 143,
+"id": "b3f0ac"
+},
+{
+"wire": "t:file f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:41 r:399227 file:Uc3nRw8kFa5xPd1qGz7mYb0tJe6vHs2iLoA9XfCqK4E.jpg size:3.1MB name:storm-antenna.jpg",
+"bytes": 143,
+"id": "195ee9"
+},
+{
+"wire": "t:command f:X1RD89 d:X1QZ3N ts:2026-08-08_14:27:12 cmd:file file:nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg have:AA sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 185,
+"id": "b46890"
+},
+{
+"wire": "t:message f:X1QZ3N d:LISBOA ts:2026-08-08_14:26:40 file:Uc3nRw8kFa5xPd1qGz7mYb0tJe6vHs2iLoA9XfCqK4E.pdf size:480kB name:mast-plan.pdf m:the plan for the mast",
+"bytes": 157,
+"id": "e4e94c"
+},
+{
 "wire": "t:message f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 q:ack,read m:did you get the keys?",
 "bytes": 85,
 "id": "9821a4"

@@ -215,6 +215,48 @@ answers a burst with hours of silence. `/api/rns/status` reports `hubRole`,
 `datagrams{sent,noPath,tooBig,opened}` so the role can be read off a device
 rather than asserted.
 
+### How a file is shared in chat (2026-09-08)
+
+A picture in a conversation is the case that touches every lane at once, so it
+is the case where "the wapp asks, the core decides" has to be exact. What ships:
+
+**One door in, one door out.** `MediaFetch.want(ref)` is the only way to ask
+for bytes. The Flutter thumbnail, the wapp verb `hal_media_fetch`, the remote
+API and the chat view all call it, and every one of them used to carry a
+different, worse ladder of its own — the wapp verb scanned the LAN and the
+torrent swarm with no Reticulum, no packet lane and no bulk lane at all. The
+door checks the store first (a file obtained once is never fetched again), keeps
+one in-flight request per hash, and reports through `core.media`.
+
+**The lane is a pure function of size and reachability**, `MediaFetch.decide`,
+and it is a test table rather than a comment:
+
+| size | what reaches a holder | lane |
+|---|---|---|
+| ≤ 32 kB (or unknown) | anything, including a public hub | packet lane, `cmd:file … have:AA` |
+| larger, within the operator's ceiling | a LAN peer or a Reticulum path | bulk lane, racing the internet ladder |
+| larger, within the ceiling | nothing local | the internet ladder alone |
+| larger | only BLE, LoRa or another shared radio | **wait for a tap** |
+
+The last row is the rule that matters on a radio: ten megabytes on a shared
+channel is not a download, it is an outage for everyone in earshot.
+
+**The reference leaves the caption.** `xprsLiftFile` moves the token out of `m:`
+into the `file:` field and adds `size:` and, if it fits, `name:` (XPRS.md
+7.7.7). It runs BEFORE the packet is built, because a sealed 1:1 hides `m:`
+inside `x:` and a lift done later would never see the token. A picture too big
+for the packet lane goes out as a ~24 kB preview the message carries, plus a
+companion `t:file r:<message id>` describing the original; the preview is made
+with `package:image` on a worker isolate, never on the UI isolate.
+
+**The wapp's whole surface is three things**: a token in the text it sends,
+`hal_media_state` for what the core is doing about a reference, and
+`hal_media_open` to hand a held file to the system viewer. It never receives
+bytes, never names a bearer, and cannot ask for one. Attaching is capped at
+16 MB at both doors, because attaching copies bytes into a database blob; above
+that the answer is to share it from a folder, where the bulk lane streams off
+disk.
+
 ---
 
 ## 5. Enforcement

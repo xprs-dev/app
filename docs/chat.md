@@ -179,6 +179,17 @@ Redesigned from the old flat topic list to a three-pane layout
 - **Chrome takeover:** the rooms screen hides the wapp's TabBar and actions (same
   mechanism as the graph panel) so Chat owns the whole surface.
 
+- **Attachments:** the paperclip is the host's, and so is everything behind it.
+  The picker reads the file, the core stores it once and mints the reference,
+  and the wapp is handed a token in the text it is about to send. Coming the
+  other way the reference arrives as the `file:` field (XPRS.md 7.7.7) and the
+  wapp puts it back into the body for rendering. A file the packet lane can
+  carry is fetched on sight; a larger one is fetched automatically only where a
+  LAN peer or a Reticulum path can serve it, and over BLE or any shared radio
+  it waits for a tap — the auto-download preference is a ceiling, never a
+  licence to fill a radio channel. Attaching is capped at 16 MB; a bigger file
+  is shared from a folder.
+
 **Hidden (code kept, not shown):** Geochat, Follows, APRS, Beacon, Tools, Keys,
 and the legacy `#DEV/#NEWS/…` topics. Settings is a hidden screen reached only via
 the ⚙ (identity/position, Bluetooth, media auto-download, pubkey beacon).
