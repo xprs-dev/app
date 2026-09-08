@@ -39,6 +39,7 @@ import '../services/reticulum/rns_service.dart';
 import '../services/torrent_service.dart';
 import '../util/media_archive.dart';
 import '../services/media/media_fetch.dart';
+import '../services/media/media_preview.dart';
 import '../util/media_ref.dart';
 import '../util/nostr_crypto.dart';
 import 'geoui/widgets/media_view.dart' show sharedMediaArchive;
@@ -239,6 +240,11 @@ Future<String?> attachMediaFile(Uint8List bytes, String ext, {String? name}) asy
       unawaited(RnsService.instance.dhtPublish(sha));
     }
   }
+  // A picture too big for the packet lane gets a small version made now, so
+  // it is ready by the time the message is sent and can travel with it even
+  // to somebody on another network (§7.7.6). Off the UI isolate, and a
+  // courtesy: if it is not ready or cannot be made, the original goes alone.
+  unawaited(MediaPreviews.instance.ensureFor(token).catchError((_) => null));
   LogService.instance.add('SharedMedia: attached $token (advertised on RNS)');
   // Just the token. The size travels as the packet's own `size:` field now
   // (§7.7.1), lifted out of the caption by the core at send; `sz:` in the body

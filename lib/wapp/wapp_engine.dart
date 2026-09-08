@@ -28,6 +28,7 @@ import '../services/folders/folder_meta.dart';
 import '../services/reticulum/rns_service.dart';
 import '../services/log_service.dart';
 import '../services/media/media_fetch.dart';
+import '../services/media/media_preview.dart';
 import '../services/social/email_resolve_service.dart';
 import '../services/social/node_role_api.dart';
 import '../services/mesh/mesh_carry_broker.dart';
@@ -919,6 +920,10 @@ class WappEngine {
               f.readAsBytesSync(),
               RegExp(r'^[a-z0-9]{1,18}$').hasMatch(ext) ? ext : 'bin',
               name: name);
+          // A picture the packet lane cannot carry gets a preview made off the
+          // UI isolate, ready for whenever it is shared (§7.7.6).
+          unawaited(
+              MediaPreviews.instance.ensureFor(token).catchError((_) => null));
           return _writeStr(outPtr, outCap, token);
         } catch (_) {
           return 0;

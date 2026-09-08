@@ -96,4 +96,38 @@ void main() {
     final other = 't:status f:X1A ts:2026-09-08_10:00:00 m:file:$_sha.jpg';
     expect(xprsLiftFileOnPacket(pkt(other)).encode(), other);
   });
+
+  group('a picture too big for the packet lane', () {
+    const orig = 'TNC46LbxpKOR6QzVsYaZ019bKxKKp_kmRk143eNQ4Ww';
+    const prev = 'qiO966OKkb1p7wTVyGn13orREOc_FJooEGzQleUUDRU';
+
+    setUp(() {
+      XprsFileLift.meta = (sha) => switch (sha) {
+            orig => (size: 2457600, name: 'antenna.jpg'),
+            prev => (size: 21000, name: 'preview-antenna.jpg'),
+            _ => null,
+          };
+      XprsFileLift.preview = (sha) => sha == orig ? '$prev.jpg' : null;
+    });
+    tearDown(() => XprsFileLift.preview = null);
+
+    test('the message carries the preview, and says how big IT is', () {
+      final lift = xprsLiftFile('the antenna file:$orig.jpg');
+      expect(lift.file, '$prev.jpg', reason: 'the small one travels');
+      expect(lift.size, 21000);
+      expect(lift.hasPreview, isTrue);
+      expect(lift.original, '$orig.jpg');
+      expect(lift.originalSize, 2457600);
+      expect(lift.originalName, 'antenna.jpg');
+      expect(lift.text, 'the antenna');
+    });
+
+    test('a picture already small enough travels as itself', () {
+      XprsFileLift.preview = (_) => null;
+      final lift = xprsLiftFile('file:$prev.jpg');
+      expect(lift.file, '$prev.jpg');
+      expect(lift.hasPreview, isFalse);
+      expect(lift.original, isNull);
+    });
+  });
 }

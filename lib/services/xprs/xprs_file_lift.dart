@@ -33,7 +33,9 @@ import 'xprs_packet.dart';
 /// What a lift found: the text with the token removed, and the fields to put
 /// on the packet. [file] is null when the text carried no reference.
 class XprsFileLift {
-  const XprsFileLift({required this.text, this.file, this.size, this.name});
+  const XprsFileLift(
+      {required this.text, this.file, this.size, this.name, this.original,
+      this.originalSize, this.originalName});
 
   /// The caption with the lifted token (and any legacy `sz:` hint) removed.
   final String text;
@@ -48,11 +50,23 @@ class XprsFileLift {
   /// no space). Null when there is none or it does not.
   final String? name;
 
+  /// When [file] is a PREVIEW, the full-resolution file it stands for — the
+  /// `file:` of the companion `t:file r:` that describes it. Null when the
+  /// message carries the file itself.
+  final String? original;
+  final int? originalSize;
+  final String? originalName;
+
   bool get found => file != null;
+  bool get hasPreview => original != null;
 
   /// What the store knows about a hash: its size in bytes and its filename.
   /// Injected so this file needs no archive.
   static ({int size, String? name})? Function(String shaB64u)? meta;
+
+  /// The preview standing in for a hash too large to travel, as a `file:`
+  /// value (`<sha>.<ext>`). Injected; null when there is none.
+  static String? Function(String shaB64u)? preview;
 }
 
 final RegExp _szRe = RegExp(r'\bsz:\d+\b');
@@ -80,11 +94,25 @@ XprsFileLift xprsLiftFile(String text) {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   final m = XprsFileLift.meta?.call(ref.sha256);
+  final self = '${ref.sha256}.${ref.ext}';
+  // A picture the packet lane cannot carry travels as a small preview the
+  // message holds, and the original is named by a companion `t:file r:`
+  // (§7.7.1). The receiver renders the preview at once and fetches the
+  // original when somebody asks for it.
+  final prev = XprsFileLift.preview?.call(ref.sha256);
+  if (prev == null) {
+    return XprsFileLift(
+        text: rest, file: self, size: m?.size, name: xprsFileName(m?.name));
+  }
+  final pm = XprsFileLift.meta?.call(prev.split('.').first);
   return XprsFileLift(
     text: rest,
-    file: '${ref.sha256}.${ref.ext}',
-    size: m?.size,
-    name: xprsFileName(m?.name),
+    file: prev,
+    size: pm?.size,
+    name: null, // the preview is not the file anybody named
+    original: self,
+    originalSize: m?.size,
+    originalName: xprsFileName(m?.name),
   );
 }
 

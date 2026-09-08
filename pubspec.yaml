@@ -46,6 +46,7 @@ dependencies:
   qr_flutter: ^4.1.0                     # QR code rendering for the GeoUI "qr" field
   file_selector: ^1.0.3                  # Native file picker (Linux: GTK)
   crypto: ^3.0.3                         # SHA256 for NOSTR event ids + wapp hashing
+  image: ^4.3.0                          # decode/resize/JPEG for chat picture previews (worker isolate; dart:ui is PNG-only and main-isolate-only)
   pointycastle: ^3.9.1                   # secp256k1 / BIP-340 Schnorr
   cryptography: ^2.7.0                   # pure-Dart X25519/Ed25519/ChaCha20-Poly1305/HKDF for the Dart I2P node
   battery_plus: ^6.0.0                   # battery level/charging — power governor pauses background work on low battery

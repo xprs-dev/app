@@ -37,6 +37,7 @@ import '../xprs/xprs_send.dart';
 import '../xprs/xprs_inline_file.dart';
 import '../xprs/xprs_inline_sender.dart';
 import '../media/media_fetch.dart';
+import '../media/media_preview.dart';
 import '../media/media_ref_index.dart';
 import '../reticulum/rns_service.dart';
 import '../social/archiver_service.dart';
@@ -386,6 +387,13 @@ class MeshService {
         XprsFileLift.meta = (sha) {
           final m = mediaArchive.getMeta(sha);
           return m == null ? null : (size: m.size, name: m.name);
+        };
+        // A picture too big for the packet lane travels as its preview; the
+        // original is named by the companion description (§7.7.1).
+        MediaPreviews.instance.archive = (() => mediaArchive);
+        XprsFileLift.preview = (sha) {
+          final p = MediaPreviews.instance.previewOf(sha);
+          return p == null ? null : '$p.jpg';
         };
         // A file this station just shared: what happens to the BYTES.
         //

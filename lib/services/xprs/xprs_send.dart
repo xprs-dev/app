@@ -218,6 +218,7 @@ class XprsSend {
     final id = xprsIdentifier(built.rejoined ?? built.packets.first);
 
     unawaited(airDirect(built.packets, dest: dest, id: id));
+    if (lift.hasPreview) _airCompanion(self, dest, id, lift);
     if (lift.found) onFileShared?.call(lift.file!, dest);
     sent++;
     return XprsSendOutcome(
@@ -293,6 +294,7 @@ class XprsSend {
 
     final id = xprsIdentifier(built.rejoined ?? built.packets.first);
     unawaited(airBroadcast(built.packets, id: id));
+    if (lift.hasPreview) _airCompanion(self, '', id, lift);
     if (lift.found) onFileShared?.call(lift.file!, '');
     sent++;
     return XprsSendOutcome(form: 'm', id: id, parts: built.packets.length);
@@ -423,6 +425,25 @@ class XprsSend {
     // section 8.10).
     LogService.instance.add('XPRS: $id aired ${airings}x on ble5 in its '
         'first minute');
+  }
+
+  /// Say what the full-resolution file behind a preview is: a `t:file`
+  /// describing it, pointed at the message that carried the preview with `r:`
+  /// (§7.7.1 describes and never delivers; §5's `r:` refers). The receiver
+  /// renders the preview immediately and fetches this one when asked.
+  void _airCompanion(
+      String self, String dest, String msgId, XprsFileLift lift) {
+    final b = StringBuffer('t:file f:$self');
+    if (dest.isNotEmpty) b.write(' d:$dest');
+    b.write(' ts:${_now()} r:$msgId file:${lift.original}');
+    if (lift.originalSize != null) b.write(' size:${lift.originalSize}');
+    final wire = lift.originalName == null
+        ? b.toString()
+        : '${b.toString()} name:${lift.originalName}';
+    final p = XprsPacket.parse(wire);
+    // The name is a courtesy: drop it rather than split a description.
+    final fit = (p != null && p.fits) ? wire : b.toString();
+    unawaited(XprsPublisher.instance.publishWire(fit));
   }
 
   static String _now() {
