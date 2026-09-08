@@ -1421,6 +1421,9 @@ class RnsService {
     if (unlimited && !_hubPromoted) {
       t
         ..transportId = _id!.hash
+        // Forward for the whole network, but never re-air the hubs' announce
+        // flood onto BLE — that radio is shared and cannot afford it.
+        ..edgeQuiet = true
         ..edgeBridge = false;
       try {
         final hub = RnsTcpServerInterface(
@@ -1445,7 +1448,9 @@ class RnsService {
       _lanHub = null;
       // Back to the scoped bridge: still relay BLE peers up if that is on,
       // never re-air the hub flood across uplinks.
-      t.edgeBridge = true;
+      t
+        ..edgeQuiet = false
+        ..edgeBridge = true;
       _hubPromoted = false;
       LogService.instance.add('RNS: hub role OFF (capacity dropped)');
     }
