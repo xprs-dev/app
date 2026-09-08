@@ -1700,6 +1700,7 @@ class RnsService {
     'lanHubConns': _lanHub?.connectionCount ?? 0,
     // Path requests answered for OTHER stations: what the hub role is worth.
     'pathAnswers': _transport?.pathAnswersServed ?? 0,
+    'selfEcho': _transport?.selfEchoDropped ?? 0,
     'interfaces': _ifaces.length + (_server != null ? 1 : 0),
     'inbox': _inbox.length,
     'provided': _files?.providedCount ?? 0,
