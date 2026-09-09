@@ -49,6 +49,35 @@ class XprsPassphrases {
         id   TEXT PRIMARY KEY,
         wire TEXT NOT NULL
       )''');
+    // WHAT OPENED A MESSAGE FROM WHOM. A tap used to try every remembered
+    // passphrase in turn, each one a full 100000-iteration derivation, so the
+    // reader paid for the whole list to open one message (§6.2.1 prices ONE
+    // derivation per message per passphrase tried; the sweep was ours). A
+    // passphrase is almost always a property of who you share it with, so the
+    // one that last worked for a sender is the one to try first.
+    db.execute('''
+      CREATE TABLE IF NOT EXISTS xprs_pass_hint(
+        peer TEXT PRIMARY KEY,
+        pass TEXT NOT NULL,
+        used INTEGER NOT NULL
+      )''');
+    // A message ALREADY OPENED, by §5 id. Re-deriving to show the reader
+    // something they have already been shown buys nothing: §6.2.1's cost is
+    // there so "a bot [cannot harvest] a thousand redacted email addresses for
+    // free", not to charge the holder of the passphrase twice for one message.
+    //
+    // The plaintext is no more exposed than it already was: the passphrase
+    // that opens it is kept in THIS SAME SQLCipher database, so anyone who can
+    // read this table could decrypt the message anyway, and content opened
+    // with the default passphrase is public by construction. The tap is
+    // untouched -- a reopened conversation still shows bars.
+    db.execute('''
+      CREATE TABLE IF NOT EXISTS xprs_redacted_in(
+        id   TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        pass TEXT NOT NULL,
+        ts   INTEGER NOT NULL
+      )''');
     // `count` (how many times this passphrase has opened a message) was added
     // after the table; ALTER for older stores, ignoring the duplicate-column
     // error on one that already has it.
@@ -58,6 +87,15 @@ class XprsPassphrases {
     } catch (_) {}
     _db = db;
   }
+
+  /// Bumped whenever the set of passphrases this station knows CHANGES.
+  ///
+  /// The expensive case is a message nothing opens: it costs the whole list,
+  /// every tap, forever. Remembering that miss is only safe while the answer
+  /// cannot have changed, and the only thing that changes it is a new (or
+  /// forgotten) passphrase -- so a miss is recorded against this number and
+  /// believed only while it holds (docs/performance.md §3.2, cache the miss).
+  int generation = 0;
 
   void close() {
     try {
@@ -75,6 +113,7 @@ class XprsPassphrases {
     final db = _db;
     if (db == null || pass.isEmpty) return;
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    generation++;
     try {
       db.execute(
         'INSERT INTO xprs_passphrases(pass, ts, used, count) VALUES(?, ?, ?, 1) '
@@ -83,6 +122,66 @@ class XprsPassphrases {
       );
     } catch (_) {
       // A write that fails just means one fewer remembered passphrase.
+    }
+  }
+
+  /// Note that [pass] opened a message from [peer], so the next message from
+  /// them tries it first. Peers are callsigns; the default passphrase is not
+  /// worth a hint (it is tried early for everyone anyway).
+  void hint(String peer, String pass, {int? nowMs}) {
+    final db = _db;
+    final p = peer.trim().toUpperCase();
+    if (db == null || p.isEmpty || pass.isEmpty) return;
+    final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    try {
+      db.execute(
+        'INSERT INTO xprs_pass_hint(peer, pass, used) VALUES(?, ?, ?) '
+        'ON CONFLICT(peer) DO UPDATE SET pass = excluded.pass, used = excluded.used',
+        [p, pass, now],
+      );
+    } catch (_) {}
+  }
+
+  /// What last opened a message from [peer], or null.
+  String? hintFor(String peer) {
+    final db = _db;
+    final p = peer.trim().toUpperCase();
+    if (db == null || p.isEmpty) return null;
+    try {
+      final rows = db.select(
+          'SELECT pass FROM xprs_pass_hint WHERE peer = ? LIMIT 1', [p]);
+      return rows.isEmpty ? null : rows.first['pass'] as String;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Keep the plaintext of a message this reader has already opened, by §5 id.
+  void cacheOpened(String id, String text, String pass, {int? nowMs}) {
+    final db = _db;
+    if (db == null || id.isEmpty) return;
+    final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    try {
+      db.execute(
+        'INSERT INTO xprs_redacted_in(id, text, pass, ts) VALUES(?, ?, ?, ?) '
+        'ON CONFLICT(id) DO UPDATE SET text = excluded.text, '
+        'pass = excluded.pass, ts = excluded.ts',
+        [id, text, pass, now],
+      );
+    } catch (_) {}
+  }
+
+  /// The plaintext of an already-opened message, or null. A hit costs no
+  /// derivation at all.
+  String? opened(String id) {
+    final db = _db;
+    if (db == null || id.isEmpty) return null;
+    try {
+      final rows = db.select(
+          'SELECT text FROM xprs_redacted_in WHERE id = ? LIMIT 1', [id]);
+      return rows.isEmpty ? null : rows.first['text'] as String;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -102,9 +201,15 @@ class XprsPassphrases {
   }
 
   /// Forget a passphrase (a reader clearing a wrong one they saved by mistake).
+  ///
+  /// Everything it opened goes with it: a cached plaintext outliving the key
+  /// that produced it would make "forget" a lie.
   void forget(String pass) {
+    generation++;
     try {
       _db?.execute('DELETE FROM xprs_passphrases WHERE pass = ?', [pass]);
+      _db?.execute('DELETE FROM xprs_redacted_in WHERE pass = ?', [pass]);
+      _db?.execute('DELETE FROM xprs_pass_hint WHERE pass = ?', [pass]);
     } catch (_) {}
   }
 

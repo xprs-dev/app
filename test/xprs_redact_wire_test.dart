@@ -11,10 +11,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xprs/util/xprs_crypto.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
-import 'package:xprs/wapp/wapp_engine.dart';
+import 'package:xprs/services/xprs/xprs_redaction.dart';
 
 String _wire(String convo, {String xr = 'AAECAwQFBgcICQoLzz', String barred = 'meet ███'}) =>
-    WappEngine.xrRedactedWire(
+    XprsRedaction.redactedWire(
       self: 'X1QZ3N',
       convo: convo,
       ts: '2026-09-09_14:26:40',
