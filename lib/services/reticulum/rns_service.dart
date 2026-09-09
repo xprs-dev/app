@@ -41,6 +41,7 @@ import '../receive/wapp_delivery.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_monitor.dart';
+import '../xprs/xprs_presence.dart';
 import '../xprs/xprs_tcp.dart';
 import '../xprs/xprs_vocab.dart';
 import '../files/dht/dht_core.dart' show kDhtAspects;
@@ -1062,7 +1063,7 @@ class RnsService {
     var n = 0;
     for (final node in _observed.values) {
       if (nowMs - node.lastSeenMs > _onlineWindowMs) continue; // gone quiet
-      if (_isXprsNode(node)) n++;
+      if (_announcesXprsService(node)) n++;
     }
     return n;
   }
@@ -1081,6 +1082,132 @@ class RnsService {
   ///
   /// Both use the graph's freshness rule, including the re-announce gate that
   /// keeps a hub's connect-flood from inventing hundreds of ghosts. Anything
+  /// The XPRS devices this station knows about, named and classified.
+  ///
+  /// ONE answer to "is this an XPRS device, who is it, and can I reach it",
+  /// for every surface: the Mesh screen's counts, the persisted stat, the
+  /// watchdog's collapse detector. Three separate rules used to answer it and
+  /// two of them disagreed by one word, which is how a screen came to say 715
+  /// XPRS devices on a network of six (docs/store-and-forward.md is not the
+  /// place for this; `xprs_presence.dart` states the rule and tests it).
+  ///
+  /// Two populations are merged on the BARE CALLSIGN, so one operator heard on
+  /// BLE and reachable over Reticulum is one device rather than two rows:
+  ///
+  ///   - Reticulum announces (`_observed`), named by their own key or by a
+  ///     name that key could have produced;
+  ///   - XPRS wires (`XprsMonitor`), which are XPRS by construction — including
+  ///     the ones that arrived over the internet, which the graph could not
+  ///     see at all because it only ever walked the air-heard table.
+  ///
+  /// Hubs are not devices and never appear here (they are infrastructure; see
+  /// [reachability]).
+  List<XprsDevice> xprsPresence({int? nowMs}) {
+    final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    final hubIds = _hubIdentities(now);
+    final out = <String, XprsDevice>{};
+    // Never ourselves. This station is not one of the devices it can reach,
+    // and listing it put the operator in their own People list with a "send"
+    // button pointed at their own phone.
+    final self =
+        NostrCrypto.bareCallsign(XprsArchive.instance.selfCallsign).toUpperCase();
+
+    // Pass 1: what the internet announced.
+    for (final n in _observed.values) {
+      if (hubIds.contains(n.identityHex)) continue;
+      if (!_isFreshNode(n, now)) continue;
+      final d = classifyXprs(XprsCandidate(
+        announcedCallsign: n.callsign ?? n.lxmfName ?? '',
+        pairedCallsign: _lxmfCallsign[n.identityHex] ?? '',
+        derivedCallsign: _derivedCallsign(n.nostrPubHex),
+        nostrPubHex: n.nostrPubHex ?? '',
+        identityHex: n.identityHex,
+        services: n.services,
+        announceBearer: rnsIfaceBearer(
+            n.localVia.isNotEmpty ? n.localVia : n.via),
+        announceFresh: true,
+        firstSeenMs: n.firstSeenMs,
+        lastSeenMs: n.lastSeenMs,
+      ));
+      if (d != null && d.callsign != self) out[d.callsign] = d;
+    }
+
+    // Pass 2: what we heard as XPRS wires, which outranks an announce — a
+    // packet from the station beats anything said about it.
+    final mon = XprsMonitor.instance;
+    final window = XprsMonitor.staleAfter.inMilliseconds;
+    for (final st in mon.stations.values) {
+      final call = NostrCrypto.bareCallsign(st.callsign).toUpperCase();
+      final d = classifyXprs(XprsCandidate(
+        announcedCallsign: call,
+        heardOnAir: true,
+        airBearers: st.bearersFresh(now, window),
+        reachableOnAir: st.bearersFresh(now, window).isNotEmpty,
+        rnsPathHeld: reachableByCallsign(call),
+        services: st.services.toSet(),
+        identityHex: out[call]?.identityHex ?? '',
+        firstSeenMs: st.firstMs,
+        lastSeenMs: st.lastMs,
+      ));
+      if (d != null && d.callsign != self) out[d.callsign] = d;
+    }
+
+    // Pass 3: XPRS wires that arrived over Reticulum and nowhere else. These
+    // are devices in every sense and the screen has never shown one: the
+    // monitor keeps them apart from the air-heard table, and the graph only
+    // ever read that table.
+    for (final e in mon.remote.entries) {
+      final call = NostrCrypto.bareCallsign(e.key).toUpperCase();
+      if (out.containsKey(call)) continue;
+      if (now - e.value > window) continue;
+      final d = classifyXprs(XprsCandidate(
+        announcedCallsign: call,
+        heardOverRns: true,
+        rnsPathHeld: reachableByCallsign(call),
+        lastSeenMs: e.value,
+        firstSeenMs: e.value,
+      ));
+      if (d != null && d.callsign != self) out[d.callsign] = d;
+    }
+    return out.values.toList();
+  }
+
+  /// Fresh nodes announcing one of our service aspects that we cannot name.
+  ///
+  /// They are almost certainly real XPRS devices whose announce carried
+  /// neither a callsign nor a key. Hidden from every list and every count —
+  /// naming is what makes a device addressable — but counted here, so the
+  /// strictness is visible instead of silent.
+  int _unnamedXprsCount(int nowMs) {
+    final hubIds = _hubIdentities(nowMs);
+    final named = <String>{
+      for (final d in xprsPresence(nowMs: nowMs))
+        if (d.identityHex.isNotEmpty) d.identityHex,
+    };
+    var n = 0;
+    for (final o in _observed.values) {
+      if (!_isFreshNode(o, nowMs)) continue;
+      if (hubIds.contains(o.identityHex)) continue;
+      if (named.contains(o.identityHex)) continue;
+      if (_announcesXprsService(o)) n++;
+    }
+    return n;
+  }
+
+  /// The identities that relay for somebody we can hear. Infrastructure, not
+  /// peers — shared by [reachability], [xprsPresence] and [graphSnapshot] so
+  /// "what is a hub" is also answered once.
+  Set<String> _hubIdentities(int nowMs) {
+    final hubIds = <String>{};
+    for (final n in _observed.values) {
+      if (!_isFreshNode(n, nowMs)) continue;
+      final r = n.relayerHex;
+      if (r != null && r.isNotEmpty) hubIds.add(r);
+      hubIds.addAll(n.relayers);
+    }
+    return hubIds;
+  }
+
   /// that shows a device count must come through here.
   ({int xprs, int others, int hubs}) reachability() {
     sweepObserved();
@@ -1096,18 +1223,21 @@ class RnsService {
       hubIds.addAll(n.relayers);
     }
 
-    var xprs = 0;
+    // XPRS through the one rule (`xprsPresence`), everything else counted the
+    // way it always was. Before this, "xprs" here meant "announced a service
+    // that is not LXMF", which counted every nameless destination on our own
+    // service hashes as one of our devices.
     var others = 0;
     for (final n in _observed.values) {
       if (!_isFreshNode(n, nowMs)) continue;
       if (hubIds.contains(n.identityHex)) continue;
-      if (_isXprsNode(n)) {
-        xprs++;
-      } else {
-        others++;
-      }
+      if (!_announcesXprsService(n)) others++;
     }
-    return (xprs: xprs, others: others, hubs: _connectedHubs.length);
+    return (
+      xprs: xprsPresence(nowMs: nowMs).length,
+      others: others,
+      hubs: _connectedHubs.length
+    );
   }
 
   /// Is this node reachable RIGHT NOW — one rule, used everywhere.
@@ -1206,7 +1336,7 @@ class RnsService {
         'name': name,
         'callsign': call,
         'identity': n.identityHex,
-        'xprs': _isXprsNode(n),
+        'xprs': _announcesXprsService(n),
         'hops': n.hops,
         'via': n.via,
         'lastSeen': n.lastSeenMs,
@@ -1798,9 +1928,24 @@ class RnsService {
           'pubkey': n.publicKeyHex,
           'callsign': n.callsign ?? '',
           'services': (n.services.toList()..sort()).join(','),
-          'xprs': n.services.any((s) => s != 'lxmf' && s != 'lxmf-prop')
-              ? 1
-              : 0,
+          // THE ONE RULE, written to disk. This used to be a service test that
+          // differed from the live graph's by a single word ('node'), which is
+          // how Settings came to claim 715 XPRS devices while the map drew
+          // six. Now both ask `classifyXprs`.
+          'xprs': classifyXprs(XprsCandidate(
+                    announcedCallsign: n.callsign ?? n.lxmfName ?? '',
+                    derivedCallsign: _derivedCallsign(n.nostrPubHex),
+                    nostrPubHex: n.nostrPubHex ?? '',
+                    identityHex: n.identityHex,
+                    services: n.services,
+                  )) ==
+                  null
+              ? 0
+              : 1,
+          // The old question, kept for the DHT warm start, which wants every
+          // peer running our software whether or not we can name it.
+          'svcXprs':
+              n.services.any((s) => s != 'lxmf' && s != 'lxmf-prop') ? 1 : 0,
           'hops': n.hops,
           'via': n.via,
           'uptime': n.uptimeSeconds,
@@ -2153,7 +2298,15 @@ class RnsService {
   // A XPRS device carries a XPRS service (chat/relay/wapp/files/dht) — our
   // own network. Bare LXMF and NomadNet ('node') services are NOT xprs.
   static const _nonGeoSvc = {'lxmf', 'lxmf-prop', 'node'};
-  bool _isXprsNode(_ObservedNode n) =>
+
+  /// Does this node announce on one of OUR service aspects?
+  ///
+  /// Renamed from `_isXprsNode`, which is what it was being used as and never
+  /// was: announcing on a hash we associate with chat or files says the
+  /// software might be ours, not that we know whose device it is. It is now
+  /// one input to [classifyXprs] and the "is it XPRS" question is answered
+  /// there, once, by whether we can NAME the device.
+  bool _announcesXprsService(_ObservedNode n) =>
       n.services.any((s) => !_nonGeoSvc.contains(s));
 
   /// Build a graph node JSON for an observed node (shared by [graphSnapshot] and
@@ -2161,8 +2314,12 @@ class RnsService {
   Map<String, dynamic> _nodeJson(
     _ObservedNode n,
     String kind,
-    Map<String, RelayEntry> relayByHex,
-  ) {
+    Map<String, RelayEntry> relayByHex, {
+    /// This node's verdict, when it is one of ours. Passed in rather than
+    /// computed here so the naming rule runs once per snapshot and not once
+    /// per node (docs/performance.md §4.2 — the cheap call in a hot loop).
+    XprsDevice? device,
+  }) {
     final relay = relayByHex[n.identityHex];
     final caps = <String>[];
     if (relay != null) {
@@ -2191,8 +2348,17 @@ class RnsService {
     }
     return {
       'id': n.identityHex,
-      'label': label,
+      'label': device?.callsign.isNotEmpty == true ? device!.callsign : label,
       'kind': kind,
+      // What this device IS, decided in the core and rendered by whoever draws
+      // it: `user` (X1, a person), `station` (X2 movable / X3 fixed), `device`
+      // (X4 equipment), or empty for anything that is not one of ours.
+      'class': device?.kindWord ?? '',
+      'mobility': device == null
+          ? ''
+          : device.kind == XprsKind.station
+              ? (device.fixed ? 'fixed' : 'movable')
+              : '',
       'services': n.services.toList()..sort(),
       'dm': kind == 'self'
           ? ''
@@ -2203,13 +2369,23 @@ class RnsService {
           : n.services.contains('chat')
           ? 'chat'
           : '',
-      'xprs': _isXprsNode(n),
+      'xprs': _announcesXprsService(n),
       'hops': n.hops,
       'via': n.via,
       'relayer': n.relayerHex ?? '',
       'meta': {
-        'callsign': callsign.isNotEmpty ? callsign : announced,
+        'callsign': device?.callsign ??
+            (callsign.isNotEmpty ? callsign : announced),
         'nickname': nickname,
+        // Every way this device can be reached right now — `ble`, `lan`,
+        // `lora`, `rns` — rather than the single bearer its last announce came
+        // in on. A phone on the LAN that is also on BLE is reachable both
+        // ways, and the row should say so.
+        if (device != null) 'bearers': device.bearers,
+        if (device != null) 'reachable': device.reachable,
+        // WHY we believe the name: heard on the air, heard over Reticulum,
+        // paired in a beacon, or verified against the key that announced it.
+        if (device != null) 'evidence': device.evidence.name,
         'pubkey': n.publicKeyHex,
         'npub': _npubOrEmpty(n.nostrPubHex),
         'role': relay?.announcement.role.name ?? '',
@@ -2636,7 +2812,7 @@ class RnsService {
     for (final n in _observed.values) {
       if (!alive(n)) continue; // live now, not a connect-flood ghost
       if (hubIds.contains(n.identityHex)) continue; // it's a hub
-      if (_isXprsNode(n)) continue; // XPRS → its own list
+      if (_announcesXprsService(n)) continue; // XPRS → its own list
       out.add(_nodeJson(n, 'leaf', relayByHex));
     }
     out.sort(
@@ -2697,7 +2873,7 @@ class RnsService {
     }
     // A XPRS device carries a XPRS service (chat/relay/wapp/files/dht) —
     // our own network. LXMF and NomadNet ('node') services are NOT xprs.
-    bool isXPRS(_ObservedNode n) => _isXprsNode(n);
+    bool isXPRS(_ObservedNode n) => _announcesXprsService(n);
 
     // Which observed nodes to show. A recent lastSeen alone isn't enough: linking
     // a hub floods its cached announce table at us, so every long-dead node it
@@ -2725,8 +2901,28 @@ class RnsService {
       if (r != null && r.isNotEmpty) hubIds.add(r);
     }
 
+    // THE DEVICES, NAMED. Built once and consulted by identity and by
+    // callsign, so a node carries its verdict rather than the widget guessing
+    // one from the label (`xprs_presence.dart`).
+    final present = xprsPresence(nowMs: nowMs);
+    final deviceById = <String, XprsDevice>{
+      for (final d in present)
+        if (d.identityHex.isNotEmpty) d.identityHex: d,
+    };
+    final deviceByCall = <String, XprsDevice>{
+      for (final d in present) d.callsign: d,
+    };
+
     bool matchesFilters(_ObservedNode n) {
-      if (xprsOnly && !isXPRS(n)) return false;
+      // `xprsOnly` now means what the Mesh screen always meant by it: OUR
+      // devices. It used to mean "announces a service that is not LXMF", which
+      // let every nameless destination on one of our own service hashes
+      // through — and the screen then offered it a Follow and a Chat button.
+      //
+      // Gated on the flag rather than applied unconditionally because the
+      // chat "who is nearby" list shares this call with `localOnly` and must
+      // keep seeing a NomadNet box on the same LAN: it IS in the room.
+      if (xprsOnly && !deviceById.containsKey(n.identityHex)) return false;
       if (service != null &&
           service.isNotEmpty &&
           !n.services.contains(service)) {
@@ -2773,7 +2969,10 @@ class RnsService {
 
     String shortHex(String h) => _shortHex(h);
     Map<String, dynamic> nodeJson(_ObservedNode n, String kind) =>
-        _nodeJson(n, kind, relayByHex);
+        _nodeJson(n, kind, relayByHex,
+            // A hub is infrastructure and never one of ours, so it is never
+            // handed a verdict (12.8's "a gateway claims nothing").
+            device: kind == 'hub' ? null : deviceById[n.identityHex]);
 
     void emit(_ObservedNode n, String kind) {
       if (emitted.add(n.identityHex)) nodes.add(nodeJson(n, kind));
@@ -2801,9 +3000,20 @@ class RnsService {
     });
     emitted.add(identityHex ?? 'self');
 
-    // Pass 1: emit hubs (the structure) + count their reachable-now children.
+    // Pass 1: emit hubs (the structure) + count the XPRS devices behind each.
+    //
+    // It used to count every fresh child, so a hub wore a badge of 119 —
+    // strangers' Reticulum destinations, none of them running this software,
+    // on a screen whose entire subject is who does. What a reader wants from a
+    // hub is "how many of MY people are behind it", which is usually nought,
+    // one or two.
+    final xprsIdentities = <String>{
+      for (final d in xprsPresence(nowMs: nowMs))
+        if (d.identityHex.isNotEmpty) d.identityHex,
+    };
     for (final n in _observed.values) {
       if (!isFresh(n)) continue;
+      if (!xprsIdentities.contains(n.identityHex)) continue;
       final r = n.relayerHex;
       if (r != null && r.isNotEmpty) childCount[r] = (childCount[r] ?? 0) + 1;
     }
@@ -2905,10 +3115,17 @@ class RnsService {
         if (knownCalls.contains(call)) continue;
         if (q.isNotEmpty && !call.toLowerCase().contains(q)) continue;
         final id = 'xprs:$call';
+        final verdict = deviceByCall[call];
         nodes.add({
           'id': id,
           'label': call,
           'kind': 'xprs',
+          'class': verdict?.kindWord ?? '',
+          'mobility': verdict == null
+              ? ''
+              : verdict.kind == XprsKind.station
+                  ? (verdict.fixed ? 'fixed' : 'movable')
+                  : '',
           'services': s.services,
           'xprs': true,
           'hops': 1,
@@ -2944,9 +3161,14 @@ class RnsService {
             // its last packet came in on. A dongle on BLE5 and ESP-NOW, or a
             // phone on the LAN that is also advertising, is reachable several
             // ways at once and the panel says so.
-            'bearers': s.bearersFresh(
-                DateTime.now().millisecondsSinceEpoch,
-                XprsMonitor.staleAfter.inMilliseconds),
+            // Every lane, including Reticulum: a station on the LAN that we
+            // also hold a path to is reachable both ways, and the panel that
+            // says "REACHABLE OVER" should name both.
+            'bearers': verdict?.bearers ??
+                s.bearersFresh(DateTime.now().millisecondsSinceEpoch,
+                    XprsMonitor.staleAfter.inMilliseconds),
+            'reachable': verdict?.reachable ?? true,
+            'evidence': verdict?.evidence.name ?? 'air',
             'rssi': s.rssi,
             'packets': s.packets,
             // Whatever it last measured -- temperature, battery, what powers
@@ -3009,6 +3231,21 @@ class RnsService {
       };
     }
 
+    // THE VERDICT, COUNTED ONCE. Every surface that shows "how many devices"
+    // reads this rather than counting the canvas: the three that counted for
+    // themselves disagreed, and one of them said 715.
+    //
+    // `seen` is everything named; `reachable` is what can be addressed right
+    // now. Both are answers about the same population, which is what lets the
+    // header say "2 of 3" honestly.
+    Map<String, int> tally(bool Function(XprsDevice) pick) {
+      final rows = present.where(pick);
+      return {
+        'seen': rows.length,
+        'reachable': rows.where((d) => d.reachable).length,
+      };
+    }
+
     return {
       'nodes': nodes,
       'edges': edges,
@@ -3017,6 +3254,17 @@ class RnsService {
       'online': online,
       'lxmfReachable': lxmfReachable,
       'xprsReachable': xprsReachable,
+      'counts': {
+        'users': tally((d) => d.kind == XprsKind.user),
+        'stations': tally(
+            (d) => d.kind == XprsKind.station || d.kind == XprsKind.device),
+        'devices': tally((_) => true),
+        'hubs': hubIds.length,
+        // Nodes running our software that we cannot name, so cannot show and
+        // will not count. Reported so a real device never disappears without
+        // trace and the strict rule stays auditable.
+        'unnamed': _unnamedXprsCount(nowMs),
+      },
       'passive': _transport?.passive ?? false,
       // Persistent all-time counts from the on-disk cache (total/xprs/oldest).
       'stats': _obStats,

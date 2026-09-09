@@ -215,6 +215,45 @@ answers a burst with hours of silence. `/api/rns/status` reports `hubRole`,
 `datagrams{sent,noPath,tooBig,opened}` so the role can be read off a device
 rather than asserted.
 
+### Who is on the mesh, decided once (2026-09-09)
+
+"Is this an XPRS device" was answered in three places by three rules: the live
+graph asked whether a node announced any service that was not LXMF, the
+persisted counter asked the same thing minus one word, and the Mesh header
+bucketed whatever was on the canvas by the first two characters of a label.
+None required a CALLSIGN, so a Reticulum destination that merely announced on
+one of our service hashes was counted as a device and listed as a person with a
+Follow button that could never work. The screen said 715 XPRS devices on a
+network of six.
+
+`lib/services/xprs/xprs_presence.dart` is the one rule, and it is pure: facts
+in, `XprsDevice?` out, `null` for anything that is not one of ours.
+**A device is XPRS when we can name it with a callsign we are entitled to
+believe** — heard as an XPRS wire (evidence by construction: only a parsed
+packet with `f:` reaches `XprsMonitor`), paired in a beacon, verified against
+the key that announced it, or derived from that key. Services are a property of
+a device already identified; they never identify one. Callsign decides class:
+`X1` a person, `X2`/`X3` a station, `X4` equipment, `X5` an address and not a
+device at all.
+
+`RnsService.xprsPresence()` applies it to live state, merging announces with
+both halves of the monitor — including the stations heard only over Reticulum,
+which the graph had never shown because it walked the air-heard table alone.
+Every surface reads that: the snapshot's per-node `class`/`mobility`/
+`meta.bearers`/`meta.reachable`, its `counts`, the watchdog, and the row written
+to `ObservedStore`. The widget renders and derives nothing.
+
+Two lessons worth keeping:
+
+- **One column cannot answer two questions.** `xprs` in the observed store was
+  read both by a person ("how many of my devices") and by the DHT warm start
+  ("every peer running our software, named or not"). Splitting it into `xprs`
+  and `svc_xprs` is what let the person-facing count fall to the truth without
+  shrinking the warm start.
+- **A verdict that can only go up is not a verdict.** That column was merged
+  with `MAX(old, new)`, so no node could ever stop being counted. The count
+  could not have fallen even after the rule was fixed.
+
 ### The archiver in the middle (2026-09-08)
 
 A message is not delivered by the sender trying harder. Two people who are

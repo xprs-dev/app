@@ -64,8 +64,27 @@ class ObservedStore {
       if (cols.contains('geogram') && !cols.contains('xprs')) {
         db.execute('ALTER TABLE nodes RENAME COLUMN geogram TO xprs;');
       }
+      // `svc_xprs` keeps the OLD question — "does this node announce one of our
+      // service aspects" — because the DHT warm start (topXprsPeers) wants
+      // every node running our software, named or not. `xprs` now answers the
+      // person-facing question: is this a device we can NAME. One column was
+      // being asked both, and the count a person saw was the warm start's
+      // answer: 715 on a network of six.
+      if (!cols.contains('svc_xprs')) {
+        db.execute(
+            'ALTER TABLE nodes ADD COLUMN svc_xprs INTEGER NOT NULL DEFAULT 0;');
+        db.execute('UPDATE nodes SET svc_xprs = xprs;');
+      }
       final ver = db.select('PRAGMA user_version').first.columnAt(0) as int;
       if (ver < 1) db.execute('PRAGMA user_version = 1');
+      // v2: a node with no callsign was never a device we could name, and the
+      // rows saying otherwise are what the Settings screen counted. Recomputed
+      // once here rather than waiting for 6000 nodes to re-announce.
+      if (ver < 2) {
+        db.execute(
+            "UPDATE nodes SET xprs = 0 WHERE callsign IS NULL OR callsign = '';");
+        db.execute('PRAGMA user_version = 2');
+      }
       db.execute('CREATE INDEX IF NOT EXISTS idx_nodes_geo ON nodes(xprs);');
       db.execute('CREATE INDEX IF NOT EXISTS idx_nodes_last ON nodes(last_seen);');
       _db = db;
@@ -102,13 +121,17 @@ class ObservedStore {
     try {
       db.execute('BEGIN');
       stmt = db.prepare('''
-        INSERT INTO nodes(id,pubkey,callsign,services,xprs,hops,via,uptime,first_seen,last_seen)
-        VALUES(?,?,?,?,?,?,?,?,?,?)
+        INSERT INTO nodes(id,pubkey,callsign,services,xprs,svc_xprs,hops,via,uptime,first_seen,last_seen)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
           pubkey=excluded.pubkey,
           callsign=COALESCE(NULLIF(excluded.callsign,''), nodes.callsign),
           services=excluded.services,
-          xprs=MAX(nodes.xprs, excluded.xprs),
+          -- ASSIGNED, not MAX(): a verdict that can only ever go up is not a
+          -- verdict. A node that stops being nameable must stop being counted,
+          -- and `MAX` is why the old count could never fall.
+          xprs=excluded.xprs,
+          svc_xprs=MAX(nodes.svc_xprs, excluded.svc_xprs),
           hops=excluded.hops,
           via=excluded.via,
           uptime=CASE WHEN excluded.uptime>0 THEN excluded.uptime ELSE nodes.uptime END,
@@ -121,6 +144,7 @@ class ObservedStore {
           r['callsign'] ?? '',
           r['services'] ?? '',
           r['xprs'] ?? 0,
+          r['svcXprs'] ?? r['xprs'] ?? 0,
           r['hops'] ?? 0,
           r['via'] ?? '',
           r['uptime'] ?? 0,
@@ -152,7 +176,10 @@ class ObservedStore {
       final rows = db.select('''
         SELECT id, pubkey, services, uptime, last_seen
         FROM nodes
-        WHERE xprs=1 AND pubkey IS NOT NULL AND pubkey<>''
+        -- `svc_xprs`, not `xprs`: the warm start wants every peer running our
+        -- software, whether or not we can put a name to it. Naming is the
+        -- person-facing question and belongs to the other column.
+        WHERE svc_xprs=1 AND pubkey IS NOT NULL AND pubkey<>''
         ORDER BY uptime DESC, last_seen DESC
         LIMIT ?
       ''', [limit]);
@@ -213,7 +240,7 @@ class ObservedStore {
   Map<String, dynamic> stats() {
     final db = _db;
     if (db == null) {
-      return {'total': 0, 'xprs': 0, 'oldest': 0, 'seen24h': 0};
+      return {'total': 0, 'xprs': 0, 'unnamed': 0, 'oldest': 0, 'seen24h': 0};
     }
     try {
       int scalar(String sql, [List<Object?> p = const []]) {
@@ -225,7 +252,13 @@ class ObservedStore {
       final now = DateTime.now().millisecondsSinceEpoch;
       return {
         'total': scalar('SELECT count(*) AS v FROM nodes'),
+        // Devices we can name. The count a person reads.
         'xprs': scalar('SELECT count(*) AS v FROM nodes WHERE xprs=1'),
+        // Nodes running our software that we never could name — reported so
+        // the strict rule stays auditable rather than silently discarding.
+        'unnamed': scalar(
+            "SELECT count(*) AS v FROM nodes WHERE svc_xprs=1 AND "
+            "(callsign IS NULL OR callsign='')"),
         'oldest': scalar('SELECT COALESCE(min(first_seen),0) AS v FROM nodes'),
         'seen24h': scalar(
             'SELECT count(*) AS v FROM nodes WHERE last_seen > ?',
@@ -233,7 +266,7 @@ class ObservedStore {
       };
     } catch (e) {
       LogService.instance.add('ObservedStore: stats failed: $e');
-      return {'total': 0, 'xprs': 0, 'oldest': 0, 'seen24h': 0};
+      return {'total': 0, 'xprs': 0, 'unnamed': 0, 'oldest': 0, 'seen24h': 0};
     }
   }
 

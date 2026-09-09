@@ -32,7 +32,7 @@ import '../services/reticulum/rns_iface_kind.dart';
 enum RnsIface {
   ble('BLE5', Color(0xFF4FC3F7)),
   lanWifi('LAN/WiFi', Color(0xFF66BB6A)),
-  internet('Internet', Color(0xFFFFD54F)),
+  internet('Reticulum', Color(0xFFFFD54F)),
   lora('LoRa', Color(0xFFB388FF), forwardLooking: true),
   radio('Radio', Color(0xFFFF5252), forwardLooking: true);
 
@@ -125,6 +125,25 @@ class RnsGraphNode {
       ? {iface}
       : {for (final b in bearers) ifaceForBearer(b)};
 
+  /// What the CORE decided this is: `user` (X1, a person), `station`
+  /// (X2 movable / X3 fixed), `device` (X4 equipment), or empty for a hub and
+  /// for anything that is not one of ours. Read, never derived — the screen
+  /// used to guess it from the first two characters of a label.
+  final String cls;
+
+  /// `fixed` or `movable` for a station, empty otherwise.
+  final String mobility;
+
+  /// Whether the core can reach it right now, as against merely having seen it.
+  final bool reachable;
+
+  /// True when this is one of ours: a named XPRS device.
+  bool get isDevice => cls.isNotEmpty;
+
+  /// How many XPRS devices are clustered behind this anchor. [members] counts
+  /// every node for the layout; this counts the ones a person cares about.
+  int xprsMembers = 0;
+
   /// The network this node is reached over — resolved after parsing.
   RnsIface iface = RnsIface.internet;
 
@@ -155,6 +174,9 @@ class RnsGraphNode {
         npub = ((m['meta'] as Map?)?['npub'] ?? '').toString(),
         xprs = m['xprs'] == true,
         relayer = (m['relayer'] ?? '').toString(),
+        cls = (m['class'] ?? '').toString(),
+        mobility = (m['mobility'] ?? '').toString(),
+        reachable = ((m['meta'] as Map?)?['reachable'] ?? false) == true,
         services =
             (m['services'] as List?)?.map((e) => e.toString()).toList() ??
                 const [],
@@ -186,6 +208,9 @@ class RnsGraphNode {
         dm = '',
         npub = '',
         xprs = false,
+        cls = '', // infrastructure is never one of ours
+        mobility = '',
+        reachable = true,
         relayer = '',
         services = const [],
         hops = 1,
@@ -263,19 +288,39 @@ List<RnsGraphNode> regroupByUplink(List<RnsGraphNode> nodes) {
     out.add(synth);
   }
 
-  // Promote anchors and count everyone's clustered members.
+  // Promote anchors and count each one's clustered members.
+  //
+  // XPRS devices only: the badge on a hub answers "how many of MY people are
+  // behind it", and counting every Reticulum destination made that badge read
+  // 119 on a screen whose subject is the six devices running this software.
+  //
+  // TWO counts, because they answer two questions. Whether an anchor is a hub
+  // at all is structural — it is a hub if things hang off it, XPRS or not, and
+  // counting only ours would leave a gateway drawn as a leaf. What its BADGE
+  // says is "how many of my devices are behind it", which is the count a
+  // reader of this screen wants and the one that used to read 119.
   final memberCount = <String, int>{};
+  final deviceCount = <String, int>{};
   for (final n in out) {
-    if (n.effectiveRelayer.isNotEmpty) {
-      memberCount[n.effectiveRelayer] =
-          (memberCount[n.effectiveRelayer] ?? 0) + 1;
+    if (n.effectiveRelayer.isEmpty) continue;
+    memberCount[n.effectiveRelayer] =
+        (memberCount[n.effectiveRelayer] ?? 0) + 1;
+    if (n.isDevice) {
+      deviceCount[n.effectiveRelayer] =
+          (deviceCount[n.effectiveRelayer] ?? 0) + 1;
     }
   }
   final byId = {for (final n in out) n.id: n};
   memberCount.forEach((id, count) {
     final anchor = byId[id];
     if (anchor == null) return;
+    // `members` is STRUCTURE — how many nodes are clustered here. The layout
+    // cones them behind the anchor by it, so it counts everything.
     anchor.members = math.max(anchor.childCount, count);
+    // `xprsMembers` is what a reader is told: how many of OUR devices are
+    // behind this gateway. The badge used to show the structural number, so a
+    // hub wore "119" on a screen about six devices.
+    anchor.xprsMembers = math.max(anchor.childCount, deviceCount[id] ?? 0);
     if (anchor.effectiveKind == 'leaf') anchor.promotedHub = true;
   });
   return out;
@@ -639,7 +684,9 @@ NodeSprite spriteOfRnsNode(
         ringColor: Colors.white70,
         secondaryColor: n.xprs ? xprsGreen : null,
         badge:
-            n.members > 0 && n.id != expandedHubId ? '${n.members}' : null,
+            n.xprsMembers > 0 && n.id != expandedHubId
+                ? '${n.xprsMembers}'
+                : null,
         // A pill floating on a 2px dot looks broken; match the halo floor.
         badgeMinPx: 4.0,
         label: n.label,

@@ -14,6 +14,52 @@ import 'package:xprs/services/xprs/xprs_sig.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('the snapshot says what each device IS, and counts them once', () {
+    // The screen used to bucket whatever was on the canvas by the first two
+    // characters of a label, and its "XPRS devices" list used a different rule
+    // again — so the same station was counted as a station and again as
+    // "other", while a nameless Reticulum destination was counted as a person.
+    XprsMonitor.instance.clear();
+    for (final w in [
+      't:observation f:X1VCVM link:lan peers:1',
+      't:observation f:X3DCK0 link:lan peers:2',
+    ]) {
+      XprsMonitor.instance.offer(XprsPacket.parse(w)!,
+          bearer: 'lan', selfCallsign: 'X1TEST');
+    }
+
+    final snap = RnsService.instance.graphSnapshot(includeXprs: true);
+    final nodes = (snap['nodes'] as List).cast<Map<String, dynamic>>();
+    Map<String, dynamic> node(String id) =>
+        nodes.firstWhere((n) => n['id'] == id);
+
+    expect(node('xprs:X1VCVM')['class'], 'user', reason: 'X1 is a person');
+    expect(node('xprs:X3DCK0')['class'], 'station');
+    expect(node('xprs:X3DCK0')['mobility'], 'fixed', reason: 'X3 does not move');
+    expect((node('xprs:X1VCVM')['meta'] as Map)['bearers'], contains('lan'),
+        reason: 'the row must say HOW it is reached');
+
+    final counts = (snap['counts'] as Map).cast<String, dynamic>();
+    expect((counts['users'] as Map)['seen'], 1);
+    expect((counts['stations'] as Map)['seen'], 1);
+    expect((counts['devices'] as Map)['seen'], 2,
+        reason: 'each device counted once, in exactly one bucket');
+    expect(counts['unnamed'], isA<int>(),
+        reason: 'nodes running XPRS we cannot name are reported, not hidden '
+            'silently');
+  });
+
+  test('a hub is never a device, and carries no class', () {
+    XprsMonitor.instance.clear();
+    final snap = RnsService.instance.graphSnapshot(includeXprs: true);
+    for (final n in (snap['nodes'] as List).cast<Map<String, dynamic>>()) {
+      if (n['kind'] == 'hub') {
+        expect(n['class'], '',
+            reason: 'a gateway claims nothing (XPRS.md 12.8)');
+      }
+    }
+  });
+
   test('an XPRS beacon becomes a graph node with its stability account', () {
     XprsMonitor.instance.clear();
     final beacon = XprsPacket.parse(

@@ -79,6 +79,15 @@ enum _Panel {
 
 class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   List<RnsGraphNode> _allNodes = const [];
+
+  /// `{users:{seen,reachable}, stations:{…}, devices:{…}, hubs:n, unnamed:n}`
+  /// exactly as the core reported it.
+  Map<String, dynamic> _counts = const {};
+
+  /// Whether the hubs and their beams are drawn. They are not devices and are
+  /// the only non-XPRS thing left on the canvas (XPRS.md 12.8: a gateway
+  /// claims nothing), so they are the one thing worth a toggle.
+  bool _showHubs = true;
   // Other Reticulum devices (NOT xprs, NOT hubs) heard on the hubs — the full
   // observed set (NOT gated on re-announce), refreshed each data tick. This is
   // what the badge's "N devices" list shows.
@@ -291,12 +300,14 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     // Cluster the hub-flood behind its uplink connections — the snapshot's
     // own edges predate the grouping, so the scene derives its edges itself.
     _allNodes = regroupByUplink(parsed);
-    // The full observed-devices set (heavy scan of the host registry) — refresh
-    // here on the ~2s data tick, not on every animation frame.
-    _otherDevices = [
-      for (final m in RnsService.instance.observedDevices())
-        RnsGraphNode(m.cast<String, dynamic>())
-    ];
+    // THE COUNTS COME FROM THE CORE (`RnsService.xprsPresence`), not from
+    // counting whatever happens to be on the canvas. Three surfaces used to
+    // count for themselves with three different rules; two of them disagreed
+    // by one word and one of them said 715 devices on a network of six.
+    _counts = ((d['counts'] as Map?) ?? const {}).cast<String, dynamic>();
+    // The full observed-devices scan that used to run here, on every data
+    // tick, filled a panel that has no way in any more. It was the graph's own
+    // hot loop calling the heaviest read on the registry (performance.md §4.2).
     _rebuildScene();
   }
 
@@ -314,7 +325,12 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       if (_panel == _Panel.detail) _panel = _Panel.none;
     }
     final built = buildRnsScene(
-      allNodes: _allNodes,
+      // Hubs are drawn unless the operator turned them off; everything else on
+      // the canvas is one of ours by the time it gets here (the host filters
+      // the snapshot on `xprsOnly`, which this screen always sets).
+      allNodes: _showHubs
+          ? _allNodes
+          : [for (final n in _allNodes) if (n.kind != 'hub') n],
       expandedHubId: _expandedHubId,
     );
 
@@ -325,7 +341,8 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     // data (label, members, xprs), not just the topology: the controller
     // keeps the old node objects, so anything left out of it would go stale on
     // screen instead of updating.
-    final signature = StringBuffer(_expandedHubId ?? '-');
+    final signature = StringBuffer(_expandedHubId ?? '-')
+      ..write(_showHubs ? '+h' : '-h');
     for (final n in built.scene.nodes) {
       final d = n.data;
       signature
@@ -341,6 +358,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         ..write(d.hops)
         ..write(':')
         ..write(d.members)
+        ..write(d.xprsMembers)
         ..write(':')
         ..write(d.xprs ? 1 : 0)
         ..write(':')
@@ -525,7 +543,10 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     var members = 0;
     for (var i = 0; i < _scene.liveCount; i++) {
       final n = _scene.renderNodes[i].data;
-      if (n.kind == 'self' || n.iface != iface) continue;
+      // `ifaces`, not `iface`: a device on BLE and the LAN is on both, and
+      // comparing the single newest bearer meant a chip counting three could
+      // light one.
+      if (n.kind == 'self' || !n.ifaces.contains(iface)) continue;
       keys.add(n.id);
       centroid += _scene.geometry.poses[i].position;
       members++;
@@ -712,13 +733,18 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             onTap: _pickRole,
           ),
           const SizedBox(width: 4),
+          // The screen shows OUR devices now, so a chip that toggled "only
+          // XPRS" could no longer change anything. What is still worth hiding
+          // is the infrastructure: hubs are the one non-XPRS thing on the
+          // canvas, and a mesh of six devices reads better without four
+          // gateways and their beams.
           _filterChip(
-            label: 'XPRS',
-            icon: _geoOnly ? Icons.check_box : Icons.check_box_outline_blank,
-            active: _geoOnly,
+            label: 'hubs',
+            icon: _showHubs ? Icons.check_box : Icons.check_box_outline_blank,
+            active: _showHubs,
             onTap: () {
-              setState(() => _geoOnly = !_geoOnly);
-              _emitFilter();
+              setState(() => _showHubs = !_showHubs);
+              _rebuildScene();
             },
           ),
           const SizedBox(width: 4),
@@ -827,9 +853,10 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   Future<void> _pickService() async {
     // `archive` was missing, so filtering for archivers -- which the host has
     // supported all along -- could not be reached from the UI at all.
-    const opts = [
-      '', 'chat', 'files', 'dht', 'relay', 'archive', 'wapp', 'lxmf', 'rv'
-    ];
+    // `lxmf` and `rv` are gone: they are NomadNet and Sideband aspects, and
+    // nothing carrying only those is a device this screen shows any more, so
+    // both could only ever have selected nothing.
+    const opts = ['', 'chat', 'files', 'dht', 'relay', 'archive', 'wapp'];
     final sel = await showMenu<String>(
       context: context,
       position: const RelativeRect.fromLTRB(1000, 46, 8, 0),
@@ -856,6 +883,10 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     final counts = <RnsIface, int>{};
     for (final n in _allNodes) {
       if (n.kind == 'self') continue;
+      // OUR devices only. The chips are the answer to "how can I reach the
+      // people and stations I have", so counting hubs and strangers' nodes in
+      // them made "Internet 7" a number about somebody else's network.
+      if (!n.isDevice) continue;
       // A node counts on EVERY network it is reachable on, not just the one
       // its last packet arrived over. A dongle heard on BLE5 and ESP-NOW is
       // genuinely both, and counting it once put it under whichever bearer
@@ -945,38 +976,42 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // XPRS devices and counting infrastructure beside people was part of what
   // made the row hard to read.
   Widget _buildReachBadge() {
-    var users = 0, stations = 0, other = 0;
-    for (final n in _allNodes) {
-      if (n.kind == 'self') continue;
-      final call =
-          ((n.meta['callsign'] ?? n.label) as Object).toString().toUpperCase();
-      if (call.startsWith('X1')) {
-        users++;
-      } else if (call.startsWith('X2') || call.startsWith('X3')) {
-        stations++;
-      } else {
-        // X4 controlled devices, X5 groups, and any plain Reticulum peer that
-        // appears when the XPRS filter is switched off. Counted rather than
-        // dropped: a node on the canvas that no number accounts for is the
-        // bug this badge just had.
-        other++;
+    // READ, do not count. This used to bucket whatever was on the canvas by
+    // the first two characters of a label, which put every hub and every
+    // unnamed Reticulum destination into an "other" pile — and that pile
+    // opened the XPRS list, so the same devices were counted twice under two
+    // headings. The core answers the question now (`RnsService.xprsPresence`)
+    // and this draws the answer.
+    int at(String group, String field) {
+      final g = _counts[group];
+      if (g is Map) {
+        final v = g[field];
+        if (v is int) return v;
       }
+      return 0;
     }
-    Widget item(IconData icon, int n, String one, String many, Color c,
-        {bool arrow = false}) {
+
+    final users = at('users', 'reachable');
+    final usersSeen = at('users', 'seen');
+    final stations = at('stations', 'reachable');
+    final stationsSeen = at('stations', 'seen');
+    final hubs = (_counts['hubs'] is int) ? _counts['hubs'] as int : 0;
+
+    Widget item(IconData icon, String n, String one, String many, Color c,
+        {bool arrow = false, VoidCallback? onTap, int plural = 2}) {
       return InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: () => setState(() => _panel = _Panel.xprsDevices),
+        onTap: onTap ?? () => setState(() => _panel = _Panel.xprsDevices),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon, size: 15, color: c),
             const SizedBox(width: 6),
-            Text('$n',
+            Text(n,
                 style: const TextStyle(
                     color: _gFg, fontSize: 15, fontWeight: FontWeight.w700)),
             const SizedBox(width: 4),
-            Text(n == 1 ? one : many,
+            Text(plural == 1 ? one : many,
                 style: const TextStyle(color: _gMuted, fontSize: 12)),
             if (arrow) ...[
               const SizedBox(width: 6),
@@ -1000,15 +1035,24 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           ),
           child: IntrinsicWidth(
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              item(Icons.person_outline, users, 'user', 'users', _gSelf),
+              // "2/3" — reachable of seen. Two answers to the same question
+              // about the same devices, which is what makes the pair readable:
+              // three people known, two of them contactable right now.
+              item(Icons.person_outline, '$users/$usersSeen', 'user', 'users',
+                  _gSelf,
+                  plural: usersSeen,
+                  onTap: () => setState(() => _panel = _Panel.chats)),
               Container(width: 1, height: 20, color: _gBorder),
-              item(Icons.podcasts_outlined, stations, 'station', 'stations',
-                  _gGeo,
-                  arrow: other == 0),
-              if (other > 0) ...[
+              item(Icons.podcasts_outlined, '$stations/$stationsSeen',
+                  'station', 'stations', _gGeo,
+                  plural: stationsSeen,
+                  onTap: () => setState(() => _panel = _Panel.xprsDevices)),
+              if (hubs > 0) ...[
                 Container(width: 1, height: 20, color: _gBorder),
-                item(Icons.more_horiz, other, 'other', 'other', _gMuted,
-                    arrow: true),
+                item(Icons.hub_outlined, '$hubs', 'hub', 'hubs', _gMuted,
+                    plural: hubs,
+                    arrow: true,
+                    onTap: () => setState(() => _panel = _Panel.hubs)),
               ],
             ]),
           ),
@@ -1047,6 +1091,8 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         content = _detailBody(n);
         break;
       case _Panel.devices:
+        // Read when the panel opens, not on every data tick. Same list, and
+        // the registry scan is now paid by somebody who asked to see it.
         content = _devicesBody();
         break;
       case _Panel.hubDevices:
@@ -1795,14 +1841,15 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         ),
       ],
       const SizedBox(height: 16),
-      if (n.effectiveKind == 'hub' && n.members > 0)
+      if (n.effectiveKind == 'hub' && n.xprsMembers > 0)
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
               icon: const Icon(Icons.list, size: 16),
-              label: Text('List ${n.members} devices'),
+              label: Text('List ${n.xprsMembers} XPRS device'
+                  '${n.xprsMembers == 1 ? '' : 's'}'),
               onPressed: () {
                 setState(() {
                   _panelHubId = n.id;
@@ -1848,8 +1895,8 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           _kv('Capabilities', (m['caps'] as List).join(', ')),
         if (n.kind != 'self') _kv('Hops', '${n.hops}'),
         if (n.via.isNotEmpty) _kv('Via', n.via),
-        if (n.effectiveKind == 'hub' && n.members > 0)
-          _kv('Peers heard', '≈ ${n.members} (sample)'),
+        if (n.effectiveKind == 'hub' && n.xprsMembers > 0)
+          _kv('XPRS devices behind it', '${n.members}'),
         if (m['firstSeen'] != null) _kv('First seen', _ago(m['firstSeen'])),
         // The two long identifiers are things you COPY (paste into Mail, into a
         // relay query) — printed raw they are just a wall of hex you cannot use.
@@ -1964,9 +2011,12 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // Open the shared full profile page for a XPRS peer (Follow / Message /
   // Mute + observed first-seen + reachable-via hubs).
   void _openPeerProfile(RnsGraphNode n) {
-    final callsign = (n.meta['callsign'] ?? '').toString().isNotEmpty
-        ? (n.meta['callsign']).toString()
-        : n.label;
+    // NO CALLSIGN, NO PROFILE. The fallback to `n.label` is how a bare
+    // Reticulum destination came to open a page offering Follow and Chat: the
+    // label is a shortened identity hash, and neither button could ever have
+    // worked.
+    final callsign = (n.meta['callsign'] ?? '').toString();
+    if (callsign.isEmpty) return;
     final firstSeen = (n.meta['firstSeen'] as num?)?.toInt();
     widget.onOpenProfile
         ?.call(callsign, n.npub.isEmpty ? null : n.npub, firstSeen,
@@ -1977,6 +2027,10 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // NOT hubs. From the badge's "N devices" line. (XPRS → its own list; hubs →
   // the hubs panel.)
   Widget _devicesBody() {
+    _otherDevices = [
+      for (final m in RnsService.instance.observedDevices())
+        RnsGraphNode(m.cast<String, dynamic>())
+    ];
     final peers = _dedupPeers(_otherDevices.toList()
       ..sort((a, b) {
         final am = a.dm.isNotEmpty, bm = b.dm.isNotEmpty;
@@ -2032,15 +2086,23 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // Reachable XPRS devices, compact + one-tap to message. Opened from the
   // badge's "xprs" line.
   Widget _xprsDevicesBody() {
+    // `n.xprs` used to mean "announces a service that is not LXMF", so this
+    // list carried nameless destinations. `cls` is the core's verdict and is
+    // empty for anything that is not one of ours.
     final peers = _dedupPeers(_allNodes
-        .where((n) => n.kind != 'self' && n.xprs)
+        .where((n) => n.kind != 'self' && n.isDevice)
         .toList()
-      ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase())));
+      ..sort((a, b) {
+        // Stations, then people; reachable before merely seen; then by name.
+        if (a.cls != b.cls) return a.cls == 'user' ? 1 : -1;
+        if (a.reachable != b.reachable) return a.reachable ? -1 : 1;
+        return a.label.toLowerCase().compareTo(b.label.toLowerCase());
+      }));
     if (peers.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text('No XPRS devices reachable right now.',
+          child: Text('No XPRS devices heard yet.',
               textAlign: TextAlign.center,
               style: TextStyle(color: _gMuted, fontSize: 13)),
         ),
@@ -2160,16 +2222,19 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // deep-links into the Chat wapp — no conversation UI lives here any more.
   Widget _chatsBody() => _peopleList();
 
-  // Reachable, messageable peers (XPRS / NomadNet / Sideband), newest network
-  // heard. Tap a row → start messaging. Compact single-line rows.
+  // THE PEOPLE: X1 callsigns, and nothing else.
+  //
+  // This asked "can this thing receive a 1:1 message" — which is true of every
+  // NomadNet and Sideband peer on the network, and of a bare Reticulum
+  // destination with no name at all. The screen listed `724d76c1` as a person
+  // with a Follow button, and left out X1VCVM, who is one. A person here is a
+  // device the core classified as a user (XPRS.md 3.1: `X1`).
   Widget _peopleList() {
-    final peers = _dedupPeers(_allNodes.where((n) {
-      if (n.kind == 'self') return false;
-      final pubkey = (n.meta['pubkey'] ?? '').toString();
-      return n.dm.isNotEmpty && pubkey.isNotEmpty; // can receive a 1:1 message
-    }).toList()
+    final peers = _dedupPeers(_allNodes
+        .where((n) => n.kind != 'self' && n.cls == 'user')
+        .toList()
       ..sort((a, b) {
-        if (a.xprs != b.xprs) return a.xprs ? -1 : 1; // our devices top
+        if (a.reachable != b.reachable) return a.reachable ? -1 : 1;
         return a.label.toLowerCase().compareTo(b.label.toLowerCase());
       }));
     if (peers.isEmpty) {
@@ -2177,7 +2242,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         child: Padding(
           padding: EdgeInsets.all(22),
           child: Text(
-              'No reachable people right now.\n\nDevices that announce LXMF — xprs, NomadNet or Sideband — appear here as they are heard.',
+              'No people heard yet.\n\nAn X1 callsign appears here as soon as this device hears it — over a radio, over the LAN, or through a hub.',
               textAlign: TextAlign.center,
               style: TextStyle(color: _gMuted, fontSize: 13)),
         ),
@@ -2487,22 +2552,56 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
               ]),
         );
 
+    // TWO BLOCKS, AND THE DIFFERENCE BETWEEN THEM IS THE WHOLE POINT.
+    //
+    // Everything here used to be one list under one heading, so a Reticulum
+    // -wide figure ("Live now 914") sat directly beneath a count of our own
+    // devices and read as the same kind of thing. Worse, "Running XPRS"
+    // answered a different question from the map beside it — 715 against six —
+    // because the stored column asked "announces one of our service hashes"
+    // and the map asked "can I name it".
+    int at(String group, String field) {
+      final g = _counts[group];
+      if (g is Map && g[field] is int) return g[field] as int;
+      return 0;
+    }
+
+    final unnamed = (_counts['unnamed'] is int) ? _counts['unnamed'] as int : 0;
     return ListView(padding: const EdgeInsets.all(14), children: [
-      const Text('DEVICES SEEN (PERSISTENT)',
+      const Text('XPRS DEVICES',
           style: TextStyle(color: _gMuted, fontSize: 10, letterSpacing: 0.5)),
       const SizedBox(height: 4),
-      stat('All time', '$total'),
-      stat('Running XPRS', '$geo', color: _gGeo),
+      stat('Reachable now', '${at('devices', 'reachable')}', color: _gGeo),
+      stat('Heard recently', '${at('devices', 'seen')}'),
+      stat('People (X1)', '${at('users', 'reachable')} of '
+          '${at('users', 'seen')}'),
+      stat('Stations (X2/X3)', '${at('stations', 'reachable')} of '
+          '${at('stations', 'seen')}'),
+      stat('Seen all time', '$geo'),
+      if (unnamed > 0) stat('Running XPRS, but unnamed', '$unnamed'),
+      const SizedBox(height: 4),
+      const Text(
+          'A device is one of ours when we can put a callsign to it: heard as '
+          'an XPRS packet, or announced with a key that produces the name. A '
+          'node running this software that never says who it is cannot be '
+          'addressed, so it is counted here and shown nowhere.',
+          style: TextStyle(color: _gMuted, fontSize: 11)),
+      const Divider(color: _gBorder, height: 28),
+      const Text('THE RETICULUM NETWORK AROUND US',
+          style: TextStyle(color: _gMuted, fontSize: 10, letterSpacing: 0.5)),
+      const SizedBox(height: 4),
+      stat('Nodes seen, all time', '$total'),
       stat('Active (24h)', '$seen24h'),
       stat('Live now', '$live'),
       stat('Online now', '$online'),
-      stat('Messageable now (LXMF)', '$lxmfReach', color: _gGeo),
+      stat('Messageable now (LXMF)', '$lxmfReach'),
       stat('First ever seen', date(oldest)),
       const SizedBox(height: 4),
       const Text(
-          'Counts are from the on-disk cache in this wapp\'s data folder, so '
-          'first-seen and totals persist across restarts. The live graph is a '
-          'sampled view — not a hub\'s full roster.',
+          'Other people\'s devices — NomadNet, Sideband, anything else on '
+          'Reticulum. Counted from the on-disk cache, so the totals persist '
+          'across restarts; the live graph is a sampled view, not a hub\'s '
+          'full roster.',
           style: TextStyle(color: _gMuted, fontSize: 11)),
       const Divider(color: _gBorder, height: 28),
       SwitchListTile(

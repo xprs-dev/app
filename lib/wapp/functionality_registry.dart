@@ -251,11 +251,22 @@ class FunctionalityRegistry {
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef('hal_rns_hubs', 'Configured bootstrap hubs [{endpoint,connected}]', [],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
-      EndpointDef('hal_rns_nodes', 'Observed network graph {nodes,edges} (filtered)', [
-        ParamDef('filter', 'string',
-            'JSON {service,xprsOnly,search,role} (empty = none); role is '
-            'super|archive|normal and buckets a node by what it serves'),
-      ], ReturnDef('int', 'Bytes written, negated required size if too small')),
+      EndpointDef(
+          'hal_rns_nodes',
+          'Observed network graph {nodes,edges,counts} (filtered). Each node '
+          'carries the core\'s verdict: class (user|station|device|empty), '
+          'mobility (fixed|movable), meta.bearers (every lane that reaches it, '
+          'rns included), meta.reachable and meta.evidence. `counts` is '
+          '{users,stations,devices}:{seen,reachable} plus hubs and unnamed. A '
+          'Reticulum destination with no XPRS callsign is not a device: with '
+          'xprsOnly it is absent, and it never carries a class',
+          [
+            ParamDef('filter', 'string',
+                'JSON {service,xprsOnly,search,role,localOnly} (empty = none); '
+                'role is super|archive|normal and buckets a node by what it '
+                'serves; xprsOnly keeps only devices we can name'),
+          ],
+          ReturnDef('int', 'Bytes written, negated required size if too small')),
     ]),
     'hal.node': FunctionalityDef('hal.node',
         'The directory role: what this device answers for, and at whose invitation', [
