@@ -33,6 +33,8 @@ import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
 import '../receive/core_state.dart';
 import 'xprs_id.dart';
+import '../social/retention_tier.dart';
+import 'xprs_archive_policy.dart';
 import 'xprs_packet.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
@@ -45,15 +47,22 @@ import '../../platform/fs.dart';
 /// consumed the moment it is heard; store-and-forward never carries them and
 /// a history page re-airing day-old receipts wastes the page. `command` IS
 /// kept: section 36.1 calls a command to a sleeping station mail.
-const Set<String> kXprsNeverArchived = {'ping', 'pong', 'receipt', 'result'};
+// `kXprsNeverArchived` now lives with the rest of the admission rule, in
+// xprs_archive_policy.dart, and is re-exported here for its existing readers.
+export 'xprs_archive_policy.dart' show kXprsNeverArchived;
 
 class _Pending {
-  _Pending(this.p, this.bearer, this.rssi, this.own, this.nowMs);
+  _Pending(this.p, this.bearer, this.rssi, this.own, this.nowMs, this.tier);
   final XprsPacket p;
   final String bearer;
   final int rssi;
   final bool own;
   final int nowMs;
+
+  /// Which shelf the admission rule put it on (xprs_archive_policy.dart).
+  /// Stored with the row, because retention reads it: mine and the people I
+  /// follow are exempt from the caps, strangers are what the quota bounds.
+  final Tier tier;
 }
 
 class XprsArchive {
@@ -101,9 +110,16 @@ class XprsArchive {
   /// (RnsService.pubkeyForCallsign in production) so tests need no node.
   Uint8List? Function(String baseCallsign)? keyResolver;
 
-  /// Callsigns whose packets the byte cap never evicts — the xprs wapp's
-  /// favourites can be wired in later without a schema change. Null = none.
-  Set<String> Function()? protectedCallsigns;
+  /// The base callsigns of the people this operator follows.
+  ///
+  /// The middle tier of XPRS.md 12, and the reason a pocket phone keeps
+  /// anything at all beyond its own words. Rebuilt by RnsService whenever the
+  /// follow list changes — never derived per packet, which would put a bech32
+  /// encode in the receive funnel.
+  ///
+  /// This replaces `protectedCallsigns`, a hook that was declared, plumbed
+  /// into the eviction SQL, and never written by anybody.
+  Set<String> followed = const {};
 
   /// Counters for /api and for honest logs.
   int admitted = 0, dropped = 0, forged = 0;
@@ -147,8 +163,24 @@ class XprsArchive {
           viac   INTEGER NOT NULL DEFAULT 0,
           heard  INTEGER NOT NULL DEFAULT 1,
           last   INTEGER NOT NULL,
+          tier   INTEGER NOT NULL DEFAULT 2,
           wire   TEXT NOT NULL
         )''');
+      // v1: the shelf a row sits on — 0 mine, 1 followed, 2 stranger. Older
+      // databases predate the three tiers and have everything on one shelf, so
+      // the column is added and backfilled once: our own traffic and our mail
+      // are ours; the followed pass runs at the first flush after the follow
+      // list is known (see _retierFollowed).
+      final cols = {
+        for (final r in db.select('PRAGMA table_info(packets)'))
+          r['name'] as String
+      };
+      if (!cols.contains('tier')) {
+        db.execute(
+            'ALTER TABLE packets ADD COLUMN tier INTEGER NOT NULL DEFAULT 2');
+        db.execute('UPDATE packets SET tier = 0 WHERE own = 1 OR mine = 1');
+      }
+      db.execute('CREATE INDEX IF NOT EXISTS idx_pk_tier ON packets(tier, pts)');
       db.execute('CREATE INDEX IF NOT EXISTS idx_pk_pts ON packets(pts)');
       db.execute(
           'CREATE INDEX IF NOT EXISTS idx_pk_from ON packets(fromc, pts)');
@@ -203,6 +235,10 @@ class XprsArchive {
     int rssi = 0,
     bool own = false,
     int? nowMs,
+    /// Which shelf, when the caller has already decided (the ingest funnel
+    /// always has). Omitted, our own traffic is ours and anything else is a
+    /// stranger's — the safe reading for a direct caller.
+    Tier? tier,
   }) {
     debugOnAdmit?.call(p);
     if (_db == null) return;
@@ -212,8 +248,9 @@ class XprsArchive {
       _pending.removeAt(0);
       dropped++;
     }
-    _pending.add(_Pending(
-        p, bearer, rssi, own, nowMs ?? DateTime.now().millisecondsSinceEpoch));
+    _pending.add(_Pending(p, bearer, rssi, own,
+        nowMs ?? DateTime.now().millisecondsSinceEpoch,
+        tier ?? (own ? Tier.self : Tier.stranger)));
     if (_pending.length >= _flushEarlyAt) flush();
   }
 
@@ -247,8 +284,8 @@ class XprsArchive {
       db.execute('BEGIN');
       final ins = db.prepare('''
         INSERT INTO packets(id,ts,pts,type,fromc,toc,bearer,rssi,mine,own,
-                            sig,viac,heard,last,wire)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)
+                            sig,viac,heard,last,tier,wire)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
           heard = heard + 1,
           last  = excluded.last,
@@ -257,6 +294,9 @@ class XprsArchive {
           own   = MAX(own, excluded.own),
           wire  = CASE WHEN excluded.viac < viac
                        THEN excluded.wire ELSE wire END,
+          -- The best shelf wins: hearing a stranger's copy of a followed
+          -- station's packet must never demote the row we already keep.
+          tier  = MIN(tier, excluded.tier),
           viac  = MIN(viac, excluded.viac)''');
       try {
         for (final e in batch) {
@@ -298,6 +338,7 @@ class XprsArchive {
             sig.index,
             xprsVia(p).length,
             e.nowMs,
+            e.tier.index,
             p.encode(),
           ]);
           admitted++;
@@ -424,10 +465,13 @@ class XprsArchive {
         // station cannot check without it (§18.1). Bounded by construction —
         // `_collapseIdentities` keeps two rows per callsign, ever — so ten
         // thousand distinct stations is about 3.6 MB against a 500 MB spool.
+        // A followed station's traffic does not age out either (30.3), so the
+        // age pass is a strangers' pass: `tier = 2`, with our own beacons the
+        // one thing of ours that still expires.
         db.execute(
             'DELETE FROM packets WHERE pts < ? '
-            "AND (own = 0 OR type = 'observation') AND mine = 0 "
-            "AND type != 'identity'",
+            "AND (tier = 2 OR (own = 1 AND type = 'observation')) "
+            "AND mine = 0 AND type != 'identity'",
             [now - maxAgeDays * 86400000]);
         db.execute(
             'DELETE FROM mailbox_decl WHERE until IS NOT NULL AND until < ?',
@@ -443,11 +487,15 @@ class XprsArchive {
     try {
       final bytes = _dataBytes(db);
       if (bytes <= maxBytes) return;
-      final prot = protectedCallsigns?.call() ?? const <String>{};
-      final protSql = prot.isEmpty
-          ? ''
-          : ' AND fromc NOT IN (${List.filled(prot.length, '?').join(',')})';
-      final protList = prot.toList();
+      // The cap is the STRANGERS' quota. Mine and the people I follow are
+      // exempt by tier (XPRS.md 30.3: "a station holds the notes of the people
+      // its operator follows and never drops them… and it discards a
+      // stranger's chatter within hours"), so the number the operator sets is
+      // honestly a bound on other people's traffic rather than on everything.
+      //
+      // This replaces a `fromc NOT IN (?,?,…)` list built from a hook nobody
+      // ever wrote to — one bound parameter per followed callsign, per prune.
+      const tierSql = ' AND tier = 2';
       // Identity is exempt here too, and for a sharper reason than age: the
       // cap evicts OLDEST FIRST, and a key binding heard long ago is precisely
       // the row most likely to be oldest and least likely to be re-heard soon.
@@ -455,7 +503,7 @@ class XprsArchive {
       // that cannot be re-derived from anything else on disk.
       final rows = db
           .select('SELECT COUNT(*) c FROM packets WHERE own=0 AND mine=0'
-              " AND type != 'identity'$protSql", protList)
+              " AND type != 'identity'$tierSql")
           .first['c'] as int;
       if (rows == 0) return;
       final avg = (bytes / rows).clamp(64, 1 << 20);
@@ -467,19 +515,70 @@ class XprsArchive {
       // `t:mailbox hold:` names us) — the last thing an archiver may drop. So
       // the eviction order is (class asc, pts asc), not pts alone: a declared
       // recipient's message outlives a stranger's chatter even when it is
-      // older. own/mine/identity/protected stay exempt as before.
+      // older. own, mine, identity and every non-stranger tier stay exempt.
       db.execute(
           'DELETE FROM packets WHERE id IN '
           "(SELECT id FROM packets WHERE own=0 AND mine=0 AND type != 'identity'"
-          '$protSql ORDER BY (CASE '
+          '$tierSql ORDER BY (CASE '
           "WHEN toc = '' THEN 1 "
           'WHEN EXISTS(SELECT 1 FROM mailbox_decl md WHERE md.fromc = packets.toc '
           'AND md.pos >= 0 AND (md.until IS NULL OR md.until >= ?)) THEN 3 '
           'ELSE 2 END) ASC, pts ASC LIMIT ?)',
-          [...protList, now, drop]);
+          [now, drop]);
       db.execute('PRAGMA incremental_vacuum;');
     } catch (e) {
       LogService.instance.add('XPRS archive: cap prune failed: $e');
+    }
+  }
+
+  /// Move rows between shelves when the follow list changes.
+  ///
+  /// Following somebody should protect what they already said, and unfollowing
+  /// should let it age like anyone else's — otherwise the tier would only ever
+  /// describe traffic heard after the decision. Rare and indexed: it runs when
+  /// the operator follows or unfollows, not on any packet path.
+  void retier({Set<String> promoted = const {}, Set<String> demoted = const {}}) {
+    final db = _db;
+    if (db == null) return;
+    try {
+      for (final c in promoted) {
+        db.execute('UPDATE packets SET tier = 1 WHERE fromc = ? AND tier = 2',
+            [_base(c)]);
+      }
+      for (final c in demoted) {
+        db.execute('UPDATE packets SET tier = 2 WHERE fromc = ? AND tier = 1',
+            [_base(c)]);
+      }
+    } catch (e) {
+      LogService.instance.add('XPRS archive: retier failed: $e');
+    }
+  }
+
+  /// How many rows sit on each shelf — what the Archiver screen shows, and the
+  /// only honest answer to "what is this device keeping, and for whom".
+  ///
+  /// One indexed GROUP BY, read when the screen refreshes (the archive fires
+  /// `core.archive` at most every 20 s), never per packet.
+  ({int own, int followed, int stranger, int total}) countsByTier() {
+    final db = _db;
+    if (db == null) return (own: 0, followed: 0, stranger: 0, total: 0);
+    try {
+      var mine = 0, fol = 0, str = 0;
+      for (final r in db.select('SELECT tier, COUNT(*) c FROM packets '
+          'GROUP BY tier')) {
+        final n = (r['c'] as int?) ?? 0;
+        switch ((r['tier'] as int?) ?? 2) {
+          case 0:
+            mine = n;
+          case 1:
+            fol = n;
+          default:
+            str = n;
+        }
+      }
+      return (own: mine, followed: fol, stranger: str, total: mine + fol + str);
+    } catch (_) {
+      return (own: 0, followed: 0, stranger: 0, total: 0);
     }
   }
 
@@ -649,11 +748,19 @@ class XprsArchive {
     List<String>? to,
     int limit = 200,
     String? rankFor,
+    /// Answer only from this station's OWN traffic.
+    ///
+    /// What a private station serves a stranger (XPRS.md 12: it "serves its
+    /// own publications to whoever asks over the radio"). Serving the followed
+    /// shelf as well would publish the follow list, which 16.2 keeps on the
+    /// device.
+    bool ownOnly = false,
   }) {
     final db = _db;
     if (db == null) return const [];
     final where = StringBuffer('1=1');
     final args = <Object?>[];
+    if (ownOnly) where.write(' AND own = 1');
     // Ask for the rows you will render, not a page you will sieve.
     //
     // The chat rooms asked for "the newest 48 messages" and filtered on their

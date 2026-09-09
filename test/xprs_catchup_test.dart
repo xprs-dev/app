@@ -82,13 +82,13 @@ void main() {
 
   test('xprsArchivers unifies the push list and the mailbox-hold list', () {
     final prefs = PreferencesService.instanceSync!;
-    prefs.xprsAlwaysOnArchivers = const ['X3RLY7', 'X32DVA'];
+    prefs.xprsNamedArchivers = const ['X3RLY7', 'X32DVA'];
     prefs.xprsMailboxHold = 'X32DVA,CT1ABC'; // one overlap, one new
     // Supers first (they drive the 36 push), hold-only appended, deduped.
     expect(prefs.xprsArchivers, ['X3RLY7', 'X32DVA', 'CT1ABC']);
     // The unified setter keeps both legacy keys in step — one list, two roles.
     prefs.xprsArchivers = const ['X5AAA', 'X5BBB'];
-    expect(prefs.xprsAlwaysOnArchivers, ['X5AAA', 'X5BBB']);
+    expect(prefs.xprsNamedArchivers, ['X5AAA', 'X5BBB']);
     expect(prefs.xprsMailboxHold, 'X5AAA,X5BBB');
     // Leave no state for the shared singleton's next test.
     prefs.xprsArchivers = const [];
@@ -363,7 +363,7 @@ void main() {
   /// A device with nothing configured and nothing fetched yet.
   void freshInstall() {
     final prefs = PreferencesService.instanceSync!;
-    prefs.xprsAlwaysOnArchivers = const [];
+    prefs.xprsNamedArchivers = const [];
     prefs.xprsCatchupMarks = const {};
   }
 
@@ -383,7 +383,7 @@ void main() {
     await XprsCatchup.instance.tick(_self);
     expect(aired.where((w) => w.contains('d:X3SUPR')), hasLength(1),
         reason: 'a station in earshot is already in the heard list');
-    expect(PreferencesService.instanceSync!.xprsAlwaysOnArchivers, isEmpty,
+    expect(PreferencesService.instanceSync!.xprsNamedArchivers, isEmpty,
         reason: 'and nothing the radio heard may edit the operator list');
   });
 

@@ -2864,7 +2864,7 @@ class RnsService {
     // XprsCatchup records). Computed once, outside both filter sites.
     final namedSupers = <String>{
       for (final c
-          in PreferencesService.instanceSync?.xprsAlwaysOnArchivers ??
+          in PreferencesService.instanceSync?.xprsNamedArchivers ??
               const <String>[])
         _bareUpper(c),
     }..remove('');

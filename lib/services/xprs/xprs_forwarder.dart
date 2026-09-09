@@ -79,7 +79,7 @@ class XprsForwarder {
     }
 
     // Where X actually is: the recipient's word, then the freshest sighting.
-    final supers = PreferencesService.instanceSync?.xprsAlwaysOnArchivers ??
+    final named = PreferencesService.instanceSync?.xprsNamedArchivers ??
         const <String>[];
     final candidates = <String>[
       ...XprsArchive.instance.holdersFor(target),
@@ -98,9 +98,9 @@ class XprsForwarder {
       XprsGossip.instance.askAlwaysOn(target,
           publish: (w) async =>
               XprsPublisher.instance.publishWire(w, slot: 'ask:$target'),
-          alwaysOnArchivers: supers,
+          alwaysOnArchivers: named,
           selfBase: selfBase);
-      for (final sa in supers) {
+      for (final sa in named) {
         final g = sa.trim().toUpperCase();
         if (g.isEmpty || g == selfBase || via.contains(g)) continue;
         gateway = g;

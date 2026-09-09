@@ -717,7 +717,7 @@ class XprsPublisher {
     // configured super, on the lane the hubs do carry (36.12.1), and only for
     // wires meant for everybody -- mail has a d: and its own custody path.
     final supers =
-        PreferencesService.instanceSync?.xprsAlwaysOnArchivers ?? const <String>[];
+        PreferencesService.instanceSync?.xprsNamedArchivers ?? const <String>[];
     if (supers.isNotEmpty) {
       for (final w in wires) {
         final p = XprsPacket.parse(w);

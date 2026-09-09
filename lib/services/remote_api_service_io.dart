@@ -1568,25 +1568,47 @@ class RemoteApiService {
         });
       }
       // Configure the always-on archivers this station leans on (36.9.4).
-      if (req.method == 'POST' && path == '/api/xprs/super') {
-        final data = await _body(req);
-        final list = (data['supers'] as List?)
-                ?.map((e) => e.toString().trim().toUpperCase())
-                .where((e) => e.isNotEmpty)
-                .toList() ??
-            const <String>[];
+      // What this station keeps, and for whom (XPRS.md 12). Reads and writes
+      // the three tiers; every field optional, so a caller may flip one.
+      if (path == '/api/xprs/archiver' ||
+          (req.method == 'POST' && path == '/api/xprs/super')) {
         final prefs = PreferencesService.instanceSync;
-        if (data.containsKey('supers')) prefs?.xprsAlwaysOnArchivers = list;
-        // {"be": true} — BE one. An always-on archiver keeps every callsign's
-        // gossip and every public wire, announces `serve:archive,super`, and
-        // is what a station with no radio in earshot asks for Global chat
-        // (36.9.4). Somebody on the internet has to be one or there is
-        // nowhere for the rest to pull from.
-        if (data.containsKey('be')) {
-          prefs?.xprsAlwaysOnArchiver = data['be'] == true;
-          // An always-on archiver mirrors releases (docs: the phone fetches by sha
-          // from an always-on archiver, which fetched from xprs.dev). Becoming one
-          // at runtime starts the mirror now rather than at the next boot.
+        // `/api/xprs/super` is the old name, kept one release. `be` meant
+        // "become the always-on archiver", which now requires being a public
+        // archiver first, so it sets both.
+        final legacy = path == '/api/xprs/super';
+        final data =
+            req.method == 'POST' ? await _body(req) : const <String, dynamic>{};
+        final listKey = legacy ? 'supers' : 'archivers';
+        if (data.containsKey(listKey)) {
+          prefs?.xprsNamedArchivers = (data[listKey] as List?)
+                  ?.map((e) => e.toString().trim().toUpperCase())
+                  .where((e) => e.isNotEmpty)
+                  .toList() ??
+              const <String>[];
+        }
+        if (data.containsKey('public')) {
+          await prefs?.setXprsPublicArchiver(data['public'] == true);
+        }
+        if (data.containsKey('keepFollowed')) {
+          await prefs?.setXprsKeepFollowed(data['keepFollowed'] == true);
+        }
+        if (data.containsKey('quotaMb')) {
+          final v = int.tryParse('${data['quotaMb']}');
+          if (v != null && v > 0) prefs?.xprsArchiveMaxMb = v;
+        }
+        if (data.containsKey('maxDays')) {
+          final v = int.tryParse('${data['maxDays']}');
+          if (v != null && v > 0) prefs?.xprsArchiveMaxDays = v;
+        }
+        final beKey = legacy ? 'be' : 'alwaysOn';
+        if (data.containsKey(beKey)) {
+          final on = data[beKey] == true;
+          if (legacy && on) await prefs?.setXprsPublicArchiver(true);
+          await prefs?.setXprsAlwaysOn(on);
+          // An always-on archiver mirrors releases (the phone fetches by sha
+          // from it, and it fetched from xprs.dev). Becoming one at runtime
+          // starts the mirror now rather than at the next boot.
           final m = UpdateMirrorService.instance;
           if (m.enabled && !m.isRunning) {
             await m.start();
@@ -1594,10 +1616,33 @@ class RemoteApiService {
             await m.stop();
           }
         }
+        // Every writer re-reads the snapshot the receive funnel uses.
+        XprsIngest.reloadPolicy();
+        if (data.isNotEmpty) {
+          MeshService.instance.applyArchiveLimits();
+        }
+        final counts = XprsArchive.instance.countsByTier();
         return _json(res, {
           'ok': true,
-          'supers': prefs?.xprsAlwaysOnArchivers ?? const <String>[],
-          'be': prefs?.xprsAlwaysOnArchiver ?? false,
+          'public': prefs?.xprsPublicArchiver ?? false,
+          'alwaysOn': prefs?.xprsAlwaysOn ?? false,
+          'alwaysOnStored': prefs?.xprsAlwaysOnStored ?? false,
+          'keepFollowed': prefs?.xprsKeepFollowed ?? true,
+          'quotaMb': prefs?.xprsArchiveMaxMb ?? 500,
+          'maxDays': prefs?.xprsArchiveMaxDays ?? 365,
+          'archivers': prefs?.xprsNamedArchivers ?? const <String>[],
+          'records': {
+            'own': counts.own,
+            'followed': counts.followed,
+            'stranger': counts.stranger,
+            'total': counts.total,
+          },
+          'followedCallsigns': XprsArchive.instance.followed.length,
+          if (legacy) ...{
+            'supers': prefs?.xprsNamedArchivers ?? const <String>[],
+            'be': prefs?.xprsAlwaysOn ?? false,
+            'deprecated': '/api/xprs/archiver',
+          },
         });
       }
       // Where can a callsign be reached (36.9.4 gossip + 13.12): the

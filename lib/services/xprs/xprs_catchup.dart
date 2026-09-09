@@ -150,7 +150,7 @@ class XprsCatchup {
   bool _operatorTrusted(String base, String selfCallsign) {
     if (base == _base(selfCallsign)) return true;
     final chosen =
-        PreferencesService.instanceSync?.xprsAlwaysOnArchivers ?? const <String>[];
+        PreferencesService.instanceSync?.xprsNamedArchivers ?? const <String>[];
     for (final c in chosen) {
       if (_base(c) == base) return true;
     }
@@ -479,7 +479,7 @@ class XprsCatchup {
     // whatever announced `serve:…,super` while this device was listening.
     final knownSupers = <String>[];
     for (final c in [
-      ...prefs.xprsAlwaysOnArchivers,
+      ...prefs.xprsNamedArchivers,
       // Every station this node has learned from a Reticulum ANNOUNCE.
       //
       // This is the list that makes a fresh install work, and the one that was

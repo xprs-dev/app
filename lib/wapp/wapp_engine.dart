@@ -39,6 +39,7 @@ import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_packet.dart';
 import '../services/xprs/xprs_receipt.dart';
 import '../services/xprs/xprs_send.dart';
+import '../services/xprs/xprs_ingest.dart';
 import '../services/xprs/xprs_publisher.dart';
 import '../services/xprs/xprs_vocab.dart';
 import '../services/xprs/xprs_redaction.dart';
@@ -3982,12 +3983,27 @@ class WappEngine {
         final v = kv.substring(eq + 1).trim();
         final prefs = PreferencesService.instanceSync;
         if (prefs == null) return -1;
+        final on = v == '1' || v == 'true';
         switch (key) {
+          // The three tiers of XPRS.md 12. `archive` and `serveHistory` were
+          // two switches that could disagree with each other and with the
+          // screen; both now mean "public archiver", one release of grace.
+          case 'public':
           case 'archive':
-            unawaited(prefs.setXprsArchive(v == '1' || v == 'true'));
-            return 0;
           case 'serveHistory':
-            unawaited(prefs.setXprsServeHistory(v == '1' || v == 'true'));
+            unawaited(prefs.setXprsPublicArchiver(on).then((_) {
+              XprsIngest.reloadPolicy();
+            }));
+            return 0;
+          case 'alwaysOn':
+            unawaited(prefs.setXprsAlwaysOn(on).then((_) {
+              MeshService.instance.applyArchiveLimits();
+            }));
+            return 0;
+          case 'keepFollowed':
+            unawaited(prefs.setXprsKeepFollowed(on).then((_) {
+              XprsIngest.reloadPolicy();
+            }));
             return 0;
           case 'archiveMaxMb':
             final n = int.tryParse(v);

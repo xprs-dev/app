@@ -30,6 +30,8 @@ import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
 import 'xprs_archive.dart';
+import 'xprs_archive_policy.dart';
+import '../social/retention_tier.dart';
 import 'xprs_groups.dart';
 import 'xprs_gossip.dart';
 import 'xprs_monitor.dart';
@@ -168,8 +170,13 @@ class XprsIngest {
   /// challenge". Discarding it is discarding the reason it was sent.
   ///
   /// It is also cheap, and bounded — see `XprsArchive._collapseIdentities`.
-  static bool _isPresence(String type) =>
-      type == 'observation' || type == 'service';
+  /// A packet meant for anybody rather than for one station: a status, a
+  /// reaction, or a message with no `d:`. What a public archiver keeps off the
+  /// internet without needing a declaration (12.9).
+  static bool _isPublication(XprsPacket p) =>
+      p.type == 'status' ||
+      p.type == 'reaction' ||
+      (p.type == 'message' && (p['d'] ?? '').trim().isEmpty);
 
   /// Whether this packet is worth the write.
   ///
@@ -177,22 +184,36 @@ class XprsIngest {
   /// when the asker names no `kind:` -- so without this the archive was
   /// storing, pruning and paying for rows the station had already decided it
   /// would never serve.
-  static bool _worthKeeping(XprsPacket p, {required bool forUs}) {
-    if (forUs) return true; // our own mail, whatever shape it takes
-    if (!_isPresence(p.type)) return true; // conversation, always
-    final prefs = PreferencesService.instanceSync;
-    // An always-on archiver's stock in trade IS the chatter: signed observations
-    // are the wires a `cmd:history kind:observation only:X` replay serves
-    // (36.9.4's bulk gossip). A super that discards them answers every such
-    // ask with a 404 by construction, whatever its gossip table knows —
-    // gossip stores digests, and a replay may only re-air original packets
-    // (36.1).
-    if (prefs?.xprsAlwaysOnArchiver ?? false) return true;
-    return prefs?.xprsKeepChatter ?? false;
+  /// What this station keeps and for whom, as one immutable snapshot.
+  ///
+  /// Read here rather than from the preference store because this is the
+  /// hottest path in the app (docs/performance.md 4.2): the old code asked
+  /// PreferencesService up to four times per packet. Every writer calls
+  /// [reloadPolicy]; nothing else may reach for a preference in this file.
+  static XprsArchivePolicy policy = const XprsArchivePolicy();
+
+  static void reloadPolicy() {
+    final p = PreferencesService.instanceSync;
+    if (p == null) return;
+    policy = XprsArchivePolicy(
+      public: p.xprsPublicArchiver,
+      alwaysOn: p.xprsAlwaysOn,
+      keepFollowed: p.xprsKeepFollowed,
+      keepChatter: p.xprsKeepChatter,
+    );
   }
 
-  static bool get _archiveOn =>
-      PreferencesService.instanceSync?.xprsArchive ?? true;
+  /// Whose traffic this is: ours, somebody we follow, or a stranger.
+  ///
+  /// One set lookup. The followed set is base callsigns, rebuilt by
+  /// RnsService when the follow list changes — never derived per packet, which
+  /// would mean a bech32 encode in the receive funnel.
+  static Tier _tierOf(String fromBase, bool forUs) {
+    if (forUs) return Tier.self;
+    return XprsArchive.instance.followed.contains(fromBase)
+        ? Tier.followed
+        : Tier.stranger;
+  }
 
   /// A packet heard over the air or over a local link. The complete receive
   /// surface calls this: BLE 0x41, BLE 0x58, and the courier's session lane.
@@ -318,12 +339,22 @@ class XprsIngest {
             // replays a roster from those packets and nothing else: keep none
             // and the station forgets every group it is in on restart.
             XprsGroups.instance.concernsUs(p, _base(selfCallsign));
-    if ((_archiveOn || forUs) && _worthKeeping(p, forUs: forUs)) {
+    final shelf = xprsAdmitTier(
+      tier: _tierOf(_base(from), forUs),
+      type: p.type,
+      publication: _isPublication(p),
+      declared: false, // the declaration rule is the internet lane's
+      internet: false,
+      policy: policy,
+      addressedToUs: forUs,
+    );
+    if (shelf != null) {
       // `admit` only QUEUES. Whoever needs to know a row exists listens to
       // `XprsArchive.onStored`, which fires from the flush for rows the
       // transaction actually wrote — a forged packet is dropped there, and a
       // watermark advanced here would have stepped straight over it.
-      XprsArchive.instance.admit(p, bearer: _archiveBearer(bearer), rssi: rssi);
+      XprsArchive.instance
+          .admit(p, bearer: _archiveBearer(bearer), rssi: rssi, tier: shelf);
     }
     // A message referencing a file binds that file's audience (§11.2): if we
     // come to hold the picture, we serve it to exactly the people the message
@@ -551,7 +582,7 @@ class XprsIngest {
   /// the whole reason a station keeps its own log (section 36.5).
   ///
   /// **This is the single recorder for outbound traffic, and it is not
-  /// optional.** It ignores the `xprsArchive` preference on purpose: that
+  /// optional.** It ignores the public-archiver switch on purpose: that
   /// preference governs whether this station indexes OTHER people's traffic,
   /// where the storage cost and the choice actually live. Switching the
   /// indexer off must not stop a station keeping its own log.
@@ -573,8 +604,19 @@ class XprsIngest {
       XprsOutbox.instance
           .noteSent(xprsIdentifier(p), (p['d'] ?? '').trim().toUpperCase());
     }
-    if (!_worthKeeping(p, forUs: false)) return;
-    XprsArchive.instance.admit(p, bearer: _archiveBearer(bearer), own: true);
+    // Our own, always — except our own beacons, which are chatter whoever
+    // sent them and were 139 of the newest 200 rows on the bench.
+    final shelf = xprsAdmitTier(
+      tier: Tier.self,
+      type: p.type,
+      publication: _isPublication(p),
+      declared: false,
+      internet: false,
+      policy: policy,
+    );
+    if (shelf == null) return;
+    XprsArchive.instance
+        .admit(p, bearer: _archiveBearer(bearer), own: true, tier: shelf);
     // Our own message binds the audience of any file it carries, so we serve
     // our own shared pictures to the same people we sent them to (§11.2).
     if (_describesFile(p)) {
@@ -757,8 +799,18 @@ class XprsIngest {
     if (p.type == 'mailbox') {
       // Acting on it requires a verified signature (13.12); recordMailboxDecl
       // enforces that. A declaration naming us is itself worth keeping.
-      if (XprsArchive.instance.recordMailboxDecl(p) && _archiveOn) {
-        XprsArchive.instance.admit(p, bearer: bearer);
+      if (XprsArchive.instance.recordMailboxDecl(p)) {
+        final shelf = xprsAdmitTier(
+          tier: _tierOf(_base(p['f'] ?? ''), false),
+          type: p.type,
+          publication: true, // a declaration is said to everybody
+          declared: true,
+          internet: true,
+          policy: policy,
+        );
+        if (shelf != null) {
+          XprsArchive.instance.admit(p, bearer: bearer, tier: shelf);
+        }
       }
       return;
     }
@@ -819,54 +871,35 @@ class XprsIngest {
       }
     }
 
-    if (!_archiveOn) return;
-
-    // An always-on archiver keeps the chatter (36.12.1): observations and
-    // identities are the wires its bulk-gossip replays serve, they are
-    // publications a gateway passes verbatim (36.1), and on a super they
-    // mostly ARRIVE over this lane — the boards dial in over Reticulum.
-    // The declaration rule below guards against spooling other people's
-    // MAIL off the internet; presence is not mail, and a super that
-    // refused it could never answer `kind:observation` about anyone.
-    final superKeeps =
-        (PreferencesService.instanceSync?.xprsAlwaysOnArchiver ?? false) &&
-        (p.type == 'observation' ||
-            p.type == 'identity' ||
-            p.type == 'service');
-
-    // A status is this network's public post (section 27), and a reaction is
-    // how it earns its place (6.5). Both are PUBLICATIONS -- meant to be
-    // passed on and read by strangers -- so the declaration rule, which
-    // exists to stop this station spooling other people's MAIL off the
-    // internet, does not apply to them. Without this the launcher only ever
-    // saw what the radio heard, and a station one hop away over a hub was
-    // invisible.
-    // What a publication IS on this lane: something written for everybody.
-    // A status (27) and the reaction that judges it (6.5) always are, and so
-    // is a `t:message` with NO `d:` -- that is the broadcast chat every
-    // station is meant to read, the Global chat room in the chat wapp. The
-    // declaration rule exists to stop this station spooling other people's
-    // MAIL off the internet, and mail is precisely the case that HAS a `d:`;
-    // it is still gated, still routed through custody. Without this, two
-    // stations on different internet connections could see each other's
-    // presence and never each other's words.
-    final publication =
-        p.type == 'status' ||
-        p.type == 'reaction' ||
-        (p.type == 'message' && toC.isEmpty);
-
-    final admitted =
-        superKeeps ||
-        publication ||
-        XprsArchive.instance.hasActiveDecl(fromC) ||
-        (toC.isNotEmpty && XprsArchive.instance.hasActiveDecl(toC));
-    if (!admitted) {
+    // THE ADMISSION RULE, the same one the radio lanes use
+    // (xprs_archive_policy.dart). What is particular to the internet is the
+    // DECLARATION: a hub replays the world at us, and a station does not spool
+    // the world on other people's behalf. So a stranger's mail is kept only
+    // when one end of it declared this station its mailbox (13.12), while a
+    // publication — a status (27), the reaction that judges it (6.5), or a
+    // `t:message` with no `d:`, which is the broadcast chat every station is
+    // meant to read — is kept because it was written for everybody.
+    //
+    // Presence off this lane is the always-on archiver's stock in trade
+    // (12.9.4): a `cmd:history kind:observation` replay may only re-air
+    // original packets, so a station that discarded them answers every such
+    // ask with a 404 by construction.
+    final shelf = xprsAdmitTier(
+      tier: _tierOf(fromC, false),
+      type: p.type,
+      publication: _isPublication(p),
+      declared: XprsArchive.instance.hasActiveDecl(fromC) ||
+          (toC.isNotEmpty && XprsArchive.instance.hasActiveDecl(toC)),
+      internet: true,
+      policy: policy,
+    );
+    if (shelf == null) {
       refusedRns++;
       final now = DateTime.now().millisecondsSinceEpoch;
       if (now - _lastRefuseLogMs > 60000) {
         _lastRefuseLogMs = now;
         LogService.instance.add(
-          'XPRS archive: rns refused (no declaration from $fromC — '
+          'XPRS archive: rns refused (nothing here keeps $fromC\'s traffic — '
           '$refusedRns refused so far)',
         );
       }
@@ -874,6 +907,6 @@ class XprsIngest {
     }
     // Same rule as the radio lanes: the watermark moves from
     // `XprsArchive.onStored`, once the row exists.
-    XprsArchive.instance.admit(p, bearer: bearer);
+    XprsArchive.instance.admit(p, bearer: bearer, tier: shelf);
   }
 }

@@ -13,7 +13,7 @@
  *      STORES it (the "so it can store it there" half — the store is the core's
  *      job, XprsArchive). A's outbound push of that copy to C is the
  *      publisher's addressed LXMF copy to each configured archiver
- *      (`XprsPublisher`, xprsAlwaysOnArchivers); that hop is a live Reticulum
+ *      (`XprsPublisher`, xprsNamedArchivers); that hop is a live Reticulum
  *      transport call, bench-validated per the spec §12.12.2 status, not a unit
  *      seam, so here we deliver A's signed wire into C's door exactly as the
  *      transport would and prove C spools it.
@@ -40,8 +40,10 @@ import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hex/hex.dart';
 import 'package:sqlite3/open.dart';
+import 'package:xprs/services/preferences_service.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_cadence.dart';
 import 'package:xprs/services/xprs/xprs_gossip.dart';
@@ -94,14 +96,19 @@ void main() {
         OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
   });
 
-  setUp(() {
+  setUp(() async {
+    // This station keeps other people's traffic, which since XPRS.md 12's
+    // tiers is a choice rather than the default.
+    SharedPreferences.setMockInitialValues({'flutter.xprs.public': true});
+    await PreferencesService.instance();
+    XprsIngest.reloadPolicy();
+
     tmp = Directory.systemTemp.createTempSync('xprsfed');
     keys = _Keys();
 
     a = XprsArchive.instance;
     a
       ..selfCallsign = 'X3ARC1' // the archiver under test, renamed per scenario
-      ..protectedCallsigns = null
       ..maxBytes = 500 * 1024 * 1024
       ..maxAgeDays = 365
       ..keyResolver = keys.resolve

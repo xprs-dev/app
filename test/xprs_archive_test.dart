@@ -10,6 +10,7 @@ import 'dart:typed_data';
 
 import 'dart:convert';
 
+import 'package:xprs/services/preferences_service.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_groups.dart';
 import 'package:xprs/services/xprs/xprs_id.dart';
@@ -19,6 +20,7 @@ import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_sig.dart';
 import 'package:xprs/services/xprs/xprs_vocab.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pointycastle/ecc/curves/secp256k1.dart';
 import 'package:sqlite3/open.dart';
 
@@ -45,13 +47,18 @@ void main() {
         OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
   });
 
-  setUp(() {
+  setUp(() async {
+    // This station keeps other people's traffic, which since XPRS.md 12's
+    // tiers is a choice rather than the default.
+    SharedPreferences.setMockInitialValues({'flutter.xprs.public': true});
+    await PreferencesService.instance();
+    XprsIngest.reloadPolicy();
+
     tmp = Directory.systemTemp.createTempSync('xprsarchive');
     a = XprsArchive.instance;
     a
       ..selfCallsign = 'X1SELF'
       ..keyResolver = null
-      ..protectedCallsigns = null
       ..maxBytes = 500 * 1024 * 1024
       ..maxAgeDays = 365
       ..admitted = 0

@@ -49,6 +49,7 @@ import '../xprs/xprs_gossip.dart';
 import '../xprs/xprs_group_keys.dart';
 import '../xprs/xprs_passphrases.dart';
 import '../xprs/xprs_publisher.dart';
+import '../xprs/xprs_station_policy.dart';
 import '../../wapp/android_foreground_service.dart';
 import '../xprs/xprs_archiver_choice.dart';
 import '../xprs/xprs_mailbox.dart';
@@ -287,11 +288,13 @@ class MeshService {
             .reversed
             .toList());
         if (n > 0) LogService.instance.add('XPRS: replayed $n group act(s)');
+        // The admission snapshot the receive funnel reads (12's three tiers).
+        XprsIngest.reloadPolicy();
         XprsHistoryServer.instance.install();
         XprsGossip.instance
             .init(wappsDataStorage(prefs).getAbsolutePath('xprs_gossip.sqlite3'));
-        if (prefs.xprsAlwaysOnArchiver) {
-          // The super budget (36.9.4): the table stops being pocket-sized.
+        if (prefs.xprsAlwaysOn) {
+          // 12.9.4: the table stops being pocket-sized.
           XprsGossip.instance.maxBytes = 256 * 1024 * 1024;
         }
         // 36.8.1: deliver the moment the recipient is heard. The funnel
@@ -611,7 +614,7 @@ class MeshService {
           });
         XprsFileServer.instance.depositAlternates = () => [
               for (final c
-                  in PreferencesService.instanceSync?.xprsAlwaysOnArchivers ??
+                  in PreferencesService.instanceSync?.xprsNamedArchivers ??
                       const <String>[])
                 if (c.trim().toUpperCase() != cs.toUpperCase()) c.trim()
             ];
@@ -1122,17 +1125,18 @@ class MeshService {
           envelope.with_('lifetime', xprsFmtDuration(_lifeBaseSec + upSec));
     }
 
-    // `serve:archive` (section 24): this station keeps a spool and answers
-    // cmd:history. The claim is "ask me", never a depth (31.3). Before the
+    // `serve:` (section 13): what this station offers. `archive` only when
+    // the operator made it a public archiver — silence is not consent (12) and
+    // a private phone announces nothing — and `files` only when it actually
+    // hosts any. The claim is "ask me", never a depth (30.3). Before the
     // neighbour fit, so its bytes count against the advert budget.
-    if ((PreferencesService.instanceSync?.xprsServeHistory ?? true) &&
-        XprsArchive.instance.ready) {
-      // `super` beside `archive`, never instead of it (24, 36.9.4).
-      envelope = envelope.with_(
-          'serve',
-          (PreferencesService.instanceSync?.xprsAlwaysOnArchiver ?? false)
-              ? 'archive,super,files'
-              : 'archive,files');
+    final claim = xprsServeClaim(
+      public: PreferencesService.instanceSync?.xprsPublicArchiver ?? false,
+      spoolReady: XprsArchive.instance.ready,
+      files: (PreferencesService.instanceSync?.archiveQuotaGb ?? 0) > 0,
+    );
+    if (claim != null) {
+      envelope = envelope.with_('serve', claim);
     }
 
     // Most relevant first, and this station's idea of relevant (section
@@ -1259,14 +1263,13 @@ class MeshService {
       envelope =
           envelope.with_('lifetime', xprsFmtDuration(_lifeBaseSec + upSec));
     }
-    if ((PreferencesService.instanceSync?.xprsServeHistory ?? true) &&
-        XprsArchive.instance.ready) {
-      // `super` beside `archive`, never instead of it (24, 36.9.4).
-      envelope = envelope.with_(
-          'serve',
-          (PreferencesService.instanceSync?.xprsAlwaysOnArchiver ?? false)
-              ? 'archive,super,files'
-              : 'archive,files');
+    final claim = xprsServeClaim(
+      public: PreferencesService.instanceSync?.xprsPublicArchiver ?? false,
+      spoolReady: XprsArchive.instance.ready,
+      files: (PreferencesService.instanceSync?.archiveQuotaGb ?? 0) > 0,
+    );
+    if (claim != null) {
+      envelope = envelope.with_('serve', claim);
     }
 
     // Leave room for the signature the fit cannot know about: ` sig:` plus 60
@@ -1511,6 +1514,22 @@ class MeshService {
       'min' || 'mins' || 'm' => n * 60,
       _ => n,
     };
+  }
+
+  /// Re-read the archive's limits and the admission policy after the operator
+  /// changes them, so a switch takes effect now rather than at the next boot.
+  void applyArchiveLimits() {
+    final prefs = PreferencesService.instanceSync;
+    if (prefs == null) return;
+    XprsArchive.instance
+      ..maxBytes = prefs.xprsArchiveMaxMb * 1024 * 1024
+      ..maxAgeDays = prefs.xprsArchiveMaxDays;
+    XprsIngest.reloadPolicy();
+    // The budget an always-on archiver runs its gossip table at (12.9.4:
+    // "budgets raised as far as the machine allows"). Set at start too;
+    // re-read here so becoming one does not need a restart.
+    XprsGossip.instance.maxBytes =
+        prefs.xprsAlwaysOn ? 256 * 1024 * 1024 : XprsGossip.defaultMaxBytes;
   }
 
   /// 36.8.1's release-on-hearing, throttled: one attempt per callsign per

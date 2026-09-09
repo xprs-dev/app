@@ -303,9 +303,69 @@ class PreferencesService {
     }
   }
 
-  bool get xprsArchive => _prefs.getBool('xprs.archive') ?? true;
-  Future<void> setXprsArchive(bool v) async {
-    await _prefs.setBool('xprs.archive', v);
+  /// PUBLIC ARCHIVER: this station keeps strangers' packets, within its quota,
+  /// and says so on the air with `serve:archive`.
+  ///
+  /// One switch where there were three that never met — `xprs.archive` (keep
+  /// what I hear), `xprs.serveHistory` (answer `cmd:history`) and
+  /// `xprs.superArchiver` (the old always-on flag). They could disagree, and
+  /// did: a stock phone kept every stranger's packet and announced
+  /// `serve:archive` while the Archiver screen showed the role as off.
+  ///
+  /// Default follows XPRS.md 12: a pocket phone "archives its operator's own
+  /// words and those of the callsigns they follow, and announces nothing",
+  /// while a powered station "archives everything it hears… and announces
+  /// `serve:archive`". Silence is not consent, so a phone starts private and
+  /// its operator opts in.
+  ///
+  /// Migration: a station that had explicitly turned EITHER legacy switch off
+  /// meant "do not keep other people's traffic", and stays private.
+  bool get xprsPublicArchiver {
+    final v = _prefs.getBool('xprs.public');
+    if (v != null) return v;
+    final legacyKeep = _prefs.getBool('xprs.archive');
+    final legacyServe = _prefs.getBool('xprs.serveHistory');
+    if (legacyKeep == false || legacyServe == false) return false;
+    return !_isPocketDevice;
+  }
+
+  Future<void> setXprsPublicArchiver(bool v) async {
+    await _prefs.setBool('xprs.public', v);
+    // The legacy keys are read once, above, and are meaningless afterwards.
+    await _prefs.remove('xprs.archive');
+    await _prefs.remove('xprs.serveHistory');
+  }
+
+  /// The further promise a plugged-in machine makes (XPRS.md 12.9.4): gossip
+  /// for every callsign with no need-to-know cap, budgets raised as far as the
+  /// machine allows, and a deposit point for other people's mail.
+  ///
+  /// The getter is EFFECTIVE, not stored: always-on is meaningless on a
+  /// station that is not public, and gating it here means no caller can get
+  /// the pair wrong. [xprsAlwaysOnStored] is the raw bit, for the screen.
+  ///
+  /// It is not a word on the wire. XPRS.md 13's `serve:` vocabulary has
+  /// `archive` and nothing above it; 12.9.4 describes an always-on archiver by
+  /// its qualities — addressable, deep, budgeted, concurrent, complete, awake
+  /// — and says plainly: "None of this is a separate role."
+  bool get xprsAlwaysOn => xprsPublicArchiver && xprsAlwaysOnStored;
+
+  bool get xprsAlwaysOnStored =>
+      _prefs.getBool('xprs.alwaysOn') ??
+      // The old flag, read once so a machine that was already an always-on
+      // archiver stays one across the update.
+      (_prefs.getBool('xprs.superArchiver') ?? false);
+
+  Future<void> setXprsAlwaysOn(bool v) async {
+    await _prefs.setBool('xprs.alwaysOn', v);
+    await _prefs.remove('xprs.superArchiver');
+  }
+
+  /// Keep the conversation of the callsigns this operator follows — the middle
+  /// tier of XPRS.md 12, and the one a pocket phone exists for.
+  bool get xprsKeepFollowed => _prefs.getBool('xprs.keepFollowed') ?? true;
+  Future<void> setXprsKeepFollowed(bool v) async {
+    await _prefs.setBool('xprs.keepFollowed', v);
   }
 
   int get xprsArchiveMaxMb => _prefs.getInt('xprs.archiveMaxMb') ?? 500;
@@ -320,13 +380,6 @@ class PreferencesService {
   String get xprsMailboxHold => _prefs.getString('xprs.mailboxHold') ?? '';
   set xprsMailboxHold(String v) => _prefs.setString('xprs.mailboxHold', v);
 
-  bool get xprsServeHistory => _prefs.getBool('xprs.serveHistory') ?? true;
-
-  /// Always-on archiver mode (XPRS.md 36.9.4): gossip for every callsign, no
-  /// need-to-know cap, raised budgets, `serve:archive,super` on the air.
-  /// Off by default — this is a deliberate offer for a server-class node.
-  bool get xprsAlwaysOnArchiver => _prefs.getBool('xprs.superArchiver') ?? false;
-  set xprsAlwaysOnArchiver(bool v) => _prefs.setBool('xprs.superArchiver', v);
 
   /// Mirror app releases over Reticulum for the phones around this station.
   ///
@@ -337,24 +390,32 @@ class PreferencesService {
   bool get updateMirrorEnabled => _prefs.getBool('update.mirror') ?? false;
   set updateMirrorEnabled(bool v) => _prefs.setBool('update.mirror', v);
 
-  /// Callsigns of always-on archivers this station may lean on (36.9.4): asked
-  /// on a gossip miss, and used as the custody deposit hop when no gateway
+  /// Callsigns of the archivers this station may lean on (12.9.4): asked on a
+  /// gossip miss, and used as the custody deposit hop when no gateway
   /// resolves. Reached over the directed LXMF lane -- the one the public
   /// hubs actually permit.
-  List<String> get xprsAlwaysOnArchivers =>
-      _prefs.getStringList('xprs.superArchivers') ?? const [];
-  set xprsAlwaysOnArchivers(List<String> v) =>
-      _prefs.setStringList('xprs.superArchivers', v);
+  ///
+  /// Named by the operator, so no inference is needed about them; every OTHER
+  /// station is judged by the qualities of 12.9.4 rather than by a word on the
+  /// air (see `xprsLooksAlwaysOn`).
+  List<String> get xprsNamedArchivers =>
+      _prefs.getStringList('xprs.namedArchivers') ??
+      _prefs.getStringList('xprs.superArchivers') ??
+      const [];
+  set xprsNamedArchivers(List<String> v) {
+    _prefs.setStringList('xprs.namedArchivers', v);
+    _prefs.remove('xprs.superArchivers');
+  }
 
   /// The ONE set of archiver devices this station chose: the stations it sends
   /// copies of its own publications to (XPRS 36) AND declares as its mailboxes
   /// with a signed `t:mailbox hold:` (36.7 — an archiver is also a mailbox).
   /// Unifies the two legacy lists so there is a single "my archivers" list:
-  /// callsigns in preference order, `xprsAlwaysOnArchivers` first (they drive the
-  /// 36 push and the gossip/custody lane), then any `xprsMailboxHold`-only ones
+  /// callsigns in preference order, `xprsNamedArchivers` first (they drive the
+  /// 12 push and the gossip/custody lane), then any `xprsMailboxHold`-only ones
   /// so an existing hold declaration is never lost.
   List<String> get xprsArchivers {
-    final out = <String>[...xprsAlwaysOnArchivers];
+    final out = <String>[...xprsNamedArchivers];
     for (final h in xprsMailboxHold
         .split(',')
         .map((c) => c.trim())
@@ -364,11 +425,11 @@ class PreferencesService {
     return out;
   }
 
-  /// Set the unified list, keeping both legacy keys in step so the 36 push
-  /// (reads `xprsAlwaysOnArchivers`) and the 13.12 declaration (aired from this)
-  /// agree — one list, two roles.
+  /// Set the unified list, keeping both keys in step so the 12 push (reads
+  /// `xprsNamedArchivers`) and the 13.12 declaration (aired from this) agree —
+  /// one list, two roles.
   set xprsArchivers(List<String> v) {
-    xprsAlwaysOnArchivers = v;
+    xprsNamedArchivers = v;
     xprsMailboxHold = v.join(',');
   }
 

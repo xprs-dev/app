@@ -27,10 +27,12 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await PreferencesService.instance();
     XprsMonitor.instance.debugReset();
-    // These tests are the POCKET case. The default resolves from the platform
-    // and the suite runs on a desktop, where keeping the spool is right, so it
-    // is stated rather than inherited.
+    // These tests are the POCKET case. Both defaults resolve from the platform
+    // and the suite runs on a desktop, where keeping the spool and being a
+    // public archiver are right, so both are stated rather than inherited.
     await PreferencesService.instanceSync!.setXprsKeepChatter(false);
+    await PreferencesService.instanceSync!.setXprsPublicArchiver(false);
+    XprsIngest.reloadPolicy();
     admitted = [];
     XprsArchive.instance.debugOnAdmit = (p) => admitted.add(p.type);
   });
@@ -66,9 +68,30 @@ void main() {
         reason: 'without the binding, nothing this station signs can be checked');
   });
 
-  test("a stranger's conversation still is", () {
+  test("and neither is a stranger's conversation, until the operator says so",
+      () {
+    // The tiers of XPRS.md 12: a pocket phone keeps "its operator's own words
+    // and those of the callsigns they follow", and "holds nothing for
+    // strangers until its operator says so". This device kept every stranger's
+    // message it overheard, by default, and its own screen offered no way to
+    // say otherwise.
+    heard('t:message f:X3R8XX ts:2026-08-22_06:00:00 scope:local m:hello');
+    expect(admitted, isEmpty);
+  });
+
+  test('a public archiver keeps it', () async {
+    await PreferencesService.instanceSync!.setXprsPublicArchiver(true);
+    XprsIngest.reloadPolicy();
     heard('t:message f:X3R8XX ts:2026-08-22_06:00:00 scope:local m:hello');
     expect(admitted, ['message']);
+  });
+
+  test('and so does a private phone, for somebody it follows', () {
+    XprsArchive.instance.followed = const {'X3R8XX'};
+    addTearDown(() => XprsArchive.instance.followed = const {});
+    heard('t:message f:X3R8XX ts:2026-08-22_06:00:00 scope:local m:hello');
+    expect(admitted, ['message'],
+        reason: 'the middle tier, and what a pocket archiver is for');
   });
 
   test('presence addressed to US survives the filter', () {
@@ -85,8 +108,11 @@ void main() {
         reason: 'section 36.5 keeps our log, not our heartbeat');
   });
 
-  test('a desktop archiver can still spool presence', () async {
+  test('a public archiver that wants chatter can still spool presence',
+      () async {
+    await PreferencesService.instanceSync!.setXprsPublicArchiver(true);
     await PreferencesService.instanceSync!.setXprsKeepChatter(true);
+    XprsIngest.reloadPolicy();
     heard('t:observation f:X3R8XX link:ble peers:4');
     expect(admitted, ['observation'],
         reason: 'an indexer answering for somebody else wants the spool');

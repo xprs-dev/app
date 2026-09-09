@@ -15,6 +15,8 @@ import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_publisher.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:xprs/services/preferences_service.dart';
 import 'package:sqlite3/open.dart';
 
 final BigInt _d =
@@ -57,13 +59,17 @@ void main() {
         OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
   });
 
-  setUp(() {
+  setUp(() async {
+    // This station answers for other people, which since the archiver tiers
+    // (XPRS.md 12) is a deliberate choice rather than the default: a private
+    // station serves a stranger only its own publications.
+    SharedPreferences.setMockInitialValues({'flutter.xprs.public': true});
+    await PreferencesService.instance();
     tmp = Directory.systemTemp.createTempSync('xprshist');
     a = XprsArchive.instance;
     a
       ..selfCallsign = 'X1SELF'
       ..keyResolver = null
-      ..protectedCallsigns = null
       ..maxBytes = 500 * 1024 * 1024
       ..maxAgeDays = 365
       ..init('${tmp.path}/xprs_archive.sqlite3');

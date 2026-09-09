@@ -221,7 +221,7 @@ class XprsBridge {
   /// name is skipped rather than shouted at.
   Future<void> _toArchivers(String wire, String id) async {
     final supers =
-        PreferencesService.instanceSync?.xprsAlwaysOnArchivers ?? const <String>[];
+        PreferencesService.instanceSync?.xprsNamedArchivers ?? const <String>[];
     if (supers.isEmpty) return;
     final parsed = XprsPacket.parse(wire);
     if (parsed == null) return;

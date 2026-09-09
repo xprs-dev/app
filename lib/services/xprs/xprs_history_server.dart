@@ -163,7 +163,12 @@ class XprsHistoryServer {
     // budget, which every command pays below.
     final archive = XprsArchive.instance;
     if (cmd == 'history') {
-      if (!(PreferencesService.instanceSync?.xprsServeHistory ?? true)) return;
+      // NOT a refusal any more. A station that keeps nothing for strangers
+      // still "serves its own publications to whoever asks" (12): a zero-
+      // archiver configuration is private, not mute. What changes is the
+      // SCOPE — see `_ownOnlyFor` below.
+      // (Followed rows are never served to a stranger: the follow list stays
+      // on the device, 16.2, and answering from it would publish it.)
       if (!archive.ready) return;
     }
 
@@ -242,6 +247,7 @@ class XprsHistoryServer {
         untilMs: untilMs,
         only: p['only'],
         types: _kinds(p) ?? XprsArchive.kXprsTalk.toList(),
+        ownOnly: _ownOnlyFor(from, selfBase: selfBase),
         limit: pageSize + 1);
     answered++;
 
@@ -324,22 +330,42 @@ class XprsHistoryServer {
   }
 
   bool _budgetAllows(String from, int now) {
-    // An always-on archiver (36.9.4) exists to be leaned on: thousands of asks a
+    // An always-on archiver (12.9.4) exists to be leaned on: thousands of asks a
     // minute is its design point, so the reference budgets scale rather
     // than apply.
-    final superScale =
-        (PreferencesService.instanceSync?.xprsAlwaysOnArchiver ?? false)
-            ? 1000
-            : 1;
+    final alwaysOnScale =
+        (PreferencesService.instanceSync?.xprsAlwaysOn ?? false) ? 1000 : 1;
     void trim(List<int> l) => l.removeWhere((t) => now - t > 3600000);
     trim(_asksGlobal);
     final mine = _asksBy.putIfAbsent(from, () => []);
     trim(mine);
-    if (_asksGlobal.length >= globalPerHour * superScale) return false;
+    if (_asksGlobal.length >= globalPerHour * alwaysOnScale) return false;
+    // Somebody we follow is not a stranger asking for airtime (30.2's tiers):
+    // they get the known budget, as a declared depositor does.
     final known = XprsArchive.instance.hasActiveDecl(from, nowMs: now) ||
+        XprsArchive.instance.followed.contains(from) ||
         XprsArchive.instance.keyResolver?.call(from) != null;
     return mine.length <
-        (known ? knownPerHour : strangerPerHour) * superScale;
+        (known ? knownPerHour : strangerPerHour) * alwaysOnScale;
+  }
+
+  /// Does this asker get only our own traffic?
+  ///
+  /// A private station (Public archiver off) keeps other people's packets for
+  /// nobody, so it has nothing of theirs to serve — but it still answers for
+  /// its own publications, which is what 12 means by a zero-archiver station
+  /// being "private, not findable", rather than mute. Ourselves and our own
+  /// devices always see everything.
+  static bool _ownOnlyFor(String from, {required String selfBase}) {
+    if (_base(from) == _base(selfBase)) return false;
+    return !(PreferencesService.instanceSync?.xprsPublicArchiver ?? false);
+  }
+
+  /// Asks heard in the last hour, for the Archiver screen.
+  int get asksLastHour {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _asksGlobal.removeWhere((t) => now - t > 3600000);
+    return _asksGlobal.length;
   }
 
   void _recordAsk(String from, int now) {
@@ -380,9 +406,6 @@ class XprsHistoryServer {
   List<String> serveInline(XprsPacket cmd, {required String selfBase}) {
     if (cmd.type != 'command' || (cmd['cmd'] ?? '') != 'history') return [];
     if (_base(cmd['d'] ?? '') != selfBase) return [];
-    if (!(PreferencesService.instanceSync?.xprsServeHistory ?? true)) {
-      return [];
-    }
     final archive = XprsArchive.instance;
     if (!archive.ready) return [];
     final from = _base(cmd['f'] ?? '');
@@ -399,7 +422,8 @@ class XprsHistoryServer {
         untilMs: xprsParseTs(cmd['until']) ?? (now + 1),
         only: cmd['only'],
         types: _kinds(cmd) ?? XprsArchive.kXprsTalk.toList(),
-        limit: inlinePageSize + 1);
+        limit: inlinePageSize + 1,
+        ownOnly: _ownOnlyFor(from, selfBase: selfBase));
     answered++;
     if (rows.isEmpty) {
       return [

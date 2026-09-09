@@ -115,7 +115,7 @@ class UpdateMirrorService extends BackgroundService {
   bool get enabled {
     final p = PreferencesService.instanceSync;
     if (p == null) return false;
-    return p.updateMirrorEnabled || p.xprsAlwaysOnArchiver;
+    return p.updateMirrorEnabled || p.xprsAlwaysOn;
   }
 
   @override

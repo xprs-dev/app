@@ -276,3 +276,48 @@ class XprsUnownedStations {
 
   void clear() => _lastHeard.clear();
 }
+
+/// What this station claims on the air, or null when it claims nothing.
+///
+/// XPRS.md 13's `serve:` vocabulary is a fixed set, and `archive` is the only
+/// word for the archiver role — there is nothing above it. The app used to air
+/// `archive,super`, a word no other implementation would recognise, to mean
+/// "always on"; 12.9.4 answers that directly: an always-on archiver is
+/// addressable, deep, budgeted, concurrent, complete and awake, and "None of
+/// this is a separate role." A peer works it out from `count:`, `uptime:` and
+/// whether it can be reached — see [xprsLooksAlwaysOn].
+///
+/// The claim is also honest about files now: `files` used to ride along with
+/// `archive` unconditionally, on phones hosting nothing.
+String? xprsServeClaim({
+  required bool public,
+  required bool spoolReady,
+  required bool files,
+}) {
+  final words = <String>[
+    if (public && spoolReady) 'archive',
+    if (files) 'files',
+  ];
+  return words.isEmpty ? null : words.join(',');
+}
+
+/// Does this station look like one worth leaning on (12.9.4)?
+///
+/// Never a word on the wire. [named] is what the operator wrote down, which
+/// needs no inference; everything else is judged by the qualities: it offers
+/// the archive role, it is addressable off-radio, and it is either deep
+/// (`count:`, 13.0.1 — records held, not callsigns heard) or long awake.
+bool xprsLooksAlwaysOn({
+  required String callsign,
+  required List<String> services,
+  required String bearer,
+  required int count,
+  required int uptimeSeconds,
+  required Set<String> named,
+}) {
+  if (named.contains(callsign.trim().toUpperCase())) return true;
+  if (!services.contains('archive')) return false;
+  // Addressable: reachable other than by standing next to it.
+  if (bearer != 'rns' && bearer != 'lan') return false;
+  return count >= 10000 || uptimeSeconds >= 7 * 24 * 3600;
+}

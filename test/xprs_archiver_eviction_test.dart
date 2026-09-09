@@ -38,7 +38,6 @@ void main() {
     a = XprsArchive.instance;
     a
       ..selfCallsign = 'X3ARC'
-      ..protectedCallsigns = null
       ..keyResolver = keys.resolve
       ..maxBytes = 1 << 30 // no cap while we load
       ..maxAgeDays = 1000000 // no age prune interfering
