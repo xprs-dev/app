@@ -275,6 +275,38 @@ store, no radio. That is how the dance was made to work before any of it
 reached a device, and it is the pattern for anything whose failure only shows
 up between machines.
 
+### Two archives, one admission rule (2026-09-09)
+
+This app keeps two unrelated things and had called both "the archive": the
+**packet spool** (`XprsArchive`, XPRS packets, capped in MB and days) and the
+**file store** (`MediaArchive`/`ArchiverService`, other people's media, capped
+in GB). They share no state, and the Archiver wapp's "Enable" switch governed
+the second while the station's archiver role lived in three other preferences —
+so a device announcing `serve:archive` showed the role as off.
+
+The rule for the spool is now ONE pure function, `xprsAdmitTier` in
+`lib/services/xprs/xprs_archive_policy.dart`, returning the shelf a packet
+lands on (`Tier.self` / `followed` / `stranger`) or null for "not kept". Every
+lane calls it — radio, Reticulum, our own transmissions — and nothing else
+decides. Three consequences worth keeping:
+
+- **The core owns the verdict, the wapp renders it.** The screen shows counts
+  per tier and flips switches; it never works out what is kept. Same rule as
+  everywhere else in this file.
+- **The tier is stored on the row** (`packets.tier`), so eviction is SQL, and
+  the byte cap is honestly the strangers' quota rather than a bound on
+  everything.
+- **Who is followed is pushed, never derived.** `RnsService` owns callsign↔key,
+  so it computes the followed callsigns when the follow list changes and hands
+  `XprsArchive.followed` a set. The receive funnel does one set lookup; the
+  alternative — deriving a callsign from a key per packet — is a bech32 encode
+  in the hottest path (performance.md 4.2).
+
+Always-on is a SETTING gated on being a public archiver, not a rank: nothing
+about it goes on the wire, and a peer infers it from `serve:archive` plus
+`count:`, `uptime:` and addressability (`xprsLooksAlwaysOn`). The app used to
+air `serve:archive,super`, a word XPRS.md 13's vocabulary does not contain.
+
 ### How a file is shared in chat (2026-09-08)
 
 A picture in a conversation is the case that touches every lane at once, so it

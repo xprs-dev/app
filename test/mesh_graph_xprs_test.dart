@@ -142,17 +142,16 @@ void main() {
     XprsMonitor.instance.clear();
   });
 
-  test('serve:archive,super survives parsing and reads as an always-on archiver',
-      () {
+  test('an older station\'s serve:archive,super parses as plain archive', () {
     XprsMonitor.instance.clear();
-    // The word is section 24 vocabulary and this device AIRS it (MeshService
-    // puts `serve:archive,super` on both beacons when always-on archiver mode is
-    // on). It used to be missing from kXprsServices, so our own receiver threw
-    // away a word our own transmitter sent, and nothing downstream could ever
-    // answer "is this an always-on archiver".
-    expect(kXprsServices.contains('super'), true);
+    // `super` was this app\'s own word for "always on" and section 13\'s
+    // vocabulary never had it: only this implementation aired it, and only
+    // this implementation could read it. Dropping it from kXprsServices IS
+    // the compatibility -- a station still running the old build announces
+    // `archive,super` and is heard, correctly, as an archiver.
+    expect(kXprsServices.contains('super'), false);
     final p = XprsPacket.parse('t:service f:X3SUPR serve:archive,super');
-    expect(xprsServices(p!), ['archive', 'super']);
+    expect(xprsServices(p!), ['archive']);
     // The whitelist still holds for everything else.
     expect(
         xprsServices(XprsPacket.parse('t:service f:X3SUPR serve:archive,bogus')!),
@@ -163,19 +162,57 @@ void main() {
             as List)
         .cast<Map<String, dynamic>>()
         .firstWhere((n) => n['id'] == 'xprs:X3SUPR');
-    expect((node['services'] as List), containsAll(['archive', 'super']));
-    expect((node['meta'] as Map)['role'], 'always-on archiver');
+    expect((node['services'] as List), ['archive']);
+    expect((node['meta'] as Map)['role'], 'indexer',
+        reason: 'it announced no depth and no uptime, so it is an archiver '
+            'like any other -- the claim alone never made it always-on');
     XprsMonitor.instance.clear();
   });
 
-  test('the role filter buckets supers, archivers and normal nodes', () async {
+  test('always-on is read off the qualities, never off a word (12.9.4)',
+      () async {
+    PreferencesService.resetForTest();
+    SharedPreferences.setMockInitialValues({});
+    await PreferencesService.instance();
+    XprsMonitor.instance.clear();
+    void hear(String wire, {String bearer = 'lan'}) => XprsMonitor.instance
+        .offer(XprsPacket.parse(wire)!, bearer: bearer, selfCallsign: 'X1TEST');
+
+    // Deep and addressable: the archive role, reachable off-radio, holding
+    // more records than any pocket device ever will.
+    hear('t:service f:X3DEEP serve:archive count:52869');
+    // The same depth with nothing but a radio in front of it is a station you
+    // have to stand next to -- not one to lean on while you are away.
+    hear('t:service f:X3LORA serve:archive count:52869', bearer: 'lora');
+    // Long awake counts as well as deep (10.5 spells the uptime `7d`).
+    hear('t:service f:X3AWKE serve:archive uptime:9d');
+    // Addressable and shallow: an ordinary archiver.
+    hear('t:service f:X3ARCH serve:archive count:12');
+
+    String roleOf(String call) => ((RnsService.instance
+                .graphSnapshot(includeXprs: true)['nodes'] as List)
+            .cast<Map<String, dynamic>>()
+            .firstWhere((n) => n['id'] == 'xprs:$call')['meta']
+        as Map)['role'] as String;
+
+    expect(roleOf('X3DEEP'), 'always-on archiver');
+    expect(roleOf('X3AWKE'), 'always-on archiver');
+    expect(roleOf('X3ARCH'), 'indexer');
+    expect(roleOf('X3LORA'), 'indexer',
+        reason: 'not addressable: depth on a radio-only station is not a '
+            'promise you can collect on from somewhere else');
+    XprsMonitor.instance.clear();
+  });
+
+  test('the role filter buckets always-on, archivers and normal nodes',
+      () async {
     PreferencesService.resetForTest();
     SharedPreferences.setMockInitialValues({});
     await PreferencesService.instance();
     XprsMonitor.instance.clear();
     void hear(String wire) => XprsMonitor.instance
         .offer(XprsPacket.parse(wire)!, bearer: 'lan', selfCallsign: 'X1TEST');
-    hear('t:service f:X3SUPR serve:archive,super');
+    hear('t:service f:X3SUPR serve:archive count:52869');
     hear('t:service f:X3ARCH serve:archive');
     hear('t:observation f:X3PHON link:lan peers:1');
 
@@ -191,13 +228,17 @@ void main() {
     expect(idsFor(null),
         containsAll(['xprs:X3SUPR', 'xprs:X3ARCH', 'xprs:X3PHON']));
 
-    final supers = idsFor('super');
-    expect(supers, contains('xprs:X3SUPR'));
-    expect(supers, isNot(contains('xprs:X3ARCH')));
-    expect(supers, isNot(contains('xprs:X3PHON')));
+    final alwaysOn = idsFor('alwayson');
+    expect(alwaysOn, contains('xprs:X3SUPR'));
+    expect(alwaysOn, isNot(contains('xprs:X3ARCH')));
+    expect(alwaysOn, isNot(contains('xprs:X3PHON')));
 
-    // Disjoint on purpose: a super announces `archive,super`, so an archivers
-    // bucket holding every super would answer nothing new.
+    // The retired spelling still selects the same bucket for one release, so
+    // an installed wapp built against it keeps filtering.
+    expect(idsFor('super'), alwaysOn);
+
+    // Disjoint on purpose: an always-on archiver announces `archive` too, so
+    // an archivers bucket holding it as well would answer nothing new.
     final archivers = idsFor('archive');
     expect(archivers, contains('xprs:X3ARCH'));
     expect(archivers, isNot(contains('xprs:X3SUPR')));
@@ -209,9 +250,9 @@ void main() {
     expect(normal, isNot(contains('xprs:X3ARCH')));
 
     // Hubs and self are emitted before the filter and survive every bucket:
-    // a role filter asks which of these CLAIMS to be a super, and a gateway
-    // claims nothing.
-    for (final r in [null, 'super', 'archive', 'normal']) {
+    // a role filter asks what these stations DO, and a gateway does nothing
+    // of the sort.
+    for (final r in [null, 'alwayson', 'archive', 'normal']) {
       final nodes = (RnsService.instance
               .graphSnapshot(includeXprs: true, role: r)['nodes'] as List)
           .cast<Map<String, dynamic>>();
@@ -221,15 +262,16 @@ void main() {
     XprsMonitor.instance.clear();
   });
 
-  test('an operator-named super counts even with no beacon claim', () async {
-    // The case the whole design turns on: a super reached only over the
-    // internet is never heard on a radio, so it has no `serve:` list at all.
+  test('an operator-named archiver counts even with no depth to show',
+      () async {
+    // The case the whole design turns on: an archiver reached only over the
+    // internet is never heard on a radio, so it has no numbers to judge.
     // The device suffix must not hide it either (section 3.1).
     // resetForTest first: the singleton caches its SharedPreferences, so a
     // mock set after it exists would be read by nobody.
     PreferencesService.resetForTest();
     SharedPreferences.setMockInitialValues({
-      'xprs.superArchivers': ['X3WWAJ'],
+      'xprs.namedArchivers': ['X3WWAJ'],
     });
     await PreferencesService.instance();
     XprsMonitor.instance.clear();
@@ -238,13 +280,13 @@ void main() {
         bearer: 'lan',
         selfCallsign: 'X1TEST');
 
-    final supers = (RnsService.instance
-            .graphSnapshot(includeXprs: true, role: 'super')['nodes'] as List)
+    final alwaysOn = (RnsService.instance
+            .graphSnapshot(includeXprs: true, role: 'alwayson')['nodes'] as List)
         .cast<Map<String, dynamic>>()
         .map((n) => n['id'] as String);
     // The node keeps the callsign it aired (suffix and all -- that IS the
     // device); what the suffix must not do is stop the match.
-    expect(supers, contains('xprs:X3WWAJ-2'),
+    expect(alwaysOn, contains('xprs:X3WWAJ-2'),
         reason: 'named by the operator, and the -2 suffix is the same station');
 
     // ...and it must NOT also show up under archivers.

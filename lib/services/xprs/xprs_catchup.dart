@@ -28,6 +28,7 @@
  * holds — stays gated on a station actually saying it holds something.
  */
 import 'dart:async';
+import 'xprs_station_policy.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -69,7 +70,7 @@ class XprsCatchup {
   static const int backfillMessages = 1000;
 
   /// The archiver a backfill is currently draining, if any. One at a time:
-  /// asking three supers for the same month fetches the same conversation
+  /// asking three archivers for the same month fetches the same conversation
   /// three times, and the responder meters each of them.
   String? _backfillStation;
   int _backfillFetched = 0;
@@ -133,16 +134,30 @@ class XprsCatchup {
   XprsPeerClass _classOf(String base, String selfCallsign) {
     if (_operatorTrusted(base, selfCallsign)) return XprsPeerClass.fast;
     final st = XprsMonitor.instance.stations[base];
-    final serves = st?.services ?? const <String>[];
-    return serves.contains('super') ? XprsPeerClass.fast : XprsPeerClass.ordinary;
+    if (st == null) return XprsPeerClass.ordinary;
+    // Judged by 12.9.4's qualities, not by a word. This used to read
+    // `serve:…,super`, which the specification's vocabulary (13) does not
+    // contain: only this app aired it, so only this app could see it, and a
+    // genuine always-on archiver from any other implementation was rated
+    // ordinary however deep and however long awake.
+    return xprsLooksAlwaysOn(
+      callsign: base,
+      services: st.services,
+      bearer: st.bearer,
+      count: st.count ?? 0,
+      uptimeSeconds: xprsUptimeSeconds(st.uptime),
+      named: const {},
+    )
+        ? XprsPeerClass.fast
+        : XprsPeerClass.ordinary;
   }
 
-  /// A super this operator actually agreed to: our own other device, or one
-  /// they NAMED. Kept apart from a super we merely BELIEVE, because the two
+  /// An archiver this operator actually agreed to: our own other device, or
+  /// one they NAMED. Kept apart from one we merely BELIEVE, because the two
   /// answer different questions and only this one may spend the battery
   /// without asking (see [_floorMsFor]).
   ///
-  /// The named list is also the only way to learn a super reached solely over
+  /// The named list is also the only way to learn an archiver reached solely over
   /// the internet: it is never heard on a radio, so it has no station record
   /// and no `serve:` list to read. Requiring the beacon meant the one archiver
   /// everybody pulls Global chat from was the one archiver nobody could poll
@@ -167,11 +182,11 @@ class XprsCatchup {
     // ask for less; nobody gets to ask an ordinary archiver for more than its
     // six replays an hour.
     //
-    // The knob is waived only for a super this operator CHOSE. An always-on archiver
-    // is a claim, not a fact -- anything in earshot can beacon
-    // `serve:archive,super` and a phone can say it -- so honouring a stranger's
-    // claim here would let one beacon override the battery setting and turn a
-    // once-a-minute poll into four. A claimed super still earns the raised
+    // The knob is waived only for an archiver this operator CHOSE. Always-on
+    // is an inference, not a fact -- anything in earshot can beacon `archive`
+    // and claim a deep `count:` -- so honouring a stranger's numbers here would
+    // let one beacon override the battery setting and turn a once-a-minute poll
+    // into four. An archiver that merely looks always-on still earns the raised
     // floor, it just never gets asked faster than its own operator allowed.
     final chosen = prefs.xprsCatchupMinutes * 60000;
     final trusted = _operatorTrusted(base, _selfCallsign);
@@ -476,15 +491,15 @@ class XprsCatchup {
     // The operator's list and the ones heard on the air, in that order. A
     // fresh install has nothing in the first -- which is why it used to ask
     // nobody and show an empty Global chat -- and the second fills itself from
-    // whatever announced `serve:…,super` while this device was listening.
-    final knownSupers = <String>[];
+    // whatever looked always-on (12.9.4) while this device was listening.
+    final knownAlwaysOn = <String>[];
     for (final c in [
       ...prefs.xprsNamedArchivers,
       // Every station this node has learned from a Reticulum ANNOUNCE.
       //
       // This is the list that makes a fresh install work, and the one that was
       // missing: a phone with no radio neighbour and nothing configured has no
-      // heard stations and no named supers, so the sweep returned before
+      // heard stations and no named archivers, so the sweep returned before
       // asking anybody and Global chat stayed empty with nothing to read
       // anywhere.
       //
@@ -499,24 +514,24 @@ class XprsCatchup {
     ]) {
       final base = _base(c);
       if (base.isEmpty || base == selfBase) continue;
-      if (!knownSupers.contains(base)) knownSupers.add(base);
+      if (!knownAlwaysOn.contains(base)) knownAlwaysOn.add(base);
     }
     // For the ask loop, drop the ones already coming through `fresh` so they
     // are not asked twice. The backfill below uses the FULL list: whether a
-    // super also happens to be in earshot says nothing about whether this
+    // archiver also happens to be in earshot says nothing about whether this
     // device is missing a month of what it holds.
-    final supers = [
-      for (final base in knownSupers)
+    final deep = [
+      for (final base in knownAlwaysOn)
         if (!fresh.any((s) => _base(s.callsign) == base)) base
     ];
-    if (fresh.isEmpty && supers.isEmpty) return;
+    if (fresh.isEmpty && deep.isEmpty) return;
 
     // ── The first-run backfill (36.10.1 rule 4's "fetched deliberately") ──
     // A device whose archive holds no conversation has nothing to show in
     // Global chat, and the seven-day poll would fill it a week at a time only
     // as new traffic arrived. Reach back a month instead, once, against one
-    // known super, and stop as soon as there is enough to read.
-    _updateBackfill(knownSupers, fresh);
+    // known archiver, and stop as soon as there is enough to read.
+    _updateBackfill(knownAlwaysOn, fresh);
 
     final asked = <String>[];
     for (final st in [
@@ -524,7 +539,7 @@ class XprsCatchup {
       // An always-on archiver we have never heard on the air has no station record
       // and so no count:/mail: to compare -- which the news check below reads
       // as "no news", leaving the every-period backstop to carry it.
-      for (final c in supers) XprsStation(c, 'rns', now),
+      for (final c in deep) XprsStation(c, 'rns', now),
     ]) {
       final base = _base(st.callsign);
       // THE NEWS CHECK, and it costs nothing on air: the station's own beacon
@@ -625,14 +640,14 @@ class XprsCatchup {
 
   /// Start, continue or finish the first-run backfill.
   ///
-  /// Re-armable on purpose: a first launch that hears no super is not a
+  /// Re-armable on purpose: a first launch that hears no archiver is not a
   /// permanent verdict, and the next sweep that knows one will pick it up.
   /// Set once this device is known to hold a conversation. The backfill is a
   /// FIRST-RUN job: after that the answer cannot change back, so there is
   /// nothing to re-establish every minute for the life of the process.
   bool _backfillSettled = false;
 
-  void _updateBackfill(List<String> supers, List<XprsStation> fresh) {
+  void _updateBackfill(List<String> deep, List<XprsStation> fresh) {
     if (_backfillSettled) return;
     final held = _messagesHeld();
     if (held < 0) {
@@ -647,7 +662,7 @@ class XprsCatchup {
     }
     if (_backfillStation != null) {
       // Still draining. Keep going while the station is still one we know.
-      if (supers.contains(_backfillStation)) return;
+      if (deep.contains(_backfillStation)) return;
       _backfillStation = null;
     }
     // Only a device with NO conversation at all backfills. One that has some
@@ -657,15 +672,15 @@ class XprsCatchup {
       _backfillSettled = true;
       return;
     }
-    // A super first -- it is the one that holds everything everybody said.
+    // A deep one first -- it holds everything everybody said.
     // Failing that, a STATION in earshot: `X3` is a station, relay or
     // unattended equipment (section 3), so it keeps a spool worth a month-deep
     // ask. A person's phone is not, which is why the prefix decides rather
     // than mere presence -- asking every neighbour for a month of history
     // would spend somebody's metered replay on a device that has no archive
     // to give.
-    if (supers.isNotEmpty) {
-      _backfillStation = supers.first;
+    if (deep.isNotEmpty) {
+      _backfillStation = deep.first;
     } else {
       final station = fresh
           .map((s) => _base(s.callsign))
@@ -686,7 +701,7 @@ class XprsCatchup {
   /// equipment, `X4` an automated device, `X5` a group. The prefix IS the
   /// indicator -- a station says what it is by its name, so no configuration,
   /// no lookup and no extra round trip is needed to decide it is worth asking.
-  /// Whether it is a SUPER is a further claim, carried on its announcement or
+  /// Whether it is ALWAYS ON is a further inference, drawn from its numbers or
   /// answered when asked directly; not knowing that yet is no reason not to
   /// ask, because an archiver with nothing for us answers 404 and costs one
   /// metered packet.

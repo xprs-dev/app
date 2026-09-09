@@ -894,6 +894,12 @@ class XprsIngest {
       policy: policy,
     );
     if (shelf == null) {
+      // A receipt, a ping or a result was never going to be written down by
+      // anybody (`kXprsNeverArchived`), so counting it as traffic this station
+      // REFUSED reads as a policy problem when it is nothing of the sort --
+      // the phone's log said "nothing here keeps X16JK8's traffic" about a
+      // read receipt, on a station that was keeping everything else it sent.
+      if (kXprsNeverArchived.contains(p.type)) return;
       refusedRns++;
       final now = DateTime.now().millisecondsSinceEpoch;
       if (now - _lastRefuseLogMs > 60000) {

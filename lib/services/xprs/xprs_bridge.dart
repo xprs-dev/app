@@ -220,13 +220,13 @@ class XprsBridge {
   /// named station's LXMF destination, not a broadcast. An archiver we cannot
   /// name is skipped rather than shouted at.
   Future<void> _toArchivers(String wire, String id) async {
-    final supers =
+    final archivers =
         PreferencesService.instanceSync?.xprsNamedArchivers ?? const <String>[];
-    if (supers.isEmpty) return;
+    if (archivers.isEmpty) return;
     final parsed = XprsPacket.parse(wire);
     if (parsed == null) return;
     final via = xprsVia(parsed).map((c) => c.trim().toUpperCase()).toSet();
-    for (final sa in supers) {
+    for (final sa in archivers) {
       final call = sa.trim().toUpperCase();
       if (call.isEmpty) continue;
       // It came through them already, so sending it back is a loop (§13.2).

@@ -30,6 +30,7 @@ import 'package:sqlite3/common.dart';
 
 import '../../profile/profile_db.dart';
 import '../../util/nostr_crypto.dart';
+import '../db_bytes.dart';
 import '../log_service.dart';
 import '../receive/core_state.dart';
 import 'xprs_id.dart';
@@ -139,6 +140,7 @@ class XprsArchive {
   /// Open (and migrate) the spool. Safe to call again on profile switch.
   void init(String path) {
     close();
+    _path = path;
     try {
       fs.directory(fs.file(path).parent.path).createSync(recursive: true);
       final db = openProfileDb(path);
@@ -601,16 +603,32 @@ class XprsArchive {
     return db.updatedRows;
   }
 
+  /// What the spool occupies on disk, for the Archiver screen. Two PRAGMAs.
+  int get spoolBytes {
+    final db = _db;
+    return db == null ? 0 : _dataBytes(db);
+  }
+
+  /// Where the spool lives, for [_dataBytes]'s fallback.
+  String? _path;
+
   int _dataBytes(CommonDatabase db) {
-    try {
-      final pc =
-          (db.select('PRAGMA page_count').first.values.first as num).toInt();
-      final ps =
-          (db.select('PRAGMA page_size').first.values.first as num).toInt();
-      return pc * ps;
-    } catch (_) {
-      return 0;
+    final pages = sqliteDbBytes(db);
+    if (pages != null) return pages;
+    // The pragma answered nothing usable (it returns a STRING on Android,
+    // which is how this reported "0 B" over 156,000 rows). Stat the file
+    // instead -- the same number by another route, WAL included, since pages
+    // waiting in the log are on the disk too.
+    final path = _path;
+    if (path == null || path == ':memory:') return 0;
+    var total = 0;
+    for (final suffix in const ['', '-wal']) {
+      try {
+        final f = fs.file('$path$suffix');
+        if (f.existsSync()) total += f.statSync().size;
+      } catch (_) {}
     }
+    return total;
   }
 
   // ── mailbox declarations (section 13.12) ─────────────────────────────────

@@ -46,7 +46,7 @@ enum XprsAnswer {
 
 /// How reachable this archiver is, which decides how fast we may ask it.
 enum XprsPeerClass {
-  /// `serve:archive,super` (36.9.4), or another of our own devices -- which
+  /// an always-on archiver by 12.9.4's qualities, or another of our own devices -- which
   /// the responder does not meter at all. These can absorb a fast caller.
   fast,
 

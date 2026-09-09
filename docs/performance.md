@@ -310,6 +310,16 @@ expensive algorithm:
 Rule of thumb before adding any periodic work: *what does this cost per hour with
 the screen off, and who is awake to see the result?*
 
+**And the same rule for the receive funnel: no preference read per packet.**
+Deciding what to archive used to read `xprs.archive` (and, on the internet
+lane, the always-on flag) as each packet arrived. `XprsIngest` now holds an
+immutable `XprsArchivePolicy` snapshot, refreshed by the handful of writers
+that can change it (`reloadPolicy()`), and the funnel reads fields off it. The
+follow tier is a `Set<String>` of callsigns pushed in by `RnsService` for the
+same reason — a lookup, never a key derivation. A preference read, a bech32
+encode and a callsign derivation are all "cheap", and all three were about to
+happen on every frame this device hears.
+
 ---
 
 ## 5. Build & device traps (each of these cost real time)

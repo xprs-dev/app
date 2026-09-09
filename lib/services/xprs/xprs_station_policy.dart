@@ -301,6 +301,21 @@ String? xprsServeClaim({
   return words.isEmpty ? null : words.join(',');
 }
 
+/// `uptime:`/`lifetime:` as seconds. The spec asks for `26h`, not `94340s`
+/// (10.5), so every reader that wants a number parses the same shorthand here.
+int xprsUptimeSeconds(String? v) {
+  if (v == null || v.isEmpty) return 0;
+  final m = RegExp(r'^(\d+)\s*([a-z]*)$').firstMatch(v.trim().toLowerCase());
+  if (m == null) return 0;
+  final n = int.tryParse(m.group(1)!) ?? 0;
+  return switch (m.group(2)) {
+    'day' || 'days' || 'd' => n * 86400,
+    'hour' || 'hours' || 'h' => n * 3600,
+    'min' || 'mins' || 'm' => n * 60,
+    _ => n,
+  };
+}
+
 /// Does this station look like one worth leaning on (12.9.4)?
 ///
 /// Never a word on the wire. [named] is what the operator wrote down, which
@@ -320,4 +335,69 @@ bool xprsLooksAlwaysOn({
   // Addressable: reachable other than by standing next to it.
   if (bearer != 'rns' && bearer != 'lan') return false;
   return count >= 10000 || uptimeSeconds >= 7 * 24 * 3600;
+}
+
+/// What this station keeps and for whom, as the Archiver screen reads it.
+///
+/// One place assembles it so the screen cannot drift from the rule: every
+/// number here comes from the archive, the history server or the preferences,
+/// and none of it is computed twice. Called when the screen refreshes — the
+/// archive fires `core.archive` at most once per flush — never per packet.
+Map<String, dynamic> xprsArchiveStatusJson({
+  required bool public,
+  required bool alwaysOn,
+  required bool alwaysOnStored,
+  required bool keepFollowed,
+  required bool keepChatter,
+  required int quotaMb,
+  required int maxDays,
+  required ({int own, int followed, int stranger, int total}) records,
+  required int bytes,
+  required int followedCallsigns,
+  required int asksLastHour,
+  required int answered,
+  required int refused,
+  required String announced,
+  required List<String> named,
+}) {
+  String human(int b) {
+    if (b >= 1024 * 1024 * 1024) {
+      return '${(b / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    }
+    if (b >= 1024 * 1024) return '${(b / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (b >= 1024) return '${(b / 1024).round()} kB';
+    return '$b B';
+  }
+
+  final quotaBytes = quotaMb * 1024 * 1024;
+  return {
+    'public': public,
+    'alwaysOn': alwaysOn,
+    'alwaysOnStored': alwaysOnStored,
+    'keepFollowed': keepFollowed,
+    'keepChatter': keepChatter,
+    'quotaMb': quotaMb,
+    'maxDays': maxDays,
+    'records': {
+      'own': records.own,
+      'followed': records.followed,
+      'stranger': records.stranger,
+      'total': records.total,
+    },
+    'bytes': bytes,
+    'bytesText': human(bytes),
+    'quotaText': human(quotaBytes),
+    // How full the STRANGERS' shelf is against its limit — the only part of
+    // the spool the quota bounds.
+    'fullFrac': quotaBytes <= 0
+        ? 0.0
+        : (bytes / quotaBytes).clamp(0.0, 1.0).toDouble(),
+    'followedCallsigns': followedCallsigns,
+    'asksLastHour': asksLastHour,
+    'answered': answered,
+    'refused': refused,
+    // What the beacon actually claims, so the screen never has to guess.
+    'announced': announced,
+    'named': named,
+  };
 }

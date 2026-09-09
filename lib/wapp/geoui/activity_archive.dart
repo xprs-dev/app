@@ -8,6 +8,7 @@
 // Native only (SQLite via dart:ffi); every call is a no-op on web.
 
 import 'dart:convert';
+import '../../services/db_bytes.dart';
 import 'package:file/file.dart';
 
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
@@ -920,17 +921,7 @@ class ActivityArchive {
   /// On-disk database size (page_count × page_size) — O(1), so it is safe to
   /// call on the add() hot path. With INCREMENTAL auto-vacuum the freed pages
   /// return after a delete, so this tracks the real file the user cares about.
-  int _dataBytes(CommonDatabase db) {
-    try {
-      final pc = (db.select('PRAGMA page_count').first.values.first as num)
-          .toInt();
-      final ps = (db.select('PRAGMA page_size').first.values.first as num)
-          .toInt();
-      return pc * ps;
-    } catch (_) {
-      return 0;
-    }
-  }
+  int _dataBytes(CommonDatabase db) => sqliteDbBytes(db) ?? 0;
 
   /// Wipe every archived post (the "Clear feed" action). Likes/saved rows are
   /// kept — a user's bookmarks shouldn't vanish with a feed clear.

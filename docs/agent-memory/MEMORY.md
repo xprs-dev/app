@@ -1,7 +1,7 @@
 - [Read performance.md before coding](read-performance-md-before-coding.md) — Max's standing requirement; it is the list of regressions that already shipped here
 - [Validating BLE changes on device](validate-ble-changes-on-device.md) — /api/status + dumpsys, and how to air a test XPRS frame from this laptop when no ESP32 is on the bench
 - [The app is XPRS, not Aurora](the-app-is-xprs-not-aurora.md) — never use the old name; legacy 'aurora' ids need migration
-- [Gossip and super-archivers](gossip-and-super-archivers.md) — Max's federation vocabulary; use these exact names
+- [Gossip and always-on archivers](gossip-and-always-on-archivers.md) — Max's federation vocabulary; 'super' is retired, 'public archiver' is the third tier
 - [Reticulum needs no inbound ports](reticulum-needs-no-inbound-ports.md) — never propose port-forwarding; links traverse NAT via hubs
 - [Read esp32.md before firmware work](read-esp32-md-before-firmware.md) — heap first, pin to core 1, FatFs traps, and how to measure without rebooting the board
 - [BLE bulk transfer limits](ble-bulk-transfer-limits.md) — BLE carries packets, not files; a stuck scanner needs a phone reboot

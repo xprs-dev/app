@@ -971,9 +971,16 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
       [String? apply]) {
     final cs = Theme.of(context).colorScheme;
     final val = widget.bindings.getValue(name) as bool? ?? false;
+    // A switch a wapp has disabled for now — the string field has had this
+    // since it was written, and a bool needs it for the same reason: a control
+    // that cannot take effect yet should say so by looking spent, rather than
+    // accepting a tap and silently doing nothing. The wapp sets it with
+    // `ui.field.set` on `<name>__readonly`.
+    final readonly = widget.bindings.getValue('${name}__readonly') == true;
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 0),
+      enabled: !readonly,
       title: Text(label, style: Theme.of(context).textTheme.bodyLarge),
       subtitle: tip != null
           ? Text(tip,
@@ -983,7 +990,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
           : null,
       trailing: Switch.adaptive(
         value: val,
-        onChanged: (v) {
+        onChanged: readonly ? null : (v) {
           widget.bindings.setValue(name, v);
           setState(() {});
           // When the field declares an `apply` command, toggling takes effect
@@ -1496,6 +1503,17 @@ IconData geoUiResolveIcon(String name) {
       return Icons.picture_as_pdf;
     case 'archive':
       return Icons.folder_zip_outlined;
+    // A packet spool is not a zip file: the Archiver's own tabs need four
+    // icons that differ at a glance, and an unknown name here falls back to
+    // the hamburger -- which is how three of its four tabs came to wear the
+    // same one.
+    case 'inventory_2':
+    case 'spool':
+      return Icons.inventory_2_outlined;
+    case 'hub':
+      return Icons.hub_outlined;
+    case 'cloud_upload':
+      return Icons.cloud_upload_outlined;
     case 'apk':
     case 'android':
       return Icons.android;

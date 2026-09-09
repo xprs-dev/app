@@ -1570,8 +1570,7 @@ class RemoteApiService {
       // Configure the always-on archivers this station leans on (36.9.4).
       // What this station keeps, and for whom (XPRS.md 12). Reads and writes
       // the three tiers; every field optional, so a caller may flip one.
-      if (path == '/api/xprs/archiver' ||
-          (req.method == 'POST' && path == '/api/xprs/super')) {
+      if (path == '/api/xprs/archiver' || path == '/api/xprs/super') {
         final prefs = PreferencesService.instanceSync;
         // `/api/xprs/super` is the old name, kept one release. `be` meant
         // "become the always-on archiver", which now requires being a public
@@ -1638,6 +1637,9 @@ class RemoteApiService {
             'total': counts.total,
           },
           'followedCallsigns': XprsArchive.instance.followed.length,
+          // What the spool occupies, the same number the Archiver screen
+          // shows -- here so a phone's answer can be read without the screen.
+          'bytes': XprsArchive.instance.spoolBytes,
           if (legacy) ...{
             'supers': prefs?.xprsNamedArchivers ?? const <String>[],
             'be': prefs?.xprsAlwaysOn ?? false,

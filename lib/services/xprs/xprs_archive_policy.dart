@@ -160,3 +160,39 @@ Tier? xprsAdmitTier({
 
   return Tier.stranger;
 }
+
+/// The base callsigns of the people we follow, from the two facts the node
+/// already holds: the followed pubkeys (hex) and every callsign→key binding it
+/// has learned.
+///
+/// Pure, and computed only when one of those two changes. The alternative —
+/// deriving a callsign from a key as each packet arrives — puts a bech32 encode
+/// in the receive funnel, which performance.md 4.2 forbids for exactly this
+/// kind of lookup.
+///
+/// A follow is a key, but the archive shelves by callsign, and one key can wear
+/// two names: the `X1`+4 anyone can derive, and the one its holder announced
+/// (`X3ARK`, or an issued `CT1ABC`). Both are followed, or a station is a
+/// stranger under the only name it ever transmits.
+Set<String> xprsFollowedCallsigns({
+  required Set<String> followedHex,
+  required Map<String, String> callPub,
+  required String Function(String hex) derive,
+  required String Function(String callsign) base,
+}) {
+  final want = <String>{};
+  for (final h in followedHex) {
+    final d = derive(h);
+    if (d.isNotEmpty) {
+      final b = base(d);
+      if (b.isNotEmpty) want.add(b);
+    }
+  }
+  callPub.forEach((call, hex) {
+    if (followedHex.contains(hex.toLowerCase())) {
+      final b = base(call);
+      if (b.isNotEmpty) want.add(b);
+    }
+  });
+  return want;
+}

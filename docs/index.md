@@ -76,7 +76,7 @@ its sender, and `via:` cannot tell you otherwise because nothing transmits it.
 
 | doc | the sections that matter |
 |---|---|
-| [XPRS.md](XPRS.md) | The specification. **Do not edit it** — it is byte-identical to `xprs-dev/spec` and `test/xprs_packet_test.dart` checks the corpus against it. **§4** the packet grammar and the 250-byte limit on every transport. **§6.7** files. **§25.2** `cmd:file`/`cmd:put`, and **§25.2.2** the transfer drawn end to end. **§31.2** what a station owes a stranger. **§36.9.4** super-archivers. **§37** implementation status — currently understates `cmd:file`, which is built. |
+| [XPRS.md](XPRS.md) | The specification. **Do not edit it** — it is byte-identical to `xprs-dev/spec` and `test/xprs_packet_test.dart` checks the corpus against it. **§4** the packet grammar and the 250-byte limit on every transport. **§6.7** files. **§25.2** `cmd:file`/`cmd:put`, and **§25.2.2** the transfer drawn end to end. **§31.2** what a station owes a stranger. **§36.9.4** always-on archivers (a setting, never a word on the wire). **§37** implementation status — currently understates `cmd:file`, which is built. |
 | [aprs.md](aprs.md) / [aprs-xt.md](aprs-xt.md) / [ble.md](ble.md) | The older APRS transport and the conventions layered on it. |
 | [spectrum.md](spectrum.md) / [QO-100.md](QO-100.md) | Where packets go on each bearer, and reaching a satellite. Both proposals; nothing implemented. |
 
@@ -84,7 +84,7 @@ its sender, and `via:` cannot tell you otherwise because nothing transmits it.
 
 | doc | the sections that matter |
 |---|---|
-| [updates.md](updates.md) | **How a phone gets a new version**, end to end: the feed, the super-archiver as mirror, and the three lanes the bytes can take — including Bluetooth with no internet at all. **§7 the versionCode trap**. **§8** driving and checking it by API. **§9** what is validated and what is not. |
+| [updates.md](updates.md) | **How a phone gets a new version**, end to end: the feed, the always-on archiver as mirror, and the three lanes the bytes can take — including Bluetooth with no internet at all. **§7 the versionCode trap**. **§8** driving and checking it by API. **§9** what is validated and what is not. |
 | [../releases.md](../releases.md) | The whole publishing chain. **§3** artifact names carry the version — a versionless name parses as a version and offers a release that does not exist. **§6 the versionCode trap** — a device carrying a hand-passed build number can detect every future release and install none of them, with no in-app symptom. **§7** checking a device by API instead of by screenshot. |
 | [fdroid.md](fdroid.md) | Every host the built APK can reach, audited from the binary. `--dart-define=SELF_UPDATE=false` is the store variant. |
 

@@ -263,7 +263,7 @@ class FunctionalityRegistry {
           [
             ParamDef('filter', 'string',
                 'JSON {service,xprsOnly,search,role,localOnly} (empty = none); '
-                'role is super|archive|normal and buckets a node by what it '
+                'role is alwayson|archive|normal and buckets a node by what it '
                 'serves; xprsOnly keeps only devices we can name'),
           ],
           ReturnDef('int', 'Bytes written, negated required size if too small')),

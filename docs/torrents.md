@@ -697,7 +697,7 @@ is pruned from the resolver's local store when its holder fails to serve
 (`demoteProvider`), so a holder that stalled once is not asked again until it
 republishes.
 
-A super-archiver is a holder like any other: `UpdateMirrorService` fetches
+An always-on archiver is a holder like any other: `UpdateMirrorService` fetches
 each release artifact from xprs.dev, verifies size and sha256 against the
 feed, and drops the file into a hosted directory. From there it is step 1.
 

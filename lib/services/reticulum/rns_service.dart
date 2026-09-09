@@ -33,6 +33,8 @@ import 'package:hex/hex.dart';
 import '../mesh/mesh_service.dart';
 import '../mesh/mesh_courier.dart';
 import '../xprs/xprs_archive.dart';
+import '../xprs/xprs_archive_policy.dart';
+import '../xprs/xprs_station_policy.dart';
 import '../xprs/xprs_group_keys.dart';
 import '../xprs/xprs_groups.dart';
 import '../receive/packet_gateway.dart';
@@ -506,10 +508,50 @@ class RnsService {
       }
       // Learning a followed callsign's key may unblock fetching its profile.
       _maybeFetchFollowedProfile(c);
+      // ...and it may be the moment we learn that a name we have been hearing
+      // belongs to someone we follow. Promote it on the spot: one comparison
+      // here, versus deriving a callsign from a key on every packet.
+      if (_follows.asSet.contains(hex.toLowerCase())) {
+        final base = NostrCrypto.bareCallsign(c);
+        if (base.isNotEmpty && !XprsArchive.instance.followed.contains(base)) {
+          XprsArchive.instance.followed = {
+            ...XprsArchive.instance.followed,
+            base,
+          };
+          XprsArchive.instance.retier(promoted: {base});
+        }
+      }
     }
   }
 
   String? pubkeyForCallsign(String callsign) => _callPub[callsign.trim()];
+
+  /// Hand the packet archive the base callsigns we follow — the middle tier of
+  /// XPRS.md 12, and the only reason a phone with "public archiver" off keeps
+  /// anything beyond its own words.
+  ///
+  /// Computed HERE because this is the class that owns callsign↔key, and only
+  /// when the follow list or the map changes: the receive funnel then costs one
+  /// set lookup instead of a bech32 encode per packet (performance.md 4.2).
+  /// Rows already on the stranger shelf are promoted (and demoted on unfollow)
+  /// so an unfollow actually releases the bytes the byte cap is allowed to take.
+  /// The set itself is [xprsFollowedCallsigns], which is pure and tested.
+  void _pushFollowedCallsigns() {
+    final want = xprsFollowedCallsigns(
+      followedHex: _follows.asSet,
+      callPub: _callPub,
+      derive: _derivedCallsign,
+      base: NostrCrypto.bareCallsign,
+    );
+    final had = XprsArchive.instance.followed;
+    if (want.length == had.length && want.containsAll(had)) return;
+    XprsArchive.instance.followed = want;
+    XprsArchive.instance.retier(
+      promoted: want.difference(had),
+      demoted: had.difference(want),
+    );
+  }
+
 
   /// The bech32 npub for [callsign] if we've learned its key, else null.
   String? npubForCallsign(String callsign) {
@@ -2278,18 +2320,22 @@ class RnsService {
     return false;
   }
 
-  /// Does a node in bucket ([isSuper], [isArchiver]) belong under [role]?
+  /// Does a node in bucket ([isAlwaysOn], [isArchiver]) belong under [role]?
   /// One predicate for both filter sites -- the RNS lane and the XPRS-station
   /// lane decide membership differently but must agree on what the words mean.
   static bool _roleMatches(String role,
-      {required bool isSuper, required bool isArchiver}) {
+      {required bool isAlwaysOn, required bool isArchiver}) {
     switch (role) {
+      case 'alwayson':
+      // The retired spelling, honoured for one release so an installed wapp
+      // built against it keeps filtering rather than silently showing
+      // everything (an unknown bucket filters nothing).
       case 'super':
-        return isSuper;
+        return isAlwaysOn;
       case 'archive':
         return isArchiver;
       case 'normal':
-        return !isSuper && !isArchiver;
+        return !isAlwaysOn && !isArchiver;
       default:
         return true; // an undefined bucket filters nothing
     }
@@ -2859,10 +2905,10 @@ class RnsService {
     // claims nothing -- it is the wire the stations hang off.
     //
     // The operator's named list is the only honest bridge to the internet
-    // lane: a super reached solely over the internet is never heard on a
+    // lane: an archiver reached solely over the internet is never heard on a
     // radio, so it has no beacon and no `serve:` list to read (the same fact
     // XprsCatchup records). Computed once, outside both filter sites.
-    final namedSupers = <String>{
+    final namedAlwaysOn = <String>{
       for (final c
           in PreferencesService.instanceSync?.xprsNamedArchivers ??
               const <String>[])
@@ -2942,11 +2988,11 @@ class RnsService {
         // Matched on all three handles for the same reason lxmfDestForCallsign
         // does: an internet-only super shows up as an LXMF node whose announce
         // text may be a display name rather than a callsign.
-        final isSuper = namedSupers.contains(_bareUpper(n.callsign ?? '')) ||
-            namedSupers.contains(_bareUpper(n.lxmfName ?? '')) ||
-            namedSupers.contains(_bareUpper(_derivedCallsign(n.nostrPubHex)));
-        final isArch = !isSuper && _relayArchives(relayByHex[n.identityHex]);
-        if (!_roleMatches(role, isSuper: isSuper, isArchiver: isArch)) {
+        final isAlwaysOn = namedAlwaysOn.contains(_bareUpper(n.callsign ?? '')) ||
+            namedAlwaysOn.contains(_bareUpper(n.lxmfName ?? '')) ||
+            namedAlwaysOn.contains(_bareUpper(_derivedCallsign(n.nostrPubHex)));
+        final isArch = !isAlwaysOn && _relayArchives(relayByHex[n.identityHex]);
+        if (!_roleMatches(role, isAlwaysOn: isAlwaysOn, isArchiver: isArch)) {
           return false;
         }
       }
@@ -3100,18 +3146,27 @@ class RnsService {
           continue;
         }
         final call = s.callsign.toUpperCase();
-        // The lane where the role filter is REAL: `serve:archive,super` (24,
-        // 36.9.4) reaches us here as words on the air. The operator's list
-        // still counts, for the archiver reachable only over the internet
-        // that no radio ever hears.
-        final isSuper =
-            s.services.contains('super') || namedSupers.contains(_bareUpper(call));
-        // Disjoint from super on purpose: a super announces `archive,super`,
-        // so an "Archivers" bucket that also held every super would answer no
-        // question the "Supers" bucket had not already answered.
-        final isArch = !isSuper && s.services.contains('archive');
+        // The lane where the role filter is REAL: `serve:archive` (24) reaches
+        // us here as a word on the air, and 12.9.4's qualities -- deep or long
+        // awake, and addressable -- say whether it is one to lean on. The
+        // operator's list still counts, for the archiver reachable only over
+        // the internet that no radio ever hears.
+        final isAlwaysOn = xprsLooksAlwaysOn(
+          // Bare: the operator writes down a station, not one of its devices,
+          // and `X3WWAJ-2` is the same station as `X3WWAJ` (3.1).
+          callsign: _bareUpper(call),
+          services: s.services,
+          bearer: s.bearer,
+          count: s.count ?? 0,
+          uptimeSeconds: xprsUptimeSeconds(s.uptime),
+          named: namedAlwaysOn,
+        );
+        // Disjoint on purpose: an always-on archiver also announces `archive`,
+        // so an "Archivers" bucket that held it too would answer no question
+        // the other bucket had not already answered.
+        final isArch = !isAlwaysOn && s.services.contains('archive');
         if (role != null &&
-            !_roleMatches(role, isSuper: isSuper, isArchiver: isArch)) {
+            !_roleMatches(role, isAlwaysOn: isAlwaysOn, isArchiver: isArch)) {
           continue;
         }
         if (knownCalls.contains(call)) continue;
@@ -3149,7 +3204,7 @@ class RnsService {
             // which xprsServices can never return because `index` is not in
             // kXprsServices -- so the role was unreachable and every archiver
             // on the air rendered as an ordinary station.
-            'role': isSuper
+            'role': isAlwaysOn
                 ? 'always-on archiver'
                 : s.services.contains('archive')
                     ? 'indexer'
@@ -3855,6 +3910,7 @@ class RnsService {
 
         // Store-and-forward follow set (who we host with "followed" treatment).
         if (followsPath != null) _follows.load(followsPath!);
+        _pushFollowedCallsigns();
 
         // Durable on-disk file index (best-effort).
         try {
@@ -8413,7 +8469,10 @@ class RnsService {
     // notes to us. ignore: discarded_futures
     final hex = key.toLowerCase();
     if (hex.length == 64) unawaited(publishAuthorProvider(hex));
-    if (changed) _followChanges.add(null);
+    if (changed) {
+      _pushFollowedCallsigns();
+      _followChanges.add(null);
+    }
   }
 
   /// Drop [key] from the follow set.
@@ -8435,7 +8494,10 @@ class RnsService {
     }
     startFollowsMirror();
     pushTrustedAuthors();
-    if (changed) _followChanges.add(null);
+    if (changed) {
+      _pushFollowedCallsigns();
+      _followChanges.add(null);
+    }
   }
 
   /// A follow key (npub or hex) as 64-char hex, or null if it is neither — a
@@ -9513,6 +9575,7 @@ class RnsService {
       );
       pushTrustedAuthors(); // trust follows the follow set, both ways
       refreshFollowedProfiles();
+      _pushFollowedCallsigns();
       _followChanges.add(null);
     }
   }

@@ -388,12 +388,13 @@ const Set<String> kXprsPolicyKeys = {'owner', 'use', 'first', 'serve'};
 const Set<String> kXprsServices = {
   'relay',
   'archive',
-  // The archive role at server scale (36.9.4), announced BESIDE `archive` and
-  // never instead of it. It was missing here while this very device airs it on
-  // both beacons (mesh_service.dart), so our own receiver dropped a word our
-  // own transmitter sent -- and everything downstream that asked "is this a
-  // always-on archiver" was reading a list that could never say yes.
-  'super',
+  // No word above `archive`. This app used to air and parse `super` for "always
+  // on", which section 13's vocabulary does not contain -- so it was a claim
+  // only this implementation could make and only this implementation could
+  // read. 12.9.4 settles it: an always-on archiver is recognised by its
+  // qualities (`count:`, `uptime:`, addressability), and "None of this is a
+  // separate role." An older station's `serve:archive,super` therefore parses
+  // here as `['archive']`, which is exactly the compatibility wanted.
   'internet',
   'aprs',
   'nostr',

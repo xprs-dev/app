@@ -318,14 +318,21 @@ class PreferencesService {
   /// `serve:archive`". Silence is not consent, so a phone starts private and
   /// its operator opts in.
   ///
-  /// Migration: a station that had explicitly turned EITHER legacy switch off
-  /// meant "do not keep other people's traffic", and stays private.
+  /// Migration, in the operator's favour both ways. A station whose operator
+  /// had explicitly turned EITHER legacy switch off meant "do not keep other
+  /// people's traffic", and stays private. A station they had explicitly made
+  /// an always-on archiver was public by any reading -- it was announcing the
+  /// role and holding mail for strangers -- so it stays public even on a
+  /// phone, where the new default is off. Without this, the C61 that had been
+  /// made the mesh's archiver came back from the update with the role off and
+  /// five stations' mail suddenly homeless.
   bool get xprsPublicArchiver {
     final v = _prefs.getBool('xprs.public');
     if (v != null) return v;
     final legacyKeep = _prefs.getBool('xprs.archive');
     final legacyServe = _prefs.getBool('xprs.serveHistory');
     if (legacyKeep == false || legacyServe == false) return false;
+    if (_prefs.getBool('xprs.superArchiver') == true) return true;
     return !_isPocketDevice;
   }
 
@@ -357,6 +364,13 @@ class PreferencesService {
       (_prefs.getBool('xprs.superArchiver') ?? false);
 
   Future<void> setXprsAlwaysOn(bool v) async {
+    // `xprs.superArchiver` is about to be dropped, and the public getter still
+    // reads it to decide a migrating station's answer. Settle that question
+    // first, or touching THIS switch would silently make an always-on phone
+    // private -- the migration undone by the act of using the screen.
+    if (_prefs.getBool('xprs.public') == null) {
+      await _prefs.setBool('xprs.public', xprsPublicArchiver);
+    }
     await _prefs.setBool('xprs.alwaysOn', v);
     await _prefs.remove('xprs.superArchiver');
   }

@@ -338,7 +338,7 @@ indistinguishable.
 
 Both phones on a desk, TANK2 with **no internet at all** — WiFi off, every DNS
 lookup failing. The question: can a device with only Bluetooth fetch a file from
-a super-archiver?
+an always-on archiver?
 
 **Yes.** 64 KB crossed in 140 s, and a 56 MB app update over the same path.
 Nothing was ever paired.

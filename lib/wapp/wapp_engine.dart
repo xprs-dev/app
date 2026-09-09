@@ -39,7 +39,9 @@ import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_packet.dart';
 import '../services/xprs/xprs_receipt.dart';
 import '../services/xprs/xprs_send.dart';
+import '../services/xprs/xprs_history_server.dart';
 import '../services/xprs/xprs_ingest.dart';
+import '../services/xprs/xprs_station_policy.dart';
 import '../services/xprs/xprs_publisher.dart';
 import '../services/xprs/xprs_vocab.dart';
 import '../services/xprs/xprs_redaction.dart';
@@ -3398,7 +3400,9 @@ class WappEngine {
         // reticulum wapp is unaffected.
         var localOnly = false;
         var limit = 0;
-        // What a node is FOR: 'super' | 'archive' | 'normal', or null for any.
+        // What a node is FOR: 'alwayson' | 'archive' | 'normal', or null for
+        // any. 'super' is the retired spelling of 'alwayson', accepted for one
+        // release so an installed wapp built against it keeps filtering.
         String? role;
         if (filterLen > 0) {
           try {
@@ -3415,8 +3419,10 @@ class WappEngine {
             // has to mean "no filter", never "match nothing" -- a typo must
             // not blank somebody's graph.
             final r = f['role'];
-            if (r == 'super' || r == 'archive' || r == 'normal') {
+            if (r == 'alwayson' || r == 'archive' || r == 'normal') {
               role = r as String;
+            } else if (r == 'super') {
+              role = 'alwayson';
             }
             if (l is int && l > 0) limit = l;
           } catch (_) {}
@@ -3957,6 +3963,49 @@ class WappEngine {
     // hal_xprs_set_pref("key=value"): archive / archiveMaxMb / archiveMaxDays
     // / serveHistory. Persisted and live-applied.
     // hal_xprs_archivers: read back the station's chosen archiver devices (the
+    // WHAT THIS STATION KEEPS, AND FOR WHOM (XPRS.md 12's three tiers).
+    //
+    // One read for the whole Archiver screen: the switches, the per-shelf
+    // record counts, what the beacon claims, and how much was asked of us.
+    // The wapp renders it and decides nothing — the tiers are the core's
+    // (docs/architecture.md 3), and there is one rule for them
+    // (xprs_archive_policy.dart) rather than a copy behind the glass.
+    final halXprsArchive = WasmFunction(
+      (int outPtr, int outCap) {
+        final prefs = PreferencesService.instanceSync;
+        if (prefs == null || outCap <= 0) return 0;
+        final archive = XprsArchive.instance;
+        final claim = xprsServeClaim(
+              public: prefs.xprsPublicArchiver,
+              spoolReady: archive.ready,
+              files: (prefs.archiveQuotaGb) > 0,
+            ) ??
+            '';
+        return _writeStr(
+            outPtr,
+            outCap,
+            jsonEncode(xprsArchiveStatusJson(
+              public: prefs.xprsPublicArchiver,
+              alwaysOn: prefs.xprsAlwaysOn,
+              alwaysOnStored: prefs.xprsAlwaysOnStored,
+              keepFollowed: prefs.xprsKeepFollowed,
+              keepChatter: prefs.xprsKeepChatter,
+              quotaMb: prefs.xprsArchiveMaxMb,
+              maxDays: prefs.xprsArchiveMaxDays,
+              records: archive.countsByTier(),
+              bytes: archive.spoolBytes,
+              followedCallsigns: archive.followed.length,
+              asksLastHour: XprsHistoryServer.instance.asksLastHour,
+              answered: XprsHistoryServer.instance.answered,
+              refused: XprsHistoryServer.instance.refused429,
+              announced: claim,
+              named: prefs.xprsNamedArchivers,
+            )));
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+
     // unified XPRS 36/13.12 list) as a JSON array of callsigns, so a wapp can
     // show and edit it. Negated-size protocol when the buffer is too small.
     final halXprsArchivers = WasmFunction(
@@ -4367,6 +4416,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_message', halXprsMessage),
       WasmImport('hal', 'xprs_broadcast', halXprsBroadcast),
       WasmImport('hal', 'xprs_set_pref', halXprsSetPref),
+      WasmImport('hal', 'xprs_archive', halXprsArchive),
       WasmImport('hal', 'xprs_archivers', halXprsArchivers),
       WasmImport('hal', 'mesh_scf_status', halMeshScfStatus),
       WasmImport('hal', 'mesh_transfers', halMeshTransfers),

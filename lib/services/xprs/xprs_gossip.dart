@@ -25,6 +25,7 @@
  * piggybacks on inserts, at most once a minute.
  */
 import 'dart:async';
+import '../db_bytes.dart';
 
 import 'package:sqlite3/common.dart';
 
@@ -84,7 +85,7 @@ class XprsGossip {
   static final XprsGossip instance = XprsGossip._();
 
   /// Reference constants of 36.9.4. K and G are per-callsign caps; the TTL
-  /// bounds L3; the byte budget bounds the whole table (super mode raises it).
+  /// bounds L3; the byte budget bounds the whole table (an always-on archiver raises it).
   static const int visitRingK = 100;
   static const int liveCapG = 8;
   static const Duration liveTtl = Duration(hours: 24);
@@ -280,11 +281,11 @@ class XprsGossip {
       now - liveTtl.inMilliseconds,
     ]);
     try {
-      final pages = (db.select('PRAGMA page_count').first.values.first as num)
-          .toInt();
-      final pageSize = (db.select('PRAGMA page_size').first.values.first as num)
-          .toInt();
-      if (pages * pageSize > maxBytes) {
+      // Null means the database would not say (Android answers the pragma with
+      // a STRING, which this used to cast and drop): skip the sweep rather
+      // than compare a made-up zero against the cap and evict nothing forever.
+      final bytes = sqliteDbBytes(db);
+      if (bytes != null && bytes > maxBytes) {
         // Over budget: L3 stalest-first goes before L2 loses anything
         // (36.9.4 — the visit history is the layer allowed to live forever).
         db.execute(
@@ -409,8 +410,8 @@ class XprsGossip {
   /// configured always-on archiver -- over the directed lane, because the
   /// public hubs throttle everything else. Throttled per callsign; the
   /// answer flows back through the ordinary funnel and lands here.
-  final Map<String, int> _askedSuperMs = {};
-  int superAsks = 0;
+  final Map<String, int> _askedAlwaysOnMs = {};
+  int alwaysOnAsks = 0;
 
   void askAlwaysOn(
     String call, {
@@ -423,10 +424,10 @@ class XprsGossip {
     final c = call.trim().toUpperCase();
     if (c.isEmpty || c == selfBase) return;
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
-    if (now - (_askedSuperMs[c] ?? 0) < 600000) return; // 36.10.1 cadence
-    _askedSuperMs[c] = now;
-    if (_askedSuperMs.length > 128)
-      _askedSuperMs.remove(_askedSuperMs.keys.first);
+    if (now - (_askedAlwaysOnMs[c] ?? 0) < 600000) return; // 36.10.1 cadence
+    _askedAlwaysOnMs[c] = now;
+    if (_askedAlwaysOnMs.length > 128)
+      _askedAlwaysOnMs.remove(_askedAlwaysOnMs.keys.first);
     final t = DateTime.now().toUtc();
     String two(int n) => n.toString().padLeft(2, '0');
     final ts =
@@ -444,9 +445,9 @@ class XprsGossip {
       final wire =
           't:command f:$selfBase d:$g ts:$ts cmd:history '
           'kind:identity,observation only:$c since:$sinceS';
-      superAsks++;
+      alwaysOnAsks++;
       unawaited(publish(wire));
-      break; // one super per miss per period
+      break; // one archiver per miss per period
     }
   }
 
@@ -463,7 +464,7 @@ class XprsGossip {
       'accepted': accepted,
       'refusedUnsigned': refusedUnsigned,
       'refusedQuota': refusedQuota,
-      'superAsks': superAsks,
+      'alwaysOnAsks': alwaysOnAsks,
     };
   }
 

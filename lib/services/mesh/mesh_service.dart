@@ -1459,7 +1459,7 @@ class MeshService {
             callsign: NostrCrypto.bareCallsign(st.callsign),
             lastHeardMs: st.lastMs,
             bearer: st.bearer,
-            uptimeS: _uptimeSeconds(st.uptime),
+            uptimeS: xprsUptimeSeconds(st.uptime),
           ),
     ];
     // What the operator configured, minus whatever WE adopted last time — an
@@ -1503,19 +1503,6 @@ class MeshService {
   /// `uptime:` as seconds. The wire writes a quantity with its unit (4.5):
   /// `9day`, `36hour`, `900s`. Unknown or absent reads as zero, which only
   /// costs a station its place in a tie-break.
-  static int _uptimeSeconds(String? v) {
-    if (v == null || v.isEmpty) return 0;
-    final m = RegExp(r'^(\d+)\s*([a-z]*)$').firstMatch(v.trim().toLowerCase());
-    if (m == null) return 0;
-    final n = int.tryParse(m.group(1)!) ?? 0;
-    return switch (m.group(2)) {
-      'day' || 'days' || 'd' => n * 86400,
-      'hour' || 'hours' || 'h' => n * 3600,
-      'min' || 'mins' || 'm' => n * 60,
-      _ => n,
-    };
-  }
-
   /// Re-read the archive's limits and the admission policy after the operator
   /// changes them, so a switch takes effect now rather than at the next boot.
   void applyArchiveLimits() {

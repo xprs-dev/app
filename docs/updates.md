@@ -97,7 +97,7 @@ Android will *install* what was offered. See §7.
 
 ---
 
-## 4. The super-archiver as the mirror
+## 4. The always-on archiver as the mirror
 
 A station that says yes to `update.mirror` becomes the local source of
 binaries. `UpdateMirrorService`:

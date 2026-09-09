@@ -714,15 +714,15 @@ class XprsPublisher {
     // silence. An always-on archiver is the one place that holds everything
     // everybody said (36.9.4), which is what makes Global chat global: every
     // other station pulls it from there. Pushing is one addressed copy per
-    // configured super, on the lane the hubs do carry (36.12.1), and only for
+    // configured archiver, on the lane the hubs do carry (36.12.1), and only for
     // wires meant for everybody -- mail has a d: and its own custody path.
-    final supers =
+    final archivers =
         PreferencesService.instanceSync?.xprsNamedArchivers ?? const <String>[];
-    if (supers.isNotEmpty) {
+    if (archivers.isNotEmpty) {
       for (final w in wires) {
         final p = XprsPacket.parse(w);
         if (p == null || (p['d'] ?? '').trim().isNotEmpty) continue;
-        for (final call in supers) {
+        for (final call in archivers) {
           final hex = RnsService.instance.lxmfDestForCallsign(call);
           if (hex.isEmpty) continue;
           unawaited(RnsService.instance

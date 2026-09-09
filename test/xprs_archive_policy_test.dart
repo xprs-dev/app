@@ -141,4 +141,47 @@ void main() {
               'checkable, and it is collapsed to one row per station');
     });
   });
+
+  group('who the middle tier is (16.2)', () {
+    // Bare stand-ins: the real callers pass NostrCrypto.deriveCallsign and
+    // bareCallsign. What is under test is which names end up on the shelf.
+    String derive(String hex) => hex == 'zz' ? '' : 'X1${hex.toUpperCase()}';
+    String base(String c) => c.split('-').first.toUpperCase();
+
+    Set<String> names(Set<String> hex, Map<String, String> callPub) =>
+        xprsFollowedCallsigns(
+            followedHex: hex, callPub: callPub, derive: derive, base: base);
+
+    test('a followed key is followed under the name we can derive', () {
+      expect(names({'ab'}, const {}), {'X1AB'});
+    });
+
+    test('and under the name its holder actually transmits', () {
+      // A station announcing X3ARK is the same key as the X1ARKL we derive.
+      // Shelving only the derived name would leave every packet it ever sends
+      // on the stranger shelf, under the byte cap, for a station we follow.
+      expect(names({'ark'}, {'X3ARK': 'ark'}), {'X1ARK', 'X3ARK'});
+    });
+
+    test('an issued callsign has no key arithmetic and still counts', () {
+      expect(names({'ct'}, {'CT1ABC': 'CT'}), contains('CT1ABC'),
+          reason: 'the binding is what we hold, whatever the name derives to');
+    });
+
+    test('SSIDs are one shelf', () {
+      expect(names({'ab'}, {'X1AB-7': 'ab'}), {'X1AB'});
+    });
+
+    test('nobody followed, nobody promoted', () {
+      expect(names(const {}, {'X3ARK': 'ark'}), isEmpty);
+    });
+
+    test('a callsign we know but do not follow stays a stranger', () {
+      expect(names({'ab'}, {'X3ARK': 'ark'}), {'X1AB'});
+    });
+
+    test('a key too short to derive from is skipped, not crashed on', () {
+      expect(names({'zz'}, const {}), isEmpty);
+    });
+  });
 }
