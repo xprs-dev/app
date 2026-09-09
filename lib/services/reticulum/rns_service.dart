@@ -1209,7 +1209,7 @@ class RnsService {
   }
 
   /// that shows a device count must come through here.
-  ({int xprs, int others, int hubs}) reachability() {
+  ({int xprs, int reachable, int others, int hubs}) reachability() {
     sweepObserved();
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
@@ -1233,8 +1233,10 @@ class RnsService {
       if (hubIds.contains(n.identityHex)) continue;
       if (!_announcesXprsService(n)) others++;
     }
+    final present = xprsPresence(nowMs: nowMs);
     return (
-      xprs: xprsPresence(nowMs: nowMs).length,
+      xprs: present.length,
+      reachable: present.where((d) => d.reachable).length,
       others: others,
       hubs: _connectedHubs.length
     );

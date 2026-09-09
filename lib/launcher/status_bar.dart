@@ -79,6 +79,7 @@ class _StatusBarState extends State<_StatusBar> {
     final next = _NetStats(
       up: rns.isUp,
       devices: reach.xprs,
+      reachable: reach.reachable,
       others: reach.others,
       hubs: reach.hubs,
       bleNeighbours: MeshService.instance.table?.neighbors.length ?? 0,
@@ -185,7 +186,8 @@ class _StatusBarState extends State<_StatusBar> {
 class _NetStats {
   final bool up;
   final int devices; // XPRS devices — the ones you can actually talk to
-  final int others; // other Reticulum peers (Sideband/NomadNet) — context only
+  final int reachable; // of those, the ones addressable right now
+  final int others; // other Reticulum peers (Sideband/NomadNet) — never shown
   final int hubs; // internet uplinks we hold
   final int bleNeighbours; // BLE mesh neighbours heard
   final int follows;
@@ -194,6 +196,7 @@ class _NetStats {
   const _NetStats({
     this.up = false,
     this.devices = 0,
+    this.reachable = 0,
     this.others = 0,
     this.hubs = 0,
     this.bleNeighbours = 0,
@@ -227,7 +230,14 @@ class _NetStats {
       bits.add('${_n(newPosts)} new ${newPosts == 1 ? 'post' : 'posts'}');
     }
     if (hubs > 0) bits.add('$hubs ${hubs == 1 ? 'hub' : 'hubs'}');
-    if (others > 0) bits.add('${_n(others)} other peers');
+    // NOT "N other peers". That counted every LXMF and NomadNet destination
+    // the hubs have ever replayed at us — 67 of them on a network of six —
+    // and put a stranger's number on this device's front page as though it
+    // were something the operator had. What belongs here is how many of THEIR
+    // devices they can talk to right now.
+    if (devices > 0 && reachable < devices) {
+      bits.add('$reachable reachable');
+    }
     if (bits.isEmpty) {
       return follows == 0
           ? 'Follow someone to see their posts here'
@@ -244,6 +254,7 @@ class _NetStats {
       other is _NetStats &&
       other.up == up &&
       other.devices == devices &&
+      other.reachable == reachable &&
       other.others == others &&
       other.hubs == hubs &&
       other.bleNeighbours == bleNeighbours &&
@@ -252,5 +263,6 @@ class _NetStats {
 
   @override
   int get hashCode =>
-      Object.hash(up, devices, others, hubs, bleNeighbours, follows, newPosts);
+      Object.hash(up, devices, reachable, others, hubs, bleNeighbours, follows,
+          newPosts);
 }

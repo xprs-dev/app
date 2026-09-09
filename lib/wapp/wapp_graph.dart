@@ -995,7 +995,12 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     final usersSeen = at('users', 'seen');
     final stations = at('stations', 'reachable');
     final stationsSeen = at('stations', 'seen');
-    final hubs = (_counts['hubs'] is int) ? _counts['hubs'] as int : 0;
+    // The hubs we HOLD AN UPLINK TO, which is what the panel this segment
+    // opens lists, and what the launcher's own line counts. The snapshot's
+    // `hubs` is a different quantity — gateways that happen to relay for
+    // somebody fresh — so using it made the badge read "1 hub" and then open
+    // a list of four.
+    final hubs = _hubList.where((h) => h['connected'] == true).length;
 
     Widget item(IconData icon, String n, String one, String many, Color c,
         {bool arrow = false, VoidCallback? onTap, int plural = 2}) {
