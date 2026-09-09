@@ -363,10 +363,17 @@ holder had been told as well as the sender. The desktop returned and learned
 `4bd6b9 is delivered (X1WATT)`. The hotwav had also adopted X1ARKL as its
 archiver on first boot and declared it, with nothing configured.
 
-One gap that run exposed and this work does not close: the outbox is in memory,
-so a sender that RESTARTS has no row for the receipt to advance —
-`status only, no outbox row`. The delivery is known; the tick on the sender's
-own screen is not restored. Persisting the outbox is the fix.
+That run exposed one more gap, since closed: the outbox was in memory, so a
+sender that RESTARTED had no row for the receipt to advance — `status only, no
+outbox row`. The tick was the smaller cost. `stateOf` answering null for a
+message that IS delivered makes the mailbox leave ANOTHER copy with an
+archiver and leaves the retry ladder with nothing to stop it, which is airtime
+rather than a nicety. `XprsOutbox` now keeps its rows in the profile database
+(`xprs_outbox.sqlite3`): the pocket holds the hot 500, the file holds 4000, and
+a receipt for something older loads its row rather than reporting a status with
+nothing behind it. Re-run on the same three stations: `outbox restored 28 sent
+message(s)`, then `receipt from X1WATT released 1 held copy of 621c47` and
+`621c47 is delivered (X1WATT)` — no status-only line.
 
 The three-station dance is simulated on this machine before it goes near a
 radio: `test/xprs_mail_relay_sim_test.dart` on `test/support/mail_relay_sim.dart`

@@ -20,6 +20,9 @@
  * Deliberately small: an id, who it was for, a state and a timestamp. It is
  * not a message store. The words are the wapp's; this is only their fate.
  */
+import 'package:sqlite3/common.dart';
+
+import '../../profile/profile_db.dart';
 import '../log_service.dart';
 import '../receive/wapp_delivery.dart';
 
@@ -61,15 +64,121 @@ class XprsOutbox {
   static int recorded = 0;
   static int advanced = 0;
   static int unknown = 0;
+  static int restored = 0;
+
+  /// The same rows on disk.
+  ///
+  /// This pocket used to be session-lived, and the bench showed what that
+  /// costs: a station that sends a message, is closed, and comes back to an
+  /// archiver handing it the receipt has no row to advance — it logs "status
+  /// only, no outbox row". Two things then go wrong. `stateOf` answers null
+  /// for a message that IS delivered, so the mailbox deposits another copy of
+  /// it with an archiver, and the retry ladder has nothing to stop it early.
+  /// A tick is small; re-sending a delivered message to a mailbox is airtime.
+  ///
+  /// Profile database (SQLCipher) like [XprsFileAcl]: what this station sent
+  /// is this station's business. Every write is one primary-key upsert and
+  /// every read a primary-key lookup, so it is safe on the caller's isolate
+  /// (docs/architecture.md §2).
+  CommonDatabase? _db;
+
+  /// Rows kept on disk. Larger than [maxRows] — memory holds the hot end, the
+  /// file holds enough history that a receipt for yesterday's message still
+  /// finds its row.
+  static const int keepRows = 4000;
+
+  void init(String path) {
+    close();
+    try {
+      final db = openProfileDb(path);
+      db.execute('''
+        CREATE TABLE IF NOT EXISTS tx_outbox(
+          id    TEXT PRIMARY KEY,
+          peer  TEXT NOT NULL,
+          state TEXT NOT NULL,
+          ts    INTEGER NOT NULL
+        )''');
+      db.execute('CREATE INDEX IF NOT EXISTS tx_outbox_ts ON tx_outbox(ts)');
+      _db = db;
+      _restore();
+    } catch (e) {
+      _db = null;
+      LogService.instance.add('XPRS: outbox store unavailable ($e)');
+    }
+  }
+
+  void close() {
+    try {
+      _db?.dispose();
+    } catch (_) {}
+    _db = null;
+  }
+
+  /// Load the newest rows back into the pocket, so the common lookups stay a
+  /// map read and only a receipt for something older touches the file.
+  void _restore() {
+    final db = _db;
+    if (db == null) return;
+    try {
+      for (final r in db.select(
+          'SELECT id,peer,state,ts FROM tx_outbox ORDER BY ts DESC LIMIT ?',
+          [maxRows]).toList().reversed) {
+        _rows[r['id'] as String] = TxRecord(r['id'] as String,
+            r['peer'] as String, r['state'] as String, r['ts'] as int);
+      }
+      restored = _rows.length;
+      if (restored > 0) {
+        LogService.instance
+            .add('XPRS: outbox restored $restored sent message(s)');
+      }
+    } catch (_) {}
+  }
+
+  void _persist(TxRecord row) {
+    final db = _db;
+    if (db == null) return;
+    try {
+      db.execute(
+          'INSERT INTO tx_outbox(id,peer,state,ts) VALUES(?,?,?,?) '
+          'ON CONFLICT(id) DO UPDATE SET state=excluded.state, ts=excluded.ts',
+          [row.id, row.peer, row.state, row.ms]);
+      // Bound the file. Cheap because it only runs when the table could have
+      // grown past the ceiling, and it deletes by the indexed column.
+      if (recorded % 200 == 0) {
+        db.execute(
+            'DELETE FROM tx_outbox WHERE id NOT IN '
+            '(SELECT id FROM tx_outbox ORDER BY ts DESC LIMIT ?)',
+            [keepRows]);
+      }
+    } catch (_) {}
+  }
+
+  /// What the file says about [id] when the pocket has forgotten it.
+  TxRecord? _load(String id) {
+    final db = _db;
+    if (db == null) return null;
+    try {
+      final rows = db.select(
+          'SELECT id,peer,state,ts FROM tx_outbox WHERE id=? LIMIT 1', [id]);
+      if (rows.isEmpty) return null;
+      final r = rows.first;
+      return TxRecord(r['id'] as String, r['peer'] as String,
+          r['state'] as String, r['ts'] as int);
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Remember that we sent [id] to [peer].
   void noteSent(String id, String peer) {
     if (id.isEmpty) return;
     if (_rows.containsKey(id)) return;
     if (_rows.length >= maxRows) _rows.remove(_rows.keys.first);
-    _rows[id] = TxRecord(id, peer.toUpperCase(),
+    final row = TxRecord(id, peer.toUpperCase(),
         TxState.sent, DateTime.now().millisecondsSinceEpoch);
+    _rows[id] = row;
     recorded++;
+    _persist(row);
   }
 
   /// A verified receipt arrived for [id]. [state] is `ack` or `read`.
@@ -78,7 +187,14 @@ class XprsOutbox {
   /// it, instead of asserting a state the core never confirmed.
   void noteReceipt(String id, {required String state, String? peer}) {
     final to = state == 'read' ? TxState.read : TxState.delivered;
-    final row = _rows[id];
+    // The pocket first, then the file: a receipt for a message this station
+    // sent BEFORE it was last closed is exactly the case an archiver in the
+    // middle creates, and it is the one the pocket cannot answer.
+    var row = _rows[id];
+    if (row == null) {
+      row = _load(id);
+      if (row != null) _rows[id] = row;
+    }
     if (row == null) {
       // No local record of sending it: the row aged out of this pocket, or the
       // outbox is empty because the app restarted (it is session-lived). The
@@ -99,16 +215,18 @@ class XprsOutbox {
     row.state = to;
     row.ms = DateTime.now().millisecondsSinceEpoch;
     advanced++;
+    _persist(row);
     LogService.instance.add('XPRS: $id is $to (${row.peer})');
     WappDelivery.instance.deliverStatus(id: id, peer: row.peer, state: to);
   }
 
-  String? stateOf(String id) => _rows[id]?.state;
+  String? stateOf(String id) => (_rows[id] ?? _load(id))?.state;
 
   int get length => _rows.length;
 
   static void debugReset() {
     instance._rows.clear();
-    recorded = advanced = unknown = 0;
+    instance.close();
+    recorded = advanced = unknown = restored = 0;
   }
 }

@@ -263,6 +263,13 @@ class MeshService {
         // which original a preview stands for), by hash. Same store.
         MediaRefIndex.instance.init(
             wappsDataStorage(prefs).getAbsolutePath('media_refs.sqlite3'));
+        // What we sent and what became of it (13.7). Persisted, because the
+        // whole point of an archiver in the middle is that a receipt arrives
+        // after the sender has been away — and a sender with no row for it
+        // cannot tell a delivered message from an unanswered one, so it
+        // deposits another copy and keeps its ladder running.
+        XprsOutbox.instance.init(
+            wappsDataStorage(prefs).getAbsolutePath('xprs_outbox.sqlite3'));
         var n = 0;
         for (final g in XprsGroupKeys.instance.followedGroups()) {
           n += XprsGroups.instance.hydrate(XprsGroupKeys.instance.actsFor(g));
