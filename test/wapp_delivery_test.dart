@@ -82,6 +82,24 @@ void main() {
     expect(deliver('$head $xr m:meet ███ at █████', 'rns')['obfuscated'], true);
     // A plain message is not flagged.
     expect(deliver('$head m:in the clear', 'lan')['obfuscated'], false);
+
+    // THE OTHER DOOR, which is where this went wrong: a 1:1 and a closed-group
+    // post reach a wapp already decoded (deliverMessage), not as a packet, and
+    // that row did not carry the flag at all. The same redacted message was
+    // therefore tappable in the Local room and DEAD in a 1:1 -- bars on screen
+    // that nothing could ever open. Both shapes state it or neither is trusted.
+    Map<String, dynamic> decoded({required bool obf}) {
+      WappDelivery.instance.deliverMessage(
+          call: 'X1QZ3N',
+          content: 'meet ███ at █████',
+          bearer: 'ble',
+          obfuscated: obf);
+      return jsonDecode(bus.recv('chat')!.data) as Map<String, dynamic>;
+    }
+
+    expect(decoded(obf: true)['obfuscated'], true);
+    // A message with no packet behind it (a foreign LXMF one) has no `xr:`.
+    expect(decoded(obf: false)['obfuscated'], false);
   });
 
   // Section 26.7 at the RECEIVE door: a closed-group post from a proven

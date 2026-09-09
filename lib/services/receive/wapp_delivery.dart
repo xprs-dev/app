@@ -243,6 +243,7 @@ class WappDelivery {
     String file = '',
     String size = '',
     String name = '',
+    bool obfuscated = false,
   }) {
     // An XPRS wire is protocol, not correspondence: a `t:...`/`x:...` body
     // that leaked this far is a bug upstream, and it must never surface as a
@@ -284,6 +285,13 @@ class WappDelivery {
         'file': file,
         'size': size,
         'name': name,
+        // §6.2.1: part of this is behind a passphrase. It is stated on the
+        // packet-shaped row above from `xr:`, and it has to be stated here too
+        // or the SAME message is tappable in the Local room and dead in a 1:1
+        // -- the reader sees bars, taps, and nothing can ever open them. The
+        // caller reads it off the packet; a message with no packet behind it
+        // (a foreign LXMF one) has no `xr:` and defaults to false.
+        'obfuscated': obfuscated,
       });
   }
 

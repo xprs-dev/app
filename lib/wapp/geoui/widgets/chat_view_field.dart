@@ -13,6 +13,8 @@
  * #2B5278, incoming #182533, on a #0E1621 chat background.
  */
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
@@ -176,6 +178,22 @@ class _ChatViewFieldState extends State<ChatViewField> {
   /// hint) and is appended verbatim on send; [ref] drives the thumbnail.
   final List<({String token, MediaRef ref})> _pending = [];
 
+  /// Messages whose reveal has been asked for and not yet come back (§6.2.1).
+  /// The derivation is 100k rounds of PBKDF2 and takes seconds on a phone, so
+  /// the bubble has to SAY it is working -- a tap that answers nothing reads as
+  /// a tap that missed, and the next tap buys another derivation. Held here and
+  /// not on the message map: those are written through to sqlite, and this is
+  /// worth exactly as much as the widget that shows it. The State survives the
+  /// host's rebuilds (the element is keyed per conversation), so the mark is
+  /// still here when the answer lands.
+  final Set<String> _revealing = {};
+
+  /// Gives up on a reveal nobody answered. There is no failure event to wait
+  /// for: a wrong passphrase loops back into another prompt, and cancelling
+  /// one sends the wapp nothing at all -- so a spinner that is never told
+  /// anything has to stop by itself.
+  Timer? _revealTimeout;
+
   /// Lookup of message-id -> message so a reply can show a quoted snippet of
   /// the message it answers (threading). Threading ids are opaque (the wapp
   /// sets `mid`/`parent`); the host only renders the relation. Rebuilt when the
@@ -255,6 +273,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
   @override
   void dispose() {
     _scroll.removeListener(_onScroll);
+    _revealTimeout?.cancel();
     _input.dispose();
     _inputFocus.dispose();
     _scroll.dispose();
@@ -894,14 +913,36 @@ class _ChatViewFieldState extends State<ChatViewField> {
   Widget _maybeIntrinsicWidth(bool tight, Widget child) =>
       tight ? IntrinsicWidth(child: child) : child;
 
+  /// Ask the core to open a redacted message, and remember that we did.
+  ///
+  /// One door for every conversation: a 1:1, the Local room and a closed group
+  /// are all this widget, so opening a message works the same in all three and
+  /// there is nowhere for a second implementation to grow.
+  void _startReveal(String mid) {
+    setState(() => _revealing.add(mid));
+    _revealTimeout?.cancel();
+    _revealTimeout = Timer(const Duration(seconds: 25), () {
+      if (mounted) setState(_revealing.clear);
+    });
+    widget.onReveal!(mid);
+  }
+
   /// A redacted message's body: the bars, a lock+tip line, and a tap that asks
   /// the core to open it (9.2.1). The reveal is transient and comes back as a
   /// ui.convo.reveal, so the reader taps every time; only the passphrase sticks.
+  ///
+  /// While the core is deriving the key the line becomes a spinner: 6.2.1 pays
+  /// a full PBKDF2 per message BY DESIGN ("the derivation is the strength"), so
+  /// the seconds are not going away and the tap has to account for them. The
+  /// bars stay exactly where they are, so nothing moves under the finger.
   Widget _lockedText(String mid, String bars, String tip, bool outgoing) {
+    final working = _revealing.contains(mid);
     return InkWell(
-      onTap: (widget.onReveal == null || mid.isEmpty)
+      // Inert while it works: a second tap cannot hurry a derivation, it can
+      // only order another one.
+      onTap: (widget.onReveal == null || mid.isEmpty || working)
           ? null
-          : () => widget.onReveal!(mid),
+          : () => _startReveal(mid),
       borderRadius: BorderRadius.circular(4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -912,11 +953,19 @@ class _ChatViewFieldState extends State<ChatViewField> {
           Padding(
             padding: const EdgeInsets.only(top: 3),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.lock_outline,
-                  size: 11, color: _onBubbleFg(outgoing, 150)),
+              if (working)
+                SizedBox(
+                  width: 11,
+                  height: 11,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 1.6, color: _onBubbleFg(outgoing, 150)),
+                )
+              else
+                Icon(Icons.lock_outline,
+                    size: 11, color: _onBubbleFg(outgoing, 150)),
               const SizedBox(width: 3),
               Flexible(
-                child: Text(tip,
+                child: Text(working ? 'Opening\u2026' : tip,
                     style: TextStyle(
                         color: _onBubbleFg(outgoing, 150),
                         fontSize: 11,
@@ -959,6 +1008,10 @@ class _ChatViewFieldState extends State<ChatViewField> {
         ? m['tip'].toString()
         : 'Tap to reveal hidden text';
     final revealMid = m['mid']?.toString() ?? '';
+    // The answer landed (or the conversation re-locked): the reveal we were
+    // waiting on is over, so drop the mark. No setState -- this frame is
+    // already drawing the new state, and an unmarked message draws no spinner.
+    if (!locked && revealMid.isNotEmpty) _revealing.remove(revealMid);
     final shownText = (revealed != null && revealed.isNotEmpty) ? revealed : text;
     // XPRS section 16 media references: render each `file:<sha256>.<ext>` token as a
     // tappable thumbnail and drop the raw token from the visible text.

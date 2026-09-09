@@ -747,6 +747,10 @@ class MeshCourier {
         file: p['file'] ?? '',
         size: p['size'] ?? '',
         name: p['name'] ?? '',
+        // §6.2.1: the packet carries an `xr:` blob, so part of the body is
+        // bars until the reader opens it. The decoded shape has to say so --
+        // the packet is right here and the wapp never sees it.
+        obfuscated: p.has('xr'),
         ts: xprsParseTs(p['ts']));
     // REMEMBER it. `_alreadyDelivered` is checked on the way in, but nothing
     // ever recorded the delivery, so the guard read a flag no one set and the
