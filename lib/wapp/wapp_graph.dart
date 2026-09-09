@@ -1741,8 +1741,16 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             : n.effectiveKind == 'hub'
                 ? 'Hub / transport node'
                 : 'Peer';
-    final pubkey = (m['pubkey'] ?? '').toString();
-    final canMessage = n.kind != 'self' && n.dm.isNotEmpty && pubkey.isNotEmpty;
+    final call = (m['callsign'] ?? '').toString();
+    // CAN WE NAME IT? That is the whole question, and the old gate asked two
+    // others: `dm` is a Reticulum announce property that a station heard on a
+    // radio never carries (the snapshot does not even emit the key for
+    // kind:'xprs'), and `pubkey` is empty for any station whose key we have
+    // never learned — which is most of them on the air. So the sheet for an
+    // archiver two metres away offered no way to talk to it and said "No 1:1
+    // messaging heard", while the code behind the button needs neither field:
+    // a callsign IS the conversation id, and a plain 1:1 needs no key.
+    final canMessage = n.kind != 'self' && n.isDevice && call.isNotEmpty;
     // Mail is keyed by the person, not the device: their npub when the announce
     // carried one, else the callsign (the Mail wapp resolves that through the
     // relay directory). Devices that are only an LXMF address have neither.
@@ -1800,21 +1808,25 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       ]),
       const SizedBox(height: 18),
       // Prominent Message button (or a reachability note when unreachable).
-      if (canMessage)
+      if (canMessage || (n.kind != 'self' && mailTarget.isNotEmpty))
         Row(children: [
-          // "Message" said nothing about WHERE it lands. It opens the Chat
-          // wapp's 1:1 — so it says Chat, and Mail sits beside it.
-          Expanded(
-            child: FilledButton.icon(
-              icon: const Icon(Icons.forum_outlined, size: 18),
-              label: const Text('Chat'),
-              style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 13)),
-              onPressed: () => _messagePeer(n, pubkey),
+          // Opens the Chat wapp on a 1:1 with this callsign, creating the
+          // thread if it does not exist yet.
+          if (canMessage)
+            Expanded(
+              child: FilledButton.icon(
+                icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                label: const Text('Message'),
+                style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 13)),
+                onPressed: () => _messagePeer(n),
+              ),
             ),
-          ),
+          // Mail stands on its own target. It used to be nested inside the
+          // messaging branch, so a device with a perfectly good npub got no
+          // Mail button either, for a reason that had nothing to do with mail.
           if (mailTarget.isNotEmpty) ...[
-            const SizedBox(width: 8),
+            if (canMessage) const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.mail_outline, size: 18),
@@ -1826,7 +1838,9 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             ),
           ],
         ])
-      else if (n.kind != 'self')
+      // Only for something we genuinely cannot address. A hub is not owed this
+      // sentence: "no 1:1 messaging heard" is not a statement about a gateway.
+      else if (n.kind != 'self' && n.effectiveKind != 'hub')
         Row(children: [
           const Icon(Icons.do_not_disturb_on, size: 15, color: _gMuted),
           const SizedBox(width: 6),
@@ -1915,7 +1929,10 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // CALLSIGN (meta.callsign is on every XPRS node). The key the node announced
   // is the core's to use when Chat asks for a sealed message; this panel only
   // says who.
-  void _messagePeer(RnsGraphNode n, String pubkey) {
+  /// Open a 1:1 with this device. The callsign is the whole address — no key,
+  /// no LXMF destination (the `pubkey` argument this used to take was never
+  /// read, and gating on it is what kept stations unreachable).
+  void _messagePeer(RnsGraphNode n) {
     final call = ((n.meta['callsign'] ?? '') as Object).toString().trim();
     if (call.isEmpty) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
@@ -2287,7 +2304,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       } else if (p.xprs) {
         _openPeerProfile(p);
       } else if (canMsg) {
-        _messagePeer(p, pubkey);
+        _messagePeer(p);
       } else {
         setState(() {
           _selectedId = p.id;
@@ -2342,11 +2359,16 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                         style: const TextStyle(color: _gMuted, fontSize: 11)),
                 ]),
           ),
-          // xprs: the row opens the profile, so give a direct Message
-          // shortcut here. Others: a plain affordance.
-          if (p.xprs && canMsg)
+          // One of ours: the row opens its sheet, where Message lives. A
+          // device the row cannot act on gets a chevron.
+          //
+          // This used to draw a send icon with NO onTap for every row that
+          // failed the old messaging gate — an affordance that looked live and
+          // did nothing, on exactly the rows (stations heard on a radio) the
+          // sheet also refused to message.
+          if (p.isDevice)
             InkWell(
-              onTap: () => _messagePeer(p, pubkey),
+              onTap: () => _messagePeer(p),
               borderRadius: BorderRadius.circular(16),
               child: const Padding(
                 padding: EdgeInsets.all(6),
@@ -2354,10 +2376,9 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
               ),
             )
           else
-            Padding(
-              padding: const EdgeInsets.all(6),
-              child: Icon(canMsg ? Icons.send : Icons.chevron_right,
-                  size: canMsg ? 17 : 16, color: canMsg ? _gSelf : _gMuted),
+            const Padding(
+              padding: EdgeInsets.all(6),
+              child: Icon(Icons.chevron_right, size: 16, color: _gMuted),
             ),
         ]),
       ),

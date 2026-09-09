@@ -7590,7 +7590,16 @@ class _WappPageState extends State<WappPage>
         (c) => c.keyword == 'group' && c.type == 'conversations',
       ),
     );
-    if (idx < 0) return;
+    if (idx < 0) {
+      // NEITHER GROUP IS ON THIS PAGE, so there is nothing here to open the
+      // conversation in — this returned silently, which is why the profile's
+      // Chat button did nothing at all when the profile was opened from the
+      // Mesh screen or the social feed. Hand it to the Chat wapp instead,
+      // through the one door that exists for opening an installed wapp from
+      // outside the launcher (`openWappByFolder`).
+      unawaited(openWappByFolder('chat', convo: convo, navigator: Navigator.of(context)));
+      return;
+    }
     const field = 'conversations';
     final store = _convStore(field);
     if (!store.items.containsKey(convo)) store.upsert({'id': convo});
