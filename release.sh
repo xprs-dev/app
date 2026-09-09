@@ -5,7 +5,7 @@
 # Bumps pubspec.yaml, syncs lib/version.dart, commits, tags vX.Y.Z and pushes.
 # Pushing the tag is what triggers everything else: release.yml builds the three
 # platforms as xprs-<version>-<platform>, the site repo's sync.yml hashes them
-# into the xprs.dev feed, and a super-archiver with the mirror enabled seeds
+# into the xprs.dev feed, and an always-on archiver with the mirror enabled seeds
 # them over Reticulum. Phones fetch the bytes by sha256 from that station and
 # never make an HTTPS request for a binary. See releases.md.
 #
@@ -88,7 +88,7 @@ git push origin "v${VERSION}"
 
 # From here it is automatic. release.yml attaches the artifacts to a GitHub
 # Release; the site repo's sync.yml (cron every 3h, or run it manually) hashes
-# them into https://xprs.dev/updates/{stable,beta}.json; a super-archiver with
+# them into https://xprs.dev/updates/{stable,beta}.json; an always-on archiver with
 # the mirror on downloads each artifact once and seeds it by content address.
 echo ">> done. release.yml is building v${VERSION}."
 echo ">>   feed:   gh workflow run sync.yml -R xprs-dev/xprs-dev.github.io"
