@@ -8,7 +8,7 @@ import 'dart:io'
 
 import 'package:file/file.dart' show File, Directory;
 
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 import 'package:wasm_run/wasm_run.dart';
 
 import 'i18n_context.dart';
@@ -654,23 +654,62 @@ class WappEngine {
     WappEventBroker.instance.publish('core', 'xprs.unlock', jsonEncode(row));
   }
 
+  /// The wire a redacted post travels as.
+  ///
+  /// `#LOCAL` is the undirected room: it becomes a scoped broadcast
+  /// (§13.11.1) with no `d:`, not an addressed packet. Anything else is a
+  /// station's callsign, or `#` + a group's X5 callsign. `m:` is last by
+  /// grammar and `xr:` precedes it, as in the §9.2.1 worked packet.
+  @visibleForTesting
+  static String xrRedactedWire({
+    required String self,
+    required String convo,
+    required String ts,
+    required String xr,
+    required String barred,
+  }) {
+    final room = convo.trim();
+    if (room.toUpperCase() == '#LOCAL') {
+      return 't:message f:$self ts:$ts scope:local xr:$xr m:$barred';
+    }
+    final dest = room.startsWith('#') ? room.substring(1) : room;
+    return 't:message f:$self d:$dest ts:$ts xr:$xr m:$barred';
+  }
+
+  /// Tell the wapp its redaction did not go out. Every refusal below used to
+  /// end in a bare `return`: no packet, no bubble, and nothing said -- which
+  /// looks exactly like a feature that does not work.
+  void _xrRedactFailed(String convo) => WappEventBroker.instance
+      .publish('core', 'xprs.redacted', jsonEncode({'convo': convo, 'ok': false}));
+
   Future<void> _xrRedact(String convo, String text, String pass) async {
     final passphrase =
         pass.isEmpty ? XprsCrypto.kXrDefaultPassphrase : pass;
     final res = await compute(_xrRedactCompute,
         <String, dynamic>{'text': text, 'passphrase': passphrase});
-    if (res.isEmpty) return; // nothing was marked
+    if (res.isEmpty) {
+      _xrRedactFailed(convo); // nothing was marked
+      return;
+    }
     final m = jsonDecode(res) as Map<String, dynamic>;
     final barred = m['barred'] as String;
     final xr = m['xr'] as String;
     final self = MeshService.instance.tableCallsign.trim();
-    if (self.isEmpty) return;
-    final dest = convo.startsWith('#') ? convo.substring(1) : convo;
-    // m: is last by grammar; xr: precedes it (as in the §9.2.1 worked packet).
-    final wire = 't:message f:$self d:$dest ts:${xprsNowTs()} xr:$xr m:$barred';
+    if (self.isEmpty) {
+      _xrRedactFailed(convo);
+      return;
+    }
+    final wire = xrRedactedWire(
+        self: self, convo: convo, ts: xprsNowTs(), xr: xr, barred: barred);
     final p = XprsPacket.parse(wire);
-    if (p == null || !p.fits) return;
-    if (!XprsPublisher.instance.mayAir(p)) return;
+    if (p == null || !p.fits) {
+      _xrRedactFailed(convo);
+      return;
+    }
+    if (!XprsPublisher.instance.mayAir(p)) {
+      _xrRedactFailed(convo);
+      return;
+    }
     if (pass.isNotEmpty) XprsPassphrases.instance.remember(pass);
     // Keep our own barred wire so we can open our own bubble later. The core
     // airs a post over whatever bearer carries it (BLE, LoRa, LAN, Reticulum)
@@ -681,7 +720,8 @@ class WappEngine {
     WappEventBroker.instance.publish(
         'core',
         'xprs.redacted',
-        jsonEncode({'convo': convo, 'id': xprsIdentifier(p), 'm': barred}));
+        jsonEncode(
+            {'convo': convo, 'id': xprsIdentifier(p), 'm': barred, 'ok': true}));
   }
 
   /// Read a UTF-8 string from wasm memory (correct for non-ASCII text, unlike

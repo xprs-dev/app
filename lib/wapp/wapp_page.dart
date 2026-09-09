@@ -3814,7 +3814,12 @@ class _WappPageState extends State<WappPage>
         const <MapEntry<String, String>>[];
     final instant = (data['chipMode'] ?? 'instant') == 'instant';
     final input = data['input'] as Map?;
-    final confirmLabel = (data['confirm'] ?? '').toString();
+    // A prompt that asks for TEXT always gets a button. Without one the only
+    // way to submit was the keyboard's Enter, so a prompt whose own body said
+    // "leave it blank for the default" (the redaction passphrase, §6.2.1) had
+    // no reachable answer but Cancel. A wapp naming its own label still wins.
+    final confirmLabel =
+        (data['confirm'] ?? (input != null ? 'OK' : '')).toString();
     // Optional boolean toggle (e.g. a Local/Global scope switch). Generic: the
     // wapp gets its state back as prompt_toggle.
     final toggle = data['toggle'] as Map?;
@@ -3841,7 +3846,11 @@ class _WappPageState extends State<WappPage>
 
     void confirm(BuildContext ctx) {
       final t = controller.text.trim();
-      if (t.isEmpty && selected.isEmpty) return;
+      // AN EMPTY TEXT FIELD IS AN ANSWER. It means the default -- the
+      // passphrase of §6.2.1, an unnamed file, a cleared value -- and the wapp
+      // that asked is the one that knows what its blank means. Only a prompt
+      // with nothing to type in (chips alone) still needs a choice made.
+      if (selected.isEmpty && input == null && t.isEmpty) return;
       Navigator.pop(ctx);
       result(selected, t);
     }
