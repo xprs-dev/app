@@ -6,10 +6,17 @@
 // it. It happens when a rename or a new file is staged in a working tree that
 // more than one person (or session) is using, and a commit takes half of it.
 //
-// It cost a release: v1.2.9 was tagged and every platform failed on
+// It cost two releases. v1.2.9 was tagged and every platform failed on
 // "Error when reading 'lib/services/folders/folder_export.dart'", an import
-// that had not changed since the release before it. The file had been renamed
-// out of the tree by a commit that meant to change something else.
+// that had not changed since the release before it: the file had been renamed
+// out of the tree by a commit that meant to change something else. v1.2.11
+// failed the same way one repository over — `../reticulum-dart`'s committed
+// `media_archive.dart` imported a `file_system.dart` that existed only on the
+// machine — which this check could not see, because it only ever looked here.
+//
+// So it now checks the PATH DEPENDENCIES too. A sibling package is part of the
+// tree CI compiles, and a sibling with work that has not been pushed is the
+// same failure with a longer walk to it.
 //
 // Run it against HEAD (the default) or any tree-ish:
 //   dart tool/check_tracked_imports.dart [HEAD]
@@ -18,10 +25,56 @@ import 'dart:io';
 
 void main(List<String> args) {
   final rev = args.isEmpty ? 'HEAD' : args.first;
+  final failures = <String>[];
+  if (!_check(rev, '.')) failures.add('.');
+  for (final dep in _pathDependencies()) {
+    if (!Directory('$dep/.git').existsSync()) continue;
+    // The sibling's own HEAD, and whether that HEAD is what we are building
+    // against. Both matter: an import naming an uncommitted file breaks CI,
+    // and so does a sibling whose lib/ has changes nobody has pushed.
+    if (!_check('HEAD', dep)) failures.add(dep);
+    final dirty = _dirtyLib(dep);
+    if (dirty.isNotEmpty) {
+      stderr.writeln('imports: $dep has uncommitted work under lib/ — CI will '
+          'clone it WITHOUT these ${dirty.length} file(s):');
+      for (final d in dirty.take(20)) {
+        stderr.writeln('  $d');
+      }
+      failures.add('$dep (uncommitted)');
+    }
+  }
+  if (failures.isNotEmpty) exit(1);
+}
 
-  final ls = Process.runSync('git', ['ls-tree', '-r', '--name-only', rev]);
+/// The sibling packages `pubspec.yaml` points at with `path:`.
+List<String> _pathDependencies() {
+  final f = File('pubspec.yaml');
+  if (!f.existsSync()) return const [];
+  return [
+    for (final m in RegExp(r'''^\s+path:\s*(\S+)''', multiLine: true)
+        .allMatches(f.readAsStringSync()))
+      m.group(1)!.replaceAll('"', '').replaceAll("'", ''),
+  ];
+}
+
+/// Files under `lib/` that this checkout has and the repository does not.
+List<String> _dirtyLib(String dir) {
+  final st = Process.runSync('git', ['-C', dir, 'status', '--porcelain', 'lib']);
+  if (st.exitCode != 0) return const [];
+  return [
+    for (final l in (st.stdout as String).split('\n'))
+      if (l.trim().isNotEmpty) l.trim(),
+  ];
+}
+
+/// Every relative import in [rev] of the repository at [dir] names a file that
+/// [rev] contains. Returns false and prints the offenders when it does not.
+bool _check(String rev, String dir) {
+
+  final ls =
+      Process.runSync('git', ['-C', dir, 'ls-tree', '-r', '--name-only', rev]);
   if (ls.exitCode != 0) {
-    stderr.writeln('git ls-tree $rev failed: ${ls.stderr}');
+    stderr.writeln('git ls-tree $rev in $dir failed: ${ls.stderr}');
     exit(2);
   }
   final tracked = (ls.stdout as String)
@@ -31,13 +84,13 @@ void main(List<String> args) {
 
   // One pass for every import/export directive and every conditional branch.
   final grep = Process.runSync('git', [
-    'grep', '-n', '-E',
+    '-C', dir, 'grep', '-n', '-E',
     r"""^\s*(import|export)\s+['"]|^\s*if\s*\(\s*dart\.library\.[a-z]+\s*\)\s*['"]""",
     rev, '--', '*.dart',
   ]);
   // grep exits 1 when nothing matches, which is not an error here.
   if (grep.exitCode > 1) {
-    stderr.writeln('git grep failed: ${grep.stderr}');
+    stderr.writeln('git grep in $dir failed: ${grep.stderr}');
     exit(2);
   }
 
@@ -61,17 +114,17 @@ void main(List<String> args) {
   }
 
   if (broken.isEmpty) {
-    stdout.writeln('imports: every relative import in $rev resolves');
-    return;
+    stdout.writeln('imports: every relative import in $rev resolves ($dir)');
+    return true;
   }
-  stderr.writeln('imports: ${broken.length} import(s) name a file that is '
-      'NOT in $rev — the build will fail where the file is not on disk:');
+  stderr.writeln('imports: ${broken.length} import(s) in $dir name a file that '
+      'is NOT in $rev — the build will fail where the file is not on disk:');
   for (final b in broken) {
     stderr.writeln('  $b');
   }
   stderr.writeln('\nUsually a rename or a new file that is staged or untracked '
       'in the working tree but was never committed.');
-  exit(1);
+  return false;
 }
 
 String _dirOf(String path) {
