@@ -158,6 +158,23 @@ void main() {
     });
   });
 
+  test('one copy per message, however often the ladder re-airs it', () async {
+    // The retry ladder re-airs an unacknowledged 1:1 every few seconds, and
+    // each re-airing used to arm a fresh deposit — ten copies of one message
+    // inside ten seconds on the bench, and two archivers handing the same mail
+    // back and forth. A copy is a copy.
+    a.archivers = [c.call];
+    b.online = false;
+    await sim.as(a, () async {
+      final wire =
+          await sim.send(a, 't:message f:X1AAAA d:X1BBBB ts:$_ts m:say it once');
+      expect(await XprsMailbox.instance.depositIfUnanswered(wire), 1);
+      expect(await XprsMailbox.instance.depositIfUnanswered(wire), 0,
+          reason: 'the second airing leaves no second copy');
+      expect(XprsMailboxCounters.deposited, 1);
+    });
+  });
+
   test('the core carries any packet, not just chat: a file description and '
       'its ask survive the same way', () async {
     a.archivers = [c.call];

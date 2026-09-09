@@ -125,6 +125,16 @@ class XprsMailbox {
 
   final Map<String, Timer> _armed = {};
 
+  /// Identifiers already left with an archiver.
+  ///
+  /// A copy is a copy: leaving a second one buys nothing and costs a send.
+  /// Without this the retry ladder deposits again on every re-airing of the
+  /// same unacknowledged message — measured on the bench as ten deposits of
+  /// one message inside ten seconds, and two archivers handing the same mail
+  /// back and forth because each re-air re-armed the other.
+  final Set<String> _deposited = {};
+  static const int _rememberMax = 512;
+
   /// A directed packet we just sent. Hold it for [depositAfter]; if no receipt
   /// has arrived by then, give a copy to our archivers.
   ///
@@ -144,7 +154,7 @@ class XprsMailbox {
     if (p.has('via')) return; // relayed traffic is not ours to deposit
     if (!worthKeeping(p)) return;
     final id = xprsIdentifier(p);
-    if (_armed.containsKey(id)) return;
+    if (_armed.containsKey(id) || _deposited.contains(id)) return;
     _armed[id] = Timer(depositAfter, () {
       _armed.remove(id);
       unawaited(depositIfUnanswered(wire, id: id));
@@ -172,6 +182,10 @@ class XprsMailbox {
     final p = XprsPacket.parse(wire);
     if (p == null) return 0;
     final ident = id ?? xprsIdentifier(p);
+    if (_deposited.contains(ident)) {
+      XprsMailboxCounters.depositSkipped++;
+      return 0;
+    }
     final state = outboxState?.call(ident);
     if (state != null && state != 'sent') {
       // Delivered or read: the copy would be spent on a message that arrived.
@@ -212,6 +226,10 @@ class XprsMailbox {
       }
     }
     if (sent > 0) {
+      _deposited.add(ident);
+      if (_deposited.length > _rememberMax) {
+        _deposited.remove(_deposited.first);
+      }
       XprsMailboxCounters.deposited += sent;
       LogService.instance.add(
           'Mailbox: ${p.type} for $dest deposited with $sent archiver(s) — '
@@ -342,5 +360,6 @@ class XprsMailbox {
       t.cancel();
     }
     _armed.clear();
+    _deposited.clear();
   }
 }

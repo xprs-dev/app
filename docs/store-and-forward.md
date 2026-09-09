@@ -331,6 +331,11 @@ Four things this got wrong on the way, each of which looked like it worked:
   9.7.1 wants that signature precisely so a stranger cannot delete other
   people's mail. The holder gets the identical wire and releases on
   overhearing it (13.3).
+- **One copy per message, however often it is re-aired.** The retry ladder
+  re-airs an unacknowledged 1:1 every few seconds, and each re-airing armed a
+  fresh deposit: ten copies of one message inside ten seconds on the bench, and
+  two archivers handing the same mail back and forth because each re-air
+  re-armed the other. `XprsMailbox` remembers the identifiers it has deposited.
 - **A failed deposit must be a counter.** The directed lane failing is
   ordinary; without `mailbox.depositFailed` it is indistinguishable from
   "there was nobody to deposit with", which is a different fault with a
@@ -347,6 +352,21 @@ reached the station table — a different fault from "nobody offered". That was
 real: `serve:` was recorded only at the radio door, so an archiver heard over
 Reticulum (which is every always-on archiver) offered nothing as far as any
 station could tell.
+
+**Validated on three stations (2026-09-09).** Desktop X16JK8 wrote to the
+hotwav X1WATT while it was force-stopped with its radios off; the C61 X1ARKL
+held the copy (`/api/xprs/held` showed `am 4bd6b9` for target X1WATT); the
+desktop was then killed, so neither party existed. The hotwav woke, and within
+twenty seconds it held the message with a verified signature, the archiver's
+copy was released, and the hotwav's `receiptsToHolders` recorded that the
+holder had been told as well as the sender. The desktop returned and learned
+`4bd6b9 is delivered (X1WATT)`. The hotwav had also adopted X1ARKL as its
+archiver on first boot and declared it, with nothing configured.
+
+One gap that run exposed and this work does not close: the outbox is in memory,
+so a sender that RESTARTS has no row for the receipt to advance —
+`status only, no outbox row`. The delivery is known; the tick on the sender's
+own screen is not restored. Persisting the outbox is the fix.
 
 The three-station dance is simulated on this machine before it goes near a
 radio: `test/xprs_mail_relay_sim_test.dart` on `test/support/mail_relay_sim.dart`
