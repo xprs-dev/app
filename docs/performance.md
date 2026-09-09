@@ -324,6 +324,17 @@ happen on every frame this device hears.
 
 ## 5. Build & device traps (each of these cost real time)
 
+- **A platform difference can turn a budget off, silently.** `PRAGMA
+  page_count` returns an **INTEGER on desktop sqlite and a STRING on Android**.
+  Three callers here read it as `.values.first as num`, caught the cast failure
+  and returned **0**: the Archiver screen said "0 B" over 156,000 packets — the
+  visible half — and the gossip table's byte budget compared 0 against its cap,
+  so it never evicted anything on phones, the devices with least room. Read
+  both shapes through `lib/services/db_bytes.dart`, and keep the distinction it
+  makes: **null is "would not say", never "empty"**. A cap that can never be
+  exceeded is a cap that does nothing, and nothing logs it. Whenever a number
+  drives eviction, print it once on a real device before believing the budget
+  runs.
 - **`adb uninstall` WIPES app data.** The identity survives (`identity-backup.json`
   in shared storage → "Restore <callsign>" card on next launch), **wapp data does
   not**. Do not reach for uninstall to resolve an install conflict.

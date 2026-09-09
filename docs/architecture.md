@@ -307,6 +307,25 @@ about it goes on the wire, and a peer infers it from `serve:archive` plus
 `count:`, `uptime:` and addressability (`xprsLooksAlwaysOn`). The app used to
 air `serve:archive,super`, a word XPRS.md 13's vocabulary does not contain.
 
+**Renaming a setting is a migration, and the old value is the operator's
+decision.** The C61 had been made the mesh's archiver by hand; it came back
+from the update private, because the migration read the two legacy *keep*
+switches and not the always-on flag. Two rules came out of that:
+
+- Every legacy key that could mean "yes" must be read before the new default
+  applies. An explicit choice always outranks a platform default.
+- Write the derived answer down **before** dropping the key it came from.
+  `setXprsAlwaysOn` removes `xprs.superArchiver`, and the public getter still
+  read it — so touching the second switch would have quietly undone the
+  migration of the first. `test/preferences_migration_test.dart` states each
+  installed shape as a case, because there is no other way to see this.
+
+**And a refusal counter counts refusals, not everything that was not kept.** A
+read receipt over Reticulum is in `kXprsNeverArchived` — nothing archives one
+anywhere — and it was being counted and logged as traffic this station
+REFUSED. A number that reads as a policy problem when the policy is working
+costs more than it tells.
+
 ### How a file is shared in chat (2026-09-08)
 
 A picture in a conversation is the case that touches every lane at once, so it
