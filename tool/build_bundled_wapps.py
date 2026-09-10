@@ -125,6 +125,8 @@ def main():
             differs.append(label)
 
     for d in ARCHIVE_DIRS:
+        if not os.path.isdir(os.path.join(APP, d)):
+            continue  # desktop/ is deleted by the F-Droid recipe (rm:)
         for fn in sorted(os.listdir(os.path.join(APP, d))):
             if not fn.endswith('.wapp'):
                 continue
