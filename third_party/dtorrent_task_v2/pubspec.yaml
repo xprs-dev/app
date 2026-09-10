@@ -10,7 +10,6 @@ environment:
 dependencies:
   b_encode_decode: ^1.0.5
   utp_protocol: ^1.0.5
-  dart_ipify: ^1.1.1
   events_emitter2: ^1.0.4
   mime: ^2.0.0
   collection: ^1.19.1

@@ -110,7 +110,6 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/hello_world.wasm
     - assets/terminal_settings.ui.json
     # Launch-screen triad (star + mountains + waves), light + dark ink.
     - assets/splash/xprs-triad.svg
@@ -179,4 +178,13 @@ dependency_overrides:
   # third_party/wasm_run/README.xprs.md.
   wasm_run:
     path: third_party/wasm_run
+  # Vendored so libwasm_run_dart.so is built from third_party/wasm_run/native
+  # (cargo) on Android and Linux, never downloaded from github.com. See
+  # third_party/wasm_run_flutter/README.xprs.md.
+  wasm_run_flutter:
+    path: third_party/wasm_run_flutter
+  # Vendored without Google Play Services (play-services-location), which
+  # F-Droid does not ship. See third_party/geolocator_android/README.xprs.md.
+  geolocator_android:
+    path: third_party/geolocator_android
   xml: 6.5.0

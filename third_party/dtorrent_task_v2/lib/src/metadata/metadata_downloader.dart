@@ -6,7 +6,6 @@ import 'package:crypto/crypto.dart' show sha1;
 import 'package:logging/logging.dart';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
-import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/src/standalone/compact_address_bridge.dart';
 import 'package:dtorrent_task_v2/src/standalone/dht/standalone_dht.dart';
@@ -219,7 +218,10 @@ class MetadataDownloader
         }
       }
     }
-    _init();
+    // PATCHED (xprs): no longer asks api.ipify.org for the external IP. It
+    // told a third-party service, unprompted, that this address runs a
+    // torrent client. Trackers (Task._applyTrackerExternalIp) and the peers'
+    // extended handshake (`yourip`) report the same address.
     _log.info('Created MetadataDownloader for hash: $_infoHashString');
   }
 
@@ -241,15 +243,6 @@ class MetadataDownloader
       trackerTiers: magnet.trackerTiers,
     );
   }
-  Future<void> _init() async {
-    try {
-      localExternalIP = InternetAddress.tryParse(await Ipify.ipv4());
-      _log.info('External IP detected: $localExternalIP');
-    } catch (e) {
-      _log.warning('Failed to detect external IP', e);
-    }
-  }
-
   Future<void> startDownload() async {
     if (_running) return;
 

@@ -1,0 +1,84 @@
+// PATCHED (xprs): builds libwasm_run_dart.so from the Rust source in
+// third_party/wasm_run/native instead of downloading a prebuilt one from
+// github.com (upstream's CMakeLists.txt, deleted). See
+// third_party/wasm_run_flutter/README.xprs.md.
+
+group 'com.example.wasm_run_flutter'
+version '1.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:7.2.0'
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+def rustCrate = file("${projectDir}/../../wasm_run/native")
+def minApi = 21
+def rustJniLibs = file("${buildDir}/rustJniLibs")
+
+// The ABIs this build packages. `flutter build apk --target-platform ...` (and
+// launch-android.sh) pass them as -Ptarget-platform; without it Flutter
+// builds its three release ABIs.
+def flutterToAbi = [
+    'android-arm'  : 'armeabi-v7a',
+    'android-arm64': 'arm64-v8a',
+    'android-x64'  : 'x86_64',
+    'android-x86'  : 'x86',
+]
+def targetPlatforms = (project.findProperty('target-platform') ?:
+        'android-arm,android-arm64,android-x64').toString().split(',')
+def rustAbis = targetPlatforms.collect { flutterToAbi[it.trim()] }.findAll { it }
+
+android {
+    if (project.android.hasProperty("namespace")) {
+        namespace("com.example.wasm_run_flutter")
+    }
+    compileSdkVersion 31
+    // Same NDK as the app: its clang links the Rust library.
+    ndkVersion flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        minSdkVersion minApi
+    }
+
+    sourceSets {
+        main.jniLibs.srcDirs += rustJniLibs
+    }
+}
+
+def cargoBuild = tasks.register('cargoBuildWasmRun', Exec) {
+    description 'Builds libwasm_run_dart.so from third_party/wasm_run/native.'
+    inputs.dir(new File(rustCrate, 'src'))
+    inputs.files(new File(rustCrate, 'Cargo.toml'), new File(rustCrate, 'Cargo.lock'),
+            new File(rustCrate, 'Cargo.wasmi.toml'), new File(rustCrate, 'Cargo.wasmi.lock'),
+            new File(rustCrate, 'build-android.sh'))
+    inputs.property('abis', rustAbis.join(','))
+    outputs.dir(rustJniLibs)
+    doFirst { delete rustJniLibs }
+    workingDir rustCrate
+    commandLine(['bash', 'build-android.sh',
+                 android.ndkDirectory.absolutePath,
+                 minApi.toString(),
+                 rustJniLibs.absolutePath] + rustAbis)
+}
+
+tasks.named('preBuild') { dependsOn cargoBuild }

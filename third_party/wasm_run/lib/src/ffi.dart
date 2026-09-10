@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:wasm_run/src/bridge_generated.dart';
-import 'package:wasm_run/src/ffi/setup_dynamic_library.dart';
 import 'package:wasm_run/src/ffi/stub.dart'
     if (dart.library.io) 'ffi/io.dart'
     if (dart.library.html) 'ffi/web.dart';
@@ -92,8 +91,10 @@ class WasmRunLibrary {
       );
     }
     if (override && _wrapper != null) throw _alreadyInitialized;
-    if (!override && isReachable()) return;
-    await setUpDesktopDynamicLibrary();
+    // PATCHED (xprs): upstream downloaded a prebuilt library from github.com
+    // here, at run time, whenever the bundled one failed to load. The library
+    // ships inside the app; if it is missing, [defaultInstance] reports that
+    // when a module is first compiled.
   }
 }
 

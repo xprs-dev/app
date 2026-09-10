@@ -4,12 +4,12 @@ import 'dart:typed_data';
 
 import 'package:wasm_run/src/bridge_generated.dart';
 import 'package:wasm_run/src/ffi/library_locator.dart';
-import 'package:wasm_run/src/ffi/setup_dynamic_library.dart';
 
 typedef ExternalLibrary = DynamicLibrary;
 
+// PATCHED (xprs): was setUpDesktopDynamicLibrary(), a download from github.com.
 Future<void> setUpLibraryImpl({required bool features, required bool wasi}) =>
-    setUpDesktopDynamicLibrary();
+    Future.value();
 
 WasmRunDart createWrapperImpl(ExternalLibrary dylib) {
   final validated = _validateLibrary(dylib);

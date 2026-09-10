@@ -57,9 +57,9 @@ Dart. It now returns an empty `wire_list_wasm_val`, which Rust sees as an empty
 If a newer `wasm_run` ever ships, diff these two hunks against it; if upstream
 has fixed both, drop the `dependency_overrides` entry in `pubspec.yaml` and
 delete this directory. `example/` and `test/` were removed to keep the tree
-small; `native/` is kept for reference only — the prebuilt
-`libwasm_run_dart.so` comes from `wasm_run_flutter` and is NOT rebuilt here
-(these patches are Dart-side only).
+small. `native/` is the Rust source that `libwasm_run_dart.so` is built from
+on Android and Linux (section 6). The patches in sections 1 and 2 are
+Dart-side only.
 
 ## 3. Web: the i64 boundary of imported host functions
 
@@ -78,3 +78,52 @@ wrapped at the boundary; the rest pass through untouched.
 from jsdelivr at runtime, so a web build needed the internet to start a wapp.
 The package's `dist/` (Apache-2.0) is vendored under
 `lib/assets/browser_wasi_shim/` and the import points there.
+
+## 5. No download from github.com at run time
+
+`wasm_run_flutter` registers `WasmRunFlutterNative.registerWith()`, which runs
+at every app start and calls `WasmRunLibrary.setUp(override: false)`. Upstream,
+if the bundled `libwasm_run_dart.so` failed to load, `setUp` fetched
+`github.com/juancastillo0/wasm_run/releases/.../other.tar.gz`, ran `tar` on it
+and loaded the result. That is a network call to GitHub from a shipped binary,
+and it executes code nobody built from this source tree.
+
+`setUp` (in `lib/src/ffi.dart`) and the native `setUpLibraryImpl` (in
+`lib/src/ffi/io.dart`) now do nothing on native platforms, both marked
+`PATCHED (xprs)`. `setup_dynamic_library.dart`, `cpu_architecture.dart` and the
+`bin/setup.dart` CLI that used them are deleted. A missing library is reported
+by `defaultInstance()` when the first module is compiled. The web path is
+unchanged.
+
+The build-time download, in `wasm_run_flutter`'s CMake, is gone as well
+(section 6).
+
+## 6. `native/` is built, not just kept
+
+`third_party/wasm_run_flutter` (also vendored) compiles this crate instead of
+downloading upstream's prebuilt library. The changes that made that possible:
+
+* `build.rs` is deleted, along with its `flutter_rust_bridge_codegen`
+  build-dependency. It re-ran the bridge generator on every build and
+  rewrote `lib/src/bridge_generated*.dart`, which would have overwritten the
+  patched Dart here. It also needed LLVM and a Dart SDK at build time.
+  `src/bridge_generated.rs` is committed, so the generator is not needed.
+* The versions upstream actually shipped are pinned exactly:
+  `flutter_rust_bridge =1.82.4`, `wasmtime`/`wasmtime-wasi`/`wasi-common
+  =14.0.4`, and `wasmi`/`wasmi_wasi =0.31.2`. wasmi 0.31.2 replaces 0.31.0,
+  which is yanked. The pins were read from the strings in upstream's `.so`.
+* `Cargo.lock` (wasmtime) and `Cargo.wasmi.lock` (wasmi) are committed, and
+  every build uses `--locked`.
+* `build-android.sh` builds one ABI at a time with the NDK's clang as linker.
+  32-bit ABIs get the wasmi manifest and `src/api_wasmi.rs` as `api.rs` in a
+  staging copy, because wasmtime has no 32-bit ARM backend. That is also what
+  upstream shipped.
+
+Regenerating a lockfile after changing a manifest:
+
+```sh
+cd third_party/wasm_run/native
+CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo generate-lockfile
+# wasmi: the same, in target/wasmi-src after one armeabi-v7a build, then
+cp target/wasmi-src/Cargo.lock Cargo.wasmi.lock
+```

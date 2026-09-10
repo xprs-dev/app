@@ -217,14 +217,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.9"
-  dart_ipify:
-    dependency: transitive
-    description:
-      name: dart_ipify
-      sha256: "3b70d589504126107e81ad0703d91394cc8e2039cb0a11ebd92b9b824a5e9561"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.1"
   dbus:
     dependency: "direct main"
     description:
@@ -505,12 +497,11 @@ packages:
     source: hosted
     version: "12.0.0"
   geolocator_android:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: geolocator_android
-      sha256: fcb1760a50d7500deca37c9a666785c047139b5f9ee15aa5469fae7dbbe3170d
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/geolocator_android"
+      relative: true
+    source: path
     version: "4.6.2"
   geolocator_apple:
     dependency: transitive
@@ -1250,10 +1241,9 @@ packages:
   wasm_run_flutter:
     dependency: "direct main"
     description:
-      name: wasm_run_flutter
-      sha256: "9807fd559676614350d5480846de29aa687a1f48b6a1b438cf120e01cffd84a0"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/wasm_run_flutter"
+      relative: true
+    source: path
     version: "0.1.0"
   web:
     dependency: "direct main"

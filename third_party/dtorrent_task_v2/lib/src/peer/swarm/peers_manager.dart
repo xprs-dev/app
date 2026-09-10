@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
-import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:dtorrent_task_v2/src/standalone/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/src/peer/protocol/peer_events.dart';
@@ -100,7 +99,10 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     IPFilter? ipFilter,
   }) {
     _ipFilter = ipFilter;
-    _init();
+    // PATCHED (xprs): no longer asks api.ipify.org for the external IP. It
+    // told a third-party service, unprompted, that this address runs a
+    // torrent client. Trackers (Task._applyTrackerExternalIp) and the peers'
+    // extended handshake (`yourip`) report the same address.
     // Start pex interval
     startPEX();
   }
@@ -144,14 +146,6 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     _protocolEncryptionConfig = config;
     _log.info(
         'Protocol encryption ${config?.isEnabled == true ? "enabled" : "disabled"}');
-  }
-
-  Future<void> _init() async {
-    try {
-      localExternalIP = InternetAddress.tryParse(await Ipify.ipv4());
-    } catch (e) {
-      // Do nothing
-    }
   }
 
   /// Task is paused
