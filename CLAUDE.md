@@ -124,6 +124,12 @@ cp binaries/<name>/<name>-<version>.wapp ../app/assets/wapps/<name>.wapp
 
 Bump `manifest.json` version or installed copies never update.
 
+`assets/wapps/` ships in the APK too, so it must hold no native executables
+(`test/bundled_wapps_no_executables_test.dart` fails if it does). A wapp with
+desktop-only binaries (mp4player's `bin/ffmpeg-*`) goes to `desktop/wapps/` in
+full, with a copy minus `bin/` in `assets/wapps/`. Linux and Windows bundles
+install `desktop/wapps/`, and seeding prefers it.
+
 ## Debugging a wapp
 
 `hal_log` from a **foreground page engine does not reach LogService**, so it

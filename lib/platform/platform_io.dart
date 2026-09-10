@@ -169,6 +169,16 @@ String currentDirectory() {
   }
 }
 
+/// Directory holding the running executable. A desktop bundle keeps its
+/// `data/` beside it. '' when it cannot be resolved.
+String executableDirectory() {
+  try {
+    return File(Platform.resolvedExecutable).parent.path;
+  } catch (_) {
+    return '';
+  }
+}
+
 Future<List<int>?> readArbitraryFileBytes(String path) async {
   try {
     final f = File(path);

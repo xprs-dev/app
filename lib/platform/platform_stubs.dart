@@ -67,6 +67,9 @@ String get pathSeparator => '/';
 /// lookups should gate on [kIsWeb] and skip that path entirely.
 String currentDirectory() => '';
 
+/// No executable on web.
+String executableDirectory() => '';
+
 /// OS predicates: a browser is none of these.
 bool get isAndroid => false;
 bool get isIOS => false;

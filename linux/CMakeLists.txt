@@ -116,6 +116,13 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/xprs.desktop"
   DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications"
   COMPONENT Runtime)
 
+# Desktop builds of bundled wapps, carrying native binaries (mp4player's
+# static ffmpeg) that the APK must not. Seeding prefers data/wapps/<name>.wapp
+# over assets/wapps/<name>.wapp; see _bundledWappBytes in seeding.dart.
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../desktop/wapps"
+  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
+  COMPONENT Runtime)
+
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 

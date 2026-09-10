@@ -225,9 +225,8 @@ Future<int> upgradeBundledWapps() async {
         // Not installed: first-time bundle addition → install once.
         if (!offered.add(name)) continue; // previously offered → respect uninstall
         offeredChanged = true;
-        final data = await rootBundle.load(asset);
         final res = await WappInstallerService.instance.installFromBytes(
-            wappId: name, zipBytes: data.buffer.asUint8List());
+            wappId: name, zipBytes: await _bundledWappBytes(name));
         if (res.ok) {
           upgraded++;
           debugPrint('upgradeBundledWapps: installed new bundled wapp $name');
@@ -239,8 +238,7 @@ Future<int> upgradeBundledWapps() async {
       if (instManifest['user_modified'] == true) continue; // keep user edits
       final instVer = (instManifest['version'] as String?) ?? '0.0.0';
 
-      final data = await rootBundle.load(asset);
-      final bytes = data.buffer.asUint8List();
+      final bytes = await _bundledWappBytes(name);
       final bundledVer =
           WappInstallerService.instance.versionFromZipBytes(bytes);
       if (bundledVer == null) continue;
@@ -282,9 +280,8 @@ Future<int> _seedDefaultsFromAssets() async {
       final name =
           asset.substring(prefix.length, asset.length - '.wapp'.length);
       if (_kNeverSeed.contains(name)) continue;
-      final data = await rootBundle.load(asset);
       final res = await WappInstallerService.instance.installFromBytes(
-          wappId: name, zipBytes: data.buffer.asUint8List());
+          wappId: name, zipBytes: await _bundledWappBytes(name));
       if (res.ok) count++;
     }
   } catch (_) {
@@ -382,12 +379,36 @@ Future<bool> _installDefaultWapp(String name) async {
     }
   }
   try {
-    final data = await rootBundle.load('assets/wapps/$name.wapp');
     final res = await WappInstallerService.instance
-        .installFromBytes(wappId: name, zipBytes: data.buffer.asUint8List());
+        .installFromBytes(wappId: name, zipBytes: await _bundledWappBytes(name));
     return res.ok;
   } catch (_) {
     return false;
   }
 }
 
+/// The bundled package `assets/wapps/[name].wapp`, as every pass above
+/// installs it.
+///
+/// A desktop bundle may carry a fuller build of the same wapp beside the
+/// executable, in `data/wapps/[name].wapp` (installed by linux/ and windows/
+/// CMakeLists.txt from `desktop/wapps/`), and it wins there. That is how a
+/// wapp ships native desktop binaries (mp4player's static ffmpeg) without
+/// putting them in the APK, where they could never run and F-Droid would
+/// reject them as prebuilt executables. Same manifest version, so the upgrade
+/// pass treats the two as one release.
+Future<Uint8List> _bundledWappBytes(String name) async {
+  if (platform.isLinux || platform.isWindows) {
+    final dir = platform.executableDirectory();
+    final sep = platform.pathSeparator;
+    if (dir.isNotEmpty) {
+      final bytes = await platform
+          .readArbitraryFileBytes('$dir${sep}data${sep}wapps$sep$name.wapp');
+      if (bytes != null) {
+        return bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+      }
+    }
+  }
+  final data = await rootBundle.load('assets/wapps/$name.wapp');
+  return data.buffer.asUint8List();
+}
