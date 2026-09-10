@@ -83,9 +83,10 @@
     <!-- Auto-start the background service after device reboot (BootReceiver). -->
     <uses-permission
         android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-    <!-- In-app updater: install the downloaded APK. -->
-    <uses-permission
-        android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- In-app updater: install the downloaded APK. One line on purpose: the
+         F-Droid build, which has no self-updater, deletes the line naming this
+         permission (docs/fdroid.md). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="XPRS"
         android:name=".XprsApplication"
