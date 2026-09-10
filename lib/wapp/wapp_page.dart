@@ -87,8 +87,6 @@ import '../profile/storage_paths.dart';
 import 'i18n_context.dart';
 import '../services/task_monitor_service.dart';
 import '../editor/wapp_compiler_service.dart';
-import '../editor/robot_chat_controller.dart';
-import '../ai/ai.dart';
 import 'wapp_installer_service.dart';
 import 'wapp_signing_service.dart';
 import 'wapp_social_store.dart';
@@ -104,7 +102,6 @@ import '../services/mesh/mesh_service.dart';
 import '../platform/fs.dart';
 
 part '../editor/wapp_editor.dart';
-part '../editor/wapp_robot.dart';
 part 'wapp_maps.dart';
 part 'wapp_graph.dart';
 
@@ -375,13 +372,6 @@ class _WappPageState extends State<WappPage>
   final _lastFireBatch = <String, int>{};
   int _archived = 0;
   int _archivedLogAt = 0;
-
-  // ── Robot (AI chat) tab state ──────────────────────────────────────
-  // Chat lives in a ChangeNotifier so the conversation streams without
-  // rebuilding the whole editor. Created lazily the first time the Robot
-  // tab is built (see wapp_robot.dart). _robotInput backs the message box.
-  RobotChatController? _robot;
-  final _robotInput = TextEditingController();
 
   /// Per-wapp translation context. Loaded from `lang/<locale>.json`
   /// inside the wapp package on mount and refreshed whenever the
@@ -4140,8 +4130,6 @@ class _WappPageState extends State<WappPage>
     _cmdController.dispose();
     _scrollController.dispose();
     _sourcesInputController.dispose();
-    _robot?.dispose();
-    _robotInput.dispose();
     _tabController?.dispose();
     _editorTabController?.dispose();
     super.dispose();
@@ -5259,15 +5247,6 @@ class _WappPageState extends State<WappPage>
               (c) => c.keyword == 'action' && c.name == 'run-tests',
             ))) {
       return _buildTestsScreen();
-    }
-
-    // Robot — App Creator's AI chat tab. A configurable (offline/online)
-    // assistant that proposes edits to the wapp's files. See wapp_robot.dart.
-    final hasRobotGroup = screen.children.any(
-      (c) => c.keyword == 'group' && c.type == 'robot',
-    );
-    if (hasRobotGroup) {
-      return _buildRobotScreen();
     }
 
     // Translations editor — App Creator's Translations tab. Edits

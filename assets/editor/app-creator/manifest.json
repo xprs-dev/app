@@ -1,6 +1,6 @@
 {
   "id":              "tools.xprs.app-creator",
-  "version":         "0.3.6",
+  "version":         "0.3.7",
   "kind":            "system",
   "title":           "App Creator",
   "description":     "Write, compile and install C wapps without leaving xprs.",

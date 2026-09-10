@@ -22,6 +22,13 @@ class PreferencesService {
     return _pending ??= () async {
       final service = PreferencesService._();
       service._prefs = await SharedPreferences.getInstance();
+      // The editor's AI tab is gone from the core; its settings, an API key
+      // among them, were stored in plaintext. Nothing reads them any more.
+      for (final k in const ['ai.providerId', 'ai.baseUrl', 'ai.model',
+          'ai.apiKey', 'ai.systemPrompt']) {
+        // ignore: discarded_futures
+        if (service._prefs.containsKey(k)) service._prefs.remove(k);
+      }
       _instance = service;
       return service;
     }();
@@ -65,30 +72,6 @@ class PreferencesService {
 
   int get terminalMaxLines => _prefs.getInt('terminal.maxLines') ?? 5000;
   set terminalMaxLines(int v) => _prefs.setInt('terminal.maxLines', v);
-
-  // ── AI / Robot editor settings ───────────────────────────────────
-  //
-  // Backs the wapp editor's Robot tab. `aiProviderId` selects an entry
-  // from lib/ai/ (e.g. 'ollama', 'openai', 'anthropic', 'builtin');
-  // baseUrl/model fall back to that provider's defaults when blank.
-  // NOTE: apiKey is stored in plaintext here — fine for a local dev
-  // tool, but it is not encrypted.
-  String get aiProviderId => _prefs.getString('ai.providerId') ?? 'ollama';
-  set aiProviderId(String v) => _prefs.setString('ai.providerId', v);
-
-  String get aiBaseUrl => _prefs.getString('ai.baseUrl') ?? '';
-  set aiBaseUrl(String v) => _prefs.setString('ai.baseUrl', v);
-
-  String get aiModel => _prefs.getString('ai.model') ?? '';
-  set aiModel(String v) => _prefs.setString('ai.model', v);
-
-  String get aiApiKey => _prefs.getString('ai.apiKey') ?? '';
-  set aiApiKey(String v) => _prefs.setString('ai.apiKey', v);
-
-  /// Optional override for the editor's default system prompt. Empty = use
-  /// the built-in wapp-editing prompt assembled by the Robot controller.
-  String get aiSystemPrompt => _prefs.getString('ai.systemPrompt') ?? '';
-  set aiSystemPrompt(String v) => _prefs.setString('ai.systemPrompt', v);
 
   // ── Remote-control API ───────────────────────────────────────────
   //

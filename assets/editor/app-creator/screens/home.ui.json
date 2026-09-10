@@ -89,18 +89,6 @@
   },
   {
     "$": "screen",
-    "name": "Robot",
-    "tip": "Chat with an AI (offline or online, configurable) to modify this wapp. It proposes updated files you Apply, then Compile.",
-    "children": [
-      {
-        "$": "group",
-        "name": "robot",
-        "$type": "robot"
-      }
-    ]
-  },
-  {
-    "$": "screen",
     "name": "Translations",
     "tip": "Manage translation keys. Select a language on the left, pick a key from the reference column, edit on the right.",
     "children": [
