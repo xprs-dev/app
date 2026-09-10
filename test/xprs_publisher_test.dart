@@ -5,6 +5,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:xprs/services/preferences_service.dart';
 
 import 'package:hex/hex.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
@@ -47,6 +49,7 @@ void main() {
   _oversizeWires();
   _pathChoice();
   _statusIdentity();
+  _archiverDeposit();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // A grant used to fan out to the EXISTING members only, so the person being
@@ -406,5 +409,101 @@ void _statusIdentity() {
         XprsPublisher.instance.debugCompose(withParent, 'same words', signingKey: d);
     expect(b.whole!['r'], 'abc123');
     expect(xprsIdentifier(a.whole!), isNot(xprsIdentifier(b.whole!)));
+  });
+}
+
+/// A station keeps its own publications and hands a COPY to the archivers its
+/// operator chose (XPRS.md 12, 34.3, 36.3).
+///
+/// THE CORE does this, for every publication type and every wapp, and no wapp
+/// is involved or told: where copies of a person's words are kept is a
+/// transport-and-custody decision, and a wapp cannot know which archivers this
+/// station named. The rule used to live in the status fan-out alone, so what
+/// was deposited depended on which function happened to air the packet.
+void _archiverDeposit() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  XprsPacket p(String wire) => XprsPacket.parse(wire)!;
+
+  test('a publication is deposited; mail is not', () async {
+    SharedPreferences.setMockInitialValues({
+      'flutter.xprs.namedArchivers': ['X3ARC1', 'X3ARC2'],
+    });
+    PreferencesService.resetForTest();
+    await PreferencesService.instance();
+    final pub = XprsPublisher.instance;
+    final sent = <String>[];
+    pub.depositTo = (call, wire) => sent.add('$call|$wire');
+    addTearDown(() => pub.depositTo = null);
+
+    const status = 't:status f:X1TEST ts:2026-09-10_10:00:00 m:hello';
+    pub.depositArchivers([status], what: 'status');
+    expect(sent, [
+      'X3ARC1|$status',
+      'X3ARC2|$status',
+    ], reason: 'one copy per archiver the operator chose (12, 34.3)');
+
+    sent.clear();
+    const react = 't:reaction f:X1TEST ts:2026-09-10_10:00:01 add:like r:abc123';
+    pub.depositArchivers([react], what: 'reaction');
+    expect(sent.length, 2,
+        reason: "a reaction on somebody else's post is a publication too");
+
+    sent.clear();
+    pub.depositArchivers(
+        ['t:message f:X1TEST d:X1FRND ts:2026-09-10_10:00:02 m:private'],
+        what: 'message');
+    expect(sent, isEmpty,
+        reason: 'mail has a d: and its own custody path (12.7)');
+
+    PreferencesService.resetForTest();
+  });
+
+  test('airing a status deposits the very wires that went on the air', () async {
+    // The whole path a wapp's post takes through the core, minus the radio:
+    // compose, fan out over the bearers, hand a copy to the archiver. The
+    // wapp is not in it anywhere — it called hal_xprs_status and was handed an
+    // identifier, and what happens to copies of its words is the core's.
+    SharedPreferences.setMockInitialValues({
+      'flutter.xprs.namedArchivers': ['X3ARC1'],
+    });
+    PreferencesService.resetForTest();
+    await PreferencesService.instance();
+    final pub = XprsPublisher.instance;
+    final ble = _FakeBearer('ble5', shortRange: true);
+    pub.bearers = [ble];
+    final sent = <String>[];
+    pub.depositTo = (call, wire) => sent.add('$call|$wire');
+    addTearDown(() {
+      pub.depositTo = null;
+      pub.bearers = [];
+    });
+
+    final d = BigInt.parse(
+        '0123456789012345678901234567890123456789012345678901234567890123',
+        radix: 16);
+    final wires = pub.debugWires(
+        't:status f:X1TEST ts:2026-09-10_10:00:04', 'on the air', signingKey: d);
+    await pub.airStatus(wires);
+
+    expect(ble.sent, wires, reason: 'it went on the air');
+    expect(sent, [for (final w in wires) 'X3ARC1|$w'],
+        reason: 'and the same wires went to the archiver');
+    PreferencesService.resetForTest();
+  });
+
+  test('with no archiver named, nothing is deposited', () async {
+    SharedPreferences.setMockInitialValues({});
+    PreferencesService.resetForTest();
+    await PreferencesService.instance();
+    final pub = XprsPublisher.instance;
+    final sent = <String>[];
+    pub.depositTo = (call, wire) => sent.add(call);
+    addTearDown(() => pub.depositTo = null);
+    pub.depositArchivers(
+        ['t:status f:X1TEST ts:2026-09-10_10:00:03 m:alone'], what: 'status');
+    expect(sent, isEmpty,
+        reason: 'zero archivers is a valid, private configuration (12)');
+    PreferencesService.resetForTest();
   });
 }

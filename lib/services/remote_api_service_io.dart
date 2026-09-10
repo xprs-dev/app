@@ -1637,6 +1637,12 @@ class RemoteApiService {
             'total': counts.total,
           },
           'followedCallsigns': XprsArchive.instance.followed.length,
+          // What this station handed to ITS archivers (XPRS.md 12: a station
+          // keeps its own publications and hands a copy to the archivers its
+          // operator chose). The core does it for every wapp; `noDest` counts
+          // the ones it could not, which is what a silent deposit looks like.
+          'deposited': XprsPublisher.instance.deposited,
+          'depositNoDest': XprsPublisher.instance.depositNoDest,
           // What the spool occupies, the same number the Archiver screen
           // shows -- here so a phone's answer can be read without the screen.
           'bytes': XprsArchive.instance.spoolBytes,

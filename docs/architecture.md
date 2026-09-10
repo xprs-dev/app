@@ -314,6 +314,32 @@ tick at all. A page had always set `WappEngine.onOutbox`; the headless runner
 drained only in `onTick`, so a background wapp's notification was written into
 an outbox nobody would ever read. Both set the hook now.
 
+### Where a copy of your words goes is the core's business (2026-09-10)
+
+XPRS.md 12: *"a station keeps its own publications and hands a COPY to the
+archivers its operator chose"*. That deposit is a CUSTODY decision — which
+stations get a copy, over which lane — so it belongs in the core, happens for
+every wapp, and no wapp is told: a wapp hands the core words and is done. The
+Social wapp does not know its station has archivers, and must not.
+
+It was implemented in the status fan-out alone. Statuses have their own
+`airStatus`; everything else airs through `publishWire`, which deposited
+nothing — so what was deposited depended on which function happened to air the
+packet rather than on what it was. A reaction on somebody's post and a Local
+room message are publications too. `XprsPublisher.depositArchivers` is now the
+one rule, called from both, skipping anything with a `d:` (mail has its own
+custody path, 12.7).
+
+Two things make it checkable, which it was not:
+
+- **Counters, reported.** `deposited` and `depositNoDest` on
+  `/api/xprs/archiver`. A named archiver whose destination this station has
+  never learned is the failure that looks exactly like success from the inside
+  — the send is fire-and-forget — so it is counted and said once a minute.
+- **The send is injectable** (`depositTo`), like the mail loop's. Reaching into
+  `RnsService` directly is what made the deposit untestable, and a rule nobody
+  can test is a rule that quietly stops being true.
+
 ### Two archives, one admission rule (2026-09-09)
 
 This app keeps two unrelated things and had called both "the archive": the

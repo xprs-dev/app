@@ -668,6 +668,71 @@ class XprsPublisher {
   }
   int refused = 0;
 
+  /// Statuses (and other publications) this station handed to its archivers,
+  /// and the ones it could not. A deposit that never happens looks exactly
+  /// like one that did from inside this file — the send is fire-and-forget —
+  /// so the two are counted, and /api/xprs/archiver reports them. Counters,
+  /// not a line per packet (performance.md 8.10).
+  int deposited = 0, depositNoDest = 0;
+  int _depositLogMs = 0;
+
+  /// How one copy reaches one archiver. Null is the real thing (resolve the
+  /// archiver's LXMF destination and send); a test injects it to see WHAT is
+  /// deposited and to whom, which is otherwise invisible behind a singleton —
+  /// the same reason the mail loop's sends are injected
+  /// (`test/xprs_mail_relay_sim_test.dart`).
+  void Function(String archiver, String wire)? depositTo;
+
+  /// Hand a COPY of our own publication to the archivers this operator chose
+  /// (XPRS.md 12: "a station keeps its own publications and hands a COPY to
+  /// the archivers its operator chose", 34.3, 36.3/36.4).
+  ///
+  /// THE CORE DOES THIS, for every publication type, and no wapp is involved
+  /// or told: a wapp hands the core words, and where copies of those words are
+  /// kept is a transport-and-custody decision (docs/architecture.md 1). The
+  /// wapp cannot know which archivers this station named, and must not.
+  ///
+  /// One addressed copy per archiver, over LXMF — the lane the community hubs
+  /// actually carry between their clients (36.12.1), where a broadcast
+  /// announce is not cross-forwarded. Only for wires meant for everybody: mail
+  /// has a `d:` and its own custody path (12.7).
+  void depositArchivers(List<String> wires, {required String what}) {
+    final archivers =
+        PreferencesService.instanceSync?.xprsArchivers ?? const <String>[];
+    if (archivers.isEmpty) return;
+    for (final w in wires) {
+      final p = XprsPacket.parse(w);
+      if (p == null || (p['d'] ?? '').trim().isNotEmpty) continue;
+      for (final call in archivers) {
+        final send = depositTo;
+        if (send != null) {
+          deposited++;
+          send(call, w);
+          continue;
+        }
+        final hex = RnsService.instance.lxmfDestForCallsign(call);
+        if (hex.isEmpty) {
+          // The archiver is named but this station has never learned where it
+          // is. Worth saying — quietly, and at most once a minute — because
+          // everything else about the deposit looks healthy from here.
+          depositNoDest++;
+          final now = DateTime.now().millisecondsSinceEpoch;
+          if (now - _depositLogMs > 60000) {
+            _depositLogMs = now;
+            LogService.instance.add(
+                'XPRS: $what not deposited — no destination known for $call '
+                '($depositNoDest so far)');
+          }
+          continue;
+        }
+        deposited++;
+        unawaited(RnsService.instance
+            .sendLxmf(destHex: hex, title: 'xprs', content: w)
+            .catchError((_) => false));
+      }
+    }
+  }
+
   /// A `t:status` (section 27), BUILT: signed, split if it must be, and named.
   ///
   /// Composing is synchronous and airing is not, and the difference is what a
@@ -750,21 +815,7 @@ class XprsPublisher {
     // other station pulls it from there. Pushing is one addressed copy per
     // configured archiver, on the lane the hubs do carry (36.12.1), and only for
     // wires meant for everybody -- mail has a d: and its own custody path.
-    final archivers =
-        PreferencesService.instanceSync?.xprsNamedArchivers ?? const <String>[];
-    if (archivers.isNotEmpty) {
-      for (final w in wires) {
-        final p = XprsPacket.parse(w);
-        if (p == null || (p['d'] ?? '').trim().isNotEmpty) continue;
-        for (final call in archivers) {
-          final hex = RnsService.instance.lxmfDestForCallsign(call);
-          if (hex.isEmpty) continue;
-          unawaited(RnsService.instance
-              .sendLxmf(destHex: hex, title: 'xprs', content: w)
-              .catchError((_) => false));
-        }
-      }
-    }
+    depositArchivers(wires, what: 'status');
 
     // Our own publication enters our own spool whether or not a radio took
     // it. A cmd:history asked of the author must be able to replay the author
@@ -1087,6 +1138,14 @@ class XprsPublisher {
     if (ours && took != null) {
       if (!datagram) XprsIngest.own(wire, bearer: took);
     }
+    // And the same copy to our archivers that a status gets. A status has its
+    // own fan-out and was the only publication being deposited, which made the
+    // rule an accident of which function aired it rather than what XPRS.md 12
+    // says: a station "keeps its own publications and hands a COPY to the
+    // archivers its operator chose". A reaction on somebody's post and a Local
+    // room message are publications too; directed mail is not (it has a `d:`
+    // and its own custody path, armed above), and depositArchivers skips it.
+    if (ours && !datagram) depositArchivers([wire], what: p.type);
     published++;
     // One line per caller-composed wire: which bearers took it. A wire that
     // silently reached nobody is the failure mode that costs a day.
