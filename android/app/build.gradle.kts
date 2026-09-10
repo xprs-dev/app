@@ -25,6 +25,14 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
+    // No DependencyInfoBlock: AGP otherwise adds a signing block listing the
+    // dependencies, encrypted with Google's public key so only Google can read
+    // it. F-Droid asks for it to be off, and nothing here needs it.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

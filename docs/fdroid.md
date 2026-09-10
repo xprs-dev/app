@@ -362,7 +362,17 @@ RepoType: git
 Repo: https://github.com/xprs-dev/reticulum-dart.git
 ```
 
-What the test runs taught, each now built into the recipe or the source:
+What the test runs and the review of an earlier submission (geogram,
+fdroiddata!31380) taught, each now built into the recipe or the source:
+
+* **The Flutter version is pinned in this repository**, in `.flutter-version`,
+  and the recipe checks that version out of the `flutter@stable` srclib.
+  Bump the file when upgrading Flutter.
+* **No DependencyInfoBlock.** `android/app/build.gradle.kts` sets
+  `dependenciesInfo { includeInApk = false }`. AGP otherwise adds a signing
+  block encrypted with Google's key, which F-Droid asks to be removed.
+* **`commit:` takes the release commit's hash**, not the tag name. The tag is
+  still how `UpdateCheckMode` finds new releases.
 
 * **The scanner refuses any WebAssembly file in the source tree**, and it runs
   after `prebuild`. So the committed App Creator module is deleted with
