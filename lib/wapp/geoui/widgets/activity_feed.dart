@@ -652,7 +652,19 @@ class _ActivityFeedState extends State<ActivityFeed> {
       final color = selected ? ChatPalette.accent : ChatPalette.secondary;
       return InkWell(
         onTap: () {
-          setState(() => _filter = value);
+          setState(() {
+            _filter = value;
+            // A tab shows what that tab holds, now.
+            //
+            // The "N new posts" pill holds incoming lists back while the user
+            // is scrolled down — right for a live feed, wrong for a tab
+            // change: switching Mesh → Following mid-scroll kept the Mesh
+            // snapshot in `_shown`, the Following predicate filtered it to
+            // nothing, and the tab looked empty while the archive was full.
+            _shown = widget.posts;
+            _newCount = 0;
+          });
+          if (_scroll.hasClients) _scroll.jumpTo(0);
           widget.onFilterChanged?.call(_filterToString(value));
         },
         child: Padding(

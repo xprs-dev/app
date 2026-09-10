@@ -324,9 +324,13 @@ class _WappBackgroundService extends BackgroundService {
     wappDataStorageFor(prefs, name),
   );
 
-  late final ActivityArchive _followingArchive = ActivityArchive.forStorage(
+  /// Social's feed archive, the SAME file the page reads. There used to be a
+  /// second one for the Following tab, and a followed person's post went into
+  /// it INSTEAD of this one — so a post received while the app was in the
+  /// background was missing from Mesh, and its thread came back empty.
+  late final ActivityArchive _socialArchive = ActivityArchive.forStorage(
     wappDataStorageFor(prefs, name),
-    fileName: 'social_following.sqlite3',
+    fileName: 'social_all.sqlite3',
   );
 
   // Conversation history shared with the foreground page through the SAME
@@ -522,18 +526,12 @@ class _WappBackgroundService extends BackgroundService {
         if (field == 'geochat') {
           if (msg is Map) _geoArchive.add(msg);
         } else if (field == 'activity') {
+          // One archive, whoever the post is from: the Following tab is a
+          // filter over it, and a row filed anywhere else is a row the feed
+          // and the thread view cannot see. (It also opened a fresh sqlite
+          // handle per message.)
           if (msg is Map) {
-            final source = (msg['source'] ?? '').toString();
-            if (name == 'social' && source == 'following') {
-              _followingArchive.add(msg);
-            } else if (name == 'social') {
-              ActivityArchive.forStorage(
-                wappDataStorageFor(prefs, name),
-                fileName: 'social_all.sqlite3',
-              ).add(msg);
-            } else {
-              _activityArchive.add(msg);
-            }
+            (name == 'social' ? _socialArchive : _activityArchive).add(msg);
           }
         }
         // Auto-fetch shared media even with no UI: an incoming message carrying

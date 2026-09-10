@@ -444,7 +444,9 @@ class _WappPageState extends State<WappPage>
   /// Social deliberately keeps public curation and direct follows apart: the
   /// former is disposable discovery history, while the latter is the durable
   /// background inbox used by notifications and the Following filter.
-  ActivityArchive? _followingArchive;
+  // The Following tab is a FILTER over `_activityArchive`, not a second store.
+  // `social_following.sqlite3` is left on disk untouched by this build; every
+  // row it holds is in the main archive too.
 
   /// The selected Social timeline. Kept by the host as well as the widget so
   /// archive queries never build one mixed list and hope a display filter can
@@ -535,7 +537,6 @@ class _WappPageState extends State<WappPage>
           .toUpperCase();
       if (self.isNotEmpty) {
         _activityArchive?.setReaction(mid, self, like, true);
-        _followingArchive?.setReaction(mid, self, like, true);
       }
       _fieldValues['activity_mid'] = mid;
       _fieldValues['activity_set'] = like ? '1' : '0';
@@ -547,7 +548,6 @@ class _WappPageState extends State<WappPage>
     final self = RnsService.instance.nostrSelfHex()?.toLowerCase();
     if (self != null) {
       _activityArchive?.setReaction(mid, self, like, true);
-      _followingArchive?.setReaction(mid, self, like, true);
       _nomadnetArchive?.setReaction(mid, self, like, true);
     }
     _activityRev.value++;
@@ -1331,10 +1331,6 @@ class _WappPageState extends State<WappPage>
         wappData,
         fileName: 'social_all.sqlite3',
       );
-      _followingArchive = ActivityArchive.forStorage(
-        wappData,
-        fileName: 'social_following.sqlite3',
-      );
       _socialFeedFilter =
           PreferencesService.instanceSync?.getWappUiPref(
             _wappName,
@@ -1343,7 +1339,7 @@ class _WappPageState extends State<WappPage>
           'all';
       legacyArchive.copyRoutedTo(
         all: _activityArchive!,
-        following: _followingArchive!,
+        following: _activityArchive!,
         followedPubkeys: RnsService.instance.nostrFollowPubkeys(),
       );
       // The feed is XPRS statuses now. Old NOSTR rows (firehose/discovery)
@@ -1955,13 +1951,11 @@ class _WappPageState extends State<WappPage>
               // both the curated and direct-follow subscriptions; each archive
               // must make its own idempotent routing decision.
               if (fieldName == 'activity') {
-                // Mesh shows everything heard; Following is the same post
-                // filed again under the callsigns you follow. The wapp owns
-                // the follow list, so it labels the post and we file it.
+                // ONE archive. Following is a filter over it (the wapp still
+                // labels the row `source:"following"` for the tabs that read
+                // it), not a second copy — a copy could only ever hold what
+                // arrived after you followed somebody.
                 _activityArchive?.add(msg);
-                if (_wappName == 'social' && source == 'following') {
-                  _followingArchive?.add(msg);
-                }
                 _activityRev.value++;
               }
               if (!dup) {
@@ -1989,10 +1983,7 @@ class _WappPageState extends State<WappPage>
                       break;
                     }
                   }
-                  final target = _wappName == 'social' && source == 'following'
-                      ? _followingArchive
-                      : _activityArchive;
-                  target?.enrichAuthor(mid, author);
+                  _activityArchive?.enrichAuthor(mid, author);
                   _activityRev.value++;
                 }
               }
@@ -2233,24 +2224,28 @@ class _WappPageState extends State<WappPage>
           }
         } else if (type == 'social.followstate' ||
             type == 'social.blockstate') {
-          // The APRS wapp tells the host whether we follow / have blocked a
-          // callsign, so the profile UI shows the right buttons.
+          // The wapp tells the host whether we follow / have blocked a
+          // callsign: the list is the WAPP's (following is local, XPRS.md
+          // 16.2) and the host keeps a copy to render the Following tab and
+          // the right buttons. Social re-announces the whole list on `ready`,
+          // because this copy is memory only.
           final call = (data['callsign'] ?? '').toString().trim().toUpperCase();
           final on = data['on'] == true;
           if (call.isNotEmpty) {
             final set = type == 'social.followstate'
                 ? _followedCalls
                 : _blockedCalls;
-            if (on) {
-              set.add(call);
-            } else {
-              set.remove(call);
-            }
+            final changed = on ? set.add(call) : set.remove(call);
             // Let the RNS service keep (re)fetching followed profiles in the
             // background, retrying ones that failed earlier.
             if (type == 'social.followstate') {
               RnsService.instance.setFollowedCallsigns(_followedCalls);
             }
+            // And repaint: the feed takes this set as a PARAMETER, so a tab
+            // already on screen keeps filtering by the old one until something
+            // rebuilds it. Nothing did, which is why a restart's re-announce
+            // arrived and changed nothing anybody could see.
+            if (changed && mounted) setState(() {});
           }
         } else if (type == 'ui.activity.react') {
           // A like vote on an Activity post (by mid). Tally it in the archive.
@@ -6051,12 +6046,18 @@ class _WappPageState extends State<WappPage>
                     (key, value) => MapEntry(key.toString(), value),
                   );
                   final id = (item['id'] ?? '').toString().toLowerCase();
-                  if (id.length < 12) return item;
                   // An installed wapp can retain a pre-upgrade people payload
                   // until its first tick. Keep this destructive action explicit
                   // even for that short-lived cached shape.
                   item['action'] ??= 'follows_list_unfollow';
                   item['actionLabel'] ??= 'Unfollow';
+                  // A CALLSIGN is the id on an XPRS feed, and it is short:
+                  // `X1ARKL` is six characters. Everything below resolves a
+                  // 12-char NOSTR key prefix, which a callsign is not — so it
+                  // is offered its Unfollow (above) and left as it is. It used
+                  // to return before the action was set, which is why a
+                  // followed callsign could be listed and never removed.
+                  if (id.length < 12) return item;
                   final short = id.substring(0, 12);
                   final profile = {
                     ...RnsService.instance.nostrProfileByShort12(short),
@@ -6436,8 +6437,7 @@ class _WappPageState extends State<WappPage>
     // for, so their card shows a callsign instead of a hex prefix.
     final fromArch =
         _nomadnetArchive?.authorForShort(short) ??
-        _activityArchive?.authorForShort(short) ??
-        _followingArchive?.authorForShort(short);
+        _activityArchive?.authorForShort(short);
     if (fromArch != null && fromArch.length == 64) return fromArch;
     return null;
   }
@@ -6489,7 +6489,18 @@ class _WappPageState extends State<WappPage>
     if (_wappName != 'social') {
       posts = _activityArchive?.recent() ?? const <Map<String, dynamic>>[];
     } else if (_socialFeedFilter == 'following') {
-      posts = _followingArchive?.recent() ?? const <Map<String, dynamic>>[];
+      // The SAME rows Mesh reads; the feed narrows them to the callsigns you
+      // follow (activity_feed.dart `_filtered`).
+      //
+      // This used to read a second archive fed only when a row ARRIVED already
+      // labelled `source:"following"`, so following somebody showed nothing
+      // until they posted again — and a post received while the app was
+      // backgrounded went into that second archive INSTEAD of this one, which
+      // is why it was then missing from Mesh and its thread came back empty.
+      // One archive, filtered at read time: following is retroactive by
+      // construction and there is nothing left to drift.
+      posts =
+          _activityArchive?.recent(limit: 200) ?? const <Map<String, dynamic>>[];
     } else {
       // The Mesh feed: raw newest-first, NO curation/ranking. Statuses have no
       // likes or replies, so ranking by engagement would sort by nothing and
@@ -6505,10 +6516,7 @@ class _WappPageState extends State<WappPage>
   }
 
   Future<List<Map<String, dynamic>>> _loadOlderSocialPosts(int beforeMs) async {
-    if (_socialFeedFilter == 'following') {
-      return _followingArchive?.olderBefore(beforeMs) ??
-          const <Map<String, dynamic>>[];
-    }
+    // `following` pages the same archive as `all` — the feed filters it.
     if (_socialFeedFilter == 'nomadnet') {
       return _nomadnetArchive?.olderBefore(beforeMs) ??
           const <Map<String, dynamic>>[];
@@ -6534,10 +6542,8 @@ class _WappPageState extends State<WappPage>
     if (hex == null) return;
     if (follow) {
       RnsService.instance.followPubkey(hex);
-      _activityArchive?.copyAuthorTo(
-        hex,
-        _followingArchive ?? _activityArchive!,
-      );
+      // No copy anywhere: the Following tab filters the archive this row is
+      // already in.
     } else {
       RnsService.instance.unfollowPubkey(hex);
     }
@@ -6629,18 +6635,18 @@ class _WappPageState extends State<WappPage>
                 if (hex != null) _openChatWithPeer(hex);
               },
               onSetFollow: (follow) {
+                // The CALLSIGN, both ways, and the same two commands the ⋯
+                // menu uses. This used to send the npub — which the wapp
+                // stores as a "callsign" that matches no post — and, for an
+                // unfollow, `follows_list_tap`, which the wapp does not
+                // handle at all: the button moved and nothing else did.
+                _fieldValues['profile_target'] = uc;
                 if (follow) {
                   _followedCalls.add(uc);
-                  if (npub != null) {
-                    _fieldValues['follow_input'] = npub;
-                    _sendCommand('follow_add');
-                  }
+                  _sendCommand('profile_follow');
                 } else {
                   _followedCalls.remove(uc);
-                  if (npub != null) {
-                    _fieldValues['follows_list_id'] = npub;
-                    _sendCommand('follows_list_tap');
-                  }
+                  _sendCommand('profile_unfollow');
                 }
                 // …and durably, host-side, with the full key: the wapp commands
                 // above are a courtesy, not the record.
@@ -6827,13 +6833,19 @@ class _WappPageState extends State<WappPage>
           ..._followedCalls,
           ...RnsService.instance.nostrFollowShort12(),
         },
-        followedPubkeys: _wappName == 'social'
-            ? RnsService.instance.nostrFollowPubkeys()
-            : null,
-        selfPubkey: _wappName == 'social'
-            ? RnsService.instance.nostrSelfHex()
-            : null,
-        authorPubkeyFor: _wappName == 'social' ? _fullPubkeyFor : null,
+        // Null: nobody here follows by key.
+        //
+        // Social used to pass the NOSTR contact list, which put the feed on the
+        // strict pubkey predicate — it needs a 64-hex author, an XPRS row
+        // carries the CALLSIGN as its author, so every row was dropped and the
+        // Following tab was empty however many people you followed. The
+        // callsign path (`followedCalls`, activity_feed.dart _isFollowed) was
+        // unreachable code. Social was the only caller that ever set these
+        // three; they stay on the widget for a feed whose authors really are
+        // keys, and are not used by any wapp this app ships.
+        followedPubkeys: null,
+        selfPubkey: null,
+        authorPubkeyFor: null,
         hiddenCalls: {
           ..._activityHidden,
           ...RnsService.instance.mutedCallsigns,
