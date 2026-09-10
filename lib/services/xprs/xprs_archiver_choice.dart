@@ -96,6 +96,20 @@ class XprsArchiverChoice {
               nowMs - seen.first.lastHeardMs <= kForgetAfter.inMilliseconds)) {
         return cur;
       }
+      // NOTHING BETTER TO MOVE TO: keep the one we have.
+      //
+      // An archiver is replaced when a live volunteer is there to replace it
+      // with — not because the offers list is empty. On a station with no
+      // local neighbours the list is empty BY CONSTRUCTION: offers are built
+      // from stations heard on the air, and a phone on mobile data hears
+      // nobody, so its archiver aged out of the table and was dropped while it
+      // was still perfectly reachable over the internet. Measured on the bench
+      // (X1WATT, 5G, 2026-09-10): adopted X1ARKL, dropped it minutes later,
+      // and its next post was deposited nowhere — which is the one thing the
+      // deposit exists to prevent (XPRS.md 12: a station hands a COPY to the
+      // archivers its operator chose). Keeping a stale name costs a failed
+      // send that `depositNoDest` counts; dropping it costs the publication.
+      if (fresh.isEmpty) return cur;
     }
     if (fresh.isEmpty) return null;
     fresh.sort((a, b) {

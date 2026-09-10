@@ -267,6 +267,44 @@ void main() {
         'X3ARCH');
   });
 
+  test('a station with no neighbours keeps the archiver it has', () {
+    // The internet-only case, measured on the bench (X1WATT on 5G,
+    // 2026-09-10): offers are built from stations heard ON THE AIR, and a
+    // phone with no LAN and no radio in earshot hears nobody — so the list is
+    // empty by construction, its archiver aged out of the station table, and
+    // the adoption was dropped while that archiver was perfectly reachable
+    // over the internet. Its next post was then deposited nowhere, which is
+    // the one thing the deposit exists to prevent.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    expect(
+        XprsArchiverChoice.pick(const [], selfBase: 'X1AAAA',
+            nowMs: now, current: 'X1ARKL'),
+        'X1ARKL',
+        reason: 'an empty list is no evidence, and nothing to move to');
+
+    // Silence is still not forever: with a live volunteer there to take over,
+    // an archiver unheard past the forget window is replaced.
+    expect(
+        XprsArchiverChoice.pick(
+          [
+            ArchiverOffer(
+                callsign: 'X1ARKL',
+                lastHeardMs: now - const Duration(hours: 13).inMilliseconds,
+                bearer: 'rns'),
+            ArchiverOffer(callsign: 'X3NEWR', lastHeardMs: now, bearer: 'rns'),
+          ],
+          selfBase: 'X1AAAA',
+          nowMs: now,
+          current: 'X1ARKL',
+        ),
+        'X3NEWR');
+
+    // And a station that never had one still adopts nobody from nothing.
+    expect(
+        XprsArchiverChoice.pick(const [], selfBase: 'X1AAAA', nowMs: now),
+        isNull);
+  });
+
   test('an archiver reached only over a radio loses to one on the internet',
       () {
     final now = DateTime.now().millisecondsSinceEpoch;

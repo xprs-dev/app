@@ -330,6 +330,16 @@ room message are publications too. `XprsPublisher.depositArchivers` is now the
 one rule, called from both, skipping anything with a `d:` (mail has its own
 custody path, 12.7).
 
+**And an archiver is replaced, never merely lost.** The offers a station
+chooses from are built from what it HEARS on the air, so a station with no
+local neighbours has an empty list by construction — and an empty list used to
+drop the adoption. Measured on the bench (X1WATT on 5G, 2026-09-10): it
+adopted the archiver it could reach over the internet, dropped it minutes
+later when that station aged out of its table, and its next post was deposited
+nowhere. `XprsArchiverChoice.pick` now keeps the current archiver when there
+is nothing fresh to move to; silence past the forget window still loses it to
+a live volunteer, which is the case the window was written for.
+
 Two things make it checkable, which it was not:
 
 - **Counters, reported.** `deposited` and `depositNoDest` on
