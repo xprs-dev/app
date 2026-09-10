@@ -45,11 +45,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # cygpath the WHOLE path so it's unix-style (/c/Users/…): a C:\ path
-          # makes GNU tar treat "C:" as a remote rmt host ("cannot connect to C:").
-          PUBCACHE="$(cygpath "${PUB_CACHE:-$LOCALAPPDATA/Pub/Cache}")"
-          PLUGIN=$(ls -d "$PUBCACHE"/hosted/*/wasm_run_flutter-*/windows 2>/dev/null | head -1)
-          if [ -z "${PLUGIN:-}" ]; then echo "wasm_run_flutter not in pub cache?"; exit 1; fi
+          # wasm_run_flutter is vendored (third_party/, a path override), so it
+          # is not in the pub cache. Windows still uses upstream's prebuilt
+          # library; Android and Linux build it from source.
+          PLUGIN=third_party/wasm_run_flutter/windows
           VER=$(grep -oE 'wasm_run-v[0-9.]+' "$PLUGIN/CMakeLists.txt" | head -1)
           LIBROOT="$PLUGIN/$VER"
           if [ ! -f "$LIBROOT/windows-x64/wasm_run_dart.dll" ]; then

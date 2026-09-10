@@ -9,10 +9,11 @@ cmake_minimum_required(VERSION 3.10)
 
 project(wasm_run_flutter LANGUAGES CXX)
 
-# This directory is reached through flutter/ephemeral/.plugin_symlinks, so the
-# crate's path is resolved physically (REALPATH), not lexically.
-get_filename_component(RustCrate
-  "${CMAKE_CURRENT_SOURCE_DIR}/../../wasm_run/native" REALPATH)
+# This directory is reached through flutter/ephemeral/.plugin_symlinks. CMake
+# collapses ".." before it follows a symlink, so resolve this directory first
+# and only then walk up to the crate.
+get_filename_component(PluginDir "${CMAKE_CURRENT_SOURCE_DIR}" REALPATH)
+get_filename_component(RustCrate "${PluginDir}/../../wasm_run/native" ABSOLUTE)
 set(RustTargetDir "${RustCrate}/target/wasmtime")
 set(RustLib "${RustTargetDir}/release/libwasm_run_dart.so")
 
