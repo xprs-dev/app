@@ -288,3 +288,10 @@ covers your area before you touch it. They are the rules, not just notes.
   notifications on desktop and Android.
 - **[Reusable services](docs/reusable.md)** lists the shared host services (event
   bus, notifications, storage, and so on) to build on instead of reinventing.
+
+## License
+
+BSD-3-Clause, copyright Max Brito and XPRS contributors. See [LICENSE](LICENSE).
+The vendored packages under `third_party/` (`dtorrent_task_v2`,
+`geolocator_android`, `wasm_run`, `wasm_run_flutter`) keep their upstream
+licences, in each directory's `LICENSE`.

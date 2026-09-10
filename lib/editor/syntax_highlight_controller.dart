@@ -1,6 +1,6 @@
 /*
- * Copyright (c) xprs
- * License: Apache-2.0
+ * Copyright (c) Max Brito and XPRS contributors
+ * License: BSD-3-Clause
  *
  * Ported from the parent repo's lib/widgets/syntax_highlight_controller.dart
  * with only the import paths adjusted. The highlighting and

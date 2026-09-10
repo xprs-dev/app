@@ -1,6 +1,6 @@
 /*
- * Copyright (c) xprs
- * License: Apache-2.0
+ * Copyright (c) Max Brito and XPRS contributors
+ * License: BSD-3-Clause
  *
  * Materialise one file out of the content-addressed archive so the OS can open
  * it (a PDF in a reader, an APK in the installer, a photo in the gallery).

@@ -1,6 +1,6 @@
 /*
- * Copyright (c) xprs
- * License: Apache-2.0
+ * Copyright (c) Max Brito and XPRS contributors
+ * License: BSD-3-Clause
  *
  * `ntorrent1…` — the shareable address of a torrent folder (docs/torrents.md §11).
  *

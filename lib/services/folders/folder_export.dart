@@ -1,6 +1,6 @@
 /*
- * Copyright (c) xprs
- * License: Apache-2.0
+ * Copyright (c) Max Brito and XPRS contributors
+ * License: BSD-3-Clause
  *
  * Materialise one file out of the content-addressed archive so the OS can open
  * it. Native only: the blob is copied on a worker isolate straight from the

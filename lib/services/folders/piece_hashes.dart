@@ -1,6 +1,6 @@
 /*
- * Copyright (c) xprs
- * License: Apache-2.0
+ * Copyright (c) Max Brito and XPRS contributors
+ * License: BSD-3-Clause
  *
  * The piece-hash list of a file (docs/torrents.md §8 step 2).
  *
