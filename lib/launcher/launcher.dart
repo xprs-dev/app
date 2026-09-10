@@ -9,7 +9,6 @@
  *   - launcher_app.dart     — IwiApp root MaterialApp
  *   - launcher_page.dart    — the launcher grid + profile switcher
  *   - settings_page.dart    — the Settings screen
- *   - wapp_runner_page.dart — generic WASM runner page
  *
  * `lib/main.dart` is just the entry point: it boots services and runs
  * [IwiApp] from this library.
@@ -73,7 +72,6 @@ import '../wapp/wapp_signing_service.dart';
 import '../wapp/background_wapp_manager.dart';
 import '../wapp/functionality_registry.dart';
 import '../wapp/wapp_icons.dart';
-import '../wapp/wapp_engine.dart';
 import '../wapp/wapp_open.dart';
 import '../wapp/wapp_page.dart';
 
@@ -86,7 +84,6 @@ part 'permissions_intro_page.dart';
 part 'launcher_app.dart';
 part 'launcher_page.dart';
 part 'settings_page.dart';
-part 'wapp_runner_page.dart';
 part 'home_header.dart';
 part 'hero_carousel.dart';
 part 'quick_launch_row.dart';
