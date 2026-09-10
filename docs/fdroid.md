@@ -275,51 +275,110 @@ transport), `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the node is a
 long-running relay). `REQUEST_INSTALL_PACKAGES` is removed for the store
 build (section 1).
 
-## 7. Draft fdroiddata entry
+## 7. The fdroiddata entry
 
-Untested against `fdroidserver` itself. Each step was run by hand: the wasm
-toolchain and the script on `debian:trixie`, and the APK build on the
-development laptop. `xprs-wapps`, `reticulum-dart` and `dav1d` would need
-srclib definitions in fdroiddata. Pin the two XPRS srclibs to the commits the
-release was built from.
+Tested 2026-09-10 the way fdroiddata's CI tests a merge request:
+`fdroid build --on-server` in `registry.gitlab.com/fdroid/fdroidserver:buildserver-trixie`,
+with fdroidserver master. It built `com.xprs.app:337` and the scanner passed.
+The APK held all three ABIs, the wapps' modules were the Debian-clang builds,
+and `tool/fdroid_scan.py` reported no problems.
+
+`metadata/com.xprs.app.yml` (versions and commits as of the first submission):
 
 ```yaml
+Categories:
+  - Connectivity
+  - Internet
+  - Messaging
 License: BSD-3-Clause
+AuthorName: Max Brito
+WebSite: https://xprs.dev
+SourceCode: https://github.com/xprs-dev/app
+IssueTracker: https://github.com/xprs-dev/app/issues
+Changelog: https://github.com/xprs-dev/app/releases
+
+AutoName: XPRS
+
+RepoType: git
+Repo: https://github.com/xprs-dev/app.git
+
 Builds:
-  - versionName: 1.2.13
-    versionCode: 337
-    commit: v1.2.13
+  - versionName: <X.Y.Z>
+    versionCode: <N from pubspec.yaml at the tag>
+    commit: v<X.Y.Z>
     sudo:
       - apt-get update
-      - apt-get install -y make clang-19 lld-19 llvm-19 wasi-libc
-        libclang-rt-19-dev-wasm32 libc++-19-dev-wasm32 libc++abi-19-dev-wasm32
-        meson ninja-build
+      - apt-get install -y make clang-19 lld-19 llvm-19 wasi-libc libclang-rt-19-dev-wasm32
+        libc++-19-dev-wasm32 libc++abi-19-dev-wasm32 meson ninja-build python3 rustup gcc
+        libc-dev
     output: build/app/outputs/flutter-apk/app-release.apk
     srclibs:
       - flutter@3.38.1
-      - rustup@stable
-      - reticulum-dart@<commit>
+      - xprs-reticulum-dart@<commit>
       - xprs-wapps@<commit>
       - dav1d@1.4.3
     rm:
+      - artwork
+      - assets/editor/app-creator/app.wasm
       - desktop
+      - ios
+      - linux
+      - macos
+      - web
+      - windows
     prebuild:
-      - $$rustup$$/rustup-init.sh -y --default-toolchain stable --target
-        aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
-      - ln -s $$reticulum-dart$$ ../reticulum-dart
+      - cp -r $$xprs-reticulum-dart$$ ../reticulum-dart
       - sed -i -e '/REQUEST_INSTALL_PACKAGES/d' android/app/src/main/AndroidManifest.xml
-      - WASI_SYSROOT=/usr WASM_CLANG=clang-19 WASM_CLANGXX=clang++-19
-        WASM_AR=llvm-ar-19 DAV1D_SRC=$$dav1d$$
-        python3 tool/build_bundled_wapps.py $$xprs-wapps$$
+      - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter config --no-analytics
-      - $$flutter$$/bin/flutter pub get
+      - $$flutter$$/bin/flutter pub get --enforce-lockfile
+    scandelete:
+      - .pub-cache
     build:
-      - source $HOME/.cargo/env
+      - WASI_SYSROOT=/usr WASM_CLANG=clang-19 WASM_CLANGXX=clang++-19 WASM_AR=llvm-ar-19
+        DAV1D_SRC=$$dav1d$$ python3 tool/build_bundled_wapps.py $$xprs-wapps$$
+      - rustup default 1.89.0
+      - rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+      - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter build apk --release --dart-define=SELF_UPDATE=false
-    ndk: 28.2.13676358
+    ndk: r28c
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
+UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
+CurrentVersion: <X.Y.Z>
+CurrentVersionCode: <N>
 ```
 
-Open questions for the first real run: whether the scanner objects to the
-`.wapp` archives themselves (they are zips of text plus the rebuilt modules),
-and whether the Kotlin/Gradle step picks up `~/.cargo/bin` without the
-`source` line.
+`srclibs/xprs-wapps.yml` and `srclibs/xprs-reticulum-dart.yml`:
+
+```yaml
+RepoType: git
+Repo: https://github.com/xprs-dev/wapps.git
+```
+
+```yaml
+RepoType: git
+Repo: https://github.com/xprs-dev/reticulum-dart.git
+```
+
+What the test runs taught, each now built into the recipe or the source:
+
+* **The scanner refuses any WebAssembly file in the source tree**, and it runs
+  after `prebuild`. So the committed App Creator module is deleted with
+  `rm:`, and the wapps are rebuilt in `build:`, after the scan. The
+  modules inside `.wapp` packages (zips) are not flagged, and the same step
+  replaces them.
+* **Cargo needs a host C linker** for build scripts (`gcc`, `libc-dev`).
+* **`REQUEST_INSTALL_PACKAGES` has to sit on one line** of the manifest for
+  the `sed` to remove it cleanly; a comment next to it must not name it.
+* `$$srclib$$` expands to an absolute path, so copying reticulum-dart next
+  to the app works.
+* On this 16 GB laptop, the host's earlyoom killed Gradle until the
+  container got a 1.5 GB Gradle heap and 2 workers (in the container's
+  `~/.gradle/gradle.properties`, not in the recipe). F-Droid's builders do not
+  need that.
+
+The APK is universal (all three ABIs, 134 MB). Three per-ABI build entries
+(`--split-per-abi --target-platform ...` with distinct versionCodes) would cut
+each download to about a third.
