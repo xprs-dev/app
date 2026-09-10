@@ -1,0 +1,1 @@
+Off-grid messenger over the internet, Reticulum and a Bluetooth mesh
