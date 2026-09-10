@@ -668,11 +668,25 @@ class XprsPublisher {
   }
   int refused = 0;
 
-  /// Publish a `t:status` (section 27). Returns per-bearer outcomes:
-  /// 'sent' | 'refused' | 'inactive' | 'scope' — empty map when nothing
-  /// could be published at all (no profile, empty text).
-  Future<Map<String, String>> publishStatus(String text,
-      {String? mood, String? scope}) async {
+  /// A `t:status` (section 27), BUILT: signed, split if it must be, and named.
+  ///
+  /// Composing is synchronous and airing is not, and the difference is what a
+  /// screen lives on. A person who posts should see their words at once; what
+  /// happens next — bearers, retries, the archivers this station deposits with
+  /// — is the core's business and takes as long as it takes. So the caller
+  /// gets the section 5 identifier the moment the packet EXISTS, shows its own
+  /// row keyed on it, and the copy that comes back off the air (or out of the
+  /// spool at the next flush) collapses onto the same id.
+  ///
+  /// This is the seam `XprsSend` already draws for messages ("Returns as soon
+  /// as the packet exists. Airing it is the publisher's"); a status had none,
+  /// so the Social feed could only show a post once the archive's 20-second
+  /// flush timer had run.
+  ///
+  /// `wires` is empty when there is nothing to publish (no profile callsign,
+  /// empty text); `id` is then empty too.
+  ({List<String> wires, String id}) composeStatus(String text,
+      {String? mood, String? scope, String? replyTo}) {
     final body = text.trim();
     final call =
         (ProfileService.instance.activeProfile?.callsign ?? '').trim();
@@ -680,7 +694,7 @@ class XprsPublisher {
       refused++;
       LogService.instance.add(
           'XPRS: status not published — ${body.isEmpty ? "empty" : "no profile callsign yet"}');
-      return const {};
+      return (wires: const [], id: '');
     }
 
     final now = DateTime.now().toUtc();
@@ -695,13 +709,33 @@ class XprsPublisher {
     if (scope != null && scope.trim().isNotEmpty) {
       head += ' scope:${scope.trim()}';
     }
+    // A reply names its parent (section 27, the same `r:` a reaction uses).
+    final parent = (replyTo ?? '').trim().toLowerCase();
+    if (parent.isNotEmpty) head += ' r:$parent';
 
-    final wires = _wires(head, body);
-    if (wires.isEmpty) {
+    final built = _compose(head, body);
+    if (built.wires.isEmpty || built.whole == null) {
       refused++;
-      return const {};
+      return (wires: const [], id: '');
     }
+    return (wires: built.wires, id: xprsIdentifier(built.whole!));
+  }
 
+  /// Publish a `t:status` (section 27). Returns per-bearer outcomes:
+  /// 'sent' | 'refused' | 'inactive' | 'scope' — empty map when nothing
+  /// could be published at all (no profile, empty text).
+  Future<Map<String, String>> publishStatus(String text,
+      {String? mood, String? scope, String? replyTo}) async {
+    final wires = composeStatus(text, mood: mood, scope: scope, replyTo: replyTo).wires;
+    if (wires.isEmpty) return const {};
+
+    return airStatus(wires);
+  }
+
+  /// Air an already-composed status and file it locally. Split out so a caller
+  /// that needs the identifier first ([composeStatus]) airs the very same
+  /// wires rather than building a second packet with a second timestamp.
+  Future<Map<String, String>> airStatus(List<String> wires) async {
     final air = await _fanOut(wires, slot: 'status');
     final report = air.report;
     final carriedBy = air.carriedBy;
@@ -1286,25 +1320,44 @@ class XprsPublisher {
   List<String> debugWires(String head, String body, {BigInt? signingKey}) =>
       _wires(head, body, signingKey: signingKey);
 
+  /// Test seam: the same wires AND the packet they rejoin to, which is what
+  /// section 5 names and therefore what [composeStatus] hands a caller.
+  ({List<String> wires, XprsPacket? whole}) debugCompose(
+          String head, String body, {BigInt? signingKey}) =>
+      _compose(head, body, signingKey: signingKey);
+
   /// The wires to air: one signed packet when it fits, else section 6.6
   /// parts with the reassembled packet's signature on the last (9.1.1).
-  List<String> _wires(String head, String body, {BigInt? signingKey}) {
+  List<String> _wires(String head, String body, {BigInt? signingKey}) =>
+      _compose(head, body, signingKey: signingKey).wires;
+
+  /// The wires to air AND the packet they rejoin to.
+  ///
+  /// The rejoined packet is what section 5 names: a receiver puts the parts
+  /// back together before deriving an identifier (`wapp_delivery._whole`), so
+  /// a sender that wants to know what its own packet will be CALLED has to
+  /// name the same thing. Returned here rather than re-derived by the caller,
+  /// because two places computing one identifier is how they come to disagree.
+  ({List<String> wires, XprsPacket? whole}) _compose(String head, String body,
+      {BigInt? signingKey}) {
     final d = signingKey ?? xprsProfileScalar();
 
     XprsPacket? make(String m) => XprsPacket.parse('$head m:$m');
 
     // The unsplit packet, signed, when it fits.
     final whole = make(body);
-    if (whole == null) return const [];
+    if (whole == null) return (wires: const [], whole: null);
     final signedWhole = d != null ? xprsSign(whole, d) : whole;
-    if (signedWhole.fits) return [signedWhole.encode()];
+    if (signedWhole.fits) {
+      return (wires: [signedWhole.encode()], whole: signedWhole);
+    }
 
     // Split at spaces only (6.6). Every part reserves room for `n:i/9` AND
     // the signature, so whichever part ends up last still fits after the
     // sig is attached — a uniform budget beats a two-pass fit.
     final probe = make('')!.with_('n', '9/9').with_('sig', 'x' * 60);
     final capacity = XprsPacket.maxBytes - probe.byteLength;
-    if (capacity <= 0) return const [];
+    if (capacity <= 0) return (wires: const [], whole: null);
 
     final chunks = xprsChunkAtSpaces(body, capacity);
 
@@ -1318,7 +1371,8 @@ class XprsPublisher {
 
     // The signature covers the REASSEMBLED packet: joined m:, no n:.
     final joined = make(chunks.join(' '))!;
-    final sig = d != null ? xprsSign(joined, d)['sig'] : null;
+    final signedJoined = d != null ? xprsSign(joined, d) : joined;
+    final sig = d != null ? signedJoined['sig'] : null;
 
     final n = chunks.length;
     final out = <String>[];
@@ -1327,6 +1381,6 @@ class XprsPublisher {
       if (i == n - 1 && sig != null) part = part.with_('sig', sig);
       out.add(part.encode());
     }
-    return out;
+    return (wires: out, whole: signedJoined);
   }
 }

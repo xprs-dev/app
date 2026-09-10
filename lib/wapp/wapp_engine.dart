@@ -264,8 +264,13 @@ class WappEngine {
   /// The headless manager drains on its own loop; a page with `tick 0` drained
   /// only after ITS OWN calls, i.e. after a tap. So a message that arrived
   /// while the room was open sat in the outbox until the user touched the
-  /// screen, and every "it works when I poke it" report was this. Set by the
-  /// page; null for the headless path, which does not need it.
+  /// screen, and every "it works when I poke it" report was this.
+  ///
+  /// The headless path needs it for the SAME reason and used to leave it null:
+  /// the event broker calls `handleEvent()` directly, so a wapp woken by a
+  /// core event writes outside any tick — and an event-driven wapp declares no
+  /// tick at all. A notification raised that way waited for a clock that does
+  /// not exist.
   void Function()? onOutbox;
 
   // hal_process_* state. Handles are positive ints; 0 is reserved so
@@ -498,6 +503,14 @@ class WappEngine {
   /// call, so a caller that needs its message processed must pump [handleEvent]
   /// until this is zero.
   int get inboxLength => _inbox.length;
+
+  /// Test seam: put a message in the outbox the way `hal_msg_send` does,
+  /// hook included. What is under test is the CONTRACT — whoever owns the
+  /// engine is told when the wapp writes — not the wasm that wrote it.
+  void debugEmit(String json) {
+    _outbox.add(json);
+    onOutbox?.call();
+  }
 
   List<String> drainOutbox() {
     final out = List<String>.from(_outbox);
@@ -3606,17 +3619,37 @@ class WappEngine {
     // hal_xprs_status: publish a short status (docs/XPRS.md §27) on every
     // active bearer. The wapp supplies the words; the CORE chooses transports
     // (BLE5 now, Reticulum broadcast, LoRa when a radio exists), splits long
-    // text into §6.6 parts and signs with the profile key. Fire-and-forget,
-    // like hal_nostr_post.
+    // text into §6.6 parts and signs with the profile key.
+    //
+    // The §5 identifier is written to [idOut] BEFORE the airing starts, the
+    // same contract hal_xprs_broadcast has and for the same reason: it is what
+    // the caller keys its own row on. Without it a wapp could only learn its
+    // post existed by re-reading the spool, which happens at the archive's
+    // 20-second flush — a storage cadence standing in a screen's way, and
+    // exactly why a status took that long to appear in Social.
+    //
+    // [replyTo] is the parent's identifier (§27's `r:`), empty for a new post.
+    // Airing stays fire-and-forget: 0 composed, -1 nothing to publish.
     final halXprsStatus = WasmFunction(
-      (int textPtr, int textLen, int moodPtr, int moodLen) {
+      (int textPtr, int textLen, int moodPtr, int moodLen, int rPtr, int rLen,
+          int idOut, int idCap) {
         final text = _readStr(textPtr, textLen);
         final mood = moodLen > 0 ? _readStr(moodPtr, moodLen) : null;
         if (text.trim().isEmpty) return -1;
-        unawaited(XprsPublisher.instance.publishStatus(text, mood: mood));
+        final built = XprsPublisher.instance.composeStatus(
+          text,
+          mood: mood,
+          replyTo: rLen > 0 ? _readStr(rPtr, rLen) : null,
+        );
+        if (built.wires.isEmpty) return -1;
+        if (idCap > 0) {
+          _writeBytes(idOut, idCap, Uint8List.fromList(utf8.encode(built.id)));
+        }
+        unawaited(XprsPublisher.instance.airStatus(built.wires));
         return 0;
       },
-      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32,
+        ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
 

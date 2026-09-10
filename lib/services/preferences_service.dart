@@ -722,6 +722,15 @@ class PreferencesService {
   static const Set<String> _defaultAutostartWappIds = {
     'chat',
     'mail',
+    // Social is a comms wapp too: a reply in a conversation you are part of,
+    // or a like of your post, is somebody talking to you, and the wapp is
+    // where "is this mine" is known (the follow list and the thread ring live
+    // there, never in the core). With no engine running there is nobody to
+    // decide it, so the notification a person actually wants — the one that
+    // arrives while the page is closed — could never be raised. Costs a
+    // headless engine with no clock: `module_tick_interval_ms()` is 0 and it
+    // wakes only on `xprs.status` / `xprs.reaction`.
+    'social',
     'torrents',
   };
   bool getWappAutostart(String wappId) =>

@@ -199,6 +199,35 @@ colliding on the same raw tag.
 
 The host sets `source` for you to `wapp:<wappName>` — don't send it yourself.
 
+**A wapp has to be RUNNING to raise one, which is what autostart is for.**
+The wapp decides whether a packet concerns its user — "is this reply on a
+thread I am in", "is that a like of my post" — because the follow list and the
+thread are the wapp's, never the core's. With no engine running there is
+nobody to decide it, and the notification a person actually wants is the one
+that arrives while the page is closed. Comms wapps therefore default to
+autostart (`_defaultAutostartWappIds`: chat, mail, social, torrents) and run
+headless with no clock, woken by the core's events.
+
+Two things that path needs, learned the hard way on 2026-09-10:
+
+- **The headless engine is drained when the wapp writes.** The event broker
+  calls `handleEvent()` directly, so an event-driven wapp emits outside any
+  tick. `BackgroundWappRunner` sets `WappEngine.onOutbox`, as a page does; it
+  used to drain only in `onTick`, and a wapp with `tick_interval_ms: 0` has
+  none — the notification sat in the outbox forever.
+- **State a notification depends on is rebuilt at startup.** Social reads its
+  own recent posts out of the spool in `module_init` (forty rows, once) so a
+  station that was restarted still recognises an answer to something it said
+  yesterday. It marks nothing as shown while doing it, or opening the page
+  would find an empty feed and a full spool.
+
+**Social's notifications**: a `t:status` whose `r:` names a post of ours (or a
+thread we posted into) — *"X1FRND replied to you"*, `scope: both`; and a
+`t:reaction add:like` naming a post of ours — *"X1FRND liked your post"*,
+`scope: app`, because a like is worth a card and not a buzz in a pocket. The
+`tag` is the packet's §5 identifier, so the same packet heard twice over two
+bearers, or re-read from the spool after a restart, is announced once ever.
+
 **Legacy `ui.toast`.** The older shape is still accepted and routed through the same
 service as an `info`-level notification, so old wapps inherit tray delivery + history:
 

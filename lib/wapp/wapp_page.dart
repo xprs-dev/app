@@ -73,7 +73,6 @@ import '../services/notification_service.dart';
 import '../services/location_service.dart';
 import '../services/preferences_service.dart';
 import '../services/reticulum/rns_service.dart';
-import '../services/xprs/xprs_publisher.dart';
 import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_vocab.dart';
 import '../services/xprs/xprs_passphrases.dart';
@@ -6965,34 +6964,17 @@ class _WappPageState extends State<WappPage>
         onSend: (text) {
           _fieldValues['${name}_input'] = text;
           _sendCommand('${name}_send');
-          final body = text.trim();
-          // Publish the post HOST-SIDE over Reticulum (+ wss best-effort), the
-          // same reliable path likes/reactions already use. The wapp's
-          // hal_nostr_post round-trip proved fragile (a wapp that doesn't invoke
-          // it drops the post to an optimistic-only ghost that never reaches the
-          // mesh); publishing here guarantees it lands in the relay store and
-          // fans out to peer indexers. nostrPost fires onSelfNotePublished, which
-          // reconciles the optimistic placeholder below with the real event id.
-          // Social airs the post as a t:status HERE, not in the wapp.
+          // And that is all the host does with a post.
           //
-          // Nothing goes to NOSTR any more — the feed is XPRS and a post sent
-          // to relays would land where the feed cannot read it back from. And
-          // the publish is host-side for the same reason the NOSTR post
-          // eventually was: the wapp round-trip is not dependable enough to be
-          // the only path. Measured on this wapp — `ready` and the tick both
-          // run and fill the feed, while the identical handler never reaches
-          // its `activity_send` branch, so a post made through the wapp
-          // vanished with no error anywhere.
-          //
-          // The core picks the bearers, splits per section 6.6 and signs; the
-          // packet then returns through our own spool like anyone else's, so
-          // the feed shows it once.
-          if (_wappName == 'social' && body.isNotEmpty) {
-            unawaited(XprsPublisher.instance.publishStatus(body));
-          }
-
-          // No optimistic row: our own status comes back through the spool
-          // like any other packet, so the feed shows it once rather than twice.
+          // This used to publish the status here as well, for one named wapp,
+          // because a post made through the wapp had once vanished. The cause
+          // was a 6 KB buffer in the wapp truncating the text to empty — fixed
+          // in the same commit that added this workaround, which then outlived
+          // it. The wapp asks the core to publish (hal_xprs_status), the core
+          // owns every transport decision as always, and the wapp draws its
+          // own row at once from the §5 identifier the call hands back. A host
+          // that publishes on a wapp's behalf is a host that knows what that
+          // wapp is for.
         },
       );
     }

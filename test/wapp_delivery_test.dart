@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hex/hex.dart';
 import 'package:xprs/services/receive/packet_gateway.dart';
 import 'package:xprs/services/receive/wapp_delivery.dart';
+import 'package:xprs/wapp/wapp_engine.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_groups.dart';
 import 'package:xprs/services/xprs/xprs_id.dart';
@@ -29,6 +30,7 @@ import 'package:xprs/util/nostr_crypto.dart';
 import 'package:xprs/wapp/wapp_event_broker.dart';
 
 void main() {
+  _outboxHookContract();
   late WappEventBroker bus;
 
   setUp(() {
@@ -37,6 +39,24 @@ void main() {
       bus.unregisterEngine(id);
     }
     WappDelivery.debugReset();
+  });
+
+  // A wapp that already reads rows out of `hal_xprs_history` — which carry
+  // `wire` — should be able to hand a LIVE packet to the same parser. Two
+  // parsers for one format is how a feed comes to render a packet differently
+  // depending on which way it arrived, and Social had exactly that: the spool
+  // door and the live door disagreed about a field and the live post was
+  // dropped as malformed.
+  test('the row carries the packet as one string, like a spool row', () {
+    bus.registerEngine('feed');
+    bus.subscribe('feed', rxTopicFor('status'));
+    const wire = 't:status f:X1QZ3N ts:2026-09-03_11:04:00 m:hello';
+    WappDelivery.instance
+        .deliverPacket(XprsPacket.parse(wire)!, bearer: 'lan', forUs: false);
+    final row = jsonDecode(bus.recv('feed')!.data) as Map<String, dynamic>;
+    expect(row['wire'], wire);
+    expect(row['id'], xprsIdentifier(XprsPacket.parse(wire)!),
+        reason: 'and is named the same way both doors name it');
   });
 
   // §13.11 decides which room a broadcast lands in, and three of its four
@@ -337,4 +357,27 @@ void main() {
     expect(WappDelivery.partsJoined, 0);
   });
 
+}
+
+/// A wapp woken by a core event writes outside any tick, and something has to
+/// read what it wrote.
+///
+/// The broker calls `handleEvent()` on the engine directly. A page drains
+/// through `WappEngine.onOutbox`; the headless runner used to drain only in
+/// `onTick`, and an event-driven wapp has no tick — `module_tick_interval_ms()`
+/// returns 0, which is exactly the shape CoreState was built for. The Social
+/// wapp's reply notification was therefore written into an outbox nobody would
+/// ever read, on the very device (a phone with the page closed) where a
+/// notification is the whole point.
+void _outboxHookContract() {
+  test('the outbox hook fires when the wapp writes, not when it is polled', () {
+    final engine = WappEngine(headless: true);
+    var fired = 0;
+    engine.onOutbox = () => fired++;
+    // No wasm here: the contract under test is that whatever puts a message in
+    // the outbox tells the owner, so a headless owner can drain immediately.
+    engine.debugEmit('{"type":"notify","body":"somebody replied"}');
+    expect(fired, 1);
+    expect(engine.drainOutbox(), ['{"type":"notify","body":"somebody replied"}']);
+  });
 }

@@ -221,6 +221,13 @@ class WappDelivery {
       'via': p['via'] ?? '',
       'link': p['link'] ?? '',
       'sig': sig,
+      // The packet as it stands, one string. `fields` above is the same thing
+      // structured, and both are here on purpose: a wapp that already reads
+      // rows out of `hal_xprs_history` (which carries `wire`) can hand a live
+      // packet to the very same parser instead of writing a second one for
+      // this door. Two parsers for one format is how a feed comes to render a
+      // packet differently depending on which way it arrived.
+      'wire': p.encode(),
     };
     return _publish(rxTopicFor(p.type), row);
   }

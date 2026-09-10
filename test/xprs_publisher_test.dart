@@ -46,6 +46,7 @@ void main() {
   _identityAndSlots();
   _oversizeWires();
   _pathChoice();
+  _statusIdentity();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // A grant used to fan out to the EXISTING members only, so the person being
@@ -345,5 +346,65 @@ void _pathChoice() {
       // the fan-out. Fall through instead.
       expect(pick(declared: {'espnow'}), isNull);
     });
+  });
+}
+
+/// The identifier a status is known by, computed where it is composed.
+///
+/// A wapp draws its own post the moment the packet exists and keys the row on
+/// this id; the copy that comes back — off the air, or out of the spool at the
+/// next flush — must collapse onto the same row. That only holds if the sender
+/// names the packet exactly as a receiver will, and a receiver names the
+/// REJOINED packet (wapp_delivery `_whole`), never a part.
+void _statusIdentity() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  // A key so the test exercises the signed path both ways; the profile does
+  // not exist in a unit test.
+  final d = BigInt.parse(
+      '0123456789012345678901234567890123456789012345678901234567890123',
+      radix: 16);
+
+  test('a status that fits is named by the packet that is aired', () {
+    const head = 't:status f:X1TEST ts:2026-08-13_12:00:00';
+    final built = XprsPublisher.instance
+        .debugCompose(head, 'short enough for one packet', signingKey: d);
+    expect(built.wires.length, 1);
+    expect(built.whole, isNotNull);
+    expect(xprsIdentifier(built.whole!),
+        xprsIdentifier(XprsPacket.parse(built.wires.first)!),
+        reason: 'one packet: the wire and the name are the same thing');
+  });
+
+  test('a split status is named by what its parts rejoin to (6.6, 9.1.1)', () {
+    const head = 't:status f:X1TEST ts:2026-08-13_12:00:00';
+    final words = List.generate(120, (i) => 'word$i').join(' ');
+    final built = XprsPublisher.instance.debugCompose(head, words, signingKey: d);
+    expect(built.wires.length, greaterThan(1));
+
+    // Rejoin the way a receiver does: the m: values in order, no n:, the
+    // signature from the last part.
+    final parts = [for (final w in built.wires) XprsPacket.parse(w)!];
+    final joined = parts.map((p) => p['m'] ?? '').join(' ');
+    final last = parts.last;
+    var whole = XprsPacket.parse('$head m:$joined')!;
+    whole = whole.with_('sig', last['sig'] ?? '');
+
+    expect(xprsIdentifier(built.whole!), xprsIdentifier(whole),
+        reason: 'the sender names the packet the receiver will name, or the '
+            'instant row and the copy off the air are two posts');
+    expect(xprsIdentifier(built.whole!),
+        isNot(xprsIdentifier(parts.first)),
+        reason: 'and never a single part');
+  });
+
+  test('a reply carries r: and is a different packet from the same words', () {
+    const head = 't:status f:X1TEST ts:2026-08-13_12:00:00';
+    const withParent = '$head r:abc123';
+    final a = XprsPublisher.instance.debugCompose(head, 'same words', signingKey: d);
+    final b =
+        XprsPublisher.instance.debugCompose(withParent, 'same words', signingKey: d);
+    expect(b.whole!['r'], 'abc123');
+    expect(xprsIdentifier(a.whole!), isNot(xprsIdentifier(b.whole!)));
   });
 }

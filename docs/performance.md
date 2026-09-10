@@ -310,6 +310,13 @@ expensive algorithm:
 Rule of thumb before adding any periodic work: *what does this cost per hour with
 the screen off, and who is awake to see the result?*
 
+**A storage cadence is not a UI cadence.** `XprsArchive` flushes to sqlite
+every 20 s and fires `core.archive` from the flush — right for the disk, and
+it was the only way the Social wapp learned that its own post existed, so a
+person waited up to twenty seconds to see their own words. What a screen needs
+is the packet, and the core already publishes that on `xprs.<type>` the moment
+it has it. Keep the flush where it is; take the UI out of its path.
+
 **And the same rule for the receive funnel: no preference read per packet.**
 Deciding what to archive used to read `xprs.archive` (and, on the internet
 lane, the always-on flag) as each packet arrived. `XprsIngest` now holds an

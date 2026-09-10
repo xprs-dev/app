@@ -423,9 +423,31 @@ class _WappBackgroundService extends BackgroundService {
   @override
   Future<void> onStart() async {
     await _loadConversations(); // before the first frame can arrive
+    // Drain when the wapp WRITES, not only when we poke it.
+    //
+    // The event broker calls `engine.handleEvent()` directly, so a wapp woken
+    // by `xprs.status` (or any other core event) produces its outbox outside
+    // any tick. A page sets this same hook and drains within the frame; a
+    // headless engine had nothing, so whatever it emitted waited for the next
+    // tick — and an event-driven wapp declares no tick at all
+    // (`module_tick_interval_ms() == 0`, which is the shape CoreState was
+    // built for). Social's reply notification was written into an outbox
+    // nobody would ever read.
+    engine.onOutbox = () {
+      if (_drainScheduled) return;
+      _drainScheduled = true;
+      scheduleMicrotask(() {
+        _drainScheduled = false;
+        _drain();
+      });
+    };
     engine.init();
     _drain(); // handle the init outbox (e.g. APRS host.run_command:connect)
   }
+
+  /// One drain per microtask: a burst of messages from one event is one pass,
+  /// and a drain scheduled from inside a drain is not re-entrant.
+  bool _drainScheduled = false;
 
   @override
   Future<void> onTick() async {

@@ -275,6 +275,45 @@ store, no radio. That is how the dance was made to work before any of it
 reached a device, and it is the pattern for anything whose failure only shows
 up between machines.
 
+### A wapp shows its own action at once (2026-09-10)
+
+Posting a status took up to twenty seconds to appear. Nothing was slow: the
+post was published immediately, and the FEED was waiting for the archive's
+20-second flush, because the only way the wapp learned of its own post was to
+re-read the spool when `core.archive` said the spool had grown. A storage
+cadence had ended up in a screen's path.
+
+The shape that fixes it is the one chat already had, and it is now the rule:
+
+1. **The core hands back the §5 identifier synchronously.** Composing is
+   synchronous; airing is not. `XprsPublisher.composeStatus` builds, signs and
+   names the packet and returns; `airStatus` fans it out afterwards. The HAL
+   verb (`hal_xprs_status`, like `hal_xprs_broadcast`) writes the id into the
+   wapp's memory before anything is aired.
+2. **The wapp draws its own row immediately, keyed on that id.**
+3. **The copy that comes back collapses onto it.** Off the air or out of the
+   spool, the id is the same, so the seen-ring (and the host's `mid` dedupe)
+   make it a no-op. Never dedupe on text or time.
+
+Two more things belong with it:
+
+- **The host does not publish on a named wapp's behalf.** `wapp_page.dart`
+  used to carry `if (_wappName == 'social') publishStatus(...)`, added when a
+  post from the wapp vanished — a 6 KB buffer truncating the text, fixed in
+  that same commit. The workaround outlived the bug and left the host knowing
+  what one wapp was for. The wapp asks the core; the core owns the transports.
+- **Being told beats asking, and the topics already exist.** `WappDelivery`
+  publishes every accepted packet on `xprs.<type>`. A feed subscribes to
+  `xprs.status` and appends one row; `core.archive` stays as the backfill for
+  restarts and §6.6 parts. Nothing polls.
+
+**And an engine that reacts to events must be drained when it writes.** The
+broker calls `handleEvent()` directly, so a wapp woken by a core event
+produces its outbox outside any tick — and an event-driven wapp declares no
+tick at all. A page had always set `WappEngine.onOutbox`; the headless runner
+drained only in `onTick`, so a background wapp's notification was written into
+an outbox nobody would ever read. Both set the hook now.
+
 ### Two archives, one admission rule (2026-09-09)
 
 This app keeps two unrelated things and had called both "the archive": the
