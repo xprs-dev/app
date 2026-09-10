@@ -56,7 +56,8 @@ class DeepLinkService {
   Future<void> _handle(String url) async {
     LogService.instance.add('DeepLink: $url');
     final lower = url.toLowerCase();
-    // xprs://open?wapp=<folder>&convo=<id> — a tapped Android notification.
+    // xprs://open?wapp=<folder>&convo=<id>&view=<view> — a tapped Android
+    // notification.
     // Same opener as the in-app notification center, so both taps land on the
     // same screen: the wapp, on the conversation when one is named.
     //
@@ -68,6 +69,7 @@ class DeepLinkService {
       await openWappByFolder(
         uri.queryParameters['wapp'] ?? '',
         convo: uri.queryParameters['convo'],
+        view: uri.queryParameters['view'],
         navigator: rootNavigatorKey.currentState,
       );
       return;

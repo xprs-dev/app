@@ -72,6 +72,7 @@ object BgBridge {
                         appCtx, id, title, body,
                         wapp = call.argument<String>("wapp"),
                         convo = call.argument<String>("convo"),
+                        view = call.argument<String>("view"),
                     )
                     result.success(true)
                 }
@@ -127,7 +128,7 @@ object BgBridge {
 
     /** Post a heads-up notification for a message/event. Tapping opens the
      * app — and when [wapp] is given, deep-links straight to that wapp (and
-     * to [convo] inside it) via xprs://open, the same route the in-app
+     * to [convo] or [view] inside it) via xprs://open, the same route the in-app
      * notification center takes. A notification that names a conversation
      * must open that conversation, not a front page. */
     fun notify(
@@ -137,6 +138,7 @@ object BgBridge {
         body: String?,
         wapp: String? = null,
         convo: String? = null,
+        view: String? = null,
     ) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
@@ -155,6 +157,11 @@ object BgBridge {
                 .scheme("xprs").authority("open")
                 .appendQueryParameter("wapp", wapp)
                 .apply { if (!convo.isNullOrEmpty()) appendQueryParameter("convo", convo) }
+                // A wapp whose tap target is not a conversation says which
+                // view to open instead — Social's is the thread the reply is
+                // in, and without it the tap lands on the feed and the person
+                // has to go looking for what they were just told about.
+                .apply { if (!view.isNullOrEmpty()) appendQueryParameter("view", view) }
                 .build()
             launch.action = Intent.ACTION_VIEW
             launch.data = uri

@@ -22,6 +22,7 @@ XprsNotification _n(String tag, {String source = 'wapp:chat'}) =>
     );
 
 void main() {
+  _tapTargetSurvives();
   // record()/markAllSeen() write through the profile root, which does not
   // exist here; every write is inside a try/catch, so the in-memory behaviour
   // under test runs unchanged.
@@ -128,4 +129,42 @@ void main() {
     expect(store.unreadCount.value, 1);
   });
 
+}
+
+/// A notification's tap target survives being written down.
+///
+/// Social's target is a THREAD, not a conversation: "X1FRND replied to you"
+/// has to open that exchange. The row outlives the app — the user may come
+/// back to the bell tomorrow — so the target is persisted with it. Dropping it
+/// on the way to disk lands the tap on the feed, and the person is left to go
+/// and find what they were told about.
+void _tapTargetSurvives() {
+  test('the view is stored, reloaded, and kept by copyWith', () {
+    final stored = StoredNotification.fromNotification(XprsNotification(
+      level: NotificationLevel.info,
+      title: 'Social',
+      body: 'X1FRND replied to you',
+      source: 'wapp:social',
+      tag: 'abc123',
+      view: 'post:def456',
+    ));
+    expect(stored.view, 'post:def456');
+    expect(stored.copyWith(seen: true).view, 'post:def456');
+
+    final back = StoredNotification.fromJson(stored.toJson());
+    expect(back.view, 'post:def456');
+    expect(back.id, 'abc123', reason: 'the tag is the row');
+
+    // A row written by an older build has none, and must still load.
+    final legacy = StoredNotification.fromJson({
+      'id': 'x',
+      'level': 'info',
+      'title': 'Chat',
+      'source': 'wapp:chat',
+      'convo': 'X1FRND',
+      'timestamp': 1,
+    });
+    expect(legacy.view, isNull);
+    expect(legacy.convo, 'X1FRND');
+  });
 }

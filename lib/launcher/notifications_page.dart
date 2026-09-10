@@ -1,16 +1,18 @@
 part of 'launcher.dart';
 
 /// Open the wapp a notification came from — on the exact conversation when
-/// the notification names one. [source] follows the `wapp:<folder>`
+/// the notification names one, or the exact [view] when it names that instead
+/// (Social's is a thread: `post:<id>`). [source] follows the `wapp:<folder>`
 /// convention (docs/notifications.md); anything else is not routable here.
 /// Delegates to [openWappByFolder], the same door the Android notification
-/// deep link uses, so both taps behave identically.
+/// deep link uses, so all three taps behave identically.
 Future<bool> _openWappBySource(BuildContext context, String source,
-    {String? convo}) {
+    {String? convo, String? view}) {
   if (!source.startsWith('wapp:')) return Future.value(false);
   return openWappByFolder(
     source.substring(5).trim(),
     convo: convo,
+    view: view,
     navigator: Navigator.of(context),
   );
 }
@@ -169,7 +171,8 @@ class _NotificationRow extends StatelessWidget {
     VoidCallback? onTap;
     if (source.startsWith('wapp:')) {
       onTap = () => unawaited(
-          _openWappBySource(context, source, convo: notification.convo));
+          _openWappBySource(context, source,
+              convo: notification.convo, view: notification.view));
     } else if (source == 'host:updates') {
       onTap = () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const IwiSettingsPage()),

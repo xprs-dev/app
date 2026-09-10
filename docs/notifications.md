@@ -184,6 +184,16 @@ Wire fields:
 | `tag`   | no       | string dedupe key (shown once ever, across restarts) | none |
 | `scope` | no       | `app`/`system`/`both`                 | `app`   |
 | `convo` | no       | conversation id inside the wapp — the TAP TARGET | none |
+| `view`  | no       | a view inside the wapp when the target is not a conversation — `post:<id>` opens Social on that thread | none |
+
+**`view` is the same thing for a wapp whose target is not a conversation.**
+Social's is a thread: "X1FRND replied to you" has to open that exchange, and
+a tap that lands on the feed leaves the person to go and find what they were
+just told about. It travels the same three routes as `convo` — the in-app
+card, the notification centre and the Android deep link
+(`xprs://open?wapp=…&view=…`) — and is persisted with the row, because a
+notification the user comes back to tomorrow must still open what it was
+about.
 
 **`convo` makes the notification tappable.** When set, tapping the
 notification — Android shade or in-app center, both — opens the source wapp

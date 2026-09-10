@@ -61,6 +61,7 @@ Future<void> showSystemNotification({
   bool error = false,
   String? wapp,
   String? convo,
+  String? view,
 }) async {
   try {
     if (Platform.isLinux) {
@@ -89,6 +90,7 @@ Future<void> showSystemNotification({
         if (body != null && body.isNotEmpty) 'body': body,
         if (wapp != null && wapp.isNotEmpty) 'wapp': wapp,
         if (convo != null && convo.isNotEmpty) 'convo': convo,
+        if (view != null && view.isNotEmpty) 'view': view,
       });
     }
     // Windows native balloon not implemented — use winrt toast later.

@@ -20,11 +20,14 @@ import 'wapp_page.dart';
 
 /// Open the wapp installed at `wapps/<folder>` in the active profile.
 /// [convo], when given, opens that conversation inside the wapp (mail: the
-/// peer's pubkey; chat: the room/callsign id). Returns false when the wapp is
-/// not installed or no navigator is available.
+/// peer's pubkey; chat: the room/callsign id). [view] is the same thing for a
+/// wapp whose target is not a conversation — `post:<id>` opens Social on that
+/// thread. Returns false when the wapp is not installed or no navigator is
+/// available.
 Future<bool> openWappByFolder(
   String folder, {
   String? convo,
+  String? view,
   required NavigatorState? navigator,
 }) async {
   if (folder.isEmpty || navigator == null) return false;
@@ -54,6 +57,7 @@ Future<bool> openWappByFolder(
       wappDir: dir,
       title: title,
       initialConvo: (convo != null && convo.isNotEmpty) ? convo : null,
+      initialView: (view != null && view.isNotEmpty) ? view : null,
     ),
   ));
   return true;

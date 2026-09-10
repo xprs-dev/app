@@ -70,6 +70,13 @@ class XprsNotification {
   /// conversation, not just the wapp's front page.
   final String? convo;
 
+  /// A view inside the source wapp — `post:<id>`, `entry:42` — for the wapps
+  /// whose tap target is not a conversation. Social's is a THREAD: a
+  /// notification saying somebody replied has to open that exchange, not the
+  /// feed, or the person has to go and find what they were just told about.
+  /// The same string [HeroItem] hands a wapp as `initialView`.
+  final String? view;
+
   final DateTime timestamp;
 
   XprsNotification({
@@ -80,6 +87,7 @@ class XprsNotification {
     this.tag,
     this.scope = NotificationScope.app,
     this.convo,
+    this.view,
   }) : timestamp = DateTime.now();
 }
 
@@ -137,6 +145,7 @@ class SystemTrayNotificationBackend implements NotificationBackend {
       // folder and the conversation so the tap can land on the thread.
       wapp: n.source.startsWith('wapp:') ? n.source.substring(5) : null,
       convo: n.convo,
+      view: n.view,
     );
   }
 }
@@ -419,6 +428,7 @@ class _NotificationCard extends StatelessWidget {
                 unawaited(openWappByFolder(
                   wapp,
                   convo: n.convo,
+                  view: n.view,
                   navigator: rootNavigatorKey.currentState,
                 ));
               }

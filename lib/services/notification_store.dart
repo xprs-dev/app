@@ -19,6 +19,12 @@ class StoredNotification {
   /// Conversation inside the source wapp this is about — the tap target.
   final String? convo;
 
+  /// The tap target for a wapp whose target is not a conversation: Social's
+  /// is a THREAD, `post:<id>`. Persisted with the row, because the row
+  /// outlives the app: a notification the user comes back to tomorrow must
+  /// still open what it was about.
+  final String? view;
+
   final DateTime timestamp;
 
   /// Whether the user has already seen this notification.
@@ -42,6 +48,7 @@ class StoredNotification {
     this.body,
     required this.source,
     this.convo,
+    this.view,
     required this.timestamp,
     this.seen,
   });
@@ -54,6 +61,7 @@ class StoredNotification {
         body: body,
         source: source,
         convo: convo,
+        view: view,
         timestamp: timestamp ?? this.timestamp,
         seen: seen ?? this.seen,
       );
@@ -66,6 +74,7 @@ class StoredNotification {
       body: json['body']?.toString(),
       source: (json['source'] ?? '').toString(),
       convo: json['convo']?.toString(),
+      view: json['view']?.toString(),
       timestamp: DateTime.fromMillisecondsSinceEpoch(
         (json['timestamp'] as num?)?.toInt() ?? 0,
       ),
@@ -87,6 +96,7 @@ class StoredNotification {
       body: n.body,
       source: n.source,
       convo: n.convo,
+      view: n.view,
       timestamp: ts,
       seen: false,
     );
@@ -99,6 +109,7 @@ class StoredNotification {
     if (body != null) 'body': body,
     'source': source,
     if (convo != null && convo!.isNotEmpty) 'convo': convo,
+    if (view != null && view!.isNotEmpty) 'view': view,
     'timestamp': timestamp.millisecondsSinceEpoch,
   };
 }

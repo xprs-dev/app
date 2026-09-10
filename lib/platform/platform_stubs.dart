@@ -35,6 +35,7 @@ Future<void> showSystemNotification({
   bool error = false,
   String? wapp,
   String? convo,
+  String? view,
 }) async {
   // no-op
 }
