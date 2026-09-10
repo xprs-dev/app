@@ -1,0 +1,7 @@
+First release on F-Droid.
+
+* No Google Play Services and no tracking: location comes from Android itself.
+* The WebAssembly runtime and every bundled wapp are built from source.
+* The Player decodes AAC with Android's Apache-2.0 decoder instead of FDK-AAC.
+* The editor's AI assistant is gone; AI can come back as a wapp you choose.
+* Everything is now BSD-3-Clause licensed.
