@@ -167,8 +167,12 @@ def main():
     with open(os.path.join(APP, EDITOR, 'manifest.json')) as f:
         check_same_wapp('app-creator', os.path.join(wapps, 'app-creator'), json.load(f))
     editor_wasm = os.path.join(APP, EDITOR, 'app.wasm')
-    with open(editor_wasm, 'rb') as f:
-        old = f.read()
+    # The F-Droid recipe deletes the committed module (rm:) so the scanner
+    # never sees a prebuilt binary, and this writes it back from source.
+    old = b''
+    if os.path.exists(editor_wasm):
+        with open(editor_wasm, 'rb') as f:
+            old = f.read()
     new = build('app-creator', 'app.wasm')
     report('app-creator/app.wasm (editor)', old, new)
     if not check and old != new:
