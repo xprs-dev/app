@@ -87,10 +87,15 @@
          F-Droid build, which has no self-updater, deletes the line naming this
          permission (docs/f-droid.md). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- requestLegacyExternalStorage: on Android 10 only, READ/WRITE_EXTERNAL_STORAGE
+         then reach public storage (the identity backup in /sdcard/XPRS, disk
+         folders) the way All files access does from Android 11. Android 11+
+         ignores it, and nothing changes there. -->
     <application
         android:label="XPRS"
         android:name=".XprsApplication"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:requestLegacyExternalStorage="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

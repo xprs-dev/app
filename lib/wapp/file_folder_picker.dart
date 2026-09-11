@@ -332,7 +332,7 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                  'XPRS needs "All files access" to browse your storage.',
+                  'XPRS needs storage access to browse your files.',
                   textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton(

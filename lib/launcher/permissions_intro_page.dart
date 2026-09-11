@@ -16,6 +16,8 @@ class PermissionsIntroPage extends StatefulWidget {
 class _PermissionsIntroPageState extends State<PermissionsIntroPage>
     with WidgetsBindingObserver {
   final Map<String, bool> _granted = {};
+  // Rows this Android version actually has; see AppPermission.minSdk.
+  List<AppPermission> _shown = AndroidPermissionsService.items;
   bool _busy = false;
   bool _allGranted = false;
 
@@ -42,11 +44,17 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
 
   Future<void> _refresh() async {
     final svc = AndroidPermissionsService.instance;
-    for (final item in AndroidPermissionsService.items) {
+    final shown = await svc.shownItems();
+    for (final item in shown) {
       _granted[item.key] = await svc.isGranted(item);
     }
     final all = await svc.allGranted();
-    if (mounted) setState(() => _allGranted = all);
+    if (mounted) {
+      setState(() {
+        _shown = shown;
+        _allGranted = all;
+      });
+    }
   }
 
   Future<void> _grant(AppPermission item) async {
@@ -154,8 +162,7 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                     ),
                   ),
                 if (!_allGranted) const SizedBox(height: 16),
-                for (final item in AndroidPermissionsService.items)
-                  _permissionItem(theme, item),
+                for (final item in _shown) _permissionItem(theme, item),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(12),

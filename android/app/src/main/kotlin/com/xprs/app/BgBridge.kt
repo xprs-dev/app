@@ -46,6 +46,9 @@ object BgBridge {
                     XprsApplication.dartReady = true
                     result.success(true)
                 }
+                // The API level, so Dart can tell which runtime permissions this
+                // OS actually has. dart:io only reports the kernel version.
+                "sdkInt" -> result.success(Build.VERSION.SDK_INT)
                 "start" -> {
                     val text = call.argument<String>("text") ?: "Running in background"
                     val i = Intent(appCtx, BgService::class.java).putExtra("text", text)

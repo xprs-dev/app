@@ -9,8 +9,9 @@
  * This service mirrors the identity-only subset of every profile to a location
  * that SURVIVES uninstall:
  *   - Android: /storage/emulated/0/XPRS/identity-backup.json (public storage,
- *     reachable via MANAGE_EXTERNAL_STORAGE — the same access the disk-folder
- *     picker uses). Android keeps this when the app is removed.
+ *     reachable via MANAGE_EXTERNAL_STORAGE, or READ/WRITE_EXTERNAL_STORAGE
+ *     below Android 11 — the same access the disk-folder picker uses).
+ *     Android keeps this when the app is removed.
  *   - Desktop: $HOME/.config/xprs/identity-backup.json (deliberately OUTSIDE
  *     ~/.local/share/xprs so wiping app data doesn't take the backup with it).
  *

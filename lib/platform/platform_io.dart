@@ -51,6 +51,27 @@ Future<void> signalDartReady() async {
   }
 }
 
+/// The Android API level (`Build.VERSION.SDK_INT`), or 0 off Android and when
+/// the host does not answer. Asked once, then cached: it cannot change while
+/// the process lives. The bg_service channel is bound before `main()` runs on
+/// every engine, so this is safe from boot tasks too, but it still has a hard
+/// timeout because nothing may block boot on a probe.
+Future<int> androidSdkInt() => _sdkInt ??= _querySdkInt();
+Future<int>? _sdkInt;
+
+Future<int> _querySdkInt() async {
+  if (!Platform.isAndroid) return 0;
+  try {
+    final v = await _bgChannel
+        .invokeMethod<int>('sdkInt')
+        .timeout(const Duration(seconds: 2));
+    return v ?? 0;
+  } catch (_) {
+    _sdkInt = null; // let a later call try again
+    return 0;
+  }
+}
+
 /// Whether this engine has a view to draw into. False on the headless engine
 /// the boot receiver starts, where UI-only platform channels have no handler.
 bool get hasImplicitView => PlatformDispatcher.instance.implicitView != null;

@@ -22,6 +22,9 @@ String? homeDir() => null;
 /// (the engine started by the boot receiver); no-op on web.
 Future<void> signalDartReady() async {}
 
+/// The Android API level. Always 0 on web.
+Future<int> androidSdkInt() async => 0;
+
 /// Whether this engine has a view to draw into. Always true on web —
 /// there is no headless engine there.
 bool get hasImplicitView => true;
