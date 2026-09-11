@@ -196,37 +196,49 @@ must be allowed to install unknown apps — `canInstall()` reports it and
 The artifact is verified before the installer ever sees it: size and sha256
 against the feed, hashed in chunks off the UI isolate.
 
-**The F-Droid variant does none of this.** Build with
-`--dart-define=SELF_UPDATE=false` and every check, download and install
-short-circuits and the Updates panel hides itself — F-Droid builds from source
-and is the only updater for what it ships. Such a build also refuses to act as
-a mirror.
+**"Updates only from F-Droid" does none of this.** The switch (Android, in
+Updates; on by default when an F-Droid client installed the app) replaces both
+channels with the version F-Droid's index publishes
+(`https://f-droid.org/api/v1/packages/com.xprs.app`), refuses every download
+and install, and turns the action into "Update in F-Droid", which opens the
+F-Droid client on XPRS (`UpdateBridge.openFdroid`). There is no start-up check
+in that mode: the F-Droid client notifies about updates itself. F-Droid ships
+the same signed APK as the release (reproducible build, `docs/f-droid.md`), so
+the switch can be flipped either way at any time.
+
+`--dart-define=SELF_UPDATE=false` still compiles the whole path out: every
+check, download and install short-circuits, the Updates panel hides itself, and
+the build refuses to act as a mirror. Official builds, F-Droid's included, keep
+it on.
 
 ---
 
 ## 7. The versionCode trap
 
-`versionCode` is `git rev-list --count HEAD` **plus a per-ABI offset** that
-`--split-per-abi` adds, so one release ships several:
+`versionCode` is an ABI digit x 1,000,000 plus the build number, the `+N` in
+`pubspec.yaml` (`android/app/build.gradle.kts`; F-Droid's recipe derives the
+same numbers), so one release ships three:
 
-| artifact | versionCode for build 109 |
+| artifact | versionCode for build 362 |
 |---|---|
-| universal `xprs-<v>.apk` | 109 |
-| `-android-armeabi-v7a.apk` | 1109 |
-| `-android-arm64-v8a.apk` | 2109 |
-| `-android-x86_64.apk` | 4109 |
+| `-android-armeabi-v7a.apk` | 1000362 |
+| `-android-arm64-v8a.apk` | 2000362 |
+| `-android-x86_64.apk` | 4000362 |
 
-`fetch-depth: 0` is required in every CI job, because a shallow clone counts 1 —
-which is how v1.1.0 shipped versionCode 1.
+Before v1.2.17 it was Flutter's digit x 1,000 + N, plus a universal APK at N.
 
 **Nothing compares versionCode when deciding what is newer.** It only decides
 whether Android will install what was offered, and Android refuses anything not
-strictly greater. So a device carrying a hand-passed build number
-(`--build-number=994039`, as both bench phones did) will **detect every future
-release and install none of them**, with no in-app symptom: the download
-succeeds and the installer declines. `adb install -d` does not rescue it — the
-downgrade flag applies only to debuggable builds. Such a device has to be
-uninstalled and reinstalled once.
+strictly greater. So a device carrying a hand-passed build number far above the
+commit count will **detect every future release and install none of them**,
+with no in-app symptom: the download succeeds and the installer declines. `adb
+install -d` does not rescue it: the downgrade flag applies only to debuggable
+builds. Such a device has to be uninstalled and reinstalled once.
+
+Android also refuses an update signed by another key. Every release until
+v1.2.16 carried a different throwaway debug key (the keystore secrets were never
+set), so none could update another; from v1.2.17 on, all carry the XPRS release
+key.
 
 Do not hand large build numbers to `launch-android.sh` on a phone you intend to
 keep updating.

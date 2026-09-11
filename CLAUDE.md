@@ -74,9 +74,12 @@ concurrent builds freeze it). Launch the **built bundle** directly rather than
 `flutter run` — `flutter run` holds the build lock until the app quits, so a
 queued APK build waits on it.
 
-Android installs need `--build-number` above the installed `versionCode`
-(`adb shell dumpsys package com.xprs.app | grep versionCode`), and other
-sessions may be installing to the same phone.
+Android installs need a versionCode above the installed one (`adb shell
+dumpsys package com.xprs.app | grep versionCode`), and other sessions may be
+installing to the same phone. A split APK's versionCode is ABI digit x
+1,000,000 + `--build-number` (arm64: 2,000,000 + N; `android/app/build.gradle.kts`),
+so N only has to beat the installed code minus that. A large N keeps the phone
+off the release track (releases use the commit count; `releases.md` §6).
 
 ### A build that vanishes was killed, not broken
 
