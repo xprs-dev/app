@@ -74,13 +74,21 @@ update feed's files are on xprs.dev/downloads.
   first run.
 * **2026-09-11:** the merge request carries the "New App" and
   "waiting-for-upstream" labels, and `licaon-kter` asked why reproducible
-  builds were declined. They are now in
-  place (section 5): the release pipeline builds in F-Droid's buildserver
+  builds were declined. They are now in place (section 5): the release pipeline builds in F-Droid's buildserver
   image, the release key exists, and the recipe has one build per ABI with
   `binary:` and `AllowedAPKSigningKeys`.
-* **Next:** cut the first release built this way (v1.2.17), render the recipe
-  for it (section 7), push it to the merge request branch, let its `fdroid
-  build` job verify our APKs, and then answer the question on the thread.
+* **v1.2.17** (2026-09-11, versionCodes 1000370, 2000370 and 4000370) is the
+  first release built this way. Each of its three APKs passed `verify_apks` in
+  `release.yml`. Before it, a local arm64 build of commit `f132eb1` in the
+  buildserver image matched CI's signed APK of that commit, the check across
+  two machines. The recipe for v1.2.17 was pushed to the merge request branch
+  the same day, and the branch's `fdroid build` job rebuilt all three APKs and
+  reported "compared built binary to supplied reference binary successfully"
+  and the allowed signer for each (pipeline 2841052939).
+* **Answered** on the thread the same day (reproducible builds adopted; the
+  updater stays, and an F-Droid install updates through F-Droid by default).
+  The description's checklist now ticks reproducible builds and per-ABI APKs.
+  Waiting for review.
 
 ## 3. Following the review
 
