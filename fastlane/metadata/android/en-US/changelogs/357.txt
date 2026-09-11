@@ -1,0 +1,2 @@
+* Phones that report Android 12 or older (many Huawei phones among them) no longer get stuck on the permissions screen. "Nearby WiFi devices" is only asked for on Android 13 and newer.
+* On Android 10 and older, storage access uses the system's own permission dialog, so the identity backup works there too.
