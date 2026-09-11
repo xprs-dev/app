@@ -112,7 +112,7 @@ dart run tool/update_version.dart
 tmpidx="$(mktemp -u)"
 pubblob=$(git show HEAD:pubspec.yaml | sed "s/^version:.*/version: ${VERSION}+${CODE}/" | git hash-object -w --stdin)
 verblob=$(git hash-object -w lib/version.dart)
-# path -> blob for everything the release commit adds or changes, and the
+# Path to blob, for everything the release commit adds or changes, and the
 # paths it removes (a changelog named for a stale count).
 declare -A put=( [pubspec.yaml]="$pubblob" [lib/version.dart]="$verblob"
   [.reticulum-dart-commit]=$(echo "$RD_PIN" | git hash-object -w --stdin)

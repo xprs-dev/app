@@ -29,7 +29,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# ABI -> (versionCode digit, Rust target, flutter --target-platform). The
+# ABI: (versionCode digit, Rust target, flutter --target-platform). The
 # digits are Flutter's (android/app/build.gradle.kts), in versionCode order.
 ABIS = {
     'armeabi-v7a': (1, 'armv7-linux-androideabi', 'android-arm'),

@@ -32,7 +32,7 @@ jobs:
     strategy:
       matrix:
         abi: [armeabi-v7a, arm64-v8a, x86_64]
-    # Hoisted to job level so a step's `if` can gate on it — the `secrets`
+    # Hoisted to job level so a step's `if` can gate on it: the `secrets`
     # context is not allowed in a step-level `if`, only `env` is.
     env:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
