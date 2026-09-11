@@ -2,10 +2,20 @@ name: release
 
 # Build the Android / Linux / Windows artifacts on a version tag and attach them
 # to a GitHub Release on THIS repo as assets (NOT committed to git, so the source
-# repo stays lean). No secrets: uses the automatic GITHUB_TOKEN. The website repo
-# (the xprs.dev site repo) sync.yml then downloads these release assets, builds
-# the feed (stable.json/beta.json), and hosts the binaries at xprs.dev/
-# updates — the only place the app fetches from (NO github.com runtime dependency).
+# repo stays lean). xprs-dev/downloads then serves them on xprs.dev/downloads,
+# and the website repo's sync.yml hashes them into the update feed
+# (stable.json/beta.json). The app fetches a binary by sha256 over Reticulum,
+# and from xprs.dev only when no station holds it.
+#
+# Android is built the way F-Droid builds it, inside F-Droid's buildserver
+# image, from the recipe in fdroid/ (fdroid/buildserver-build.sh). F-Droid
+# rebuilds the same recipe and ships these very APKs, signed by us, only when
+# its build is identical: a reproducible build. See docs/f-droid.md.
+#
+# Every job builds the version pubspec.yaml carries at the tag (release.sh wrote
+# it, and lib/version.dart with it), with ../reticulum-dart at the commit
+# .reticulum-dart-commit pins. Nothing is rewritten here: F-Droid cannot rewrite
+# anything either, and the two builds have to agree.
 
 on:
   push:
@@ -15,96 +25,74 @@ on:
 jobs:
   android:
     runs-on: ubuntu-latest
-    # Hoisted to job level so the signing step's `if` can gate on it — the
-    # `secrets` context is not allowed in a step-level `if`, only `env` is.
+    strategy:
+      matrix:
+        abi: [armeabi-v7a, arm64-v8a, x86_64]
+    # Hoisted to job level so a step's `if` can gate on it — the `secrets`
+    # context is not allowed in a step-level `if`, only `env` is.
     env:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
-      # fetch-depth: 0 because the build number below is the COMMIT
-      # COUNT, and checkout defaults to a depth-1 clone where that
-      # count is 1. v1.1.0 shipped versionCode 1 for exactly this
-      # reason -- and so would every release after it, which Android
-      # rejects as a downgrade rather than an upgrade.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      # pubspec.yaml has a path dependency on ../reticulum-dart (a sibling repo
-      # not checked out by default). Clone it next to the workspace so the very
-      # first `pub get` (run by flutter-action's setup) can resolve it.
-      - name: Fetch reticulum-dart (path dependency)
-        shell: bash
-        run: git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-      - name: Sync version + build number
+      - name: The tag names the version pubspec.yaml carries
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          CODE=$(git rev-list --count HEAD)
           VER=$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d+ -f1)
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then VER="${GITHUB_REF_NAME#v}"; fi
-          sed -i "s/^version:.*/version: ${VER}+${CODE}/" pubspec.yaml
-          dart run tool/update_version.dart
-      - run: flutter pub get
-      # Reconstruct the persistent release keystore from repo secrets so every
-      # tag build signs with the SAME key. Without this, each runner signs with
-      # its own throwaway debug key and Android rejects the upgrade as an invalid
-      # package. Skips (falls back to debug signing) if the secret is unset.
-      - name: Configure release signing
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+          test "$VER" = "${GITHUB_REF_NAME#v}" ||
+            { echo "::error::pubspec.yaml says $VER, the tag says $GITHUB_REF_NAME"; exit 1; }
+      # The buildserver image, the Flutter and NDK it downloads and the build
+      # itself need ~25 GB; the runner's preinstalled SDKs are not used.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+      - name: Render the F-Droid recipe for this commit
+        run: python3 tool/fdroid_recipe.py --commit "$GITHUB_SHA" --out "$RUNNER_TEMP/recipe"
+      # fdroidserver clones this repository at $GITHUB_SHA and builds it; the
+      # checkout above only provides the recipe and the script.
+      - name: Build in F-Droid's buildserver image, sign, verify
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/xprs-release.jks
-          cat > android/key.properties <<EOF
-          storeFile=xprs-release.jks
-          storePassword=${ANDROID_KEYSTORE_PASSWORD}
-          keyAlias=${ANDROID_KEY_ALIAS}
-          keyPassword=${ANDROID_KEY_PASSWORD}
-          EOF
-      # Universal APK (direct sideload / GitHub-API marketing page) AND per-ABI
-      # splits (~40 MB each) — the website (GitHub Pages, 100 MB/file git limit)
-      # hosts only the splits; the app downloads the one matching its ABI.
-      - run: flutter build apk --release
-      - run: flutter build apk --release --split-per-abi
-      # Artifact names carry the VERSION. versionFromAssetName() parses
-      # xprs-<version>-<platform>, so a versionless name like
-      # xprs-android-arm64-v8a.apk reads its version as "android-arm64-v8a"
-      # and the Reticulum folder path offers a release that does not exist.
-      - run: |
-          mkdir -p dist
-          apk=build/app/outputs/flutter-apk
+          set -euo pipefail
           VER=$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d+ -f1)
-          cp "$apk/app-release.apk" "dist/xprs-$VER.apk"
-          cp "$apk/app-arm64-v8a-release.apk"   "dist/xprs-$VER-android-arm64-v8a.apk"
-          cp "$apk/app-armeabi-v7a-release.apk" "dist/xprs-$VER-android-armeabi-v7a.apk"
-          cp "$apk/app-x86_64-release.apk"      "dist/xprs-$VER-android-x86_64.apk"
-          ls -lh dist
+          CODE=$(python3 tool/fdroid_recipe.py --print-vercode ${{ matrix.abi }})
+          mkdir -p dist "$RUNNER_TEMP/keys"
+          sign=()
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keys/release.jks"
+            sign=(-e KEYSTORE=/keys/release.jks -e KEY_ALIAS -e KS_PASS -e KEY_PASS
+                  -e SIGNED_NAME="xprs-$VER-android-${{ matrix.abi }}.apk")
+          else
+            echo "::warning::no release keystore: unsigned APK only"
+          fi
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP/recipe:/recipe:ro" \
+            -v "$RUNNER_TEMP/keys:/keys:ro" -v "$GITHUB_WORKSPACE/dist:/out" \
+            -e BUILD="com.xprs.app:$CODE" -e RECIPE=/recipe "${sign[@]}" \
+            registry.gitlab.com/fdroid/fdroidserver:buildserver-trixie \
+            bash /src/fdroid/buildserver-build.sh
+          rm -rf "$RUNNER_TEMP/keys"
+          ls -lR dist
+      # The signed APK is the release asset; unsigned/ is F-Droid's view of it,
+      # kept for comparing against another build.
       - uses: actions/upload-artifact@v4
         with:
-          name: xprs-android
+          name: xprs-android-${{ matrix.abi }}
           path: dist/
 
   linux:
     runs-on: ubuntu-latest
     steps:
-      # fetch-depth: 0 because the build number below is the COMMIT
-      # COUNT, and checkout defaults to a depth-1 clone where that
-      # count is 1. v1.1.0 shipped versionCode 1 for exactly this
-      # reason -- and so would every release after it, which Android
-      # rejects as a downgrade rather than an upgrade.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Fetch reticulum-dart (path dependency)
+      - name: Fetch reticulum-dart at the pinned commit (path dependency)
         shell: bash
-        run: git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
+        run: |
+          git clone --filter=blob:none https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
+          git -C ../reticulum-dart checkout -q "$(cat .reticulum-dart-commit)"
       - name: Install Linux build deps
         run: |
           sudo apt-get update
@@ -114,13 +102,13 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Sync version
+      - name: The tag names the version pubspec.yaml carries
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
         run: |
-          CODE=$(git rev-list --count HEAD)
           VER=$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d+ -f1)
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then VER="${GITHUB_REF_NAME#v}"; fi
-          sed -i "s/^version:.*/version: ${VER}+${CODE}/" pubspec.yaml
-          dart run tool/update_version.dart
+          test "$VER" = "${GITHUB_REF_NAME#v}" ||
+            { echo "::error::pubspec.yaml says $VER, the tag says $GITHUB_REF_NAME"; exit 1; }
       - run: flutter pub get
       - run: flutter build linux --release
       - name: Package portable bundle
@@ -138,29 +126,23 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      # fetch-depth: 0 because the build number below is the COMMIT
-      # COUNT, and checkout defaults to a depth-1 clone where that
-      # count is 1. v1.1.0 shipped versionCode 1 for exactly this
-      # reason -- and so would every release after it, which Android
-      # rejects as a downgrade rather than an upgrade.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Fetch reticulum-dart (path dependency)
+      - name: Fetch reticulum-dart at the pinned commit (path dependency)
         shell: bash
-        run: git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
+        run: |
+          git clone --filter=blob:none https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
+          git -C ../reticulum-dart checkout -q "$(cat .reticulum-dart-commit)"
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-      - name: Sync version
+      - name: The tag names the version pubspec.yaml carries
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
-          CODE=$(git rev-list --count HEAD)
           VER=$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d+ -f1)
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then VER="${GITHUB_REF_NAME#v}"; fi
-          sed -i "s/^version:.*/version: ${VER}+${CODE}/" pubspec.yaml
-          dart run tool/update_version.dart
+          test "$VER" = "${GITHUB_REF_NAME#v}" ||
+            { echo "::error::pubspec.yaml says $VER, the tag says $GITHUB_REF_NAME"; exit 1; }
       - run: flutter pub get
       # wasm_run_flutter's CMake downloads a native runtime tarball and extracts
       # it with `cmake -E tar` (libarchive), but the extract path runs through the
@@ -218,7 +200,7 @@ jobs:
       - name: Collect assets
         run: |
           mkdir -p dist
-          cp artifacts/xprs-android/*.apk dist/
+          cp artifacts/xprs-android-*/*.apk dist/
           cp artifacts/xprs-linux/*.tar.gz dist/
           # Windows is optional (see the publish job's needs) — attach it only if
           # its job produced the installer this run.
@@ -228,8 +210,9 @@ jobs:
             echo "::warning::Windows installer not built this run — publishing Android + Linux only."
           fi
       # Publish the binaries as GitHub Release assets — NOT committed to git, so
-      # the source repo stays lean. The website's sync.yml downloads these and
-      # hosts them at xprs.dev/updates (the only place the app fetches from).
+      # the source repo stays lean. xprs-dev/downloads copies them to
+      # xprs.dev/downloads, and F-Droid fetches the Android ones from here to
+      # compare with its own build (the recipe's binary: URLs).
       - name: Create GitHub Release with binaries as assets
         uses: softprops/action-gh-release@v2
         with:

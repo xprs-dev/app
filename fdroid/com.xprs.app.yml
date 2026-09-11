@@ -1,0 +1,81 @@
+# The F-Droid build recipe, as a template: fdroiddata's metadata/com.xprs.app.yml
+# is rendered from this file by tool/fdroid_recipe.py, and release.yml renders
+# it too, to build the Android release in F-Droid's own buildserver image. The
+# build block below becomes one block per ABI (@ABI@ and friends), stamped with
+# a release's version, versionCode and commit. F-Droid rebuilds each APK and
+# ships it only if it matches ours byte for byte (reproducible build), so a
+# change to the build steps here must reach fdroiddata in the same release.
+# See docs/f-droid.md.
+Categories:
+  - Connectivity
+  - Internet
+  - Messaging
+License: BSD-3-Clause
+AuthorName: Max Brito
+WebSite: https://xprs.dev
+SourceCode: https://github.com/xprs-dev/app
+IssueTracker: https://github.com/xprs-dev/app/issues
+Changelog: https://github.com/xprs-dev/app/releases
+
+AutoName: XPRS
+
+RepoType: git
+Repo: https://github.com/xprs-dev/app.git
+
+Builds:
+  - versionName: '@VERSION@'
+    versionCode: '@VERCODE@'
+    commit: '@COMMIT@'
+    sudo:
+      - apt-get update
+      - apt-get install -y make clang-19 lld-19 llvm-19 wasi-libc libclang-rt-19-dev-wasm32
+        libc++-19-dev-wasm32 libc++abi-19-dev-wasm32 meson ninja-build python3 rustup
+        gcc libc-dev
+    output: build/app/outputs/flutter-apk/app-@ABI@-release.apk
+    binary: https://github.com/xprs-dev/app/releases/download/v%v/xprs-%v-android-@ABI@.apk
+    srclibs:
+      - flutter@stable
+      - xprs-reticulum-dart@main
+      - xprs-wapps@main
+      - dav1d@1.4.3
+    rm:
+      - artwork
+      - assets/editor/app-creator/app.wasm
+      - desktop
+      - ios
+      - linux
+      - macos
+      - web
+      - windows
+    prebuild:
+      - flutterVersion=$(cat .flutter-version)
+      - '[[ $flutterVersion ]]'
+      - git -C $$flutter$$ checkout -f $flutterVersion
+      - git -C $$xprs-reticulum-dart$$ checkout -f $(cat .reticulum-dart-commit)
+      - git -C $$xprs-wapps$$ checkout -f $(cat .wapps-commit)
+      - cp -r $$xprs-reticulum-dart$$ ../reticulum-dart
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter pub get --enforce-lockfile
+    scandelete:
+      - .pub-cache
+    build:
+      - WASI_SYSROOT=/usr WASM_CLANG=clang-19 WASM_CLANGXX=clang++-19 WASM_AR=llvm-ar-19
+        DAV1D_SRC=$$dav1d$$ python3 tool/build_bundled_wapps.py $$xprs-wapps$$
+      - rustup default 1.89.0
+      - rustup target add @RUST_TARGET@
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform=@FLUTTER_PLATFORM@
+    ndk: r28c
+
+AllowedAPKSigningKeys: 2a4b4625895e700839415a81c091d949699167abe03c22794376d18f2f7ec2d2
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
+VercodeOperation:
+  - '%c + 1000000'
+  - '%c + 2000000'
+  - '%c + 4000000'
+UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
+CurrentVersion: '@VERSION@'
+CurrentVersionCode: '@CURRENT_VERCODE@'
