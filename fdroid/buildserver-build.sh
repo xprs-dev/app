@@ -87,6 +87,15 @@ cd "$home_vagrant"
 # build itself runs without it, as on the buildserver.
 curl -fsSL https://gitlab.com/fdroid/fdroid-bootstrap-buildserver/-/raw/master/roles/production_hardening/files/gitconfig \
   > "$home_vagrant/.gitconfig"
+# It names fsck skip lists that live in fdroiddata (~/fdroiddata/config/).
+if [[ ! -d "$home_vagrant/fdroiddata/config" ]]; then
+  mkdir -p "$home_vagrant/fdroiddata/config"
+  for list in fetch.fsck fsck receive.fsck transfer.fsck; do
+    curl -fsSL "https://gitlab.com/fdroid/fdroiddata/-/raw/master/config/$list.skipList" \
+      -o "$home_vagrant/fdroiddata/config/$list.skipList"
+  done
+  chown -R vagrant "$home_vagrant/fdroiddata"
+fi
 chown vagrant "$home_vagrant/.gitconfig"
 fdroid fetchsrclibs "$BUILD" --verbose
 rm -f "$home_vagrant/.gitconfig"
