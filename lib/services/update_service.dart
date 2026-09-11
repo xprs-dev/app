@@ -90,6 +90,8 @@ class UpdateService {
   static const _kStableFolder = 'update.folder.stable';
   static const _kBetaFolder = 'update.folder.beta';
   static const _kFeedBase = 'update.feed.base';
+  // Absent until the user flips the switch: the default follows the installer.
+  static const _kFdroidOnly = 'update.fdroidOnly';
   // Active DownloadManager job (Android), persisted so an interrupted or
   // backgrounded download can be re-attached when the Updates panel reopens or
   // the app is relaunched.
@@ -105,6 +107,8 @@ class UpdateService {
   final ValueNotifier<double> progress = ValueNotifier(0); // 0..1
   final ValueNotifier<ReleaseInfo?> stable = ValueNotifier(null);
   final ValueNotifier<ReleaseInfo?> beta = ValueNotifier(null);
+  /// The newest version F-Droid publishes, when [fdroidOnly] is on.
+  final ValueNotifier<ReleaseInfo?> fdroid = ValueNotifier(null);
   String? error;
   String? _downloadedPath;
 
@@ -173,21 +177,43 @@ class UpdateService {
 
   bool _betaEnabled = false;
   bool _autoCheck = true;
+  bool _fdroidOnly = false;
   bool get betaEnabled => _betaEnabled;
   bool get autoCheck => _autoCheck;
 
-  String get currentVersion => kAppVersion;
-  /// Compile-time kill switch for the whole self-update path.
+  /// "Updates only from F-Droid" (Android). XPRS then never downloads itself:
+  /// it asks F-Droid which version it publishes, and hands an update to the
+  /// F-Droid client. On by default when an F-Droid client installed this copy.
   ///
-  /// F-Droid builds every app from source and is the ONLY updater for what it
-  /// ships: an app that downloads and installs its own APK is not accepted
-  /// there. Build the store variant with
+  /// F-Droid ships the very APK released here (a reproducible build, signed
+  /// with the same key), so either updater can install over the other. The
+  /// switch only decides which one this phone listens to.
+  bool get fdroidOnly => _fdroidOnly && fdroidAvailable;
+  bool get fdroidAvailable => currentUpdatePlatform() == UpdatePlatform.android;
+
+  /// Package names of the F-Droid clients (keep in step with the manifest's
+  /// `queries` and UpdateBridge.FDROID_CLIENTS).
+  static const fdroidClients = {
+    'org.fdroid.fdroid',
+    'org.fdroid.basic',
+    'com.looker.droidify',
+    'com.machiav3lli.fdroid',
+  };
+
+  /// F-Droid's public index entry for XPRS: the versions it publishes.
+  static const String fdroidApi =
+      'https://f-droid.org/api/v1/packages/com.xprs.app';
+
+  String get currentVersion => kAppVersion;
+  /// Compile-time kill switch for the whole self-update path, for anyone who
+  /// repackages XPRS behind an updater of their own:
   ///
   ///     flutter build apk --dart-define=SELF_UPDATE=false
   ///
-  /// and this reports unsupported, so every check, download and install path
-  /// short-circuits and the Updates panel hides itself. Direct-download builds
-  /// (xprs.dev, CI artefacts) keep it on and are unaffected.
+  /// makes this report unsupported, so every check, download and install path
+  /// short-circuits and the Updates panel hides itself. Official builds keep it
+  /// on, F-Droid's included (it rebuilds the release byte for byte); an F-Droid
+  /// install defaults to [fdroidOnly] instead.
   static const bool selfUpdateEnabled =
       bool.fromEnvironment('SELF_UPDATE', defaultValue: true);
 
@@ -210,7 +236,26 @@ class UpdateService {
     _betaFolder = (b != null && b.isNotEmpty) ? b : defaultUpdateFolderBetaNpub;
     final f = p.getString(_kFeedBase);
     _feedBase = (f != null && f.isNotEmpty) ? f : defaultUpdateFeedBase;
+    // Not stored until the user chooses, so the default keeps following the
+    // installer: F-Droid installed it, F-Droid updates it.
+    _fdroidOnly = p.getBool(_kFdroidOnly) ??
+        (fdroidAvailable && fdroidClients.contains(await _installer()));
   }
+
+  // Asked once per process: only an install replaces the installer, and an
+  // install restarts the process.
+  Future<String?>? _installerF;
+  Future<String?> _installer() =>
+      _installerF ??= UpdateNative.installerPackage();
+
+  Future<void> setFdroidOnly(bool v) async {
+    _fdroidOnly = v;
+    await _prefs((p) => p.setBool(_kFdroidOnly, v));
+  }
+
+  /// Hand the update to the F-Droid client (or f-droid.org when none is
+  /// installed). Returns false when nothing could be opened.
+  Future<bool> openFdroid() async => await UpdateNative.openFdroid() != null;
 
   /// Change the website feed base URL (e.g. https://xprs.dev/updates). Pass
   /// empty to reset to the default. Returns the normalised value stored.
@@ -249,8 +294,11 @@ class UpdateService {
     await _prefs((p) => p.setBool(_kAutoCheck, v));
   }
 
-  /// The release the user should be offered, honouring the beta toggle.
-  ReleaseInfo? get selectedRelease => _betaEnabled ? beta.value : stable.value;
+  /// The release the user should be offered: F-Droid's when [fdroidOnly],
+  /// otherwise the channel the beta toggle picks.
+  ReleaseInfo? get selectedRelease => fdroidOnly
+      ? fdroid.value
+      : (_betaEnabled ? beta.value : stable.value);
 
   /// True if [r] is newer than what's running.
   bool isNewer(ReleaseInfo? r) =>
@@ -264,6 +312,12 @@ class UpdateService {
     if (!supported) return;
     status.value = UpdateStatus.checking;
     error = null;
+    if (fdroidOnly) {
+      fdroid.value = await _newestFromFdroid();
+      status.value =
+          isNewer(fdroid.value) ? UpdateStatus.available : UpdateStatus.idle;
+      return;
+    }
     try {
       // Website first (preferred, authoritative), Reticulum folder as fallback.
       stable.value =
@@ -315,6 +369,32 @@ class UpdateService {
     }
   }
 
+  /// The newest version F-Droid publishes, from its public index API, or null
+  /// when F-Droid is unreachable or does not carry XPRS yet. Each version is
+  /// there once per ABI; only the version name matters here. No assets: the
+  /// F-Droid client does the downloading.
+  Future<ReleaseInfo?> _newestFromFdroid() async {
+    try {
+      final resp = await http
+          .get(Uri.parse(fdroidApi))
+          .timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return null;
+      final json = jsonDecode(utf8.decode(resp.bodyBytes));
+      if (json is! Map<String, dynamic>) return null;
+      String? best;
+      for (final p in (json['packages'] as List? ?? const [])) {
+        final v = p is Map ? p['versionName'] : null;
+        if (v is! String || v.isEmpty) continue;
+        if (best == null || compareSemver(v, best) > 0) best = v;
+      }
+      if (best == null) return null;
+      return ReleaseInfo(
+          version: best, tagName: 'v$best', name: 'XPRS $best', assets: const []);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Browse one channel folder and return its newest release (or null). With
   /// [prereleaseOk] false, prerelease versions are ignored so the stable
   /// channel never offers a beta even if the folder happens to hold one.
@@ -350,8 +430,11 @@ class UpdateService {
     NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
       title: 'Update available',
-      body: 'XPRS ${sel.version} is available. Open Settings → '
-          'Updates to install.',
+      body: fdroidOnly
+          ? 'XPRS ${sel.version} is on F-Droid. Update it there, or open '
+              'Settings → Updates.'
+          : 'XPRS ${sel.version} is available. Open Settings → '
+              'Updates to install.',
       source: 'host:updates',
       scope: NotificationScope.both,
     ));
@@ -363,6 +446,11 @@ class UpdateService {
   /// per-ABI split APK is chosen on Android.
   Future<bool> download(ReleaseInfo release) async {
     if (!supported) return false;
+    if (fdroidOnly) {
+      error = 'Updates come from F-Droid on this device';
+      status.value = UpdateStatus.error;
+      return false;
+    }
     final platform = currentUpdatePlatform();
     final abis =
         platform == UpdatePlatform.android ? await _abis() : const <String>[];
@@ -747,7 +835,9 @@ class UpdateService {
   /// session (panel closed, app backgrounded or relaunched). Safe to call on
   /// every Updates panel open and at startup; no-ops when nothing is pending.
   Future<void> resumeActiveDownload() async {
-    if (!supported || _tracking || !UpdateNative.hasDownloadManager) return;
+    if (!supported || fdroidOnly || _tracking || !UpdateNative.hasDownloadManager) {
+      return;
+    }
     final p = await SharedPreferences.getInstance();
     final id = p.getInt(_kDlId);
     if (id == null) return;
@@ -801,7 +891,7 @@ class UpdateService {
   /// Apply the downloaded artifact. On Android, ensures the install permission
   /// first (opens settings if missing). Quits the app on desktop to swap files.
   Future<bool> install(ReleaseInfo release) async {
-    if (!supported || _downloadedPath == null) return false;
+    if (!supported || fdroidOnly || _downloadedPath == null) return false;
     final platform = currentUpdatePlatform();
     if (platform == UpdatePlatform.android && !await UpdateNative.canInstall()) {
       await UpdateNative.openInstallSettings();

@@ -67,6 +67,8 @@ object UpdateBridge {
             "getSupportedAbis" ->
                 result.success(android.os.Build.SUPPORTED_ABIS.toList())
             "getCurrentApkPath" -> result.success(app.applicationInfo.sourceDir)
+            "installerPackage" -> result.success(installerPackage(app))
+            "openFdroid" -> result.success(openFdroid(app))
             // System DownloadManager: a process-independent download that survives
             // the app being closed, auto-resumes an interrupted transfer, and only
             // reports success once the whole file has landed (so we never hand a
@@ -194,6 +196,65 @@ object UpdateBridge {
         try {
             dm(ctx).remove(id)
         } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * F-Droid clients, most likely first. Each must also be listed under
+     * <queries> in the manifest, or Android 11+ hides it from us.
+     */
+    private val FDROID_CLIENTS = listOf(
+        "org.fdroid.fdroid",
+        "org.fdroid.basic",
+        "com.looker.droidify",
+        "com.machiav3lli.fdroid",
+    )
+
+    /** The package that installed (or last updated) this app, or null. */
+    private fun installerPackage(ctx: Context): String? = try {
+        val pm = ctx.packageManager
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            pm.getInstallSourceInfo(ctx.packageName).installingPackageName
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstallerPackageName(ctx.packageName)
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Show this app in an F-Droid client, which then offers the update. The
+     * client that installed us goes first. Falls back to the F-Droid web page
+     * when no client is installed. Returns the package opened, "web", or null.
+     */
+    private fun openFdroid(ctx: Context): String? {
+        val installer = installerPackage(ctx)
+        val order = FDROID_CLIENTS.sortedBy { if (it == installer) 0 else 1 }
+        val details = Uri.parse("market://details?id=${ctx.packageName}")
+        for (pkg in order) {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, details)
+                .setPackage(pkg)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (intent.resolveActivity(ctx.packageManager) == null) continue
+            try {
+                ctx.startActivity(intent)
+                return pkg
+            } catch (e: Exception) {
+                Log.w(TAG, "openFdroid: $pkg refused: ${e.message}")
+            }
+        }
+        return try {
+            ctx.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    Uri.parse("https://f-droid.org/packages/${ctx.packageName}/"),
+                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            "web"
+        } catch (e: Exception) {
+            Log.w(TAG, "openFdroid: no browser either: ${e.message}")
+            null
         }
     }
 }

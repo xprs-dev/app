@@ -963,8 +963,12 @@ class RemoteApiService {
         if (data['feedBase'] != null) {
           await u.setFeedBase('${data['feedBase']}'.trim());
         }
+        if (data['fdroidOnly'] != null) {
+          await u.setFdroidOnly(data['fdroidOnly'] == true);
+        }
         return _json(res, {
           'ok': true,
+          'fdroidOnly': u.fdroidOnly,
           'betaFolder': u.betaFolder,
           'stableFolder': u.stableFolder,
           'betaEnabled': u.betaEnabled,
@@ -985,8 +989,10 @@ class RemoteApiService {
           'currentVersion': u.currentVersion,
           'status': u.status.value.name,
           'betaEnabled': u.betaEnabled,
+          'fdroidOnly': u.fdroidOnly,
           'beta': _releaseJson(u.beta.value),
           'stable': _releaseJson(u.stable.value),
+          'fdroid': _releaseJson(u.fdroid.value),
           'selected': _releaseJson(sel),
           'updateAvailable': u.isNewer(sel),
           'error': u.error,
@@ -1024,6 +1030,7 @@ class RemoteApiService {
           'buildNumber': kBuildNumber,
           'betaEnabled': u.betaEnabled,
           'autoCheck': u.autoCheck,
+          'fdroidOnly': u.fdroidOnly,
           'feedBase': u.feedBase,
           'stableFolder': u.stableFolder,
           'betaFolder': u.betaFolder,
@@ -1032,6 +1039,7 @@ class RemoteApiService {
           'progress': u.progress.value,
           'stable': _releaseJson(u.stable.value),
           'beta': _releaseJson(u.beta.value),
+          'fdroid': _releaseJson(u.fdroid.value),
           'selected': _releaseJson(sel),
           'updateAvailable': u.isNewer(sel),
           'downloadedPath': u.downloadedPath,

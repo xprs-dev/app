@@ -178,6 +178,28 @@ class UpdateNative {
     }
   }
 
+  /// The package that installed this app on Android (an app store, the system
+  /// package installer, or null for adb and unknown). Null off Android.
+  static Future<String?> installerPackage() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      return await _channel.invokeMethod<String>('installerPackage');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Show this app in an installed F-Droid client (or on f-droid.org when
+  /// there is none). Returns what was opened: a client package, "web", or null.
+  static Future<String?> openFdroid() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      return await _channel.invokeMethod<String>('openFdroid');
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<bool> canInstall() async {
     if (!Platform.isAndroid) return true;
     try {

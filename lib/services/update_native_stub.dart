@@ -29,6 +29,9 @@ class UpdateNative {
 
   static Future<List<String>> supportedAbis() async => const [];
 
+  static Future<String?> installerPackage() async => null;
+  static Future<String?> openFdroid() async => null;
+
   static Future<bool> canInstall() async => false;
   static Future<void> openInstallSettings() async {}
 

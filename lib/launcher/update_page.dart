@@ -4,7 +4,9 @@
  * Shows the running version, a stable + beta release "table" pulled from the xprs.dev feed
  * (xprs-dev/app), release notes, and a Download → Install action for the
  * selected channel. Mirrors xprs's update page; the beta toggle opts into
- * pre-releases. Disabled on web (managed by the store/package manager).
+ * pre-releases. On Android, "Updates only from F-Droid" replaces both channels
+ * with the version F-Droid publishes and hands the update to the F-Droid
+ * client. Disabled on web (managed by the store/package manager).
  */
 
 import 'package:flutter/material.dart';
@@ -130,26 +132,39 @@ class _UpdatePageState extends State<UpdatePage> {
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         color: cs.primary, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
-                // Stable + beta cards.
-                ValueListenableBuilder<ReleaseInfo?>(
-                  valueListenable: _svc.stable,
-                  builder: (context, rel, _) => _ReleaseCard(
-                    channel: 'Stable',
-                    icon: Icons.check_circle_outline,
-                    release: rel,
-                    active: !_svc.betaEnabled,
+                if (_svc.fdroidOnly)
+                  ValueListenableBuilder<ReleaseInfo?>(
+                    valueListenable: _svc.fdroid,
+                    builder: (context, rel, _) => _ReleaseCard(
+                      channel: 'F-Droid',
+                      icon: Icons.storefront_outlined,
+                      release: rel,
+                      active: true,
+                      fdroid: true,
+                    ),
+                  )
+                else ...[
+                  // Stable + beta cards.
+                  ValueListenableBuilder<ReleaseInfo?>(
+                    valueListenable: _svc.stable,
+                    builder: (context, rel, _) => _ReleaseCard(
+                      channel: 'Stable',
+                      icon: Icons.check_circle_outline,
+                      release: rel,
+                      active: !_svc.betaEnabled,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                ValueListenableBuilder<ReleaseInfo?>(
-                  valueListenable: _svc.beta,
-                  builder: (context, rel, _) => _ReleaseCard(
-                    channel: 'Beta',
-                    icon: Icons.science_outlined,
-                    release: rel,
-                    active: _svc.betaEnabled,
+                  const SizedBox(height: 8),
+                  ValueListenableBuilder<ReleaseInfo?>(
+                    valueListenable: _svc.beta,
+                    builder: (context, rel, _) => _ReleaseCard(
+                      channel: 'Beta',
+                      icon: Icons.science_outlined,
+                      release: rel,
+                      active: _svc.betaEnabled,
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(height: 8),
                 // Error line.
                 ValueListenableBuilder<UpdateStatus>(
@@ -170,6 +185,36 @@ class _UpdatePageState extends State<UpdatePage> {
                         color: cs.onSurfaceVariant,
                         fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
+                // F-Droid ships this same APK, so either updater can install
+                // over the other; this decides which one the phone listens to.
+                if (_svc.fdroidAvailable) ...[
+                  Card(
+                    elevation: 0,
+                    color: cs.surfaceContainerLow,
+                    child: SwitchListTile(
+                      secondary: const Icon(Icons.storefront_outlined),
+                      title: const Text('Updates only from F-Droid'),
+                      subtitle: const Text(
+                          'XPRS never downloads itself. When F-Droid has a '
+                          'newer version, it opens F-Droid to install it.'),
+                      value: _svc.fdroidOnly,
+                      onChanged: (v) async {
+                        await _svc.setFdroidOnly(v);
+                        if (mounted) setState(() {});
+                        _svc.checkForUpdates();
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if (!_svc.fdroidOnly) ..._channelSettings(cs),
+              ],
+            ),
+    );
+  }
+
+  /// Where the self-updater looks: meaningless while F-Droid is the updater.
+  List<Widget> _channelSettings(ColorScheme cs) => [
                 // Beta opt-in.
                 Card(
                   elevation: 0,
@@ -228,10 +273,7 @@ class _UpdatePageState extends State<UpdatePage> {
                     ),
                   ),
                 ),
-              ],
-            ),
-    );
-  }
+      ];
 }
 
 class _ReleaseCard extends StatefulWidget {
@@ -239,12 +281,14 @@ class _ReleaseCard extends StatefulWidget {
   final IconData icon;
   final ReleaseInfo? release;
   final bool active; // is this the channel the action targets
+  final bool fdroid; // the F-Droid client installs it, not this panel
 
   const _ReleaseCard({
     required this.channel,
     required this.icon,
     required this.release,
     required this.active,
+    this.fdroid = false,
   });
 
   @override
@@ -298,10 +342,17 @@ class _ReleaseCardState extends State<_ReleaseCard> {
               ],
             ),
             const SizedBox(height: 6),
-            if (r == null)
-              Text('No release found',
-                  style: TextStyle(color: cs.onSurfaceVariant))
-            else ...[
+            if (r == null) ...[
+              Text(
+                  widget.fdroid
+                      ? 'F-Droid could not be reached, or does not list XPRS yet.'
+                      : 'No release found',
+                  style: TextStyle(color: cs.onSurfaceVariant)),
+              if (widget.fdroid)
+                TextButton(
+                    onPressed: svc.openFdroid,
+                    child: const Text('Open F-Droid')),
+            ] else ...[
               Row(
                 children: [
                   Text(r.version,
@@ -371,6 +422,13 @@ class _ReleaseCardState extends State<_ReleaseCard> {
       return Text('You are up to date.',
           style: TextStyle(
               fontSize: 12, color: Theme.of(context).colorScheme.tertiary));
+    }
+    if (widget.fdroid) {
+      return FilledButton.icon(
+        icon: const Icon(Icons.storefront_outlined, size: 18),
+        label: Text('Update to ${r.version} in F-Droid'),
+        onPressed: svc.openFdroid,
+      );
     }
     return ValueListenableBuilder<UpdateStatus>(
       valueListenable: svc.status,
