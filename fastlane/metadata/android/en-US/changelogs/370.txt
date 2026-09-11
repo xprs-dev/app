@@ -1,0 +1,3 @@
+* The home screen shows the temperature the stations in reach measure.
+* New in Updates: "Updates only from F-Droid". It is on by default when F-Droid installed XPRS, and then an update opens F-Droid instead of downloading.
+* XPRS is now a reproducible build signed with a permanent key, so F-Droid and xprs.dev ship the same APKs. Coming from an earlier direct download, reinstall once; after that updates install over each other.
