@@ -314,6 +314,30 @@ tick at all. A page had always set `WappEngine.onOutbox`; the headless runner
 drained only in `onTick`, so a background wapp's notification was written into
 an outbox nobody would ever read. Both set the hook now.
 
+### A command is the core's to deliver (2026-09-11)
+
+The Firmwares wapp set a freshly flashed station up with `t:command`s, and
+shipped with its own delivery: it kept each wire, re-sent it on a schedule of
+its own, gave up after five minutes, and subscribed to `xprs.observation`, the
+busiest topic on the air, to have something to count time by. Every beacon
+anyone aired woke a headless engine on every phone. That is store-and-forward
+in a wapp again, the first mistake this file names.
+
+`XprsCommandCourier` is the core half. `hal_xprs_send` hands it any
+`t:command` addressed to one station; it airs the wire once on the path
+section 36.0 chooses, airs the same signed bytes again on every bearer at
+30, 60, 100 and 160 s (the identifier is how a station knows a repeat, and
+silence is evidence against the path that was chosen), stops at a final code
+(a 202 keeps it going, because a repeat is what asks a station where it
+stands), takes the answered copy off the advert rotation, and reports
+`unanswered` or `unfinished` on `xprs.status.tx` when XPRS.md 11.4's window
+closes. It runs on the native heartbeat, and only while a command is out.
+
+The wapp now sends once, listens for `xprs.result` and `xprs.status.tx` only
+while it has asked something and for `xprs.identity` only while a station is
+changing its key, and an idle phone hands it nothing but the rare ask to be
+claimed.
+
 ### Where a copy of your words goes is the core's business (2026-09-10)
 
 XPRS.md 12: *"a station keeps its own publications and hands a COPY to the

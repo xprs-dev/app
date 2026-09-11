@@ -43,6 +43,7 @@ import '../services/xprs/xprs_history_server.dart';
 import '../services/xprs/xprs_ingest.dart';
 import '../services/xprs/xprs_station_policy.dart';
 import '../services/xprs/xprs_publisher.dart';
+import '../services/xprs/xprs_command_courier.dart';
 import '../services/xprs/xprs_vocab.dart';
 import '../services/xprs/xprs_redaction.dart';
 import '../services/torrent_service.dart';
@@ -3683,6 +3684,9 @@ class WappEngine {
         // closed group" (26.7). publishWire applies the same rule for every
         // caller; this lets the wapp say why instead of "could not send".
         if (!XprsPublisher.instance.mayAir(p)) return -2;
+        // A command to a station is the core's to deliver: aired again until
+        // it is answered, and reported on xprs.status.tx when it never is.
+        if (XprsCommandCourier.instance.send(wire)) return 0;
         unawaited(XprsPublisher.instance.publishWire(wire));
         return 0;
       },

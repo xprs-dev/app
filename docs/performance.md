@@ -1265,6 +1265,37 @@ timers per visible attachment and give up on a 60-second clock of its own,
 which reported "no holder" while the bytes were arriving — §8.10's rule for
 logs is the same rule for polls.
 
+### 8.15 A signature checked once per packet, not once per reader (2026-09-11)
+
+The C61 stalled its UI isolate for 0.3 to 2 s every fifteen seconds or so,
+with PSS near 170 MB and 50 MB in swap. `xprsVerify` is a secp256k1 Schnorr
+check in pure Dart on the calling isolate, and one packet met it more than
+once: in the archive, in the ingest, in the delivery to wapps (which verifies
+whether or not any wapp subscribed), and again for every copy that came in
+over another bearer or relayed. A station asking to be claimed (XPRS.md 11.9)
+added a fifth, re-verifying the same key binding every thirty seconds.
+
+Two memos, both keyed on what the verdict actually depends on:
+
+- `xprsVerify` remembers the verdict for (digest, signature, key), 512
+  entries. A copy of a packet already checked costs a SHA-256.
+- `XprsIngest._bindIdentity` remembers a (callsign, key) pair it has already
+  verified and bound, and does not check it again.
+
+And the one curve operation a wapp still needs on the UI isolate, the ECDH
+behind `hal_encrypt`, is worked out on a worker when the station's key is
+first heard (`XprsCrypto.primeShared`), so the seal itself is AES.
+
+Measured after, on the C61 (release, screen asleep, a 5-minute window after
+a 5-minute settle): stalls of 0.3 to 0.7 s where they were 1.2 to 2.1 s,
+the Firmwares wapp at 0.0 to 0.4% of main. Not closed: 19 stalls in the
+window, and the process at 70% of a core, most of it the rns-crypto worker
+minting about 1500 X25519 keys a minute, the same count as before this work.
+That composition (keygens with no matching edGen) is the next thing to read.
+
+> **Rule: a verdict about bytes that do not change is computed once.** Count
+> the readers of a packet before adding another check to it.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile

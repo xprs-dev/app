@@ -986,7 +986,11 @@ class XprsPublisher {
       /// One packet, no bookkeeping, not filed as ours (see
       /// [XprsBearer.send]): a chunk of a small file is reproducible from the
       /// file, and three hundred of them are not history.
-      bool datagram = false}) async {
+      bool datagram = false,
+      /// Skip the section 36.0 path choice and air on every bearer. For a
+      /// copy sent again because the first went unanswered: the silence is
+      /// evidence against the path that was chosen (XprsCommandCourier).
+      bool spread = false}) async {
     if (!datagram) LogService.instance.add('XPRS: publishWire <- $wireIn');
     var p = XprsPacket.parse(wireIn.trim());
     if (p == null) {
@@ -1091,7 +1095,7 @@ class XprsPublisher {
     // which is that same section's own fallback ("Where a station cannot tell
     // which path reaches the asker ... it answers on every bearer it can
     // transmit on").
-    final chosen = prefer ?? _preferredBearer(p, dest);
+    final chosen = spread ? null : (prefer ?? _preferredBearer(p, dest));
 
     // §31.2: "it may never hold back the control packets, because a code:404 or
     // code:429 that does not arrive is indistinguishable from a station that is
@@ -1152,6 +1156,15 @@ class XprsPublisher {
     LogService.instance.add(
         'XPRS: ${p.type} wire — ${report.entries.map((e) => '${e.key}:${e.value}').join(', ')}');
     return report;
+  }
+
+  /// Take [slot]'s frame off the advert rotation before its TTL runs out:
+  /// the packet in it has been answered, and every further copy only makes
+  /// the station answer again. The other bearers send once and hold nothing.
+  Future<void> withdraw(String slot) async {
+    try {
+      await Ble5Bus.instance.removeFrame('xprs-$slot:1');
+    } catch (_) {}
   }
 
   /// §6.6 parts for a caller-composed wire that outgrew one packet.

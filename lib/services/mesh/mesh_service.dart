@@ -30,6 +30,7 @@ import '../xprs/xprs_airtime.dart';
 import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_groups.dart';
 import '../xprs/xprs_catchup.dart';
+import '../xprs/xprs_command_courier.dart';
 import '../xprs/xprs_files.dart';
 import '../xprs/xprs_file_acl.dart';
 import '../xprs/xprs_file_lift.dart';
@@ -359,6 +360,7 @@ class MeshService {
         XprsIngest.onResult = (p) {
           XprsCatchup.instance.onResult(p);
           XprsFileFetch.instance.onResult(p);
+          XprsCommandCourier.instance.onResult(p);
         };
         // The catch-up watermark moves when a row is WRITTEN, not when it is
         // queued — see XprsArchive.onStored.

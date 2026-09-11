@@ -90,7 +90,24 @@ XprsSigState xprsVerify(XprsPacket p, Uint8List? pubXonly) {
   final sig = XprsCrypto.b85decode(s);
   if (sig == null || sig.length != 48) return XprsSigState.forged;
 
-  return XprsCrypto.verify(xprsSignedDigest(p), sig, pubXonly)
+  // One packet is checked by the archive, by the ingest and by the delivery
+  // to wapps, and again for every copy that arrives over another bearer or
+  // relayed: each check was a curve operation in pure Dart on the UI
+  // isolate. The verdict for these exact bytes under this key does not
+  // change, so it is worked out once (docs/performance.md 3.2 and 8.12).
+  final digest = xprsSignedDigest(p);
+  final memo = '${HEX.encode(digest)}|$s|${HEX.encode(pubXonly)}';
+  final known = _verdicts.remove(memo);
+  if (known != null) {
+    _verdicts[memo] = known;
+    return known;
+  }
+  final state = XprsCrypto.verify(digest, sig, pubXonly)
       ? XprsSigState.verified
       : XprsSigState.forged;
+  if (_verdicts.length >= 512) _verdicts.remove(_verdicts.keys.first);
+  _verdicts[memo] = state;
+  return state;
 }
+
+final Map<String, XprsSigState> _verdicts = {};

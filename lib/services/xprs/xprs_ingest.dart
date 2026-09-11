@@ -46,6 +46,8 @@ import 'xprs_file_acl.dart';
 import 'xprs_inline_file.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
+import '../../util/xprs_crypto.dart';
+import '../background_service.dart';
 
 class XprsIngest {
   XprsIngest._();
@@ -68,7 +70,15 @@ class XprsIngest {
   /// heard on any bearer lands in the same place a key learned from an
   /// announce does. Same reasoning as [XprsArchive.keyResolver]: this file
   /// stays free of the node.
-  static void Function(String callsign, String pubkeyHex)? onIdentity;
+  static void Function(String callsign, String pubkeyHex)? get onIdentity =>
+      _onIdentity;
+  static set onIdentity(void Function(String callsign, String pubkeyHex)? f) {
+    // A new receiver has been told nothing yet.
+    _onIdentity = f;
+    _bound.clear();
+  }
+
+  static void Function(String callsign, String pubkeyHex)? _onIdentity;
 
   /// A station heard DIRECTLY (no `via:`), on a bearer a radio person would
   /// recognise. Set by MeshService to the release-on-hearing trigger of
@@ -338,6 +348,12 @@ class XprsIngest {
         p.has('k') &&
         _derivesFrom(from, p['k']!)) {
       _bindIdentity(from, p);
+      // Whoever claims this station seals its WiFi password to that key
+      // (11.10), and hal_encrypt runs where the wapp runs, on the UI
+      // isolate. The shared secret is a pure-Dart curve multiplication:
+      // work it out on a worker now, once per key, so the seal is a cache
+      // hit when the owner gets to it (docs/performance.md 8.1).
+      if (p.type == 'request') _primeSeal(p['k']!);
     }
 
     // An act of authority in a closed group (section 26.3). One packet type
@@ -570,19 +586,63 @@ class XprsIngest {
     return n;
   }
 
+  // A station asking to be claimed says so every 30 s or so, with the same
+  // callsign and key each time: the derivation (a bech32 decode and a hash)
+  // is asked once per pair and remembered, the answer "no" included
+  // (docs/performance.md 3.2 and 4.2).
+  static final Map<String, bool> _derived = {};
+
   static bool _derivesFrom(String callsign, String npub) {
+    final key = '$callsign|$npub';
+    final known = _derived[key];
+    if (known != null) return known;
+    bool ok;
     try {
-      return npub.startsWith('npub1') &&
+      ok = npub.startsWith('npub1') &&
           NostrCrypto.callsignMatchesKey(callsign, NostrCrypto.decodeNpub(npub));
     } catch (_) {
-      return false;
+      ok = false;
     }
+    if (_derived.length >= 64) _derived.remove(_derived.keys.first);
+    _derived[key] = ok;
+    return ok;
   }
+
+  static final Set<String> _sealPrimed = {};
+
+  static void _primeSeal(String npub) {
+    if (_sealPrimed.contains(npub)) return;
+    final d = xprsProfileScalar();
+    if (d == null) return;
+    final Uint8List pub;
+    try {
+      pub = Uint8List.fromList(HEX.decode(NostrCrypto.decodeNpub(npub)));
+    } catch (_) {
+      return;
+    }
+    if (pub.length != 32) return;
+    if (_sealPrimed.length >= 64) _sealPrimed.remove(_sealPrimed.first);
+    _sealPrimed.add(npub);
+    if (XprsCrypto.hasShared(d, pub)) return;
+    unawaited(BackgroundService.runOffThread(
+            () async => XprsCrypto.ecdhShared(d, pub))
+        .then((key) {
+      if (key != null) XprsCrypto.primeShared(d, pub, key);
+    }).catchError((Object _) {}));
+  }
+
+  // Pairs already verified and handed on. A station repeats the same
+  // binding for as long as it runs (an unowned one every 30 s, 11.9), and the
+  // check is a curve operation on this isolate: the second time it is a set
+  // lookup (docs/performance.md 8.12, cache the read that does not change).
+  static final Set<String> _bound = {};
 
   static void _bindIdentity(String callsign, XprsPacket p) {
     final hook = onIdentity;
     final npub = p['k'];
     if (hook == null || npub == null || !npub.startsWith('npub1')) return;
+    final pair = '$callsign|$npub';
+    if (_bound.contains(pair)) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - _idWindowMs > 60000) {
@@ -602,6 +662,8 @@ class XprsIngest {
         return;
       }
       hook(callsign, hex);
+      if (_bound.length >= 256) _bound.remove(_bound.first);
+      _bound.add(pair);
     } catch (_) {
       // A malformed npub is a malformed field, and section 4 says skip it.
     }
