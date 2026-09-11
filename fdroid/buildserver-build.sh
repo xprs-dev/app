@@ -75,6 +75,8 @@ done
 cp "$RECIPE"/srclibs/*.yml "$home_vagrant/srclibs/"
 chown -R vagrant "$home_vagrant"
 
+# `fdroid build --on-server` uninstalls sudo when it is done, even on failure.
+command -v sudo >/dev/null || apt-get install -y sudo
 fdroid() {
   sudo --preserve-env --user vagrant \
     env PATH="$fdroidserver:$PATH" PYTHONPATH="$fdroidserver:$fdroidserver/examples" \
@@ -88,9 +90,10 @@ curl -fsSL https://gitlab.com/fdroid/fdroid-bootstrap-buildserver/-/raw/master/r
 chown vagrant "$home_vagrant/.gitconfig"
 fdroid fetchsrclibs "$BUILD" --verbose
 rm -f "$home_vagrant/.gitconfig"
-# `fdroid build --on-server` uninstalls sudo when it is done; put it back.
-(unset CI; fdroid build --verbose --test --refresh-scanner --on-server --no-tarball "$BUILD")
+rc=0
+(unset CI; fdroid build --verbose --test --refresh-scanner --on-server --no-tarball "$BUILD") || rc=$?
 command -v sudo >/dev/null || apt-get install -y sudo
+[[ $rc == 0 ]] || exit $rc
 
 unsigned="$home_vagrant/tmp/${appid}_$vercode.apk"
 mkdir -p "$OUT/unsigned"
