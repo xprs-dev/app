@@ -40,6 +40,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import zipfile
 
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -58,6 +59,12 @@ def make(src, *args):
     if r.returncode != 0:
         print(r.stdout[-6000:])
         sys.exit(f'make failed in {src}')
+
+
+def zip_stamp():
+    """SOURCE_DATE_EPOCH as a zip date_time (zip cannot go below 1980)."""
+    t = time.gmtime(max(int(os.environ.get('SOURCE_DATE_EPOCH', '315532800')), 315532800))
+    return t[:6]
 
 
 def source_licenses(src):
@@ -158,8 +165,16 @@ def main():
                         continue
                     data = fresh.get(i.filename, entries[i.filename])
                     out.writestr(i, data, compress_type=zipfile.ZIP_DEFLATED)
+                # A notice keeps its old entry when unchanged; a new one is
+                # stamped SOURCE_DATE_EPOCH. writestr(name) would stamp the
+                # clock, and two builds of one commit would differ.
+                old_info = {i.filename: i for i in infos}
                 for k in sorted(notices):
-                    out.writestr(k, notices[k], compress_type=zipfile.ZIP_DEFLATED)
+                    zi = old_info[k] if old_notices.get(k) == notices[k] else None
+                    if zi is None:
+                        zi = zipfile.ZipInfo(k, date_time=zip_stamp())
+                        zi.external_attr = 0o644 << 16
+                    out.writestr(zi, notices[k], compress_type=zipfile.ZIP_DEFLATED)
             with open(path, 'wb') as f:
                 f.write(buf.getvalue())
 
