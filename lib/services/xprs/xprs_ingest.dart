@@ -322,7 +322,23 @@ class XprsIngest {
     // Without it every signature from a station we have never met stays
     // `unverified` — not because it is bad, but because nothing here could
     // check it.
-    if (p.type == 'identity') _bindIdentity(from, p);
+    //
+    // A station asking to be claimed carries its key too (XPRS.md 11.9), and
+    // it may be the first thing a freshly flashed station ever says: binding
+    // it here is what lets that very packet read as verified to whoever is
+    // about to claim the station, and lets the next result from it verify.
+    // So does a station's first answer under a key it has just made (11.10),
+    // which a phone that missed the rest must be able to believe on its own.
+    // Both only when the callsign derives from the key they bring: anything
+    // else is a key offered for somebody else's name.
+    if (p.type == 'identity') {
+      _bindIdentity(from, p);
+    } else if (((p.type == 'request' && p['q'] == 'owner') ||
+            p.type == 'result') &&
+        p.has('k') &&
+        _derivesFrom(from, p['k']!)) {
+      _bindIdentity(from, p);
+    }
 
     // An act of authority in a closed group (section 26.3). One packet type
     // carries every one of them, and XprsGroups replays the record.
@@ -552,6 +568,15 @@ class XprsIngest {
       );
     }
     return n;
+  }
+
+  static bool _derivesFrom(String callsign, String npub) {
+    try {
+      return npub.startsWith('npub1') &&
+          NostrCrypto.callsignMatchesKey(callsign, NostrCrypto.decodeNpub(npub));
+    } catch (_) {
+      return false;
+    }
   }
 
   static void _bindIdentity(String callsign, XprsPacket p) {

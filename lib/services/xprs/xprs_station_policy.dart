@@ -8,7 +8,6 @@
 /// airing by it) is not implemented; the status table in section 37 says so.
 library;
 
-import 'xprs_id.dart';
 import 'xprs_packet.dart';
 import 'xprs_vocab.dart';
 
@@ -246,35 +245,6 @@ XprsUrgency _urg(XprsPacket x, XprsStationPolicy p) {
   final f = x['f'] ?? '';
   final known = p.isOwner(f) || p.isFirst(f);
   return known ? u : u.cappedAt(XprsUrgency.high);
-}
-
-/// Stations heard asking for an owner (`t:request q:owner` from an `X3`),
-/// kept so a screen can later offer to claim one. Plain memory, no listener:
-/// a page that shows it polls it, and nothing else reads it.
-class XprsUnownedStations {
-  XprsUnownedStations._();
-  static final XprsUnownedStations instance = XprsUnownedStations._();
-
-  final Map<String, String> _lastHeard = {};
-
-  /// callsign → the `ts:` it last asked with (or the packet's id when it has
-  /// none), most recent ask kept.
-  Map<String, String> get heard => Map.unmodifiable(_lastHeard);
-
-  /// True when [p] was an ask and is now recorded.
-  bool note(XprsPacket p) {
-    if (p.type != 'request' || p['q'] != 'owner') return false;
-    final f = (p['f'] ?? '').toUpperCase();
-    // X2 or X3: a ship is claimed the way a rooftop relay is (section 3).
-    if (!f.startsWith('X2') && !f.startsWith('X3')) return false;
-    _lastHeard[f] = p['ts'] ?? xprsIdentifier(p);
-    return true;
-  }
-
-  /// Once claimed (or gone), it stops being offered.
-  void forget(String station) => _lastHeard.remove(station.toUpperCase());
-
-  void clear() => _lastHeard.clear();
 }
 
 /// What this station claims on the air, or null when it claims nothing.

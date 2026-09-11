@@ -170,8 +170,19 @@ class XprsMailbox {
   /// bytes to somebody who stopped waiting, which is airtime spent on a
   /// question that has expired. `cmd:history` and a plain `cmd:file` are not
   /// this: they are still worth asking late.
+  ///
+  /// And no other command is (XPRS.md 11.4: commands are never carried).
+  /// A `cmd:set`, `cmd:update` or `cmd:zdiag` delivered tomorrow acts on, or
+  /// asks, a station somebody has since walked away from, and one sealed in
+  /// `x:` is a WiFi password or a private key (11.10): left with an archiver
+  /// it is a ciphertext of a secret, held by a stranger, for nothing. The two
+  /// asks that are still worth asking late are the only ones kept.
   static bool worthKeeping(XprsPacket p) {
-    if (p.type == 'command') return !(p.has('have') || p.has('off'));
+    if (p.type == 'command') {
+      final cmd = p['cmd'];
+      if (p.has('x') || (cmd != 'history' && cmd != 'file')) return false;
+      return !(p.has('have') || p.has('off'));
+    }
     if (p.type == 'result') return !(p.has('have') || p.has('off'));
     return true;
   }

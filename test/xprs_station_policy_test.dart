@@ -218,23 +218,4 @@ void main() {
       expect(xprsSendOrder(vipLow, ownUrgent, p) < 0, isTrue);
     });
   });
-
-  group('unowned stations heard', () {
-    test('records X3 asks only, most recent kept', () {
-      final r = XprsUnownedStations.instance..clear();
-      expect(r.note(_p('t:request f:X1QZ3N q:owner scope:local ts:$_ts')),
-          isFalse);
-      expect(r.note(_p('t:request f:X3RLY7 q:owner scope:local ts:$_ts')),
-          isTrue);
-      expect(r.note(_p('t:request f:X3RLY7 q:owner scope:local ts:$_later')),
-          isTrue);
-      // A movable station (X2, section 3) is claimed like a fixed one.
-      expect(r.note(_p('t:request f:X2BOAT q:owner scope:local ts:$_ts')),
-          isTrue);
-      r.forget('X2BOAT');
-      expect(r.heard, {'X3RLY7': _later});
-      r.forget('X3RLY7');
-      expect(r.heard, isEmpty);
-    });
-  });
 }

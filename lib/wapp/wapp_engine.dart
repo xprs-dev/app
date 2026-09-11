@@ -602,6 +602,24 @@ class WappEngine {
     }
   }
 
+  /// A recipient's x-only public key, given as base64url (what
+  /// hal_identity_pubkey writes) or as an npub (what `k:` carries on the
+  /// wire, XPRS.md 6.3), so a wapp that read a key off a packet can seal to
+  /// it without a bech32 decoder of its own. Null unless it is 32 bytes.
+  Uint8List? _pubKeyDecode(String s) {
+    final t = s.trim();
+    if (t.startsWith('npub1')) {
+      try {
+        final hex = NostrCrypto.decodeNpub(t);
+        if (hex.length != 64) return null;
+        return Uint8List.fromList(HEX.decode(hex));
+      } catch (_) {
+        return null;
+      }
+    }
+    return _b64urlDecode(t);
+  }
+
   /// Decode a base64url string (with or without padding) to bytes, or null.
   Uint8List? _b64urlDecode(String s) {
     try {
@@ -742,7 +760,7 @@ class WappEngine {
         if (pubLen <= 0 || msgLen <= 0 || outCap <= 0) return 0;
         try {
           final d = _profilePrivScalar();
-          final pub = _b64urlDecode(_readStr(pubPtr, pubLen));
+          final pub = _pubKeyDecode(_readStr(pubPtr, pubLen));
           if (d == null || pub == null || pub.length != 32) return 0;
           final blob = XprsCrypto.encryptFor(d, pub, _readBytes(msgPtr, msgLen));
           if (blob == null) return 0;
@@ -763,7 +781,7 @@ class WappEngine {
         if (pubLen <= 0 || blobLen <= 0 || outCap <= 0) return 0;
         try {
           final d = _profilePrivScalar();
-          final pub = _b64urlDecode(_readStr(pubPtr, pubLen));
+          final pub = _pubKeyDecode(_readStr(pubPtr, pubLen));
           final blob = _b64urlDecode(_readStr(blobPtr, blobLen));
           if (d == null || pub == null || pub.length != 32 || blob == null) return 0;
           final pt = XprsCrypto.decryptFrom(d, pub, blob);

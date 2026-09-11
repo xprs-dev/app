@@ -98,6 +98,7 @@ import 'wapp_graph_scene.dart';
 import 'wapp_icons.dart';
 import 'hal_permissions.dart';
 import 'wapp_engine.dart';
+import 'wapp_secret_fields.dart';
 import '../services/mesh/mesh_service.dart';
 import '../platform/fs.dart';
 
@@ -362,6 +363,12 @@ class _WappPageState extends State<WappPage>
 
   // Settings bindings
   final _fieldValues = <String, dynamic>{};
+
+  /// Fields declared `$type:"secret"` (a password, a private key). Their
+  /// values reach the wapp with the action that uses them and are never
+  /// written anywhere by the host: not the wapp's KV, not the saved field
+  /// values a headless run reads, not restored on the next open.
+  final _secretFields = <String>{};
 
   /// Post ids already shown in each chat/feed field. A note published to several
   /// relays arrives on several subscriptions, and the feed must show it ONCE —
@@ -957,6 +964,7 @@ class _WappPageState extends State<WappPage>
   void _seedFieldDefaults(GeoUiBlock block) {
     if (block.keyword == 'field') {
       final name = block.name;
+      if (name != null && geoUiFieldIsSecret(block)) _secretFields.add(name);
       if (name != null && !_fieldValues.containsKey(name)) {
         final type = block.type ?? 'string';
         if (type == 'log') {
@@ -988,6 +996,7 @@ class _WappPageState extends State<WappPage>
   /// radius so the geo-chat opens where the user left it, not the default.
   void _applyPersistedFields() {
     for (final name in _fieldValues.keys.toList()) {
+      if (_secretFields.contains(name)) continue;
       final v = _engine.kvGet(name);
       if (v == null) continue;
       final cur = _fieldValues[name];
@@ -3264,6 +3273,7 @@ class _WappPageState extends State<WappPage>
               _engine,
               _fieldValues,
               () => setState(() {}),
+              _secretFields,
             ),
             i18n: _i18n,
             onAction: (action) {
@@ -3380,10 +3390,11 @@ class _WappPageState extends State<WappPage>
       }
     }
     // Persist settings so a background/headless run of this wapp (autostart)
-    // uses the user's configuration rather than bare defaults.
+    // uses the user's configuration rather than bare defaults. Never a secret:
+    // the wapp gets it in this one message, and that is the only copy.
     PreferencesService.instanceSync?.setWappFields(
       _wappName,
-      jsonEncode(scalarFields),
+      jsonEncode(wappStorableFields(scalarFields, _secretFields)),
     );
     // User actions only (not per-frame), so this stays cheap — and "did the
     // wapp even get my send?" was unanswerable without it.
@@ -11061,6 +11072,7 @@ class _WappPageState extends State<WappPage>
         _engine,
         _fieldValues,
         () => setState(() {}),
+        _secretFields,
       ),
       i18n: _i18n,
       resolveImage: _imageForPicture,
@@ -11419,7 +11431,9 @@ class _WappFieldBindings implements GeoUiBindings {
   final WappEngine _engine;
   final Map<String, dynamic> _values;
   final VoidCallback _onChange;
-  _WappFieldBindings(this._engine, this._values, this._onChange);
+  final Set<String> _secrets;
+  _WappFieldBindings(this._engine, this._values, this._onChange,
+      [this._secrets = const {}]);
 
   @override
   dynamic getValue(String fieldName) => _values[fieldName];
@@ -11427,6 +11441,11 @@ class _WappFieldBindings implements GeoUiBindings {
   @override
   void setValue(String fieldName, dynamic value) {
     _values[fieldName] = value;
+    // A secret is typed in and handed over with its action, never stored.
+    if (_secrets.contains(fieldName)) {
+      _onChange();
+      return;
+    }
     // Mirror scalar edits straight into the module's KV so the wapp
     // reads them via hal_kv_get — this is how settings forms (e.g. the
     // terminal's) actually take effect. Without it, edits live only in

@@ -367,6 +367,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
       'popularity' => _renderPopularityField(fieldName),
       'image' => _renderImageField(fieldName, label, tip, field),
       'gallery' => _renderGalleryField(fieldName, label, tip, field),
+      'secret' => _renderSecretField(fieldName, label, tip, field),
       _ => _renderStringField(fieldName, label, tip, field),
     };
   }
@@ -1263,6 +1264,48 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
   }
 
   Timer? _liveDebounce;
+
+  /// Secret fields the person has chosen to see, by name.
+  final Set<String> _revealed = {};
+
+  /// `$type:"secret"` — a password, a private key: typed in, handed to the
+  /// wapp with the action that uses it, and kept nowhere. The host never
+  /// writes it to the saved field values (wapp_page.dart `_secretFields`),
+  /// the keyboard is told not to learn it, and there is no copy button,
+  /// because the clipboard is shared with every other app on the phone. An
+  /// eye shows it on request, since a WiFi password typed blind on a phone
+  /// keyboard is a password typed wrong.
+  Widget _renderSecretField(
+      String name, String label, String? tip, GeoUiBlock field) {
+    final hint = _t(field.getString('hint'));
+    final shown = _revealed.contains(name);
+    final val = widget.bindings.getValue(name)?.toString() ?? '';
+    return TextField(
+      decoration: InputDecoration(
+        labelText: label,
+        helperText: tip,
+        helperMaxLines: 3,
+        hintText: hint,
+        filled: true,
+        suffixIcon: IconButton(
+          icon: Icon(shown ? Icons.visibility_off : Icons.visibility, size: 18),
+          tooltip: shown ? 'Hide' : 'Show',
+          onPressed: () => setState(() {
+            if (!_revealed.remove(name)) _revealed.add(name);
+          }),
+        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      obscureText: !shown,
+      enableSuggestions: false,
+      autocorrect: false,
+      enableIMEPersonalizedLearning: false,
+      keyboardType: TextInputType.visiblePassword,
+      maxLines: 1,
+      controller: _controllerFor(name, val),
+      onChanged: (v) => widget.bindings.setValue(name, v),
+    );
+  }
 
   // ── Action ──────────────────────────────────────────────────────────
 

@@ -34,7 +34,6 @@ import '../reticulum/rns_service.dart';
 import 'xprs_id.dart';
 import 'xprs_ingest.dart';
 import 'xprs_packet.dart';
-import 'xprs_station_policy.dart';
 import 'xprs_publisher.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
@@ -113,15 +112,10 @@ class XprsHistoryServer {
     // both are answered here, and reading only `t:command` meant a `q:identity`
     // asked the way section 7 spells it went unanswered.
     if (p.type != 'command' && p.type != 'request') return;
-    // A station asking for an owner (section 25.9) is a broadcast, so it is
-    // read before the addressed-to-us gate. Recorded, not answered: the claim
-    // is a person's decision, made on a screen. (The rns lane hands this
-    // server commands only, so an ask heard over Reticulum is not seen here;
-    // a claim is made next to the box, on a local bearer, so that is fine.)
-    if (p.type == 'request' && p['q'] == 'owner') {
-      XprsUnownedStations.instance.note(p);
-      return;
-    }
+    // A station asking for an owner (XPRS.md 11.9) is a broadcast and not
+    // this server's to answer: the claim is a person's decision, made on a
+    // screen, and the wapp that offers it hears the ask on `xprs.request`.
+    if (p.type == 'request' && p['q'] == 'owner') return;
     // `q:have` (§8.1): who holds a file? Answered broadcast or directed, before
     // the addressed-to-us gate — a station asks the street, and whoever holds
     // the bytes replies. It moves nothing and is not gated on the audience (the
