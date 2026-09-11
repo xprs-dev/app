@@ -343,8 +343,8 @@ different steps than F-Droid's will not reproduce. The rendered arm64 block
     binary: https://github.com/xprs-dev/app/releases/download/v%v/xprs-%v-android-arm64-v8a.apk
     srclibs:
       - flutter@stable
-      - xprs-reticulum-dart@main
-      - xprs-wapps@main
+      - xprs-reticulum-dart@5ec49acdb6322cff20f7bf3f7f063c6e619f76fd
+      - xprs-wapps@c51d0e09514c0f704869ca9c445aa108754b17cd
       - dav1d@1.4.3
     rm:
       - artwork
@@ -399,9 +399,12 @@ What each part is for, and what taught it:
   builds with; prebuild checks it out of `flutter@stable`. Bump the file when
   upgrading Flutter. (Geogram review.)
 * **`.reticulum-dart-commit` and `.wapps-commit`** do the same for the two XPRS
-  srclibs, which are fetched at `main` and then checked out at the release's
-  pins. `release.sh` writes them, so F-Droid's auto-update, which copies the
-  last build block, always builds the right sources.
+  srclibs. The srclib lines name the pins of the release the recipe was
+  rendered for (`fdroid lint` refuses a branch there; only Flutter's is
+  exempt), and prebuild then checks out the pins of the release being built,
+  which the full srclib clone holds. `release.sh` writes them, so F-Droid's
+  auto-update, which copies the last build block with its old srclib lines,
+  always builds the right sources.
 * **`commit:` is the release commit's hash**, not the tag. The tag is how
   `UpdateCheckMode` finds new releases. (Geogram review.)
 * **One block per ABI**, each building one split APK with its own versionCode.

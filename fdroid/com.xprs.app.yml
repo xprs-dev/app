@@ -35,8 +35,8 @@ Builds:
     binary: https://github.com/xprs-dev/app/releases/download/v%v/xprs-%v-android-@ABI@.apk
     srclibs:
       - flutter@stable
-      - xprs-reticulum-dart@main
-      - xprs-wapps@main
+      - xprs-reticulum-dart@@RD_PIN@
+      - xprs-wapps@@WAPPS_PIN@
       - dav1d@1.4.3
     rm:
       - artwork

@@ -50,6 +50,11 @@ def pubspec_version():
     return m.group(1), int(m.group(2))
 
 
+def pin(name):
+    with open(os.path.join(ROOT, name)) as f:
+        return f.read().strip()
+
+
 def render(version, code, commit, repo=None, binary=True):
     with open(os.path.join(ROOT, 'fdroid', 'com.xprs.app.yml')) as f:
         text = f.read()
@@ -64,7 +69,13 @@ def render(version, code, commit, repo=None, binary=True):
                          ('@FLUTTER_PLATFORM@', platform),
                          ("'@VERSION@'", version),
                          ("'@VERCODE@'", str(vercode(abi, code))),
-                         ("'@COMMIT@'", commit)):
+                         ("'@COMMIT@'", commit),
+                         # fdroid lint wants a commit, not a branch. A later
+                         # build block keeps these (F-Droid's auto-update
+                         # copies the last one); its prebuild checks out the
+                         # release's own pins, which a full clone holds.
+                         ('@RD_PIN@', pin('.reticulum-dart-commit')),
+                         ('@WAPPS_PIN@', pin('.wapps-commit'))):
             b = b.replace(key, val)
         blocks.append(b)
     tail = (tail.replace("'@VERSION@'", version)
