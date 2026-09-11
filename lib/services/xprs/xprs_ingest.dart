@@ -31,6 +31,7 @@ import '../log_service.dart';
 import '../preferences_service.dart';
 import 'xprs_archive.dart';
 import 'xprs_archive_policy.dart';
+import 'xprs_climate.dart';
 import '../social/retention_tier.dart';
 import 'xprs_groups.dart';
 import 'xprs_gossip.dart';
@@ -247,6 +248,11 @@ class XprsIngest {
     // A mailbox declaration heard on the street counts exactly like one that
     // arrived over a hub: the author is saying where their mail may rest.
     if (p.type == 'mailbox') XprsArchive.instance.recordMailboxDecl(p);
+
+    // The temperature around us (15.3). Here and not on the Reticulum lane:
+    // this door is the radio and the local links, which is what "around us"
+    // means. Two lookups for an observation that carries no reading.
+    if (p.type == 'observation') XprsClimate.instance.heard(p, from: from);
 
     // ── Gossip feeds (36.9.4) + the 36.8.1 release trigger ──────────────
     // Cheap checks first (performance.md 4.2): everything below is a map

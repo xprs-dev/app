@@ -505,7 +505,9 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _HeroCarousel(onOpenItem: _openHeroItem),
-              const SizedBox(height: 20),
+              // Owns the gap under the carousel: the same 20 dp with no
+              // reading, the temperature line when there is one.
+              const _ClimateGlance(),
               _ModuleBars(
                 entries: entries,
                 onStatusTap: _openStatusWapp,

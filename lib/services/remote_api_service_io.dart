@@ -12,6 +12,7 @@ import 'dart:typed_data';
 
 import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_bridge.dart';
+import 'xprs/xprs_climate.dart';
 import 'xprs/xprs_ingest.dart';
 import 'xprs/xprs_inline_file.dart';
 import 'xprs/xprs_inline_sender.dart';
@@ -1135,6 +1136,28 @@ class RemoteApiService {
           'sha256': sha,
           'from': from,
           'elapsedMs': DateTime.now().millisecondsSinceEpoch - began,
+        });
+      }
+      if (req.method == 'GET' && path == '/api/xprs/climate') {
+        // The temperature the home screen shows, and how the readings that
+        // fed it were judged.
+        final w = XprsClimate.instance;
+        Map<String, dynamic>? one(ClimateReading? r) => r == null
+            ? null
+            : {
+                'celsius': r.celsius,
+                'label': r.label,
+                'station': r.station,
+                'at': r.at.toIso8601String(),
+              };
+        return _json(res, {
+          'ok': true,
+          'inside': one(w.current.value.inside),
+          'outside': one(w.current.value.outside),
+          'accepted': w.accepted,
+          'malformed': w.malformed,
+          'stale': w.stale,
+          'freshMinutes': XprsClimate.fresh.inMinutes,
         });
       }
       if (req.method == 'GET' && path == '/api/xprs/inline') {
