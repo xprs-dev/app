@@ -2,7 +2,7 @@
 // in there can never run on a phone, costs megabytes per install, and is a
 // prebuilt binary F-Droid rejects outright. Desktop-only builds of a wapp
 // belong in desktop/wapps/, which only the Linux and Windows bundles install.
-// See docs/fdroid.md.
+// See docs/f-droid.md.
 
 import 'dart:io';
 import 'dart:typed_data';

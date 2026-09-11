@@ -86,7 +86,7 @@ its sender, and `via:` cannot tell you otherwise because nothing transmits it.
 |---|---|
 | [updates.md](updates.md) | **How a phone gets a new version**, end to end: the feed, the always-on archiver as mirror, and the three lanes the bytes can take — including Bluetooth with no internet at all. **§7 the versionCode trap**. **§8** driving and checking it by API. **§9** what is validated and what is not. |
 | [../releases.md](../releases.md) | The whole publishing chain. **§3** artifact names carry the version — a versionless name parses as a version and offers a release that does not exist. **§6 the versionCode trap** — a device carrying a hand-passed build number can detect every future release and install none of them, with no in-app symptom. **§7** checking a device by API instead of by screenshot. |
-| [fdroid.md](fdroid.md) | Every host the built APK can reach, audited from the binary with `tool/fdroid_scan.py`. `--dart-define=SELF_UPDATE=false` is the store variant. |
+| [f-droid.md](f-droid.md) | XPRS on F-Droid: the submission thread and how to follow it, the recipe, releasing through F-Droid, and the APK audit (`tool/fdroid_scan.py`). |
 
 ### Wapps, UI and the launcher
 

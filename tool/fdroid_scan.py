@@ -5,7 +5,7 @@
 
 Scans the APK rather than the source: constants that survive into libapp.so,
 and blobs that dependencies bring in, never show up in a search over lib/.
-docs/fdroid.md explains what each host is and why it may stay.
+docs/f-droid.md explains what each host is and why it may stay.
 
 Three passes:
   1. URLs (http/https/ws/wss) in every file, and inside every bundled .wapp.

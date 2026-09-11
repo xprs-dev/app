@@ -12,7 +12,7 @@ runs this against a checkout of xprs-dev/wapps (a srclib) before
 icons, the C source itself) is text and is left alone. Only the binaries are
 replaced by fresh builds, and `licenses/` (the notices of third-party code
 linked into the module, which have to match it) is taken from source too.
-See docs/fdroid.md.
+See docs/f-droid.md.
 
 The toolchain is whatever the wapps' sdk/toolchain.mk picks from the
 environment. With WASI_SDK_PATH (the default, ~/wasi-sdk) a clean build is
