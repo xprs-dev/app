@@ -43,7 +43,7 @@ if [[ "${SKIP_SETUP:-}" != 1 ]]; then
   git ls-remote https://gitlab.com/fdroid/fdroidserver.git master
   curl -fsSL https://gitlab.com/fdroid/fdroidserver/-/archive/master/fdroidserver-master.tar.gz \
     | tar -xz --directory="$fdroidserver" --strip-components=1
-  git -C "$home_vagrant/gradlew-fdroid" pull
+  git -c safe.directory="$home_vagrant/gradlew-fdroid" -C "$home_vagrant/gradlew-fdroid" pull
   apt-get install -y sudo openjdk-21-jdk-headless
   update-alternatives --set java /usr/lib/jvm/java-21-openjdk-amd64/bin/java
 fi
@@ -100,8 +100,14 @@ echo "built: $OUT/unsigned/${appid}_$vercode.apk"
 [[ -n "${KEYSTORE:-}" ]] || exit 0
 : "${KEY_ALIAS:?}" "${KS_PASS:?}" "${KEY_PASS:?}" "${SIGNED_NAME:?}"
 apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+# The layout must stay exactly as Gradle wrote it: apksigcopier rebuilds
+# F-Droid's APK entry by entry and only pastes our signature block on. So no
+# re-alignment (apksigner re-pads every stored entry otherwise) and no v1 JAR
+# signature (extra META-INF files; minSdk 24 does not need it).
 "$apksigner" sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" \
   --ks-pass env:KS_PASS --key-pass env:KEY_PASS \
+  --alignment-preserved --v1-signing-enabled false \
+  --v2-signing-enabled true --v3-signing-enabled true \
   --out "$OUT/$SIGNED_NAME" "$unsigned"
 rm -f "$OUT/$SIGNED_NAME.idsig"
 # F-Droid's check, verbatim: strip any signature from its own build, copy ours

@@ -21,6 +21,10 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Android: build this commit instead of the branch head (re-checks that an older build reproduces)'
+        required: false
 
 jobs:
   android:
@@ -48,8 +52,8 @@ jobs:
             /opt/hostedtoolcache/CodeQL /usr/local/share/boost
           df -h /
       - name: Render the F-Droid recipe for this commit
-        run: python3 tool/fdroid_recipe.py --commit "$GITHUB_SHA" --out "$RUNNER_TEMP/recipe"
-      # fdroidserver clones this repository at $GITHUB_SHA and builds it; the
+        run: python3 tool/fdroid_recipe.py --no-binary --commit "${{ inputs.commit || github.sha }}" --out "$RUNNER_TEMP/recipe"
+      # fdroidserver clones this repository at that commit and builds it; the
       # checkout above only provides the recipe and the script.
       - name: Build in F-Droid's buildserver image, sign, verify
         env:

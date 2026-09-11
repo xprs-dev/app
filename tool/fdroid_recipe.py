@@ -8,9 +8,14 @@ the pubspec build number, the scheme android/app/build.gradle.kts applies).
     python3 tool/fdroid_recipe.py --version 1.2.17 --code 362 --commit <sha>
         > metadata/com.xprs.app.yml         # the recipe for fdroiddata
 
-    python3 tool/fdroid_recipe.py --version ... --out DIR [--repo /xprs/app]
+    python3 tool/fdroid_recipe.py --out DIR --no-binary [--repo /xprs/app]
         # DIR/metadata/com.xprs.app.yml and DIR/srclibs/xprs-*.yml, for
         # `fdroid build` (release.yml, or a local test against local clones)
+
+--no-binary drops the `binary:` lines, for a build that MAKES the release APK:
+with them, `fdroid build` downloads the published APK and fails unless its
+build matches it, which is F-Droid's check, not ours. Keep them to rebuild a
+published release the way F-Droid will.
 
 Without --version/--code/--commit, the values come from pubspec.yaml and HEAD.
 See docs/f-droid.md.
@@ -45,7 +50,7 @@ def pubspec_version():
     return m.group(1), int(m.group(2))
 
 
-def render(version, code, commit, repo=None):
+def render(version, code, commit, repo=None, binary=True):
     with open(os.path.join(ROOT, 'fdroid', 'com.xprs.app.yml')) as f:
         text = f.read()
     # Drop the template's own comment header.
@@ -67,6 +72,8 @@ def render(version, code, commit, repo=None):
     out = head + 'Builds:\n' + '\n\n'.join(blocks) + '\n\n' + tail
     if repo:
         out = re.sub(r'^Repo: .*$', 'Repo: ' + repo, out, flags=re.M)
+    if not binary:
+        out = re.sub(r'^    binary: .*\n', '', out, flags=re.M)
     left = re.findall(r'@[A-Z_]+@', out)
     if left:
         sys.exit('unfilled placeholders: ' + ', '.join(sorted(set(left))))
@@ -82,6 +89,8 @@ def main():
     ap.add_argument('--repo', help="override the app's Repo: (local test)")
     ap.add_argument('--srclib-repo', action='append', default=[], metavar='NAME=URL',
                     help='override a srclib Repo: (local test), e.g. xprs-wapps=/xprs/wapps')
+    ap.add_argument('--no-binary', action='store_true',
+                    help='drop binary: (a build that makes the release APK)')
     ap.add_argument('--print-vercode', metavar='ABI',
                     help='print the versionCode of ABI and exit')
     a = ap.parse_args()
@@ -94,7 +103,7 @@ def main():
         return
     commit = a.commit or subprocess.check_output(
         ['git', '-C', ROOT, 'rev-parse', 'HEAD'], text=True).strip()
-    recipe = render(version, code, commit, a.repo)
+    recipe = render(version, code, commit, a.repo, binary=not a.no_binary)
 
     if not a.out:
         sys.stdout.write(recipe)
