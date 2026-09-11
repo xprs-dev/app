@@ -420,7 +420,9 @@ class UpdateService {
     // Re-attach to any download left running/finished by a prior session even
     // when auto-check is off — the user already asked for that download.
     await resumeActiveDownload();
-    if (!_autoCheck) return;
+    // The F-Droid client tells its users about updates itself; asking F-Droid
+    // again at every start would only be a request nobody made.
+    if (!_autoCheck || fdroidOnly) return;
     await checkForUpdates();
     final sel = selectedRelease;
     if (!isNewer(sel)) return;
@@ -430,11 +432,8 @@ class UpdateService {
     NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
       title: 'Update available',
-      body: fdroidOnly
-          ? 'XPRS ${sel.version} is on F-Droid. Update it there, or open '
-              'Settings → Updates.'
-          : 'XPRS ${sel.version} is available. Open Settings → '
-              'Updates to install.',
+      body: 'XPRS ${sel.version} is available. Open Settings → '
+          'Updates to install.',
       source: 'host:updates',
       scope: NotificationScope.both,
     ));
