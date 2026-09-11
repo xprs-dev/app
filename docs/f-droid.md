@@ -145,9 +145,11 @@ release first and point the build entry at the new release commit.
 
 ## 4. The merge request, as submitted
 
-The description follows fdroiddata's "App inclusion" template. It is kept in
-`~/code/xprs/fdroid-submission/merge-request.md`, next to the patch that adds
-the three files. The main points: the author is submitting; everything is built
+The description follows fdroiddata's "App inclusion" template and lives on
+the merge request itself; the three files it adds are the recipe and srclibs in
+section 6, on the fork's `com.xprs.app` branch. (GitLab drops quick actions such
+as `/label` from a description created through the API, and only maintainers
+can set labels anyway.) The main points: the author is submitting; everything is built
 from source (the Flutter app, the Rust WebAssembly runtime, every bundled wapp
 module, and dav1d); there are no Play Services, no DependencyInfoBlock, and no
 self-updater; Flutter is pinned in the repository; it lists the network hosts;
