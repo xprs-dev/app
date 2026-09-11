@@ -715,6 +715,11 @@ class PreferencesService {
     // wakes only on `xprs.status` / `xprs.reaction`.
     'social',
     'torrents',
+    // A freshly flashed station asks, over Bluetooth, to be claimed, and the
+    // person who flashed it is standing there with the phone in a pocket.
+    // Headless and clockless like social: `module_tick_interval_ms()` is 0 and
+    // it wakes only on `xprs.request`, `xprs.identity` and `xprs.result`.
+    'firmwares',
   };
   bool getWappAutostart(String wappId) =>
       _prefs.getBool('wapp.autostart.$wappId') ??
