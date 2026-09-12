@@ -387,10 +387,10 @@ stalls; the answer within the rule is fewer trips, not another isolate:
 `transactMany` hands the bridge a run of sixteen blocks and collects their
 answers in one call, so an image is about a hundred trips. (An attempt to
 move the session to a worker with `BackgroundIsolateBinaryMessenger` was
-made and reverted the same evening; the guard now refuses it.) And an
-image is never on the
-heap whole: the loader asks the part for one block at a time and the MD5
-grows as the blocks go out (performance.md 8.9). A wipe is not an erase of
+made and reverted the same evening; the guard now refuses it, and the
+reasoning is performance.md 8.16.) And an image is never on the heap whole:
+the loader asks the part for one block at a time and the MD5 grows as the
+blocks go out (performance.md 8.9). A wipe is not an erase of
 the chip: the partition table image names the NVS and OTA data partitions
 and exactly those get 0xFF, so a board keeps its key, owner and WiFi unless
 the person asked otherwise.

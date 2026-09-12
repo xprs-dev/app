@@ -1296,6 +1296,74 @@ That composition (keygens with no matching edGen) is the next thing to read.
 > **Rule: a verdict about bytes that do not change is computed once.** Count
 > the readers of a packet before adding another check to it.
 
+### 8.16 A platform channel is not slow because it is a channel; it is slow per trip (2026-09-13)
+
+The USB flasher (`lib/services/flash/`) drives an ESP ROM loader one command
+at a time: write a frame, read its answer, ~1,500 times for a 1.5 MB image.
+On Linux the port is a `dart:ffi` fd on a worker isolate and it flew (31 s).
+On the phone the same protocol took **210 s**, and the fix I reached for was
+the wrong one twice over.
+
+**The wrong fix, and why it was wrong.** The port is a `MethodChannel`, so
+the first instinct was "the channel is the bottleneck, move the session onto
+a worker isolate with `BackgroundIsolateBinaryMessenger`." It is exactly the
+move §1.2 and §8.1 forbid: a channel belongs to the main isolate, a worker
+holding one starves the radio bridges of their one owner, and the incoming
+side still lands on main. It also read as *sanctioned* because I edited
+ architecture.md in the same commit to carve an exception, which is the
+document losing its authority to the code it is supposed to govern. Both were
+reverted; the guard now refuses `BackgroundIsolateBinaryMessenger` in `lib/`.
+
+**What was actually slow.** Not the channel crossing: a single `invokeMethod`
+is well under a millisecond. It was **the number of crossings, each queued
+behind the UI isolate's own work.** A 1 KB block cost four round trips
+(write, read, write, read) and every one waited its turn behind whatever the
+main isolate was doing that frame, and this app's main isolate stalls 0.3 to
+2 s under load (§8.15). 1,500 blocks × 4 trips × "however long until main is
+free" is the 210 s. The channel was innocent; the trip *count* on a busy
+isolate was the cost.
+
+**The fix inside the rule.** Fewer trips, same isolate. `SerialPort.transactMany`
+hands the bridge a run of sixteen frames and the Kotlin side writes each and
+reads its one answer on its own executor, returning all sixteen in one
+crossing, about 100 trips for the image instead of 6,000, and the protocol stays
+in Dart. Each block is still checked by its own answer and a missing or bad
+one is resent once. **Phone write: 210 s to 30 s, 0 retries.**
+
+> **Rule: before moving work off the main isolate to escape a channel, count
+> the crossings, not the crossing cost.** A chatty protocol behind a channel
+> is slow because each of its N trips waits behind the UI isolate, and the
+> answer is to make N small (batch the trips), not to move the channel,
+> which §1.2 does not allow anyway. The same arithmetic as §8.13's "count the
+> curve operations per packet": the per-item cost is fine, the per-item count
+> is the bug.
+
+> **Rule: a fix that needs a governing-doc exception written in its own commit
+> is the wrong fix.** architecture.md and performance.md are the record of
+> regressions that already shipped; editing one to admit the change under
+> review is not following the rule, it is deleting it quietly. When a rule
+> blocks the obvious fix, the fix is wrong or incomplete: find the one the
+> rule allows. If a genuine exception is warranted it is its own change, argued
+> on its own, not a rider.
+
+Two smaller shapes from the same work, both already in §8 as rules and worth
+naming again because they recurred in a NEW subsystem written by someone who
+had read §8:
+
+- **A background refresh must not overwrite a foreground verdict.** `scan()`
+  (devices + catalogue, fired by a USB attach event at any moment) wrote the
+  same `phase`/`message`/`error` the probe and write report through, so a
+  cable being plugged in erased "written and verified" mid-read. State that a
+  user is reading and state that a background sweep updates are two different
+  fields; a sweep carries its own (`scanning`, `catalogNote`) and touches
+  neither of the others.
+- **A wapp re-deriving the whole state per field is §8.4 again.** The Firmwares
+  wapp drew each screen by scanning the 8 KB `hal_flash_state` JSON once per
+   field, per screen, per `core.flash` event, 60 to 200 ms on the phone, on
+  the isolate the Android session already awaits on. Parse the event once into
+  structs, draw from those. A wapp's cost is what it does *per event*, and an
+  event on a hot topic is a hot loop.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile
