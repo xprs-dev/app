@@ -380,6 +380,40 @@ class FunctionalityRegistry {
         ParamDef('kv', 'string', 'key=value'),
       ], ReturnDef('int', '0 ok, -1 unknown key/bad value')),
     ]),
+    'hal.flash': FunctionalityDef('hal.flash',
+        'Flash a board plugged in over USB with a published firmware. The '
+        'serial port, the ROM loader, the catalogue and the files are the '
+        'core\'s; a wapp asks with five verbs, watches `core.flash`, and '
+        'reads everything back with hal_flash_state. Gated by the '
+        'device.flash permission.', [
+      EndpointDef('hal_flash_scan',
+          'List the USB serial devices and refresh the catalogue when stale',
+          [], ReturnDef('int', '1 started, 0 unsupported here')),
+      EndpointDef('hal_flash_probe',
+          'Put the board on a device into its loader and read chip, flash '
+          'size and the firmware it runs; the fitting boards follow in state',
+          [ParamDef('device', 'string', 'a device id from state')],
+          ReturnDef('int', '1 started, 0 busy or unknown device')),
+      EndpointDef('hal_flash_fetch', 'Download a board\'s parts',
+          [ParamDef('board', 'string', 'a board id from the catalogue')],
+          ReturnDef('int', '1 started, 0 busy or unknown board')),
+      EndpointDef('hal_flash_write',
+          'Write a downloaded board to a device, verified by MD5; wipe=1 '
+          'erases the NVS and OTA data partitions first', [
+        ParamDef('device', 'string', 'device id'),
+        ParamDef('board', 'string', 'board id'),
+        ParamDef('wipe', 'int', '1 to wipe the settings'),
+      ], ReturnDef('int', '1 started, 0 busy or not downloaded')),
+      EndpointDef('hal_flash_cancel', 'Stop the running session', [],
+          ReturnDef('int', '1')),
+      EndpointDef(
+          'hal_flash_state',
+          'Flat JSON: {phase,busy,message,error,supported,devices[],'
+          'boards[],device{...,chip,flashBytes,runs,suggested,likely},'
+          'board,part,partIndex,partCount,done,total}',
+          [],
+          ReturnDef('int', 'Bytes written, negated required size if too small')),
+    ]),
     'hal.mesh': FunctionalityDef(
         'hal.mesh', 'BLE street-mesh registry (neighbors, routes, node status)', [
       EndpointDef('hal_mesh_status',

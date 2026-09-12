@@ -108,7 +108,14 @@ class UpdateNative {
         debugPrint('UpdateNative.download HTTP ${resp.statusCode}');
         return null;
       }
-      final total = resp.contentLength ?? 0;
+      // Content-Length counts bytes on the wire; package:http hands over the
+      // DECODED stream. A gzip-encoded answer (GitHub Pages does this) then
+      // reads as "truncated" forever, and the mirror downloads it again and
+      // again: 28,725,130 received against 28,213,684 advertised, twice a
+      // minute, 39% of the main isolate. The length is a check only when
+      // nothing was encoded.
+      final encoded = (resp.headers['content-encoding'] ?? '').isNotEmpty;
+      final total = encoded ? 0 : (resp.contentLength ?? 0);
       final file = File(dest);
       sink = file.openWrite();
       var received = 0;

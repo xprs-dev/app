@@ -1515,6 +1515,8 @@ IconData geoUiResolveIcon(String name) {
       return Icons.key;
     case 'memory':
       return Icons.memory;
+    case 'usb':
+      return Icons.usb;
     case 'monitor_heart':
       return Icons.monitor_heart;
     case 'developer_board':

@@ -363,6 +363,30 @@ by the wapp with `ui.field.set` like `__readonly`, and the renderer leaves
 the field or button out. The wapp decides what applies; the host decides how
 absence looks. Neither knows the other's reasons.
 
+### A cable is a lane too (2026-09-12)
+
+The Firmwares wapp writes an image to a board on a USB cable. Everything
+that touches the cable is the core's: the serial port (termios over
+dart:ffi on Linux, the USB host API behind a Kotlin bridge on Android), the
+ESP ROM loader (esptool's protocol without a stub: SLIP, the reset
+sequences, chip magic, flash id, FLASH_BEGIN/DATA/END, the ROM's MD5), the
+catalogue (`xprs.dev/firmware/docs/boards.json` and each board's
+`prebuilt/manifest.json`) and the downloaded parts with their sha256. It
+lives in `lib/services/flash/` and the wapp reaches it through five
+fire-and-forget verbs (`hal_flash_scan/probe/fetch/write/cancel`) and one
+read (`hal_flash_state`), watching `core.flash` like any other core topic.
+The wapp never sees a byte of the image or of the wire.
+
+Two rules shape the service. A Linux port blocks in `poll`, so a Linux
+session is a worker isolate posting progress back; the Android port is a
+channel, so its session is a chain of awaits on the main isolate with no
+work heavier than a 1 KB block's checksum. And an image is never on the
+heap whole: the loader asks the part for one block at a time and the MD5
+grows as the blocks go out (performance.md 8.9). A wipe is not an erase of
+the chip: the partition table image names the NVS and OTA data partitions
+and exactly those get 0xFF, so a board keeps its key, owner and WiFi unless
+the person asked otherwise.
+
 ### Where a copy of your words goes is the core's business (2026-09-10)
 
 XPRS.md 12: *"a station keeps its own publications and hands a COPY to the

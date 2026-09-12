@@ -26,6 +26,7 @@ object NativeBridgeRegistry {
         if (engine === flutterEngine && ble5 != null && wifiDirect != null) {
             BgBridge.attach(appContext, flutterEngine)
             UpdateBridge.attach(appContext, flutterEngine)
+            UsbSerial.attach(appContext, flutterEngine)
             return
         }
 
@@ -37,6 +38,9 @@ object NativeBridgeRegistry {
         // The update channel is attached here, not in MainActivity, so it also
         // exists on the headless engine an always-on station runs on.
         UpdateBridge.attach(appContext, flutterEngine)
+        // USB serial for the flasher: a Context is all it needs, so it lives
+        // here with the other engine-scoped bridges.
+        UsbSerial.attach(appContext, flutterEngine)
         ble5 = Ble5(appContext, flutterEngine.dartExecutor.binaryMessenger)
         wifiDirect = WifiDirect(appContext, flutterEngine.dartExecutor.binaryMessenger)
         engine = flutterEngine
@@ -64,6 +68,7 @@ object NativeBridgeRegistry {
             Log.w(TAG, "WiFi Direct dispose failed: ${t.message}")
         }
         engine?.let { UpdateBridge.dispose(it) }
+        engine?.let { UsbSerial.dispose(it) }
         ble5 = null
         wifiDirect = null
         engine = null

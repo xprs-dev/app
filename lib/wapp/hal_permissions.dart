@@ -53,7 +53,10 @@ class HalPermission {
   /// The whole heard-traffic spool and the live monitor ring.
   static const spool = 'archive.read';
 
-  static const all = [rnsRaw, socket, nostr, spool];
+  /// Talk to a board over USB serial and write its flash.
+  static const flash = 'device.flash';
+
+  static const all = [rnsRaw, socket, nostr, spool, flash];
 }
 
 /// Every gated import, by the name the wasm imports it under, mapped to the
@@ -106,6 +109,14 @@ const Map<String, String> kGatedImports = {
   'xprs_traffic': HalPermission.spool,
   'xprs_stations': HalPermission.spool,
   'xprs_station': HalPermission.spool,
+
+  // USB flashing: a wapp that can rewrite a board's flash says so.
+  'flash_scan': HalPermission.flash,
+  'flash_probe': HalPermission.flash,
+  'flash_fetch': HalPermission.flash,
+  'flash_write': HalPermission.flash,
+  'flash_cancel': HalPermission.flash,
+  'flash_state': HalPermission.flash,
 };
 
 /// Whether [importName] may be bound for a wapp holding [granted].

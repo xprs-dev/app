@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- USB serial devices the flasher drives (lib/services/flash). Matching one
+     lets Android offer XPRS when it is plugged in; anything CDC-ACM is still
+     listed at runtime whether or not it is here. -->
+<resources>
+    <!-- Espressif USB-serial-JTAG (S2, S3, C3, C6) and the ESP USB Bridge -->
+    <usb-device vendor-id="12346" product-id="4097" />
+    <usb-device vendor-id="12346" product-id="2" />
+    <!-- Silicon Labs CP210x (Heltec V3, M5Stack) -->
+    <usb-device vendor-id="4292" product-id="60000" />
+    <usb-device vendor-id="4292" product-id="60016" />
+    <!-- QinHeng CH340 / CH9102 (generic dev boards, kv4p) -->
+    <usb-device vendor-id="6790" product-id="29987" />
+    <usb-device vendor-id="6790" product-id="21972" />
+    <!-- FTDI FT232 / FT231X -->
+    <usb-device vendor-id="1027" product-id="24577" />
+    <usb-device vendor-id="1027" product-id="24597" />
+</resources>

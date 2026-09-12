@@ -60,6 +60,10 @@ class CoreState {
   /// arriving is one publication.
   static const media = 'core.media';
 
+  /// USB flashing moved: a device appeared, a probe answered, a download or
+  /// a write advanced, a session ended. The wapp reads hal_flash_state.
+  static const flash = 'core.flash';
+
   /// A background task started, finished, paused or failed.
   static const tasks = 'core.tasks';
 

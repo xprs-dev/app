@@ -35,6 +35,7 @@ import '../services/mesh/mesh_service.dart';
 import '../services/xprs/xprs_group_keys.dart';
 import '../services/xprs/xprs_groups.dart';
 import '../services/xprs/xprs_archive.dart';
+import '../services/flash/flash_service.dart';
 import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_packet.dart';
 import '../services/xprs/xprs_receipt.dart';
@@ -3584,6 +3585,68 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_flash_*: a board on a USB cable. Every verb is fire-and-forget
+    // and says so through `core.flash`; the state is one flat read.
+    final halFlashScan = WasmFunction(
+      () {
+        if (!FlashService.supported) return 0;
+        unawaited(FlashService.instance.scan().catchError((_) {}));
+        return 1;
+      },
+      params: const [],
+      results: [ValueTy.i32],
+    );
+    final halFlashProbe = WasmFunction(
+      (int devPtr, int devLen) {
+        if (devLen <= 0 || FlashService.instance.busy) return 0;
+        final id = _readStr(devPtr, devLen);
+        unawaited(FlashService.instance.probeDevice(id).catchError((_) => false));
+        return 1;
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    final halFlashFetch = WasmFunction(
+      (int boardPtr, int boardLen) {
+        if (boardLen <= 0 || FlashService.instance.busy) return 0;
+        final id = _readStr(boardPtr, boardLen);
+        unawaited(FlashService.instance.fetchBoard(id).catchError((_) => false));
+        return 1;
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    final halFlashWrite = WasmFunction(
+      (int devPtr, int devLen, int boardPtr, int boardLen, int wipe) {
+        if (devLen <= 0 || boardLen <= 0 || FlashService.instance.busy) return 0;
+        final dev = _readStr(devPtr, devLen);
+        final board = _readStr(boardPtr, boardLen);
+        unawaited(FlashService.instance
+            .writeBoard(dev, board, wipe: wipe != 0)
+            .catchError((_) => false));
+        return 1;
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    final halFlashCancel = WasmFunction(
+      () {
+        FlashService.instance.cancel();
+        return 1;
+      },
+      params: const [],
+      results: [ValueTy.i32],
+    );
+    final halFlashState = WasmFunction(
+      (int outPtr, int outCap) {
+        if (outCap <= 0) return 0;
+        final bytes = utf8.encode(jsonEncode(FlashService.instance.stateJson()));
+        if (bytes.length > outCap) return -bytes.length;
+        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     final halXprsTraffic = WasmFunction(
       (int outPtr, int outCap) {
         if (outCap <= 0) return 0;
@@ -4475,6 +4538,12 @@ class WappEngine {
       WasmImport('hal', 'mesh_devices', halMeshDevices),
       WasmImport('hal', 'xprs_stations', halXprsStations),
       WasmImport('hal', 'xprs_station', halXprsStation),
+      WasmImport('hal', 'flash_scan', halFlashScan),
+      WasmImport('hal', 'flash_probe', halFlashProbe),
+      WasmImport('hal', 'flash_fetch', halFlashFetch),
+      WasmImport('hal', 'flash_write', halFlashWrite),
+      WasmImport('hal', 'flash_cancel', halFlashCancel),
+      WasmImport('hal', 'flash_state', halFlashState),
       WasmImport('hal', 'xprs_traffic', halXprsTraffic),
       WasmImport('hal', 'xprs_status', halXprsStatus),
       WasmImport('hal', 'xprs_history', halXprsHistory),

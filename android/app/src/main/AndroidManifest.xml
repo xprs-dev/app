@@ -44,6 +44,11 @@
     <uses-feature
         android:name="android.hardware.bluetooth_le"
         android:required="false"/>
+    <!-- USB host: flashing a board over an OTG cable (lib/services/flash).
+         Not required, a phone without it just lists no device. -->
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false"/>
     <!-- Foreground service so autostarted wapps (e.g. APRS) keep receiving
          over BLE/APRS-IS with the screen off / app backgrounded. The
          connectedDevice type is gated on BLUETOOTH_CONNECT (granted above). -->
@@ -116,6 +121,15 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- A board plugged in over USB: Android offers XPRS for the
+                 devices in device_filter.xml, and the permission for that
+                 device is granted with the offer. -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter"/>
             <!-- Deep links: tapping https://xprs.dev/circle/<key> opens Aurora
                  straight on the "apply to join" flow. autoVerify lets Android open
                  the link without the chooser once the assetlinks are served. -->
