@@ -162,6 +162,9 @@ class XprsStation {
   String? uptime;
   String? lifetime;
 
+  /// The firmware it runs (`fw:`, 11.8), verbatim; null until it said.
+  String? fw;
+
   /// What it says it does for other stations (section 24, `serve:`). This is
   /// how an indexer is told from a phone: `index` in here and nowhere else.
   List<String> services = const [];
@@ -368,6 +371,9 @@ class XprsMonitor {
       st.count = int.tryParse(p['count'] ?? '');
     }
     if (p.has('hears')) st.hears = xprsHears(p);
+    // `fw:` rides the service announcement (11.8) and a station's answers;
+    // the same rule as `serve:`, a message never erases it.
+    if (p.has('fw')) st.fw = p['fw'];
     // No `via:` means this arrived from the sender's own transmitter.
     if (!p.has('via')) st.lastDirectMs = now;
 
@@ -584,6 +590,46 @@ class XprsMonitor {
       if (onRns.isNotEmpty)
         {'title': 'On Reticulum (${onRns.length})', 'items': onRns},
     ]);
+  }
+
+  /// One station, everything the monitor holds about it, as a flat object
+  /// for `hal_xprs_station`: a wapp setting one station up reads its own
+  /// facts back rather than walking every station's row for one line. Null
+  /// when nothing has been heard from it this hour.
+  Map<String, dynamic>? stationJson(String callsign, {int? nowMs}) {
+    final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    final c = callsign.trim().toUpperCase();
+    final s = _stations[c];
+    if (s == null) {
+      final r = _recent[c];
+      if (r == null) return null;
+      return {
+        'call': c,
+        'bearer': r.bearer,
+        'lastMs': r.lastMs,
+        'agoMs': now - r.lastMs,
+      };
+    }
+    return {
+      'call': s.callsign,
+      'bearer': s.bearer,
+      'bearers': s.bearers.keys.toList(),
+      'rssi': s.rssi,
+      'lastMs': s.lastMs,
+      'agoMs': now - s.lastMs,
+      'lastDirectMs': s.lastDirectMs,
+      'packets': s.packets,
+      if (s.peers != null) 'peers': s.peers,
+      if (s.mail != null) 'mail': s.mail,
+      if (s.uptime != null) 'uptime': s.uptime,
+      if (s.lifetime != null) 'lifetime': s.lifetime,
+      if (s.fw != null) 'fw': s.fw,
+      if (s.count != null) 'count': s.count,
+      if (s.services.isNotEmpty) 'serve': s.services,
+      if (s.hears.isNotEmpty) 'hears': s.hears,
+      if (s.sigHeadline != null) 'sig': s.sigHeadline!.name,
+      if (s.readings.isNotEmpty) 'readings': s.readings,
+    };
   }
 
   /// The ring, oldest first, as the wapp's traffic log.

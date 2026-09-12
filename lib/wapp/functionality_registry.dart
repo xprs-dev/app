@@ -331,6 +331,13 @@ class FunctionalityRegistry {
           [],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef(
+          'hal_xprs_station',
+          'One station heard this hour, flat: {call,bearer,bearers,rssi,'
+          'lastMs,agoMs,lastDirectMs,packets,peers?,mail?,uptime?,lifetime?,'
+          'fw?,count?,serve?,hears?,sig?,readings?}',
+          [ParamDef('call', 'string', 'its callsign')],
+          ReturnDef('int', 'Bytes written, 0 when not heard, negated required size if too small')),
+      EndpointDef(
           'hal_xprs_traffic',
           'Recent XPRS packets, oldest first '
           '[{ts,bearer,rssi,from,to,type,id,mine,wire}] \u2014 includes packets '

@@ -105,6 +105,7 @@ const Map<String, String> kGatedImports = {
   'xprs_history': HalPermission.spool,
   'xprs_traffic': HalPermission.spool,
   'xprs_stations': HalPermission.spool,
+  'xprs_station': HalPermission.spool,
 };
 
 /// Whether [importName] may be bound for a wapp holding [granted].

@@ -21,6 +21,7 @@ import 'package:hex/hex.dart';
 import 'package:xprs/services/receive/wapp_delivery.dart';
 import 'package:xprs/services/xprs/xprs_ingest.dart';
 import 'package:xprs/services/xprs/xprs_mailbox.dart';
+import 'package:xprs/services/xprs/xprs_monitor.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_sig.dart';
 import 'package:xprs/util/nostr_crypto.dart';
@@ -184,6 +185,70 @@ void main() {
       expect(f.autocorrect, isFalse);
       expect(f.enableIMEPersonalizedLearning, isFalse);
     }
+  });
+
+  testWidgets('a hidden action or field is left off the screen', (tester) async {
+    // `<name>__hidden` is a host flag the wapp sets with ui.field.set, the
+    // way `__readonly` disables: the station screen shows Claim only while
+    // nobody owns the station.
+    const hub = '''
+[{"\$": "screen", "name": "Station", "children": [
+  {"\$": "field", "name": "ssid", "\$type": "string"},
+  {"\$": "action", "name": "claim", "label": "Claim", "style": "primary"},
+  {"\$": "action", "name": "open_wifi", "label": "WiFi", "icon": "wifi"}
+]}]''';
+    final screen = GeoUiParser(hub).parse().blocks.first;
+    final values = <String, dynamic>{'claim__hidden': true, 'ssid__hidden': true};
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: GeoUiScreenRenderer(screen: screen, bindings: _Values(values)),
+        ),
+      ),
+    ));
+    expect(find.text('Claim'), findsNothing);
+    expect(find.text('WiFi'), findsOneWidget);
+    expect(find.byIcon(Icons.wifi), findsOneWidget, reason: 'a known icon rides its button');
+    expect(find.byType(TextField), findsNothing);
+  });
+
+  group('one station, through one verb', () {
+    test('hal_xprs_station reads what the monitor holds, fw included', () {
+      final m = XprsMonitor.instance..clear();
+      m.offer(_p('t:service f:X3RLY7 serve:archive count:1234 fw:1.4.2 mail:3 uptime:26h lifetime:38day'),
+          bearer: 'lan', selfCallsign: 'X1QZ3N', nowMs: 1000);
+      m.offer(_p('t:observation f:X3RLY7 link:ble peers:4 hears:X1WATT,X3MEAV'),
+          bearer: 'ble', selfCallsign: 'X1QZ3N', rssi: -71, nowMs: 5000);
+      final row = m.stationJson('x3rly7', nowMs: 17000)!;
+      expect(row['fw'], '1.4.2');
+      expect(row['uptime'], '26h');
+      expect(row['lifetime'], '38day');
+      expect(row['peers'], 4);
+      expect(row['mail'], 3);
+      expect(row['count'], 1234);
+      expect(row['serve'], ['archive']);
+      expect(row['hears'], ['X1WATT', 'X3MEAV']);
+      expect(row['bearer'], 'ble');
+      expect(row['rssi'], -71);
+      expect(row['agoMs'], 12000);
+      expect((row['bearers'] as List).toSet(), {'lan', 'ble'});
+      expect(m.stationJson('X3NONE', nowMs: 17000), isNull);
+      // A message says nothing about the firmware, and does not erase it.
+      m.offer(_p('t:message f:X3RLY7 m:hello'), bearer: 'lan', selfCallsign: 'X1QZ3N', nowMs: 20000);
+      expect(m.stationJson('X3RLY7', nowMs: 21000)!['fw'], '1.4.2');
+      m.clear();
+    });
+  });
+
+  test('a packet nobody subscribed to is not verified for delivery', () {
+    // The verdict is a curve operation on the UI isolate; most of what a
+    // busy station hears is on topics no wapp asked for.
+    final before = WappDelivery.published;
+    final n = WappDelivery.instance.deliverPacket(
+        _p('t:observation f:X3RLY7 link:ble peers:4 sig:${'K' * 60}'),
+        bearer: 'ble', forUs: false);
+    expect(n, 0);
+    expect(WappDelivery.published, before + 1);
   });
 }
 

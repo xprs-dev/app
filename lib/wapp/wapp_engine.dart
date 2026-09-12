@@ -3569,6 +3569,21 @@ class WappEngine {
       },
       params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
     );
+    // hal_xprs_station: one station's facts, flat, for a wapp that is
+    // looking at one station rather than at the room. Empty when the
+    // monitor has not heard it this hour.
+    final halXprsStation = WasmFunction(
+      (int callPtr, int callLen, int outPtr, int outCap) {
+        if (outCap <= 0 || callLen <= 0) return 0;
+        final row = XprsMonitor.instance.stationJson(_readStr(callPtr, callLen));
+        if (row == null) return 0;
+        final bytes = utf8.encode(jsonEncode(row));
+        if (bytes.length > outCap) return -bytes.length;
+        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     final halXprsTraffic = WasmFunction(
       (int outPtr, int outCap) {
         if (outCap <= 0) return 0;
@@ -4459,6 +4474,7 @@ class WappEngine {
       WasmImport('hal', 'mesh_status', halMeshStatus),
       WasmImport('hal', 'mesh_devices', halMeshDevices),
       WasmImport('hal', 'xprs_stations', halXprsStations),
+      WasmImport('hal', 'xprs_station', halXprsStation),
       WasmImport('hal', 'xprs_traffic', halXprsTraffic),
       WasmImport('hal', 'xprs_status', halXprsStatus),
       WasmImport('hal', 'xprs_history', halXprsHistory),

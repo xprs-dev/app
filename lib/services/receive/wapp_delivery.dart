@@ -175,6 +175,15 @@ class WappDelivery {
     // has always computed exactly this for its own rows; a wapp handed a packet
     // and no verdict has to verify it itself, and chat did — with a signature
     // scheme of its own invention, layered inside `m:`.
+    // Only for a packet somebody will read: the verdict is a curve operation
+    // on this isolate, and most of what a busy station hears is on topics no
+    // wapp subscribed to. The archive keeps its own verdict for its rows.
+    final topic = rxTopicFor(p.type);
+    if (!WappEventBroker.instance.hasSubscriber(topic)) {
+      published++;
+      noSubscriber++;
+      return 0;
+    }
     final sig = p.has('sig')
         ? xprsVerify(p,
                 XprsArchive.instance.keyResolver
@@ -229,7 +238,7 @@ class WappDelivery {
       // packet differently depending on which way it arrived.
       'wire': p.encode(),
     };
-    return _publish(rxTopicFor(p.type), row);
+    return _publish(topic, row);
   }
 
   /// Publish a message that arrived already decoded rather than as a packet

@@ -119,9 +119,13 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
       if (children[i].keyword == 'action') {
         final run = <GeoUiBlock>[];
         while (i < children.length && children[i].keyword == 'action') {
-          run.add(children[i]);
+          // A wapp hides a button that does not apply right now by setting
+          // `<name>__hidden` (ui.field.set), the way `__readonly` disables
+          // a field: what a screen offers follows the state it shows.
+          if (!_hidden(children[i].name ?? '')) run.add(children[i]);
           i++;
         }
+        if (run.isEmpty) continue;
         rendered.add(Padding(
           padding: const EdgeInsets.only(bottom: 16),
           child: Wrap(
@@ -318,7 +322,13 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
 
   // ── Field ───────────────────────────────────────────────────────────
 
+  /// `<name>__hidden`, set by the wapp with ui.field.set: the field or
+  /// action is left out of the screen until it is cleared.
+  bool _hidden(String name) =>
+      name.isNotEmpty && widget.bindings.getValue('${name}__hidden') == true;
+
   Widget _renderField(GeoUiBlock field) {
+    if (_hidden(field.name ?? '')) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: _renderFieldWidget(field),
@@ -327,6 +337,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
 
   /// Field rendered inside a group card — with consistent padding.
   Widget _renderFieldInCard(GeoUiBlock field) {
+    if (_hidden(field.name ?? '')) return const SizedBox.shrink();
     final type = field.type ?? 'string';
     // Sliders need special layout
     if ((type == 'float' || type == 'int') &&
@@ -1347,36 +1358,54 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
       }
     };
 
+    // An `icon` from the whitelist (geoUiResolveIcon) goes on the button, as
+    // it already does on a people screen's toolbar; an unknown name is left
+    // off rather than shown as the hamburger it would resolve to.
+    final iconName = action.getString('icon') ?? '';
+    final icon = geoUiHasIcon(iconName) ? Icon(geoUiResolveIcon(iconName), size: 18) : null;
+    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
+    const pad = EdgeInsets.symmetric(horizontal: 24, vertical: 12);
     Widget button = switch (style) {
-      'primary' => FilledButton(
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
-          ),
-          onPressed: onPressed,
-          child: Text(label),
-        ),
-      'danger' => FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: Theme.of(context).colorScheme.error,
-            foregroundColor: Theme.of(context).colorScheme.onError,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
-          ),
-          onPressed: onPressed,
-          child: Text(label),
-        ),
-      _ => TextButton(
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
-          ),
-          onPressed: onPressed,
-          child: Text(label),
-        ),
+      'primary' => icon == null
+          ? FilledButton(
+              style: FilledButton.styleFrom(padding: pad, shape: shape),
+              onPressed: onPressed,
+              child: Text(label))
+          : FilledButton.icon(
+              style: FilledButton.styleFrom(padding: pad, shape: shape),
+              onPressed: onPressed,
+              icon: icon,
+              label: Text(label)),
+      'danger' => icon == null
+          ? FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+                padding: pad,
+                shape: shape,
+              ),
+              onPressed: onPressed,
+              child: Text(label))
+          : FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+                padding: pad,
+                shape: shape,
+              ),
+              onPressed: onPressed,
+              icon: icon,
+              label: Text(label)),
+      _ => icon == null
+          ? TextButton(
+              style: TextButton.styleFrom(padding: pad, shape: shape),
+              onPressed: onPressed,
+              child: Text(label))
+          : TextButton.icon(
+              style: TextButton.styleFrom(padding: pad, shape: shape),
+              onPressed: onPressed,
+              icon: icon,
+              label: Text(label)),
     };
 
     if (tip != null) button = Tooltip(message: tip, child: button);
@@ -1469,10 +1498,41 @@ Future<void> showGeoUiDialog({
 /// outside the list falls back to `Icons.menu` so wapps can't reach
 /// into arbitrary Material icons by surprise. Top-level so both the
 /// renderer and any host AppBar hoisting share one mapping.
+/// Whether [name] is a name geoUiResolveIcon knows, rather than one it
+/// would silently render as the hamburger (wapps.md 3.4).
+bool geoUiHasIcon(String name) =>
+    name.isNotEmpty && (name == 'menu' || geoUiResolveIcon(name) != Icons.menu);
+
 IconData geoUiResolveIcon(String name) {
   switch (name) {
     case 'menu':
       return Icons.menu;
+    // Stations and their setup (the Firmwares wapp), plus a few every
+    // settings screen wants.
+    case 'wifi':
+      return Icons.wifi;
+    case 'key':
+      return Icons.key;
+    case 'memory':
+      return Icons.memory;
+    case 'monitor_heart':
+      return Icons.monitor_heart;
+    case 'developer_board':
+      return Icons.developer_board;
+    case 'how_to_reg':
+      return Icons.how_to_reg;
+    case 'power':
+      return Icons.power_settings_new;
+    case 'label':
+      return Icons.label;
+    case 'schedule':
+      return Icons.schedule;
+    case 'bug_report':
+      return Icons.bug_report;
+    case 'router':
+      return Icons.router;
+    case 'history':
+      return Icons.history;
     case 'more_vert':
       return Icons.more_vert;
     case 'more_horiz':

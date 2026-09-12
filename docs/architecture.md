@@ -338,6 +338,31 @@ while it has asked something and for `xprs.identity` only while a station is
 changing its key, and an idle phone hands it nothing but the rare ask to be
 claimed.
 
+### A wapp reads a station through one verb, and a screen follows the state (2026-09-12)
+
+The Firmwares wapp's Stats screen shows what XPRS.md 15.5 lets a station say
+about itself: `uptime`, `lifetime`, `peers`, `mail`, `fw`, `hears`, what it
+serves and how many records it holds. Every one of those facts was already
+in `XprsMonitor`, learned from beacons and service announcements the core
+hears whether or not any wapp is running. The wrong way to give a wapp those
+facts is a subscription to `xprs.observation` and `xprs.service`, so that it
+re-derives from the air what the core has already derived, on every beacon
+from every station, for one screen somebody opens twice a month. The right
+way is `hal_xprs_station(call)`: one station, one flat object, read when the
+screen is drawn. `hal_xprs_stations` (plural) serves the room; this serves
+one row of it without materialising the rest.
+
+The station's policy (`q:policy`, 11.9) and its mail count (`q:mail`) are
+asks, and their answers are observations, so the wapp does subscribe to
+`xprs.observation`, but only between sending the ask and hearing the answer.
+A subscription is a cost the whole phone pays for as long as it is held.
+
+And a screen that offers Claim to a station that is already yours is a
+screen lying about the state it shows. `<name>__hidden` is a host flag, set
+by the wapp with `ui.field.set` like `__readonly`, and the renderer leaves
+the field or button out. The wapp decides what applies; the host decides how
+absence looks. Neither knows the other's reasons.
+
 ### Where a copy of your words goes is the core's business (2026-09-10)
 
 XPRS.md 12: *"a station keeps its own publications and hands a COPY to the
