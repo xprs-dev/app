@@ -26,6 +26,7 @@ class FlashBoard {
   final String version;
   final String manifestUrl;
   final String status;
+  final String photoUrl; // the catalogue's first product picture
 
   const FlashBoard({
     required this.id,
@@ -40,6 +41,7 @@ class FlashBoard {
     this.version = '',
     required this.manifestUrl,
     this.status = '',
+    this.photoUrl = '',
   });
 
   /// An ESP family with a serial loader and a published prebuilt.
@@ -59,6 +61,7 @@ class FlashBoard {
         'version': version,
         'status': status,
         'flashable': flashable,
+        'photo': photoUrl,
       };
 }
 
@@ -218,9 +221,22 @@ List<FlashBoard> parseBoards(String json, {required String site}) {
       version: fw['version']?.toString() ?? '',
       manifestUrl: '$site/models/$id/prebuilt/manifest.json',
       status: e['status'] as String? ?? '',
+      photoUrl: _firstPhoto(e['images']),
     ));
   }
   return out;
+}
+
+/// The first product picture of a board's `images`, as an absolute URL.
+String _firstPhoto(Object? images) {
+  if (images is! List) return '';
+  for (final im in images) {
+    if (im is Map) {
+      final u = im['image_url'] as String? ?? '';
+      if (u.startsWith('http')) return u;
+    }
+  }
+  return '';
 }
 
 FlashManifest? parseManifest(String json, {required String baseUrl}) {

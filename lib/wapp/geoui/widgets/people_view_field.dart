@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import '../../../util/media_ref.dart';
 import '../../shared_media_fetch.dart' show resolveSharedMedia;
 import '../geoui_renderer.dart' show geoUiResolveIcon;
+import '../avatar_image.dart' show bannerImage;
 import 'generated_avatar.dart';
 import 'media_view.dart' show sharedMediaArchive;
 
@@ -230,6 +231,11 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
     final action = (it['action'] ?? '').toString();
     final actionLabel = (it['actionLabel'] ?? '').toString();
     final avatar = (it['avatar'] ?? '').toString();
+    // `picture`: a photo of the THING the row is (a board, a product), drawn
+    // as a wide thumbnail instead of a 44 px circle, because a person picking
+    // hardware out of a list confirms it by the picture and cannot from a
+    // sigil. Decoded bounded, like every network image here.
+    final picture = (it['picture'] ?? '').toString();
     // "filled" reads as the suggestion (Follow), "outlined" as the current
     // state (Following) — matching the familiar social-app pattern.
     final filled = (it['actionStyle'] ?? 'outlined').toString() == 'filled';
@@ -268,7 +274,23 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (avatar.startsWith('file:'))
+              if (picture.startsWith('http'))
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image(
+                    image: bannerImage(picture, width: 320)!,
+                    width: 104,
+                    height: 78,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => SizedBox(
+                      width: 104,
+                      height: 78,
+                      child: Icon(Icons.developer_board,
+                          size: 36, color: cs.onSurfaceVariant),
+                    ),
+                  ),
+                )
+              else if (avatar.startsWith('file:'))
                 // A content-addressed media token (e.g. a torrent's favicon-style
                 // icon): render from the local archive, fetching if we do not hold
                 // it yet. Falls back to the generated avatar until it lands.
