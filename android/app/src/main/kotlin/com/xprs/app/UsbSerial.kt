@@ -129,6 +129,18 @@ object UsbSerial {
                 if (name != null && data != null) write(name, data, result)
                 else result.error("INVALID_ARGUMENT", "deviceName and data required", null)
             }
+            "transact" -> {
+                val data = call.argument<ByteArray>("data")
+                val timeoutMs = call.argument<Int>("timeoutMs") ?: USB_TIMEOUT_MS
+                if (name != null && data != null) transact(name, data, timeoutMs, result)
+                else result.error("INVALID_ARGUMENT", "deviceName and data required", null)
+            }
+            "transactMany" -> {
+                val frames = call.argument<List<ByteArray>>("frames")
+                val timeoutMs = call.argument<Int>("timeoutMs") ?: USB_TIMEOUT_MS
+                if (name != null && frames != null) transactMany(name, frames, timeoutMs, result)
+                else result.error("INVALID_ARGUMENT", "deviceName and frames required", null)
+            }
             "setDTR" -> withConn(name, result) { c ->
                 c.dtr = call.argument<Boolean>("value") ?: false
                 setModem(c)
@@ -369,8 +381,10 @@ object UsbSerial {
     private fun setModem(c: Conn): Boolean = when (c.kind) {
         Kind.CDC -> {
             val v = (if (c.dtr) 0x01 else 0) or (if (c.rts) 0x02 else 0)
-            c.connection.controlTransfer(0x21, SET_CONTROL_LINE_STATE, v, c.controlInterface?.id ?: 0,
-                null, 0, USB_TIMEOUT_MS) >= 0
+            val r = c.connection.controlTransfer(0x21, SET_CONTROL_LINE_STATE, v, c.controlInterface?.id ?: 0,
+                null, 0, USB_TIMEOUT_MS)
+            if (r < 0) Log.w(TAG, "SET_CONTROL_LINE_STATE dtr=${c.dtr} rts=${c.rts} failed: $r")
+            r >= 0
         }
         Kind.CP210X -> {
             // SET_MHS: bits 0/1 the lines, bits 8/9 which of them this call sets.
@@ -392,11 +406,128 @@ object UsbSerial {
         executor.execute {
             try {
                 val buf = ByteArray(minOf(max, READ_MAX))
+                // A negative answer is a timeout or a pipe error; both read
+                // as "nothing yet" and the loader's own deadline decides.
                 val n = c.connection.bulkTransfer(c.readEndpoint, buf, buf.size, timeoutMs)
                 val out = if (n > 0) buf.copyOf(n) else ByteArray(0)
                 main.post { result.success(out) }
             } catch (t: Throwable) {
                 main.post { result.error("READ_ERROR", t.message, null) }
+            }
+        }
+    }
+
+    /** Write [data] fully; the bytes sent, or -1 when the pipe stayed dead. */
+    private fun writeAll(c: Conn, data: ByteArray, name: String): Int {
+        var off = 0
+        var stalls = 0
+        while (off < data.size) {
+            val n = data.size - off
+            val chunk = if (off == 0) data else data.copyOfRange(off, data.size)
+            val sent = c.connection.bulkTransfer(c.writeEndpoint, chunk, n, USB_TIMEOUT_MS)
+            if (sent < 0) {
+                // The chip's own USB block goes away for a moment when the
+                // loader resets it; the pipe answers with an error until it
+                // is back. Linux's cdc_acm rides this out in the kernel, so
+                // here it is retried for up to a second before it is a
+                // failed write.
+                if (++stalls > 20) {
+                    Log.w(TAG, "write stalled at $off/${data.size} on $name")
+                    return -1
+                }
+                if (stalls == 1) {
+                    Log.d(TAG, "write pipe error at $off/${data.size}, clearing the halt")
+                    // CLEAR_FEATURE(ENDPOINT_HALT) on the OUT endpoint: what a
+                    // kernel driver does after a STALL, and what the Android
+                    // API leaves to us.
+                    c.connection.controlTransfer(0x02, 0x01, 0x00, c.writeEndpoint.address, null, 0, USB_TIMEOUT_MS)
+                }
+                Thread.sleep(50)
+                continue
+            }
+            stalls = 0
+            off += sent
+        }
+        return off
+    }
+
+    /**
+     * One loader command in one hop: write the frame, then read until a
+     * complete SLIP frame has arrived (END, payload, END) or [timeoutMs] is
+     * up, and hand back every byte read. A flash of 1,500 blocks used to
+     * cost four trips through the main thread per block; this is one.
+     */
+    /** Read until one complete SLIP frame (END, payload, END) or [timeoutMs]; every byte read. */
+    private fun readFrame(c: Conn, timeoutMs: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(READ_MAX)
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var ends = 0
+        var payload = false
+        while (System.currentTimeMillis() < deadline) {
+            val left = (deadline - System.currentTimeMillis()).toInt().coerceIn(1, timeoutMs)
+            val n = c.connection.bulkTransfer(c.readEndpoint, buf, buf.size, left)
+            if (n <= 0) continue
+            out.write(buf, 0, n)
+            for (i in 0 until n) {
+                if (buf[i] == 0xC0.toByte()) {
+                    if (ends > 0 && payload) { ends = 2; break }
+                    ends = 1
+                    payload = false
+                } else if (ends > 0) payload = true
+            }
+            if (ends == 2) break
+        }
+        return out.toByteArray()
+    }
+
+    private fun transact(name: String, data: ByteArray, timeoutMs: Int, result: MethodChannel.Result) {
+        val c = open[name]
+        if (c == null) {
+            result.error("NOT_OPEN", "device not open", null)
+            return
+        }
+        executor.execute {
+            try {
+                val sent = writeAll(c, data, name)
+                if (sent < data.size) {
+                    main.post { result.error("WRITE_ERROR", "short write", null) }
+                    return@execute
+                }
+                val bytes = readFrame(c, timeoutMs)
+                main.post { result.success(bytes) }
+            } catch (t: Throwable) {
+                main.post { result.error("IO_ERROR", t.message, null) }
+            }
+        }
+    }
+
+    /**
+     * A run of [transact]s in one call: frame i goes out only after frame
+     * i-1 was answered (the ROM takes one command at a time), and the
+     * answers come back in order, an empty one where none arrived. The
+     * protocol stays in Dart; this only saves the trips through the main
+     * thread, which a busy UI isolate turns into 100 ms each.
+     */
+    private fun transactMany(name: String, frames: List<ByteArray>, timeoutMs: Int, result: MethodChannel.Result) {
+        val c = open[name]
+        if (c == null) {
+            result.error("NOT_OPEN", "device not open", null)
+            return
+        }
+        executor.execute {
+            try {
+                val answers = ArrayList<ByteArray>(frames.size)
+                for (f in frames) {
+                    if (writeAll(c, f, name) < f.size) {
+                        answers.add(ByteArray(0))
+                        break
+                    }
+                    answers.add(readFrame(c, timeoutMs))
+                }
+                main.post { result.success(answers) }
+            } catch (t: Throwable) {
+                main.post { result.error("IO_ERROR", t.message, null) }
             }
         }
     }
@@ -409,16 +540,7 @@ object UsbSerial {
         }
         executor.execute {
             try {
-                var off = 0
-                val max = c.writeEndpoint.maxPacketSize
-                while (off < data.size) {
-                    val n = minOf(max, data.size - off)
-                    val chunk = data.copyOfRange(off, off + n)
-                    val sent = c.connection.bulkTransfer(c.writeEndpoint, chunk, n, USB_TIMEOUT_MS)
-                    if (sent < 0) break
-                    off += sent
-                }
-                val total = off
+                val total = writeAll(c, data, name).coerceAtLeast(0)
                 main.post { result.success(total) }
             } catch (t: Throwable) {
                 main.post { result.error("WRITE_ERROR", t.message, null) }

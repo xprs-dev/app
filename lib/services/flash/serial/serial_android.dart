@@ -2,9 +2,11 @@
 /// `com.xprs.app/usb_serial` channel (android/.../UsbSerial.kt).
 ///
 /// The Kotlin side does the bulk transfers on its own executor and answers
-/// each call on the main thread, so every read here is one await and the UI
-/// isolate never blocks. A 1 KB flash block is one write and one read: about
-/// 1,500 round trips for a 1.5 MB image, a few milliseconds each.
+/// each call on the platform thread; every call here is one await on the
+/// main isolate, where a platform channel lives (docs/architecture.md 2).
+/// The loader keeps the trips few: `transactMany` writes a run of blocks and
+/// collects their answers in one call, so a 1.5 MB image is about a hundred
+/// round trips, not 1,500.
 library;
 
 import 'dart:async';
@@ -116,6 +118,30 @@ class AndroidSerialPort implements SerialPort {
       final n = await _ch
           .invokeMethod<int>('write', {'deviceName': id, 'data': data});
       if (n != data.length) throw const SerialException('short write');
+    } on PlatformException catch (e) {
+      throw SerialException(e.message ?? e.code);
+    }
+  }
+
+  @override
+  Future<Uint8List?> transact(Uint8List data, int timeoutMs) async {
+    if (!_open) throw const SerialException('port closed');
+    try {
+      return await _ch.invokeMethod<Uint8List>(
+              'transact', {'deviceName': id, 'data': data, 'timeoutMs': timeoutMs}) ??
+          Uint8List(0);
+    } on PlatformException catch (e) {
+      throw SerialException(e.message ?? e.code);
+    }
+  }
+
+  @override
+  Future<List<Uint8List>?> transactMany(List<Uint8List> frames, int timeoutMs) async {
+    if (!_open) throw const SerialException('port closed');
+    try {
+      final r = await _ch.invokeMethod<List<Object?>>('transactMany',
+          {'deviceName': id, 'frames': frames, 'timeoutMs': timeoutMs});
+      return [for (final e in r ?? const []) e is Uint8List ? e : Uint8List(0)];
     } on PlatformException catch (e) {
       throw SerialException(e.message ?? e.code);
     }

@@ -336,6 +336,12 @@ class LinuxSerialPort implements SerialPort {
     if (_fd >= 0) _c.tcflush(_fd, _tcioflush);
   }
 
+  /// A local fd has no round trip to save: write and read are separate.
+  @override
+  Future<Uint8List?> transact(Uint8List data, int timeoutMs) async => null;
+  @override
+  Future<List<Uint8List>?> transactMany(List<Uint8List> frames, int timeoutMs) async => null;
+
   @override
   Future<void> close() async {
     if (_fd >= 0) {

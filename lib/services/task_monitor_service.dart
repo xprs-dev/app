@@ -20,6 +20,7 @@ import 'package:reticulum/reticulum.dart' show RnsCrypto;
 import 'receive/core_state.dart';
 import '../models/monitored_task.dart';
 import 'event_bus.dart';
+import 'flash/flash_service.dart';
 import 'log_service.dart';
 import 'reticulum/rns_service.dart';
 
@@ -99,6 +100,13 @@ class TaskMonitorService {
           LogService.instance.add(
               'follows: ${f.entries.map((e) => '${e.key}=${e.value}').join(' ')}');
         }
+      }
+      // The USB flasher: blocks and bytes a session wrote, block retries,
+      // sessions and failures. Said only when a session did something.
+      final fl = FlashService.instance.drainStats();
+      if (fl.values.any((v) => v > 0)) {
+        final s = fl.entries.map((e) => '${e.key}=${e.value}').join(' ');
+        LogService.instance.add('perf: flash $s');
       }
       // Connectionless probes. `silent` is the number of inbound queries we
       // answered with NOTHING — each of which used to cost a full Curve25519

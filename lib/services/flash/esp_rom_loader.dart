@@ -57,6 +57,9 @@ class EspFlashPart {
 
 typedef EspProgress = void Function(String phase, int done, int total);
 
+/// Blocks that went out (and how many had to be sent twice), for a counter.
+typedef EspBlocks = void Function(int blocks, int bytes, int retries);
+
 class _Regs {
   final int base;
   final int usr, usr1, usr2, mosiDlen, misoDlen, w0;
@@ -99,8 +102,14 @@ class EspRomLoader {
   final SerialPort port;
   final bool nativeUsb;
   final EspProgress? onProgress;
+  final EspBlocks? onBlocks;
   final bool Function()? cancelled;
   final void Function(String)? log;
+
+  /// Blocks per transactMany trip. Sixteen is 16 KB on the wire and one
+  /// answer each; the ROM programs a block in a few ms, so a trip is well
+  /// under a second and a cancel still lands between trips.
+  static const batchBlocks = 16;
 
   String? family;
   int flashSize = 0;
@@ -117,7 +126,7 @@ class EspRomLoader {
   }
 
   EspRomLoader(this.port,
-      {this.nativeUsb = false, this.onProgress, this.cancelled, this.log});
+      {this.nativeUsb = false, this.onProgress, this.onBlocks, this.cancelled, this.log});
 
   // ── framing ──────────────────────────────────────────────────────────
 
@@ -194,9 +203,7 @@ class EspRomLoader {
   /// Send [op] with [data] and wait for its response. Returns (value, data
   /// with the status bytes stripped). A stale response to another op is
   /// skipped, as esptool does, up to a hundred frames.
-  Future<(int, Uint8List)> _command(int op, List<int> data,
-      {int chk = 0, int timeoutMs = _defaultTimeoutMs, bool checkStatus = true}) async {
-    _check();
+  static Uint8List _frameOf(int op, List<int> data, int chk) {
     final pkt = ByteData(8 + data.length);
     pkt.setUint8(0, 0x00);
     pkt.setUint8(1, op);
@@ -204,7 +211,60 @@ class EspRomLoader {
     pkt.setUint32(4, chk, Endian.little);
     final bytes = pkt.buffer.asUint8List();
     bytes.setRange(8, 8 + data.length, data);
-    await port.write(slipEncode(bytes));
+    return slipEncode(bytes);
+  }
+
+  /// The first complete frame in [raw] as a response to [op] with an OK
+  /// status; false for anything else (short, other op, error status, none).
+  static bool _isOkResponse(Uint8List raw, int op) {
+    var inFrame = false;
+    var esc = false;
+    final frame = <int>[];
+    for (final b in raw) {
+      if (!inFrame) {
+        if (b == _slipEnd) inFrame = true;
+        continue;
+      }
+      if (esc) {
+        esc = false;
+        frame.add(b == _slipEscEnd ? _slipEnd : b == _slipEscEsc ? _slipEsc : b);
+        continue;
+      }
+      if (b == _slipEsc) {
+        esc = true;
+      } else if (b == _slipEnd) {
+        if (frame.isEmpty) continue;
+        break;
+      } else {
+        frame.add(b);
+      }
+    }
+    if (frame.length < 8 + _statusBytes) return false;
+    if (frame[0] != 0x01 || frame[1] != op) return false;
+    return frame[frame.length - _statusBytes] == 0;
+  }
+
+  Future<(int, Uint8List)> _command(int op, List<int> data,
+      {int chk = 0, int timeoutMs = _defaultTimeoutMs, bool checkStatus = true}) async {
+    _check();
+    final frame = _frameOf(op, data, chk);
+    // A port that can do write-and-read in one trip hands back the bytes it
+    // read; they go through the same framer as everything else.
+    final got = await port.transact(frame, timeoutMs);
+    if (got == null) {
+      await port.write(frame);
+    } else if (got.isNotEmpty) {
+      if (_rxPos >= _rx.length) {
+        _rx = got;
+        _rxPos = 0;
+      } else {
+        final rest = Uint8List(_rx.length - _rxPos + got.length)
+          ..setRange(0, _rx.length - _rxPos, _rx, _rxPos)
+          ..setRange(_rx.length - _rxPos, _rx.length - _rxPos + got.length, got);
+        _rx = rest;
+        _rxPos = 0;
+      }
+    }
     for (var i = 0; i < 100; i++) {
       final f = await _readFrame(timeoutMs);
       if (f == null) throw EspLoaderException('no answer to command 0x${op.toRadixString(16)}');
@@ -473,14 +533,29 @@ class EspRomLoader {
         timeoutMs: _timeoutPerMb(_eraseTimeoutPerMb, size));
   }
 
-  Future<void> _flashData(Uint8List block, int seq) async {
+  static Uint8List _flashDataBody(Uint8List block, int seq) {
     final d = ByteData(16 + block.length)
       ..setUint32(0, block.length, Endian.little)
       ..setUint32(4, seq, Endian.little)
       ..setUint32(8, 0, Endian.little)
       ..setUint32(12, 0, Endian.little);
     d.buffer.asUint8List().setRange(16, 16 + block.length, block);
-    await _command(_cmdFlashData, d.buffer.asUint8List(), chk: checksum(block));
+    return d.buffer.asUint8List();
+  }
+
+  Future<void> _flashData(Uint8List block, int seq) async {
+    await _command(_cmdFlashData, _flashDataBody(block, seq), chk: checksum(block));
+  }
+
+  /// One block, with the one retry a lost frame is allowed.
+  Future<int> _flashDataRetrying(Uint8List block, int seq) async {
+    try {
+      await _flashData(block, seq);
+      return 0;
+    } on EspLoaderException {
+      await _flashData(block, seq);
+      return 1;
+    }
   }
 
   Future<void> _flashEnd({required bool reboot}) async {
@@ -521,29 +596,55 @@ class EspRomLoader {
     // image is never hashed in one go on whichever isolate this runs on.
     final digestIn = _DigestSink();
     final hasher = crypto.md5.startChunkedConversion(digestIn);
-    for (var i = 0; i < blocks; i++) {
+    // A run of blocks per trip where the port offers it (the Android
+    // bridge), one block per trip where it does not. Either way every block
+    // is checked by its own answer, and a block whose answer is missing or
+    // bad is sent again on its own, once.
+    for (var first = 0; first < blocks; first += batchBlocks) {
       _check();
-      final start = i * blockSize;
-      final end = (start + blockSize).clamp(0, size);
-      final slice = await part.readAt(start, end - start);
-      if (slice.length != end - start) {
-        throw EspLoaderException('${part.name} is shorter than it said');
+      final last = (first + batchBlocks).clamp(0, blocks);
+      final slices = <Uint8List>[];
+      final padded = <Uint8List>[];
+      for (var i = first; i < last; i++) {
+        final start = i * blockSize;
+        final end = (start + blockSize).clamp(0, size);
+        final slice = await part.readAt(start, end - start);
+        if (slice.length != end - start) {
+          throw EspLoaderException('${part.name} is shorter than it said');
+        }
+        var block = slice;
+        if (block.length < blockSize) {
+          final p = Uint8List(blockSize)..fillRange(0, blockSize, 0xFF);
+          p.setRange(0, block.length, block);
+          block = p;
+        }
+        slices.add(slice);
+        padded.add(block);
       }
-      var block = slice;
-      if (block.length < blockSize) {
-        final padded = Uint8List(blockSize)..fillRange(0, blockSize, 0xFF);
-        padded.setRange(0, block.length, block);
-        block = padded;
+      var retries = 0;
+      final frames = [
+        for (var i = first; i < last; i++)
+          _frameOf(_cmdFlashData, _flashDataBody(padded[i - first], i), checksum(padded[i - first])),
+      ];
+      final answers = await port.transactMany(frames, _defaultTimeoutMs);
+      if (answers == null) {
+        for (var i = first; i < last; i++) {
+          retries += await _flashDataRetrying(padded[i - first], i);
+        }
+      } else {
+        _rxClear(); // the bridge read everything the ROM said for this run
+        for (var i = first; i < last; i++) {
+          final k = i - first;
+          if (k < answers.length && _isOkResponse(answers[k], _cmdFlashData)) continue;
+          retries += 1 + await _flashDataRetrying(padded[k], i);
+        }
       }
-      // One retry per block: a frame lost to a USB hiccup is not a failed
-      // flash, a second miss is.
-      try {
-        await _flashData(block, i);
-      } on EspLoaderException {
-        await _flashData(block, i);
+      for (final slice in slices) {
+        hasher.add(slice);
       }
-      hasher.add(slice);
-      onProgress?.call('writing', end, size);
+      final done = (last * blockSize).clamp(0, size);
+      onBlocks?.call(last - first, done - first * blockSize, retries);
+      onProgress?.call('writing', done, size);
     }
     hasher.close();
     if (verify) {

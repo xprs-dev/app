@@ -379,8 +379,16 @@ The wapp never sees a byte of the image or of the wire.
 
 Two rules shape the service. A Linux port blocks in `poll`, so a Linux
 session is a worker isolate posting progress back; the Android port is a
-channel, so its session is a chain of awaits on the main isolate with no
-work heavier than a 1 KB block's checksum. And an image is never on the
+platform channel, so its session stays on the main isolate (section 2) as a
+chain of awaits with no work heavier than a 1 KB block's checksum. The
+first phone run wrote 1.4 MB in 210 s because every block was four trips
+through the main isolate and each trip waited behind that isolate's own
+stalls; the answer within the rule is fewer trips, not another isolate:
+`transactMany` hands the bridge a run of sixteen blocks and collects their
+answers in one call, so an image is about a hundred trips. (An attempt to
+move the session to a worker with `BackgroundIsolateBinaryMessenger` was
+made and reverted the same evening; the guard now refuses it.) And an
+image is never on the
 heap whole: the loader asks the part for one block at a time and the MD5
 grows as the blocks go out (performance.md 8.9). A wipe is not an erase of
 the chip: the partition table image names the NVS and OTA data partitions

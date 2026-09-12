@@ -111,6 +111,16 @@ const rules = <Rule>[
     appliesTo: ['lib/**/*_isolate.dart', 'lib/services/isolates/**'],
     pattern: r'\b(MethodChannel|EventChannel|Ble5Bus\.instance)\b',
   ),
+  Rule(
+    id: 'no-platform-channel-off-main',
+    why: 'BackgroundIsolateBinaryMessenger hands a worker isolate a platform '
+        'channel, which is the rule above evaded rather than followed: the '
+        'worker then stalls on the platform thread and the radio bridges '
+        'lose their one owner (docs/performance.md 1.2, 8.1). Bridge bytes to '
+        'main for the I/O instead. Added the day the USB flasher tried it.',
+    appliesTo: ['lib/**'],
+    pattern: r'\bBackgroundIsolateBinaryMessenger\b',
+  ),
 
   // ── layering: transports belong to the core ───────────────────────────────
   Rule(

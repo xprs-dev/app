@@ -7,16 +7,20 @@
 /// every device and every lane).
 ///
 /// Threading: the Linux port blocks in poll/read, so a Linux session is a
-/// worker isolate that posts progress back; the Android port is a channel,
-/// so its session runs on the main isolate as a chain of awaits with no
-/// computation heavier than a 1 KB block's XOR. Neither hashes a whole image
-/// in one go: the MD5 grows block by block as the bytes go out.
+/// worker isolate that posts progress back; the Android port is a platform
+/// channel, which lives on the main isolate (docs/architecture.md 2), so
+/// its session runs there as a chain of awaits, with the bridge taking a
+/// run of blocks per trip (transactMany) so an image is a hundred trips and
+/// not 1,500. Neither hashes a whole image in one go: the MD5 grows block
+/// by block as the bytes go out. `drainStats` feeds the minute `perf:` line
+/// so a session's cost is visible (performance.md 8.1).
 library;
 
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 
+import '../background_service.dart';
 import '../log_service.dart';
 import '../receive/core_state.dart';
 import 'esp_image.dart';
@@ -101,6 +105,22 @@ class FlashService {
 
   bool get busy => _busy;
 
+  /// What the sessions did since the last drain, for the minute `perf:`
+  /// line: blocks and bytes written, block retries, sessions and failures.
+  int _statBlocks = 0, _statBytes = 0, _statRetries = 0, _statSessions = 0, _statFailed = 0;
+
+  Map<String, int> drainStats() {
+    final m = {
+      'sessions': _statSessions,
+      'failed': _statFailed,
+      'blocks': _statBlocks,
+      'bytes': _statBytes,
+      'retries': _statRetries,
+    };
+    _statBlocks = _statBytes = _statRetries = _statSessions = _statFailed = 0;
+    return m;
+  }
+
   void _hook() {
     if (_hooked) return;
     _hooked = true;
@@ -124,19 +144,30 @@ class FlashService {
 
   /// Devices now, and the catalogue (refreshed when stale). Never blocks a
   /// running session.
+  /// A scan is not a session: it never touches [phase], [message] or
+  /// [error], because a USB attach event fires one at any moment and the
+  /// verdict of the probe or write that just ended must survive it. The
+  /// wapp reads [scanning] beside the phase.
+  bool scanning = false;
+  String catalogNote = '';
+
   Future<void> scan({bool force = false}) async {
     _hook();
-    if (!_busy) _set(FlashPhase.scanning);
-    devices = await _listDevices();
+    scanning = true;
     _publish();
-    await catalog.refresh(force: force);
-    await _loadLocals();
-    if (!_busy) {
-      _set(FlashPhase.idle,
-          msg: catalog.boards.isEmpty
-              ? (catalog.lastError.isEmpty ? 'No catalogue yet' : catalog.lastError)
-              : '');
-    } else {
+    try {
+      devices = await _listDevices();
+      _publish();
+      await catalog.refresh(force: force);
+      await _loadLocals();
+      catalogNote = catalog.boards.isEmpty
+          ? (catalog.lastError.isEmpty ? 'No catalogue yet' : catalog.lastError)
+          : '';
+    } catch (e) {
+      catalogNote = 'scan failed: $e';
+      LogService.instance.add('flash: scan failed: $e');
+    } finally {
+      scanning = false;
       _publish();
     }
   }
@@ -151,7 +182,8 @@ class FlashService {
   }
 
   Future<List<SerialDevice>> _listDevices() async {
-    if (Platform.isLinux) return Isolate.run(linuxListDevices);
+    // sysfs is read with *Sync calls: a one-shot off the UI isolate.
+    if (Platform.isLinux) return BackgroundService.runOffThread(() async => linuxListDevices());
     if (Platform.isAndroid) return AndroidUsbSerial.listDevices();
     return const [];
   }
@@ -191,6 +223,7 @@ class FlashService {
     }
     _busy = true;
     _cancel = false;
+    _statSessions++;
     _set(FlashPhase.probing, msg: 'Talking to the board...');
     try {
       final r = await _run(_Job('probe', d.id, d.isNativeUsb));
@@ -198,6 +231,10 @@ class FlashService {
       probe = FlashProbe(fam, (r['flashBytes'] as num?)?.toInt() ?? 0,
           project: r['project'] as String? ?? '', version: r['version'] as String? ?? '');
       match = matchBoards(probe!, catalog.boards);
+      LogService.instance.add('flash: probe ${d.port}: ${EspFamily.label(fam)} '
+          '${probe!.flashBytes ~/ (1024 * 1024)} MB runs "${probe!.project}" ${probe!.version} '
+          'best=${match!.suggested?.id ?? '-'} fits=${match!.likely.map((b) => b.id).join(',')} '
+          'catalogue=${catalog.boards.length}');
       final s = match!.suggested;
       _set(FlashPhase.idle,
           msg: s != null
@@ -210,6 +247,8 @@ class FlashService {
       _set(FlashPhase.idle, msg: 'Stopped');
       return false;
     } catch (e) {
+      _statFailed++;
+      LogService.instance.add('flash: probe ${d.port} failed: $e');
       _set(FlashPhase.failed, err: '$e');
       return false;
     } finally {
@@ -247,6 +286,7 @@ class FlashService {
       _set(FlashPhase.idle, msg: '${b.name} ${l.version} downloaded');
       return true;
     } catch (e) {
+      LogService.instance.add('flash: fetch $id failed: $e');
       _set(FlashPhase.failed, err: '$e');
       return false;
     } finally {
@@ -301,6 +341,7 @@ class FlashService {
     boardId = id;
     _busy = true;
     _cancel = false;
+    _statSessions++;
     partIndex = 0;
     partCount = l.parts.length + wipeList.length;
     done = 0;
@@ -320,6 +361,7 @@ class FlashService {
       _set(FlashPhase.failed, err: 'Stopped before it finished: the board may not boot until flashed again');
       return false;
     } catch (e) {
+      _statFailed++;
       _set(FlashPhase.failed, err: '$e');
       LogService.instance.add('flash: ${b.id} -> ${d.port} failed: $e');
       return false;
@@ -356,6 +398,9 @@ class FlashService {
   Future<Map<String, Object>> _run(_Job job) async {
     if (Platform.isLinux) return _runLinux(job);
     if (Platform.isAndroid) {
+      // A platform channel lives on the main isolate (docs/architecture.md
+      // 2), so the Android session does too: a chain of awaits, nothing
+      // heavier than a block's checksum, and few trips (transactMany).
       return runFlashJob(AndroidSerialPort(job.portId), job.toMap(), _onProgress, () => _cancel);
     }
     throw const EspLoaderException('No USB serial on this platform');
@@ -364,6 +409,12 @@ class FlashService {
   void _onProgress(Map<String, Object> p) {
     final ph = p['phase'] as String?;
     if (ph != null) phase = ph;
+    final b = (p['blocks'] as num?)?.toInt();
+    if (b != null) {
+      _statBlocks += b;
+      _statBytes += (p['bytes'] as num?)?.toInt() ?? 0;
+      _statRetries += (p['retries'] as num?)?.toInt() ?? 0;
+    }
     partName = p['part'] as String? ?? partName;
     partIndex = (p['partIndex'] as num?)?.toInt() ?? partIndex;
     done = (p['done'] as num?)?.toInt() ?? done;
@@ -411,7 +462,7 @@ class FlashService {
     });
     try {
       _isolate = await Isolate.spawn(_linuxSessionMain, [rx.sendPort, job.toMap()],
-          errorsAreFatal: true, onError: rx.sendPort);
+          debugName: 'flash-session', errorsAreFatal: true, onError: rx.sendPort);
       return await result.future;
     } finally {
       rx.close();
@@ -425,13 +476,23 @@ class FlashService {
     final d = device;
     final p = probe;
     final m = match;
+    // Scalars first, the rows last: a wapp that scans for one key stops at
+    // the head instead of walking every board's row to find "part".
     return {
       'phase': phase,
       'busy': _busy,
+      'scanning': scanning,
+      'catalogNote': catalogNote,
       'message': message,
       'error': error,
       'supported': supported,
       'catalogAt': catalog.fetchedAt?.millisecondsSinceEpoch ?? 0,
+      'board': boardId,
+      'part': partName,
+      'partIndex': partIndex,
+      'partCount': partCount,
+      'done': done,
+      'total': total,
       'devices': [for (final x in devices) x.toJson()],
       'boards': [
         for (final b in catalog.boards)
@@ -453,12 +514,6 @@ class FlashService {
               'suggested': m?.suggested?.id ?? '',
               'likely': m == null ? '' : m.likely.map((b) => b.id).join(' '),
             },
-      'board': boardId,
-      'part': partName,
-      'partIndex': partIndex,
-      'partCount': partCount,
-      'done': done,
-      'total': total,
     };
   }
 }
@@ -476,7 +531,9 @@ Future<Map<String, Object>> runFlashJob(
   final loader = EspRomLoader(port,
       nativeUsb: job.nativeUsb,
       cancelled: cancelled,
-      onProgress: (ph, d, t) => progress({'phase': ph, 'done': d, 'total': t}));
+      onProgress: (ph, d, t) => progress({'phase': ph, 'done': d, 'total': t}),
+      onBlocks: (n, bytes, retries) =>
+          progress({'blocks': n, 'bytes': bytes, 'retries': retries}));
   await port.open(115200);
   try {
     progress({'phase': FlashPhase.probing, 'message': 'Waiting for the board...'});
@@ -489,7 +546,22 @@ Future<Map<String, Object>> runFlashJob(
     };
     if (job.kind == 'probe') {
       progress({'message': 'Reading what it runs...'});
+      // The app is wherever the partition table puts it, and after an OTA
+      // update it is in the other slot: read the table, then the
+      // descriptor of every app partition, and take the first that is one.
+      final offsets = <int>[];
+      try {
+        final table = await loader.readFlash(0x8000, 0xC00);
+        for (final p in espParsePartitions(table)) {
+          if (p.type == 0 && p.size > 0x100) offsets.add(p.offset);
+        }
+      } on EspLoaderException {
+        // No readable table: the usual places.
+      }
       for (final off in [0x20000, 0x10000]) {
+        if (!offsets.contains(off)) offsets.add(off);
+      }
+      for (final off in offsets) {
         try {
           final b = await loader.readFlash(off, 0x80);
           final desc = EspAppDesc.parse(b);
@@ -561,7 +633,9 @@ Future<Map<String, Object>> runFlashJob(
   }
 }
 
-Future<void> _linuxSessionMain(List<Object> args) async {
+Future<void> _linuxSessionMain(List<Object> args) => _sessionMain(args, (id) => LinuxSerialPort(id));
+
+Future<void> _sessionMain(List<Object> args, SerialPort Function(String) openPort) async {
   final out = args[0] as SendPort;
   final jobMap = (args[1] as Map).cast<String, Object>();
   final ctl = ReceivePort();
@@ -573,11 +647,11 @@ Future<void> _linuxSessionMain(List<Object> args) async {
   final portId = jobMap['port'] as String;
   var last = 0;
   try {
-    final r = await runFlashJob(LinuxSerialPort(portId), jobMap, (p) {
+    final r = await runFlashJob(openPort(portId), jobMap, (p) {
       // At most ten progress posts a second, plus every phase change.
       final now = DateTime.now().millisecondsSinceEpoch;
-      if (p.containsKey('phase') || p.containsKey('message') || now - last >= 100 ||
-          p['done'] == p['total']) {
+      if (p.containsKey('phase') || p.containsKey('message') || p.containsKey('blocks') ||
+          now - last >= 100 || p['done'] == p['total']) {
         last = now;
         out.send({'type': 'progress', ...p});
       }

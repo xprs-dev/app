@@ -92,6 +92,19 @@ abstract class SerialPort {
   /// Drop whatever is waiting to be read.
   Future<void> flushInput();
 
+  /// Write [data] and read until one complete SLIP frame (or [timeoutMs])
+  /// in ONE call, returning every byte read. Null where a port has no such
+  /// shortcut; the loader then writes and reads separately. Exists for the
+  /// Android channel, where each call is a trip through the main thread.
+  Future<Uint8List?> transact(Uint8List data, int timeoutMs) async => null;
+
+  /// [transact] for a run of frames in ONE call: each frame is written and
+  /// its one answer read before the next goes out, and the answers come back
+  /// in order (an empty entry where none arrived in [timeoutMs]). Null where
+  /// a port has no such shortcut. What keeps a 1,500-block image to a hundred
+  /// trips through the main isolate instead of 1,500.
+  Future<List<Uint8List>?> transactMany(List<Uint8List> frames, int timeoutMs) async => null;
+
   Future<void> close();
 
   bool get isOpen;

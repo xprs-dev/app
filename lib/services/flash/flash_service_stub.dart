@@ -19,6 +19,7 @@ class FlashService {
   Future<bool> fetchBoard(String id) async => false;
   Future<bool> writeBoard(String deviceId, String id, {bool wipe = false}) async => false;
   void cancel() {}
+  Map<String, int> drainStats() => const {};
 
   Map<String, Object> stateJson() => const {
         'phase': 'idle',

@@ -8,17 +8,18 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import '../background_service.dart';
+
 import 'esp_image.dart';
 import 'flash_catalog.dart';
 
-/// sha256 of a file in 64 KiB chunks. Top-level so it can run in Isolate.run.
+/// sha256 of a file in 64 KiB chunks. Top-level so runOffThread can take it.
 Future<String> flashSha256OfFile(String path) async {
   final sink = _DigestSink();
   final input = crypto.sha256.startChunkedConversion(sink);
@@ -88,7 +89,7 @@ class FlashCatalog {
     if (!force && !stale && boards.isNotEmpty) return true;
     final path = '${await dir()}/boards.json';
     final tmp = '$path.part';
-    final ok = await _download(boardsUrl, tmp, null);
+    final ok = await _download(boardsUrl, tmp, null, resume: false);
     if (!ok) {
       lastError = 'could not reach $boardsUrl';
       return false;
@@ -144,7 +145,7 @@ class FlashCatalog {
     final bdir = '${await dir()}/$id';
     await Directory(bdir).create(recursive: true);
     final mpath = '$bdir/manifest.json';
-    if (!await _download(b.manifestUrl, mpath, null)) {
+    if (!await _download(b.manifestUrl, mpath, null, resume: false)) {
       throw StateError('could not fetch the manifest for ${b.name}');
     }
     final m = parseManifest(await File(mpath).readAsString(), baseUrl: base);
@@ -175,8 +176,11 @@ class FlashCatalog {
       });
       if (!ok) throw StateError('could not fetch ${p.name}');
       await File('$path.part').rename(path);
+      try {
+        await File('$path.part.etag').delete();
+      } catch (_) {}
       final size = await File(path).length();
-      final sha = await Isolate.run(() => flashSha256OfFile(path));
+      final sha = await BackgroundService.runOffThread(() => flashSha256OfFile(path));
       if (p.offset >= 0x10000 || p.name.startsWith('firmware')) {
         // The app image: its header must name the board's chip.
         final head = await _head(path, 24);
@@ -206,23 +210,56 @@ class FlashCatalog {
     }
   }
 
-  /// Streamed GET to [dest]; false on any failure (the file is removed).
+  /// Streamed GET to [dest], resumable: a `.part` left by a broken transfer
+  /// is kept and the next call asks for the rest with a Range header
+  /// (performance.md 8.6: a break costs the chunk in flight, never the file;
+  /// the sha256 over the whole file afterwards is the integrity proof).
+  /// Each read is bounded by a stall timeout. False on failure, and the
+  /// partial file stays on disk for the retry.
   static Future<bool> _download(
-      String url, String dest, void Function(int, int)? onProgress) async {
+      String url, String dest, void Function(int, int)? onProgress,
+      {bool resume = true}) async {
+    final f = File(dest);
+    final tag = File('$dest.etag');
+    var have = 0;
+    var etag = '';
+    try {
+      if (resume && await f.exists()) have = await f.length();
+      if (have > 0 && await tag.exists()) etag = (await tag.readAsString()).trim();
+    } catch (_) {
+      have = 0;
+    }
     final client = http.Client();
     IOSink? sink;
     try {
       final req = http.Request('GET', Uri.parse(url))..headers['User-Agent'] = 'xprs-flasher';
+      if (have > 0) {
+        // Resume only the same file: If-Range makes a changed one come whole.
+        req.headers['Range'] = 'bytes=$have-';
+        if (etag.isNotEmpty) req.headers['If-Range'] = etag;
+      }
       final resp = await client.send(req).timeout(const Duration(seconds: 30));
-      if (resp.statusCode != 200) return false;
+      var resumed = false;
+      if (resp.statusCode == 206 && have > 0) {
+        resumed = true;
+      } else if (resp.statusCode == 200) {
+        have = 0; // the server sent the whole thing: start over on disk too
+        final e = resp.headers['etag'] ?? '';
+        try {
+          if (e.isNotEmpty) await tag.writeAsString(e);
+        } catch (_) {}
+      } else if (resp.statusCode == 416 && have > 0) {
+        return true; // the file is already complete
+      } else {
+        return false;
+      }
       // Content-Length counts the bytes on the wire. GitHub Pages gzips
       // boards.json, and package:http hands the decoded stream over, so the
       // length is only a truncation check when nothing was encoded.
       final encoded = (resp.headers['content-encoding'] ?? '').isNotEmpty;
-      final total = encoded ? 0 : (resp.contentLength ?? 0);
-      final f = File(dest);
-      sink = f.openWrite();
-      var got = 0;
+      final total = encoded ? 0 : have + (resp.contentLength ?? 0);
+      sink = f.openWrite(mode: resumed ? FileMode.append : FileMode.write);
+      var got = have;
       await for (final chunk in resp.stream.timeout(const Duration(seconds: 60))) {
         sink.add(chunk);
         got += chunk.length;
@@ -231,15 +268,11 @@ class FlashCatalog {
       await sink.flush();
       await sink.close();
       sink = null;
-      if (total > 0 && got != total) {
-        await f.delete();
-        return false;
-      }
-      return true;
+      // Short of the advertised length: keep what arrived for the next try.
+      return !(total > 0 && got != total);
     } catch (_) {
       try {
         await sink?.close();
-        await File(dest).delete();
       } catch (_) {}
       return false;
     } finally {

@@ -64,6 +64,26 @@ class FakeRom implements SerialPort {
   @override
   Future<void> flushInput() async => _rx.clear();
   @override
+  Future<Uint8List?> transact(Uint8List data, int timeoutMs) async => null;
+
+  /// When set, the fake behaves like the Android bridge: a run of frames
+  /// in one call, one answer each, in order.
+  bool batched = false;
+  int batches = 0;
+  @override
+  Future<List<Uint8List>?> transactMany(List<Uint8List> frames, int timeoutMs) async {
+    if (!batched) return null;
+    batches++;
+    final out = <Uint8List>[];
+    for (final f in frames) {
+      _rx.clear();
+      await write(f);
+      out.add(Uint8List.fromList(_rx));
+      _rx.clear();
+    }
+    return out;
+  }
+  @override
   Future<void> setBaud(int b) async => baud = b;
   @override
   Future<void> setDtr(bool on) async => dtrChanges++;
@@ -332,6 +352,28 @@ void main() {
       expect(md5s.length, 1);
     });
 
+    test('a bridge that takes a run of blocks gets sixteen a trip, and a lost answer is sent again', () async {
+      final rom = FakeRom()..batched = true;
+      final l = EspRomLoader(rom)..family = EspFamily.esp32s3;
+      await rom.open(115200);
+      await l.connect();
+      final img = image('esp32s3', 40 * 1024 + 7);
+      var blocks = 0, retries = 0;
+      final l2 = EspRomLoader(rom, onBlocks: (b, _, r) {
+        blocks += b;
+        retries += r;
+      })
+        ..family = EspFamily.esp32s3;
+      rom.batches = 0;
+      rom.failDataBlocks = 1; // the first block of the first run is refused once
+      await l2.writePart(EspFlashPart.bytes(0x20000, img));
+      expect(rom.flash.sublist(0x20000, 0x20000 + img.length), img);
+      expect(blocks, 41);
+      expect(retries, 1);
+      expect(rom.batches, 3, reason: '41 blocks in runs of sixteen');
+      expect(l.family, EspFamily.esp32s3);
+    });
+
     test('an ESP32 ROM gets the sixteen-byte FLASH_BEGIN', () async {
       final rom = FakeRom(magic: 0x00F01D83);
       final l = EspRomLoader(rom);
@@ -365,23 +407,19 @@ void main() {
           throwsA(isA<EspLoaderException>()));
     });
 
-    test('a cancel stops between blocks', () async {
+    test('a cancel stops between runs of blocks', () async {
       final rom = FakeRom();
-      var blocks = 0;
       var cancel = false;
       final l = EspRomLoader(rom, cancelled: () => cancel, onProgress: (p, d, t) {
-        if (p == 'writing') {
-          blocks++;
-          if (blocks == 2) cancel = true;
-        }
+        if (p == 'writing') cancel = true; // after the first run went out
       })
         ..family = EspFamily.esp32s3;
       await rom.open(115200);
       await l.connect();
-      await expectLater(l.writePart(EspFlashPart.bytes(0x20000, image('esp32s3', 8192))),
+      await expectLater(l.writePart(EspFlashPart.bytes(0x20000, image('esp32s3', 40 * 1024))),
           throwsA(isA<EspCancelled>()));
       final sent = rom.commands.where((c) => c.$1 == 0x03).length;
-      expect(sent, 2);
+      expect(sent, EspRomLoader.batchBlocks);
     });
   });
 
