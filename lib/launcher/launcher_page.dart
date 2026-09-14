@@ -5,11 +5,9 @@ part of 'launcher.dart';
 /// Wapps that are installed but temporarily hidden from the grid (their
 /// implementation isn't finished yet). Folder names, matched during the scan.
 ///
-/// `install` is the Wapp Store, and it is here for a different reason from the
-/// rest: it works, but it is not finished enough to ship in the first official
-/// releases. Everything behind it is intact -- the wapp still ships in
-/// assets/, WappInstallerService and hal_http are untouched -- so putting it
-/// back is deleting one word from this set.
+/// The Wapp Store (`install`) was here until it read one canonical catalog
+/// (https://xprs.dev/apps) and could install, search and remove; it is a
+/// grid tile again, and seeding.dart no longer skips it either.
 /// `torrents`, `mail` and `mp4player` are hidden for a different reason again:
 /// they work, they are simply not what this network is being used for right
 /// now. Nothing behind them is removed -- the wapps still ship in assets/ and
@@ -18,7 +16,6 @@ const Set<String> _kHiddenWapps = {
   'maps',
   'atm',
   'wallet',
-  'install',
   'torrents',
   'mail',
   'mp4player',
@@ -231,10 +228,9 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
     if (unmet.isNotEmpty) {
       final action = await _showDependencyDialog(manifest, unmet);
       if (action == null || action == _DepAction.cancel) return;
-      // _DepAction.openAnyway falls through to the normal launch. There is no
-      // "install a provider" path while the Wapp Store is hidden, and offering
-      // a button that ends in "Wapp Store is not installed" would be the app
-      // sending the user after something it has taken away.
+      // _DepAction.openAnyway falls through to the normal launch. The Wapp
+      // Store is a tile again, but a provider is only installable from it
+      // once it is in the catalog, so the dialog still offers no shortcut.
     }
     if (!mounted) return;
     // Opening clears the tile's unread badge; the wapp re-publishes its live

@@ -15,10 +15,11 @@ part of 'launcher.dart';
 ///
 ///  - `app-creator` is the wapp editor, installed to its own location and
 ///    reached through each wapp's Edit action; it was never a grid tile.
-///  - `install` is the Wapp Store, hidden until it is finished. It ships in
-///    assets/ and declares `kind: "system"`, so it slipped through both
-///    sweeps until each was told about it by name.
-const _kNeverSeed = {'app-creator', 'install'};
+///
+/// The Wapp Store (`install`) was on this list while it was unfinished; it
+/// reads the catalog at https://xprs.dev/apps now and seeds like any other
+/// bundled wapp.
+const _kNeverSeed = {'app-creator'};
 
 const _kDefaultSeedNames = {
   'mail',

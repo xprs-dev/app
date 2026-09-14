@@ -72,6 +72,7 @@ import '../services/log_service.dart';
 import '../services/notification_service.dart';
 import '../services/location_service.dart';
 import '../services/preferences_service.dart';
+import '../services/store/wapp_catalog_service.dart';
 import '../services/reticulum/rns_service.dart';
 import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_vocab.dart';
@@ -305,6 +306,9 @@ class _WappPageState extends State<WappPage>
   // The Reticulum folder address the current catalog was fetched from, so
   // "Update all" can re-install each outdated wapp directly.
   String _catalogSourceAddr = '';
+  // The HTTP catalog source the current catalog came from (empty when it
+  // came over Reticulum or from a local path).
+  String _catalogHttpSource = '';
   bool _updatingAll = false;
   String _catalogLayout = 'list';
   final _cmdController = TextEditingController();
@@ -1400,35 +1404,18 @@ class _WappPageState extends State<WappPage>
     await _suspendDone;
     await _loadConversations();
 
-    // Seed the install wapp's `source` KV on first run (when the user
-    // hasn't set one via the store's own Settings tab). Priority:
-    //   1. Host-configured default (PreferencesService.wappStoreSource) so
-    //      a deployment can point the store at another catalog without
-    //      rebuilding the wasm.
-    //   2. The in-repo apps/binaries/ catalog when running from a source
-    //      checkout — resolved from the runtime cwd by probing index.json
-    //      across a few candidate layouts (deriving from widget.wappDir was
-    //      off by one level after the wapps/archive -> wapps move).
-    //   3. Nothing — the wasm's built-in DEFAULT_SOURCE
-    //      (https://xprs.dev/wapps) takes over.
+    // Seed the install wapp's `source` KV on first run (when the user has
+    // not set one on its Repositories screen). A host-configured default
+    // (PreferencesService.wappStoreSource) lets a deployment point the store
+    // elsewhere without rebuilding the wasm; otherwise the wasm's own
+    // DEFAULT_SOURCE applies, which is the canonical catalog at
+    // https://xprs.dev/apps (WappCatalogService.defaultSource). A source
+    // checkout is not probed any more: the catalog on xprs.dev is the one
+    // starting point on every machine.
     if (_wappName == 'install' && !_engine.hasKvKey('source')) {
       final hostDefault = PreferencesService.instanceSync?.wappStoreSource;
       if (hostDefault != null && hostDefault.isNotEmpty) {
         _engine.kvSet('source', hostDefault);
-      } else {
-        final cwd = platform.currentDirectory();
-        final candidates = [
-          '$cwd/../apps/binaries', // sibling repo (canonical)
-          '$cwd/../../apps/binaries', // nested workspace fallback
-          '$cwd/wapps/binaries', // legacy in-tree (pre-rename)
-        ];
-        for (final candidate in candidates) {
-          final binStorage = wappPackageStorage(candidate);
-          if (await binStorage.exists('index.json')) {
-            _engine.kvSet('source', binStorage.basePath);
-            break;
-          }
-        }
       }
     }
 
@@ -2418,6 +2405,8 @@ class _WappPageState extends State<WappPage>
           unawaited(_handleFetchIndex(data));
         } else if (type == 'wapp.install') {
           unawaited(_handleWappInstall(data));
+        } else if (type == 'wapp.remove') {
+          unawaited(_handleWappRemove(data));
         } else if (type == 'system.tasks.list') {
           _refreshTaskSnapshot();
           changed = true;
@@ -2531,6 +2520,13 @@ class _WappPageState extends State<WappPage>
     // store can be shared peer-to-peer with no central web host.
     if (_isRnsFolderSource(source)) {
       await _fetchIndexFromRns(_rnsFolderAddr(source));
+      return;
+    }
+
+    // An HTTP catalog (https://xprs.dev/apps by default): the core fetches
+    // and caches it, and hands the wapp the six-field index it parses.
+    if (WappCatalogService.isHttpSource(source)) {
+      await _fetchIndexFromHttp(source);
       return;
     }
 
@@ -2818,6 +2814,114 @@ class _WappPageState extends State<WappPage>
     return result;
   }
 
+  /// Build the store catalog from an HTTP source through WappCatalogService
+  /// (fetched once an hour, kept across runs, the old copy surviving a failed
+  /// fetch) and hand it to the store wapp as a `wapp.index` message. The
+  /// package URL, size and sha256 of every app stay host-side in
+  /// [_catalogMeta] so install downloads exactly what the catalog promised;
+  /// the icons are fetched once per version and shown before install.
+  Future<void> _fetchIndexFromHttp(String source) async {
+    final svc = WappCatalogService.instance;
+    final doc = await svc.fetch(source);
+    if (doc == null) {
+      final why = svc.lastError.isEmpty ? 'unreachable' : svc.lastError;
+      _outputLines.add(_OutputLine('Catalog $source: $why', 'err'));
+      // Tell the wapp the fetch ended so it moves on and shows what it has.
+      _engine.sendMessage(jsonEncode({'type': 'wapp.index', 'data': []}));
+      _pumpEngine();
+      if (mounted) setState(() {});
+      return;
+    }
+    _catalogHttpSource = source;
+    final entries = <Map<String, dynamic>>[];
+    for (final app in doc.apps) {
+      _catalogMeta[app.name] = {
+        'version': app.version,
+        'file': app.file,
+        'url': app.url,
+        'sha256': app.sha256,
+        'size': '${app.size}',
+        'summary': app.summary,
+      };
+      entries.add(app.toIndexEntry());
+    }
+    await _refreshInstalledVersions();
+    _engine.sendMessage(jsonEncode({'type': 'wapp.index', 'data': entries}));
+    _pumpEngine();
+    if (mounted) setState(() {});
+
+    // Icons after the list is up: each one is a small GET, cached on disk,
+    // and the cards repaint as they arrive.
+    for (final app in doc.apps) {
+      if (!mounted) return;
+      final bytes = await svc.icon(app);
+      if (bytes == null || bytes.isEmpty) continue;
+      _catalogIcons[app.name] = bytes;
+      _catalogIcons[app.file] = bytes;
+      if (mounted) setState(() {});
+    }
+  }
+
+  /// Pump the wasm until it has consumed every queued message: it handles
+  /// one per call, so a single handleEvent() could process a stale message
+  /// ahead of ours and leave the one we just sent unprocessed.
+  void _pumpEngine() {
+    var guard = 0;
+    while (_engine.inboxLength > 0 && guard++ < 64) {
+      _engine.handleEvent();
+    }
+    _drainOutbox();
+  }
+
+  /// The wapp asked to remove an installed wapp (`{"type":"wapp.remove"}`,
+  /// from its `remove <name>` command or a card's remove action). The
+  /// store cannot remove itself while it runs.
+  Future<void> _handleWappRemove(Map<String, dynamic> data) async {
+    final name = _wappSlug(data['name'] as String? ?? '');
+    if (name.isEmpty || name == 'install' || name == _wappName) return;
+    final result = await WappInstallerService.instance.uninstall(name);
+    if (!result.ok) {
+      _outputLines.add(_OutputLine(result.error ?? 'Uninstall failed', 'err'));
+    } else {
+      _outputLines.add(_OutputLine('$name uninstalled', 'info'));
+    }
+    await _refreshInstalledVersions();
+    _engine.sendMessage(jsonEncode({'type': 'wapp.removed', 'name': name}));
+    _pumpEngine();
+    if (mounted) setState(() {});
+  }
+
+  /// Install [slug] from the HTTP catalog it was listed in: the package URL,
+  /// size and sha256 recorded by [_fetchIndexFromHttp]. Returns false when
+  /// the catalog holds no download for it.
+  Future<bool> _installFromHttpCatalog(String slug) async {
+    final meta = _catalogMeta[slug];
+    final url = meta?['url'] ?? '';
+    if (url.isEmpty) return false;
+    final version = meta?['version'] ?? '';
+    final result = await WappInstallerService.instance.installFromUrl(
+      wappId: slug,
+      url: url,
+      sha256: meta?['sha256'],
+      size: int.tryParse(meta?['size'] ?? ''),
+    );
+    if (!result.ok) {
+      _outputLines.add(_OutputLine(result.error ?? 'Install failed', 'err'));
+      if (mounted) setState(() {});
+      return true;
+    }
+    _engine.sendMessage(jsonEncode({
+      'type': 'wapp.installed',
+      'name': slug,
+      'version': version,
+    }));
+    _pumpEngine();
+    await _refreshInstalledVersions();
+    _outputLines.add(_OutputLine('$slug v$version installed', 'info'));
+    if (mounted) setState(() {});
+    return true;
+  }
+
   Future<void> _handleWappInstall(Map<String, dynamic> data) async {
     final source = data['source'] as String? ?? '';
     final filePath = data['file'] as String? ?? '';
@@ -2835,6 +2939,13 @@ class _WappPageState extends State<WappPage>
         name,
         version,
       );
+      return;
+    }
+
+    // An HTTP catalog: the download the catalog named, checked against the
+    // size and sha256 it published.
+    if (WappCatalogService.isHttpSource(source) &&
+        await _installFromHttpCatalog(_wappSlug(name))) {
       return;
     }
 
@@ -2860,11 +2971,10 @@ class _WappPageState extends State<WappPage>
       // "Install…" flow on the exact same code path.
       final InstallResult result;
       if (isRemote) {
-        // Remote catalog (e.g. raw.githubusercontent.com/xprs-dev/apps/
-        // main/binaries): download the .wapp ZIP over HTTP. The store's
-        // do_install already rewrote any github tree URL to the raw form,
-        // so concatenating dir + file gives the byte URL directly.
-        // installFromUrl records a WappSource.url so Reload re-fetches.
+        // A remote index the catalog service did not resolve (an older
+        // store layout): the source is used verbatim, dir + file is the
+        // byte URL. installFromUrl records a WappSource.url so Reload
+        // re-fetches.
         final base = baseDir.endsWith('/')
             ? baseDir.substring(0, baseDir.length - 1)
             : baseDir;
@@ -8280,9 +8390,10 @@ class _WappPageState extends State<WappPage>
         ),
         const SizedBox(height: 4),
         Text(
-          'The wapp store downloads its catalog from every repository '
-          'listed here. New entries are validated — only URLs that '
-          'reply with a valid /wapps/index.json are accepted.',
+          'The store reads its catalog from every repository listed '
+          'here; https://xprs.dev/apps is the one it starts with. A new '
+          'entry is checked first: it has to answer with a catalog.json '
+          'or an index.json.',
           style: TextStyle(color: cs.onSurfaceVariant, height: 1.35),
         ),
         const SizedBox(height: 20),
@@ -8584,6 +8695,7 @@ class _WappPageState extends State<WappPage>
       if (lowered.endsWith('.json')) {
         candidates.add(raw);
       } else {
+        candidates.add('$trimmed/catalog.json');
         candidates.add('$trimmed/wapps/index.json');
         candidates.add('$trimmed/index.json');
       }
@@ -8633,7 +8745,10 @@ class _WappPageState extends State<WappPage>
       );
       if (!resp.isOk) return false;
       final parsed = jsonDecode(resp.bodyString);
-      return parsed is List;
+      if (parsed is List) return true;
+      return parsed is Map &&
+          '${parsed['schema'] ?? ''}'.startsWith('xprs.apps.catalog/') &&
+          parsed['apps'] is List;
     } catch (_) {
       return false;
     }
@@ -8671,6 +8786,15 @@ class _WappPageState extends State<WappPage>
     final empty = _i18n.resolve(
       cardsGroup.getString('empty') ?? 'No wapps found yet.',
     );
+    final query = _storeSearch.trim().toLowerCase();
+    final shown = query.isEmpty
+        ? _catalogItems
+        : _catalogItems.where((it) {
+            final hay = '${it['id'] ?? ''} ${it['title'] ?? ''} '
+                    '${it['subtitle'] ?? ''} ${it['description'] ?? ''}'
+                .toLowerCase();
+            return hay.contains(query);
+          }).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -8776,13 +8900,40 @@ class _WappPageState extends State<WappPage>
               ),
             ),
           ),
+        if (_catalogItems.length > 1 || query.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Container(
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: cs.outlineVariant.withAlpha(80)),
+              ),
+              child: TextField(
+                textInputAction: TextInputAction.search,
+                onChanged: (v) => setState(() => _storeSearch = v),
+                decoration: InputDecoration(
+                  hintText: 'Search apps',
+                  prefixIcon: Icon(Icons.search, color: cs.onSurfaceVariant),
+                  suffixIcon: _storeSearch.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => setState(() => _storeSearch = ''),
+                        ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ),
         Expanded(
-          child: _catalogItems.isEmpty
+          child: shown.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(32),
                     child: Text(
-                      empty,
+                      query.isEmpty ? empty : 'No apps match "$_storeSearch"',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),
@@ -8790,10 +8941,9 @@ class _WappPageState extends State<WappPage>
                 )
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-                  itemCount: _catalogItems.length,
+                  itemCount: shown.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (_, i) =>
-                      _catalogCard(_catalogItems[i], cs, dispatch),
+                  itemBuilder: (_, i) => _catalogCard(shown[i], cs, dispatch),
                 ),
         ),
       ],
@@ -8964,6 +9114,9 @@ class _WappPageState extends State<WappPage>
       _outputLines.add(_OutputLine(result.error ?? 'Uninstall failed', 'err'));
     } else {
       _outputLines.add(_OutputLine('$name uninstalled', 'info'));
+      // The wapp keeps its own installed list in KV; keep it in step.
+      _engine.sendMessage(jsonEncode({'type': 'wapp.removed', 'name': slug}));
+      _pumpEngine();
     }
     await _refreshInstalledVersions();
     if (mounted) setState(() {});
@@ -10130,7 +10283,10 @@ class _WappPageState extends State<WappPage>
   Future<void> _updateAll() async {
     if (_updatingAll) return;
     final slugs = _catalogUpdateSlugs();
-    if (slugs.isEmpty || _catalogSourceAddr.isEmpty) return;
+    if (slugs.isEmpty ||
+        (_catalogSourceAddr.isEmpty && _catalogHttpSource.isEmpty)) {
+      return;
+    }
     setState(() => _updatingAll = true);
     try {
       for (final slug in slugs) {
@@ -10138,8 +10294,11 @@ class _WappPageState extends State<WappPage>
         final file = meta?['file'] ?? '';
         final version = meta?['version'] ?? '';
         if (file.isEmpty) continue;
-        // _installWappFromRns fetches by content sha, installs under the slug,
-        // and refreshes _installedVersions on success.
+        // An HTTP catalog entry carries its own URL and sha256; otherwise
+        // _installWappFromRns fetches by content sha. Both install under the
+        // slug and refresh _installedVersions on success.
+        if (await _installFromHttpCatalog(slug)) continue;
+        if (_catalogSourceAddr.isEmpty) continue;
         await _installWappFromRns(_catalogSourceAddr, file, slug, version);
       }
     } finally {

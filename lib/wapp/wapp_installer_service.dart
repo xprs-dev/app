@@ -18,6 +18,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:crypto/crypto.dart' as crypto;
+import 'package:flutter/foundation.dart' show compute;
 
 import '../connections/internet/http_transport.dart';
 import '../services/event_bus.dart';
@@ -72,6 +74,9 @@ class InstallResult {
   factory InstallResult.failure(String wappId, String message) =>
       InstallResult(ok: false, wappId: wappId, error: message);
 }
+
+/// Hex sha256 of [bytes]. Top-level so compute can take it.
+String sha256Hex(Uint8List bytes) => crypto.sha256.convert(bytes).toString();
 
 class WappInstallerService {
   WappInstallerService._();
@@ -365,6 +370,13 @@ class WappInstallerService {
         if (!entry.isFile) continue;
         final rel = entry.name.replaceAll('\\', '/');
         if (rel.isEmpty) continue;
+        // A package downloaded from the network names its own files: one
+        // that climbs out of its folder is refused whole.
+        if (rel.startsWith('/') ||
+            rel.split('/').any((seg) => seg == '..' || seg.isEmpty)) {
+          await installed.deleteDirectory(folder, recursive: true);
+          return InstallResult.failure(wappId, 'invalid wapp: bad path $rel');
+        }
         await installed.writeBytes(
             '$folder/$rel', Uint8List.fromList(entry.content as List<int>));
       }
@@ -390,16 +402,47 @@ class WappInstallerService {
     return _finishInstall(installed, folder, fallbackId: wappId);
   }
 
+  /// The largest package the store downloads. Every published wapp is
+  /// well under this; the cap is what stops a wrong URL from filling the
+  /// heap with a video.
+  static const maxPackageBytes = 64 * 1024 * 1024;
+
   /// Download a `.wapp` from [url] over HTTP(S) and install it. The URL
-  /// is stored as the reload source so the user can refresh later.
+  /// is stored as the reload source so the user can refresh later. When
+  /// the catalog said what the package hashes to, [sha256] is checked
+  /// before a byte is extracted, and a [size] that disagrees is refused
+  /// too: the catalog is the promise, the download has to keep it.
   Future<InstallResult> installFromUrl({
     required String wappId,
     required String url,
+    String? sha256,
+    int? size,
   }) async {
     try {
-      final res = await HttpTransport.shared.get(Uri.parse(url));
+      final res = await HttpTransport.shared.get(
+        Uri.parse(url),
+        timeout: const Duration(seconds: 60),
+      );
       if (res.statusCode != 200) {
         return InstallResult.failure(wappId, 'HTTP ${res.statusCode} for $url');
+      }
+      if (res.bodyBytes.length > maxPackageBytes) {
+        return InstallResult.failure(wappId, 'package too large');
+      }
+      if (size != null && size > 0 && res.bodyBytes.length != size) {
+        return InstallResult.failure(
+          wappId,
+          'size mismatch: got ${res.bodyBytes.length} bytes, catalog says $size',
+        );
+      }
+      final want = (sha256 ?? '').trim().toLowerCase();
+      if (want.isNotEmpty) {
+        // Off the UI isolate on native; on the web compute runs inline, and
+        // a package is at most a few MB.
+        final got = await compute(sha256Hex, res.bodyBytes);
+        if (got != want) {
+          return InstallResult.failure(wappId, 'sha256 mismatch for $url');
+        }
       }
       return installFromBytes(
         wappId: wappId,
