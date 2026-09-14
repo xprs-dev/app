@@ -8900,7 +8900,7 @@ class _WappPageState extends State<WappPage>
               ),
             ),
           ),
-        if (_catalogItems.length > 1 || query.isNotEmpty)
+        if (_catalogItems.isNotEmpty || query.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Container(
