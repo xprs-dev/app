@@ -82,7 +82,7 @@ void main() {
     // matches inside `nostr_event_recv`, and `encrypt` matches the UI string
     // "Messages are private (encrypted)". The import table is the only place
     // that answers what a module can actually call.
-    final wasm = File('../wapps/chat/app.wasm');
+    final wasm = File('../apps/chat/app.wasm');
     if (!wasm.existsSync()) return; // wapps repo not checked out beside app
     final names = wasmHalImports(wasm.readAsBytesSync());
 

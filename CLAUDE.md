@@ -28,7 +28,7 @@ paths below assume they are checked out as siblings of this directory:
 | | |
 |---|---|
 | `../reticulum-dart` | the library: Reticulum, NOSTR, LXMF, DHT, files, and `XprsCrypto`. A **path dependency** in `pubspec.yaml`, so it must be a sibling or the build fails |
-| `../wapps` | wapp source (`xprs-dev/wapps`); `assets/wapps/*.wapp` here are built copies |
+| `../apps` | wapp source (`xprs-dev/apps`); `assets/wapps/*.wapp` here are built copies |
 | Station firmware (ESP32, nRF52840) | `xprs-dev/firmware` (was `xprs-esp32`), formerly `esp32/` in this repo. `docs/ble5.md` and `docs/lan.md` describe transports with an end in each, so they are kept here AND there and must not drift |
 
 The protocol specification is `../spec/XPRS.md` (the `xprs-dev/spec` repo,
@@ -116,11 +116,11 @@ shell issuing it.
 
 ## Wapps
 
-Wapp source lives in `../wapps` (the `xprs-dev/wapps` repo), not here;
+Wapp source lives in `../apps` (the `xprs-dev/apps` repo), not here;
 `assets/wapps/*.wapp` are built copies. Ship chain:
 
 ```sh
-cd ../wapps/<name> && WASI_SDK_PATH=~/wasi-sdk make          # -Werror
+cd ../apps/<name> && WASI_SDK_PATH=~/wasi-sdk make          # -Werror
 cd ../ && ./build-archive.sh <name>
 cp binaries/<name>/<name>-<version>.wapp ../app/assets/wapps/<name>.wapp
 ```

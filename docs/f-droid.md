@@ -217,7 +217,7 @@ it.
 What else had to line up:
 
 * **The same sources.** `pubspec.yaml` depends on `../reticulum-dart` by path,
-  and the bundled wapps are rebuilt from `xprs-dev/wapps`. `release.sh` pins
+  and the bundled wapps are rebuilt from `xprs-dev/apps`. `release.sh` pins
   both by commit in the release itself (`.reticulum-dart-commit`,
   `.wapps-commit`), and the recipe checks those commits out. It refuses to
   release while a sibling repository's HEAD is not on its `origin/main`.
@@ -296,7 +296,7 @@ run sets the container up; `SKIP_SETUP=1` skips that on later runs):
 
 ```sh
 python3 tool/fdroid_recipe.py --out ../fdroiddata/rb-recipe --repo /xprs/app \
-    --srclib-repo xprs-wapps=/xprs/wapps --srclib-repo xprs-reticulum-dart=/xprs/reticulum-dart
+    --srclib-repo xprs-wapps=/xprs/apps --srclib-repo xprs-reticulum-dart=/xprs/reticulum-dart
 ~/bin/android-build-locked docker exec -e BUILD=com.xprs.app:$(python3 tool/fdroid_recipe.py --print-vercode arm64-v8a) \
     -e RECIPE=/fdroiddata/rb-recipe -e OUT=/fdroiddata/rb-out -e LOW_MEMORY=1 \
     fdroidtest bash /xprs/app/fdroid/buildserver-build.sh
@@ -448,7 +448,7 @@ What each part is for, and what taught it:
 
 * it tags `vX.Y.Z` and writes `version: X.Y.Z+<commit count>` into
   `pubspec.yaml`, so every versionCode rises;
-* it pins `../reticulum-dart` and `../wapps` by commit (both must be pushed);
+* it pins `../reticulum-dart` and `../apps` by commit (both must be pushed);
 * it copies the release's changelog to the three per-ABI names F-Droid looks
   for (`changelogs/1000362.txt`, `2000362.txt`, `4000362.txt`).
 
@@ -467,7 +467,7 @@ For each release:
    first, `release.sh` still finds the file (the one changelog added since the
    last tag) and renames it.
 2. Keep `.flutter-version` equal to the Flutter the app builds with.
-3. Run `python3 tool/build_bundled_wapps.py ../wapps --check` (every bundled
+3. Run `python3 tool/build_bundled_wapps.py ../apps --check` (every bundled
    module must match its source build) and, after dependency bumps,
    `python3 tool/fdroid_scan.py` on a release APK. See section 9.
 4. After `release.yml` has finished, check that its Android jobs printed
@@ -538,7 +538,7 @@ bundles; `assets/wapps/` carries the same release without `bin/` and
 
 **Every bundled wasm module builds from source.** `tool/build_bundled_wapps.py
 <wapps-checkout>` rebuilds each `app.wasm` and `tests.wasm` from
-`xprs-dev/wapps` and swaps it into its package; `--check` only compares. A
+`xprs-dev/apps` and swaps it into its package; `--check` only compares. A
 clean wasi-sdk build reproduces every bundled module byte for byte (after
 fixing `functionalities`, which shipped the Tester's module with no source, a
 stale pre-rename App Creator build, and FDK-AAC's build-date stamps, now

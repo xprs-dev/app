@@ -3,7 +3,7 @@
 #
 # Builds the Flutter web bundle from the same Dart source that
 # powers the desktop launcher and serves it plus every wapp from
-# wapps/ over a local HTTP server. Dropping into Chrome on
+# apps/ over a local HTTP server. Dropping into Chrome on
 # the returned URL gives the user the EXACT same GeoUI / renderer /
 # i18n / store / App Creator / signing stack as the desktop build,
 # only hosted in the browser instead of a GTK window.
@@ -24,7 +24,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ARCHIVE_DIR="$REPO_ROOT/wapps"
+ARCHIVE_DIR="$REPO_ROOT/apps"
 BUILD_DIR="$SCRIPT_DIR/build/web"
 PORT="${1:-8080}"
 

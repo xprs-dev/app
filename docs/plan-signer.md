@@ -182,7 +182,7 @@ the signer for one signature — which doubles as proof it really holds the key.
 | `lib/services/reticulum/rns_service.dart` | `_profilePrivHex` → signer; ~12 sign sites async |
 | `lib/wapp/wapp_engine.dart` | HAL v2; **delete** `hal_identity_sign` / `hal_encrypt` / `hal_decrypt` |
 | `lib/wapp/coin/*` | its own generated wallet key |
-| `wapps/{social,messages,circles,chat}/main.c`, `wapps/hal/xprs_wasm_hal.h` | the four migrations |
+| `apps/{social,messages,circles,chat}/main.c`, `apps/hal/xprs_wasm_hal.h` | the four migrations |
 | `reticulum-dart/.../xprs_crypto.dart` | verify/decrypt only, then delete (its `nip04*` helpers stay — they are real NIP-04) |
 
 ## 10. Verification

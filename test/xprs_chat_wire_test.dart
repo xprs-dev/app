@@ -1,6 +1,6 @@
 // What the chat wapp now airs, read by the host's parser.
 //
-// Chat builds its packets in C (`wapps/chat/xprs.c`); this file reads those
+// Chat builds its packets in C (`apps/chat/xprs.c`); this file reads those
 // exact strings with the Dart implementation. Two independent implementations
 // agreeing on the same bytes is the only thing that makes "chat speaks XPRS"
 // mean anything — a wapp that agreed only with itself would keep working while

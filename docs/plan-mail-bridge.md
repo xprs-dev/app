@@ -11,7 +11,7 @@
 
 The canonical identity of every xprs participant is the **NOSTR pubkey**
 (npub). That is already the conversation key of the Mail wapp
-(`plan-mail.md` §2, `wapps/mail/main.c:328 key_to_hex()`).
+(`plan-mail.md` §2, `apps/mail/main.c:328 key_to_hex()`).
 
 The bridge extends that rule to email: **the `@domain` part of any address is a
 route hint, never identity.** Every mechanism in this document is a different

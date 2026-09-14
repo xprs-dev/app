@@ -115,7 +115,7 @@ flutter:
     - assets/splash/xprs-triad.svg
     - assets/splash/xprs-triad-dark.svg
     # First-run default wapps, bundled as flat .wapp (zip) files so they can
-    # be seeded on devices where the in-repo ../wapps library isn't present
+    # be seeded on devices where the in-repo ../apps library isn't present
     # (Android/iOS, packaged desktop). See lib/launcher/seeding.dart.
     - assets/wapps/
     # Built-in wapp editor, installed to storage on boot (see

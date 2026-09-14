@@ -8,7 +8,7 @@ contents.
 Nothing here is a new network. The pieces already exist: mutable folders
 (`lib/services/folders/`, [folders.md](folders.md)), the content-addressed file
 layer and DHT (`lib/services/files/`), the Indexer role and provider records
-(NOSTR.md). The **Torrents wapp** (`wapps/torrents`) is the torrent-client
+(NOSTR.md). The **Torrents wapp** (`apps/torrents`) is the torrent-client
 face on top of them.
 
 > **State as of 2026-07-15 (wapp v0.5.8).** The swarm, the `ntorrent1…` link, the
@@ -242,8 +242,8 @@ says enough about each of them that the client can choose well.
 
 ## 7. The wapp
 
-`wapps/torrents`, id `tools.xprs.torrents`. Like every wapp, the code lives in
-the `xprs-dev/wapps` repo; aurora is the engine (see the HAL rule: no
+`apps/torrents`, id `tools.xprs.torrents`. Like every wapp, the code lives in
+the `xprs-dev/apps` repo; aurora is the engine (see the HAL rule: no
 torrent-specific logic in `lib/` — it belongs in the wapp's C + GeoUI, on top of
 generic host HALs).
 
@@ -327,7 +327,7 @@ public hub.
 
 The publisher's phone is no longer the only copy — which is what a pin is for.
 
-- **The wapp itself** (`wapps/torrents`, id `tools.xprs.torrents`): **built**,
+- **The wapp itself** (`apps/torrents`, id `tools.xprs.torrents`): **built**,
   and well past the original five screens — see §7 for the current UI (one
   navigable library list, the Info screen, Search, the download-folder setting).
   It autostarts in the background (aurora's `_defaultAutostartWappIds`), because a

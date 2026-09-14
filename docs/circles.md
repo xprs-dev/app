@@ -1,7 +1,7 @@
 # Circles wapp — architecture & operational notes
 
 Private, encrypted group chat over Reticulum. This documents how it actually
-works (verified by reading the code in `../wapps/circles`), what is solid, and
+works (verified by reading the code in `../apps/circles`), what is solid, and
 the gaps found while building the short-id-join end-to-end test.
 
 Circles is the design where **membership itself is confidential**, which is what
@@ -17,11 +17,11 @@ Source of truth: `xprs/wapps/circles/` (C → wasm). Host HAL: `lib/wapp/wapp_en
 
 | Part | File |
 |------|------|
-| Lifecycle + UI glue (commands in / prompts out, RNS drain) | `wapps/circles/main.c` |
-| All circle logic: keys, epochs, crypto, sync, panels, folders | `wapps/circles/circle.c` (~2080 lines) |
-| Thin sqlite wrappers + schema | `wapps/circles/db.c` / `db.h` |
-| String/JSON/base64 helpers | `wapps/circles/util.c` |
-| Native (non-wasm) integration test | `wapps/circles/tests/native/` (`sh tests/native/run.sh`) |
+| Lifecycle + UI glue (commands in / prompts out, RNS drain) | `apps/circles/main.c` |
+| All circle logic: keys, epochs, crypto, sync, panels, folders | `apps/circles/circle.c` (~2080 lines) |
+| Thin sqlite wrappers + schema | `apps/circles/db.c` / `db.h` |
+| String/JSON/base64 helpers | `apps/circles/util.c` |
+| Native (non-wasm) integration test | `apps/circles/tests/native/` (`sh tests/native/run.sh`) |
 | Host HAL (sqlite/crypto/rns/msg) | `aurora/lib/wapp/wapp_engine.dart` |
 | Headless background runner | `aurora/lib/wapp/background_wapp_manager.dart` |
 | Shipped binary | `aurora/assets/wapps/circles.wapp` (a zip: app.wasm + manifest + ui) |
@@ -223,10 +223,10 @@ never crosses the threshold).
 
 ## 9. Build & deploy
 
-- Wapp wasm: `cd wapps/circles && make` (uses `../sdk/Makefile.common`, clang
+- Wapp wasm: `cd apps/circles && make` (uses `../sdk/Makefile.common`, clang
   wasm target). Repackage `circles.wapp` (zip of app.wasm + manifest + screens +
   media + lang) and ship into `aurora/assets/wapps/`.
-- Native logic test (fast, no wasm): `sh wapps/circles/tests/native/run.sh`.
+- Native logic test (fast, no wasm): `sh apps/circles/tests/native/run.sh`.
 - Host (Dart) changes: rebuild the Flutter APK (`./launch-android.sh`) — the wapp
   HAL and background manager live in the host.
 - On device the installed wapp lives under the app data dir; the app seeds /

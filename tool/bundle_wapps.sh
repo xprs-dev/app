@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# bundle_wapps.sh — rebuild assets/wapps/*.wapp from ../wapps/<name>/
+# bundle_wapps.sh — rebuild assets/wapps/*.wapp from ../apps/<name>/
 #
 # The bundled packages are what a device installs on first run, and what
 # upgradeBundledWapps replaces an installed copy with. They are BUILD OUTPUT,
@@ -17,7 +17,7 @@
 # =============================================================================
 set -euo pipefail
 cd "$(dirname "$0")/.."
-SRC=../wapps
+SRC=../apps
 OUT=assets/wapps
 
 names=("$@")

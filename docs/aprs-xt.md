@@ -315,7 +315,7 @@ Every node **periodically announces its Nostr public key** — this is **on by
 default**. A station advertises its public key so peers can build a
 **callsign → public‑key** map and verify its **signed** messages (§14). It is
 the public‑key *beacon*; in the wapp it is
-`pkbeacon_send` (`wapps/aprs/main.c`), gated by the `g_pubkey_beacon` flag
+`pkbeacon_send` (`apps/aprs/main.c`), gated by the `g_pubkey_beacon` flag
 (default on, persisted in KV `pkbeacon`, toggled by "Broadcast my public key" in
 Settings).
 
@@ -654,7 +654,7 @@ neither this document nor the shipped code has any equivalent of.
 
 ---
 
-*This spec documents the XPRS APRS wapp implementation (`wapps/aprs`). The
+*This spec documents the XPRS APRS wapp implementation (`apps/aprs`). The
 TNC2 framing helpers live in `aprs.c`/`aprs.h`; the BLE compact form in
 `BLE_PROTOCOL.md`; the host-side signing in `xprs/lib/util/aprs-xt_sign.dart`
 (exposed via `hal_identity_sign`/`hal_verify`); the media token parser in

@@ -85,7 +85,7 @@ The HAL declares synchronous `hal_file_open/read/write/close`. On
 variants, but that locks `hal_file_*` to native filesystem backends. The
 alternative is to redesign `hal_file_*` to be async with polling
 (matching `hal_http_*`), which works on every backend but requires
-updating `wapps/hal/xprs_wasm_hal.h` and any wapp that touches files.
+updating `apps/hal/xprs_wasm_hal.h` and any wapp that touches files.
 This decision is deferred until a real wapp needs file I/O on encrypted
 or browser backends.
 
@@ -224,7 +224,7 @@ events from `module_handle_event` / `module_tick` via
 `WappEventBridgeEvent` is always the literal string `"host"`.
 
 **Working end-to-end example.** The **Tester** wapp
-(`wapps/archive/tester/`) has an **Events** screen with buttons that
+(`apps/tester/`) has an **Events** screen with buttons that
 exercise every part of the pipeline:
 
 - *Local pub/sub* — Subscribe `test.hello`, Publish `test.hello`,
@@ -456,7 +456,7 @@ response and never hangs:
 - Provider did not emit a matching `widget.response`
 
 **Working end-to-end example.** The `widget_demo` wapp
-(`wapps/archive/widget_demo/`) is a provider that declares both
+(`apps/widget_demo/`) is a provider that declares both
 `text.greet` and `text.shout` in a single manifest — the
 canonical example of one wapp providing multiple widgets. The
 **Tester** wapp's **Widgets** screen has Call buttons for each of
@@ -545,7 +545,7 @@ also fire `ErrorEvent` on `EventBus`.
 ## App authoring
 
 These components exist so the **App Creator** wapp
-(`wapps/archive/app-creator/`) can let a user write, compile, and
+(`apps/app-creator/`) can let a user write, compile, and
 install a new wapp without leaving xprs. They are deliberately
 reusable: any future wapp that needs a syntax-highlighted editor, a
 log surface, a compile pipeline, or a "write this into
@@ -629,7 +629,7 @@ flag set the existing wapps use (`--target=wasm32-wasi -O2 -flto
 -nostartfiles -o output.wasm source.c`), reads the output from
 `<wappData>/compile-tmp/output.wasm`. The HAL header is located by
 walking up from `Directory.current.path` looking for
-`wapps/hal/xprs_wasm_hal.h`.
+`apps/hal/xprs_wasm_hal.h`.
 
 **Phase 2b todo:** add `InWasmClangBackend` that reads a bundled
 wasm-clang binary from `pkg.readBytes('media/compilers/cpp.wasm')`
@@ -723,5 +723,5 @@ the nested object with the same C-side helpers `tester/main.c`
 uses (`find_substr`, `extract_json_string_field`). The escaped
 string values can be re-embedded verbatim into outgoing JSON
 messages without un-escaping — host-side `jsonDecode` handles the
-unescape on the other end. See `wapps/archive/app-creator/main.c`
+unescape on the other end. See `apps/app-creator/main.c`
 for the reference implementation of a field extractor.

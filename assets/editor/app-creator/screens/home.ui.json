@@ -206,7 +206,7 @@
             "$type": "string",
             "label": "Name (folder slug)",
             "default": "",
-            "tip": "Lowercase, no spaces. Folder slug under wapps/."
+            "tip": "Lowercase, no spaces. Folder slug under apps/."
           },
           {
             "$": "field",

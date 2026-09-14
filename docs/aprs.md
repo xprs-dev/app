@@ -8,7 +8,7 @@ callsign and its verified passcode**. The *message‑level conventions* (groups,
 threads, reactions, signed/encrypted messages, media references) are the same
 on every transport and are documented separately in [aprs-xt.md](aprs-xt.md); this
 doc is about the APRS **wire + connection** layer as implemented in the Chat
-wapp ([`wapps/chat/`](../../wapps/chat/): `chat.c`, `main.c`).
+wapp ([`apps/chat/`](../../apps/chat/): `chat.c`, `main.c`).
 
 ---
 

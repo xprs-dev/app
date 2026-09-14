@@ -118,7 +118,7 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
   Future<void> _scanArchiveBody() async {
     // The grid shows ONLY wapps installed in the active profile. The
     // default set is installed once at boot by [ensureProfileSeeded];
-    // the shared ../wapps library is the catalog, never shown directly.
+    // the shared ../apps library is the catalog, never shown directly.
     final wapps = <WappManifest>[];
     final seen = <String>{};
 

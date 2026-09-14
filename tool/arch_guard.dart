@@ -279,7 +279,7 @@ const wappRules = <Rule>[
     id: 'no-transport-logic-in-wapps-repo',
     why: 'A wapp must not reimplement delivery: retries, custody, best-hope '
         'airing and reachability guessing are core concerns (MeshCourier). '
-        'This exact code lived in wapps/chat/main.c and had to be removed.',
+        'This exact code lived in apps/chat/main.c and had to be removed.',
     appliesTo: ['*/main.c', '*/*.c'],
     pattern: r'\b(best_hope|bh_arm|bh_pump|store_and_forward|custody_|'
         r'hal_lxmf_pending|hal_rns_has_path)\w*\s*\(',
@@ -351,8 +351,8 @@ void main(List<String> args) {
   if (sibling.existsSync()) {
     scan(sibling, siblingRules, '../reticulum-dart/', inner: true);
   }
-  final wapps = Directory('../wapps');
-  if (wapps.existsSync()) scan(wapps, wappRules, '../wapps/', inner: true);
+  final wapps = Directory('../apps');
+  if (wapps.existsSync()) scan(wapps, wappRules, '../apps/', inner: true);
 
   final uniq = found.toSet().toList()..sort();
 

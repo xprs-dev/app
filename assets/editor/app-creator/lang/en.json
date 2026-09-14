@@ -19,7 +19,7 @@
   "group.runtime": "Runtime",
   "group.runtime_tip": "Control how the wapp runs — tick interval, HAL dependencies, and widget registration.",
 
-  "field.source_tip": "Plain C against the xprs HAL (wapps/hal/xprs_wasm_hal.h). No libc.",
+  "field.source_tip": "Plain C against the xprs HAL (apps/hal/xprs_wasm_hal.h). No libc.",
   "field.compiler_output": "Compiler output",
   "field.compiler_output_tip": "Compiler stdout and stderr, plus host-side progress messages.",
   "field.title": "Title",

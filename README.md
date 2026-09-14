@@ -252,7 +252,7 @@ build is queued: `flutter run` holds the build lock for as long as the app is
 open, so an APK build behind it waits for you to quit.
 
 The wapps that ship with the app live in `assets/wapps/`. To rebuild one from
-source, see the [`xprs-dev/wapps`](https://github.com/xprs-dev/wapps) repo.
+source, see the [`xprs-dev/apps`](https://github.com/xprs-dev/apps) repo.
 
 ## Development
 
@@ -266,7 +266,7 @@ source, see the [`xprs-dev/wapps`](https://github.com/xprs-dev/wapps) repo.
 > but cannot express, or a host service that cuts across everything. Keep the host
 > generic: app-specific rules (Chat conventions, social logic, torrent formats) go
 > in the wapp's C and GeoUI, never in `lib/`. Most changes belong in
-> [`xprs-dev/wapps`](https://github.com/xprs-dev/wapps), not here.
+> [`xprs-dev/apps`](https://github.com/xprs-dev/apps), not here.
 
 These documents set out how code is written and accepted here. Read the one that
 covers your area before you touch it. They are the rules, not just notes.

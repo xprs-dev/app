@@ -1405,7 +1405,7 @@ class _WappPageState extends State<WappPage>
     //   1. Host-configured default (PreferencesService.wappStoreSource) so
     //      a deployment can point the store at another catalog without
     //      rebuilding the wasm.
-    //   2. The in-repo wapps/binaries/ catalog when running from a source
+    //   2. The in-repo apps/binaries/ catalog when running from a source
     //      checkout — resolved from the runtime cwd by probing index.json
     //      across a few candidate layouts (deriving from widget.wappDir was
     //      off by one level after the wapps/archive -> wapps move).
@@ -1418,9 +1418,9 @@ class _WappPageState extends State<WappPage>
       } else {
         final cwd = platform.currentDirectory();
         final candidates = [
-          '$cwd/../wapps/binaries', // sibling repo (canonical)
-          '$cwd/../../wapps/binaries', // nested workspace fallback
-          '$cwd/wapps/binaries', // legacy in-tree
+          '$cwd/../apps/binaries', // sibling repo (canonical)
+          '$cwd/../../apps/binaries', // nested workspace fallback
+          '$cwd/wapps/binaries', // legacy in-tree (pre-rename)
         ];
         for (final candidate in candidates) {
           final binStorage = wappPackageStorage(candidate);
@@ -2773,7 +2773,7 @@ class _WappPageState extends State<WappPage>
   /// Walk [catalog] (the parsed index.json) and fill in each entry's
   /// `publisher_npub` from the actual wapp's `signature.json` sidecar.
   /// The canonical source tree for built-ins is `wapps/<name>/`;
-  /// [indexDir] is the directory of the index.json (e.g. `wapps/binaries/`)
+  /// [indexDir] is the directory of the index.json (e.g. `apps/binaries/`)
   /// and we look up the signing side at `../archive/<name>/` relative
   /// to it. The fallback path checks `<indexDir>/<name>/` in case the
   /// consumer put signatures next to the binaries.
@@ -2784,8 +2784,8 @@ class _WappPageState extends State<WappPage>
     final parent = normalized.contains('/')
         ? normalized.substring(0, normalized.lastIndexOf('/'))
         : normalized;
-    // Built-in wapps live directly under the wapps/ root (the parent of
-    // wapps/binaries/), not under a wapps/archive/ subtree — that path
+    // Built-in wapps live directly under the apps/ root (the parent of
+    // apps/binaries/), not under an apps/archive/ subtree — that path
     // went away with the archive->flat move.
     final archiveRoot = parent;
     final result = <dynamic>[];
@@ -2860,7 +2860,7 @@ class _WappPageState extends State<WappPage>
       // "Install…" flow on the exact same code path.
       final InstallResult result;
       if (isRemote) {
-        // Remote catalog (e.g. raw.githubusercontent.com/xprs-dev/wapps/
+        // Remote catalog (e.g. raw.githubusercontent.com/xprs-dev/apps/
         // main/binaries): download the .wapp ZIP over HTTP. The store's
         // do_install already rewrote any github tree URL to the raw form,
         // so concatenating dir + file gives the byte URL directly.
@@ -9453,7 +9453,7 @@ class _WappPageState extends State<WappPage>
       }
       // 2. Built-in archive
       final archivePkg = wappPackageStorage(
-        '${platform.currentDirectory()}/../wapps/${wapp.name}',
+        '${platform.currentDirectory()}/../apps/${wapp.name}',
       );
       return archivePkg.readBytesSync(relativePath);
     }
@@ -9522,7 +9522,7 @@ class _WappPageState extends State<WappPage>
         wappDir = _installed.getAbsolutePath(wapp.name);
       } else {
         final archiveDir =
-            '${platform.currentDirectory()}/../wapps/${wapp.name}';
+            '${platform.currentDirectory()}/../apps/${wapp.name}';
         wappDir = archiveDir;
       }
       wapp.likeCount = WappSocialStore.instance.reactionCount(wappDir);
@@ -9704,7 +9704,7 @@ class _WappPageState extends State<WappPage>
     if (_installed.existsSync('${wapp.name}/manifest.json')) {
       return _installed.getAbsolutePath(wapp.name);
     }
-    return '${platform.currentDirectory()}/../wapps/${wapp.name}';
+    return '${platform.currentDirectory()}/../apps/${wapp.name}';
   }
 
   bool _isLiked(_CatalogWapp wapp) {
@@ -10161,7 +10161,7 @@ class _WappPageState extends State<WappPage>
       if (name == _wappName) _pkg,
       if (_installed.existsSync('$name/manifest.json'))
         ScopedProfileStorage(_installed, name),
-      wappPackageStorage('${platform.currentDirectory()}/../wapps/$name'),
+      wappPackageStorage('${platform.currentDirectory()}/../apps/$name'),
     ];
 
     for (final pkg in candidates) {

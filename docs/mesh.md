@@ -19,7 +19,7 @@ describes what shipped.
 ## 1. Problem
 
 Today's BLE-for-APRS is a 1-hop digipeater flood: every station that hears a
-message re-airs it once (`wapps/chat/main.c` `rq_push`, dedup rings). Cost per
+message re-airs it once (`apps/chat/main.c` `rq_push`, dedup rings). Cost per
 message is O(N) transmissions — at 100 devices in range, ~100 rebroadcasts of
 *every* message, all contending for each phone's single advertising set. The
 compact wire format has no hop/TTL field; loop control is only content-hash
@@ -268,14 +268,14 @@ readable by carriers:
 - HAL: expose mesh send/receive + route/neighbor queries to wapps (keep host
   generic — mesh is a transport service, chat semantics stay in the wapp).
 
-**Chat wapp (`wapps/chat`):**
+**Chat wapp (`apps/chat`):**
 - Replace the blind BLE digipeater for 1:1 with mesh routing (send → host mesh
   service). Keep the broadcast path for geochat bulletins + as gradient
   fallback.
 - TTL byte in the compact wire format (foundational even for the fallback).
 - Read receipts / `?ACK` unchanged.
 
-**Bluetooth wapp (`wapps/bluetooth`, new):** devices/mesh/settings UI (§12);
+**Bluetooth wapp (`apps/bluetooth`, new):** devices/mesh/settings UI (§12);
 owns the mesh preferences (quota, retention, roles, battery, politeness).
 
 **ESP32 (later):** dongles can join as fixed base stations (always powered,
@@ -283,7 +283,7 @@ stationary by definition) — out of scope for M1–M3.
 
 ## 12. Bluetooth wapp
 
-A new **Bluetooth** wapp (`wapps/bluetooth`), the mesh's face — same pattern as
+A new **Bluetooth** wapp (`apps/bluetooth`), the mesh's face — same pattern as
 the Reticulum wapp (observed-only registry surfaced by the host, native
 rendering, no webview, layout off the UI thread):
 

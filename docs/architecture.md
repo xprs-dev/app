@@ -6,7 +6,7 @@ disagrees with it, this document takes precedence.
 It exists because two mistakes recur:
 
 1. **Transport logic placed in a wapp.** Store-and-forward was first built
-   inside `wapps/chat/main.c` as `bh_arm`, `bh_pump` and `best_hope_wire`. It
+   inside `apps/chat/main.c` as `bh_arm`, `bh_pump` and `best_hope_wire`. It
    functioned, but every other wapp had no offline delivery, and the wapp
    required HAL endpoints added solely so that it could estimate reachability.
 2. **Work placed on the UI isolate.** Reticulum crypto and transport formerly
@@ -49,8 +49,8 @@ another station held it, or how many delivery attempts were made.
 | Should this message go over BLE, Reticulum, or both? | core | `lib/services/` |
 | Is the recipient reachable? | core; a wapp does not ask | `RnsService`, `MeshService` |
 | Who carries a message for an absent peer? | core | `MeshCourier`, `MeshStore` |
-| What does a message mean (a like, a room post, a moderation rule)? | wapp | `wapps/<name>/` |
-| How is a conversation rendered? | wapp | `wapps/<name>/` |
+| What does a message mean (a like, a room post, a moderation rule)? | wapp | `apps/<name>/` |
+| How is a conversation rendered? | wapp | `apps/<name>/` |
 | Which key signs or encrypts? | core; a wapp requests, never holds | `hal_identity_sign`, `hal_encrypt` |
 
 ### Test for misplacement
@@ -637,7 +637,7 @@ travel, and closed-group membership is still enforced at the core's door.
 
 For chat this environment already exists:
 
-- `wapps/chat/tests/native/` — many instances of the real wapp
+- `apps/chat/tests/native/` — many instances of the real wapp
   (`main.c`/`room.c`/`db.c`/`thread.c`/`xprs.c`) in one process. `hal_mock.c`
   carries the mock HAL and NULL-default network hooks; `run.sh` drives one node,
   `run-sim.sh` (`sim.c`) drives a network of them.

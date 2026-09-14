@@ -7,7 +7,7 @@
 The app ships compiled wapps: assets/wapps/*.wapp (and desktop/wapps/*.wapp)
 carry app.wasm, plus tests.wasm for some, and assets/editor/app-creator/ carries
 the editor's app.wasm. F-Droid builds everything from source, so its recipe
-runs this against a checkout of xprs-dev/wapps (a srclib) before
+runs this against a checkout of xprs-dev/apps (a srclib) before
 `flutter build`. Every other file in those packages (manifest, screens, lang,
 icons, the C source itself) is text and is left alone. Only the binaries are
 replaced by fresh builds, and `licenses/` (the notices of third-party code

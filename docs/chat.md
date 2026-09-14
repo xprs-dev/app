@@ -14,7 +14,7 @@ reference, [`chat-rooms.md`](./chat-rooms.md); the NOSTR transport and sync
 reliability rules live in [`NOSTR.md`](./NOSTR.md). Read those for depth; read this
 for the whole picture and the state of play.
 
-- **Source of truth for code:** `xprs-dev/wapps` repo, folder `chat/` (`main.c`,
+- **Source of truth for code:** `xprs-dev/apps` repo, folder `chat/` (`main.c`,
   `room.c`/`room.h`, `chat.c`, `ble.c`, `screens/home.ui.json`, `manifest.json`).
   XPRS only carries a bundled copy at `assets/wapps/chat.wapp`.
 - **Current version:** `0.2.117`.
@@ -211,8 +211,8 @@ the ⚙ (identity/position, Bluetooth, media auto-download, pubkey beacon).
 | Doc | `docs/chat-rooms.md` | wire protocol reference |
 | Doc | `docs/NOSTR.md` | transport + sync reliability |
 
-**Build:** `WASI_SDK_PATH=~/wasi-sdk make` in `wapps/chat` (`-Werror`), then
-`wapps/build-archive.sh chat` to package `chat-<ver>.wapp`, then copy into
+**Build:** `WASI_SDK_PATH=~/wasi-sdk make` in `apps/chat` (`-Werror`), then
+`apps/build-archive.sh chat` to package `chat-<ver>.wapp`, then copy into
 `aurora/assets/wapps/chat.wapp`. The APK build MUST use `~/bin/android-build-locked
 flutter build apk` from the aurora root (its own step — never chained after a `cd`
 into another dir) with a `--build-number` above the installed one (CI keeps bumping

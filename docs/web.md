@@ -44,7 +44,7 @@ six SQLite files (104 blocks). No uncaught exception, no error toast.
 
 ```sh
 ~/bin/android-build-locked flutter build web --no-tree-shake-icons --pwa-strategy=none
-./launch-web.sh            # builds, packs ../wapps, serves on :8080
+./launch-web.sh            # builds, packs ../apps, serves on :8080
 ```
 
 Every `flutter build` goes through the lock (CLAUDE.md); dart2js takes about

@@ -517,8 +517,8 @@ extension _WappEditor on _WappPageState {
     // (web built-ins come from the fetch-based loader instead).
     final cwd = platform.currentDirectory();
     final archiveCandidates = [
-      '$cwd/../wapps',
-      '$cwd/../../wapps',
+      '$cwd/../apps',
+      '$cwd/../../apps',
     ];
     for (final archivePath in archiveCandidates) {
       final archive = wappPackageStorage(archivePath);

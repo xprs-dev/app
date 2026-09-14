@@ -19,7 +19,7 @@
   "group.runtime": "Laufzeit",
   "group.runtime_tip": "Steuere, wie die Wapp läuft — Tick-Intervall, HAL-Abhängigkeiten und Widget-Registrierung.",
 
-  "field.source_tip": "Reines C gegen das xprs-HAL (wapps/hal/xprs_wasm_hal.h). Kein libc.",
+  "field.source_tip": "Reines C gegen das xprs-HAL (apps/hal/xprs_wasm_hal.h). Kein libc.",
   "field.compiler_output": "Compiler-Ausgabe",
   "field.compiler_output_tip": "Compiler-stdout und -stderr plus Fortschrittsmeldungen vom Host.",
   "field.title": "Titel",

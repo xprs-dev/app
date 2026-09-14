@@ -3,7 +3,7 @@
 # release.sh — cut an XPRS release.
 #
 # Bumps pubspec.yaml, syncs lib/version.dart, pins ../reticulum-dart and
-# ../wapps by commit, adds the F-Droid changelog copies, commits, tags vX.Y.Z
+# ../apps by commit, adds the F-Droid changelog copies, commits, tags vX.Y.Z
 # and pushes. Pushing the tag is what triggers everything else: release.yml
 # builds the three platforms as xprs-<version>-<platform> (Android in F-Droid's
 # own buildserver image, so F-Droid reproduces it), xprs-dev/downloads puts them
@@ -69,7 +69,7 @@ pin_of() {
   echo "$sha"
 }
 RD_PIN=$(pin_of ../reticulum-dart)
-WAPPS_PIN=$(pin_of ../wapps)
+WAPPS_PIN=$(pin_of ../apps)
 
 # F-Droid shows changelogs/<versionCode>.txt, and each per-ABI APK has its own
 # versionCode (ABI digit x 1,000,000 + CODE, android/app/build.gradle.kts). The

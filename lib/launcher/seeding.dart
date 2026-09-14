@@ -173,7 +173,7 @@ Future<void> ensureProfileSeeded() async {
   }
 }
 
-/// Copy the default set from the in-repo ../wapps library into the
+/// Copy the default set from the in-repo ../apps library into the
 /// profile: the Wapp Store + Maps, plus every `kind: "system"` wapp.
 /// Everything else (forum, movies, terminal, mediapack) is left for the
 /// user to install via the store. Returns the count installed.
@@ -293,13 +293,13 @@ Future<int> _seedDefaultsFromAssets() async {
   return count;
 }
 
-/// Copy the default set from the in-repo ../wapps library (desktop run from
+/// Copy the default set from the in-repo ../apps library (desktop run from
 /// source). Returns the count installed (0 when the library isn't present,
 /// e.g. on a device — the caller then falls back to the bundled assets).
 Future<int> _seedDefaultsFromFilesystem() async {
   var count = 0;
   final cwd = platform.currentDirectory();
-  for (final libPath in ['$cwd/../wapps', '$cwd/../../wapps']) {
+  for (final libPath in ['$cwd/../apps', '$cwd/../../apps']) {
     final lib = wappPackageStorage(libPath);
     if (!await lib.directoryExists('')) continue;
     final entries = await lib.listDirectory('');
@@ -369,11 +369,11 @@ Future<int> ensureNewDefaultWapps() async {
   return added;
 }
 
-/// Install one wapp by [name] from the in-repo ../wapps library (desktop run
+/// Install one wapp by [name] from the in-repo ../apps library (desktop run
 /// from source) or, failing that, the bundled `assets/wapps/[name].wapp`.
 Future<bool> _installDefaultWapp(String name) async {
   final cwd = platform.currentDirectory();
-  for (final dir in ['$cwd/../wapps/$name', '$cwd/../../wapps/$name']) {
+  for (final dir in ['$cwd/../apps/$name', '$cwd/../../apps/$name']) {
     final pkg = wappPackageStorage(dir);
     if (await pkg.exists('manifest.json')) {
       final res = await WappInstallerService.instance

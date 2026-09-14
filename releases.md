@@ -12,7 +12,7 @@ reproducible builds that F-Droid ships as they are (`docs/f-droid.md`).
 ## 1. The shape: the web announces, Reticulum carries
 
 ```
-  xprs-dev/app                              xprs-dev/wapps
+  xprs-dev/app                              xprs-dev/apps
         │  release.yml on tag vX.Y.Z               │ build-archive.sh commits binaries/
         │   android in F-Droid's buildserver       │
         │   image (signed, reproducible),          │
@@ -27,7 +27,7 @@ reproducible builds that F-Droid ships as they are (`docs/f-droid.md`).
         ▼                                          │
   https://xprs.dev/downloads/<tag>/…               │
         │                                          ▼
-        └──────────────┬──────────────────── wapps/binaries/
+        └──────────────┬──────────────────── apps/binaries/
                        │ xprs-dev.github.io · sync.yml (cron 3h + manual)
                        │  • wait until the files are on xprs.dev/downloads
                        │  • hash each artifact
@@ -150,7 +150,7 @@ exist. `test/update_mirror_test.dart` pins every name the workflow publishes.
 ```
 
 `release.sh` bumps `pubspec.yaml`, regenerates `lib/version.dart`, pins
-`../reticulum-dart` and `../wapps` by commit (`.reticulum-dart-commit`,
+`../reticulum-dart` and `../apps` by commit (`.reticulum-dart-commit`,
 `.wapps-commit`; both must be pushed), adds the F-Droid changelog copies,
 commits, tags and pushes. Pushing the tag is what triggers everything else.
 

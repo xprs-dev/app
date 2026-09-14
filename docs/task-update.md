@@ -184,7 +184,7 @@ pipe frames to the engine (verify/store stay off the UI thread).
   machine, two concurrent builds freeze it).
 - **Wapps bundle by version**: rebuilding `social.wapp` with the same manifest
   version means the host silently keeps the old copy. Bump `manifest.json`
-  version every time; copy from `wapps/binaries/social/social-X.Y.Z.wapp` (build
+  version every time; copy from `apps/binaries/social/social-X.Y.Z.wapp` (build
   with `WASI_SDK_PATH=/home/brito/wasi-sdk make` then `./build-archive.sh social`).
 - **The log API** (`adb forward tcp:3456 tcp:3456`, `curl /api/log?n=4000`)
   freezes when the app is backgrounded — a silent log means backgrounded app,
@@ -224,7 +224,7 @@ every follow) was removed.
   event_recv with the too-big log.
 - `aurora/lib/wapp/wapp_page.dart` — feed wiring: onRefresh, mute, follow,
   mentions.
-- `wapps/social/main.c` — subscriptions (UI-gated), drain, refresh handler.
+- `apps/social/main.c` — subscriptions (UI-gated), drain, refresh handler.
 - Tests to keep green: `reticulum-dart/test/{firehose_curator,firehose_starvation,
   nostr_relay_hub,nostr_relay_defaults,feed_quality}_test.dart`,
   `aurora/test/{follow_mirror,note_mentions,notification_dedup}_test.dart`.

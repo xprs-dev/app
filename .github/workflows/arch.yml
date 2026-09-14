@@ -22,14 +22,14 @@ jobs:
         with:
           path: xprs
 
-      # The wapp-side rules only run when the wapps repo is present; without it
+      # The wapp-side rules only run when the apps repo is present; without it
       # the guard silently checks less, so check it out.
-      - name: Checkout wapps (wapp-side rules)
+      - name: Checkout apps (wapp-side rules)
         uses: actions/checkout@v4
         continue-on-error: true
         with:
-          repository: xprs-dev/wapps
-          path: wapps
+          repository: xprs-dev/apps
+          path: apps
 
       # The web-build rule is also checked in reticulum-dart (a path dependency
       # of the app); without the sibling the guard silently checks less.

@@ -181,5 +181,5 @@ the code:
   completed handoff. None describe current behaviour; read them for intent, not
   as documentation.
 - Sibling repos assumed checked out beside this one: `../reticulum-dart` (a path
-  dependency — the build fails without it), `../wapps`, `../website`, and the
+  dependency — the build fails without it), `../apps`, `../website`, and the
   ESP32 firmware. See `CLAUDE.md`.

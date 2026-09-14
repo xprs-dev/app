@@ -99,7 +99,7 @@ def main():
     ap.add_argument('--out', help='write DIR/metadata and DIR/srclibs instead of stdout')
     ap.add_argument('--repo', help="override the app's Repo: (local test)")
     ap.add_argument('--srclib-repo', action='append', default=[], metavar='NAME=URL',
-                    help='override a srclib Repo: (local test), e.g. xprs-wapps=/xprs/wapps')
+                    help='override a srclib Repo: (local test), e.g. xprs-wapps=/xprs/apps')
     ap.add_argument('--no-binary', action='store_true',
                     help='drop binary: (a build that makes the release APK)')
     ap.add_argument('--print-vercode', metavar='ABI',

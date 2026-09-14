@@ -4,7 +4,7 @@ The Chat wapp models rooms as **NIP-72 moderated communities** plus a custom,
 npub-signed **moderation op-log**, all reduced client-side. Rooms federate to any
 standard NOSTR relay: a room is a plain kind-34550 community, room messages are
 ordinary kind-1 notes tagged to it, and a non-xprs client simply ignores our
-custom op kind. All of this lives in the wapp (`wapps/chat/room.c` + `room.h`);
+custom op kind. All of this lives in the wapp (`apps/chat/room.c` + `room.h`);
 the host stays generic (only its existing `hal_nostr_*`, `hal_sqlite_*`,
 `hal_crypto_*` HALs are used).
 
@@ -28,7 +28,7 @@ a roster, a cryptographic root of trust that needs no pinned constant, and
 
 **The sub-room trees are the sharpest disagreement, and it is not cosmetic.**
 Both designs nest. Here, authority flows *down*: `room_has_authority` walks
-`parentRoomId` to the root (`wapps/chat/room.c:248-267`), so a global mod
+`parentRoomId` to the root (`apps/chat/room.c:248-267`), so a global mod
 moderates every room beneath them, and a room's admin moderates its descendants.
 In section 26 a subgroup is an ordinary group with its own keypair, listed by
 its parent with `grant:<X5> role:sub`, and **listing confers nothing**: the

@@ -41,7 +41,7 @@ So `local` in the relay list is not a toy — it is a real, servable relay.
 
 ## The wapp
 
-`wapps/nostr/` — a thin C module over `hal.nostr`:
+`apps/nostr/` — a thin C module over `hal.nostr`:
 - **Feed** tab (`$type:"chat"`): subscribes to `{kinds:[1], authors:<follows>}`,
   drains events (`hal_nostr_event_recv`) into the feed, composes posts
   (`hal_nostr_post(1, …)` — the host signs with the profile key; the nsec never

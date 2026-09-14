@@ -3,8 +3,8 @@
 #
 # Compiles the Flutter Linux desktop bundle and launches the resulting
 # binary. The binary is run with the project root as its working
-# directory so the launcher's wapp scan (`$cwd/../wapps`) resolves to
-# the sibling /home/brito/code/xprs/wapps/ folder.
+# directory so the launcher's wapp scan (`$cwd/../apps`) resolves to
+# the sibling /home/brito/code/xprs/apps/ folder.
 #
 # Usage:
 #   ./launch-linux.sh            # debug build, then launch
@@ -63,6 +63,6 @@ if [ "$BUILD_ONLY" -eq 1 ]; then
 fi
 
 # ── Launch ───────────────────────────────────────────────────────────
-# Run from the project root so the wapp scan finds ../wapps.
+# Run from the project root so the wapp scan finds ../apps.
 echo "Launching XPRS..."
 exec "$BINARY"

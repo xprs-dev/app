@@ -33,7 +33,7 @@ profile dir `X16WMN`, now on RELEASE build, no run-as), C61=`C61000000004616`
 DB reads needed). Don't reboot the phones.
 
 **TEMP diagnostic to remove before finalizing:** `circle_on_datagram` in
-`wapps/circles/circle.c` has a `notify("info","RXDG:"+k)` line marked `/* TEMP
+`apps/circles/circle.c` has a `notify("info","RXDG:"+k)` line marked `/* TEMP
 diag */` — and TANK2's installed wasm is a hot-swapped diagnostic build. Rebuild
 clean (remove RXDG) + repackage before shipping.
 

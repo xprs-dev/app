@@ -118,7 +118,7 @@ notification for a new message.
 ## 6. Scope
 
 **In:**
-- New wapp `wapps/mail` — id `tools.xprs.mail`, title `Mail`,
+- New wapp `apps/mail` — id `tools.xprs.mail`, title `Mail`,
   icon mail, `intents: ["mail"]`, autostart/background (messages must arrive
   when the app is closed).
 - Conversations keyed by pubkey; display name + avatar from `hal_nostr_profile`;
@@ -140,7 +140,7 @@ notification for a new message.
 
 ## 7. Outcome (2026-07-11) — built and validated
 
-Shipped as `wapps/messages` v0.1.2 (`xprs-dev/wapps` `989ae1a`). Validated on C61
+Shipped as `apps/messages` v0.1.2 (`xprs-dev/apps` `989ae1a`). Validated on C61
 and TANK2 on **different networks** (home Wi-Fi `192.168.178.x` vs phone hotspot
 `172.20.10.x`, mutually unreachable at IP level, so every copy crossed a public
 hub), on release-grade AOT builds:
@@ -205,7 +205,7 @@ Neither would have been caught by reading the code, and neither crashed anything
 ## 8. Renamed to `Mail` (2026-08-02)
 
 The wapp shipped as `Messages` and was renamed to **`Mail`** — folder
-`wapps/messages` → `wapps/mail`, id `tools.xprs.messages` →
+`apps/messages` → `apps/mail`, id `tools.xprs.messages` →
 `tools.xprs.mail`, title/screen `Messages` → `Mail`, icon
 `media/icons/mail.svg`, first release `0.2.0`.
 

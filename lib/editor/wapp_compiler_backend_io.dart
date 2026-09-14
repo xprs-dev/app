@@ -54,7 +54,7 @@ class NativeWasiSdkBackend implements CompilerBackend {
     if (halDir == null) {
       return CompileResult.failure(
         'xprs_wasm_hal.h not found — walked up from '
-        '${Directory.current.path} looking for wapps/hal/ and '
+        '${Directory.current.path} looking for apps/hal/ and '
         'nothing matched. Launch XPRS from the repo root (or a '
         'subdirectory of it) so the header is reachable.',
       );
@@ -223,10 +223,10 @@ class NativeWasiSdkBackend implements CompilerBackend {
   String? _findHalDir() {
     final cwd = Directory.current.path;
     final candidates = [
-      '$cwd/wapps/hal',
-      '$cwd/../wapps/hal',
-      '$cwd/../../wapps/hal',
-      '$cwd/../../../wapps/hal',
+      '$cwd/apps/hal',
+      '$cwd/../apps/hal',
+      '$cwd/../../apps/hal',
+      '$cwd/../../../apps/hal',
     ];
     for (final c in candidates) {
       if (File('$c/xprs_wasm_hal.h').existsSync()) return c;

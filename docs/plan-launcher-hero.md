@@ -97,7 +97,7 @@ a restart.
 
 Tapping a card reuses what exists: `_wappForIntent(intent)` →
 `WappPage(initialView: deepLink, initialPost: payload)`. NOSTR items keep today's
-`post:<id>` deep link, so `wapps/social/main.c` is untouched.
+`post:<id>` deep link, so `apps/social/main.c` is untouched.
 
 ## 4. Ranking
 

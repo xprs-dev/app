@@ -12,7 +12,7 @@ Code: `lib/services/folders/` (`folder_event.dart`, `folder_state.dart`,
 `folder_service.dart`, `folder_relay.dart`, `disk_folder_manager.dart`,
 `folder_keystore.dart`, `folder_subscriptions.dart`). Facade:
 `RnsService` (`lib/services/reticulum/rns_service.dart`, `folder*` methods).
-UI: the **Files** wapp (`wapps/files`).
+UI: the **Files** wapp (`apps/files`).
 
 ## 1. Identity and capabilities
 

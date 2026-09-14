@@ -124,7 +124,7 @@ The dispatch layer is the easy part, and most of it exists.
 - **Loop prevention has to be invented.** `spec/XPRS.md` section 13.11.3 puts
   gatewaying explicitly *outside* the section 13.1 hop budget and the section
   13.2 `via:` rules, so a bridge inherits none of it. The APRS-IS iGate in
-  `wapps/chat/main.c` shows the discipline required: never re-originate own
+  `apps/chat/main.c` shows the discipline required: never re-originate own
   traffic, drop self-callsign echoes, never bridge control frames, content-hash
   dedup.
 

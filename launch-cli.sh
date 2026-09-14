@@ -4,14 +4,14 @@
 # Usage: ./launch-cli.sh <wapp-name>
 # Example: ./launch-cli.sh terminal
 #
-# Loads the named wapp from wapps/<name>/ and runs it
+# Loads the named wapp from apps/<name>/ and runs it
 # interactively in the terminal via libwasm_bridge.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ARCHIVE_DIR="$REPO_ROOT/wapps"
+ARCHIVE_DIR="$REPO_ROOT/apps"
 BRIDGE_DIR="$REPO_ROOT/wasm_bridge"
 DART_BIN="$HOME/flutter/bin/dart"
 
