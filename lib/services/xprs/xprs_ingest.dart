@@ -226,6 +226,11 @@ class XprsIngest {
         : Tier.stranger;
   }
 
+  /// Followed by callsign rather than by key (a device): one set lookup, the
+  /// set pushed by RnsService like [XprsArchive.followed].
+  static bool _followedStation(String fromBase) =>
+      XprsArchive.instance.followedStations.contains(fromBase);
+
   /// A packet heard over the air or over a local link. The complete receive
   /// surface calls this: BLE 0x41, BLE 0x58, and the courier's session lane.
   static void heard(
@@ -385,6 +390,7 @@ class XprsIngest {
       internet: false,
       policy: policy,
       addressedToUs: forUs,
+      followedStation: _followedStation(_base(from)),
     );
     if (shelf != null) {
       // `admit` only QUEUES. Whoever needs to know a row exists listens to
@@ -985,6 +991,7 @@ class XprsIngest {
           (toC.isNotEmpty && XprsArchive.instance.hasActiveDecl(toC)),
       internet: true,
       policy: policy,
+      followedStation: _followedStation(fromC),
     );
     if (shelf == null) {
       // A receipt, a ping or a result was never going to be written down by

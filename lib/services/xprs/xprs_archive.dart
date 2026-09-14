@@ -37,6 +37,7 @@ import 'xprs_id.dart';
 import '../social/retention_tier.dart';
 import 'xprs_archive_policy.dart';
 import 'xprs_packet.dart';
+import 'xprs_presence.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
 import '../../platform/fs.dart';
@@ -121,6 +122,11 @@ class XprsArchive {
   /// This replaces `protectedCallsigns`, a hook that was declared, plumbed
   /// into the eviction SQL, and never written by anybody.
   Set<String> followed = const {};
+
+  /// The subset of [followed] followed BY CALLSIGN (a device, XPRS.md 11.7.1),
+  /// whose observations are kept and capped per station. Pushed by RnsService
+  /// with [followed]; the receive funnel does one lookup.
+  Set<String> followedStations = const {};
 
   /// Counters for /api and for honest logs.
   int admitted = 0, dropped = 0, forged = 0;
@@ -280,6 +286,8 @@ class XprsArchive {
     final stored = <MapEntry<String, int?>>[];
     /// Senders whose identity rows need collapsing after this batch.
     final identities = <String>{};
+    /// Stations followed by callsign whose presence rows need capping.
+    final capped = <String>{};
     _pending.clear();
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
     try {
@@ -345,12 +353,20 @@ class XprsArchive {
           ]);
           admitted++;
           if (p.type == 'identity') identities.add(fromc);
+          if (e.tier == Tier.followed &&
+              xprsIsPresenceType(p.type) &&
+              followedStations.contains(fromc)) {
+            capped.add(fromc);
+          }
         }
       } finally {
         ins.dispose();
       }
       for (final c in identities) {
         _collapseIdentities(db, c);
+      }
+      for (final c in capped) {
+        _capFollowedPresence(db, c);
       }
       db.execute('COMMIT');
     } catch (e) {
@@ -376,6 +392,30 @@ class XprsArchive {
         }
       }
     }
+  }
+
+  /// How many presence rows a station followed by callsign keeps on the
+  /// followed shelf: a week of a device reporting every five minutes.
+  static const int followedPresenceMax = 2016;
+
+  /// Keep the newest [followedPresenceMax] presence rows of [fromc] on the
+  /// followed shelf and drop the rest.
+  ///
+  /// The followed tier has no quota and no expiry (XPRS.md 12), which is right
+  /// for what a person says and unbounded for a device that says the same
+  /// thing every minute for years. Ordered by the packet's own `ts:`, so a
+  /// replayed old page never displaces a newer reading; served by
+  /// idx_pk_from(fromc, pts). A row a public archiver keeps for strangers is
+  /// on another shelf and not touched.
+  static void _capFollowedPresence(CommonDatabase db, String fromc) {
+    if (fromc.isEmpty) return;
+    db.execute(
+        'DELETE FROM packets WHERE fromc = ? AND tier = ? '
+        "AND type IN ('observation','service') AND id NOT IN ("
+        'SELECT id FROM packets WHERE fromc = ? AND tier = ? '
+        "AND type IN ('observation','service') ORDER BY pts DESC LIMIT ?)",
+        [fromc, Tier.followed.index, fromc, Tier.followed.index,
+         followedPresenceMax]);
   }
 
   /// Keep only the NEWEST identity announcement of each shape, per callsign.
@@ -773,12 +813,37 @@ class XprsArchive {
     /// shelf as well would publish the follow list, which 16.2 keeps on the
     /// device.
     bool ownOnly = false,
+    /// Exactly this author, bare callsign, on idx_pk_from. [only] is the
+    /// wider 12.6 question (author, addressee or a `hears:` list) and a scan;
+    /// "what did this device say" is this one.
+    String? from,
+    /// Every author whose callsign says it is this kind (xprs_presence.dart),
+    /// by the kind's prefix on the same index. A kind without one prefix (a
+    /// station: X2, X3 or a licence) selects nothing.
+    XprsKind? fromKind,
   }) {
     final db = _db;
     if (db == null) return const [];
     final where = StringBuffer('1=1');
     final args = <Object?>[];
     if (ownOnly) where.write(' AND own = 1');
+    if (from != null && from.trim().isNotEmpty) {
+      where.write(' AND fromc = ?');
+      args.add(_base(from));
+    }
+    if (fromKind != null) {
+      final prefix = xprsKindPrefix(fromKind);
+      if (prefix == null) return const [];
+      // A range, not GLOB: the same rows, and an index range scan whatever
+      // the planner makes of a bound pattern. Callsigns are uppercase ASCII,
+      // so 'X4' <= c < 'X5' is exactly the X4 prefix.
+      final last = prefix.codeUnitAt(prefix.length - 1);
+      where.write(' AND fromc >= ? AND fromc < ?');
+      args
+        ..add(prefix)
+        ..add(prefix.substring(0, prefix.length - 1) +
+            String.fromCharCode(last + 1));
+    }
     // Ask for the rows you will render, not a page you will sieve.
     //
     // The chat rooms asked for "the newest 48 messages" and filtered on their
@@ -873,6 +938,23 @@ class XprsArchive {
           'wire': r['wire'],
         }
     ];
+  }
+
+  /// The packet time (ms) of the newest row [fromc] authored among [types],
+  /// or null when none is held. One indexed row: what a catch-up puts in
+  /// `since:` so an archiver re-airs only what this station lacks.
+  int? newestPts(String fromc, {List<String> types = const []}) {
+    final db = _db;
+    final c = _base(fromc);
+    if (db == null || c.isEmpty) return null;
+    final byType = types.isEmpty
+        ? ''
+        : ' AND type IN (${List.filled(types.length, '?').join(',')})';
+    final rows = db.select(
+        'SELECT pts FROM packets WHERE fromc = ?$byType '
+        'ORDER BY pts DESC LIMIT 1',
+        [c, ...types]);
+    return rows.isEmpty ? null : rows.first['pts'] as int;
   }
 
   /// Counters for /api/status-style checks.

@@ -14,7 +14,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:xprs/services/preferences_service.dart';
+import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_catchup.dart';
+import 'package:xprs/services/xprs/xprs_vocab.dart';
 import 'package:xprs/services/xprs/xprs_publisher.dart';
 import 'package:xprs/services/xprs/xprs_monitor.dart';
 import 'package:xprs/services/xprs/xprs_id.dart';
@@ -416,5 +418,91 @@ void main() {
     expect(st['station'], 'X3SUPR');
     expect(st['target'], XprsCatchup.backfillMessages);
     expect(st['days'], XprsCatchup.backfillWindow.inDays);
+  });
+
+  // ── A station followed by callsign (XPRS.md 12.12.2) ────────────────────
+  //
+  // On the internet there is no broadcast to hear: a device's status reaches
+  // a phone out of its earshot only because its controller deposited it with
+  // an archiver and the phone asks that archiver for it.
+  group('a followed station', () {
+    const device = 'X4PL3M';
+    const archiver = 'X3ARK';
+
+    setUp(() {
+      PreferencesService.instanceSync!.xprsNamedArchivers = const [archiver];
+      XprsArchive.instance.followedStations = {device};
+    });
+    tearDown(() {
+      PreferencesService.instanceSync!.xprsNamedArchivers = const [];
+      XprsArchive.instance.followedStations = const {};
+    });
+
+    List<String> fetches() =>
+        aired.where((w) => w.contains('only:$device')).toList();
+
+    test('out of earshot, it is fetched from the chosen archiver', () async {
+      await XprsCatchup.instance.tick(_self);
+      final ask = fetches().single;
+      expect(ask, contains('d:$archiver'));
+      expect(ask, contains('cmd:history kind:identity,observation'));
+      expect(ask, isNot(contains('scope:local')),
+          reason: 'a directed ask; scope:local never leaves (12.12.2)');
+      final since = RegExp(r'since:(\S+)').firstMatch(ask)!.group(1)!;
+      expect(xprsParseTs(since),
+          now - XprsCatchup.followFirstWindow.inMilliseconds);
+    });
+
+    test('in earshot, the air already carries it: no fetch', () async {
+      XprsMonitor.instance.offer(
+          XprsPacket.parse('t:observation f:$device state:on')!,
+          bearer: 'ble',
+          selfCallsign: _self,
+          nowMs: now);
+      await XprsCatchup.instance.tick(_self);
+      expect(fetches(), isEmpty);
+    });
+
+    test('never two unanswered asks to one archiver', () async {
+      await XprsCatchup.instance.tick(_self);
+      expect(aired, hasLength(1),
+          reason: 'the conversation\'s ask waits for this one\'s answer');
+      now += const Duration(seconds: 20).inMilliseconds;
+      await XprsCatchup.instance.tick(_self);
+      expect(aired, hasLength(1));
+
+      final ask = XprsPacket.parse(fetches().single)!;
+      XprsCatchup.instance.onResult(XprsPacket.parse(
+          't:result f:$archiver d:$_self ts:x r:${xprsIdentifier(ask)} '
+          'code:200')!);
+      now += XprsCatchup.followEveryHidden.inMilliseconds +
+          const Duration(minutes: 1).inMilliseconds;
+      await XprsCatchup.instance.tick(_self);
+      expect(fetches(), hasLength(2), reason: 'answered, and a period later');
+    });
+
+    test('a 206 continues before the oldest row the page brought', () async {
+      await XprsCatchup.instance.tick(_self);
+      final ask = XprsPacket.parse(fetches().single)!;
+      final oldest = now - const Duration(hours: 3).inMilliseconds;
+      XprsCatchup.instance.noteRow(device, oldest);
+      XprsCatchup.instance.onResult(XprsPacket.parse(
+          't:result f:$archiver d:$_self ts:x r:${xprsIdentifier(ask)} '
+          'code:206')!);
+      now += const Duration(minutes: 11).inMilliseconds; // the archiver's floor
+      await XprsCatchup.instance.tick(_self);
+      final next = fetches().last;
+      expect(fetches(), hasLength(2));
+      expect(
+          xprsParseTs(RegExp(r'until:(\S+)').firstMatch(next)!.group(1)!),
+          oldest ~/ 1000 * 1000);
+      expect(XprsCatchup.instance.followRows, 1);
+    });
+
+    test('nothing chosen, nothing fetched', () async {
+      PreferencesService.instanceSync!.xprsNamedArchivers = const [];
+      await XprsCatchup.instance.tick(_self);
+      expect(fetches(), isEmpty);
+    });
   });
 }

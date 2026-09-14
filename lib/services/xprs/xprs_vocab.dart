@@ -421,7 +421,10 @@ const Set<String> kXprsReadings = {
   'temp', 'hum', 'press', 'wind', 'wdir', 'intemp', 'inhum',
   'rain1', 'rain24',
   // telemetry
-  'batt', 'dose', 'lifedose', 'radon', 'rf', 'efield', 'mfield', 'odometer',
+  'batt', 'volt', 'dose', 'lifedose', 'radon', 'rf', 'efield', 'mfield',
+  'odometer',
+  // a device's condition (section 11.7): what an X4 mostly says
+  'state', 'level', 'target',
   // what keeps it running (section 14.3), and where its production comes from
   'source',
   // energy (section 15.5.2): watts now, watt-hours accumulated

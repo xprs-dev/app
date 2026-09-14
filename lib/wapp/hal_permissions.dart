@@ -109,6 +109,9 @@ const Map<String, String> kGatedImports = {
   'xprs_traffic': HalPermission.spool,
   'xprs_stations': HalPermission.spool,
   'xprs_station': HalPermission.spool,
+  // What this station follows by callsign decides what the spool keeps.
+  'xprs_follow': HalPermission.spool,
+  'xprs_followed': HalPermission.spool,
 
   // USB flashing: a wapp that can rewrite a board's flash says so.
   'flash_scan': HalPermission.flash,

@@ -164,12 +164,44 @@ class XprsDevice {
   final int firstSeenMs;
   final int lastSeenMs;
 
-  String get kindWord => switch (kind) {
-        XprsKind.user => 'user',
-        XprsKind.station => 'station',
-        XprsKind.device => 'device',
-      };
+  String get kindWord => xprsKindWord(kind);
 }
+
+/// What a callsign says its holder is (XPRS.md 3), and nothing else: the one
+/// rule, read by [classifyXprs] and by every list that shows a kind, so that a
+/// wapp is handed the verdict rather than testing a prefix of its own. Null for
+/// `X5`, which is a group and not a device.
+XprsKind? xprsKindOf(String callsign) {
+  final c = callsign.trim().toUpperCase();
+  if (c.isEmpty || c.startsWith('X5')) return null;
+  if (c.startsWith('X1')) return XprsKind.user;
+  if (c.startsWith('X4')) return XprsKind.device;
+  // X2, X3, or a licensed callsign. Nothing in a licence says movable or
+  // fixed, and guessing would be worse than saying station.
+  return XprsKind.station;
+}
+
+String xprsKindWord(XprsKind kind) => switch (kind) {
+      XprsKind.user => 'user',
+      XprsKind.station => 'station',
+      XprsKind.device => 'device',
+    };
+
+XprsKind? xprsKindFromWord(String word) => switch (word.trim().toLowerCase()) {
+      'user' => XprsKind.user,
+      'station' => XprsKind.station,
+      'device' => XprsKind.device,
+      _ => null,
+    };
+
+/// The prefix every holder of [kind] wears, so a store can select a kind by
+/// its index. Null for a station, which is `X2`, `X3` or a licensed callsign
+/// and so has no single prefix.
+String? xprsKindPrefix(XprsKind kind) => switch (kind) {
+      XprsKind.user => 'X1',
+      XprsKind.device => 'X4',
+      XprsKind.station => null,
+    };
 
 /// The services that only an XPRS station announces. A node carrying one of
 /// these is running our software — which still does not tell us WHO it is, and
@@ -196,24 +228,9 @@ XprsDevice? classifyXprs(XprsCandidate s) {
   final (call, evidence) = named;
 
   // A group is an address several stations read (XPRS.md 6.3), not a device.
-  if (call.startsWith('X5')) return null;
-
-  final XprsKind kind;
-  var fixed = false;
-  if (call.startsWith('X1')) {
-    kind = XprsKind.user;
-  } else if (call.startsWith('X2')) {
-    kind = XprsKind.station;
-  } else if (call.startsWith('X3')) {
-    kind = XprsKind.station;
-    fixed = true;
-  } else if (call.startsWith('X4')) {
-    kind = XprsKind.device;
-  } else {
-    // A licensed callsign. Nothing in it says movable or fixed, and guessing
-    // would be worse than saying station.
-    kind = XprsKind.station;
-  }
+  final kind = xprsKindOf(call);
+  if (kind == null) return null;
+  final fixed = call.startsWith('X3');
 
   final bearers = <String>[];
   for (final b in s.airBearers) {

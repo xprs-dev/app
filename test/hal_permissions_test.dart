@@ -25,6 +25,8 @@ void main() {
         'nostr_event_recv',
         'relay_dm_recv',
         'xprs_history',
+        'xprs_follow',
+        'xprs_followed',
       ]) {
         expect(halImportAllowed(imp, none), isFalse,
             reason: '$imp must not be reachable without a declaration');

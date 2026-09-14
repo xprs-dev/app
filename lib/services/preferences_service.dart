@@ -365,6 +365,15 @@ class PreferencesService {
     await _prefs.setBool('xprs.keepFollowed', v);
   }
 
+  /// Stations followed by CALLSIGN, bare and uppercase: the same middle tier
+  /// of XPRS.md 12, for what a person follows without a key of its own to
+  /// follow, a device (11.7.1) found nearby or in an archive. Kept apart from
+  /// the key follows, which are a social list with a NOSTR mirror.
+  List<String> get xprsFollowedStations =>
+      _prefs.getStringList('xprs.followStations') ?? const [];
+  set xprsFollowedStations(List<String> v) =>
+      _prefs.setStringList('xprs.followStations', v);
+
   int get xprsArchiveMaxMb => _prefs.getInt('xprs.archiveMaxMb') ?? 500;
   set xprsArchiveMaxMb(int v) => _prefs.setInt('xprs.archiveMaxMb', v);
 

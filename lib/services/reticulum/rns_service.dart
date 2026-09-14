@@ -537,12 +537,22 @@ class RnsService {
   /// so an unfollow actually releases the bytes the byte cap is allowed to take.
   /// The set itself is [xprsFollowedCallsigns], which is pure and tested.
   void _pushFollowedCallsigns() {
+    final stations = <String>{
+      for (final c in followedStations)
+        if (NostrCrypto.bareCallsign(c).isNotEmpty) NostrCrypto.bareCallsign(c)
+    };
     final want = xprsFollowedCallsigns(
       followedHex: _follows.asSet,
       callPub: _callPub,
       derive: _derivedCallsign,
       base: NostrCrypto.bareCallsign,
+      stations: stations,
     );
+    final hadStations = XprsArchive.instance.followedStations;
+    if (stations.length != hadStations.length ||
+        !stations.containsAll(hadStations)) {
+      XprsArchive.instance.followedStations = stations;
+    }
     final had = XprsArchive.instance.followed;
     if (want.length == had.length && want.containsAll(had)) return;
     XprsArchive.instance.followed = want;
@@ -8439,6 +8449,37 @@ class RnsService {
       'deliv': deliv,
       'prop': prop,
     };
+  }
+
+  // ── Stations followed by callsign (XPRS.md 12's middle tier) ─────────────
+  /// The stations this operator follows by callsign, bare and uppercase.
+  List<String> get followedStations =>
+      PreferencesService.instanceSync?.xprsFollowedStations ?? const [];
+
+  static final RegExp _followable = RegExp(r'^[A-Z0-9/]{2,16}$');
+
+  /// Follow, or stop following, the station [call] by its callsign.
+  ///
+  /// For what has no person's key to follow: a device (XPRS.md 11.7.1) found
+  /// nearby or in an archive. Its packets go on the followed shelf, presence
+  /// included, and XprsCatchup asks the chosen archivers for it while it is
+  /// out of earshot. No NOSTR mirror and no DHT record: this is a storage and
+  /// fetch decision, not a social one. False for a callsign nothing can follow,
+  /// empty, malformed, or a group (X5), whose membership is its own business.
+  bool followStation(String call, bool on) {
+    final base = NostrCrypto.bareCallsign(call);
+    if (!_followable.hasMatch(base) || xprsKindOf(base) == null) return false;
+    final prefs = PreferencesService.instanceSync;
+    if (prefs == null) return false;
+    final had = prefs.xprsFollowedStations;
+    final next = on
+        ? (had.contains(base) ? had : [...had, base])
+        : had.where((c) => c != base).toList();
+    if (next.length != had.length) {
+      prefs.xprsFollowedStations = next;
+      _pushFollowedCallsigns();
+    }
+    return true;
   }
 
   // ── Store-and-forward follow set (NOSTR-follow tier) ──────────────────────

@@ -254,4 +254,54 @@ void main() {
       expect(m.heardRecently('X3DCK0', nowMs: later), isFalse);
     });
   });
+
+
+  group('a device (XPRS.md 11.7.1)', () {
+    test('its state, level, setpoint and supply voltage are readings', () {
+      XprsMonitor.instance.offer(
+          p('t:observation f:X4PL3M state:off level:40% target:21C '
+              'volt:23.8V ts:2026-08-19_18:40:00'),
+          bearer: 'lan',
+          selfCallsign: 'X1A67X');
+      final row = XprsMonitor.instance.stationJson('X4PL3M')!;
+      expect(row['kind'], 'device');
+      expect(row['readings'], {
+        'state': 'off',
+        'level': '40%',
+        'target': '21C',
+        'volt': '23.8V',
+      });
+    });
+
+    test('a replayed older reading never overwrites a newer one', () {
+      // An archiver's replay (12.10) is the original bytes arriving now, and
+      // pages come newest first: arrival order is exactly backwards.
+      XprsMonitor.instance.offer(
+          p('t:observation f:X4PL3M state:on ts:2026-08-19_18:40:00'),
+          bearer: 'lan',
+          selfCallsign: 'X1A67X');
+      XprsMonitor.instance.offer(
+          p('t:observation f:X4PL3M state:off volt:23.8V '
+              'ts:2026-08-19_17:00:00'),
+          bearer: 'lan',
+          selfCallsign: 'X1A67X');
+      final readings = XprsMonitor.instance.stationJson('X4PL3M')!['readings'];
+      expect(readings['state'], 'on', reason: 'the newer reading stands');
+      expect(readings['volt'], '23.8V',
+          reason: 'a key only the older packet had is still news');
+    });
+
+    test('every section of the station list says what each station is', () {
+      XprsMonitor.instance.offer(p('t:observation f:X4PL3M state:on'),
+          bearer: 'ble', selfCallsign: 'X1A67X');
+      XprsMonitor.instance.offer(p(beacon),
+          bearer: 'ble', selfCallsign: 'X1A67X');
+      final items = [
+        for (final s in jsonDecode(XprsMonitor.instance.stationsJson()) as List)
+          ...(s['items'] as List)
+      ];
+      final kinds = {for (final i in items) i['id']: i['kind']};
+      expect(kinds, {'X4PL3M': 'device', 'X1RD89': 'user'});
+    });
+  });
 }

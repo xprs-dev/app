@@ -23,6 +23,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pointycastle/ecc/curves/secp256k1.dart';
 import 'package:sqlite3/open.dart';
+import 'package:xprs/services/xprs/xprs_presence.dart';
+import 'package:xprs/services/social/retention_tier.dart';
 
 final BigInt _d =
     BigInt.parse('1234567890abcdef1234567890abcdef', radix: 16);
@@ -489,4 +491,70 @@ void main() {
     });
   });
 
+
+  group('a station followed by callsign', () {
+    test('query from: is that author exactly, not every mention', () {
+      a.admit(_p('t:observation f:X4PL3M state:off ts:2026-08-19_18:40:00'),
+          bearer: 'lan');
+      a.admit(_p('t:observation f:X3RLY7 link:lan hears:X4PL3M '
+              'ts:2026-08-19_18:41:00'),
+          bearer: 'lan');
+      a.flush();
+      expect(a.query(only: 'X4PL3M').length, 2,
+          reason: 'only: is 12.6\'s wider question');
+      final mine = a.query(from: 'X4PL3M');
+      expect(mine.map((r) => r['from']), ['X4PL3M']);
+    });
+
+    test('fromKind selects every author of that kind, and a station none', () {
+      a.admit(_p('t:identity f:X4PL3M nick:yard-pump ts:2026-08-19_18:40:00'),
+          bearer: 'lan');
+      a.admit(_p('t:identity f:X1RD89 nick:rui ts:2026-08-19_18:40:00'),
+          bearer: 'lan');
+      a.flush();
+      expect(
+          a
+              .query(fromKind: XprsKind.device, types: const ['identity'])
+              .map((r) => r['from']),
+          ['X4PL3M']);
+      expect(a.query(fromKind: XprsKind.station), isEmpty);
+    });
+
+    test('newestPts is the newest reading held, by the packet\'s own ts', () {
+      a.admit(_p('t:observation f:X4PL3M state:on ts:2026-08-19_18:40:00'),
+          bearer: 'lan');
+      a.admit(_p('t:observation f:X4PL3M state:off ts:2026-08-19_17:00:00'),
+          bearer: 'lan');
+      a.flush();
+      expect(a.newestPts('X4PL3M', types: const ['observation']),
+          xprsParseTs('2026-08-19_18:40:00'));
+      expect(a.newestPts('X4NONE'), isNull);
+    });
+
+    test('its presence is capped per station on the followed shelf', () {
+      a.followedStations = {'X4PL3M'};
+      final base = DateTime.utc(2026, 8, 19).millisecondsSinceEpoch;
+      String ts(int i) {
+        final d = DateTime.fromMillisecondsSinceEpoch(base + i * 60000,
+            isUtc: true);
+        String two(int n) => n.toString().padLeft(2, '0');
+        return '${d.year}-${two(d.month)}-${two(d.day)}_'
+            '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+      }
+      const extra = 5;
+      for (var i = 0; i < XprsArchive.followedPresenceMax + extra; i++) {
+        a.admit(_p('t:observation f:X4PL3M volt:${i}V ts:${ts(i)}'),
+            bearer: 'lan', tier: Tier.followed);
+      }
+      a.flush();
+      a.followedStations = const {};
+      expect(a.countOf(types: const ['observation']),
+          XprsArchive.followedPresenceMax);
+      // The oldest went, the newest stayed.
+      expect(a.query(from: 'X4PL3M', limit: 1).single['wire'],
+          contains('volt:${XprsArchive.followedPresenceMax + extra - 1}V'));
+      expect(a.newestPts('X4PL3M'),
+          xprsParseTs(ts(XprsArchive.followedPresenceMax + extra - 1)));
+    });
+  });
 }

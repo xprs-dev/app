@@ -23,6 +23,7 @@ import 'dart:convert';
 import '../receive/core_state.dart';
 import 'xprs_id.dart';
 import 'xprs_packet.dart';
+import 'xprs_presence.dart';
 import 'xprs_sig.dart';
 import 'xprs_vocab.dart';
 
@@ -173,6 +174,11 @@ class XprsStation {
   /// ever sent (section 10.4 telemetry, section 23.3 supply). Kept as the text
   /// on the wire, unit included -- `14.2C`, not `14.2`.
   final Map<String, String> readings = {};
+
+  /// When each reading was COMPOSED (the packet's own `ts:`, else when it
+  /// arrived), so an archiver replaying a device's history newest first
+  /// cannot leave its oldest page standing as the current value.
+  final Map<String, int> readingsAt = {};
 
   /// An archiver's `count:` — how many RECORDS it holds (section 24.0.1).
   ///
@@ -346,9 +352,20 @@ class XprsMonitor {
     // Keep the latest of anything it measured. A weather station's temp and a
     // tracker's battery arrive on ordinary packets, not a special type, so
     // this reads whatever the packet happens to carry.
+    //
+    // Newest COMPOSED wins, per key, the rule `link:` above already follows:
+    // a replay (12.10) is byte-identical to the original and arrives now, and
+    // letting arrival order decide put last week's `state:off` over this
+    // morning's `state:on`.
+    int? composedAt; // parsed only for a packet that carries a reading
     for (final k in kXprsReadings) {
       final v = p[k];
-      if (v != null && v.isNotEmpty) st.readings[k] = v;
+      if (v == null || v.isEmpty) continue;
+      composedAt ??= xprsParseTs(p['ts']) ?? now;
+      final was = st.readingsAt[k];
+      if (was != null && composedAt < was) continue;
+      st.readings[k] = v;
+      st.readingsAt[k] = composedAt;
     }
     st.rssi = rssi;
     st.packets++;
@@ -553,6 +570,7 @@ class XprsMonitor {
         'title': s.callsign,
         'subtitle': sub.toString(),
         'tags': tags,
+        ..._kind(s.callsign),
       };
     }).toList();
 
@@ -567,6 +585,7 @@ class XprsMonitor {
               'title': e.key,
               'subtitle': e.value.bearer.toUpperCase(),
               'tags': [_ago(now - e.value.lastMs), e.value.bearer.toUpperCase()],
+              ..._kind(e.key),
             })
         .toList();
     // The third section: reached us over Reticulum this hour, and not heard
@@ -581,6 +600,7 @@ class XprsMonitor {
               'title': e.key,
               'subtitle': 'RNS',
               'tags': [_ago(now - e.value), 'RNS'],
+              ..._kind(e.key),
             })
         .toList();
     return jsonEncode([
@@ -605,6 +625,7 @@ class XprsMonitor {
       if (r == null) return null;
       return {
         'call': c,
+        ..._kind(c),
         'bearer': r.bearer,
         'lastMs': r.lastMs,
         'agoMs': now - r.lastMs,
@@ -612,6 +633,7 @@ class XprsMonitor {
     }
     return {
       'call': s.callsign,
+      ..._kind(s.callsign),
       'bearer': s.bearer,
       'bearers': s.bearers.keys.toList(),
       'rssi': s.rssi,
@@ -630,6 +652,14 @@ class XprsMonitor {
       if (s.sigHeadline != null) 'sig': s.sigHeadline!.name,
       if (s.readings.isNotEmpty) 'readings': s.readings,
     };
+  }
+
+  /// What the callsign says the station is (`user`, `station`, `device`),
+  /// decided by the one rule in xprs_presence.dart so a wapp listing only
+  /// devices reads the verdict instead of testing a prefix itself.
+  static Map<String, String> _kind(String callsign) {
+    final k = xprsKindOf(callsign);
+    return k == null ? const {} : {'kind': xprsKindWord(k)};
   }
 
   /// The ring, oldest first, as the wapp's traffic log.

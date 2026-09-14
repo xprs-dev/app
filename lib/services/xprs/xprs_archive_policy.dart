@@ -113,6 +113,9 @@ Tier? xprsAdmitTier({
   /// `d:` names this station. Mail addressed to us is ours whatever its type:
   /// an observation somebody sent US is an answer, not chatter.
   bool addressedToUs = false,
+  /// The sender is a station this operator follows BY CALLSIGN (a device,
+  /// 11.7.1): its observations are not chatter but the very thing followed.
+  bool followedStation = false,
 }) {
   // Never spooled by anybody: acknowledgements, results and reachability
   // tests. The archive drops these at its own door too; naming them here
@@ -143,6 +146,11 @@ Tier? xprsAdmitTier({
   // so it needs no declaration even off the internet: a followed friend's
   // publications reaching us through a hub are exactly what we meant to keep.
   if (tier == Tier.followed && policy.keepFollowed) {
+    // A device says nothing BUT presence: a pump's `state:off volt:23.8V`
+    // is an observation, and following it by callsign is asking for exactly
+    // those. Bounded per station by XprsArchive._capFollowedPresence. A person
+    // followed by key keeps the old rule, so a friend's beacons stay chatter.
+    if (followedStation) return Tier.followed;
     return (!presence || chatterOk) ? Tier.followed : null;
   }
 
@@ -174,13 +182,21 @@ Tier? xprsAdmitTier({
 /// two names: the `X1`+4 anyone can derive, and the one its holder announced
 /// (`X3ARK`, or an issued `CT1ABC`). Both are followed, or a station is a
 /// stranger under the only name it ever transmits.
+///
+/// [stations] are the ones followed by callsign (a device has no person's key
+/// to follow); they are followed under exactly the name given.
 Set<String> xprsFollowedCallsigns({
   required Set<String> followedHex,
   required Map<String, String> callPub,
   required String Function(String hex) derive,
   required String Function(String callsign) base,
+  Iterable<String> stations = const [],
 }) {
   final want = <String>{};
+  for (final c in stations) {
+    final b = base(c);
+    if (b.isNotEmpty) want.add(b);
+  }
   for (final h in followedHex) {
     final d = derive(h);
     if (d.isNotEmpty) {

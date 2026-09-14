@@ -37,6 +37,7 @@ import '../services/xprs/xprs_groups.dart';
 import '../services/xprs/xprs_archive.dart';
 import '../services/flash/flash_service.dart';
 import '../services/xprs/xprs_monitor.dart';
+import '../services/xprs/xprs_presence.dart';
 import '../services/xprs/xprs_packet.dart';
 import '../services/xprs/xprs_receipt.dart';
 import '../services/xprs/xprs_send.dart';
@@ -3585,6 +3586,32 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_follow / hal_xprs_followed: follow a station by its callsign
+    // (XPRS.md 12's middle tier), for what has no person's key to follow, a
+    // device. The wapp says which; keeping its packets and fetching them from
+    // the chosen archivers while it is out of earshot is the core's.
+    final halXprsFollow = WasmFunction(
+      (int callPtr, int callLen, int on) {
+        if (callLen <= 0) return -1;
+        return RnsService.instance
+                .followStation(_readStr(callPtr, callLen), on != 0)
+            ? 0
+            : -1;
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    final halXprsFollowed = WasmFunction(
+      (int outPtr, int outCap) {
+        if (outCap <= 0) return 0;
+        final bytes =
+            utf8.encode(jsonEncode(RnsService.instance.followedStations));
+        if (bytes.length > outCap) return -bytes.length;
+        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     // hal_flash_*: a board on a USB cable. Every verb is fire-and-forget
     // and says so through `core.flash`; the state is one flat read.
     final halFlashScan = WasmFunction(
@@ -3936,7 +3963,9 @@ class WappEngine {
       (int qPtr, int qLen, int outPtr, int outCap) {
         if (outCap <= 0) return 0;
         int? sinceMs, untilMs;
-        String? only;
+        String? only, from;
+        XprsKind? kind;
+        var badKind = false;
         List<String>? types;
         List<String>? to;
         var limit = 200;
@@ -3945,6 +3974,15 @@ class WappEngine {
           sinceMs = xprsParseTs(q['since'] as String?);
           untilMs = xprsParseTs(q['until'] as String?);
           only = q['only'] as String?;
+          // Exactly one author, and every author of one kind: both on the
+          // (fromc, pts) index, so "what did this device say" and "which
+          // devices does the archive know" are not a scan of the spool.
+          from = q['from'] as String?;
+          final k = q['kind'];
+          if (k is String && k.isNotEmpty) {
+            kind = xprsKindFromWord(k);
+            badKind = kind == null;
+          }
           final t = q['types'];
           if (t is List) types = t.map((e) => e.toString()).toList();
           // Destination list, "" meaning undirected — so a room asks for the
@@ -3954,13 +3992,17 @@ class WappEngine {
           if (d is List) to = d.map((e) => e.toString()).toList();
           limit = (q['limit'] as num?)?.toInt() ?? 200;
         } catch (_) {}
-        final bytes = utf8.encode(jsonEncode(XprsArchive.instance.query(
-            sinceMs: sinceMs,
-            untilMs: untilMs,
-            only: only,
-            types: types,
-            to: to,
-            limit: limit.clamp(1, 200))));
+        final bytes = utf8.encode(jsonEncode(badKind
+            ? const []
+            : XprsArchive.instance.query(
+                sinceMs: sinceMs,
+                untilMs: untilMs,
+                only: only,
+                types: types,
+                to: to,
+                from: from,
+                fromKind: kind,
+                limit: limit.clamp(1, 200))));
         if (bytes.length > outCap) return -bytes.length;
         return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
       },
@@ -4538,6 +4580,8 @@ class WappEngine {
       WasmImport('hal', 'mesh_devices', halMeshDevices),
       WasmImport('hal', 'xprs_stations', halXprsStations),
       WasmImport('hal', 'xprs_station', halXprsStation),
+      WasmImport('hal', 'xprs_follow', halXprsFollow),
+      WasmImport('hal', 'xprs_followed', halXprsFollowed),
       WasmImport('hal', 'flash_scan', halFlashScan),
       WasmImport('hal', 'flash_probe', halFlashProbe),
       WasmImport('hal', 'flash_fetch', halFlashFetch),

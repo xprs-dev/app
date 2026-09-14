@@ -363,6 +363,16 @@ class XprsCatchup {
           for (final e in _askedAtMs.entries) e.key: nowMs() - e.value,
         },
         'resuming': _resume.keys.toList(),
+        // Followed stations fetched from the chosen archivers (12.12.2).
+        'followed': {
+          'asks': followAsks,
+          'rows': followRows,
+          'refused': followRefused,
+          'askedAgoMs': {
+            for (final e in _followAskedAtMs.entries) e.key: nowMs() - e.value,
+          },
+          'resuming': _followResume.keys.toList(),
+        },
         // The first-run backfill, because a fresh install that quietly
         // fetches nothing must be readable without a debugger.
         'backfill': {
@@ -391,6 +401,13 @@ class XprsCatchup {
     _backfillStation = null;
     _backfillFetched = 0;
     _backfillSettled = false;
+    _followPending.clear();
+    _followAskedAtMs.clear();
+    _followArchiverAtMs.clear();
+    _followResume.clear();
+    _followOldest.clear();
+    _followLastResume.clear();
+    followAsks = followRows = followRefused = 0;
   }
 
   /// Announce which key this callsign signs with, on every active bearer.
@@ -524,6 +541,15 @@ class XprsCatchup {
       for (final base in knownAlwaysOn)
         if (!fresh.any((s) => _base(s.callsign) == base)) base
     ];
+
+    // Followed stations first: they are few, the person asked for them by
+    // name, and the in-flight gate below keeps the conversation's ask from
+    // landing on the same archiver while theirs is being answered.
+    await _pullFollowed(selfCallsign, [
+      for (final c in prefs.xprsNamedArchivers)
+        if (_base(c).isNotEmpty && _base(c) != selfBase) _base(c)
+    ], now, prefs);
+
     if (fresh.isEmpty && deep.isEmpty) return;
 
     // ── The first-run backfill (36.10.1 rule 4's "fetched deliberately") ──
@@ -578,7 +604,9 @@ class XprsCatchup {
       // News accelerates, but never past the floor: the floor is the peer's
       // budget, and a count: that moves every minute does not buy us the right
       // to ask an ordinary archiver every minute.
-      final last = _askedAtMs[base] ?? 0;
+      // Whoever asked last, the conversation or a followed station: the floor
+      // is what the ARCHIVER permits between two asks from us.
+      final last = math.max(_askedAtMs[base] ?? 0, _followArchiverAtMs[base] ?? 0);
       final floor = _floorMsFor(base, prefs);
       if (last != 0 && now - last < floor) continue;
       // An ask still waiting for its answer is not a reason to send another.
@@ -804,6 +832,11 @@ class XprsCatchup {
   /// when the result answers one of our pending asks.
   void onResult(XprsPacket p) {
     final r = p['r'] ?? '';
+    final followAsk = _followPending[r];
+    if (followAsk != null) {
+      _onFollowResult(r, followAsk, int.tryParse(p['code'] ?? '') ?? 0);
+      return;
+    }
     final ask = _pending[r];
     if (ask == null) return;
     final code = int.tryParse(p['code'] ?? '') ?? 0;
@@ -960,6 +993,11 @@ class XprsCatchup {
   /// seconds for eight minutes.
   void noteRow(String from, int? tsMs) {
     final base = _base(from);
+    if (base.isNotEmpty && tsMs != null && _followAsking(base)) {
+      followRows++;
+      final oldest = _followOldest[base];
+      if (oldest == null || tsMs < oldest) _followOldest[base] = tsMs;
+    }
     if (base.isEmpty || !_inFlight.containsKey(base)) return;
     if (tsMs == null) return;
     if (nowMs() - tsMs < _replayAge.inMilliseconds) return;
@@ -978,6 +1016,150 @@ class XprsCatchup {
     final base = _base(station);
     final prev = _oldestReplayMs[base];
     if (prev == null || tsMs < prev) _oldestReplayMs[base] = tsMs;
+  }
+
+  // ── Followed stations, fetched from the chosen archivers ─────────────────
+  //
+  // XPRS.md 12.12.2: on a transport nobody owns there is no broadcast to hear.
+  // A device followed by callsign (RnsService.followStation) reaches a station
+  // that is out of its earshot only because its controller deposited its
+  // observations with an archiver (12.3) and somebody asks that archiver for
+  // them, with 12.6's question: `only:` the device, `kind:identity,
+  // observation`, `since:` the newest observation already held. What comes
+  // back enters through the one receive door like any replay and is kept on
+  // the followed shelf (xprsAdmitTier `followedStation`), so no wapp is told
+  // any of this happened; it reads what the store holds.
+
+  /// How often one followed station is fetched while somebody is looking at
+  /// the screen, and while nobody is (12.10.2: nobody awake, nobody polled
+  /// fast). Never faster than the archiver's own floor, which is separate.
+  static const Duration followEveryVisible = Duration(minutes: 2);
+  static const Duration followEveryHidden = Duration(minutes: 15);
+
+  /// A station never fetched before is fetched this far back; after that,
+  /// `since:` is the newest reading held for it.
+  static const Duration followFirstWindow = Duration(hours: 24);
+
+  final Map<String, _FollowAsk> _followPending = {};
+  final Map<String, int> _followAskedAtMs = {};
+  final Map<String, int> _followArchiverAtMs = {};
+  final Map<String, int> _followResume = {};
+  final Map<String, int> _followOldest = {};
+  final Map<String, int> _followLastResume = {};
+
+  /// Counters on /api/status: asks sent, rows they brought, refusals.
+  int followAsks = 0, followRows = 0, followRefused = 0;
+
+  bool _followAsking(String base) {
+    for (final a in _followPending.values) {
+      if (a.station == base) return true;
+    }
+    return false;
+  }
+
+  Future<void> _pullFollowed(String self, List<String> archivers, int now,
+      PreferencesService prefs) async {
+    final followed = XprsArchive.instance.followedStations;
+    if (followed.isEmpty || archivers.isEmpty) return;
+    final every =
+        (_visible ? followEveryVisible : followEveryHidden).inMilliseconds;
+    // Due: out of earshot (in earshot the air already carries it) and either
+    // not fetched within the period or owed the rest of a 206 page. The
+    // longest-waiting first, so one station never starves behind another.
+    final due = [
+      for (final c in followed)
+        if (!XprsMonitor.instance.heardDirectly(c, nowMs: now) &&
+            !_followAsking(c) &&
+            (_followResume.containsKey(c) ||
+                now - (_followAskedAtMs[c] ?? 0) >= every))
+          c
+    ]..sort((a, b) =>
+        (_followAskedAtMs[a] ?? 0).compareTo(_followAskedAtMs[b] ?? 0));
+    if (due.isEmpty) return;
+    final asked = <String>[];
+    var next = 0;
+    for (final a in archivers) {
+      if (next >= due.length) break;
+      // One unanswered ask per archiver, whoever sent it (12.10.2), and never
+      // faster than the floor that archiver permits.
+      if (_awaiting(a, now)) continue;
+      final last = math.max(_askedAtMs[a] ?? 0, _followArchiverAtMs[a] ?? 0);
+      if (last != 0 && now - last < _floorMsFor(a, prefs)) continue;
+      final station = due[next++];
+      if (await _askFollowed(self, a, station, now)) {
+        asked.add('$station@$a');
+      }
+    }
+    if (asked.isNotEmpty) {
+      LogService.instance
+          .add('XPRS: fetching followed ${asked.join(", ")}');
+    }
+  }
+
+  Future<bool> _askFollowed(
+      String self, String archiver, String station, int now) async {
+    final held = XprsArchive.instance
+        .newestPts(station, types: const ['observation']);
+    final floorMs = now - maxWindow.inMilliseconds;
+    var sinceMs = held ?? now - followFirstWindow.inMilliseconds;
+    if (sinceMs < floorMs) sinceMs = floorMs;
+    final untilMs = _followResume[station];
+    // identity first: the observations verify against a key that may ride
+    // the same page (the same order XprsGossip.askAlwaysOn uses).
+    final wire = StringBuffer('t:command f:$self d:$archiver ts:${_ts(now)} '
+        'cmd:history kind:identity,observation only:$station '
+        'since:${_ts(sinceMs)}');
+    if (untilMs != null) wire.write(' until:${_ts(untilMs)}');
+    final p = XprsPacket.parse(wire.toString());
+    if (p == null || !p.fits) return false;
+    final id = xprsIdentifier(p);
+    if (_followPending.length >= _pendingMax) {
+      _followPending.remove(_followPending.keys.first);
+    }
+    _followPending[id] = _FollowAsk(archiver, station);
+    _followAskedAtMs[station] = now;
+    _followArchiverAtMs[archiver] = now;
+    _inFlight[archiver] = now;
+    _followOldest.remove(station);
+    followAsks++;
+    final send = sendOverride ?? XprsPublisher.instance.publishWire;
+    await send(wire.toString());
+    return true;
+  }
+
+  void _onFollowResult(String r, _FollowAsk ask, int code) {
+    if (code == 429) {
+      _followPending.remove(r);
+      followRefused++;
+      // The archiver's authority over our cadence (12.10.2), whoever asked.
+      _noteAnswer(ask.archiver, XprsAnswer.refused);
+      return;
+    }
+    if (code != 200 && code != 206 && code != 404) return; // 202: page follows
+    _followPending.remove(r);
+    _inFlight.remove(ask.archiver);
+    // Judge the page against what is on disk (see onResult).
+    try {
+      XprsArchive.instance.flush();
+    } catch (e) {
+      LogService.instance.add('XPRS catch-up: flush before judging failed: $e');
+    }
+    if (code == 206) {
+      // More held than served: ask for what came before the oldest row this
+      // page brought. A continuation that reaches back no further than the
+      // last one is a loop, and is dropped back to the period.
+      final oldest = _followOldest[ask.station];
+      if (oldest == null || oldest == _followLastResume[ask.station]) {
+        _followResume.remove(ask.station);
+        _followLastResume.remove(ask.station);
+      } else {
+        _followResume[ask.station] = oldest;
+        _followLastResume[ask.station] = oldest;
+      }
+      return;
+    }
+    _followResume.remove(ask.station);
+    _followLastResume.remove(ask.station);
   }
 
   static String _base(String c) {
@@ -1001,4 +1183,11 @@ class _Ask {
   final String station;
   final int atMs;
   final bool partial;
+}
+
+/// One outstanding fetch of a followed station: which archiver, for whom.
+class _FollowAsk {
+  const _FollowAsk(this.archiver, this.station);
+  final String archiver;
+  final String station;
 }

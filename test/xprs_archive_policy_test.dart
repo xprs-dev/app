@@ -184,4 +184,47 @@ void main() {
       expect(names({'zz'}, const {}), isEmpty);
     });
   });
+
+
+  group('a station followed by callsign (a device, 11.7.1)', () {
+    Tier? device(String type, {bool internet = false,
+            XprsArchivePolicy policy = private}) =>
+        xprsAdmitTier(
+          tier: Tier.followed,
+          type: type,
+          publication: false,
+          declared: false,
+          internet: internet,
+          policy: policy,
+          followedStation: true,
+        );
+
+    test('its observations are what was followed, kept on a phone', () {
+      expect(device('observation'), Tier.followed);
+      expect(device('observation', internet: true), Tier.followed,
+          reason: 'an archiver\'s replay is how it reaches us off the air');
+      expect(device('service'), Tier.followed);
+    });
+
+    test('a person followed by key keeps the old rule: beacons are chatter',
+        () {
+      expect(admit(Tier.followed, 'observation'), isNull);
+    });
+
+    test('turning the tier off still turns it off', () {
+      const noFollows = XprsArchivePolicy(keepFollowed: false);
+      expect(device('observation', policy: noFollows), isNull);
+    });
+
+    test('the followed set includes stations followed by callsign', () {
+      final set = xprsFollowedCallsigns(
+        followedHex: const {},
+        callPub: const {},
+        derive: (_) => '',
+        base: (c) => c.trim().toUpperCase().split('-').first,
+        stations: const ['x4pl3m', 'X4DOOR-2'],
+      );
+      expect(set, {'X4PL3M', 'X4DOOR'});
+    });
+  });
 }

@@ -219,4 +219,27 @@ void main() {
           reason: 'heard within the hour, no path and no fresh bearer');
     });
   });
+
+
+  group('what a callsign says its holder is (XPRS.md 3)', () {
+    test('one rule, the whole table', () {
+      expect(xprsKindOf('X1A67X'), XprsKind.user);
+      expect(xprsKindOf('X1A67X-9'), XprsKind.user);
+      expect(xprsKindOf('X2BOA3'), XprsKind.station);
+      expect(xprsKindOf('X3RLY7'), XprsKind.station);
+      expect(xprsKindOf('x4pl3m'), XprsKind.device);
+      expect(xprsKindOf('CT1ABC-9'), XprsKind.station);
+      expect(xprsKindOf('X5A3F2'), isNull, reason: 'a group is not a device');
+      expect(xprsKindOf(''), isNull);
+    });
+
+    test('a kind selects by prefix only where it has one', () {
+      expect(xprsKindPrefix(XprsKind.device), 'X4');
+      expect(xprsKindPrefix(XprsKind.user), 'X1');
+      expect(xprsKindPrefix(XprsKind.station), isNull,
+          reason: 'X2, X3 or a licence: no single prefix');
+      expect(xprsKindFromWord('device'), XprsKind.device);
+      expect(xprsKindFromWord('group'), isNull);
+    });
+  });
 }

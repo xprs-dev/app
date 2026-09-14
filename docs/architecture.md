@@ -363,6 +363,43 @@ by the wapp with `ui.field.set` like `__readonly`, and the renderer leaves
 the field or button out. The wapp decides what applies; the host decides how
 absence looks. Neither knows the other's reasons.
 
+### A device is followed by callsign, and the core fetches it (2026-09-14)
+
+An `X4` device (XPRS.md 11.7.1) has no radio and no person behind its key: a
+controller airs its `t:identity` and `t:observation` and deposits copies with
+its chosen archivers. The Things wapp lists devices and shows their state, and
+the tempting shape was a wapp that subscribed to `xprs.observation`, kept its
+own copy, and asked archivers itself when the device was out of range. That is
+store-and-forward in a wapp again, and it would have had to choose lanes: on
+the internet there is no broadcast to hear, only an archiver that holds what
+was deposited (12.12.2).
+
+What ships instead is three core facts and one verb:
+
+- **Following by callsign.** `hal_xprs_follow(call, on)` puts a station on
+  `PreferencesService.xprsFollowedStations`; `RnsService.followStation`
+  pushes it into `XprsArchive.followed` and `followedStations`. No NOSTR
+  mirror, no DHT record: a device is followed for storage and fetch, not
+  socially.
+- **Its presence is kept.** `xprsAdmitTier(followedStation: true)` admits a
+  followed device's observations on every lane, bounded to the newest
+  `followedPresenceMax` per station. A person followed by key keeps the old
+  rule; their beacons are still chatter.
+- **The catch-up fetches it.** While the device is not `heardDirectly`,
+  `XprsCatchup` asks the operator's chosen archivers `cmd:history
+  kind:identity,observation only:<device> since:<newest held>`, sharing the
+  per-archiver in-flight gate and floor with the conversation's ask. The
+  replay enters through `PacketGateway` like any other and lands on the
+  followed shelf.
+
+The wapp reads `hal_xprs_station` (the monitor, now keeping `state`, `level`,
+`target` and `volt`, newest composed value per key so a replay cannot put an
+old reading over a new one) and `hal_xprs_history` with `from` and `kind`
+(both on the `(fromc, pts)` index). It never learns which lane or which
+archiver carried anything. The device kind itself is `xprsKindOf`, the one
+callsign rule, and the monitor hands it to the wapp as `kind` rather than
+letting it test a prefix.
+
 ### A cable is a lane too (2026-09-12)
 
 The Firmwares wapp writes an image to a board on a USB cable. Everything
