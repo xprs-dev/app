@@ -31,9 +31,9 @@ class XprsPacket {
   /// The largest a packet may be on any bearer (`docs/XPRS.md` section 2).
   static const int maxBytes = 250;
 
-  /// A key is 1 to 8 characters, lowercase letters and digits, starting with a
-  /// letter (`docs/XPRS.md` section 4.1).
-  static final RegExp _key = RegExp(r'^[a-z][a-z0-9]{0,7}$');
+  /// A key is 1 to 16 characters, lowercase letters and digits, starting with a
+  /// letter (`docs/XPRS.md` section 4).
+  static final RegExp _key = RegExp(r'^[a-z][a-z0-9]{0,15}$');
 
   /// Parse one line of wire text, or null if it is not an XPRS packet.
   ///

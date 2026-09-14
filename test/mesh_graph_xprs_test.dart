@@ -402,7 +402,7 @@ void main() {
   test('what a station measured reaches the panel, unit and all', () {
     XprsMonitor.instance.clear();
     final wx = XprsPacket.parse('t:observation f:X3WX01 link:lan '
-        'temp:14.2C hum:78% batt:64% supply:solar')!;
+        'temp:14.2C hum:78% batt:64% source:solar')!;
     XprsMonitor.instance.offer(wx, bearer: 'lan', selfCallsign: 'X1TEST');
 
     final st = XprsMonitor.instance.stations['X3WX01']!;
@@ -411,13 +411,40 @@ void main() {
     expect(st.readings['temp'], '14.2C');
     expect(st.readings['hum'], '78%');
     expect(st.readings['batt'], '64%');
-    expect(st.readings['supply'], 'solar');
+    expect(st.readings['source'], 'solar');
 
     final node = (RnsService.instance.graphSnapshot(includeXprs: true)['nodes']
             as List)
         .cast<Map<String, dynamic>>()
         .firstWhere((n) => n['id'] == 'xprs:X3WX01');
     expect(((node['meta'] as Map)['readings'] as Map)['temp'], '14.2C');
+    XprsMonitor.instance.clear();
+  });
+
+  test('energy readings reach the panel as sent (section 15.5.2)', () {
+    XprsMonitor.instance.clear();
+    final home = XprsPacket.parse('t:observation f:X1HOME source:solar '
+        'produces:1900W consumes:4410W grid:0W storage:2510W charged:36% '
+        'lifegridin:1200000Wh ts:2026-09-14_14:36:00')!;
+    XprsMonitor.instance.offer(home, bearer: 'lan', selfCallsign: 'X1TEST');
+
+    final st = XprsMonitor.instance.stations['X1HOME']!;
+    expect(st.readings['source'], 'solar');
+    expect(st.readings['produces'], '1900W');
+    expect(st.readings['consumes'], '4410W');
+    expect(st.readings['grid'], '0W');
+    expect(st.readings['storage'], '2510W');
+    expect(st.readings['charged'], '36%');
+    expect(st.readings['lifegridin'], '1200000Wh');
+
+    // A plug reports one appliance under `load:`, never the house's consumes.
+    final plug = XprsPacket.parse('t:observation f:X1PLUG state:on load:65W '
+        'lifeload:12400Wh ts:2026-09-14_14:36:00')!;
+    XprsMonitor.instance.offer(plug, bearer: 'lan', selfCallsign: 'X1TEST');
+    final ps = XprsMonitor.instance.stations['X1PLUG']!;
+    expect(ps.readings['load'], '65W');
+    expect(ps.readings['lifeload'], '12400Wh');
+    expect(ps.readings.containsKey('consumes'), isFalse);
     XprsMonitor.instance.clear();
   });
 

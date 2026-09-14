@@ -271,9 +271,11 @@ void main() {
       expect(p.fields.length, 3);
     });
 
-    test('a key is at most eight characters, letters and digits', () {
-      final p = XprsPacket.parse('t:message f:X1QZ3N toolongkey:1 rain24:3 m:x')!;
-      expect(p['toolongkey'], isNull);
+    test('a key is at most sixteen characters, letters and digits', () {
+      final p = XprsPacket.parse(
+          't:message f:X1QZ3N muchtoolongakeyxy:1 lifeproduces:2 rain24:3 m:x')!;
+      expect(p['muchtoolongakeyxy'], isNull); // 17 characters
+      expect(p['lifeproduces'], '2'); // 12, fine since the limit went to 16
       expect(p['rain24'], '3');
     });
 

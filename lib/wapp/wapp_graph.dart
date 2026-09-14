@@ -1241,7 +1241,8 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     'other': 'Something else (see its message)',
   };
 
-  /// Measurement keys (section 10.4 telemetry, 23.3 supply), named for reading.
+  /// Measurement keys (section 15 telemetry, 14.3 source, 15.5.2 energy),
+  /// named for reading.
   static const Map<String, String> _readingLabels = {
     'temp': 'Temperature', 'hum': 'Humidity', 'press': 'Pressure',
     'wind': 'Wind', 'wdir': 'Wind direction', 'intemp': 'Indoor temperature',
@@ -1249,7 +1250,12 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     'rain24': 'Rain, 24 hours', 'batt': 'Battery', 'dose': 'Radiation dose',
     'lifedose': 'Lifetime dose', 'radon': 'Radon', 'rf': 'RF field',
     'efield': 'Electric field', 'mfield': 'Magnetic field',
-    'odometer': 'Odometer', 'supply': 'Powered by',
+    'odometer': 'Odometer', 'source': 'Energy source',
+    'produces': 'Producing', 'consumes': 'Consuming', 'grid': 'Grid',
+    'storage': 'Storage', 'charged': 'Storage charge', 'load': 'Load',
+    'lifeproduces': 'Produced, total', 'lifeconsumes': 'Consumed, total',
+    'lifegridin': 'From the grid, total', 'lifegridout': 'To the grid, total',
+    'lifeload': 'Load, total',
   };
 
   /// The bearer word as the legend names it, so the panel and the chips at the

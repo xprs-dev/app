@@ -31,7 +31,7 @@ EXPAND = {"<60 characters>": "K" * 60, "<64 characters>": "C" * 64,
           "<86 characters>": "C" * 86, "<107 characters>": "C" * 107,
           "<128 characters>": "C" * 128}
 
-KEY = re.compile(r"[a-z][a-z0-9]{0,7}")
+KEY = re.compile(r"[a-z][a-z0-9]{0,15}")
 
 
 def expand(t):

@@ -350,14 +350,14 @@
 "id": "f36e45"
 },
 {
-"wire": "t:observation f:X3RLY7 d:X1QZ3N pos:38.7810,-9.2043 batt:64% ts:2026-08-08_14:26:40 s:pos,batt",
-"bytes": 94,
-"id": "c78168"
+"wire": "t:observation f:X3RLY7 pos:38.7810,-9.2043 batt:64% ts:2026-08-08_14:26:40 s:pos,batt",
+"bytes": 85,
+"id": "2d8341"
 },
 {
-"wire": "t:observation f:X3RLY7 d:X1QZ3N pos:38.7810,-9.2043 ts:2026-08-08_14:26:40 s:pos",
-"bytes": 80,
-"id": "b5997f"
+"wire": "t:observation f:X3RLY7 pos:38.7810,-9.2043 ts:2026-08-08_14:26:40 s:pos",
+"bytes": 71,
+"id": "b94ab0"
 },
 {
 "wire": "t:receipt f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:26:40 s:no",
@@ -935,9 +935,9 @@
 "id": "7dd702"
 },
 {
-"wire": "t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,archive,internet,aprs supply:solar ts:2026-08-08_14:26:40 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"wire": "t:service f:X3RLY7 pos:38.7810,-9.2043 serve:relay,archive,internet,aprs source:solar ts:2026-08-08_14:26:40 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 173,
-"id": "049335"
+"id": "d691e7"
 },
 {
 "wire": "t:channel f:X1QZ3N freq:145.500MHz mode:fm kind:listen since:2026-08-08_18:00:00 until:2026-08-08_22:00:00 ts:2026-08-08_14:26:40",
@@ -960,14 +960,14 @@
 "id": "dbdf36"
 },
 {
-"wire": "t:channel f:X3RLY7 pos:38.7810,-9.2043 freq:145.600MHz mode:fm shift:-600kHz tone:123.0Hz power:50W range:40km site:fixed supply:solar kind:repeater ts:2026-08-08_14:26:40",
+"wire": "t:channel f:X3RLY7 pos:38.7810,-9.2043 freq:145.600MHz mode:fm shift:-600kHz tone:123.0Hz power:50W range:40km site:fixed source:solar kind:repeater ts:2026-08-08_14:26:40",
 "bytes": 171,
-"id": "613e2e"
+"id": "4455aa"
 },
 {
-"wire": "t:channel f:X1BOA3 pos:38.6902,-9.4012 freq:156.800MHz ch:16 mode:fm power:25W range:15km site:mobile supply:battery kind:emergency ts:2026-08-08_14:26:40",
+"wire": "t:channel f:X1BOA3 pos:38.6902,-9.4012 freq:156.800MHz ch:16 mode:fm power:25W range:15km site:mobile source:battery kind:emergency ts:2026-08-08_14:26:40",
 "bytes": 154,
-"id": "a47eac"
+"id": "6561ca"
 },
 {
 "wire": "t:channel f:X3RLY7 pos:38.7810,-9.2043 freq:145.750MHz input:433.000MHz mode:fm tone:123.0Hz power:25W range:30km kind:repeater ts:2026-08-08_14:26:40",
@@ -1078,6 +1078,41 @@
 "wire": "t:observation f:X3LAB1 radon:120Bq/m3 ts:2026-08-13_10:00:00",
 "bytes": 60,
 "id": "59208e"
+},
+{
+"wire": "t:observation f:X1HOME source:solar produces:1900W consumes:4410W grid:0W storage:2510W charged:36% ts:2026-09-14_14:36:00",
+"bytes": 122,
+"id": "66cc79"
+},
+{
+"wire": "t:observation f:X3FARM source:mixed produces:4600W consumes:2900W grid:-1700W ts:2026-09-14_14:36:00",
+"bytes": 100,
+"id": "ecf447"
+},
+{
+"wire": "t:observation f:X3FARM source:solar produces:3200W ts:2026-09-14_14:36:00",
+"bytes": 73,
+"id": "f62115"
+},
+{
+"wire": "t:observation f:X3FARM source:wind produces:1400W ts:2026-09-14_14:36:00",
+"bytes": 72,
+"id": "538d7b"
+},
+{
+"wire": "t:observation f:X1PLUG state:on load:65W lifeload:12400Wh ts:2026-09-14_14:36:00",
+"bytes": 80,
+"id": "dc7987"
+},
+{
+"wire": "t:observation f:X1HOME source:solar lifeproduces:4210000Wh lifeconsumes:3950000Wh lifegridin:1200000Wh lifegridout:1460000Wh ts:2026-09-14_14:36:00",
+"bytes": 147,
+"id": "7e5661"
+},
+{
+"wire": "t:request f:X1DISP d:X1HOME ts:2026-09-14_14:36:00 q:energy",
+"bytes": 59,
+"id": "ac592e"
 },
 {
 "wire": "t:observation f:X3RLY7 ts:2026-08-08_14:26:40 link:lora busy:41% txtime:6%",

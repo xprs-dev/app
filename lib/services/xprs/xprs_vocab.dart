@@ -422,8 +422,11 @@ const Set<String> kXprsReadings = {
   'rain1', 'rain24',
   // telemetry
   'batt', 'dose', 'lifedose', 'radon', 'rf', 'efield', 'mfield', 'odometer',
-  // what keeps it running (section 23.3)
-  'supply',
+  // what keeps it running (section 14.3), and where its production comes from
+  'source',
+  // energy (section 15.5.2): watts now, watt-hours accumulated
+  'produces', 'consumes', 'grid', 'storage', 'charged', 'load',
+  'lifeproduces', 'lifeconsumes', 'lifegridin', 'lifegridout', 'lifeload',
 };
 
 /// The `serve:` list of a packet, filtered to the words section 24 defines.
