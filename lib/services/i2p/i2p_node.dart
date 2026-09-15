@@ -361,6 +361,8 @@ class I2pNode {
     _running = false; // stops keepalive + serve loops
     _kaTimer?.cancel();
     _natTimer?.cancel();
+    _repairTimer?.cancel();
+    _repairTimer = null;
     for (final g in _gws) {
       g.session.close();
     }
@@ -830,12 +832,36 @@ class I2pNode {
         try {
           await gw.session.pumpI2np(
               const Duration(seconds: 30), (t, b) => _dispatch(t, b, gw));
-        } catch (_) {
+        } catch (e) {
+          // The session ended. pumpI2np used to return quietly here, and this
+          // loop then spun on the dead socket without ever yielding to the
+          // event loop: the whole isolate stopped (no timers, no messages).
+          if (_running && _gws.contains(gw)) {
+            log?.call('node: gateway ${_hex(gw.ri.identityHash).substring(0, 12)} lost: $e');
+          }
           break;
         }
       }
       gw.dead = true; // serve loop ended -> gateway no longer usable
+      _gatewayLost();
     }();
+  }
+
+  Timer? _repairTimer;
+
+  /// A gateway died: replace it and republish soon, rather than at the next
+  /// keepalive (up to 4 minutes of senders delivering into a dead lease).
+  void _gatewayLost() {
+    if (!_running || _repairTimer != null) return;
+    _repairTimer = Timer(const Duration(seconds: 3), () async {
+      try {
+        if (!_running) return;
+        await _guard('rotateGateways', _rotateGateways, const Duration(seconds: 50));
+        if (_running) await _guard('publish', _publish, const Duration(seconds: 40));
+      } finally {
+        _repairTimer = null;
+      }
+    });
   }
 
   void _dispatch(int type, Uint8List body, _Gw gw) {
@@ -1604,6 +1630,8 @@ class I2pNode {
     _running = false;
     _kaTimer?.cancel();
     _natTimer?.cancel();
+    _repairTimer?.cancel();
+    _repairTimer = null;
     for (final g in _gws) {
       g.session.close();
     }

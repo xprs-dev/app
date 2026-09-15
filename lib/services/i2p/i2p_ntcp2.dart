@@ -356,6 +356,23 @@ class Ntcp2Session {
     await _socket.flush();
   }
 
+  Future<Uint8List>? _inFlight;
+
+  /// The next data-phase frame. A read whose caller stopped waiting (a
+  /// timeout) stays in flight and is handed to the next caller. Starting a
+  /// second read instead left two readers on one stream: the first took the
+  /// next frame's length, the second read ciphertext as a length, and the
+  /// frame failed its MAC, killing the session. That is what silently broke
+  /// every gateway that sat idle for longer than the serve loop's 30 s pump.
+  Future<Uint8List> _nextFrame() {
+    var f = _inFlight;
+    if (f == null) {
+      f = _inFlight = _readFrame();
+      f.then<void>((_) => _inFlight = null, onError: (Object _) => _inFlight = null);
+    }
+    return f;
+  }
+
   /// Read one data-phase frame and return its decrypted block bytes.
   Future<Uint8List> _readFrame() async {
     final lenObf = await _reader.readExactly(2);
@@ -373,7 +390,7 @@ class Ntcp2Session {
       final remaining = deadline.difference(DateTime.now());
       Uint8List frame;
       try {
-        frame = await _readFrame().timeout(remaining);
+        frame = await _nextFrame().timeout(remaining);
       } on TimeoutException {
         return null;
       } catch (e) {
@@ -436,7 +453,7 @@ class Ntcp2Session {
       final remaining = deadline.difference(DateTime.now());
       Uint8List frame;
       try {
-        frame = await _readFrame().timeout(remaining);
+        frame = await _nextFrame().timeout(remaining);
       } on TimeoutException {
         return null;
       } catch (e) {
@@ -466,7 +483,9 @@ class Ntcp2Session {
 
   /// Read data-phase frames for [timeout], invoking [onI2np] for every I2NP
   /// block (i2npType, body) and logging other block types. Returns when the
-  /// timeout elapses or the peer closes.
+  /// timeout elapses; throws [StateError] once the session has ended (read
+  /// error or a Termination block), so a caller looping on it stops instead
+  /// of spinning on a dead socket.
   Future<void> pumpI2np(
       Duration timeout, void Function(int i2npType, Uint8List body) onI2np) async {
     final deadline = DateTime.now().add(timeout);
@@ -474,12 +493,12 @@ class Ntcp2Session {
       final remaining = deadline.difference(DateTime.now());
       Uint8List frame;
       try {
-        frame = await _readFrame().timeout(remaining);
+        frame = await _nextFrame().timeout(remaining);
       } on TimeoutException {
         return;
       } catch (e) {
         log?.call('ntcp2: frame read error: $e');
-        return;
+        throw StateError('session ended: $e');
       }
       var p = 0;
       while (p + 3 <= frame.length) {
@@ -494,7 +513,7 @@ class Ntcp2Session {
         } else if (type == 4) {
           final rsn = data.length > 8 ? data[8] : -1;
           log?.call('ntcp2: <- Termination rsn=$rsn');
-          return;
+          throw StateError('session terminated by the peer (reason $rsn)');
         } else {
           log?.call('ntcp2: <- block type=$type ($size b)');
         }
