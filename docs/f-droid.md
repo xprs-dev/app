@@ -88,7 +88,17 @@ update feed's files are on xprs.dev/downloads.
 * **Answered** on the thread the same day (reproducible builds adopted; the
   updater stays, and an F-Droid install updates through F-Droid by default).
   The description's checklist now ticks reproducible builds and per-ABI APKs.
-  Waiting for review.
+* **2026-09-15:** `linsui` asked for an ABI split with F-Droid's version code
+  scheme (`versionCode * 10 + abi`), the label moved to "waiting-on-response",
+  and the answer on the thread is that the split is already there: what differs
+  is the multiplier. `abi * 1,000,000 + N` was chosen because the codes already
+  released (up to 4358 under Flutter's scheme, now 4000370) are above what
+  `N * 10 + abi` would produce, so that scheme would make Android refuse the
+  update on every installed device. The offer on the thread is to switch and
+  raise the build number base once, above 400038, if they prefer it.
+  Also pushed: the wapps source repository was renamed to `xprs-dev/apps`, so
+  the srclib URL had to follow (fdroiddata's "git redirect" job refuses a URL
+  that redirects).
 
 ## 3. Following the review
 
