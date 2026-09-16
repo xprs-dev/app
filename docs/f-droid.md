@@ -234,11 +234,13 @@ What else had to line up:
 * **The same version.** Tag builds keep the `+N` `release.sh` wrote into
   `pubspec.yaml`. (CI used to rewrite it to the commit count, which was one
   more.)
-* **One versionCode scheme everywhere.** Each per-ABI APK is ABI digit x
-  1,000,000 + N: armeabi-v7a 1, arm64-v8a 2, x86_64 4
-  (`android/app/build.gradle.kts`, and `VercodeOperation` in the recipe).
-  Flutter's own digit x 1,000 + N would collide across ABIs once N reaches
-  1,000, about six weeks after this was written.
+* **One versionCode scheme everywhere.** Each per-ABI APK is N x 10 plus an
+  ABI digit: armeabi-v7a 1, arm64-v8a 2, x86_64 3
+  (`android/app/build.gradle.kts`, and `VercodeOperation` in the recipe), with
+  the ABI digit lowest, as F-Droid asks. `release.sh` adds a base of 400,000
+  to the commit count so the codes stay above the two schemes used before
+  (Flutter's digit x 1,000 + N, then digit x 1,000,000 + N in v1.2.17).
+  Flutter's own scheme would also collide across ABIs once N reaches 1,000.
 * **Signing that leaves the layout alone.** `apksigcopier` rebuilds F-Droid's
   APK entry by entry exactly as Gradle wrote it and pastes our signing block
   on. A plain `apksigner sign` re-pads every stored entry and adds a v1 JAR
@@ -337,7 +339,7 @@ srclibs). Its one build block uses placeholders (`@ABI@`, `@VERSION@`, ...);
 `tool/fdroid_recipe.py` turns it into one block per ABI for a release:
 
 ```sh
-python3 tool/fdroid_recipe.py --version 1.2.17 --code 362 --commit <release commit> \
+python3 tool/fdroid_recipe.py --version 1.2.18 --code 400385 --commit <release commit> \
     > metadata/com.xprs.app.yml       # in the fdroiddata checkout; then rewritemeta
 ```
 
@@ -349,8 +351,8 @@ different steps than F-Droid's will not reproduce. The rendered arm64 block
 (the other two differ only in the ABI names and the versionCode digit):
 
 ```yaml
-  - versionName: 1.2.17
-    versionCode: 2000362
+  - versionName: 1.2.18
+    versionCode: 4003852
     commit: <release commit>
     sudo:
       - apt-get update
@@ -403,12 +405,12 @@ AllowedAPKSigningKeys: 2a4b4625895e700839415a81c091d949699167abe03c22794376d18f2
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
 VercodeOperation:
-  - '%c + 1000000'
-  - '%c + 2000000'
-  - '%c + 4000000'
+  - '%c * 10 + 1'
+  - '%c * 10 + 2'
+  - '%c * 10 + 3'
 UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
-CurrentVersion: 1.2.17
-CurrentVersionCode: 4000362
+CurrentVersion: 1.2.18
+CurrentVersionCode: 4003853
 ```
 
 What each part is for, and what taught it:
@@ -460,7 +462,7 @@ What each part is for, and what taught it:
   `pubspec.yaml`, so every versionCode rises;
 * it pins `../reticulum-dart` and `../apps` by commit (both must be pushed);
 * it copies the release's changelog to the three per-ABI names F-Droid looks
-  for (`changelogs/1000362.txt`, `2000362.txt`, `4000362.txt`).
+  for (`changelogs/4003851.txt`, `4003852.txt`, `4003853.txt`).
 
 The tag starts `release.yml`, which builds, signs and verifies the three APKs
 in the buildserver image and attaches them to the GitHub release. Once the

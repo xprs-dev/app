@@ -76,9 +76,9 @@ queued APK build waits on it.
 
 Android installs need a versionCode above the installed one (`adb shell
 dumpsys package com.xprs.app | grep versionCode`), and other sessions may be
-installing to the same phone. A split APK's versionCode is ABI digit x
-1,000,000 + `--build-number` (arm64: 2,000,000 + N; `android/app/build.gradle.kts`),
-so N only has to beat the installed code minus that. A large N keeps the phone
+installing to the same phone. A split APK's versionCode is `--build-number` x
+10 plus an ABI digit (arm64: N x 10 + 2; `android/app/build.gradle.kts`), so N
+has to beat about a tenth of the installed code. A large N keeps the phone
 off the release track (releases use the commit count; `releases.md` §6).
 
 ### A build that vanishes was killed, not broken

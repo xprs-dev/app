@@ -202,20 +202,21 @@ the folder's master key, and deleting it would orphan the folder.
 
 ## 6. The versionCode trap
 
-Each per-ABI APK's `versionCode` is an ABI digit x 1,000,000 plus the build
-number N, the `+N` that `release.sh` writes into `pubspec.yaml` (the commit
-count). `android/app/build.gradle.kts` sets it, and F-Droid's recipe derives the
-same numbers (`VercodeOperation`):
+Each per-ABI APK's `versionCode` is the build number N x 10 plus an ABI digit.
+N is the `+N` `release.sh` writes into `pubspec.yaml`: the commit count plus a
+base of 400,000. `android/app/build.gradle.kts` sets the codes, and F-Droid's
+recipe derives the same numbers (`VercodeOperation`):
 
-| artifact | versionCode for build 362 |
+| artifact | versionCode for build 400385 |
 |---|---|
-| `-android-armeabi-v7a.apk` | 1000362 |
-| `-android-arm64-v8a.apk` | 2000362 |
-| `-android-x86_64.apk` | 4000362 |
+| `-android-armeabi-v7a.apk` | 4003851 |
+| `-android-arm64-v8a.apk` | 4003852 |
+| `-android-x86_64.apk` | 4003853 |
 
-Until v1.2.16 it was Flutter's digit x 1,000 + N (2358 for arm64 at v1.2.16),
-which would have collided across ABIs once N reached 1,000; every code released
-that way is below its successor. Tag builds use N as `pubspec.yaml` has it;
+F-Droid asks for the ABI digit in the lowest position (fdroiddata !48456), and
+the base is what keeps these codes above the ones already released: Flutter's
+own digit x 1,000 + N up to v1.2.16 (2358 for arm64), then digit x 1,000,000 +
+N for v1.2.17 (4000370 for x86_64). Tag builds use N as `pubspec.yaml` has it;
 CI no longer rewrites it. Note `buildNumber` in `/api/update/status` is N, not
 the installed versionCode: `adb shell dumpsys package com.xprs.app | grep
 versionCode` is the number Android actually compares.

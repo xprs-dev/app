@@ -215,17 +215,19 @@ it on.
 
 ## 7. The versionCode trap
 
-`versionCode` is an ABI digit x 1,000,000 plus the build number, the `+N` in
+`versionCode` is the build number x 10 plus an ABI digit, the `+N` in
 `pubspec.yaml` (`android/app/build.gradle.kts`; F-Droid's recipe derives the
 same numbers), so one release ships three:
 
-| artifact | versionCode for build 362 |
+| artifact | versionCode for build 400385 |
 |---|---|
-| `-android-armeabi-v7a.apk` | 1000362 |
-| `-android-arm64-v8a.apk` | 2000362 |
-| `-android-x86_64.apk` | 4000362 |
+| `-android-armeabi-v7a.apk` | 4003851 |
+| `-android-arm64-v8a.apk` | 4003852 |
+| `-android-x86_64.apk` | 4003853 |
 
-Before v1.2.17 it was Flutter's digit x 1,000 + N, plus a universal APK at N.
+N carries a base of 400,000 so the codes stay above the two earlier schemes:
+Flutter's digit x 1,000 + N up to v1.2.16, and digit x 1,000,000 + N in
+v1.2.17.
 
 **Nothing compares versionCode when deciding what is newer.** It only decides
 whether Android will install what was offered, and Android refuses anything not

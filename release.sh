@@ -49,7 +49,12 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; th
   echo "error: invalid version '$VERSION' (use X.Y.Z or X.Y.Z-beta.N)"; exit 1
 fi
 
-CODE=$(git rev-list --count HEAD)
+# The build number: the commit count, raised by a fixed base. Each APK's
+# versionCode is CODE x 10 plus an ABI digit (android/app/build.gradle.kts),
+# and F-Droid asked for the ABI digit in the lowest position. The base keeps
+# those codes above the ones already released under the older scheme (up to
+# 4000370), which Android would otherwise refuse as a downgrade.
+CODE=$(( $(git rev-list --count HEAD) + 400000 ))
 
 # The sibling repositories the release is built from, pinned by commit in the
 # release itself. release.yml and F-Droid both check these out, so the two
@@ -72,7 +77,7 @@ RD_PIN=$(pin_of ../reticulum-dart)
 WAPPS_PIN=$(pin_of ../apps)
 
 # F-Droid shows changelogs/<versionCode>.txt, and each per-ABI APK has its own
-# versionCode (ABI digit x 1,000,000 + CODE, android/app/build.gradle.kts). The
+# versionCode (CODE x 10 plus an ABI digit, android/app/build.gradle.kts). The
 # notes are written once as <CODE>.txt; the release commit adds the per-ABI
 # copies. A notes file named for a stale count (commits landed after it) is
 # still found: it is the one added since the last tag.
@@ -121,7 +126,7 @@ drop=()
 if [[ -n "$CL" ]]; then
   clblob=$(git rev-parse "HEAD:$CL")
   put["$CL_DIR/$CODE.txt"]=$clblob
-  for digit in 1 2 4; do put["$CL_DIR/$((digit * 1000000 + CODE)).txt"]=$clblob; done
+  for digit in 1 2 3; do put["$CL_DIR/$((CODE * 10 + digit)).txt"]=$clblob; done
   if [[ "$CL" != "$CL_DIR/$CODE.txt" ]]; then drop+=("$CL"); fi
 fi
 GIT_INDEX_FILE="$tmpidx" git read-tree HEAD

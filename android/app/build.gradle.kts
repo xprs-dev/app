@@ -93,22 +93,23 @@ flutter {
     source = "../.."
 }
 
-// The versionCode of a per-ABI APK: ABI digit x 1,000,000 + the build number
-// (pubspec's +N, the commit count). F-Droid builds exactly these APKs and
-// derives the same numbers (VercodeOperation in its recipe, docs/f-droid.md),
-// so a phone can move between F-Droid and the in-app updater either way.
-// Flutter's own scheme is digit x 1,000 + N, which collides across ABIs once
-// N reaches 1,000. The digits are Flutter's, so every code already released
-// (1000+N, 2000+N, 4000+N) stays below its successor. This runs after the
-// Flutter plugin's override because the plugin registers its hook first.
-val abiVersionDigit = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86_64" to 4)
+// The versionCode of a per-ABI APK: the build number (pubspec's +N) x 10 plus
+// an ABI digit. F-Droid asks for the ABI digit in the lowest position, and
+// builds exactly these APKs, deriving the same numbers with VercodeOperation
+// in its recipe (docs/f-droid.md). A phone can therefore move between F-Droid
+// and the in-app updater either way. Flutter's own scheme is digit x 1,000 + N,
+// which collides across ABIs once N reaches 1,000. release.sh keeps N above
+// 400,000 so these codes stay above everything already released. This runs
+// after the Flutter plugin's override because the plugin registers its hook
+// first.
+val abiVersionDigit = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86_64" to 3)
 @Suppress("DEPRECATION")
 android.applicationVariants.configureEach {
     val base = versionCode
     outputs.configureEach {
         val output = this as com.android.build.gradle.api.ApkVariantOutput
         val abi = output.getFilter(com.android.build.VariantOutput.FilterType.ABI)
-        abiVersionDigit[abi]?.let { output.versionCodeOverride = it * 1_000_000 + base }
+        abiVersionDigit[abi]?.let { output.versionCodeOverride = base * 10 + it }
     }
 }
 

@@ -2,8 +2,8 @@
 """Render the F-Droid recipe for one release from fdroid/com.xprs.app.yml.
 
 The template's single build block becomes one block per ABI, each stamped with
-the release's version, commit and per-ABI versionCode (ABI digit x 1,000,000 +
-the pubspec build number, the scheme android/app/build.gradle.kts applies).
+the release's version, commit and per-ABI versionCode (the pubspec build number
+x 10 plus an ABI digit, the scheme android/app/build.gradle.kts applies).
 
     python3 tool/fdroid_recipe.py --version 1.2.17 --code 362 --commit <sha>
         > metadata/com.xprs.app.yml         # the recipe for fdroiddata
@@ -29,17 +29,17 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# ABI: (versionCode digit, Rust target, flutter --target-platform). The
-# digits are Flutter's (android/app/build.gradle.kts), in versionCode order.
+# ABI: (versionCode digit, Rust target, flutter --target-platform), in
+# versionCode order (android/app/build.gradle.kts).
 ABIS = {
     'armeabi-v7a': (1, 'armv7-linux-androideabi', 'android-arm'),
     'arm64-v8a': (2, 'aarch64-linux-android', 'android-arm64'),
-    'x86_64': (4, 'x86_64-linux-android', 'android-x64'),
+    'x86_64': (3, 'x86_64-linux-android', 'android-x64'),
 }
 
 
 def vercode(abi, code):
-    return ABIS[abi][0] * 1_000_000 + code
+    return code * 10 + ABIS[abi][0]
 
 
 def pubspec_version():

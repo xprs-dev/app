@@ -73,9 +73,9 @@ AllowedAPKSigningKeys: 2a4b4625895e700839415a81c091d949699167abe03c22794376d18f2
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
 VercodeOperation:
-  - '%c + 1000000'
-  - '%c + 2000000'
-  - '%c + 4000000'
+  - '%c * 10 + 1'
+  - '%c * 10 + 2'
+  - '%c * 10 + 3'
 UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
 CurrentVersion: '@VERSION@'
 CurrentVersionCode: '@CURRENT_VERCODE@'
