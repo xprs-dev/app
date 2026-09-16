@@ -113,11 +113,16 @@ abstract class XprsBearer {
   /// a whole at the far end (a chunk of a small file, section 7.7.6), where
   /// the receiver reports what it lacks and the sender re-sends that. A bearer
   /// with only one way to send ignores it.
+  ///
+  /// [verbatim] says this station did not write the wire: a replay of
+  /// somebody else's packet (a history page, 11.2.1). It never becomes our
+  /// correspondence, so no bearer may hand it to the courier or to a deposit.
   Future<XprsSendResult> send(String wire,
       {required int part,
       String slot = 'status',
       Duration? ttl,
-      bool datagram = false});
+      bool datagram = false,
+      bool verbatim = false});
 }
 
 class _Ble5Bearer implements XprsBearer {
@@ -139,7 +144,8 @@ class _Ble5Bearer implements XprsBearer {
           {required int part,
           String slot = 'status',
           Duration? ttl,
-          bool datagram = false}) async =>
+          bool datagram = false,
+          bool verbatim = false}) async =>
       await Ble5Bus.instance.advertiseFrame(
         'xprs-$slot:$part',
         Ble5Subtype.xprs,
@@ -175,7 +181,8 @@ class _ReticulumBearer implements XprsBearer {
       {required int part,
       String slot = 'status',
       Duration? ttl,
-      bool datagram = false}) async {
+      bool datagram = false,
+      bool verbatim = false}) async {
     // A wire addressed to one station rides the LXMF lane when the network
     // can name that station. The distinction is not cosmetic: wappBroadcast
     // is an ANNOUNCE, and the public community hubs do not cross-forward
@@ -226,7 +233,8 @@ class _ReticulumBearer implements XprsBearer {
         // cmd:history ask sent only on the datagram was never answered. Both
         // copies carry the same section 5 identifier and collapse on arrival.
         unawaited(RnsService.instance
-            .sendLxmf(destHex: hex, title: 'xprs', content: wire)
+            .sendLxmf(
+                destHex: hex, title: 'xprs', content: wire, arm: !verbatim)
             .catchError((_) => false));
         // `wappSendTo` true means delivered on a link. False does NOT mean
         // nothing went: the LXMF copy above is still in flight, and on the
@@ -345,7 +353,8 @@ class _LanBearer implements XprsBearer {
           {required int part,
           String slot = 'status',
           Duration? ttl,
-          bool datagram = false}) async =>
+          bool datagram = false,
+          bool verbatim = false}) async =>
       // The socket accepted it. A UDP broadcast is never acknowledged, so this
       // is the most any LAN send can honestly claim.
       XprsLan.instance.send(wire)
@@ -371,7 +380,8 @@ class _LoraBearer implements XprsBearer {
           {required int part,
           String slot = 'status',
           Duration? ttl,
-          bool datagram = false}) async =>
+          bool datagram = false,
+          bool verbatim = false}) async =>
       XprsSendResult.refused;
 }
 
@@ -545,6 +555,9 @@ class XprsPublisher {
     bool urgent = false,
     Set<String>? onlyBearers,
     bool datagram = false,
+    /// A wire this station did not write (a replay). It is aired and nothing
+    /// else: not carried, not deposited, not filed as ours.
+    bool verbatim = false,
   }) async {
     final report = <String, String>{};
     String? carriedBy;
@@ -628,7 +641,11 @@ class XprsPublisher {
       var worst = XprsSendResult.sent;
       for (var i = 0; i < wires.length; i++) {
         final r = await b.send(wires[i],
-            part: i + 1, slot: slot, ttl: ttl, datagram: datagram);
+            part: i + 1,
+            slot: slot,
+            ttl: ttl,
+            datagram: datagram,
+            verbatim: verbatim);
         if (r.index > worst.index) worst = r;
       }
       report[b.name] = worst.name;
@@ -1064,7 +1081,9 @@ class XprsPublisher {
     // behalf without reading them: the chat wapp neither knows nor needs to
     // know that any of this happens (docs/architecture.md 3). The arm itself
     // is a guarded no-op for anything that is not ours and directed.
-    if (!datagram) XprsMailbox.instance.armDeposit(wire);
+    // Never for a replay: a deposit is made by the SENDER of a message (12.3),
+    // not manufactured by whoever re-aired it.
+    if (!datagram && !verbatim) XprsMailbox.instance.armDeposit(wire);
     // `<type>` alone would still collide across destinations, which is exactly
     // the catch-up sweep's case: N asks, one slot, one survivor.
     //
@@ -1106,6 +1125,7 @@ class XprsPublisher {
     const never = {'result', 'receipt', 'sos', 'warning'};
     final air = await _fanOut([wire],
         slot: useSlot,
+        verbatim: verbatim,
         ttl: ttl,
         prefer: chosen,
         urgent: never.contains(p.type),

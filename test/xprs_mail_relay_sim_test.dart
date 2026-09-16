@@ -16,8 +16,16 @@ import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqlite3/open.dart';
 import 'package:xprs/services/mesh/mesh_store.dart';
+import 'package:xprs/services/preferences_service.dart';
+import 'package:xprs/services/social/retention_tier.dart';
+import 'package:xprs/services/xprs/xprs_archive.dart';
+import 'package:xprs/services/xprs/xprs_archive_policy.dart';
+import 'package:xprs/services/xprs/xprs_history_server.dart';
+import 'package:xprs/services/xprs/xprs_ingest.dart';
+import 'package:xprs/services/xprs/xprs_receipt.dart';
 import 'package:xprs/services/xprs/xprs_archiver_choice.dart';
 import 'package:xprs/services/xprs/xprs_id.dart';
 import 'package:xprs/services/xprs/xprs_mailbox.dart';
@@ -339,5 +347,106 @@ void main() {
     );
     expect(choice, 'X3MINE');
     expect(adopted, isNull, reason: 'the adopted one stands down');
+  });
+
+  // The C61, 2026-09-15: a phone polled its archiver all evening and never
+  // received the one reply held for it, because the archiver's pages were the
+  // newest messages of ANYBODY to anybody (and its own junk), and the reply
+  // was never among the twelve. XPRS.md 12.1: mail is never offered to a
+  // third party.
+  test('a recipient that polls its archiver gets its reply, however much '
+      'other people\'s mail the archiver holds', () async {
+    const archiverPolicy =
+        XprsArchivePolicy(public: true, alwaysOn: true, keepChatter: true);
+    // The archiver serves strangers only when its operator made it public
+    // (12); the history server reads that from the preferences.
+    SharedPreferences.setMockInitialValues({'flutter.xprs.public': true});
+    await PreferencesService.instance();
+    a.archivers = [c.call];
+    b.online = false;
+    await sim.as(a, () async {
+      final wire = await sim.send(
+          a, 't:message f:X1AAAA d:X1BBBB ts:$_ts m:the reply');
+      await XprsMailbox.instance.depositIfUnanswered(wire);
+    });
+
+    final before = XprsIngest.policy;
+    XprsIngest.policy = archiverPolicy;
+    try {
+      await sim.as(c, () async {
+        sim.drain(c); // the deposit, spooled by a public archiver
+        // Sixty newer messages between two other people.
+        for (var i = 0; i < 60; i++) {
+          final mm = (i % 60).toString().padLeft(2, '0');
+          XprsArchive.instance.admit(
+              XprsPacket.parse('t:message f:X1DDDD d:X1EEEE '
+                  'ts:2026-09-08_19:30:$mm m:not yours $i')!,
+              bearer: 'rns',
+              tier: Tier.stranger);
+        }
+        XprsArchive.instance.flush();
+      });
+
+      // B is back and asks its archiver, on the socket lane's one-shot page.
+      b.online = true;
+      final ask = XprsPacket.parse('t:command f:X1BBBB d:X3ARCH '
+          'ts:2026-09-08_20:00:00 cmd:history kind:message '
+          'since:2026-09-01_20:00:00')!;
+      final page = <String>[];
+      await sim.as(c, () async {
+        XprsHistoryServer.instance.signingKey = () => c.scalar;
+        page.addAll(
+            XprsHistoryServer.instance.serveInline(ask, selfBase: c.call));
+      });
+      expect(page.any((w) => w.contains('not yours')), isFalse,
+          reason: 'somebody else\'s mail is never on the page');
+      for (final w in page) {
+        sim.air.sendTo(b.call, w);
+      }
+    } finally {
+      XprsIngest.policy = before;
+    }
+    await sim.as(b, () async => sim.drain(b));
+    expect(b.delivered.map((p) => p['m']), contains('the reply'));
+  });
+
+  // A custodian holding SEALED parts can never match the ordinary receipt: it
+  // names the reassembled message (XPRS.md 7.6), whose identifier hashes
+  // plaintext the holder does not have. So the recipient also signs one
+  // receipt per part, which names an identifier the holder computed itself
+  // from the bytes it parked, and sends those to the holders only.
+  test('a receipt can name one part of a split message', () async {
+    b.online = true;
+    // A and B have exchanged: 13.7.1 refuses a receipt to a stranger.
+    await sim.as(b, () async {
+      final hello =
+          sim.sign(a, 't:message f:X1AAAA d:X1BBBB ts:$_ts m:first');
+      sim.air.sendTo(b.call, hello);
+      sim.drain(b);
+    });
+    expect(b.delivered, hasLength(1));
+
+    await sim.as(b, () async {
+      final part = XprsPacket.parse(sim.sign(a,
+          't:message f:X1AAAA d:X1BBBB ts:2026-09-08_19:30:00 n:2/3 x:AAAA'))!;
+      const partId = 'ab12cd';
+      final whole = XprsReceipt.compose(part,
+          selfCallsign: b.call, signingKey: b.scalar);
+      final one = XprsReceipt.compose(part,
+          selfCallsign: b.call, signingKey: b.scalar, forId: partId);
+      expect(whole, isNotNull);
+      expect(one, isNotNull);
+      expect(one!['r'], partId);
+      expect(one['r'], isNot(whole!['r']),
+          reason: 'the part and the message are different packets');
+      expect(one['s'], 'ack');
+      expect(one.has('sig'), isTrue,
+          reason: '9.7.1: an unsigned receipt is a way to delete other '
+              'people\'s mail');
+      // And it is the shape a holder acts on: release() reads the part id.
+      final released = XprsReceipt.release(one,
+          selfCallsign: 'X3ARCH', keyOf: (_) => null);
+      expect(released?.id, partId);
+    });
   });
 }

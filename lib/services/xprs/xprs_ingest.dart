@@ -109,6 +109,12 @@ class XprsIngest {
   /// stays free of the mesh.
   static void Function(XprsPacket p, String bearer)? onDeliver;
 
+  /// Every packet that came through the door, on either lane, after our own
+  /// echo is dropped: how XprsCatchup counts the page it asked for (a replay
+  /// is the original packets, whoever wrote them and whether or not this
+  /// station keeps them). Must stay cheap: it runs per packet.
+  static void Function(XprsPacket p)? onHeardAny;
+
   /// Packets refused off the Reticulum lane for want of a declaration —
   /// the observable that says the admission rule is alive.
   static int refusedRns = 0;
@@ -251,6 +257,10 @@ class XprsIngest {
     // whose cmd:history asks — are as real as anyone's.
     final self = selfCallsign.trim().toUpperCase();
     final from = (p['f'] ?? '').trim().toUpperCase();
+    // Before the echo check: a history page carries our OWN old messages too
+    // (the asker's mail both ways), and a page of nothing but those must
+    // still count as a page.
+    onHeardAny?.call(p);
     if (from.isEmpty || from == self) return;
 
     // A small binary chunked into t:file packets (§7.7.6) is reassembled here
@@ -779,6 +789,7 @@ class XprsIngest {
           : XprsArchive.instance.selfCallsign,
     );
     final fromC = _base(p['f'] ?? '');
+    onHeardAny?.call(p); // before the echo check, as on the radio lane
     if (fromC.isEmpty || (self.isNotEmpty && fromC == self)) return;
     // A station reached us over Reticulum: on the list, under that name and
     // no other (the air is [heard]'s, and stays so).

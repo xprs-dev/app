@@ -40,7 +40,7 @@ class _RecordingBearer implements XprsBearer {
   final List<Duration?> ttls = [];
   @override
   Future<XprsSendResult> send(String wire,
-      {required int part, String slot = 'status', Duration? ttl, bool datagram = false}) async {
+      {required int part, String slot = 'status', Duration? ttl, bool datagram = false, bool verbatim = false}) async {
     sent.add(wire);
     ttls.add(ttl);
     return XprsSendResult.sent;
@@ -196,6 +196,32 @@ void main() {
       ];
       expect(wires, hasLength(2));
       expect(wires.every((w) => w.contains('f:X1CCC')), true);
+    });
+  });
+
+  // XPRS.md 12.1: mail is held for its addressee and never offered to a third
+  // party. On the C61 a phone's page was twelve of everybody's sealed DMs and
+  // its own reply competed with all of them (2026-09-15).
+  test('somebody else\'s mail is never on the asker\'s page', () {
+    for (final w in [
+      't:message f:X1UDP4 d:X1BBB ts:2026-08-13_10:01:00 m:for the asker',
+      't:message f:X1CCC d:X1DDD ts:2026-08-13_10:02:00 m:for somebody else',
+      't:message f:X1CCC ts:2026-08-13_10:03:00 m:for everybody',
+    ]) {
+      a.admit(_p(w), bearer: 'ble', nowMs: 1000);
+    }
+    a.flush(nowMs: 100000);
+    fakeAsync((async) {
+      ask('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+          'kind:message until:2026-08-13_11:00:00');
+      async.elapse(const Duration(seconds: 20));
+      final wires = [
+        for (final e in aired)
+          if (!e.$1.startsWith('xprs-hist:c')) e.$2
+      ];
+      expect(wires, hasLength(2));
+      expect(wires.any((w) => w.contains('for somebody else')), isFalse);
+      expect(results().last['code'], '200');
     });
   });
 

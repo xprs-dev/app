@@ -327,16 +327,40 @@ class FunctionalityRegistry {
       EndpointDef(
           'hal_xprs_stations',
           'Stations heard over the air, as people-widget sections '
-          '[{title,items:[{id,title,subtitle,tags}]}]',
+          '[{title,items:[{id,title,subtitle,tags,kind}]}]; kind is '
+          'user, station or device (XPRS \u00a73)',
           [],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef(
           'hal_xprs_station',
-          'One station heard this hour, flat: {call,bearer,bearers,rssi,'
+          'One station heard this hour, flat: {call,kind,bearer,bearers,rssi,'
           'lastMs,agoMs,lastDirectMs,packets,peers?,mail?,uptime?,lifetime?,'
           'fw?,count?,serve?,hears?,sig?,readings?}',
           [ParamDef('call', 'string', 'its callsign')],
           ReturnDef('int', 'Bytes written, 0 when not heard, negated required size if too small')),
+      EndpointDef(
+          'hal_xprs_follow',
+          'Follow (on=1) or stop following (on=0) a station by callsign '
+          '(XPRS \u00a712): its packets are kept, and fetched from the chosen '
+          'archivers while it is out of earshot. The core decides how.',
+          [
+            ParamDef('call', 'string', 'its callsign'),
+            ParamDef('on', 'int', '1 follow, 0 stop'),
+          ],
+          ReturnDef('int', '0 ok, -1 empty, malformed or a group')),
+      EndpointDef(
+          'hal_xprs_followed',
+          'The stations followed by callsign, a JSON array of bare callsigns',
+          [],
+          ReturnDef('int', 'Bytes written, negated required size if too small')),
+      EndpointDef(
+          'hal_xprs_discover',
+          'Ask what is in local reach to identify itself now (XPRS \u00a78 '
+          'q:identity), rather than at its next beacon. Where to ask is the '
+          'core\'s; the answers are ordinary packets and show up in '
+          'hal_xprs_stations. Throttled to one sweep per 30 s.',
+          [],
+          ReturnDef('int', '1 asked, 0 not now (no LAN, or asked recently)')),
       EndpointDef(
           'hal_xprs_traffic',
           'Recent XPRS packets, oldest first '
@@ -347,8 +371,10 @@ class FunctionalityRegistry {
       EndpointDef(
           'hal_xprs_history',
           'The persistent spool of heard packets (XPRS \u00a724 serve:archive), '
-          'newest first. Query JSON {since,until,only,types,to,limit} \u2014 '
-          'since/until are XPRS timestamps, only matches sender or addressee, '
+          'newest first. Query JSON {since,until,only,types,to,from,kind,limit} '
+          '\u2014 since/until are XPRS timestamps, only matches sender or '
+          'addressee, from is exactly one author, kind (user, device) every '
+          'author of that kind, '
           'types is a list of packet types to keep, to is a list of '
           'destinations to keep ("" = undirected) \u2014 returns '
           '[{ts,bearer,rssi,from,to,type,id,mine,own,sig,heard,wire}]',

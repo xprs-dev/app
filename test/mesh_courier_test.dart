@@ -77,7 +77,8 @@ void main() {
           id: 'a1b2c3',
           sig: 'unsigned',
           ts: xprsParseTs('2026-09-05_08:00:00')! / 1000.0);
-      expect(n, 1, reason: 'the chat engine asked for this topic');
+      expect(n, XprsDelivery.delivered,
+          reason: 'the chat engine asked for this topic');
       final row = jsonDecode(bus.recv('chat')!.data) as Map<String, dynamic>;
       expect(row['call'], 'X3DCK0');
       expect(row['from'], '', reason: 'no LXMF destination is involved');
@@ -94,9 +95,46 @@ void main() {
           call: 'X3DCK0',
           content: 't:message f:X3DCK0 d:X1WATT m:leaked wire',
           bearer: 'ble');
-      expect(n, 0);
+      expect(n, XprsDelivery.refused);
       expect(WappDelivery.refusedProtocol, before + 1);
       expect(bus.queueDepth('chat'), 0);
+    });
+  });
+
+  // 2026-09-15, the C61: every `t:result` it sent a phone it could not reach
+  // over Reticulum was sealed into a NEW t:message to that phone, 474 of them
+  // in fifty minutes, burying the one real reply it held.
+  group('a carrier carries mail, not answers', () {
+    test('an XPRS wire that is not a person\'s mail is never wrapped', () {
+      for (final w in [
+        't:result f:X1ARKL d:X1WATT ts:2026-09-15_21:29:18 r:1a2b3c code:206',
+        't:receipt f:X1WATT d:X1UDP4 r:40f357 s:ack',
+        't:command f:X1WATT d:X1ARKL ts:2026-09-15_21:29:17 cmd:history kind:message',
+        't:pong f:X1ARKL d:X1WATT ts:2026-09-15_21:29:18',
+        't:message f:X1ARKL d:X5A3F2 ts:2026-09-15_21:29:18 m:a group post',
+      ]) {
+        expect(MeshCourier.notMail(w), isTrue, reason: w);
+      }
+    });
+
+    test('a person\'s mail is carried as it is, and plain text is a body', () {
+      expect(
+          MeshCourier.notMail(
+              't:message f:X1UDP4 d:X1WATT ts:2026-09-15_20:51:51 n:1/3 x:abc'),
+          isFalse);
+      expect(MeshCourier.notMail('see you at eight'), isFalse,
+          reason: 'not a wire: the courier seals it into one');
+      expect(MeshCourier.notMail('t:not a packet at all'), isFalse);
+    });
+
+    test('arming an answer holds nothing for the courier', () {
+      final armed = MeshCourierCounters.armed;
+      final notMail = MeshCourierCounters.notMail;
+      MeshCourier.instance.armLxmf(
+          destHex: '0123456789abcdef0123456789abcdef',
+          text: 't:result f:X1ARKL d:X1WATT ts:2026-09-15_21:29:18 r:1a2b3c code:206');
+      expect(MeshCourierCounters.armed, armed);
+      expect(MeshCourierCounters.notMail, notMail + 1);
     });
   });
 }

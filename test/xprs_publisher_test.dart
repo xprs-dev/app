@@ -34,12 +34,21 @@ class _FakeBearer implements XprsBearer {
   /// two stations no longer share one advert key.
   final List<String> slots = [];
   final List<Duration?> ttls = [];
+
+  /// Whether the publisher said "this is not ours" for each wire. A bearer
+  /// has to know: the Reticulum one hands anything of ours to the courier.
+  final List<bool> verbatims = [];
   @override
   Future<XprsSendResult> send(String wire,
-      {required int part, String slot = 'status', Duration? ttl, bool datagram = false}) async {
+      {required int part,
+      String slot = 'status',
+      Duration? ttl,
+      bool datagram = false,
+      bool verbatim = false}) async {
     sent.add(wire);
     slots.add(slot);
     ttls.add(ttl);
+    verbatims.add(verbatim);
     return XprsSendResult.sent;
   }
 }
@@ -47,6 +56,7 @@ class _FakeBearer implements XprsBearer {
 void main() {
   _identityAndSlots();
   _oversizeWires();
+  _replayIsNotOurs();
   _pathChoice();
   _statusIdentity();
   _archiverDeposit();
@@ -507,3 +517,26 @@ void _archiverDeposit() {
     PreferencesService.resetForTest();
   });
 }
+
+// An archiver serving a history page re-airs other people's packets. Before
+// this the bearer could not tell, so the Reticulum one handed each replayed
+// message to the courier: an archiver parked, re-aired and re-filed as its own
+// correspondence that was delivered months ago (2026-09-16).
+void _replayIsNotOurs() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('a verbatim wire reaches the bearer marked as somebody else\'s', () async {
+    final ble = _FakeBearer('ble5', shortRange: true);
+    XprsPublisher.instance.bearers = [ble];
+    const wire = 't:message f:X1UDP4 d:X1WATT ts:2026-09-15_20:51:51 m:hello';
+
+    await XprsPublisher.instance.publishWire(wire, verbatim: true);
+    expect(ble.sent, hasLength(1));
+    expect(ble.verbatims.single, isTrue);
+
+    await XprsPublisher.instance.publishWire(wire);
+    expect(ble.verbatims.last, isFalse,
+        reason: 'our own wire is ours to carry and to deposit');
+  });
+}
+

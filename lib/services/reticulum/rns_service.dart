@@ -6321,6 +6321,13 @@ class RnsService {
     /// (9.4). It is a per-message argument and not a stored mode, because the
     /// wire form is per packet and either side may switch at any point.
     bool private = true,
+    /// Hand a copy to the courier if this does not arrive (12.7).
+    ///
+    /// False for a wire this station did not write: an archiver replaying its
+    /// spool is not the sender of that mail, and parking it made it re-air
+    /// other people's old correspondence on every page it served, and file it
+    /// as its own (2026-09-16).
+    bool arm = true,
   }) async {
     final r = _lxmf;
     if (!_up || r == null || _id == null) return false;
@@ -6352,7 +6359,8 @@ class RnsService {
     // other is deduplicated on the derived identifier, exactly as a message
     // heard twice over two bearers always has been.
     final peerCall = callsignForLxmfDest(destHex);
-    if (peerCall.isNotEmpty &&
+    if (arm &&
+        peerCall.isNotEmpty &&
         content.isNotEmpty &&
         MeshService.instance.isDirectNeighbour(peerCall)) {
       MeshCourier.instance.armLxmf(
@@ -6412,8 +6420,10 @@ class RnsService {
     if (!ok) _queueLxmfRetry(destHex, msg.packed, title, content, fields);
     // Whether this needed a carrier is not knowable yet — MeshCourier asks the
     // retry queue twenty seconds from now, when "did it arrive" has an answer.
-    MeshCourier.instance
-        .armLxmf(destHex: destHex, text: content, private: private);
+    if (arm) {
+      MeshCourier.instance
+          .armLxmf(destHex: destHex, text: content, private: private);
+    }
     return ok;
   }
 

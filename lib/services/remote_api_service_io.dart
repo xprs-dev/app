@@ -2114,6 +2114,26 @@ class RemoteApiService {
           'refusedNoSeal': MeshCourierCounters.refusedNoSeal,
           'sealedUnreadable': MeshCourierCounters.ingestSealedUnreadable,
           'ingestDropped': MeshCourierCounters.ingestDropped,
+          // Answers, receipts and commands the courier refused to wrap into
+          // a message (2026-09-15). Climbing is the fix working; `aired`
+          // climbing with it would be the loop back.
+          'notMail': MeshCourierCounters.notMail,
+          // Opened, and reached nobody: no wapp was subscribed, or the door
+          // refused it. Held and offered again when one subscribes
+          // (`redelivered`). Before this they were counted as delivered and
+          // acknowledged to the sender, which threw the words away.
+          'undelivered': MeshCourierCounters.undelivered,
+          'redelivered': MeshCourierCounters.redelivered,
+        },
+        // The wapp door itself: what it published and what never reached a
+        // person, which is the difference between "delivered" and "shown".
+        'delivery': {
+          'published': WappDelivery.published,
+          'noSubscriber': WappDelivery.noSubscriber,
+          'refusedProtocol': WappDelivery.refusedProtocol,
+          'refusedGroupAuthor': WappDelivery.refusedGroupAuthor,
+          'partsHeld': WappDelivery.partsHeld,
+          'partsJoined': WappDelivery.partsJoined,
         },
         'gatt': BleService.instance.gattStatus(),
         'scheduler': MeshTransferScheduler.instance.statusJson(),

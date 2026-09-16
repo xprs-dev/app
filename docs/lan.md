@@ -57,6 +57,55 @@ no framing to get wrong, so a new station joins the bearer by opening a socket.
 A packet is at most 250 bytes, so it always fits one datagram and is never
 fragmented.
 
+## Asking who is there (2026-09-15)
+
+A station on this bearer is found when it beacons, every five minutes, and a
+device behind a controller (XPRS.md 11.7.1) when its controller next airs for
+it. Somebody opening a list of what is around wants the answer now, so the
+core can ask: `XprsLan.sweep()`, reached by a wapp as `hal_xprs_discover()`
+through `MeshService.discoverNearby()`. The wapp asks for the answer; that the
+answer comes from a LAN sweep is the core's choice.
+
+```
+t:request f:<us> ts:<now> q:identity        no d:, unsigned
+-> 255.255.255.255:4242, then unicast to every host of each local /24
+<- t:identity from every station that speaks XPRS, one per device a
+   controller operates, through the ordinary receive door
+```
+
+- **The words are XPRS.md 8's, unchanged.** `q:identity` "asks for one directly
+  rather than waiting for the next period" (29.1); with no `d:` it is addressed
+  to whoever hears it, and the firmware already answers it that way. Nothing
+  about a sweep is new vocabulary.
+- **Unicast to every host**, because this bearer's own header says why: WiFi
+  drops and rate-limits broadcast, asymmetrically per device. The broadcast
+  copy goes first anyway.
+- **Where**: the /24 around each private (RFC 1918, link-local) address this
+  machine holds, never its own address, never a container or VM bridge
+  (docker0, br-, veth, virbr, vmnet), at most four subnets.
+  `xprsLanSweepTargets` is pure and is a test table.
+- **Cost**: about 250 datagrams of ~50 bytes per subnet, paced 8 at a time
+  with 120 ms between (about four seconds per /24, in the background), one
+  identity airing per station that answers. Unsigned, so no curve operation.
+  At most one sweep per 30 s, whoever asks. The pace is set by ARP, not by
+  the network: a datagram to an address nobody holds waits about three
+  seconds for resolution and holds the socket's send buffer meanwhile, so a
+  faster sweep has its tail refused.
+- **Readable**: `/api/status` `mesh.lan.sweep` {sweeps, probes, refused,
+  skipped, running, agoMs}, and one log line per sweep. `skipped` is a host
+  whose datagram the socket would not take even after a pause: at 800 a
+  second the bench lost 14 of 253, and 8 with an immediate retry.
+
+The app itself answers `q:identity` only when it is addressed (`d:` names it),
+so a sweep finds firmware stations and controllers rather than other phones.
+
+**Not yet proven end to end.** On the bench (2026-09-15) the sweep went out
+(253 hosts, one subnet, the docker bridge skipped) and reached X3MEAV at
+192.168.178.62, which relayed the request, yet no `t:identity` came back
+within 30 s, addressed or not, although `xprs_app.c` answers `q:identity`
+from `on_lan`. The firmware that station runs is the next thing to read; no
+X4 controller was on that network to try.
+
 ## Not everybody at once
 
 > **The phone does not do any of this.** `lib/services/xprs/xprs_lan.dart`

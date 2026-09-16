@@ -821,6 +821,11 @@ class XprsArchive {
     /// by the kind's prefix on the same index. A kind without one prefix (a
     /// station: X2, X3 or a licence) selects nothing.
     XprsKind? fromKind,
+    /// Only what may be offered to this asker (XPRS.md 12.1): publications
+    /// (no `d:`), mail to or from it, and group traffic, whose membership is
+    /// the group's own business (10.9.3). Anybody else's mail is held for its
+    /// addressee and "never offered to a third party".
+    String? mailFor,
   }) {
     final db = _db;
     if (db == null) return const [];
@@ -830,6 +835,14 @@ class XprsArchive {
     if (from != null && from.trim().isNotEmpty) {
       where.write(' AND fromc = ?');
       args.add(_base(from));
+    }
+    if (mailFor != null && mailFor.trim().isNotEmpty) {
+      final a = _base(mailFor);
+      where.write(" AND (toc = '' OR toc = ? OR fromc = ? "
+          "OR (toc >= 'X5' AND toc < 'X6'))");
+      args
+        ..add(a)
+        ..add(a);
     }
     if (fromKind != null) {
       final prefix = xprsKindPrefix(fromKind);

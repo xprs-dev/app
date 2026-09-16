@@ -93,4 +93,41 @@ void main() {
         isNull,
         reason: 'a different ts is a different set (keyed on f,ts)');
   });
+
+  // A phone in the field held 42 incomplete sets and climbing: a replayed set
+  // whose completing part was correctly deduped left its siblings orphaned,
+  // because only the completing part was ever remembered as delivered.
+  test('a finished set names every part it was built from', () {
+    final t = XprsPartTable();
+    expect(t.offer(_part('1/3', 'one'), clear: 'one'), isNull);
+    expect(t.offer(_part('3/3', 'three'), clear: 'three'), isNull);
+    final whole = t.offer(_part('2/3', 'two'), clear: 'two');
+    expect(whole, isNotNull);
+    expect(whole!.text, 'one two three');
+    expect(whole.partIds, hasLength(3));
+    expect(whole.partIds.toSet(), {
+      xprsIdentifier(_part('1/3', 'one')),
+      xprsIdentifier(_part('2/3', 'two')),
+      xprsIdentifier(_part('3/3', 'three')),
+    });
+    expect(t.pending, 0);
+  });
+
+  test('a repeated part is not counted twice', () {
+    final t = XprsPartTable();
+    t.offer(_part('1/2', 'one'), clear: 'one');
+    t.offer(_part('1/2', 'one'), clear: 'one');
+    final whole = t.offer(_part('2/2', 'two'), clear: 'two');
+    expect(whole!.partIds, hasLength(2));
+  });
+
+  // The set key is what a custodian parks a split message under: it can read
+  // `f:` and `ts:` on a sealed packet (12.7) and nothing else.
+  test('the set key is (f, ts), and one derivation serves both sides', () {
+    expect(xprsSetKey(_part('1/3', 'one')), xprsSetKey(_part('3/3', 'three')));
+    expect(
+        xprsSetKey(XprsPacket.parse('t:message f:X1AAA d:X1BBB m:no stamp')!),
+        isNull,
+        reason: 'without ts: there is nothing to bind parts with');
+  });
 }

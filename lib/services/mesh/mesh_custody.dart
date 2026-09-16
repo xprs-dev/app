@@ -24,6 +24,7 @@ import '../log_service.dart';
 import '../reticulum/rns_service.dart';
 import '../xprs/xprs_airtime.dart';
 import '../xprs/xprs_packet.dart';
+import '../xprs/xprs_parts.dart';
 import '../xprs/xprs_vocab.dart';
 import 'mesh_beacon.dart';
 import 'mesh_bulk_spool.dart';
@@ -366,7 +367,12 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
 
     // Not for us: take custody (we owe delivery / next hop).
     final stored = store.offer(
-        target: to, sender: from, wire: m.wire, am: m.am, inTransit: true);
+        target: to,
+        sender: from,
+        wire: m.wire,
+        am: m.am,
+        inTransit: true,
+        setKey: _setKeyOf(m.wire));
     if (stored) {
       MeshCustodyCounters.custodyIn++;
       _log('took custody of $key for $to (via $peer)');
@@ -613,8 +619,17 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
             ? MeshUrgency.low
             : stated.cappedAt(MeshUrgency.high));
     var parked = false;
+    // A split message is parked as a SET (7.6's `(f, ts)`, both in clear even
+    // when the body is sealed): one receipt for any part then releases every
+    // part. Empty for a single packet and for a compact frame.
+    final setKey = _setKeyOf(wire);
     if (store.offer(
-        target: to, sender: from, wire: wire, am: am, urg: urg)) {
+        target: to,
+        sender: from,
+        wire: wire,
+        am: am,
+        urg: urg,
+        setKey: setKey)) {
       parked = true;
       MeshCustodyCounters.parked++;
       LogService.instance.add('Mesh: parked ${am.isEmpty ? "msg" : am} '
@@ -852,6 +867,14 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
   /// its text in the third `\x1F` field; a bare XPRS packet has no `\x1F` at all
   /// and starts with `t:`. Trying both costs one string scan and means the
   /// carrier reads whichever arrives.
+  /// The set a wire belongs to when it is one part of a split message, else
+  /// the empty string (7.6, through the one derivation in xprs_parts.dart).
+  static String _setKeyOf(Uint8List wire) {
+    final p = _xprsOf(wire);
+    if (p == null || !p.has('n')) return '';
+    return xprsSetKey(p) ?? '';
+  }
+
   static XprsPacket? _xprsOf(Uint8List wire) {
     final s = utf8.decode(wire, allowMalformed: true);
     return XprsPacket.parse(s) ?? XprsPacket.parse(_splitWire(wire)?.$3 ?? '');

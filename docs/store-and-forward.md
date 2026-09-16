@@ -380,6 +380,110 @@ radio: `test/xprs_mail_relay_sim_test.dart` on `test/support/mail_relay_sim.dart
 runs the real funnel, store, receipts and mailbox for each station in turn over
 an air that drops what is addressed to somebody offline.
 
+## 5.2 A carrier carries mail, not answers (2026-09-15)
+
+X1UDP4 replied to X1WATT while the phone was away. The reply reached X1WATT's
+archiver, the C61, and stayed there: the phone polled the C61 every 25 s over
+the LAN for an evening and never saw it. Four defects, each invisible alone:
+
+- **The courier minted messages.** `sendLxmf` arms the courier for every
+  directed XPRS wire, and with no Reticulum path `_air` sealed whatever it held
+  as the text of a new `t:message f:<us> d:<them> ts:now`. Every `t:result` the
+  C61 gave the polling phone became a three-part message to it: 474 in fifty
+  minutes, which buried the real reply, were replayed on the next poll and
+  re-armed the courier. Now an XPRS wire is carried as it is when it is a
+  person's mail, and otherwise not at all (`MeshCourier.notMail`, counted as
+  `courier.notMail`). A command is dropped by a carrier, never parked (XPRS.md
+  11.7); a result or a receipt is nobody's correspondence.
+- **The archiver offered other people's mail.** A public archiver's page was
+  the twelve newest messages of anybody to anybody. XPRS.md 12.1: mail is held
+  for its addressee and never offered to a third party. `XprsArchive.query`
+  takes `mailFor`, and the history server always passes the asker:
+  publications, the asker's mail both ways, and group traffic.
+- **The continuation cursor skipped the reply.** `until:` came from rows the
+  archiver itself had written, and an old one of those heard mid-ask moved it
+  hours back, over the gap that held the reply. XPRS.md 11.2.1: the requester
+  "moves `until:` to the `ts:` of the oldest packet it received". The page is
+  now counted at the receive door (`XprsIngest.onHeardAny`): a via-less
+  `t:message` older than a minute inside the ask's window, whoever wrote it,
+  with one ask out per device at a time so every such packet belongs to it.
+  The next `until:` repeats the boundary second, because the parts of one
+  message share a `ts:`. Unanswered history is kept as windows, newest first:
+  a new window opens ahead of an unfinished backfill, so fresh mail is not
+  queued behind a week of somebody's broadcasts, and the mark moves to the
+  start of the oldest window still open.
+- **A refusal did not slow a continuation.** A `206` chain skipped the earned
+  interval, so a `429` was followed by another ask 25 s later, for hours. A
+  `429` now holds the archiver back for its interval, continuation or not
+  (12.10.2).
+
+A replay is aired and nothing else (2026-09-16): `verbatim` now reaches the
+bearer, so a history page is neither handed to the courier nor deposited. An
+archiver used to park, re-air and file as its own the correspondence it merely
+replayed.
+
+Readable without a debugger: `mesh.catchup.windows` (the cursor per archiver),
+`mesh.catchup.marks`, `mesh.catchup.refusedForMs`, `mesh.history` (pages 200
+and 206, misses, busy and budget refusals, the caller being served) and
+`mesh.courier.notMail`.
+
+(The sealed-set release this section left open is section 5.3's, below: the
+set key and the per-part receipts.)
+
+## 5.3 Delivery is not a send (2026-09-16)
+
+The phone that never showed X1UDP4's reply held 234 of its rows in its own
+spool, 72 of 87 part-sets complete and every one of them decryptable, with
+`courier.ingested` at 0. Nothing was lost on the air. It was thrown away at the
+door, and the door is the only chance there is:
+
+**The plaintext of a sealed 1:1 is written nowhere.** The spool keeps the parts
+as they were heard, sealed, and the joined packet is never admitted. So
+`WappDelivery.deliverMessage` is the single, unrepeatable moment the words can
+reach a person, and the courier used to discard its answer: it marked the
+message delivered and acknowledged it to the sender whether or not any wapp was
+subscribed. The `s:ack` then released every carrier's copy, so a message opened
+while the chat engine was still loading was gone from the whole mesh, silently.
+
+What ships:
+
+- **A verdict.** `deliverMessage` returns `delivered`, `noSubscriber` or
+  `refused`. Only `delivered` may mark and acknowledge. An undelivered message
+  is left unmarked so the next copy, from any lane, delivers it, and is also
+  held in memory (64 newest, never on disk: they are somebody's private words)
+  and offered again the moment something subscribes to `xprs.message`
+  (`WappEventBroker.onFirstSubscriber`). A refusal is not queued: an XPRS wire
+  or a non-member's group post would be refused again.
+- **Every part of a set is remembered**, not only the one that completed it.
+  `XprsReassembled.partIds` carries them and the courier records all of them
+  plus the reassembled id. Before this, a replayed set's completing part was
+  correctly deduped while its siblings opened sets that could never close: 42
+  incomplete sets on the bench phone, still climbing.
+- **One key shape for "we have this one".** `received_ams` stores the bare
+  identifier, which is what a parked row wears as `am`; the compact lane keeps
+  its `am:`/`c:` names. The old `id:`-prefixed rows are rewritten on open. The
+  have-bloom this station airs is therefore a true statement, and a custodian's
+  `applyPeerBloom` finally drops what we hold instead of re-airing it for ever.
+- **A split message is parked as a set.** `mesh_store.setk` is `(f, ts)`
+  through `xprsSetKey`, the same derivation the reassembly table uses; both
+  fields stay in clear on a sealed packet (12.7). `purgeAm` of any member
+  releases the whole set, because a split message is delivered or it is not
+  (7.6: a partial message is never displayed).
+- **The recipient acknowledges the parts too.** A holder of sealed parts can
+  never match the ordinary receipt: it names the reassembled message, whose
+  identifier hashes plaintext the holder cannot read. So the recipient also
+  composes one signed `t:receipt r:<part id> s:ack` per part and hands those to
+  the holders alone (`XprsMailbox.receiptFanout`). The shared air still carries
+  exactly one receipt for one message (9.7.2, 30.1).
+
+Readable from outside: `mesh.courier.{undelivered, redelivered}` and
+`mesh.delivery.{published, noSubscriber, refusedProtocol, refusedGroupAuthor,
+partsHeld, partsJoined}`.
+
+`deliverXprs` needs a live Reticulum stack, so the pieces are unit-tested
+(the verdict, the part ids, the set release, the key shape, the part receipt)
+and the whole is a bench check.
+
 ## 6. Releasing carried copies
 
 The recipient's `?ACK <am>` purges carriers still holding a copy. The have-bloom

@@ -47,6 +47,10 @@ class XprsReceiptCounters {
   static int skippedStranger = 0;
   static int skippedNotDirect = 0;
 
+  /// Receipts naming one PART of a split message, handed to the stations
+  /// holding a copy. Never aired on the shared channel.
+  static int partReceipts = 0;
+
   /// Composed nothing because we hold no signing key. An unsigned receipt is
   /// worse than none (see the header), so this is a refusal, not a fallback.
   static int refusedUnsigned = 0;
@@ -159,7 +163,18 @@ class XprsReceipt {
   static XprsPacket? compose(XprsPacket p,
       {required String selfCallsign,
       BigInt? signingKey,
-      String state = 'ack'}) {
+      String state = 'ack',
+      /// Name this identifier instead of the message's own.
+      ///
+      /// For the PARTS of a split message (7.6: "each part has its own
+      /// identifier"). A custodian holding sealed parts cannot compute the
+      /// reassembled identifier the ordinary receipt names, because that one
+      /// hashes plaintext it does not have, so its copies were never released
+      /// by anything. A receipt naming a part is a true statement about a
+      /// packet that exists, and it is what a holder can match. Sent only down
+      /// the directed fan-out, never onto the shared air (9.7.2: the answer is
+      /// to send fewer receipts).
+      String? forId}) {
     if (p.type != 'message') return null;
 
     final self = _base(selfCallsign);
@@ -204,8 +219,8 @@ class XprsReceipt {
     // No `q:` — this is a device reporting bytes, not a person agreeing to
     // anything. That remains `s:sign`, which is still asked for explicitly.
     final r = XprsPacket.parse(
-        't:receipt f:$self d:$from r:${xprsIdentifier(p)} ts:${_nowIso()} '
-        's:$state');
+        't:receipt f:$self d:$from r:${forId ?? xprsIdentifier(p)} '
+        'ts:${_nowIso()} s:$state');
     if (r == null) return null;
     final signed = xprsSign(r, d);
     return signed.fits ? signed : null;

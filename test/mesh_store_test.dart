@@ -504,4 +504,49 @@ void main() {
   });
 
 });
+
+  // A sealed split message could never be released: the parts are parked under
+  // their own ids and a receipt names the reassembled message (XPRS.md 7.6),
+  // whose identifier hashes plaintext a holder of sealed parts cannot read.
+  group('a split message is parked as a set', () {
+    void park(String am, String setKey) => store.offer(
+        target: 'X1WATT',
+        sender: 'X1UDP4',
+        wire: _wire('X1UDP4', 'X1WATT', 'part $am'),
+        am: am,
+        setKey: setKey);
+
+    test('a receipt for any part releases every part', () {
+      const set = 'X1UDP4|2026-09-15_20:51:51';
+      park('aaa111', set);
+      park('bbb222', set);
+      park('ccc333', set);
+      park('ddd444', 'X1UDP4|2026-09-15_21:00:00'); // another message
+      expect(store.countPending(), 4);
+
+      expect(store.purgeAm('bbb222'), 3,
+          reason: 'the message is delivered or it is not (7.6)');
+      expect(store.countPending(), 1);
+      expect(store.holds('ddd444'), isTrue,
+          reason: 'another set is another message');
+    });
+
+    test('a single packet still releases only itself', () {
+      park('eee555', '');
+      park('fff666', '');
+      expect(store.purgeAm('eee555'), 1);
+      expect(store.holds('fff666'), isTrue);
+    });
+  });
+
+  test('what we have is remembered under the key a parked row wears', () {
+    // The courier wrote `id:<hex>` while custody and receipts wrote the bare
+    // identifier, so this station's bloom never matched a custodian's rows and
+    // the same message was re-aired for ever.
+    store.recordReceivedAm('abc123');
+    expect(store.wasReceived('abc123'), isTrue);
+    final bloom = store.buildHaveBloom();
+    expect(meshBloomHas(bloom, 'abc123'), isTrue,
+        reason: 'a custodian tests the bare am of the row it parked');
+  });
 }

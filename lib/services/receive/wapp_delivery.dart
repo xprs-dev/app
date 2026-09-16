@@ -54,6 +54,29 @@ const List<String> kXprsTypes = [
   'warning', 'ping', 'pong',
 ];
 
+/// What became of a message at the wapp door.
+///
+/// The door is the ONE moment a decoded 1:1 can reach a person: the archive
+/// keeps the parts as they were heard, sealed, and the joined plaintext is
+/// never written anywhere. A caller that cannot tell these apart marks a
+/// message delivered and acknowledges it to the sender when nobody was
+/// listening, and the words are then gone for good (2026-09-16, a phone whose
+/// chat engine was still loading while its spool drained).
+enum XprsDelivery {
+  /// At least one engine had asked for this topic and was handed the row.
+  delivered,
+
+  /// Nobody was subscribed. Not a refusal: the same message delivered later,
+  /// from any lane, is exactly what the reader is owed.
+  noSubscriber,
+
+  /// An XPRS wire, or a group post from somebody who may not post there.
+  /// Refused on purpose; a later copy would be refused again.
+  refused;
+
+  bool get ok => this == XprsDelivery.delivered;
+}
+
 class WappDelivery {
   WappDelivery._();
   static final WappDelivery instance = WappDelivery._();
@@ -247,7 +270,7 @@ class WappDelivery {
   /// it did not come out of one (a foreign LXMF message has no packet). It is
   /// what §13.7 puts in a receipt's `r:`, so a wapp reporting "a person read
   /// this" has something to name.
-  int deliverMessage({
+  XprsDelivery deliverMessage({
     String from = '',
     required String content,
     String title = '',
@@ -266,14 +289,14 @@ class WappDelivery {
     // chat bubble. Refused here, once, for every lane.
     if (xprsLooksLikeWire(content)) {
       refusedProtocol++;
-      return 0;
+      return XprsDelivery.refused;
     }
     if (title.startsWith('#') &&
         !groupAuthorMayPost(title.substring(1), call)) {
       refusedGroupAuthor++;
-      return 0;
+      return XprsDelivery.refused;
     }
-    return _publish(rxTopicFor('message'), {
+    final engines = _publish(rxTopicFor('message'), {
         'id': id,
         'type': 'message',
         'from': from,
@@ -309,6 +332,7 @@ class WappDelivery {
         // (a foreign LXMF one) has no `xr:` and defaults to false.
         'obfuscated': obfuscated,
       });
+    return engines > 0 ? XprsDelivery.delivered : XprsDelivery.noSubscriber;
   }
 
   /// The fate of a message THIS station sent: delivered, read.

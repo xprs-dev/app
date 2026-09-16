@@ -36,7 +36,7 @@ class _UpBearer implements XprsBearer {
   Future<bool> get active async => true;
   @override
   Future<XprsSendResult> send(String wire,
-          {required int part, String slot = 'status', Duration? ttl, bool datagram = false}) async =>
+          {required int part, String slot = 'status', Duration? ttl, bool datagram = false, bool verbatim = false}) async =>
       XprsSendResult.sent;
 }
 
@@ -51,6 +51,12 @@ void _beacon(int nowMs, {required int count, int? mail}) {
   XprsMonitor.instance
       .offer(p!, bearer: 'ble', selfCallsign: _self, rssi: -50, nowMs: nowMs);
 }
+
+/// A packet of a history page arriving through the receive door: the
+/// original, verbatim, no via:.
+void _replay(String from, int tsMs, {String to = _self, String extra = ''}) =>
+    XprsCatchup.instance.noteHeard(XprsPacket.parse(
+        't:message f:$from d:$to ts:${xprsNowTs(tsMs)}$extra m:x')!);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -146,7 +152,7 @@ void main() {
     var ask = XprsPacket.parse(aired.last)!;
 
     // Round one: the page reaches back to `stuck` and the station says more.
-    XprsCatchup.instance.noteReplay(_station, stuck);
+    _replay(_station, stuck);
     XprsCatchup.instance.onResult(XprsPacket.parse(
         't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
 
@@ -158,7 +164,7 @@ void main() {
     expect(aired.last, contains('until:'));
 
     // Round two reaches exactly as far back as round one: no progress.
-    XprsCatchup.instance.noteReplay(_station, stuck);
+    _replay(_station, stuck);
     XprsCatchup.instance.onResult(XprsPacket.parse(
         't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
 
@@ -183,12 +189,12 @@ void main() {
     _beacon(now, count: 3);
     await XprsCatchup.instance.tick(_self);
     var ask = XprsPacket.parse(aired.last)!;
-    XprsCatchup.instance.noteReplay(_station, stuck);
+    _replay(_station, stuck);
     XprsCatchup.instance.onResult(XprsPacket.parse(
         't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
     await XprsCatchup.instance.tick(_self);
     ask = XprsPacket.parse(aired.last)!;
-    XprsCatchup.instance.noteReplay(_station, stuck);
+    _replay(_station, stuck);
     XprsCatchup.instance.onResult(XprsPacket.parse(
         't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
     final afterAbandon = aired.length;
@@ -201,7 +207,7 @@ void main() {
     expect(aired.length, afterAbandon + 1, reason: 'the station was never re-asked');
     ask = XprsPacket.parse(aired.last)!;
 
-    XprsCatchup.instance.noteReplay(_station, now - 1200000); // older than before
+    _replay(_station, now - 1200000); // older than before
     XprsCatchup.instance.onResult(XprsPacket.parse(
         't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
     await XprsCatchup.instance.tick(_self);
@@ -218,7 +224,7 @@ void main() {
     final ask = XprsPacket.parse(aired.single)!;
 
     // The station served the newest slice and says it held more.
-    XprsCatchup.instance.noteReplay(_station, now - 600000);
+    _replay(_station, now - 600000);
     XprsCatchup.instance.onResult(XprsPacket.parse(
         't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
 
@@ -303,6 +309,10 @@ void main() {
         bearer: 'ble', selfCallsign: _self, rssi: -50, nowMs: now);
     _beacon(now, count: 3);
 
+    await XprsCatchup.instance.tick(_self);
+    expect(aired, hasLength(1), reason: 'one ask out at a time');
+    // Nobody answered within the grace: the next station is asked.
+    now += const Duration(seconds: 41).inMilliseconds;
     await XprsCatchup.instance.tick(_self);
     expect(aired, hasLength(2), reason: 'both stations are new');
 
@@ -485,7 +495,8 @@ void main() {
       await XprsCatchup.instance.tick(_self);
       final ask = XprsPacket.parse(fetches().single)!;
       final oldest = now - const Duration(hours: 3).inMilliseconds;
-      XprsCatchup.instance.noteRow(device, oldest);
+      XprsCatchup.instance.noteHeard(XprsPacket.parse(
+          't:observation f:$device volt:1V ts:${xprsNowTs(oldest)}')!);
       XprsCatchup.instance.onResult(XprsPacket.parse(
           't:result f:$archiver d:$_self ts:x r:${xprsIdentifier(ask)} '
           'code:206')!);
@@ -503,6 +514,109 @@ void main() {
       PreferencesService.instanceSync!.xprsNamedArchivers = const [];
       await XprsCatchup.instance.tick(_self);
       expect(fetches(), isEmpty);
+    });
+  });
+
+  // ── The C61, 2026-09-15 ─────────────────────────────────────────────────
+  //
+  // A phone polled its archiver every 25 s and never received the one reply
+  // held for it: the cursor came from rows the ARCHIVER wrote, an old one of
+  // those heard mid-ask pulled `until:` hours back over the gap, and every
+  // refusal was followed by another ask 25 s later.
+  group('the page is what arrived', () {
+    Future<XprsPacket> firstAsk() async {
+      _beacon(now, count: 3);
+      await XprsCatchup.instance.tick(_self);
+      return XprsPacket.parse(aired.last)!;
+    }
+
+    void result(XprsPacket ask, int code) =>
+        XprsCatchup.instance.onResult(XprsPacket.parse(
+            't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} '
+            'code:$code')!);
+
+    int? untilOf(String wire) {
+      final m = RegExp(r'until:(\S+)').firstMatch(wire);
+      return m == null ? null : xprsParseTs(m.group(1));
+    }
+
+    test('the cursor is the oldest packet received, whoever wrote it', () async {
+      final ask = await firstAsk();
+      final oldest = now - 1800000;
+      _replay('X1UDP4', now - 600000);
+      _replay('X1UDP4', oldest); // a third party's mail to us, the oldest
+      _replay(_station, now - 900000);
+      result(ask, 206);
+      await XprsCatchup.instance.tick(_self);
+      expect(aired, hasLength(2));
+      // The boundary second is asked again: parts of one message share a ts:.
+      expect(untilOf(aired.last), (oldest ~/ 1000) * 1000 + 1000);
+    });
+
+    test('a relayed or re-aired old packet is not part of the page', () async {
+      final ask = await firstAsk();
+      _replay('X1UDP4', now - 600000);
+      // The archiver re-airing held mail to us while we ask: via:, not a replay.
+      _replay(_station, now - 5 * 3600000, extra: ' via:$_station');
+      result(ask, 206);
+      await XprsCatchup.instance.tick(_self);
+      expect(untilOf(aired.last), ((now - 600000) ~/ 1000) * 1000 + 1000,
+          reason: 'the cursor must not jump over what the page did not cover');
+    });
+
+    test('live traffic heard during the ask is not part of the page', () async {
+      final ask = await firstAsk();
+      _replay('X1UDP4', now - 600000);
+      _replay('X1UDP4', now - 5000); // said just now: not history
+      result(ask, 206);
+      await XprsCatchup.instance.tick(_self);
+      expect(untilOf(aired.last), ((now - 600000) ~/ 1000) * 1000 + 1000);
+    });
+
+    test('a 429 mid-chain holds the continuation back', () async {
+      var ask = await firstAsk();
+      _replay('X1UDP4', now - 600000);
+      result(ask, 206);
+      await XprsCatchup.instance.tick(_self);
+      ask = XprsPacket.parse(aired.last)!;
+      result(ask, 429);
+      final n = aired.length;
+      now += const Duration(seconds: 25).inMilliseconds;
+      await XprsCatchup.instance.tick(_self);
+      expect(aired, hasLength(n),
+          reason: 'refused, and asked again 25 s later: the loop the C61 ran');
+    });
+
+    test('new mail is asked for ahead of an unfinished backfill', () async {
+      final ask = await firstAsk();
+      final firstSince = xprsParseTs(ask['since']);
+      _replay('X1UDP4', now - 3 * 24 * 3600000);
+      result(ask, 206); // days of backlog left
+      await XprsCatchup.instance.tick(_self); // the continuation
+      final cont = XprsPacket.parse(aired.last)!;
+      result(cont, 206);
+      // The period passes: a NEW window, from where the first one began to
+      // now, goes out before the backfill resumes.
+      now += const Duration(minutes: 11).inMilliseconds;
+      _beacon(now, count: 4);
+      await XprsCatchup.instance.tick(_self);
+      final fresh = XprsPacket.parse(aired.last)!;
+      expect(fresh['until'], isNull, reason: 'the newest window reaches now');
+      expect(xprsParseTs(fresh['since']), greaterThan(firstSince!),
+          reason: 'it starts where the first window ended, not a week back');
+    });
+
+    test('the mark moves only when every window is answered', () async {
+      final prefs = PreferencesService.instanceSync!;
+      final ask = await firstAsk();
+      _replay('X1UDP4', now - 600000);
+      result(ask, 206);
+      final before = prefs.xprsCatchupMarks[_station];
+      await XprsCatchup.instance.tick(_self);
+      result(XprsPacket.parse(aired.last)!, 200);
+      expect(prefs.xprsCatchupMarks[_station], isNot(before));
+      expect(prefs.xprsCatchupMarks[_station], xprsParseTs(ask['ts'])! ~/ 1000,
+          reason: 'the whole window up to the first ask is answered for');
     });
   });
 }

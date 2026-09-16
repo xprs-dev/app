@@ -34,7 +34,7 @@ class _LossyBearer implements XprsBearer {
       {required int part,
       String slot = 'status',
       Duration? ttl,
-      bool datagram = false}) async {
+      bool datagram = false, bool verbatim = false}) async {
     everything.add(wire);
     if (datagram) datagramSeen = true;
     final p = XprsPacket.parse(wire)!;
@@ -62,7 +62,7 @@ class _FlakyBearer implements XprsBearer {
       {required int part,
       String slot = 'status',
       Duration? ttl,
-      bool datagram = false}) async {
+      bool datagram = false, bool verbatim = false}) async {
     if (refuseFirst > 0) {
       refuseFirst--;
       return XprsSendResult.refused;
