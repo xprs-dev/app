@@ -25,11 +25,25 @@
  * because a hole in the middle of a message must not close silently.
  */
 import 'xprs_body.dart';
+import 'xprs_id.dart';
 import 'xprs_packet.dart';
+
+/// The key section 6.6 reassembles on: the sender and the timestamp every part
+/// of one message shares. Both stay in clear on a sealed packet (12.7), so a
+/// station that cannot open a body can still tell which parts belong together
+/// -- which is what lets a custodian park a split message as one set
+/// (MeshStore.setk).
+String? xprsSetKey(XprsPacket p) {
+  final from = (p['f'] ?? '').trim().toUpperCase();
+  final ts = (p['ts'] ?? '').trim();
+  if (from.isEmpty || ts.isEmpty) return null;
+  return '$from|$ts';
+}
 
 /// A message rebuilt from its parts.
 class XprsReassembled {
-  const XprsReassembled(this.packet, this.text, this.privacy, {this.sig});
+  const XprsReassembled(this.packet, this.text, this.privacy,
+      {this.sig, this.partIds = const []});
 
   /// The packet the parts reassemble into: the first part's fields with `n:`
   /// removed and the body replaced by the joined text. Its section 5 identifier
@@ -47,6 +61,15 @@ class XprsReassembled {
   /// re-attached, and only the caller (who knows the sender's key) can hold
   /// it against anything. Null when no part carried one.
   final String? sig;
+
+  /// The section 5 identifier of every part this set was built from.
+  ///
+  /// The caller records them all as delivered. Remembering only the part that
+  /// happened to complete the set left its siblings unknown, so every replay
+  /// re-opened a set that could never close, and the table churned at its cap
+  /// for as long as an archiver kept replaying (`42 set(s) incomplete`, still
+  /// climbing, on a phone in the field 2026-09-16).
+  final List<String> partIds;
 }
 
 class _Set {
@@ -56,6 +79,9 @@ class _Set {
   final XprsPrivacy privacy;
   final DateTime at;
   final Map<int, String> parts = {};
+
+  /// The identifier of each part accepted, in arrival order.
+  final List<String> ids = [];
 
   /// The signature seen on whichever part carried one (9.1.1: the last).
   String? sig;
@@ -100,12 +126,11 @@ class XprsPartTable {
     if (i < 1 || total < 1 || total > 9 || i > total) return null;
     if (clear == null) return null;
 
-    final from = p['f'] ?? '';
-    final ts = p['ts'] ?? '';
     // Keyed on (f, ts) exactly as 6.6 says. Without `ts:` there is nothing to
-    // bind parts with and two messages from one station would merge.
-    if (from.isEmpty || ts.isEmpty) return null;
-    final key = '$from|$ts';
+    // bind parts with and two messages from one station would merge. One
+    // derivation, shared with the custodian that parks a set (xprsSetKey).
+    final key = xprsSetKey(p);
+    if (key == null) return null;
     final privacy = p.has('x') ? XprsPrivacy.sealed : XprsPrivacy.plain;
 
     var set = _sets[key];
@@ -121,12 +146,15 @@ class XprsPartTable {
             .reduce((a, b) => a.value.at.isBefore(b.value.at) ? a : b)
             .key;
         _sets.remove(oldest);
+        evicted++;
       }
       set = _Set(total, p, privacy, at);
       _sets[key] = set;
     }
     // "A repeated part number is ignored" — the first copy heard wins.
+    final had = set.parts.containsKey(i);
     set.parts.putIfAbsent(i, () => clear);
+    if (!had) set.ids.add(xprsIdentifier(p));
     // Keep the joined-packet signature for the caller (9.1.1).
     final psig = p['sig'];
     if (psig != null && psig.isNotEmpty) set.sig = psig;
@@ -142,22 +170,30 @@ class XprsPartTable {
     ].join(' ');
     final head = set.first.without({'n', 'sig', 'x', 'm'});
     return XprsReassembled(head.with_('m', joined), joined, set.privacy,
-        sig: set.sig);
+        sig: set.sig, partIds: List.unmodifiable(set.ids));
   }
 
   _Set _adopt(_Set old, XprsPacket first, DateTime at) {
     final s = _Set(old.total, first, old.privacy, old.at);
     s.parts.addAll(old.parts);
+    s.ids.addAll(old.ids);
     s.sig = old.sig;
     return s;
   }
+
+  /// Sets dropped because the table was full, and sets that timed out. A set
+  /// that vanishes without a trace is a message nobody can explain the loss of.
+  int evicted = 0;
+  int expired = 0;
 
   /// Discard sets older than [hold]. Cheap and called on every offer, so no
   /// timer of its own (docs/performance.md section 8.3).
   void sweep([DateTime? now]) {
     if (_sets.isEmpty) return;
     final at = now ?? DateTime.now();
+    final before = _sets.length;
     _sets.removeWhere((_, s) => at.difference(s.at) >= hold);
+    expired += before - _sets.length;
   }
 
   void clear() => _sets.clear();

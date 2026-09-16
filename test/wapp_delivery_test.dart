@@ -175,11 +175,11 @@ void main() {
     expect(
         WappDelivery.instance.deliverMessage(
             from: 'x', call: 'X1PZ4Q', content: 'psst', title: '#$g'),
-        0);
+        XprsDelivery.refused);
     expect(
         WappDelivery.instance.deliverMessage(
             from: 'x', call: 'X1RD89', content: 'hi', title: '#$g'),
-        1);
+        XprsDelivery.delivered);
     m.clear();
   });
 
@@ -193,7 +193,8 @@ void main() {
     final n = WappDelivery.instance
         .deliverMessage(from: 'X1QZ3N', content: 'hello');
 
-    expect(n, 1, reason: 'exactly one engine asked for this topic');
+    expect(n, XprsDelivery.delivered,
+        reason: 'exactly one engine asked for this topic');
     expect(bus.queueDepth('chat'), 1);
     expect(bus.queueDepth('nosy'), 0,
         reason: 'a wapp that did not subscribe is not told');
@@ -276,9 +277,13 @@ void main() {
     bus.registerEngine('chat'); // registered, but subscribed to nothing
     final n = WappDelivery.instance
         .deliverMessage(from: 'X1QZ3N', content: 'hello');
-    expect(n, 0);
+    expect(n, XprsDelivery.noSubscriber);
     expect(WappDelivery.noSubscriber, 1,
         reason: 'the old pull model made this state invisible');
+    expect(n.ok, isFalse,
+        reason: 'the caller must be able to tell this from a delivery: it is '
+            'what stops a message being marked delivered and acked to the '
+            'sender when nobody heard it');
   });
 
   test('the event is queued for the subscriber to read', () {

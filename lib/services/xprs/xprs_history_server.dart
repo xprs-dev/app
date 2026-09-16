@@ -61,6 +61,24 @@ class XprsHistoryServer {
 
   int answered = 0, refused429 = 0;
 
+  /// The same answers split by what they were, so a caller refused and
+  /// re-asking can be read off the station rather than guessed at: the C61
+  /// answered one phone every 25 s for an evening and nothing said whether
+  /// those were pages, refusals or misses (2026-09-15).
+  int pages200 = 0, pages206 = 0, notFound = 0, refusedBusy = 0,
+      refusedBudget = 0;
+
+  Map<String, dynamic> statusJson() => {
+        'answered': answered,
+        'pages200': pages200,
+        'pages206': pages206,
+        'notFound': notFound,
+        'refusedBusy': refusedBusy,
+        'refusedBudget': refusedBudget,
+        'asksLastHour': asksLastHour,
+        'chainFor': _chainFor,
+      };
+
   final Map<String, int> _answeredIds = {};
   final Map<String, List<int>> _asksBy = {};
   final List<int> _asksGlobal = [];
@@ -190,6 +208,7 @@ class XprsHistoryServer {
     final selfIsAsking = from == selfBase;
     if (!selfIsAsking && !_budgetAllows(from, now)) {
       refused429++;
+      refusedBudget++;
       LogService.instance
           .add('XPRS: history for $from refused — over budget (429)');
       _airControl(selfBase, from, cmdId, 429);
@@ -242,6 +261,11 @@ class XprsHistoryServer {
         only: p['only'],
         types: _kinds(p) ?? XprsArchive.kXprsTalk.toList(),
         ownOnly: _ownOnlyFor(from, selfBase: selfBase),
+        // XPRS.md 12.1: mail is held for its addressee and never offered to
+        // a third party. Without this a public archiver's page was twelve of
+        // everybody's sealed DMs, and the asker's own mail competed with all
+        // of them for the slots (the C61, 2026-09-15).
+        mailFor: from,
         limit: pageSize + 1);
     answered++;
 
@@ -250,6 +274,7 @@ class XprsHistoryServer {
       // debugging a silent replay needs to see.
       LogService.instance
           .add('XPRS: history for $from — nothing held in that window (404)');
+      notFound++;
       // A miss is not a dead end (36.9): when the ask named a callsign and
       // gossip knows who HAS heard it, the 404 carries `m:try` naming them.
       final asked = _base(p['only'] ?? '');
@@ -270,6 +295,7 @@ class XprsHistoryServer {
         _chainFor = null;
       } else {
         refused429++;
+        refusedBusy++;
         _airControl(selfBase, from, cmdId, 429);
         return;
       }
@@ -317,6 +343,11 @@ class XprsHistoryServer {
       t.cancel();
       _chain = null;
       _chainFor = null;
+      if (more) {
+        pages206++;
+      } else {
+        pages200++;
+      }
       _airControl(selfBase, from, cmdId, more ? 206 : 200);
     });
     LogService.instance.add('XPRS: history for $from — ${page.length} '
@@ -417,7 +448,8 @@ class XprsHistoryServer {
         only: cmd['only'],
         types: _kinds(cmd) ?? XprsArchive.kXprsTalk.toList(),
         limit: inlinePageSize + 1,
-        ownOnly: _ownOnlyFor(from, selfBase: selfBase));
+        ownOnly: _ownOnlyFor(from, selfBase: selfBase),
+        mailFor: from); // 12.1, as on every other lane
     answered++;
     if (rows.isEmpty) {
       return [
@@ -485,5 +517,6 @@ class XprsHistoryServer {
     _chainFor = null;
     answered = 0;
     refused429 = 0;
+    pages200 = pages206 = notFound = refusedBusy = refusedBudget = 0;
   }
 }

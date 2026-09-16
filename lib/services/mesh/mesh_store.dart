@@ -116,13 +116,17 @@ class MeshStore {
         )''');
       _migratePrioToUrg(db);
       _migrateReleaseCols(db);
+      _migrateSetKey(db);
       db.execute(
           'CREATE INDEX IF NOT EXISTS idx_store_target ON mesh_store(target, state)');
+      db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_store_setk ON mesh_store(setk)');
       db.execute('''
         CREATE TABLE IF NOT EXISTS received_ams(
           am TEXT PRIMARY KEY,
           ts INTEGER NOT NULL
         )''');
+      _migrateDeliveredKeys(db);
       db.execute('''
         CREATE TABLE IF NOT EXISTS bulk_handover(
           sha TEXT NOT NULL,
@@ -194,6 +198,10 @@ class MeshStore {
     MeshUrgency urg = MeshUrgency.normal,
     bool inTransit = true,
     bool ours = false,
+    /// The set this row belongs to when the message was split (7.6's `(f,
+    /// ts)`, through xprsSetKey). One receipt for any member releases them
+    /// all -- see [purgeAm].
+    String setKey = '',
   }) {
     final db = _db;
     if (db == null || wire.length > maxWire) return false;
@@ -210,8 +218,8 @@ class MeshStore {
     final dup = db.select('SELECT 1 FROM mesh_store WHERE am = ?', [key]);
     if (dup.isNotEmpty) return false;
     db.execute(
-      'INSERT INTO mesh_store(am,target,sender,wire,ts,size,urg,state) '
-      'VALUES(?,?,?,?,?,?,?,?)',
+      'INSERT INTO mesh_store(am,target,sender,wire,ts,size,urg,state,setk) '
+      'VALUES(?,?,?,?,?,?,?,?,?)',
       [
         key,
         target.toUpperCase(),
@@ -221,6 +229,7 @@ class MeshStore {
         wire.length,
         urg.index,
         inTransit ? 0 : 1,
+        setKey,
       ],
     );
     return true;
@@ -317,6 +326,38 @@ class MeshStore {
     }
   }
 
+  /// v4: the set a parked row belongs to.
+  ///
+  /// Section 7.6 keys reassembly on `(f, ts)`, and 12.7 keeps both in clear on
+  /// a sealed packet, so a custodian that cannot read a word of the body can
+  /// still tell which parts are one message. It has to: a receipt names the
+  /// REASSEMBLED message (7.6), whose identifier hashes plaintext a holder of
+  /// sealed parts does not have, so before this a sealed split message could
+  /// never be released and was re-aired until the seven-day sweep.
+  static void _migrateSetKey(CommonDatabase db) {
+    final cols = db
+        .select('PRAGMA table_info(mesh_store)')
+        .map((r) => r['name'] as String)
+        .toSet();
+    if (!cols.contains('setk')) {
+      db.execute("ALTER TABLE mesh_store ADD COLUMN setk TEXT NOT NULL DEFAULT ''");
+    }
+  }
+
+  /// One key shape for "we have this one".
+  ///
+  /// The courier wrote `id:<hex>` and custody and the receipts wrote the bare
+  /// identifier, into the same column. So the have-bloom this station airs
+  /// never matched a custodian's parked rows (whose `am` IS the bare id) and
+  /// custodians re-aired the same messages for ever, while a message handed
+  /// over in a session was delivered again off the air. Bare is the shape that
+  /// matches a parked row; the compact lane keeps its own `am:`/`c:` names.
+  static void _migrateDeliveredKeys(CommonDatabase db) {
+    db.execute(
+        "UPDATE OR REPLACE received_ams SET am = substr(am, 4) "
+        "WHERE am LIKE 'id:%'");
+  }
+
   static void _migratePrioToUrg(CommonDatabase db) {
     final cols = db
         .select('PRAGMA table_info(mesh_store)')
@@ -336,8 +377,21 @@ class MeshStore {
   int purgeAm(String am) {
     final db = _db;
     if (db == null || am.isEmpty) return 0;
+    // The whole SET, not the one part. A split message is delivered or not at
+    // all (7.6: a partial message is never displayed), so a receipt for any
+    // member of a set says the reader has the message and every part of it can
+    // go. Without this a sealed set was never released by anything, because
+    // the receipt names an identifier no holder of sealed parts can compute.
+    final setk = db.select(
+        "SELECT setk FROM mesh_store WHERE am = ? AND setk <> ''", [am]);
     db.execute('DELETE FROM mesh_store WHERE am = ?', [am]);
-    return db.updatedRows;
+    var gone = db.updatedRows;
+    if (setk.isNotEmpty) {
+      db.execute('DELETE FROM mesh_store WHERE setk = ?',
+          [setk.first['setk'] as String]);
+      gone += db.updatedRows;
+    }
+    return gone;
   }
 
   /// Custody handed to a peer (MSG_ACK / duplicate) — archive our copy.

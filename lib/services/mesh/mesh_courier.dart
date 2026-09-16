@@ -59,6 +59,7 @@ import '../log_service.dart';
 import '../../profile/profile_service.dart';
 import '../reticulum/rns_service.dart';
 import '../receive/wapp_delivery.dart';
+import '../../wapp/wapp_event_broker.dart';
 import '../xprs/xprs_vocab.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_body.dart';
@@ -105,6 +106,19 @@ class MeshCourierCounters {
   /// refusal branch in `_air`.
   static int refusedNoSeal = 0;
 
+  /// Messages that reached this station, opened, and then reached NOBODY:
+  /// no wapp was subscribed, or the door refused them. Counted rather than
+  /// marked delivered, which is what threw a phone's mail away silently.
+  static int undelivered = 0;
+
+  /// Messages handed to a wapp on the second attempt, once one subscribed.
+  static int redelivered = 0;
+
+  /// XPRS wires handed to the courier that are not a person's mail: a
+  /// `t:result` answering somebody's history ask, a receipt, a pong, a
+  /// command, a group post. Dropped, never wrapped. See [MeshCourier.armLxmf].
+  static int notMail = 0;
+
   /// Sealed messages that reached us and would not open. Shown to the operator
   /// rather than dropped, so this is a diagnostic and not a loss count.
   static int ingestSealedUnreadable = 0;
@@ -117,6 +131,9 @@ class MeshCourierCounters {
         'aired': aired,
         'refusedTooLong': refusedTooLong,
         'refusedNoIdentity': refusedNoIdentity,
+        'notMail': notMail,
+        'undelivered': undelivered,
+        'redelivered': redelivered,
         'ingested': ingested,
         'ingestDropped': ingestDropped,
       };
@@ -168,6 +185,82 @@ class MeshCourier {
     MeshStore.instance.recordReceivedAm(key);
   }
 
+  // ── A door that opened late ──────────────────────────────────────────────
+  //
+  // The spool drains at boot while the chat engine is still reading its wasm,
+  // and a page open hands the engine over for a moment. A message opened in
+  // one of those windows reached nobody, and the plaintext of a sealed 1:1 is
+  // written nowhere, so it was gone. These are kept, in memory only (the words
+  // are private and belong on no disk of ours), and offered again the moment
+  // something subscribes.
+
+  /// The most recent undelivered messages, newest last. Bounded: the archive
+  /// still holds the parts, and a replay from any archiver delivers them too.
+  static const int _undeliveredMax = 64;
+  final List<({XprsPacket p, String via, String from})> _undelivered = [];
+
+  /// Armed once, from MeshService, so a late subscriber is told.
+  void listenForDoors() {
+    WappEventBroker.instance.onFirstSubscriber = (topic) {
+      if (topic == rxTopicFor('message')) unawaited(_retryUndelivered());
+    };
+  }
+
+  void _queueUndelivered(XprsPacket p, String via) {
+    final from = (p['f'] ?? '').trim().toUpperCase();
+    if (from.isEmpty) return;
+    final id = xprsIdentifier(p);
+    if (_undelivered.any((e) => xprsIdentifier(e.p) == id)) return;
+    if (_undelivered.length >= _undeliveredMax) _undelivered.removeAt(0);
+    _undelivered.add((p: p, via: via, from: from));
+  }
+
+  /// Offer everything held back, now that somebody is listening. Each one goes
+  /// through the ordinary door, so it is marked, acknowledged and counted
+  /// exactly as a live arrival is.
+  Future<void> _retryUndelivered() async {
+    if (_undelivered.isEmpty) return;
+    final pending = List.of(_undelivered);
+    _undelivered.clear();
+    for (final e in pending) {
+      final verdict = WappDelivery.instance.deliverMessage(
+          call: e.from,
+          content: e.p['m'] ?? '',
+          bearer: e.via,
+          id: xprsIdentifier(e.p),
+          sig: XprsSigState.unverified.name,
+          file: e.p['file'] ?? '',
+          size: e.p['size'] ?? '',
+          name: e.p['name'] ?? '',
+          obfuscated: e.p.has('xr'),
+          ts: xprsParseTs(e.p['ts']));
+      if (!verdict.ok) continue; // still nobody: it stays unmarked
+      MeshCourierCounters.redelivered++;
+      _noteDelivered(xprsIdentifier(e.p));
+      _acknowledge(e.p, e.via);
+    }
+    LogService.instance.add(
+        'Courier: a wapp subscribed — re-offered ${pending.length} message(s) '
+        'nobody was there for');
+  }
+
+  /// One line a minute, whatever the rate: a backlog that reaches nobody would
+  /// otherwise fill the ring with the same sentence (performance.md 8.7).
+  int _undeliveredSinceLogMs = 0;
+  int _undeliveredSinceLog = 0;
+
+  void _noteUndelivered(String from, XprsDelivery verdict) {
+    _undeliveredSinceLog++;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _undeliveredSinceLogMs < 60000) return;
+    _undeliveredSinceLogMs = now;
+    final n = _undeliveredSinceLog;
+    _undeliveredSinceLog = 0;
+    LogService.instance.add(
+        'Courier: $n message(s) reached nobody (${verdict.name}) — the last '
+        'from $from; held for the next wapp that subscribes');
+  }
+
   /// Note a 1:1 the core just sent over LXMF. Cheap and unconditional — the
   /// pump decides, twenty seconds later, whether it needed a carrier.
   void armLxmf({
@@ -177,6 +270,23 @@ class MeshCourier {
     bool private = true,
   }) {
     if (destHex.isEmpty || text.isEmpty) return;
+
+    // A CARRIER CARRIES MAIL, NOT ANSWERS (2026-09-15). The Reticulum bearer
+    // sends every directed XPRS wire through sendLxmf, so every answer this
+    // station gives arrives here too: the `t:result` for each history ask,
+    // receipts, pongs, commands. `_air` used to seal whatever it was handed
+    // as the TEXT of a new `t:message f:<us> d:<them> ts:now`, so an archiver
+    // answering a phone's poll every 25 s with no Reticulum path to it minted
+    // a fresh three-part message per answer: 474 of them to one phone in
+    // fifty minutes on the C61, which buried the one real reply it held for
+    // that phone and fed the history replay that re-armed the courier. A
+    // command is dropped by a carrier, never parked (XPRS.md 11.7); a result
+    // or a receipt is nobody's correspondence. So an XPRS wire is carried as
+    // it is, when it is a person's mail, or not at all.
+    if (notMail(text)) {
+      MeshCourierCounters.notMail++;
+      return;
+    }
 
     // ONE MESSAGE, ONE ARMING. `sendLxmf` arms twice for the same send: once
     // eagerly when it can hear the recipient's own radio, and once
@@ -268,6 +378,12 @@ class MeshCourier {
       _park([already.bytes], call: already.to, sealed: already.sealed);
       return;
     }
+    // Armed before the gate in armLxmf existed, or by a caller that bypassed
+    // it: an XPRS wire that is not carriable mail is still never wrapped.
+    if (notMail(a.text)) {
+      MeshCourierCounters.notMail++;
+      return;
+    }
 
     // Build the body in the form the SENDER chose for this one message
     // (docs/XPRS.md section 9.2 -- `x:` sealed, `m:` plain; the wire form is
@@ -332,6 +448,20 @@ class MeshCourier {
   /// material at all. Carrying the bytes unchanged is what keeps the §5
   /// identifier — and therefore every dedup, receipt and custody release —
   /// pointing at one message instead of one per attempt.
+  /// Is [text] an XPRS wire that is not a person's mail? Such a wire is
+  /// carried as it is or not at all: sealing it into a new `t:message` turns
+  /// an answer into correspondence nobody wrote (see [armLxmf]). Plain text
+  /// that is not a wire is not covered: that is a body the courier seals.
+  static bool notMail(String text) {
+    final t = text.trimLeft();
+    if (!t.startsWith('t:')) return false;
+    // Every packet names its sender (XPRS.md 4.1). Without `f:` this is a
+    // person's text that happens to begin with "t:", and it is a body.
+    final p = XprsPacket.parse(t);
+    if (p == null || !p.has('f')) return false;
+    return carriableAsIs(t) == null;
+  }
+
   static CarriedWire? carriableAsIs(String text) {
     final wire = text.trim();
     final p = XprsPacket.parse(wire);
@@ -477,7 +607,7 @@ class MeshCourier {
     // caller that already had the frame calls in directly. The duplicate used
     // to be caught further down, AFTER a signature verify and a sealed-body
     // unseal had both run a second time.
-    if (_alreadyDelivered('id:${f.id}')) return false;
+    if (_alreadyDelivered(f.id)) return false;
 
     // Only a person's text reaches a person.
     //
@@ -591,6 +721,9 @@ class MeshCourier {
     // identifier — and had no caller anywhere in the tree. This is that caller.
     // Reassembly is core by architecture (docs/architecture.md): a wapp is
     // handed a message, never the parts of one.
+    // The parts this message was built from, so every one of them can be
+    // remembered as delivered (see the tail of this method).
+    var partIds = const <String>[];
     if (p.has('n')) {
       // A sealed part we could not open is offered as null: the set then cannot
       // complete, which is correct — half a message with a hole in it is not
@@ -641,6 +774,7 @@ class MeshCourier {
       }
       p = whole.packet;
       body = whole.text;
+      partIds = whole.partIds;
       // §9.2: a sealed body opens only against the sender's announced key, so a
       // successful unseal is a stronger proof of authorship than the signature
       // line — say so rather than reporting "unsigned".
@@ -648,7 +782,7 @@ class MeshCourier {
       // The set is identified by the packet the parts reassemble into, so the
       // same message completing twice (aired copy, then custody handover)
       // collapses onto one entry.
-      if (_alreadyDelivered('id:${xprsIdentifier(p)}')) return false;
+      if (_alreadyDelivered(xprsIdentifier(p))) return false;
     }
     if (body.isEmpty) return false;
 
@@ -735,7 +869,7 @@ class MeshCourier {
     // wapp learns about how it travelled. The `ts:` is the sender's (§4.8),
     // the id is the §5 identifier a read receipt names, and `sig:` is §9.1's
     // verdict — optional, so unsigned still reaches a person.
-    WappDelivery.instance.deliverMessage(
+    final verdict = WappDelivery.instance.deliverMessage(
         call: f.from,
         content: body,
         bearer: via,
@@ -752,13 +886,42 @@ class MeshCourier {
         // the packet is right here and the wapp never sees it.
         obfuscated: p.has('xr'),
         ts: xprsParseTs(p['ts']));
-    // REMEMBER it. `_alreadyDelivered` is checked on the way in, but nothing
-    // ever recorded the delivery, so the guard read a flag no one set and the
-    // same packet was delivered again on every arrival — once per bearer, and
-    // again for every re-aired copy. Invisible until the receipt made it
-    // audible: three identical `s:ack`s for one message inside 150 ms, which is
-    // airtime spent to say the same thing three times (§31.1).
-    _noteDelivered('id:${f.id}');
+
+    // DELIVERY IS NOT A SEND (2026-09-16). This door is the one moment the
+    // words can reach a person: the spool keeps the parts as they were heard,
+    // sealed, and the joined plaintext is written nowhere. Marking the message
+    // delivered and acknowledging it when NOBODY was subscribed threw it away
+    // and told the sender it had arrived -- the ack releases the copy every
+    // carrier is holding, so the loss was network-wide and silent. Measured on
+    // a phone whose chat engine was still loading while the spool drained:
+    // 234 rows from one peer in its archive, `ingested` 0.
+    //
+    // So an undelivered message is left unmarked, and the next copy from any
+    // lane delivers it. A refusal is different: an XPRS wire or a group post
+    // from a non-member would be refused again, so it is not worth re-offering
+    // and is not queued.
+    if (!verdict.ok) {
+      MeshCourierCounters.undelivered++;
+      if (verdict == XprsDelivery.noSubscriber) _queueUndelivered(p, via);
+      _noteUndelivered(f.from, verdict);
+      return false;
+    }
+    // REMEMBER it, every part of it. `_alreadyDelivered` is checked on the way
+    // in, but nothing ever recorded the delivery, so the guard read a flag no
+    // one set and the same packet was delivered again on every arrival — once
+    // per bearer, and again for every re-aired copy. Invisible until the
+    // receipt made it audible: three identical `s:ack`s for one message inside
+    // 150 ms, which is airtime spent to say the same thing three times (§31.1).
+    //
+    // The PARTS matter as much as the whole: recording only the part that
+    // completed the set left its siblings unknown, so every replay re-opened a
+    // set that could never close and the 64-set table churned for ever
+    // (`42 set(s) incomplete`, climbing, in the field).
+    _noteDelivered(f.id);
+    for (final partId in partIds) {
+      _noteDelivered(partId);
+    }
+    _noteDelivered(xprsIdentifier(p));
     MeshCourierCounters.ingested++;
     LogService.instance
         .add('Courier: delivered a carried packet from ${f.from} (via $via)');
@@ -771,7 +934,7 @@ class MeshCourier {
     // (§36.0), which is the freshest path we have back to them. Composed only
     // when §13.7.1 allows: not for a group, not for a broadcast, not for a
     // stranger, and never unsigned.
-    _acknowledge(p, via);
+    _acknowledge(p, via, partIds: partIds);
 
     // "Frames that ended at us, the target." This counter existed but was only
     // incremented on the MSP session lane, so a message delivered off the AIR
@@ -782,7 +945,7 @@ class MeshCourier {
     return true;
   }
 
-  void _acknowledge(XprsPacket p, String via) {
+  void _acknowledge(XprsPacket p, String via, {List<String> partIds = const []}) {
     final self = MeshService.instance.tableCallsign;
     final r = XprsReceipt.compose(p, selfCallsign: self);
     if (r == null) return;
@@ -820,10 +983,31 @@ class MeshCourier {
     // holder does not need to be the addressee: 13.3 has a carrier release on
     // OVERHEARING an acknowledgement, and this is that, delivered by hand.
     final wire = r.encode();
+    // A SPLIT message is released part by part, and only here.
+    //
+    // The receipt above names the reassembled message (7.6), which is the
+    // right thing to tell the sender and useless to a custodian holding
+    // sealed parts: that identifier hashes plaintext it cannot read, so
+    // nothing it holds ever matched and it re-aired the set until the
+    // seven-day sweep. Each part HAS an identifier the holder computed itself
+    // from the bytes it parked, so one signed receipt per part is a statement
+    // it can act on. They go to the holders only: the shared air still carries
+    // exactly one receipt for one message (9.7.2, 30.1).
+    final parts = <String>[
+      for (final id in partIds)
+        if ((XprsReceipt.compose(p, selfCallsign: self, forId: id))
+            case final rp?)
+          rp.encode()
+    ];
     for (final h in XprsMailbox.instance.receiptFanout(p, selfBase: self)) {
       XprsMailboxCounters.receiptsToHolders++;
       unawaited(XprsMailbox.instance.sendTo?.call(h, wire) ??
           Future<bool>.value(false));
+      for (final rp in parts) {
+        XprsReceiptCounters.partReceipts++;
+        unawaited(XprsMailbox.instance.sendTo?.call(h, rp) ??
+            Future<bool>.value(false));
+      }
     }
   }
 
@@ -914,11 +1098,18 @@ class MeshCourier {
         ? 'am:${am!.value}'
         : 'c:${sha256.convert(utf8.encode('$from|$body'))}';
     if (_alreadyDelivered(key)) return false;
-    _noteDelivered(key);
 
     // By CALLSIGN, straight to the wapp door — the compact frame is an XPRS
-    // message like any other and needs no LXMF address to be shown.
-    WappDelivery.instance.deliverMessage(call: from, content: body, bearer: via);
+    // message like any other and needs no LXMF address to be shown. Marked
+    // only once it got there, for the reason the packet lane states above.
+    final verdict =
+        WappDelivery.instance.deliverMessage(call: from, content: body, bearer: via);
+    if (!verdict.ok) {
+      MeshCourierCounters.undelivered++;
+      _noteUndelivered(from, verdict);
+      return false;
+    }
+    _noteDelivered(key);
     MeshCourierCounters.ingested++;
     LogService.instance
         .add('Courier: delivered a carried message from $from (via $via)');

@@ -362,26 +362,26 @@ class MeshService {
           XprsFileFetch.instance.onResult(p);
           XprsCommandCourier.instance.onResult(p);
         };
-        // The catch-up watermark moves when a row is WRITTEN, not when it is
-        // queued — see XprsArchive.onStored.
-        XprsArchive.instance.onStored = XprsCatchup.instance.noteRow;
+        // A history page is counted at the receive door, every packet of it
+        // whoever wrote it and whether or not this station keeps it: the
+        // cursor of a 206 continuation is the oldest packet received
+        // (XPRS.md 11.2.1).
+        XprsIngest.onHeardAny = XprsCatchup.instance.noteHeard;
         // A message addressed to us, heard on ANY bearer, goes to the courier
         // for verification, unsealing and delivery to the inbox. Before this
         // the only route ran through the BLE 0x41 custody tap, so anything a
         // station replayed on 0x58 — which is every history replay — was
         // archived and never seen again.
         XprsIngest.onDeliver = (p, bearer) {
-          // Where a partial page stopped: a `206` continuation asks for what
-          // came BEFORE the oldest record the station managed to send.
-          final tsMs = xprsParseTs(p['ts']);
-          if (tsMs != null) {
-            XprsCatchup.instance.noteReplay(p['f'] ?? '', tsMs);
-          }
           // This IS the funnel's delivery hook (XprsIngest.onDeliver): the
           // packet has already come through the door to get here.
           // arch-ignore: one-receive-door this is the funnel's own delivery hook
           MeshCourier.instance.deliverXprs(MeshFrame.fromXprs(p), via: bearer);
         };
+        // A message opened while no wapp was subscribed reached nobody, and
+        // the plaintext of a sealed 1:1 is kept nowhere: the courier holds it
+        // and offers it again the moment a door opens.
+        MeshCourier.instance.listenForDoors();
         // Poll every station in reach once a minute, off the native heartbeat
         // so it survives a pocket (docs/performance.md section 8.2).
         XprsCatchup.instance.start(cs);
@@ -1407,6 +1407,9 @@ class MeshService {
       // nothing, so without this a stalled poller and a quiet one are the same
       // from outside -- which is exactly the confusion this cost once.
       'catchup': XprsCatchup.instance.statusJson(),
+      // The other side of the same exchange: what this station answered to
+      // everybody else's catch-up, split by kind of answer.
+      'history': XprsHistoryServer.instance.statusJson(),
       'advertising': _canAdvertise,
       'class': _deviceClass().label,
       'powered': _powered,

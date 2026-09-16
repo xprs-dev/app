@@ -557,4 +557,27 @@ void main() {
           xprsParseTs(ts(XprsArchive.followedPresenceMax + extra - 1)));
     });
   });
+
+  test('mailFor offers publications, the asker\'s mail and groups, nothing else',
+      () {
+    a.admit(_p('t:message f:X1UDP4 d:X1WATT ts:2026-09-15_20:51:51 m:for B'),
+        bearer: 'lan');
+    a.admit(_p('t:message f:X1CCCC d:X1DDDD ts:2026-09-15_20:52:00 m:for D'),
+        bearer: 'lan');
+    a.admit(_p('t:message f:X1WATT d:X1UDP4 ts:2026-09-15_20:53:00 m:from B'),
+        bearer: 'lan');
+    a.admit(_p('t:message f:X1CCCC ts:2026-09-15_20:54:00 m:everybody'),
+        bearer: 'lan');
+    a.admit(_p('t:message f:X1CCCC d:X5A3F2 ts:2026-09-15_20:55:00 m:the group'),
+        bearer: 'lan');
+    a.flush();
+    final got = a
+        .query(types: const ['message'], mailFor: 'X1WATT-2')
+        .map((r) => (r['wire'] as String).split(' m:').last)
+        .toSet();
+    expect(got, {'for B', 'from B', 'everybody', 'the group'},
+        reason: 'C to D is held for D and never offered to B (XPRS.md 12.1)');
+    expect(a.query(types: const ['message']).length, 5,
+        reason: 'without an asker nothing is filtered');
+  });
 }

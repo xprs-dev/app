@@ -44,6 +44,7 @@ import 'xprs_id.dart';
 import 'xprs_monitor.dart';
 import 'xprs_packet.dart';
 import 'xprs_publisher.dart';
+import 'xprs_vocab.dart';
 import '../../platform/platform.dart' as platform;
 
 class XprsCatchup {
@@ -75,21 +76,36 @@ class XprsCatchup {
   String? _backfillStation;
   int _backfillFetched = 0;
 
-  /// One ask per archiver per period.
+  /// When each archiver was last asked for a NEW window: the clock the
+  /// cadence runs on. A continuation of an open window does not reset it.
   final Map<String, int> _askedAtMs = {};
+
+  /// When each archiver was last asked anything, continuation included: the
+  /// floor between two asks is measured from here.
+  final Map<String, int> _lastAskMs = {};
 
   /// Per station, the last `count:`/`mail:` its beacon claimed. An unchanged
   /// pair means there is nothing to fetch, so no replay is spent.
   final Map<String, String> _newsSeen = {};
 
-  /// Stations whose last page came back `206` — more was held than was served.
-  /// Value is the `until:` for the continuation: the oldest ts we received, so
-  /// the next ask asks for what came BEFORE it (section 36.10.1).
-  final Map<String, int> _resume = {};
+  /// What is still owed per archiver: the windows not yet answered in full,
+  /// NEWEST FIRST (see [_Window]). A new window opens ahead of an unfinished
+  /// one, so fresh mail is never parked behind a week-deep backfill.
+  final Map<String, List<_Window>> _windows = {};
+  static const int _windowsMax = 3;
 
-  /// Pending asks: section-5 id of the ask -> the ask's own ts (epoch ms).
-  /// When a t:result names one of these with 200/206/404, the watermark
-  /// advances to that ts.
+  /// The newest edge ever opened per archiver: where the next window starts,
+  /// and the mark once every window is closed.
+  final Map<String, int> _edgeMs = {};
+
+  /// After a `429`, this archiver is not asked again before this moment,
+  /// continuation or not (XPRS.md 12.10.2: "code:429 is the archiver's
+  /// authority over the caller's cadence"). A continuation skipped the
+  /// interval and so skipped the refusal too: the C61 was refused and asked
+  /// again every 25 s (2026-09-15).
+  final Map<String, int> _refusedUntilMs = {};
+
+  /// Pending asks: section-5 id of the ask -> which archiver and window.
   final Map<String, _Ask> _pending = {};
   static const int _pendingMax = 8;
 
@@ -103,8 +119,11 @@ class XprsCatchup {
   /// quiet for a week is an hour, quiet for three months is six hours.
   final Map<String, int> _lastNewsMs = {};
 
-  /// Asks sent and not yet answered: archiver -> when we sent it.
-  final Map<String, int> _inFlight = {};
+  /// THE ask out, whoever it is to. One at a time per device: every replayed
+  /// packet heard while it is out then belongs to it, so a page is counted at
+  /// the receive door ([noteHeard]) instead of guessed at from who wrote what.
+  /// The guess skipped a phone's only reply (2026-09-15).
+  _Flight? _flight;
 
   /// How long an unanswered ask blocks the next one. Long enough for a full
   /// page to air (twelve records at the responder's pacing, plus slack), short
@@ -114,14 +133,19 @@ class XprsCatchup {
   /// Injected so the tests are deterministic; 0..1.
   double Function() rand = math.Random().nextDouble;
 
-  bool _awaiting(String base, int now) {
-    final sent = _inFlight[base];
-    if (sent == null) return false;
-    if (now - sent > _inFlightGrace.inMilliseconds) {
-      _inFlight.remove(base);
+  /// Is an ask out? Forgets one that outlived its grace.
+  bool _busy(int now) {
+    final f = _flight;
+    if (f == null) return false;
+    if (now - f.atMs > _inFlightGrace.inMilliseconds) {
+      _flight = null;
       return false;
     }
     return true;
+  }
+
+  void _land(String base) {
+    if (_flight?.archiver == base) _flight = null;
   }
 
   /// Is anybody looking? A fast cadence with the screen off spends somebody's
@@ -214,7 +238,7 @@ class XprsCatchup {
   void _noteAnswer(String base, XprsAnswer answer) {
     final prefs = PreferencesService.instanceSync;
     final now = nowMs();
-    _inFlight.remove(base);
+    _land(base);
     if (answer == XprsAnswer.news) {
       _lastNewsMs[base] = now;
       prefs?.setXprsCatchupNews(base, now);
@@ -240,7 +264,9 @@ class XprsCatchup {
     final base = _base(archiver);
     if (base.isEmpty) return;
     _askedAtMs.remove(base);
-    _inFlight.remove(base);
+    _lastAskMs.remove(base);
+    _refusedUntilMs.remove(base);
+    _land(base);
     if (_selfCallsign.isNotEmpty) unawaited(tick(_selfCallsign));
   }
 
@@ -362,7 +388,29 @@ class XprsCatchup {
         'askedAgoMs': {
           for (final e in _askedAtMs.entries) e.key: nowMs() - e.value,
         },
-        'resuming': _resume.keys.toList(),
+        'resuming': [
+          for (final e in _windows.entries)
+            if (e.value.any((w) => w.untilMs != null)) e.key
+        ],
+        // What is still owed, per archiver, newest first, and where each
+        // page stopped: the cursor the next continuation asks from.
+        'windows': {
+          for (final e in _windows.entries)
+            e.key: [
+              for (final w in e.value)
+                {
+                  'since': _ts(w.sinceMs),
+                  'until': w.untilMs == null ? null : _ts(w.untilMs!),
+                  'end': _ts(w.endMs),
+                  if (w.stalled) 'stalled': true,
+                }
+            ],
+        },
+        'marks': PreferencesService.instanceSync?.xprsCatchupMarks ?? const {},
+        'refusedForMs': {
+          for (final e in _refusedUntilMs.entries)
+            if (e.value > nowMs()) e.key: e.value - nowMs(),
+        },
         // Followed stations fetched from the chosen archivers (12.12.2).
         'followed': {
           'asks': followAsks,
@@ -387,15 +435,15 @@ class XprsCatchup {
   /// Singleton, same reason as XprsMonitor.debugReset.
   void debugReset() {
     _askedAtMs.clear();
+    _lastAskMs.clear();
     _newsSeen.clear();
-    _resume.clear();
+    _windows.clear();
+    _edgeMs.clear();
+    _refusedUntilMs.clear();
     _pending.clear();
-    _oldestReplayMs.clear();
     _intervalMs.clear();
     _lastNewsMs.clear();
-    _inFlight.clear();
-    _sawRows.clear();
-    _lastResumeMs.clear();
+    _flight = null;
     _identityAtMs = 0;
     _mailboxAtMs = 0;
     _backfillStation = null;
@@ -567,7 +615,11 @@ class XprsCatchup {
       // as "no news", leaving the every-period backstop to carry it.
       for (final c in deep) XprsStation(c, 'rns', now),
     ]) {
+      // One ask out at a time (see [_flight]); the next station is the next
+      // tick's, five seconds on.
+      if (_busy(now)) break;
       final base = _base(st.callsign);
+      if ((_refusedUntilMs[base] ?? 0) > now) continue;
       // THE NEWS CHECK, and it costs nothing on air: the station's own beacon
       // already says how much it holds (`count:`) and how much mail it is
       // carrying (`mail:`). A replay is metered — six an hour for a caller
@@ -576,7 +628,12 @@ class XprsCatchup {
       // must not do.
       final news = '${st.count ?? -1}/${st.mail ?? -1}';
       final seen = _newsSeen[base];
-      final unfinished = _resume.containsKey(base);
+      // A page the station could not finish is asked for again at once
+      // (12.10.2: "code:206 ... ask the continuation IMMEDIATELY"), unless the
+      // chain stopped moving, in which case it waits for the next window.
+      final pending = _windows[base]
+          ?.where((w) => w.untilMs != null && !w.stalled)
+          .firstOrNull;
       // The interval this archiver has EARNED. One clock for everybody meant a
       // room silent for three months cost the same metered replay as one with
       // a conversation running; the cadence now follows what the archiver
@@ -600,24 +657,32 @@ class XprsCatchup {
       // number frozen in the past. Stale knowledge is worse than none, because
       // it looks like knowledge. A backstop that is always armed cannot be
       // reasoned out of existence by state going stale.
-      if (!overdue && (seen == news) && !unfinished) continue;
       // News accelerates, but never past the floor: the floor is the peer's
       // budget, and a count: that moves every minute does not buy us the right
-      // to ask an ordinary archiver every minute.
-      // Whoever asked last, the conversation or a followed station: the floor
-      // is what the ARCHIVER permits between two asks from us.
-      final last = math.max(_askedAtMs[base] ?? 0, _followArchiverAtMs[base] ?? 0);
-      final floor = _floorMsFor(base, prefs);
-      if (last != 0 && now - last < floor) continue;
-      // An ask still waiting for its answer is not a reason to send another.
-      // One replay runs at a time on the responder, and a page takes about
-      // eighteen seconds to air -- a second ask lands mid-chain and is refused,
-      // which under a 429 costs the window rather than shortening it.
-      if (_awaiting(base, now)) continue;
-      _newsSeen[base] = news;
-      _askedAtMs[base] = now;
-      _inFlight[base] = now;
-      await _ask(selfCallsign, base, now, prefs);
+      // to ask an ordinary archiver every minute. Whoever asked last, the
+      // conversation or a followed station. A continuation is the one ask the
+      // floor does not hold back (12.10.2).
+      var openNew = false;
+      if (overdue || seen != news) {
+        final last =
+            math.max(_lastAskMs[base] ?? 0, _followArchiverAtMs[base] ?? 0);
+        openNew = last == 0 || now - last >= _floorMsFor(base, prefs);
+      }
+      if (!openNew && pending == null) continue;
+      final _Window w;
+      if (openNew) {
+        // The news is consumed by the window it opens, never by a
+        // continuation, or a count that moved during a chain is forgotten.
+        _newsSeen[base] = news;
+        // Newest first (11.2.1: "somebody back from four days at sea wants
+        // last night before last Tuesday"): a new window opens AHEAD of any
+        // unfinished one, which resumes once this is answered.
+        w = _openWindow(base, now, prefs);
+        _askedAtMs[base] = now;
+      } else {
+        w = pending!;
+      }
+      await _ask(selfCallsign, base, w, now);
       asked.add(base);
     }
     // One line per sweep, never one per station: this runs every minute for as
@@ -755,15 +820,15 @@ class XprsCatchup {
     return c.startsWith('X2') || c.startsWith('X3');
   }
 
-  Future<void> _ask(String self, String archiver, int now,
-      PreferencesService prefs) async {
-    // since: = THIS station's mark, floored at a week (36.10.1 rule 4). Not a
-    // shared one: see PreferencesService.xprsCatchupMarks.
-    var sinceSec = _markFor(archiver, prefs);
+  /// Open a new window for [archiver], newest first: from the newest edge
+  /// already opened (or the mark) to now.
+  _Window _openWindow(String archiver, int now, PreferencesService prefs) {
+    final wins = _windows.putIfAbsent(archiver, () => []);
     final backfilling = archiver == _backfillStation;
     final window = backfilling ? backfillWindow : maxWindow;
-    final floorSec = (now - window.inMilliseconds) ~/ 1000;
-    if (backfilling) {
+    final floorMs = now - window.inMilliseconds;
+    int sinceMs;
+    if (backfilling && wins.isEmpty) {
       // The mark is IGNORED here, and that is the point of the backfill.
       //
       // A fresh install plants its watermark at the moment it first ticks --
@@ -774,14 +839,38 @@ class XprsCatchup {
       // stayed that way with nothing anywhere reporting a failure. Flooring at
       // the month would not have helped: the mark is NEWER than the floor, so
       // the floor never applied.
-      sinceSec = floorSec;
-    } else if (sinceSec < floorSec) {
-      sinceSec = floorSec;
+      sinceMs = floorMs;
+    } else if (wins.isNotEmpty && !wins.first.answered) {
+      // The newest window was never answered at all (silence is evidence about
+      // the path, 12.10.2): ask it again, up to now, rather than leave it
+      // behind a newer one that nothing would ever go back for.
+      sinceMs = wins.removeAt(0).sinceMs;
+    } else {
+      // since: = THIS station's mark, or the edge of the newest window already
+      // open, floored at a week (36.10.1 rule 4). Windows are contiguous, so
+      // nothing between two of them goes unasked.
+      sinceMs = _edgeMs[archiver] ?? _markFor(archiver, prefs) * 1000;
+      if (sinceMs < floorMs) sinceMs = floorMs;
     }
+    final w = _Window(sinceMs, endMs: now);
+    wins.insert(0, w);
+    _edgeMs[archiver] = now;
+    // Bounded: the two oldest merge into one window covering both, which
+    // re-asks what the newer of them had already been given. Duplicates
+    // collapse on their identifiers (11.2.1); a gap would not.
+    while (wins.length > _windowsMax) {
+      final older = wins.removeLast();
+      final newer = wins.removeLast();
+      wins.add(_Window(older.sinceMs,
+          endMs: newer.endMs, untilMs: newer.untilMs ?? newer.endMs));
+    }
+    return w;
+  }
 
-    // A page the station could not finish: ask for what came BEFORE the oldest
-    // record it managed to send, rather than asking the same window again.
-    final untilMs = _resume[archiver];
+  Future<void> _ask(String self, String archiver, _Window w, int now) async {
+    // An older window is bounded by where the newer one begins; the newest
+    // window's first page needs no until:, the station's own now is the edge.
+    final untilMs = w.untilMs ?? (w.endMs < now - 1000 ? w.endMs : null);
 
     // `kind:message` because the archive keeps EVERYTHING heard, beacons
     // included, and a page is twelve records newest-first. Measured on the
@@ -803,33 +892,29 @@ class XprsCatchup {
     // it costs one packet to one station whichever lane carries it, and the
     // answer comes back on the directed lane too (36.12.1).
     final wire = StringBuffer('t:command f:$self d:$archiver ts:${_ts(now)} '
-        'cmd:history kind:message since:${_ts(sinceSec * 1000)}');
+        'cmd:history kind:message since:${_ts(w.sinceMs)}');
     if (untilMs != null) wire.write(' until:${_ts(untilMs)}');
     final p = XprsPacket.parse(wire.toString());
     if (p == null || !p.fits) return;
 
-    // Remember the ask so its result can advance the watermark. The id is
-    // computed BEFORE signing (section 5 removes sig: anyway, so it is the
-    // same id the archiver derives from the signed wire).
+    // Remember the ask so its result can be judged. The id is computed BEFORE
+    // signing (section 5 removes sig: anyway, so it is the same id the
+    // archiver derives from the signed wire).
     final id = xprsIdentifier(p);
     if (_pending.length >= _pendingMax) _pending.remove(_pending.keys.first);
-    _pending[id] = _Ask(archiver, now, partial: untilMs != null);
-
-    // This page's oldest row, not the chain's. It was cleared only on 200/404,
-    // which made it a running MINIMUM across a whole 206 chain: once nothing
-    // older arrived it became a constant, the continuation asked the same
-    // `until:` forever, and the pair re-asked each other for hours. Measured on
-    // the bench: `until:2026-08-27_18:17:16` repeated identically five times
-    // while `since:` never moved. `_sawRows` is already cleared per answer, and
-    // this is its missing counterpart.
-    _oldestReplayMs.remove(archiver);
+    _pending[id] = _Ask(archiver, now, w);
+    // This page's count starts empty: the cursor is per ASK, not per chain.
+    w.pageOldestMs = null;
+    w.pageRows = 0;
+    _flight = _Flight(archiver, now, window: w);
+    _lastAskMs[archiver] = now;
 
     final send = sendOverride ?? XprsPublisher.instance.publishWire;
     await send(wire.toString());
   }
 
-  /// Fed every heard t:result (XprsIngest.onResult). Advances the watermark
-  /// when the result answers one of our pending asks.
+  /// Fed every heard t:result (XprsIngest.onResult). Judges the page the
+  /// result closes and moves the window, the cursor and the mark.
   void onResult(XprsPacket p) {
     final r = p['r'] ?? '';
     final followAsk = _followPending[r];
@@ -840,182 +925,115 @@ class XprsCatchup {
     final ask = _pending[r];
     if (ask == null) return;
     final code = int.tryParse(p['code'] ?? '') ?? 0;
+    final st = ask.station;
+    final w = ask.window;
 
-    // Judge the page against what is ON DISK, not what happens to have been
-    // flushed. A 12-record page airs over about eighteen seconds and the
-    // archive flushes on a 20 s timer, so the rows regularly arrive in
-    // `onStored` AFTER this method has already decided the page was empty —
-    // and a chain that is genuinely progressing reads as stalled. The serving
-    // side already flushes before it serves, for the mirror-image reason.
-    if (code == 200 || code == 206 || code == 404) {
-      try {
-        XprsArchive.instance.flush();
-      } catch (e) {
-        LogService.instance.add('XPRS catch-up: flush before judging failed: $e');
-      }
-    }
-
-    // 429 does not answer the window -- the mark stays exactly where it was --
-    // but it is NOT nothing, and treating it as silence is what made a refusal
+    // 429 does not answer the window -- it stays exactly where it was -- but
+    // it is NOT nothing, and treating it as silence is what made a refusal
     // free. The archiver is the authority on how often it will answer, so its
-    // refusal is the one answer that must always slow this station down;
-    // without that, an over-eager poller asks, is refused, and asks again
-    // forever, with the window never advancing and the network looking quiet.
+    // refusal is the one answer that must always slow this station down,
+    // continuation or not.
     if (code == 429) {
       _pending.remove(r);
-      _noteAnswer(ask.station, XprsAnswer.refused);
+      _noteAnswer(st, XprsAnswer.refused);
+      final backoff = _intervalMs[st] ?? XprsCadence.initial.inMilliseconds;
+      _refusedUntilMs[st] = nowMs() + backoff;
       LogService.instance.add(
-          'XPRS catch-up: ${ask.station} refused (429) — backing off to '
-          '${_intervalMs[ask.station]! ~/ 1000}s');
+          'XPRS catch-up: $st refused (429) — not asked again for '
+          '${backoff ~/ 1000}s');
       return;
     }
-    if (code != 200 && code != 206 && code != 404) return;
+    if (code != 200 && code != 206 && code != 404) return; // 202: page follows
     _pending.remove(r);
 
-    // What the answer was WORTH, which is the whole input to the cadence: an
-    // archiver that served rows is talking and is worth coming back to sooner;
-    // one that had nothing has just told us it can be left alone longer.
-    // Rows we archived while the ask was outstanding, and -- for a 206 -- only
-    // if the window actually MOVED. A continuation that comes back to the same
-    // place has taught us nothing, however loudly it says there is more, and
-    // treating it as news is how a stuck resume loop pins the poller at its
-    // fast floor while the room is silent.
-    final sawRows = _sawRows.remove(ask.station) ?? false;
-    final reached = _oldestReplayMs[ask.station];
-    final progressed = code != 206 ||
-        reached == null ||
-        reached != _lastResumeMs[ask.station];
-    if (code == 206 && !progressed) {
-      // Detected since it was written, and acted on by nobody: the branch
-      // logged, then fell through and STILL wrote `_resume` and still cleared
-      // `_askedAtMs`, which is what lets the next sweep bypass the cadence
-      // floor. That is the one-ask-per-minute measured on the bench.
-      //
-      // Abandon the chain instead. Nothing advances, so nothing is skipped —
-      // the window stays exactly as unfinished as it was, and the station
-      // returns to its ordinary metered cadence instead of asking again
-      // immediately. A backlog still does not drain; that needs a cursor this
-      // station can trust, and re-asking politely is strictly better than
-      // re-asking every minute.
-      LogService.instance.add(
-          'XPRS catch-up: ${ask.station} 206 made no progress at '
-          '${_ts(reached)} — chain abandoned, back to the ordinary cadence');
-      _resume.remove(ask.station);
-      _oldestReplayMs.remove(ask.station);
-      _lastResumeMs.remove(ask.station);
-      _noteAnswer(ask.station, XprsAnswer.quiet);
-      return;
-    }
-    final served = sawRows && progressed;
-    _noteAnswer(
-        ask.station, served ? XprsAnswer.news : XprsAnswer.quiet);
-    final prefs = PreferencesService.instanceSync;
-    if (prefs == null) return;
+    final rows = w.pageRows;
+    final wins = _windows[st];
+    w.answered = true;
 
     if (code == 206) {
-      // MORE WAS HELD THAN WAS SERVED. Advancing the watermark here — which is
-      // what this used to do — declares the whole window done and skips the
-      // remainder permanently. Instead remember where the page stopped and ask
-      // again with `until:` set to it (section 36.10.1).
-      final oldest = _oldestReplayMs[ask.station];
-      if (oldest != null) {
-        _resume[ask.station] = oldest;
+      // MORE WAS HELD THAN WAS SERVED. Ask again for what came before the
+      // oldest packet this page brought (11.2.1), whoever wrote it, plus the
+      // second it sits in: parts of one message share a ts:, and a page that
+      // ended inside a set would otherwise lose the rest of it ("repeating a
+      // boundary packet is free"). A continuation that reaches back no
+      // further than the last one is a loop: the window waits for the next
+      // one instead of asking again every few seconds.
+      final oldest = w.pageOldestMs;
+      final next = oldest == null ? null : (oldest ~/ 1000) * 1000 + 1000;
+      final prev = w.untilMs;
+      final progressed = next != null && (prev == null || next < prev);
+      if (progressed) {
+        w.untilMs = next;
+        w.stalled = false;
       } else {
-        // The station said "more" but we saw none of it — re-ask the same
-        // window rather than stepping over it.
-        _resume[ask.station] = ask.atMs;
+        w.stalled = true;
+        LogService.instance.add(
+            'XPRS catch-up: $st 206 made no progress'
+            '${prev == null ? "" : " at ${_ts(prev)}"} — back to the ordinary '
+            'cadence');
       }
-      _newsSeen.remove(ask.station); // there IS more; do not go quiet
-      // The peer SAID there is more. Waiting out an interval to be told again
-      // is how a backlog takes an afternoon to drain; the next ask is the
-      // continuation of this one, so it goes now. The chain-in-flight guard
-      // still applies, so this cannot outrun what the archiver can air.
-      _askedAtMs.remove(ask.station);
-      _lastResumeMs[ask.station] = _resume[ask.station];
-      LogService.instance.add(
-          'XPRS catch-up: ${ask.station} 206 — resuming before '
-          '${_ts(_resume[ask.station]!)}');
+      _noteAnswer(st, rows > 0 && progressed ? XprsAnswer.news : XprsAnswer.quiet);
       return;
     }
 
-    // 200/404: this window is finished. Only now may the mark move, and only
-    // for a full sweep — a continuation answers an older slice and says
-    // nothing about the newest.
-    _resume.remove(ask.station);
-    _oldestReplayMs.remove(ask.station);
-    if (ask.station == _backfillStation) {
+    // 200/404: this window is finished.
+    _noteAnswer(st, rows > 0 ? XprsAnswer.news : XprsAnswer.quiet);
+    wins?.remove(w);
+    if (st == _backfillStation) {
       // The window is finished, which for a backfill means the month is
       // exhausted -- there is no more to have, however few records it was.
       LogService.instance.add(
-          'XPRS catch-up: backfill from ${ask.station} finished with '
+          'XPRS catch-up: backfill from $st finished with '
           '$_backfillFetched message(s)');
       _backfillStation = null;
     }
-    if (ask.partial) return;
-    final sec = ask.atMs ~/ 1000;
-    if (sec > _markFor(ask.station, prefs)) {
-      _setMark(ask.station, sec, prefs);
-    }
+    // Only now may the mark move: to the start of the oldest window still
+    // open, or, with none open, to the newest edge. Everything before it has
+    // been answered for.
+    final prefs = PreferencesService.instanceSync;
+    if (prefs == null) return;
+    final done = (wins == null || wins.isEmpty)
+        ? (_edgeMs[st] ?? ask.atMs)
+        : wins.map((x) => x.sinceMs).reduce(math.min);
+    final sec = done ~/ 1000;
+    if (sec > _markFor(st, prefs)) _setMark(st, sec, prefs);
   }
-
-  /// The oldest replayed record's ts per station, fed by [noteReplay] as the
-  /// packets arrive. It is what a `206` continuation asks `until:`.
-  final Map<String, int> _oldestReplayMs = {};
-
-  /// A replayed packet arrived from [station]. Called from the ingest funnel
-  /// for anything carrying an older ts than now, so a partial page knows where
-  /// it stopped.
-  /// Rows this archiver actually gave us while an ask was outstanding.
-  ///
-  /// [noteReplay] cannot answer that question: it is fed from the delivery
-  /// hook, which only fires for packets addressed to US. Global chat is a
-  /// broadcast, so a pull that returned a hundred messages looked exactly like
-  /// one that returned nothing, and the cadence sat pinned at its ceiling
-  /// however busy the room was.
-  final Map<String, bool> _sawRows = {};
-
-  /// Where the previous continuation for this station reached back to, so a
-  /// resume loop that stops moving can be recognised as one.
-  final Map<String, int?> _lastResumeMs = {};
 
   /// How old a packet must be to count as HISTORY rather than live traffic.
   static const Duration _replayAge = Duration(minutes: 1);
 
-  /// A packet from [from], stamped [tsMs], was archived.
-  ///
-  /// Only rows that answer our ask count, and the timestamp is what tells them
-  /// apart: a replayed record keeps its AUTHOR's ts (36.2 -- the archiver
-  /// re-airs the original bytes), so history is old by definition while an
-  /// announce or a status this station is publishing right now is not. Without
-  /// that test every beacon from an archiver we happened to be waiting on
-  /// scored as news, and the cadence sat at its fast floor forever -- measured
-  /// on the bench: the room went silent and the interval stayed at fifteen
-  /// seconds for eight minutes.
-  void noteRow(String from, int? tsMs) {
-    final base = _base(from);
-    if (base.isNotEmpty && tsMs != null && _followAsking(base)) {
-      followRows++;
-      final oldest = _followOldest[base];
-      if (oldest == null || tsMs < oldest) _followOldest[base] = tsMs;
+  /// Every packet that came through the receive door, on any lane
+  /// (XprsIngest.onHeardAny). While an ask is out, this is how its page is
+  /// counted: a replay is the ORIGINAL packets (11.2.1), so a `t:message`
+  /// with no `via:`, older than a minute, inside the ask's window, heard
+  /// while the ask is out, is one of its rows -- whoever wrote it. The
+  /// earlier count used only rows written by the archiver itself, and an old
+  /// one of those heard mid-ask moved the cursor hours back over the gap
+  /// that held a phone's only reply (the C61, 2026-09-15). A relay or a
+  /// custody re-air carries `via:` and is not a replay.
+  void noteHeard(XprsPacket p) {
+    final f = _flight;
+    if (f == null) return;
+    final now = nowMs();
+    if (now - f.atMs > _inFlightGrace.inMilliseconds) return;
+    final ts = xprsParseTs(p['ts']);
+    if (ts == null || now - ts < _replayAge.inMilliseconds) return;
+    final w = f.window;
+    if (w != null) {
+      if (p.type != 'message' || p.has('via')) return;
+      final top = w.untilMs ?? (w.endMs + 1000);
+      if (ts < w.sinceMs - 1000 || ts >= top) return;
+      w.pageRows++;
+      final o = w.pageOldestMs;
+      if (o == null || ts < o) w.pageOldestMs = ts;
+      return;
     }
-    if (base.isEmpty || !_inFlight.containsKey(base)) return;
-    if (tsMs == null) return;
-    if (nowMs() - tsMs < _replayAge.inMilliseconds) return;
-    _sawRows[base] = true;
-    // Where this page reached back to, which is also what a 206 continuation
-    // must ask BEFORE. It was fed only from the delivery hook, and that hook
-    // never fires for a broadcast -- so for Global chat the oldest record was
-    // always unknown, the continuation fell back to the ask's own ts, and each
-    // 206 asked for the same window again. Measured on the bench: the resume
-    // mark walked FORWARD with the clock and the backlog never drained.
-    final oldest = _oldestReplayMs[base];
-    if (oldest == null || tsMs < oldest) _oldestReplayMs[base] = tsMs;
-  }
-
-  void noteReplay(String station, int tsMs) {
-    final base = _base(station);
-    final prev = _oldestReplayMs[base];
-    if (prev == null || tsMs < prev) _oldestReplayMs[base] = tsMs;
+    final station = f.followStation;
+    if (station != null && _base(p['f'] ?? '') == station) {
+      followRows++;
+      final o = _followOldest[station];
+      if (o == null || ts < o) _followOldest[station] = ts;
+    }
   }
 
   // ── Followed stations, fetched from the chosen archivers ─────────────────
@@ -1060,7 +1078,7 @@ class XprsCatchup {
   Future<void> _pullFollowed(String self, List<String> archivers, int now,
       PreferencesService prefs) async {
     final followed = XprsArchive.instance.followedStations;
-    if (followed.isEmpty || archivers.isEmpty) return;
+    if (followed.isEmpty || archivers.isEmpty || _busy(now)) return;
     final every =
         (_visible ? followEveryVisible : followEveryHidden).inMilliseconds;
     // Due: out of earshot (in earshot the air already carries it) and either
@@ -1077,15 +1095,14 @@ class XprsCatchup {
         (_followAskedAtMs[a] ?? 0).compareTo(_followAskedAtMs[b] ?? 0));
     if (due.isEmpty) return;
     final asked = <String>[];
-    var next = 0;
     for (final a in archivers) {
-      if (next >= due.length) break;
-      // One unanswered ask per archiver, whoever sent it (12.10.2), and never
-      // faster than the floor that archiver permits.
-      if (_awaiting(a, now)) continue;
-      final last = math.max(_askedAtMs[a] ?? 0, _followArchiverAtMs[a] ?? 0);
+      // One ask out at a time (see [_flight]), and never faster than the
+      // floor that archiver permits or before its refusal expires.
+      if (_busy(now)) break;
+      if ((_refusedUntilMs[a] ?? 0) > now) continue;
+      final last = math.max(_lastAskMs[a] ?? 0, _followArchiverAtMs[a] ?? 0);
       if (last != 0 && now - last < _floorMsFor(a, prefs)) continue;
-      final station = due[next++];
+      final station = due.first;
       if (await _askFollowed(self, a, station, now)) {
         asked.add('$station@$a');
       }
@@ -1119,7 +1136,7 @@ class XprsCatchup {
     _followPending[id] = _FollowAsk(archiver, station);
     _followAskedAtMs[station] = now;
     _followArchiverAtMs[archiver] = now;
-    _inFlight[archiver] = now;
+    _flight = _Flight(archiver, now, followStation: station);
     _followOldest.remove(station);
     followAsks++;
     final send = sendOverride ?? XprsPublisher.instance.publishWire;
@@ -1133,17 +1150,13 @@ class XprsCatchup {
       followRefused++;
       // The archiver's authority over our cadence (12.10.2), whoever asked.
       _noteAnswer(ask.archiver, XprsAnswer.refused);
+      _refusedUntilMs[ask.archiver] = nowMs() +
+          (_intervalMs[ask.archiver] ?? XprsCadence.initial.inMilliseconds);
       return;
     }
     if (code != 200 && code != 206 && code != 404) return; // 202: page follows
     _followPending.remove(r);
-    _inFlight.remove(ask.archiver);
-    // Judge the page against what is on disk (see onResult).
-    try {
-      XprsArchive.instance.flush();
-    } catch (e) {
-      LogService.instance.add('XPRS catch-up: flush before judging failed: $e');
-    }
+    _land(ask.archiver);
     if (code == 206) {
       // More held than served: ask for what came before the oldest row this
       // page brought. A continuation that reaches back no further than the
@@ -1176,13 +1189,41 @@ class XprsCatchup {
 }
 
 
-/// One outstanding ask: which station, when we asked, and whether it was a
-/// `until:` continuation rather than a full sweep of the window.
+/// One outstanding ask: which archiver, when, and the window it pages.
 class _Ask {
-  const _Ask(this.station, this.atMs, {required this.partial});
+  const _Ask(this.station, this.atMs, this.window);
   final String station;
   final int atMs;
-  final bool partial;
+  final _Window window;
+}
+
+/// A span of an archiver's history this station still owes itself:
+/// [sinceMs, endMs), paged newest first. [untilMs] is where the last page
+/// stopped (null before the first page), and the next ask continues below it.
+class _Window {
+  _Window(this.sinceMs, {required this.endMs, this.untilMs});
+  final int sinceMs;
+  final int endMs;
+  int? untilMs;
+  bool stalled = false;
+
+  /// Some page of it was answered (200, 206 or 404).
+  bool answered = false;
+
+  /// The page being answered now: how many of its rows arrived, and the
+  /// oldest `ts:` among them.
+  int pageRows = 0;
+  int? pageOldestMs;
+}
+
+/// The ask that is out: to whom, since when, and what it asked for, a
+/// window of messages or one followed station.
+class _Flight {
+  _Flight(this.archiver, this.atMs, {this.window, this.followStation});
+  final String archiver;
+  final int atMs;
+  final _Window? window;
+  final String? followStation;
 }
 
 /// One outstanding fetch of a followed station: which archiver, for whom.

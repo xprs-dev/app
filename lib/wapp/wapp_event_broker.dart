@@ -48,12 +48,28 @@ class WappEventBroker {
     _engines.remove(engineId);
   }
 
+  /// Somebody started listening to [topic], and nobody was before.
+  ///
+  /// A door that opens late is the ordinary case, not an edge: the spool
+  /// drains at boot while the chat engine is still reading its wasm. The core
+  /// re-offers what it could not deliver then (MeshCourier), which is why this
+  /// says WHICH topic and only fires on the first subscriber.
+  void Function(String topic)? onFirstSubscriber;
+
   /// Subscribe [engineId] to [topic]. Returns 0 on success, -1 if the
   /// engine is unknown.
   int subscribe(String engineId, String topic) {
     final state = _engines[engineId];
     if (state == null) return -1;
+    final first = !hasSubscriber(topic);
     state.subscribedTopics.add(topic);
+    if (first) {
+      try {
+        onFirstSubscriber?.call(topic);
+      } catch (_) {
+        // A listener that throws must not cost the wapp its subscription.
+      }
+    }
     return 0;
   }
 
