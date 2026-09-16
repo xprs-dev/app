@@ -3612,6 +3612,14 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_discover: ask what is in local reach to say who it is, now.
+    // The wapp asks for the answer; where to look (today a sweep of the
+    // local network) is the core's, and the answers arrive as packets.
+    final halXprsDiscover = WasmFunction(
+      () => MeshService.instance.discoverNearby() ? 1 : 0,
+      params: const [],
+      results: [ValueTy.i32],
+    );
     // hal_flash_*: a board on a USB cable. Every verb is fire-and-forget
     // and says so through `core.flash`; the state is one flat read.
     final halFlashScan = WasmFunction(
@@ -4582,6 +4590,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_station', halXprsStation),
       WasmImport('hal', 'xprs_follow', halXprsFollow),
       WasmImport('hal', 'xprs_followed', halXprsFollowed),
+      WasmImport('hal', 'xprs_discover', halXprsDiscover),
       WasmImport('hal', 'flash_scan', halFlashScan),
       WasmImport('hal', 'flash_probe', halFlashProbe),
       WasmImport('hal', 'flash_fetch', halFlashFetch),

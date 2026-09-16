@@ -1248,6 +1248,14 @@ class MeshService {
   /// timer nor the startup path has anything to do with the answer.
   void _sendXprsLanBeacon() => unawaited(_airLanBeacon());
 
+  /// Ask the stations in local reach who they are, now, rather than waiting
+  /// for their next beacon or their controller's next airing (XPRS.md 29.1).
+  /// Where to ask is the core's decision: today the local network, by a
+  /// sweep of every host on it (XprsLan.sweep). The answers are ordinary
+  /// packets and arrive through the one receive door. False when nothing was
+  /// asked: no LAN, no callsign yet, or a sweep within the last half minute.
+  bool discoverNearby() => XprsLan.instance.sweep();
+
   Future<void> _airLanBeacon() async {
     if (!XprsLan.instance.up) return;
     final self = (_table?.selfCallsign ?? '').trim();
