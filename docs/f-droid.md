@@ -99,6 +99,12 @@ update feed's files are on xprs.dev/downloads.
   Also pushed: the wapps source repository was renamed to `xprs-dev/apps`, so
   the srclib URL had to follow (fdroiddata's "git redirect" job refuses a URL
   that redirects).
+* **2026-09-16:** `linsui` answered that the scheme has to change and the ABI
+  code has to sit in the lower digits, whatever the rest looks like. So the
+  codes are now N x 10 plus the ABI digit, and N carries a base of 400,000 to
+  stay above what v1.2.17 shipped. **v1.2.18** (build 400395, codes 4003951,
+  4003952 and 4003953) is the first release under it, and its recipe went to
+  the merge request branch.
 
 ## 3. Following the review
 
