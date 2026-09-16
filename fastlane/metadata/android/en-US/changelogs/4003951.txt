@@ -1,0 +1,4 @@
+* A board on a USB cable gets its firmware straight from the app.
+* Things: the devices around you, with the readings they send.
+* The Wapp Store is back, and its search field shows whenever the catalog lists anything.
+* Stations answer a command once, checked by signature, and a wapp reads a station through one verb.
