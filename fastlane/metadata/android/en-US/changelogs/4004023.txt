@@ -1,0 +1,5 @@
+* A message that arrives is a message you see: one that reached no screen is no longer marked delivered, and is shown as soon as the app is listening.
+* Mail held for you is fetched properly: an archiver serves your own mail, paging no longer skips it, and a busy station is asked less often.
+* A relay can finally be told a long private message arrived, and stops re-sending it.
+* Things: Scan asks the local network which devices are there.
+* I2P keeps receiving after a quiet spell.
