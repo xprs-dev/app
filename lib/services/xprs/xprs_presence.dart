@@ -36,6 +36,13 @@ enum XprsKind {
 
   /// `X4` — automated equipment. Shown with the stations; it is not a person.
   device,
+
+  /// A node of another network reached through a gateway (XPRS.md 3.2):
+  /// `MT` (Meshtastic) or `MC` (MeshCore) and the node number in eight
+  /// uppercase hexadecimal digits. Not an XPRS device and never one of ours:
+  /// it holds no XPRS key, so nothing to it can be sealed and nothing from it
+  /// is signed. [xprsNetworkOf] says which network.
+  foreign,
 }
 
 /// WHY we believe the callsign, strongest first. Kept on the verdict because
@@ -174,6 +181,10 @@ class XprsDevice {
 XprsKind? xprsKindOf(String callsign) {
   final c = callsign.trim().toUpperCase();
   if (c.isEmpty || c.startsWith('X5')) return null;
+  // Before the licence test: `MT0C39F654` also has the shape of an amateur
+  // callsign, and reading it as a station is how a Meshtastic node would be
+  // offered a sealed message it can never open.
+  if (xprsNetworkOf(c) != null) return XprsKind.foreign;
   if (c.startsWith('X1')) return XprsKind.user;
   if (c.startsWith('X4')) return XprsKind.device;
   // X2, X3, or a licensed callsign. Nothing in a licence says movable or
@@ -181,26 +192,66 @@ XprsKind? xprsKindOf(String callsign) {
   return XprsKind.station;
 }
 
+/// The other network a foreign callsign (XPRS.md 3.2) belongs to:
+/// `meshtastic` for `MT`, `meshcore` for `MC`, null for anything else. Matched
+/// whole, exactly as the firmware's `xprs_is_foreign_call` does: the prefix
+/// and exactly eight uppercase hexadecimal digits, with no device suffix,
+/// because a node number is not a person's callsign and has no devices.
+String? xprsNetworkOf(String callsign) {
+  final c = callsign.trim();
+  if (!_foreign.hasMatch(c)) return null;
+  return c.startsWith('MT') ? 'meshtastic' : 'meshcore';
+}
+
+final RegExp _foreign = RegExp(r'^M[TC][0-9A-F]{8}$');
+
+/// What an ADDRESS names, for a wapp that has to file a conversation under
+/// it: the one rule, so no wapp tests a prefix of its own (the chat wapp did,
+/// and read the Meshtastic node `MTA1B2C3D4` as a group).
+///
+/// `user`, `station`, `device` and `foreign` as [xprsKindOf] says; `closed`
+/// for a closed group (`X5`, XPRS.md 26.1), which is a callsign but not a
+/// device; `open` for an open group's name (XPRS.md 7.3: `LISBOA`, `NEWS`),
+/// which may not look like any of the others; and '' for nothing at all.
+///
+/// A callsign is told from an open group's name by its shape: `X1` to `X5`
+/// and four or more, an SSID (`CT1ABC-9`), or a digit in the second or third
+/// character, as every amateur licence has (`CT1ABC`).
+String xprsAddressKind(String addr) {
+  final a = addr.trim().toUpperCase();
+  if (a.isEmpty) return '';
+  if (xprsNetworkOf(a) != null) return 'foreign';
+  final callsign = (a.length >= 6 && RegExp(r'^X[1-5]').hasMatch(a)) ||
+      a.contains('-') ||
+      RegExp(r'^.[0-9]|^..[0-9]').hasMatch(a);
+  if (!callsign) return 'open';
+  final k = xprsKindOf(a);
+  return k == null ? 'closed' : xprsKindWord(k);
+}
+
 String xprsKindWord(XprsKind kind) => switch (kind) {
       XprsKind.user => 'user',
       XprsKind.station => 'station',
       XprsKind.device => 'device',
+      XprsKind.foreign => 'foreign',
     };
 
 XprsKind? xprsKindFromWord(String word) => switch (word.trim().toLowerCase()) {
       'user' => XprsKind.user,
       'station' => XprsKind.station,
       'device' => XprsKind.device,
+      'foreign' => XprsKind.foreign,
       _ => null,
     };
 
 /// The prefix every holder of [kind] wears, so a store can select a kind by
 /// its index. Null for a station, which is `X2`, `X3` or a licensed callsign
-/// and so has no single prefix.
+/// and so has no single prefix, and for a foreign node, which has two.
 String? xprsKindPrefix(XprsKind kind) => switch (kind) {
       XprsKind.user => 'X1',
       XprsKind.device => 'X4',
       XprsKind.station => null,
+      XprsKind.foreign => null,
     };
 
 /// The services that only an XPRS station announces. A node carrying one of
@@ -227,9 +278,11 @@ XprsDevice? classifyXprs(XprsCandidate s) {
   if (named == null) return null;
   final (call, evidence) = named;
 
-  // A group is an address several stations read (XPRS.md 6.3), not a device.
+  // A group is an address several stations read (XPRS.md 6.3), not a device,
+  // and a node of another network is somebody else's device, reached through
+  // a gateway: neither is counted here.
   final kind = xprsKindOf(call);
-  if (kind == null) return null;
+  if (kind == null || kind == XprsKind.foreign) return null;
   final fixed = call.startsWith('X3');
 
   final bearers = <String>[];

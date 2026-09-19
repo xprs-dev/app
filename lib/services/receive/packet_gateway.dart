@@ -48,6 +48,7 @@ import '../mesh/mesh_custody.dart';
 import '../mesh/mesh_service.dart';
 import '../mesh/mesh_session.dart' show mspIsFrame;
 import '../mesh/xblob_service.dart';
+import '../xprs/xprs_gateway_dedup.dart';
 import '../xprs/xprs_ingest.dart';
 import 'wapp_delivery.dart';
 import '../xprs/xprs_packet.dart';
@@ -103,6 +104,11 @@ class PacketGateway {
   static int parcels = 0;
   static int ignored = 0;
 
+  /// A message of another network that a second gateway translated under
+  /// another §5 identifier (XPRS.md 9.11.5), dropped at the door: the
+  /// archive, the courier, the repeater and the wapps all see one copy.
+  static int translatedTwice = 0;
+
   /// Set by tests to observe every arrival without standing up a radio.
   /// One slot, like the funnel's own hooks.
   static void Function(String bearer, RxLane lane, RxVerdict verdict)? onFrame;
@@ -119,6 +125,8 @@ class PacketGateway {
 
   static void debugReset() {
     blobs = sessions = xprsFrames = compactFrames = parcels = ignored = 0;
+    translatedTwice = 0;
+    XprsGatewayDedup.instance.debugReset();
     onFrame = null;
     onXprsPacket = null;
   }
@@ -160,6 +168,10 @@ class PacketGateway {
     // receive path down with it.
     final text = utf8.decode(bytes, allowMalformed: true);
     final p = XprsPacket.parse(text);
+    if (p != null && XprsGatewayDedup.instance.duplicate(p)) {
+      translatedTwice++;
+      return _done(bearer, lane, RxVerdict.ignored);
+    }
     if (p != null) {
       xprsFrames++;
       XprsIngest.heard(
@@ -220,6 +232,12 @@ class PacketGateway {
   void receiveInternet(String from, Uint8List payload,
       {String bearer = 'rns'}) {
     if (payload.isEmpty) return;
+    final p = XprsPacket.parse(utf8.decode(payload, allowMalformed: true));
+    if (p != null && XprsGatewayDedup.instance.duplicate(p)) {
+      translatedTwice++;
+      _done(bearer, RxLane.datagram, RxVerdict.ignored);
+      return;
+    }
     xprsFrames++;
     XprsIngest.reticulum(from, payload, bearer: bearer);
 
@@ -239,7 +257,6 @@ class PacketGateway {
     // Handing a packet to a wapp and repeating it onto a radio are different
     // questions, and only the first one applies to a packet off the internet
     // (§13.11.3).
-    final p = XprsPacket.parse(utf8.decode(payload, allowMalformed: true));
     if (p != null) {
       try {
         final self = MeshService.instance.tableCallsign.trim().toUpperCase();

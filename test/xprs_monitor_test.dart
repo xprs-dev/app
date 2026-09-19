@@ -304,4 +304,31 @@ void main() {
       expect(kinds, {'X4PL3M': 'device', 'X1RD89': 'user'});
     });
   });
+
+  group('a node of another network (XPRS.md 3.2, 6.3.1)', () {
+    test('keeps the name its network gave it, and says which network', () {
+      final m = XprsMonitor.instance;
+      m.offer(
+          p('t:identity f:MT0C39F654 ts:2026-09-19_12:04:00 scope:local '
+              'nick:MT-Witness zmid:0c39f65400000001 via:X3DCK0'),
+          bearer: 'ble',
+          selfCallsign: 'X1A67X');
+      final row = m.stationJson('MT0C39F654')!;
+      expect(row['kind'], 'foreign');
+      expect(row['network'], 'meshtastic');
+      expect(row['nick'], 'MT-Witness');
+      final item = (jsonDecode(m.stationsJson()) as List).first['items'].first
+          as Map<String, dynamic>;
+      expect(item['tags'], contains('via Meshtastic'));
+    });
+
+    test('an XPRS callsign\'s unsigned nickname is never kept', () {
+      final m = XprsMonitor.instance;
+      m.offer(p('t:identity f:X1RD89 ts:2026-09-19_12:04:00 nick:Mallory'),
+          bearer: 'ble', selfCallsign: 'X1A67X');
+      final row = m.stationJson('X1RD89')!;
+      expect(row.containsKey('nick'), isFalse);
+      expect(row['kind'], 'user');
+    });
+  });
 }

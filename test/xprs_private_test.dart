@@ -45,6 +45,29 @@ void main() {
 
   setUp(() => XprsBandRule.reachesAmateurSpectrum = () => false);
 
+  group('a node of another network (3.2, 9.11.5)', () {
+    test('is never sealed to, and the refusal says why', () {
+      final r = xprsBuildDirect(
+          head: _head(to: 'MT0C39F654'),
+          text: 'hello over there',
+          private: true,
+          recipientKeyHex: pubB,
+          signingKey: dA);
+      expect(r.ok, isFalse);
+      expect(r.refusal, XprsSealRefusal.foreignNetwork);
+    });
+
+    test('is written to in the clear when that is what was asked', () {
+      final r = xprsBuildDirect(
+          head: _head(to: 'MT0C39F654'),
+          text: 'hello over there',
+          private: false,
+          signingKey: dA);
+      expect(r.ok, isTrue);
+      expect(r.privacy, XprsPrivacy.plain);
+    });
+  });
+
   group('the two forms, exactly as section 9.2 and 6.2 draw them', () {
     test('plain is m:, and m: is last', () {
       final r = xprsBuildDirect(

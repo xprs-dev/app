@@ -525,6 +525,8 @@ class MeshCourier {
         XprsSealRefusal.amateurBand =>
           'a sealed body may not go onto amateur spectrum (9.4)',
         XprsSealRefusal.tooLong => 'it does not fit, even split',
+        XprsSealRefusal.foreignNetwork =>
+          'the recipient is on another network, which cannot open it (9.11.5)',
       };
 
   /// `YYYY-MM-DD_HH:MM:SS` in UTC (docs/XPRS.md section 4.8).

@@ -339,6 +339,13 @@ class FunctionalityRegistry {
           [ParamDef('call', 'string', 'its callsign')],
           ReturnDef('int', 'Bytes written, 0 when not heard, negated required size if too small')),
       EndpointDef(
+          'hal_xprs_kind',
+          'What an address names, by the core\'s one rule: user, station, '
+          'device, foreign (another network, XPRS \u00a73.2), closed (an X5 '
+          'group) or open (an open group\'s name, \u00a77.3)',
+          [ParamDef('addr', 'string', 'a callsign or a group name')],
+          ReturnDef('int', 'Bytes written, 0 for an empty address, negated required size if too small')),
+      EndpointDef(
           'hal_xprs_follow',
           'Follow (on=1) or stop following (on=0) a station by callsign '
           '(XPRS \u00a712): its packets are kept, and fetched from the chosen '
