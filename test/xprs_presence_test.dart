@@ -241,5 +241,58 @@ void main() {
       expect(xprsKindFromWord('device'), XprsKind.device);
       expect(xprsKindFromWord('group'), isNull);
     });
+
+    test('a node of another network is its own kind (XPRS.md 3.2)', () {
+      // Both have the shape of a licensed callsign; neither is a station.
+      expect(xprsKindOf('MT0C39F654'), XprsKind.foreign);
+      expect(xprsKindOf('MTA1B2C3D4'), XprsKind.foreign);
+      expect(xprsKindOf('MC00C0FFEE'), XprsKind.foreign);
+      expect(xprsNetworkOf('MT0C39F654'), 'meshtastic');
+      expect(xprsNetworkOf('MC00C0FFEE'), 'meshcore');
+      expect(xprsKindWord(XprsKind.foreign), 'foreign');
+      expect(xprsKindFromWord('foreign'), XprsKind.foreign);
+      expect(xprsKindFromWord('foreign:meshcore'), XprsKind.foreign,
+          reason: 'the network is a suffix on the same kind');
+      expect(xprsKindPrefix(XprsKind.foreign), isNull);
+      // Matched whole: eight uppercase hex digits exactly, no suffix.
+      expect(xprsNetworkOf('MT0C39F65'), isNull);
+      expect(xprsNetworkOf('MT0C39F6541'), isNull);
+      expect(xprsNetworkOf('MT0C39F654-1'), isNull);
+      expect(xprsNetworkOf('MT0C39G654'), isNull);
+      expect(xprsNetworkOf('MX0C39F654'), isNull);
+      expect(xprsKindOf('MT0C39F65'), XprsKind.station,
+          reason: 'not the form, so the licence rule decides as before');
+    });
+
+    test('what an address names, for a wapp filing a conversation', () {
+      expect(xprsAddressKind('X1RD89'), 'user');
+      expect(xprsAddressKind('X3RLY7'), 'station');
+      expect(xprsAddressKind('X2BOA3'), 'station');
+      expect(xprsAddressKind('X4PUMP'), 'device');
+      expect(xprsAddressKind('X5A3F2'), 'closed');
+      expect(xprsAddressKind('CT1ABC'), 'station');
+      expect(xprsAddressKind('CT1ABC-9'), 'station');
+      expect(xprsAddressKind('MTA1B2C3D4'), 'foreign:meshtastic',
+          reason: 'no digit where a licence has one, and still not a group');
+      expect(xprsAddressKind('MT0C39F654'), 'foreign:meshtastic');
+      expect(xprsAddressKind('MC00C0FFEE'), 'foreign:meshcore',
+          reason: 'the network rides with the kind, so no wapp reads the '
+              'prefix to name it');
+      expect(xprsAddressKind('LISBOA'), 'open');
+      expect(xprsAddressKind('NEWS'), 'open');
+      expect(xprsAddressKind('lisboa'), 'open');
+      expect(xprsAddressKind(''), '');
+    });
+
+    test('a foreign node is not counted as one of our devices', () {
+      expect(
+          classifyXprs(const XprsCandidate(
+            announcedCallsign: 'MT0C39F654',
+            heardOnAir: true,
+            airBearers: ['ble'],
+            reachableOnAir: true,
+          )),
+          isNull);
+    });
   });
 }

@@ -45,6 +45,27 @@ void main() {
     PacketGateway.debugReset();
   });
 
+  group('a message of another network, translated twice (XPRS.md 9.11.5)', () {
+    test('the second gateway\'s copy stops at the door, on every lane', () {
+      const a = 't:message f:MTA1B2C3D4 d:X1RD89 ts:2026-09-19_12:03:00 '
+          'zmid:a1b2c3d44683c668 via:X3DCK0 m:anyone there?';
+      const b = 't:message f:MTA1B2C3D4 d:X1RD89 ts:2026-09-19_12:04:00 '
+          'zmid:a1b2c3d44683c668 via:X3H3MZ m:anyone there?';
+      expect(
+          PacketGateway.instance
+              .receive(_b(a), bearer: 'ble', lane: RxLane.advert),
+          RxVerdict.xprs);
+      expect(
+          PacketGateway.instance
+              .receive(_b(b), bearer: 'lan', lane: RxLane.advert),
+          RxVerdict.ignored);
+      PacketGateway.instance.receiveInternet('abcd', _b(b));
+      expect(PacketGateway.translatedTwice, 2);
+      expect(carried, ['X1RD89'],
+          reason: 'the courier, the archive and the wapps see one copy');
+    });
+  });
+
   group('the demux, which was written out at nine call sites', () {
     test('an XPRS wire is recognised and reaches the funnel', () {
       final v = PacketGateway.instance.receive(

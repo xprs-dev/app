@@ -47,6 +47,7 @@ import 'xprs_file_lift.dart';
 import 'xprs_id.dart';
 import 'xprs_outbox.dart';
 import 'xprs_packet.dart';
+import 'xprs_presence.dart';
 import 'xprs_publisher.dart';
 
 /// What became of a send, answered before the bearers have finished with it.
@@ -61,6 +62,7 @@ class XprsSendOutcome {
     required this.id,
     required this.parts,
     this.refusal,
+    this.foreign = false,
   });
 
   /// 'x' sealed, 'm' plain, '' nothing was sent.
@@ -75,14 +77,24 @@ class XprsSendOutcome {
   /// Why nothing was sent, when [form] is empty.
   final XprsSealRefusal? refusal;
 
+  /// The recipient is a node of another network (XPRS.md 3.2): the words
+  /// leave XPRS through a gateway, onto a channel anybody can read.
+  final bool foreign;
+
   bool get ok => form.isNotEmpty;
 
-  /// The integer a wasm caller reads: 1 sealed, 2 plain, -1 asked to seal and
-  /// could not, 0 malformed or refused for another reason.
+  /// The integer a wasm caller reads: 1 sealed, 2 plain, 3 plain to a node
+  /// of another network through a gateway, -1 asked to seal and could not
+  /// yet (no key heard), -3 asked to seal a message to another network,
+  /// which can never be sealed, 0 malformed or refused for another reason.
   int get code {
     if (form == 'x') return 1;
-    if (form == 'm') return 2;
-    return refusal == XprsSealRefusal.noRecipientKey ? -1 : 0;
+    if (form == 'm') return foreign ? 3 : 2;
+    return switch (refusal) {
+      XprsSealRefusal.noRecipientKey => -1,
+      XprsSealRefusal.foreignNetwork => -3,
+      _ => 0,
+    };
   }
 
   static const XprsSendOutcome malformed =
@@ -224,6 +236,7 @@ class XprsSend {
       form: built.privacy == XprsPrivacy.sealed ? 'x' : 'm',
       id: id,
       parts: built.packets.length,
+      foreign: xprsKindOf(dest) == XprsKind.foreign,
     );
   }
 

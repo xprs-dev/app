@@ -33,6 +33,7 @@ import 'package:hex/hex.dart';
 import '../../util/nostr_crypto.dart';
 import '../../util/xprs_crypto.dart';
 import 'xprs_packet.dart';
+import 'xprs_presence.dart';
 import 'xprs_sig.dart';
 
 /// Which form a body took ON THE WIRE. Read from the packet, never carried in
@@ -71,6 +72,11 @@ enum XprsSealRefusal {
 
   /// The sealed body does not fit and splitting was not offered.
   tooLong,
+
+  /// The recipient is a node of another network (section 3.2), reached
+  /// through a gateway that relays words and cannot open a sealed body
+  /// (section 9.11.5). It holds no XPRS key, so there is nothing to wait for.
+  foreignNetwork,
 }
 
 /// A body that was built, or the reason it was not.
@@ -140,6 +146,9 @@ XprsBodyResult xprsBuildDirect({
 }) {
   if (!private) {
     return _plain(head, text, signingKey ?? xprsProfileScalar());
+  }
+  if (xprsKindOf(head['d'] ?? '') == XprsKind.foreign) {
+    return const XprsBodyResult.refused(XprsSealRefusal.foreignNetwork);
   }
   if (XprsBandRule.reachesAmateurSpectrum()) {
     return const XprsBodyResult.refused(XprsSealRefusal.amateurBand);

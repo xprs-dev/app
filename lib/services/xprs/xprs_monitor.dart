@@ -198,6 +198,12 @@ class XprsStation {
   /// in here is this station telling us, on the air, that it can hear us.
   List<String> hears = const [];
 
+  /// The name another network gives one of its nodes, as a gateway relayed
+  /// it (XPRS.md 6.3.1): only ever set for a foreign callsign (3.2), whose
+  /// `t:identity` is unsigned by construction. An XPRS callsign's unsigned
+  /// nickname is never kept, so nothing here can put a name on one.
+  String? foreignNick;
+
   /// What this station's signatures have turned out to be (section 9.1).
   ///
   /// Counted rather than reduced to one word, because they say different
@@ -391,6 +397,11 @@ class XprsMonitor {
     // `fw:` rides the service announcement (11.8) and a station's answers;
     // the same rule as `serve:`, a message never erases it.
     if (p.has('fw')) st.fw = p['fw'];
+    if (p.type == 'identity' && p.has('nick') &&
+        xprsKindOf(from) == XprsKind.foreign) {
+      final n = (p['nick'] ?? '').trim();
+      if (n.isNotEmpty) st.foreignNick = n;
+    }
     // No `via:` means this arrived from the sender's own transmitter.
     if (!p.has('via')) st.lastDirectMs = now;
 
@@ -565,12 +576,22 @@ class XprsMonitor {
       final sub = StringBuffer(s.bearer.toUpperCase());
       if (s.rssi != 0) sub.write(' - ${s.rssi} dBm');
       sub.write(' - ${s.packets} packet${s.packets == 1 ? "" : "s"}');
+      final kind = _kind(s.callsign, s);
+      // A foreign node is reached through a gateway, so the bearer is the
+      // gateway's, not its own: say which network it is on, and the name
+      // that network gave it (6.3.1), marked as coming from there.
+      final net = kind['network'];
+      if (net != null) {
+        final nick = kind['nick'];
+        tags.insert(1, net == 'meshtastic' ? 'via Meshtastic' : 'via MeshCore');
+        if (nick != null) sub.write(' - "$nick" on ${tags[1].substring(4)}');
+      }
       return {
         'id': s.callsign,
         'title': s.callsign,
         'subtitle': sub.toString(),
         'tags': tags,
-        ..._kind(s.callsign),
+        ...kind,
       };
     }).toList();
 
@@ -633,7 +654,7 @@ class XprsMonitor {
     }
     return {
       'call': s.callsign,
-      ..._kind(s.callsign),
+      ..._kind(s.callsign, s),
       'bearer': s.bearer,
       'bearers': s.bearers.keys.toList(),
       'rssi': s.rssi,
@@ -654,12 +675,21 @@ class XprsMonitor {
     };
   }
 
-  /// What the callsign says the station is (`user`, `station`, `device`),
-  /// decided by the one rule in xprs_presence.dart so a wapp listing only
-  /// devices reads the verdict instead of testing a prefix itself.
-  static Map<String, String> _kind(String callsign) {
+  /// What the callsign says the station is (`user`, `station`, `device`,
+  /// `foreign`), decided by the one rule in xprs_presence.dart so a wapp
+  /// listing only devices reads the verdict instead of testing a prefix
+  /// itself. A foreign node also names its network (`meshtastic`), which is
+  /// what a screen says it came through, and the name that network gave it.
+  static Map<String, String> _kind(String callsign, [XprsStation? st]) {
     final k = xprsKindOf(callsign);
-    return k == null ? const {} : {'kind': xprsKindWord(k)};
+    if (k == null) return const {};
+    if (k != XprsKind.foreign) return {'kind': xprsKindWord(k)};
+    final nick = st?.foreignNick;
+    return {
+      'kind': xprsKindWord(k),
+      'network': xprsNetworkOf(callsign.trim().toUpperCase()) ?? '',
+      if (nick != null) 'nick': nick,
+    };
   }
 
   /// The ring, oldest first, as the wapp's traffic log.

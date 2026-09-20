@@ -74,9 +74,12 @@ and this document does not pretend otherwise**: LoRa exhibits capture, so a
 strong interferer wins whatever its spreading factor, and two networks in one
 250 kHz channel will cost each other packets.
 
-Whether XPRS should instead *join* Meshtastic's modulation rather than sit
-beside it -- one radio hearing both, routing each packet to its own stack -- is
-evaluated in [meshtastic.md](meshtastic.md), along with what that would cost.
+**Superseded 2026-09-19 for the whole fleet: XPRS now runs Meshtastic's own
+LongFast modulation on Meshtastic's frequency slot** (869.525 MHz in Europe,
+906.875 in the US, 919.875 in Australia and New Zealand), so one radio hears
+both networks and a station bridges them. The SF9 reasoning below is kept for
+the record; [meshtastic.md](meshtastic.md) says what changed and why, and
+`firmware/docs/meshtastic.md` what it costs on the air.
 
 The stronger argument for SF9 is not orthogonality but airtime:
 

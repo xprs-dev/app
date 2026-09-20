@@ -11,6 +11,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'xprs/xprs_archive.dart';
+import 'xprs/xprs_monitor.dart';
 import 'xprs/xprs_bridge.dart';
 import 'xprs/xprs_climate.dart';
 import 'xprs/xprs_ingest.dart';
@@ -1797,6 +1798,10 @@ class RemoteApiService {
               {'gateway': s.gateway, 'bearer': s.bearer, 'ts': s.tsMs},
           ],
           'gossip': XprsGossip.instance.statusJson(),
+          // What the monitor made of it this hour, the same row a wapp reads
+          // through hal_xprs_station: kind, and for a node of another network
+          // (3.2) its network and the name that network gave it.
+          'station': XprsMonitor.instance.stationJson(call),
         });
       }
       // The heard-traffic spool, for headless validation: what this station

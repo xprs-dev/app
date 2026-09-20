@@ -3586,6 +3586,22 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_kind: what an address names, decided by the core's one rule
+    // (xprsAddressKind) and handed to the wapp, so no wapp keeps a prefix
+    // test of its own. Pure: it reads nothing this station holds, so it is
+    // not gated.
+    final halXprsKind = WasmFunction(
+      (int addrPtr, int addrLen, int outPtr, int outCap) {
+        if (outCap <= 0 || addrLen <= 0) return 0;
+        final k = xprsAddressKind(_readStr(addrPtr, addrLen));
+        if (k.isEmpty) return 0;
+        final bytes = utf8.encode(k);
+        if (bytes.length > outCap) return -bytes.length;
+        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     // hal_xprs_follow / hal_xprs_followed: follow a station by its callsign
     // (XPRS.md 12's middle tier), for what has no person's key to follow, a
     // device. The wapp says which; keeping its packets and fetching them from
@@ -3856,8 +3872,12 @@ class WappEngine {
     // spread across one.
     //
     //   returns  1 sealed, 2 plain,
+    //            3 plain, to a node of another network (§3.2) through a
+    //              gateway: the words cross a channel anybody can read,
     //           -1 privacy asked for and not possible (the key has not been
     //              heard; the core has just asked for it, §18.1),
+    //           -3 privacy asked for a node of another network, which can
+    //              never be sealed (§9.11.5); nothing was sent,
     //            0 malformed.
     //
     // -1 is an ANSWER, not an error, and never a downgrade: §36.8 makes
@@ -4588,6 +4608,7 @@ class WappEngine {
       WasmImport('hal', 'mesh_devices', halMeshDevices),
       WasmImport('hal', 'xprs_stations', halXprsStations),
       WasmImport('hal', 'xprs_station', halXprsStation),
+      WasmImport('hal', 'xprs_kind', halXprsKind),
       WasmImport('hal', 'xprs_follow', halXprsFollow),
       WasmImport('hal', 'xprs_followed', halXprsFollowed),
       WasmImport('hal', 'xprs_discover', halXprsDiscover),
