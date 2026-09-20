@@ -214,13 +214,20 @@ final RegExp _foreign = RegExp(r'^M[TC][0-9A-F]{8}$');
 /// device; `open` for an open group's name (XPRS.md 7.3: `LISBOA`, `NEWS`),
 /// which may not look like any of the others; and '' for nothing at all.
 ///
+/// A foreign address carries its network after a colon, `foreign:meshtastic`
+/// or `foreign:meshcore`, so that a wapp telling somebody where their words
+/// are about to go does not have to know the prefixes either. Read the head
+/// of the word and a wapp that only cares whether this is a group is
+/// unaffected.
+///
 /// A callsign is told from an open group's name by its shape: `X1` to `X5`
 /// and four or more, an SSID (`CT1ABC-9`), or a digit in the second or third
 /// character, as every amateur licence has (`CT1ABC`).
 String xprsAddressKind(String addr) {
   final a = addr.trim().toUpperCase();
   if (a.isEmpty) return '';
-  if (xprsNetworkOf(a) != null) return 'foreign';
+  final net = xprsNetworkOf(a);
+  if (net != null) return 'foreign:$net';
   final callsign = (a.length >= 6 && RegExp(r'^X[1-5]').hasMatch(a)) ||
       a.contains('-') ||
       RegExp(r'^.[0-9]|^..[0-9]').hasMatch(a);
@@ -236,7 +243,10 @@ String xprsKindWord(XprsKind kind) => switch (kind) {
       XprsKind.foreign => 'foreign',
     };
 
-XprsKind? xprsKindFromWord(String word) => switch (word.trim().toLowerCase()) {
+/// The kind a word names, the colon suffix of a foreign address ignored:
+/// `foreign` and `foreign:meshcore` are the same kind.
+XprsKind? xprsKindFromWord(String word) =>
+    switch (word.trim().toLowerCase().split(':').first) {
       'user' => XprsKind.user,
       'station' => XprsKind.station,
       'device' => XprsKind.device,

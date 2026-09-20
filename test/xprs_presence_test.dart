@@ -251,6 +251,8 @@ void main() {
       expect(xprsNetworkOf('MC00C0FFEE'), 'meshcore');
       expect(xprsKindWord(XprsKind.foreign), 'foreign');
       expect(xprsKindFromWord('foreign'), XprsKind.foreign);
+      expect(xprsKindFromWord('foreign:meshcore'), XprsKind.foreign,
+          reason: 'the network is a suffix on the same kind');
       expect(xprsKindPrefix(XprsKind.foreign), isNull);
       // Matched whole: eight uppercase hex digits exactly, no suffix.
       expect(xprsNetworkOf('MT0C39F65'), isNull);
@@ -270,9 +272,12 @@ void main() {
       expect(xprsAddressKind('X5A3F2'), 'closed');
       expect(xprsAddressKind('CT1ABC'), 'station');
       expect(xprsAddressKind('CT1ABC-9'), 'station');
-      expect(xprsAddressKind('MTA1B2C3D4'), 'foreign',
+      expect(xprsAddressKind('MTA1B2C3D4'), 'foreign:meshtastic',
           reason: 'no digit where a licence has one, and still not a group');
-      expect(xprsAddressKind('MT0C39F654'), 'foreign');
+      expect(xprsAddressKind('MT0C39F654'), 'foreign:meshtastic');
+      expect(xprsAddressKind('MC00C0FFEE'), 'foreign:meshcore',
+          reason: 'the network rides with the kind, so no wapp reads the '
+              'prefix to name it');
       expect(xprsAddressKind('LISBOA'), 'open');
       expect(xprsAddressKind('NEWS'), 'open');
       expect(xprsAddressKind('lisboa'), 'open');

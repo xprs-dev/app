@@ -11,6 +11,15 @@ from another network) and 14.8 (the shared channel).
 we follow", and section 5 below is the app's half of them.** Read both before
 changing anything that touches an `MT` callsign.
 
+**Meshtastic is one LoRa mode, not the LoRa protocol.** A station's radio runs
+`xprs` (XPRS's own channel, as before 2026-09-19), `meshtastic` (the default,
+this file) or `meshcore`, chosen by its owner and changed live, with no
+restart (XPRS.md 14.8,
+`firmware/docs/meshtastic.md` "LoRa modes"). The app never assumes one: it
+reads the mode a station reports (`lora:` on a setup result) and sets it only
+through an owner's `cmd:set lora:` from the Firmwares wapp, through the core's
+command courier like every other setting.
+
 This file used to be the evaluation that decided against it. What it found
 still holds and is kept below; what changed is the answer to its open
 question.
@@ -77,14 +86,24 @@ Wrong:
 - **Meshtastic identity as a `z` key on `t:identity`.** Not needed: a
   Meshtastic node IS an address in XPRS, `MT` plus its node number in eight
   hexadecimal digits (`MT0C39F654`), mapped the same way by every bridge.
-  `MC` is reserved for MeshCore.
+  A MeshCore node is `MC` plus the first four bytes of its public key.
 
 ## 4. MeshCore
 
 MeshCore uses the same modulation with sync word `0x12`, which is what XPRS
-was on by accident. A radio holds one sync word, so XPRS shares a channel with
-one of them; it is Meshtastic now. `MC` callsigns are reserved so a MeshCore
-bridge can be added the same way later, on a radio of its own.
+was on by accident. A radio holds one sync word, so a station shares a channel
+with one network at a time, and which one is the `lora_mode` its owner sets.
+
+Since 2026-09-20 the firmware speaks MeshCore too (`firmware/docs/meshtastic.md`,
+"MeshCore"): the same repeater and the same bridge, under the same rules, with
+`MC` callsigns for its nodes. **Nothing in the app is Meshtastic-specific
+because of it**: the core answers `foreign:meshcore` for those addresses
+(section 5), and a wapp that has to name the network reads it from there. Two
+differences are worth knowing when reading a translated packet: everything
+from MeshCore arrives `scope:local`, because MeshCore asks its users nothing
+about the internet and there is no consent to read; and a MeshCore channel
+message is unsigned and names its sender only by a name, so it crosses only
+under the address of a node whose advert the gateway heard using that name.
 
 ## 5. The app
 
@@ -108,14 +127,20 @@ XPRS packets from `MT…` callsigns. What the app does with them:
   refusal and `3` for a plain message that leaves through a gateway.
 - **What an address names is the core's.** `xprsAddressKind` (user,
   station, device, foreign, closed, open) is the one rule, handed to wapps as
-  `hal_xprs_kind`. The chat wapp and the shared finder
+  `hal_xprs_kind`. A foreign address carries its network in the same word,
+  `foreign:meshtastic` or `foreign:meshcore`, so a wapp that has to TELL
+  somebody where their words are going does not learn the prefixes either;
+  a wapp that only wants to know whether this is a group reads the head of
+  the word. Give the answer 32 bytes. The chat wapp and the shared finder
   (`hal/people_finder.h`) used to keep prefix tests of their own, which read
   `MTA1B2C3D4` as a group; both now ask the core, and chat remembers the last
   sixteen answers because it asks per rendered row.
-- **Chat.** A Meshtastic node is a room like any other. On `-3` the room
-  turns plain, the words are not sent, and the room says why. On `3` the room
-  says once that the message crosses a public channel. The finder lists any
-  row the core gave a kind, and shows the Meshtastic name.
+- **Chat.** A node of another network is a room like any other. On `-3` the
+  room turns plain, the words are not sent, and the room says why. On `3` the
+  room says once that the message crosses a public channel. Both sentences
+  name the network from the core's kind word (`xprs_network_name`), so a
+  MeshCore contact is not told it is on Meshtastic. The finder lists any row
+  the core gave a kind, and shows the name that network gave the node.
 - **`zmid:` is the second duplicate key, checked at the one receive door.**
   `PacketGateway.receive` and `receiveInternet` drop a packet whose `zmid:`
   (with its part number, since every part of a split translation carries
