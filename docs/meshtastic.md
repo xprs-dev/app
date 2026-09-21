@@ -3,11 +3,11 @@
 Status: DECIDED 2026-09-19, and implemented in the ESP32 firmware. XPRS LoRa
 runs on Meshtastic's default channel; every LoRa station repeats Meshtastic
 traffic and bridges messages both ways. The firmware reference, with the bench
-measurements, is `firmware/docs/meshtastic.md`; the protocol is
+measurements, is `firmware/docs/lora.md`; the protocol is
 `spec/XPRS.md` sections 3.2 (callsigns of other networks), 9.11.5 (a gateway
 from another network) and 14.8 (the shared channel).
 
-**The rules we follow are listed in `firmware/docs/meshtastic.md`, "The rules
+**The rules we follow are listed in `firmware/docs/lora.md`, "The rules
 we follow", and section 5 below is the app's half of them.** Read both before
 changing anything that touches an `MT` callsign.
 
@@ -15,7 +15,7 @@ changing anything that touches an `MT` callsign.
 `xprs` (XPRS's own channel, as before 2026-09-19), `meshtastic` (the default,
 this file) or `meshcore`, chosen by its owner and changed live, with no
 restart (XPRS.md 14.8,
-`firmware/docs/meshtastic.md` "LoRa modes"). The app never assumes one: it
+`firmware/docs/lora.md` "LoRa modes"). The app never assumes one: it
 reads the mode a station reports (`lora:` on a setup result) and sets it only
 through an owner's `cmd:set lora:` from the Firmwares wapp, through the core's
 command courier like every other setting.
@@ -94,7 +94,7 @@ MeshCore uses the same modulation with sync word `0x12`, which is what XPRS
 was on by accident. A radio holds one sync word, so a station shares a channel
 with one network at a time, and which one is the `lora_mode` its owner sets.
 
-Since 2026-09-20 the firmware speaks MeshCore too (`firmware/docs/meshtastic.md`,
+Since 2026-09-20 the firmware speaks MeshCore too (`firmware/docs/lora.md`,
 "MeshCore"): the same repeater and the same bridge, under the same rules, with
 `MC` callsigns for its nodes. **Nothing in the app is Meshtastic-specific
 because of it**: the core answers `foreign:meshcore` for those addresses

@@ -79,7 +79,7 @@ LongFast modulation on Meshtastic's frequency slot** (869.525 MHz in Europe,
 906.875 in the US, 919.875 in Australia and New Zealand), so one radio hears
 both networks and a station bridges them. The SF9 reasoning below is kept for
 the record; [meshtastic.md](meshtastic.md) says what changed and why, and
-`firmware/docs/meshtastic.md` what it costs on the air.
+`firmware/docs/lora.md` what it costs on the air.
 
 The stronger argument for SF9 is not orthogonality but airtime:
 
