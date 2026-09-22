@@ -729,6 +729,12 @@ class PreferencesService {
     // Headless and clockless like social: `module_tick_interval_ms()` is 0 and
     // it wakes only on `xprs.request`, `xprs.identity` and `xprs.result`.
     'firmwares',
+    // A doorbell rings while the phone is in a pocket, which is the only time
+    // it matters. Things raises that notification, and it can only do so with
+    // an engine running. Clockless too (`module_tick_interval_ms()` is 0 with
+    // no page) and it subscribes to nothing at all until a thing is watched,
+    // so the cost of it for somebody who watches nothing is its memory.
+    'things',
   };
   bool getWappAutostart(String wappId) =>
       _prefs.getBool('wapp.autostart.$wappId') ??
