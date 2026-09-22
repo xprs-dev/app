@@ -783,12 +783,64 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
   /// "Choose…" button. Picking is delegated to the host: the button fires the
   /// `<name>__pickimage` action, which the host handles (native picker → store
   /// in the content-addressed archive → set the field value to the token).
+  ///
+  /// Two attributes, because a picture is not always an avatar. `readonly`
+  /// drops the Choose button: a camera's still is something the wapp fetched,
+  /// not something the person picks, and a button that opens a file dialog
+  /// over it is an offer the screen cannot honour. `shape:"wide"` draws it as
+  /// a 16:9 rounded rectangle at the field's full width instead of a 120 px
+  /// circle, which is what a door looks like.
   Widget _renderImageField(
       String name, String label, String? tip, GeoUiBlock field) {
     final cs = Theme.of(context).colorScheme;
     final value = widget.bindings.getValue(name)?.toString() ?? '';
     final provider =
         value.isEmpty ? null : widget.resolveImage?.call(value);
+    final wide = (field.getString('shape') ?? '') == 'wide';
+    final readonly = field.getBool('readonly') == true;
+    if (wide) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (label.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(label, style: Theme.of(context).textTheme.titleSmall),
+            ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Container(
+                color: cs.surfaceContainerHighest,
+                child: provider == null
+                    ? Icon(Icons.photo_camera_outlined,
+                        size: 40, color: cs.onSurfaceVariant)
+                    : Image(image: provider, fit: BoxFit.cover),
+              ),
+            ),
+          ),
+          if (!readonly)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.image_outlined, size: 18),
+                label: Text(value.isEmpty ? 'Choose picture' : 'Change picture'),
+                onPressed: () => widget.onAction?.call('${name}__pickimage'),
+              ),
+            ),
+          if (tip != null && tip.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(tip,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: cs.onSurfaceVariant)),
+            ),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -814,14 +866,15 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
                 : null,
           ),
         ),
-        const SizedBox(height: 8),
-        Center(
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.image_outlined, size: 18),
-            label: Text(value.isEmpty ? 'Choose picture' : 'Change picture'),
-            onPressed: () => widget.onAction?.call('${name}__pickimage'),
+        if (!readonly) const SizedBox(height: 8),
+        if (!readonly)
+          Center(
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.image_outlined, size: 18),
+              label: Text(value.isEmpty ? 'Choose picture' : 'Change picture'),
+              onPressed: () => widget.onAction?.call('${name}__pickimage'),
+            ),
           ),
-        ),
         if (tip != null && tip.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 6),

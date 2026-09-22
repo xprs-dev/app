@@ -8095,7 +8095,16 @@ class _WappPageState extends State<WappPage>
       final comma = pic.indexOf(',');
       if (comma < 0) return null;
       try {
-        return MemoryImage(base64Decode(pic.substring(comma + 1)));
+        // Bounded, because a wapp can hand this anything: the Things wapp
+        // fetches a still off a camera on the LAN, and a 5 MP one decoded at
+        // full size is a 20 MB texture and an OOM on a budget phone
+        // (docs/performance.md §8.14). 720 px wide is more than any field
+        // this is drawn in.
+        return ResizeImage(
+          MemoryImage(base64Decode(pic.substring(comma + 1))),
+          width: 720,
+          allowUpscaling: false,
+        );
       } catch (_) {
         return null;
       }
