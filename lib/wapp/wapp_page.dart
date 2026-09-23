@@ -3484,6 +3484,25 @@ class _WappPageState extends State<WappPage>
   /// default for a direct message (section 9.4).
   bool _msgPrivate = true;
 
+  /// Close an open `ui.screen.open` panel AND tell the wapp it went.
+  ///
+  /// The arrow on a panel's app bar is the host's, so a wapp used to learn
+  /// nothing when a person left one of its screens: whatever that screen had
+  /// started went on running behind the list. The Things wapp watching a
+  /// doorbell is the case that found it -- a live view kept pulling frames off
+  /// the camera, over a socket nobody was looking at, until its own three
+  /// minute cap expired. This is not knowledge of any wapp: a screen was
+  /// opened by name and is now closed, which is the kind of thing its owner is
+  /// entitled to hear.
+  void _closePanelScreen() {
+    final name = _panelName;
+    setState(() {
+      _panelScreen = null;
+      _panelTitle = null;
+    });
+    if (name.isNotEmpty) _sendCommand('screen_closed');
+  }
+
   void _sendCommand(String cmd) {
     // Bundle a scalar projection of the current field values so the
     // wapp's module_handle_event can read (source, wapp_id, ...) from
@@ -4394,14 +4413,14 @@ class _WappPageState extends State<WappPage>
       return PopScope(
         canPop: false,
         onPopInvoked: (didPop) {
-          if (!didPop) setState(() => _panelScreen = null);
+          if (!didPop) _closePanelScreen();
         },
         child: Scaffold(
           appBar: AppBar(
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
               tooltip: 'Back',
-              onPressed: () => setState(() => _panelScreen = null),
+              onPressed: _closePanelScreen,
             ),
             title: Text(_panelTitle ?? _panelName),
             actions: [
