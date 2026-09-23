@@ -32,7 +32,7 @@ bool get hasImplicitView => true;
 /// Fire a desktop system notification. No-op on web: the browser
 /// has its own Notification API but gating it behind permission
 /// prompts is out of scope for this abstraction.
-Future<void> showSystemNotification({
+Future<bool> showSystemNotification({
   required String title,
   String? body,
   bool error = false,
@@ -40,7 +40,12 @@ Future<void> showSystemNotification({
   String? convo,
   String? view,
 }) async {
-  // no-op
+  // no-op: on web the in-app layer is the only notification surface
+  return false;
+}
+
+Future<void> raiseAppWindow() async {
+  // no-op: a browser tab presents itself
 }
 
 /// Remove app-posted OS notifications. No-op on web (there are none).

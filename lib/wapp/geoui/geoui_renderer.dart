@@ -114,6 +114,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
     // naturally (multiple rows on narrow screens, a single row on
     // wide ones) and stay grouped next to the preceding heading.
     final rendered = <Widget>[];
+    var picAt = -1;
     var i = 0;
     while (i < children.length) {
       if (children[i].keyword == 'action') {
@@ -136,32 +137,84 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
           ),
         ));
       } else {
+        // Where the picture is, for the side-by-side layout below.
+        final b = children[i];
+        if (picAt < 0 &&
+            b.keyword == 'field' &&
+            b.type == 'image' &&
+            (b.getString('shape') ?? '') == 'wide' &&
+            !_hidden(b.name ?? '')) {
+          picAt = rendered.length;
+        }
         rendered.add(_renderBlock(children[i]));
         i++;
       }
     }
 
     final screenTip = _t(widget.screen.getString('tip'));
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Screen tip
-          if (screenTip != null && screenTip.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Text(
-                screenTip,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
+    final tip = (screenTip != null && screenTip.isNotEmpty)
+        ? Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(
+              screenTip,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+            ),
+          )
+        : null;
+
+    return LayoutBuilder(builder: (context, box) {
+      // A picture and the words about it, side by side when there is room.
+      //
+      // A 16:9 picture across a wide window is a band of image with a column
+      // of text under it and a lot of nothing either side, so everything the
+      // picture is ABOUT starts below the fold. Past this width the picture
+      // takes the left and the rest of the screen sits beside it, which is
+      // the same screen with the scrolling taken out. Narrow (a phone, a
+      // split window) is unchanged: one column, picture first.
+      final side = box.maxWidth >= 900 && picAt >= 0;
+      if (!side) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (tip != null) tip,
+              ...rendered,
+            ],
+          ),
+        );
+      }
+      final pic = rendered[picAt];
+      final rest = [
+        for (var k = 0; k < rendered.length; k++)
+          if (k != picAt) rendered[k]
+      ];
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // The picture stays put; it is the thing being looked at.
+            Expanded(flex: 5, child: pic),
+            const SizedBox(width: 20),
+            Expanded(
+              flex: 4,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (tip != null) tip,
+                    ...rest,
+                  ],
+                ),
               ),
             ),
-          ...rendered,
-        ],
-      ),
-    );
+          ],
+        ),
+      );
+    });
   }
 
   Widget _renderBlock(GeoUiBlock block) {

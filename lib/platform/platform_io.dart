@@ -8,6 +8,7 @@
  * import is a drop-in.
  */
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show PlatformDispatcher;
 
@@ -76,7 +77,14 @@ Future<int> _querySdkInt() async {
 /// the boot receiver starts, where UI-only platform channels have no handler.
 bool get hasImplicitView => PlatformDispatcher.instance.implicitView != null;
 
-Future<void> showSystemNotification({
+/// Show the OS notification. Returns true when the person ACTED on it --
+/// pressed its button -- so the caller can take them where it was about.
+///
+/// On Linux a notification is a `notify-send` toast, and a toast with no
+/// action is a dead rectangle: it says a doorbell rang and leaves the person
+/// to go and find the doorbell. `--action` gives it a button and prints the
+/// action's name when it is pressed, which is the whole of the routing.
+Future<bool> showSystemNotification({
   required String title,
   String? body,
   bool error = false,
@@ -86,12 +94,44 @@ Future<void> showSystemNotification({
 }) async {
   try {
     if (Platform.isLinux) {
-      await Process.run('notify-send', [
+      final routable = wapp != null && wapp.isNotEmpty;
+      final args = <String>[
         '--app-name=xprs',
         if (error) '--urgency=critical',
+        // Two actions on purpose. `default` is the one a desktop fires when
+        // the person clicks the NOTIFICATION ITSELF, which is what anybody
+        // does and what did nothing before this: without it a toast is a
+        // rectangle that says a doorbell rang and swallows the click. `open`
+        // is a visible button beside it, for shells that show actions but
+        // have no notion of a default one.
+        if (routable) ...['--action=default=Open', '--action=open=Open', '--wait'],
         title,
         if (body != null && body.isNotEmpty) body,
-      ]);
+      ];
+      if (!routable) {
+        await Process.run('notify-send', args);
+        return false;
+      }
+      // Started rather than run, because `--wait` sits there until the
+      // notification is answered or dismissed: a doorbell nobody came back
+      // to would leave the process for the life of the session, and there
+      // is one per ring. Ten minutes is longer than anybody's walk to the
+      // phone and shorter than forever.
+      final proc = await Process.start('notify-send', args);
+      final timer = Timer(const Duration(minutes: 10), () {
+        try {
+          proc.kill();
+        } catch (_) {}
+      });
+      final out = await proc.stdout.transform(const SystemEncoding().decoder).join();
+      timer.cancel();
+      // Line-wise: notify-send prints the action it was given, and may have
+      // printed other things (an id) before it.
+      for (final line in out.split('\n')) {
+        final k = line.trim();
+        if (k == 'open' || k == 'default') return true;
+      }
+      return false;
     } else if (Platform.isMacOS) {
       final escaped = (body ?? '').replaceAll('"', '\\"');
       final titleEsc = title.replaceAll('"', '\\"');
@@ -117,6 +157,28 @@ Future<void> showSystemNotification({
     // Windows native balloon not implemented — use winrt toast later.
   } catch (_) {
     // Ignore — the in-app overlay is the source of truth anyway.
+  }
+  return false;
+}
+
+/// Bring this app's window in front of whatever the person is looking at.
+///
+/// Opening the right screen is half the answer to a notification: the other
+/// half is being able to see it. Flutter's desktop embedder has no "present
+/// yourself" call, so this asks the window manager through whichever of the
+/// usual two tools is installed, and does nothing at all where neither is.
+Future<void> raiseAppWindow() async {
+  if (!Platform.isLinux) return;
+  for (final attempt in [
+    ['wmctrl', '-a', 'XPRS'],
+    ['xdotool', 'search', '--name', '^XPRS\$', 'windowactivate'],
+  ]) {
+    try {
+      final r = await Process.run(attempt.first, attempt.sublist(1));
+      if (r.exitCode == 0) return;
+    } catch (_) {
+      // not installed; try the next one
+    }
   }
 }
 

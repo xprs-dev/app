@@ -30,6 +30,7 @@ import '../launcher/launcher.dart' show rootNavigatorKey;
 import '../wapp/wapp_open.dart';
 import 'announced_tags_store.dart';
 import 'event_bus.dart';
+import 'log_service.dart';
 
 enum NotificationLevel { info, success, warning, error }
 
@@ -137,16 +138,36 @@ class SystemTrayNotificationBackend implements NotificationBackend {
     // platform abstraction so this file stays dart:io-free and the
     // web build can compile it. On web the call is a no-op; the
     // in-app NotificationLayer is the only source of truth.
-    await platform.showSystemNotification(
+    final wapp = n.source.startsWith('wapp:') ? n.source.substring(5) : null;
+    // NOT awaited: a toast with a button stays up until it is answered or
+    // times out, and the notification service has other backends to run.
+    unawaited(platform
+        .showSystemNotification(
       title: n.title,
       body: n.body,
       error: n.level == NotificationLevel.error,
       // Android routes taps through xprs://open — hand over the wapp
       // folder and the conversation so the tap can land on the thread.
-      wapp: n.source.startsWith('wapp:') ? n.source.substring(5) : null,
+      wapp: wapp,
       convo: n.convo,
       view: n.view,
-    );
+    )
+        .then((acted) async {
+      if (!acted || wapp == null || wapp.isEmpty) return;
+      // Worth a line: a notification that was ACTED on is the one moment the
+      // app is asked to be somewhere, and when it fails to arrive there is
+      // nothing else to read afterwards.
+      LogService.instance.add(
+          'Notification opened: wapp=$wapp view=${n.view ?? ''}');
+      // The same door the in-app card and the Android tray tap go through.
+      await platform.raiseAppWindow();
+      await openWappByFolder(
+        wapp,
+        convo: n.convo,
+        view: n.view,
+        navigator: rootNavigatorKey.currentState,
+      );
+    }));
   }
 }
 
