@@ -1389,7 +1389,15 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
 
   Widget _renderAction(GeoUiBlock action) {
     final name = action.name ?? '';
-    final label = _t(action.getString('label')) ?? name;
+    // `<name>__label`, set by the wapp with ui.field.set, the way `__hidden`
+    // and `__readonly` already work. A screen definition is written once for
+    // every kind of thing that will ever use it; what the button DOES is
+    // known only when the thing in front of the person is known. "Tell me" is
+    // what a button called it before the wapp could say "Warn when it rings".
+    final bound = widget.bindings.getValue('${name}__label');
+    final label = (bound is String && bound.trim().isNotEmpty)
+        ? _t(bound) ?? bound
+        : _t(action.getString('label')) ?? name;
     final style = action.getString('style') ?? 'secondary';
     final tip = _t(action.getString('tip'));
     final confirm = action.getBool('confirm') ?? false;
