@@ -31,7 +31,13 @@ for n in "${names[@]}"; do
   if [ ! -f "$d/manifest.json" ]; then
     echo "  $n: no source, left as-is"; continue
   fi
-  if [ ! -f "$d/app.wasm" ]; then
+  kind=$(python3 -c "import json;print(json.load(open('$d/manifest.json')).get('kind','app'))")
+  # A library wapp can be nothing but a manifest: mediapack exists to
+  # ADVERTISE a capability (media.video) so the host's own backend lights up,
+  # and there is nothing in it to compile. Demanding a wasm from it is how it
+  # came to be the one bundled wapp that shipped missing, which is why a
+  # camera in Things had nowhere to put a decoded frame.
+  if [ "$kind" != "library" ] && [ ! -f "$d/app.wasm" ]; then
     echo "  $n: no app.wasm — build it first"; exit 1
   fi
   ver=$(python3 -c "import json;print(json.load(open('$d/manifest.json'))['version'])")

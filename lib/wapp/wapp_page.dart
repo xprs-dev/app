@@ -2469,6 +2469,8 @@ class _WappPageState extends State<WappPage>
           // Open the camera QR scanner and deliver the decoded text back as
           // qr.scanned {text}. Android only — desktop has no easy webcam grab.
           unawaited(_handleQrScan());
+        } else if (type == 'video.live') {
+          _handleVideoLive();
         } else if (type == 'video.load') {
           _handleVideoLoad(data);
           changed = true;
@@ -3190,6 +3192,27 @@ class _WappPageState extends State<WappPage>
       session.masterClock = () =>
           _audioOut?.active == true ? _audioOut!.playedPosition : null;
     }
+  }
+
+  /// {type:"video.live"} — a wapp that decodes its OWN frames asks for a
+  /// surface to put them on.
+  ///
+  /// `video.load` opens a file through the platform's media engine; a live
+  /// stream has no file and no seekable duration. The Things wapp pulls a
+  /// doorbell's H.264 off a socket and decodes it in wasm, and all it needs
+  /// from the host is somewhere for the pixels to land — which is the same
+  /// session the player uses, minus the open().
+  void _handleVideoLive() {
+    _ensureVideoStack();
+    final session = _mediaSession;
+    if (session == null) return;
+    // A file player starts its clock when somebody presses play. A live
+    // stream has nobody to press it, and a stopped clock shows the first
+    // frame and then nothing -- which is exactly what a doorbell looked like
+    // before this line: one picture of the doorstep, frozen, while the
+    // frames kept arriving behind it.
+    session.play();
+    if (mounted) setState(() {});
   }
 
   /// {type:"video.load","path":"…","autoplay":true} — open a local file.
