@@ -177,6 +177,11 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
   // ── Group ───────────────────────────────────────────────────────────
 
   Widget _renderGroup(GeoUiBlock group) {
+    // A group is hidden the same way a field is: `<name>__hidden`. Without
+    // this a wapp folding away a section had to hide every child by hand and
+    // was left with an empty bordered card and its heading -- the shape of
+    // something missing rather than the absence of it.
+    if (_hidden(group.name ?? '')) return const SizedBox.shrink();
     // Spec §14.1 — a `<group $type="menu">` renders as a single
     // overflow icon button that opens a popup of its action children.
     if (group.type == 'menu') return _renderMenuGroup(group);
@@ -807,16 +812,25 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(label, style: Theme.of(context).textTheme.titleSmall),
             ),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Container(
-                color: cs.surfaceContainerHighest,
-                child: provider == null
-                    ? Icon(Icons.photo_camera_outlined,
-                        size: 40, color: cs.onSurfaceVariant)
-                    : Image(image: provider, fit: BoxFit.cover),
+          // 16:9 of a phone's width is 225 px; 16:9 of a desktop window is
+          // seven hundred, which pushes everything under the picture off the
+          // screen. The ratio is kept and the height is capped, so the same
+          // screen reads the same on both.
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 340),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Container(
+                    color: cs.surfaceContainerHighest,
+                    child: provider == null
+                        ? Icon(Icons.photo_camera_outlined,
+                            size: 40, color: cs.onSurfaceVariant)
+                        : Image(image: provider, fit: BoxFit.cover),
+                  ),
+                ),
               ),
             ),
           ),
