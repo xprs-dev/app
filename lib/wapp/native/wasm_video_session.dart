@@ -160,7 +160,14 @@ class WasmVideoSession implements MediaSession {
         }
         final old = _frame.value;
         _frame.value = img;
-        old?.dispose();
+        // The old frame may still be on the screen this instant: the swap is
+        // seen by the widget tree at the next frame, not at this line. Letting
+        // it go now is a picture disposed while it is being painted, which is
+        // the flicker somebody watching a doorbell sees. One frame later it
+        // is nobody's.
+        if (old != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+        }
         positionMs.value = f.ptsMs + ptsOffsetMs;
       },
     );

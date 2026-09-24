@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -848,6 +849,29 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
   /// over it is an offer the screen cannot honour. `shape:"wide"` draws it as
   /// a 16:9 rounded rectangle at the field's full width instead of a 120 px
   /// circle, which is what a door looks like.
+  /// A dark strip along the bottom of a picture, for the time on it.
+  static Widget _imageCaption(String text) {
+    return Align(
+      alignment: Alignment.bottomLeft,
+      child: Container(
+        margin: const EdgeInsets.all(8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xCC000000),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontFeatures: [FontFeature.tabularFigures()],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _renderImageField(
       String name, String label, String? tip, GeoUiBlock field) {
     final cs = Theme.of(context).colorScheme;
@@ -856,6 +880,12 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
         value.isEmpty ? null : widget.resolveImage?.call(value);
     final wide = (field.getString('shape') ?? '') == 'wide';
     final readonly = field.getBool('readonly') == true;
+    // `<name>__caption`, set by the wapp with ui.field.set: a line drawn ON
+    // the picture. A camera's picture and the time it was taken belong
+    // together -- apart, a still nobody can date is indistinguishable from a
+    // live view that has frozen.
+    final capRaw = widget.bindings.getValue('${name}__caption');
+    final caption = capRaw is String ? capRaw : null;
     if (wide) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -881,7 +911,23 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
                     child: provider == null
                         ? Icon(Icons.photo_camera_outlined,
                             size: 40, color: cs.onSurfaceVariant)
-                        : Image(image: provider, fit: BoxFit.cover),
+                        : Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              // gapless: every frame of a camera is a NEW
+                              // provider (a new data: URI), and without this
+                              // the widget clears to the background while the
+                              // next one decodes -- which at a frame a second
+                              // is a flicker rather than a picture.
+                              Image(
+                                image: provider,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                              ),
+                              if (caption != null && caption.isNotEmpty)
+                                _imageCaption(caption),
+                            ],
+                          ),
                   ),
                 ),
               ),

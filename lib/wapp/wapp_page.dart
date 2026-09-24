@@ -3426,7 +3426,37 @@ class _WappPageState extends State<WappPage>
     if (session != null) {
       // A video is loaded (or about to be) — paint the backend surface.
       final fit = _videoFitFromName(videoGroup.getString('fit') ?? 'contain');
-      body = ColoredBox(color: Colors.black, child: session.buildSurface(fit));
+      // `<group>__caption`, the same convention an image field uses: the wapp
+      // writes the time on the picture, because a live view and a frozen one
+      // look identical until something on them moves.
+      final capRaw = _fieldValues['${videoGroup.name ?? ''}__caption'];
+      final caption = capRaw is String ? capRaw : '';
+      body = ColoredBox(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            session.buildSurface(fit),
+            if (caption.isNotEmpty)
+              Align(
+                alignment: Alignment.bottomLeft,
+                child: Container(
+                  margin: const EdgeInsets.all(12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xCC000000),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    caption,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
     } else if (!MediaCapabilities.backendAvailable) {
       body = _videoPlaceholder(
         Icons.videocam_off_outlined,
