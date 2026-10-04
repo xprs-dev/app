@@ -22,6 +22,7 @@ import 'profile_encryption.dart';
 import 'profile_service.dart';
 import '../services/android_permissions_service.dart';
 import '../services/preferences_service.dart';
+import '../services/xprs/xprs_callsign.dart';
 
 class ProfileEditPage extends StatefulWidget {
   final IwiProfile profile;
@@ -35,6 +36,14 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   late IwiProfile _p;
   late final TextEditingController _nickname;
   late final TextEditingController _description;
+
+  /// The callsign a radio authority issued this operator (XPRS.md 6.4.1).
+  /// Empty for everyone who has not been issued one, which is most people.
+  late final TextEditingController _licence;
+
+  /// Why the typed callsign cannot be saved, or null. From
+  /// [xprsIssuedCallsignRefusal], the one grammar.
+  String? _licenceError;
   bool _revealKey = false;
   bool _saving = false;
 
@@ -50,6 +59,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     _p = widget.profile;
     _nickname = TextEditingController(text: _p.nickname);
     _description = TextEditingController(text: _p.description);
+    _licence = TextEditingController(text: _p.licenceCallsign);
     _refreshBackupStatus();
     _refreshEncStatus();
   }
@@ -144,6 +154,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   void dispose() {
     _nickname.dispose();
     _description.dispose();
+    _licence.dispose();
     super.dispose();
   }
 
@@ -165,11 +176,51 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
 
   void _removeAvatar() => setState(() => _p = _p.copyWith(avatar: ''));
 
+  /// Re-check the typed callsign on every keystroke, so the reason shows up
+  /// where it was typed rather than when Save is pressed.
+  void _checkLicence(String v) {
+    final t = v.trim();
+    setState(() => _licenceError = t.isEmpty ? null : xprsIssuedCallsignRefusal(t));
+  }
+
+  /// Go back to the callsign this profile's key derives.
+  Future<void> _useDerived() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Use your derived callsign?'),
+        content: Text(
+          'You will transmit as ${_p.callsign} again. Peers reach you under '
+          'both names, but mail a neighbour was already carrying for '
+          '${_p.licenceCallsign} may not arrive, and apps you have open keep '
+          'the old name until you reopen them.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Use derived'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    _licence.clear();
+    setState(() => _licenceError = null);
+  }
+
   Future<void> _save() async {
+    // A refused callsign is never written: the Save button is disabled while
+    // one is showing, and this is the second door in case it is not.
+    if (_licenceError != null) return;
     setState(() => _saving = true);
     final edited = _p.copyWith(
       nickname: _nickname.text.trim(),
       description: _description.text.trim(),
+      licenceCallsign: xprsNormaliseCallsign(_licence.text),
     );
     await ProfileService.instance.update(edited);
     if (!mounted) return;
@@ -436,7 +487,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.save),
-            onPressed: _saving ? null : _save,
+            // Off while a typed callsign is refused: the reason is already
+            // next to the field, and a disabled Save is how the screen says
+            // "not that one" without a second dialog.
+            onPressed: (_saving || _licenceError != null) ? null : _save,
           ),
         ],
       ),
@@ -513,13 +567,53 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
             ],
           ),
           const SizedBox(height: 24),
-          // Read-only identity.
+          // The name this key derives. Read-only forever: it is an arithmetic
+          // function of the key (XPRS.md 3), and it is also this profile's
+          // folder on disk, so it cannot move.
           _IdentityRow(
-            label: 'Callsign',
+            label: 'Callsign (from your key)',
             value: _p.callsign,
             mono: true,
             onCopy: () => _copy('Callsign', _p.callsign),
           ),
+          if (_licence.text.trim().isNotEmpty)
+            _IdentityRow(
+              label: 'Transmitting as',
+              value: xprsNormaliseCallsign(_licence.text),
+              mono: true,
+              onCopy: () =>
+                  _copy('Callsign', xprsNormaliseCallsign(_licence.text)),
+            ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _licence,
+            textCapitalization: TextCapitalization.characters,
+            inputFormatters: [_CallsignInputFormatter()],
+            maxLength: kXprsMaxCallsignChars,
+            onChanged: _checkLicence,
+            decoration: InputDecoration(
+              labelText: 'Licensed callsign (optional)',
+              hintText: 'CT1ABC',
+              errorText: _licenceError,
+              helperText: _licenceError == null &&
+                      _licence.text.trim().isNotEmpty &&
+                      !xprsLooksIssued(_licence.text)
+                  ? 'That is an unusual shape for an issued callsign. Saved '
+                      'as typed.'
+                  : 'Leave blank unless a radio authority issued you one.',
+              helperMaxLines: 3,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          if (_p.licenceCallsign.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _useDerived,
+                child: Text('Use ${_p.callsign} instead'),
+              ),
+            ),
+          _LicenceNote(derived: _p.callsign, typed: _licence.text.trim()),
           _IdentityRow(
             label: 'Public key (npub)',
             value: _p.npub,
@@ -894,6 +988,110 @@ class _ColorDot extends StatelessWidget {
             : (selected
                 ? const Icon(Icons.check, color: Colors.white, size: 20)
                 : null),
+      ),
+    );
+  }
+}
+
+/// Uppercase as it is typed, and refuse any character the `call` value type
+/// does not have (XPRS.md 670: uppercase letters, digits, `-` and `/`).
+///
+/// Filtering here rather than only validating means a lowercase callsign is
+/// never WRONG, it is just typed, which is what an operator entering their own
+/// callsign in a hurry expects.
+class _CallsignInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue old, TextEditingValue next) {
+    final cleaned = next.text.toUpperCase().replaceAll(RegExp('[^A-Z0-9/-]'), '');
+    if (cleaned == next.text) return next;
+    final at = next.selection.baseOffset - (next.text.length - cleaned.length);
+    return TextEditingValue(
+      text: cleaned,
+      selection:
+          TextSelection.collapsed(offset: at.clamp(0, cleaned.length)),
+    );
+  }
+}
+
+/// What setting a licensed callsign does, and, at greater length, what it does
+/// NOT do.
+///
+/// The wording is drawn from XPRS.md 6.4.2 rather than invented, because that
+/// section is unusually blunt about the temptation here: "the temptation to
+/// read more into it is strong". It proves the sender holds a key. It proves
+/// nothing about entitlement to the callsign. A receiver may keep its own
+/// record of an out-of-band check and "must never transmit that verdict as
+/// though it were a fact about the callsign", which rules out a badge on this
+/// screen too, since the screen is fed by the same records.
+class _LicenceNote extends StatelessWidget {
+  final String derived;
+  final String typed;
+  const _LicenceNote({required this.derived, required this.typed});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final name = typed.isEmpty ? 'CT1ABC' : xprsNormaliseCallsign(typed);
+    final small = TextStyle(fontSize: 12, color: cs.onSurfaceVariant);
+    Widget para(String title, String body) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurfaceVariant)),
+              const SizedBox(height: 2),
+              Text(body, style: small),
+            ],
+          ),
+        );
+
+    return Card(
+      margin: const EdgeInsets.only(top: 4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            para('What this does',
+                'Everything this device sends will go out as $name instead of '
+                '$derived, and a signed identity announcement will bind $name '
+                'to the key you already have. Your key does not change, and '
+                'neither does $derived.'),
+            para('What it proves, and what it does not',
+                'The announcement proves that whoever holds this key wrote '
+                'these packets. It proves nothing about your entitlement to '
+                'the callsign: an $derived name is checked against its key by '
+                'arithmetic, an issued callsign has no arithmetic '
+                'relationship to any key, and XPRS has no register and issues '
+                'no credentials. Another station can announce the same '
+                'callsign with a different key and both announcements will '
+                'verify. Anyone who wants certainty checks your '
+                "administration's own licence register, out of band, once. "
+                'This app never transmits an opinion about whether a callsign '
+                'is licensed.'),
+            para('Others will see you as a station',
+                'A callsign is read as a person only when it begins X1. A '
+                'licensed callsign says nothing about whether its holder is a '
+                'person or a mast, and guessing would be worse than saying '
+                'station, so you will appear in the Stations list rather than '
+                'in People.'),
+            para('Mail already on its way',
+                'Peers keep reaching you under both names. But mail a '
+                'neighbour was already carrying for your old callsign may not '
+                'be handed over; ask the sender to resend. Apps you already '
+                'have open keep the old name until you reopen them.'),
+            Text(
+              'On amateur bands a licensed callsign is the only one that may '
+              'be transmitted at all, and encryption is not permitted there.',
+              style: small,
+            ),
+          ],
+        ),
       ),
     );
   }
