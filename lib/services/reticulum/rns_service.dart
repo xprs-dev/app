@@ -499,6 +499,20 @@ class RnsService {
     final hex = FollowSet.toHex(key); // accepts hex / npub / base64url
     if (hex != null) {
       _callPub[c] = hex;
+      // ...and under the BARE name too, when this one carries a device suffix
+      // (XPRS.md 3.1: the bare callsign is the person). `t:identity f:CT1ABC-9`
+      // was filed as `CT1ABC-9` and nothing else, so pubkeyForCallsign('CT1ABC')
+      // missed a key we were holding. Pre-existing, and it bites a derived
+      // callsign with a suffix exactly as hard.
+      final bare = NostrCrypto.bareCallsign(c);
+      if (bare.isNotEmpty && bare != c && !(_callPub[bare]?.isNotEmpty ?? false)) {
+        _callPub[bare] = hex;
+      }
+      // A name we are entitled to believe has changed, so the memo of who is
+      // called what has to go. Only on a real change: a station repeats the
+      // same binding for as long as it runs, and XprsIngest._bound already
+      // suppresses the repeat before it reaches here.
+      _nameMemo.clear();
       // A closed group we already hold acts for: persist its key so the roster
       // survives a restart even if the identity arrives after the grants.
       if (XprsGroups.instance.known.contains(c)) {
@@ -2726,20 +2740,73 @@ class RnsService {
   /// node's own key at the announced length, so a node can pick its prefix and
   /// its length but can never wear a name its key cannot produce.
   ///
-  /// An issued callsign (`CT1ABC`, section 9.4.2) has no arithmetic relation to
-  /// any key, so it fails that test and we fall back to the derived name rather
-  /// than repeating a claim we cannot check.
+  /// An issued callsign (`CT1ABC`, section 6.4.2) has no arithmetic relation to
+  /// any key, so it cannot pass that test. It has a SECOND proof instead, and
+  /// section 3.0.1 says which one: "What makes a callsign canonical is the
+  /// identity announcement that declares it (section 15.6), which is signed."
+  ///
+  /// So a licensed callsign is believed when, and only when, we hold the
+  /// binding a verified `t:identity` gave us. [_callPub] is written from
+  /// `XprsIngest.onIdentity`, which `_bindIdentity` reaches only after the
+  /// packet's self-signature verified against the `k:` it carried. The
+  /// announcement is therefore still CHECKED, exactly as this function has
+  /// always promised; what changed is that there are now two ways to earn it.
+  ///
+  /// Without this, a licensed peer announcing `CT1ABC` was silently renamed to
+  /// the `X1`+4 its key derives, in [_nodeJson] and on the whole graph: the
+  /// same "a second name for one device, invented by the observer" defect this
+  /// function was written to end, just for the other kind of callsign.
+  ///
+  /// First speaker wins, because [recordCallsignPubkey] is called with
+  /// `onlyIfUnknown: true`. Section 6.4.2 is explicit that "a second station
+  /// can announce the same callsign with a different key, and both
+  /// announcements will verify", so this is **a record this node keeps, and
+  /// never a verdict it transmits**. Nothing here goes on the wire.
   static String _callsignFor(String? nostrPubHex, String announced) {
     final pub = nostrPubHex;
     final a = announced.trim().toUpperCase();
-    if (a.isNotEmpty &&
-        pub != null &&
-        pub.length == 64 &&
-        NostrCrypto.callsignMatchesKey(a, pub)) {
-      return a;
+    if (a.isEmpty || pub == null || pub.length != 64) {
+      return _derivedCallsign(pub);
     }
-    return _derivedCallsign(pub);
+    final memo = _nameMemo['$pub|$a'];
+    if (memo != null) return memo;
+    final name = _believeName(a, pub) ? a : _derivedCallsign(pub);
+    if (_nameMemo.length >= 256) _nameMemo.remove(_nameMemo.keys.first);
+    _nameMemo['$pub|$a'] = name;
+    return name;
   }
+
+  /// Are we entitled to call this key by this name? The two proofs.
+  static bool _believeName(String a, String pub) {
+    // 1. Arithmetic (section 3): the name IS a function of the key, at
+    //    whatever length its holder chose.
+    if (NostrCrypto.callsignMatchesKey(a, pub)) return true;
+    // 2. A signed identity announcement (sections 3.0.1 and 6.4.2), which is
+    //    the only proof an issued callsign can offer. Bare form too, because
+    //    a station announcing `CT1ABC-9` is the person `CT1ABC` (3.1).
+    final held = instance._callPub;
+    if (held[a] == pub) return true;
+    final bare = NostrCrypto.bareCallsign(a);
+    return bare.isNotEmpty && held[bare] == pub;
+  }
+
+  /// Test seam for the two proofs: arithmetic, and a verified `t:identity`.
+  @visibleForTesting
+  static String debugCallsignFor(String? pubHex, String announced) =>
+      _callsignFor(pubHex, announced);
+
+  /// Test seam: the memo below outlives a test's expectations otherwise.
+  @visibleForTesting
+  static void debugClearNameMemo() => _nameMemo.clear();
+
+  /// `'<pub>|<announced>'` to the name we settled on.
+  ///
+  /// [_callsignFor] runs per node per graph build, from [_nodeJson] and from
+  /// three places on the graph, and both of its answers cost real work: a
+  /// bech32 encode for the derived name (docs/architecture.md: never derive a
+  /// callsign from a key per packet) and a map lookup for the binding.
+  /// Bounded and drop-first, the shape XprsIngest._derived already uses.
+  static final Map<String, String> _nameMemo = {};
 
   /// Protocol wires refused at the inbox door, for the diagnostics.
   int inboxRefusedProtocol = 0;

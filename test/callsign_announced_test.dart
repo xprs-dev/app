@@ -23,9 +23,12 @@ void main() {
 
   test('a name the key cannot produce is refused', () {
     expect(NostrCrypto.callsignMatchesKey('X3ZZZ', hex), isFalse);
-    // An issued callsign has no arithmetic relation to a key (section 9.4.2),
-    // so it fails this test and the observer falls back to the derived name
-    // rather than repeating a claim it cannot check.
+    // An issued callsign has no arithmetic relation to a key (section 6.4.2),
+    // so it fails this test, and it must: claiming otherwise would be the lie
+    // that section warns about. What it does NOT mean any more is that the
+    // observer renames the station: a licensed callsign has a second proof,
+    // the signed t:identity that declares it (3.0.1), and once we hold that
+    // binding the announced name stands. See callsign_believed_test.dart.
     expect(NostrCrypto.callsignMatchesKey('CT1ABC', hex), isFalse);
   });
 }
