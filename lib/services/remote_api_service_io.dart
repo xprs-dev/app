@@ -2165,7 +2165,10 @@ class RemoteApiService {
       'platform': platform.platformName(),
       'apiPort': _port,
       'profile': p?.nickname,
-      'callsign': p?.callsign,
+      // The name on the AIR (wireCallsign), which is what `mesh.callsign`
+      // beside it reports and what a peer would see. The derived name is in
+      // the profile and is not what this diagnostic is for.
+      'callsign': p?.wireCallsign,
       'npub': p?.npub,
       // Diagnostic: does the active profile's stored npub actually correspond to
       // its nsec? A mismatch means anything peers encrypt to our advertised npub

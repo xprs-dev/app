@@ -576,7 +576,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
             mono: true,
             onCopy: () => _copy('Callsign', _p.callsign),
           ),
-          if (_licence.text.trim().isNotEmpty)
+          // Only while the typed callsign is one we would actually save:
+          // previewing a refused value says "transmitting as X1ABCD" under a
+          // field that is refusing X1ABCD.
+          if (_licence.text.trim().isNotEmpty && _licenceError == null)
             _IdentityRow(
               label: 'Transmitting as',
               value: xprsNormaliseCallsign(_licence.text),

@@ -11467,7 +11467,7 @@ class _WappPageState extends State<WappPage>
         setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Imported: ${profile.callsign}'),
+            content: Text('Imported: ${profile.wireCallsign}'),
             duration: const Duration(seconds: 3),
           ),
         );

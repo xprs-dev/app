@@ -949,7 +949,13 @@ class XprsPublisher {
   /// where an oversized frame is refused rather than truncated.
   Future<Map<String, String>> publishIdentity() async {
     final profile = ProfileService.instance.activeProfile;
-    final call = (profile?.callsign ?? '').trim().toUpperCase();
+    // wireCallsign, NOT callsign: this is the binding of section 6.4.2, and
+    // the name it declares has to be the one our packets actually carry in
+    // `f:`. Reading the derived name here aired `t:identity f:X16JK8` from a
+    // station whose every other packet said CT1ABC, so no peer could check a
+    // single signature of ours and the licensed callsign was bound to
+    // nothing.
+    final call = (profile?.wireCallsign ?? '').trim().toUpperCase();
     final npub = (profile?.npub ?? '').trim();
     if (call.isEmpty || !npub.startsWith('npub1')) return const {};
 
