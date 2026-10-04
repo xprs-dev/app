@@ -38,6 +38,9 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../log_service.dart';
+import '../xprs/xprs_callsign.dart';
+
 const int kMspMagic = 0x4D;
 const int kMspVersion = 0x01;
 
@@ -73,7 +76,22 @@ class MspCaps {
   static const writeNoResponse = 1 << 4; // phase-2 upgrade, reserved
 }
 
-const int kMspMaxCallsign = 9;
+/// The widest callsign MSP carries, which is the widest one anything in XPRS
+/// carries (lib/services/xprs/xprs_callsign.dart).
+///
+/// It was 9, which was enough for `X1ABCD-2` and for most licences, and the
+/// writer SILENTLY TRUNCATED anything longer. A truncated callsign is not a
+/// shortened name, it is somebody else's name: `CT1ABC/PORT` went out as
+/// `CT1ABC/PO` in the HELLO and in every carried-mail envelope, and the peer
+/// filed our mail under a station that does not exist.
+///
+/// The field is length-prefixed under a `u8`, so widening the limit is
+/// backward-compatible to DECODE. It is not backward-compatible to ENCODE: a
+/// peer still reading with the old ceiling fails `_R.cs`, sets `o` past the
+/// end, and `MspHello._decode` returns null, so custody with a station whose
+/// callsign is over 9 characters needs both ends updated. Named rather than
+/// hidden, and logged by [_W.call] when it bites.
+const int kMspMaxCallsign = kXprsMaxCallsignChars;
 const int kMspChunkHeader = 3 + 4 + 4; // envelope + xfer + offset
 const int kMspDefaultWindow = 16;
 const int kMspMsgBatchMax = 32;
@@ -104,12 +122,44 @@ class _W {
 
   void bytes(List<int> d) => b.add(d);
 
-  /// Callsign-style string: [len u8][ASCII], truncated to [max].
+  /// Free-text string: [len u8][ASCII], TRUNCATED to [max].
+  ///
+  /// For a file's extension and name, where a shortened value is still the
+  /// same value. A callsign is not such a field: use [call].
   void cs(String s, {int max = kMspMaxCallsign}) {
     final d = s.codeUnits.where((c) => c >= 0x20 && c < 0x7F).take(max).toList();
     u8(d.length);
     bytes(d);
   }
+
+  /// A CALLSIGN field: REFUSED rather than truncated.
+  ///
+  /// Truncating a callsign does not shorten a name, it invents a different
+  /// station: `CT1ABC/PORT` became `CT1ABC/PO`, which is a callsign nobody
+  /// holds, and our mail was filed under it. A zero-length field instead makes
+  /// the frame fail its own decode check (`MspHello._decode` returns null on
+  /// an empty callsign), so the session dies with a line in the log rather
+  /// than succeeding under the wrong name.
+  void call(String s, {int max = kMspMaxCallsign}) {
+    final d = s.codeUnits.where((c) => c >= 0x20 && c < 0x7F).toList();
+    if (d.length > max) {
+      if (!_warnedWide) {
+        _warnedWide = true;
+        LogService.instance.add(
+            'msp: callsign "$s" is ${d.length} characters and MSP carries '
+            '$max, so the frame is refused rather than sent under a '
+            'truncated name');
+      }
+      u8(0);
+      return;
+    }
+    u8(d.length);
+    bytes(d);
+  }
+
+  /// Once per session: a width mismatch repeats on every frame, and §8.10's
+  /// rule is that a log line per parcel is a log ring that only logs itself.
+  static bool _warnedWide = false;
 }
 
 class _R {
@@ -250,7 +300,7 @@ class MspHello {
   Uint8List encode() {
     final w = _W()
       ..u16(caps)
-      ..cs(callsign)
+      ..call(callsign)
       ..u16(maxFrame)
       ..u32(spoolFreeKb)
       ..u16(pendingMsgs)
@@ -423,7 +473,7 @@ class MspMsgList {
         ..u8(e.urg)
         ..u16(e.len)
         ..u32(e.ageS)
-        ..cs(e.target);
+        ..call(e.target);
     }
     return _env(MspType.msgListR, w);
   }
@@ -522,8 +572,8 @@ class MspFileOffer {
       ..bytes(sha256.sublist(0, 32))
       ..u64(size)
       ..u32(ttlS)
-      ..cs(origin)
-      ..cs(target)
+      ..call(origin)
+      ..call(target)
       ..cs(ext, max: 16)
       ..cs(name, max: 64);
     return _env(MspType.fileOffer, w);

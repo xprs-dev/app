@@ -31,9 +31,18 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+import '../xprs/xprs_callsign.dart';
+
 const int kMeshBeaconVersion = 1;
 const int kMeshMaxCost = 6;
-const int kMeshMaxCallsign = 9;
+/// The widest callsign this beacon carries, the same ceiling everything else
+/// in XPRS uses (lib/services/xprs/xprs_callsign.dart).
+///
+/// Only the DECODER matters in practice: docs/ble5.md says the `0x4D` mesh
+/// subtype is no longer aired, and [MeshBeacon.encode] now has no caller
+/// outside its own round-trip test. Widening it is what lets an updated peer's
+/// beacon still be understood when one does arrive.
+const int kMeshMaxCallsign = kXprsMaxCallsignChars;
 
 /// Self-declared device type carried in the beacon class byte (docs/mesh.md §3).
 enum MeshDeviceClass {
@@ -149,9 +158,16 @@ class MeshBeacon {
     this.pendingBulk = 0,
   }) : have = have ?? Uint8List(0);
 
+  /// Returns an EMPTY frame for a callsign wider than [kMeshMaxCallsign]
+  /// rather than one under a truncated name.
+  ///
+  /// This used to `substring` the callsign to the ceiling, and a truncated
+  /// callsign is not a shortened name: it is a different station. The decoder
+  /// refuses a short frame, so an empty one fails cleanly at the far end.
   Uint8List encode() {
-    final cs = ascii.encode(
-        callsign.toUpperCase().substring(0, callsign.length.clamp(0, kMeshMaxCallsign)));
+    final up = callsign.toUpperCase();
+    if (up.length > kMeshMaxCallsign) return Uint8List(0);
+    final cs = ascii.encode(up);
     final b = BytesBuilder();
     b.addByte(kMeshBeaconVersion);
     b.addByte(deviceClass.wire);
