@@ -574,7 +574,8 @@ class MeshCourier {
     // dropped there rather than mislabelled here.
     XprsIngest.heard(p,
         bearer: via == 'mesh' ? 'ble' : via,
-        selfCallsign: MeshService.instance.tableCallsign);
+        selfCallsign: MeshService.instance.tableCallsign,
+        selfAliases: MeshService.instance.tableAliases);
     return deliverXprs(f, via: via);
   }
 

@@ -170,14 +170,27 @@ class MeshService {
   MeshTable? get table => _table;
 
   /// Our mesh identity ('' before the profile loads).
+  ///
+  /// The name we AIR: an operator's licensed callsign when they have one, else
+  /// the one their key derives (XPRS.md 6.4.1). One name on the air.
   String get tableCallsign => _table?.selfCallsign ?? '';
+
+  /// Names we no longer air but still answer to, bare and uppercase.
+  ///
+  /// Exactly one today: the callsign this profile's key derives, kept once the
+  /// operator sets a licensed one, so a peer holding the old binding can still
+  /// reach them. Empty for every profile without a licence, which means this
+  /// changes nothing at all until one is set.
+  Set<String> get tableAliases => _aliases;
+  Set<String> _aliases = const {};
 
   /// Start the mesh node. Idempotent; safe to call again when the profile
   /// (callsign) changes — the table is rebuilt for the new identity.
   Timer? _startRetry;
 
   Future<void> start({required bool canAdvertise}) async {
-    final cs = (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
+    final profile = ProfileService.instance.activeProfile;
+    final cs = (profile?.wireCallsign ?? '').trim();
     if (cs.isEmpty) {
       // BLE can come up before the profile finishes loading on slow devices —
       // a silent no-op here would leave the mesh dead for the whole session.
@@ -196,6 +209,16 @@ class MeshService {
       return;
     }
     _table = MeshTable(cs);
+    // The derived callsign becomes an ALIAS the moment a licensed one starts
+    // going out: every peer that has met this operator holds a binding for it,
+    // and a 1:1 already on its way is addressed to it. Empty when there is no
+    // licence, so this is inert for everyone else.
+    final derived =
+        NostrCrypto.bareCallsign(profile?.callsign ?? '').toUpperCase();
+    _aliases = (derived.isEmpty ||
+            derived == NostrCrypto.bareCallsign(cs).toUpperCase())
+        ? const {}
+        : {derived};
     // The Reticulum receive lane tests "addressed to us" against
     // XprsArchive.selfCallsign (xprs_ingest.dart reticulum()). Set it HERE, the
     // instant the callsign is known — NOT only in the prefs/try block below.
@@ -203,7 +226,9 @@ class MeshService {
     // null, or if MeshStore.init throws before the cascade) sees an empty self,
     // is misrouted as a third-party carry, and is refused with
     // "rns refused (no declaration)". The cascade below re-sets the same value.
-    XprsArchive.instance.selfCallsign = cs;
+    XprsArchive.instance
+      ..selfCallsign = cs
+      ..selfAlsoKnownAs = _aliases;
     _canAdvertise = canAdvertise;
     _running = true;
 
@@ -225,6 +250,7 @@ class MeshService {
         // Its key resolver is wired by RnsService, which owns the keys.
         XprsArchive.instance
           ..selfCallsign = cs
+          ..selfAlsoKnownAs = _aliases
           ..maxBytes = prefs.xprsArchiveMaxMb * 1024 * 1024
           ..maxAgeDays = prefs.xprsArchiveMaxDays
           // The spool is the only thing that checks a signature, and it does it
@@ -581,7 +607,8 @@ class MeshService {
           ..held = (() => [
                 for (final target in MeshStore.instance.heldTargets())
                   for (final row in MeshStore.instance.releasableFor(target,
-                      selfCallsign: NostrCrypto.bareCallsign(tableCallsign)))
+                      selfCallsign: NostrCrypto.bareCallsign(tableCallsign),
+                      alsoSelf: _aliases))
                     if (utf8
                         .decode(row.wire, allowMalformed: true)
                         .startsWith('t:'))
@@ -1551,7 +1578,7 @@ class MeshService {
       _releaseTriedMs.remove(_releaseTriedMs.keys.first);
     }
     final pending = MeshStore.instance.releasableFor(callsign,
-        selfCallsign: tableCallsign);
+        selfCallsign: tableCallsign, alsoSelf: _aliases);
     if (pending.isEmpty) return;
     LogService.instance.add(
         'Mesh: $callsign heard on $bearer with ${pending.length} to release '
@@ -1639,7 +1666,8 @@ class MeshService {
 
   /// What this device is holding for other people, newest first.
   List<Map<String, dynamic>> held({int limit = 200}) =>
-      MeshStore.instance.heldJson(limit: limit, selfCallsign: tableCallsign);
+      MeshStore.instance.heldJson(
+          limit: limit, selfCallsign: tableCallsign, alsoSelf: _aliases);
 
   /// What ANOTHER station is carrying, as plain rows; null when it could not
   /// be reached (or does not serve listings).

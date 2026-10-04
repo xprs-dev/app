@@ -49,6 +49,7 @@ import '../mesh/mesh_service.dart';
 import '../mesh/mesh_session.dart' show mspIsFrame;
 import '../mesh/xblob_service.dart';
 import '../xprs/xprs_gateway_dedup.dart';
+import '../xprs/xprs_archive.dart';
 import '../xprs/xprs_ingest.dart';
 import 'wapp_delivery.dart';
 import '../xprs/xprs_packet.dart';
@@ -178,6 +179,7 @@ class PacketGateway {
         p,
         bearer: bearer,
         selfCallsign: MeshService.instance.tableCallsign,
+        selfAliases: MeshService.instance.tableAliases,
         rssi: rssi,
       );
       try {
@@ -189,13 +191,16 @@ class PacketGateway {
       // `t:` value, so a feed wapp takes `t:status`, a poll wapp takes
       // `t:poll`, and neither has to see the other's traffic to find its own.
       try {
-        final self = MeshService.instance.tableCallsign.trim().toUpperCase();
-        final to = (p['d'] ?? '').trim().toUpperCase();
+        // `forUs` is XprsArchive's answer, not a comparison written here.
+        // This used to test the WHOLE string against our callsign, so a 1:1
+        // to another of our own devices (X1SELF-2, XPRS.md 3.1) read as
+        // somebody else's, and a 1:1 to the callsign we aired before setting
+        // a licensed one would have too.
         WappDelivery.instance.deliverPacket(
           p,
           bearer: bearer,
           rssi: rssi,
-          forUs: self.isNotEmpty && to == self,
+          forUs: XprsArchive.instance.addressesUs(p['d']),
         );
       } catch (e) {
         LogService.instance.add('Gateway: wapp delivery threw: $e');
@@ -259,12 +264,10 @@ class PacketGateway {
     // (§13.11.3).
     if (p != null) {
       try {
-        final self = MeshService.instance.tableCallsign.trim().toUpperCase();
-        final to = (p['d'] ?? '').trim().toUpperCase();
         WappDelivery.instance.deliverPacket(
           p,
           bearer: bearer,
-          forUs: self.isNotEmpty && to == self,
+          forUs: XprsArchive.instance.addressesUs(p['d']),
         );
       } catch (e) {
         LogService.instance.add('Gateway: wapp delivery threw (rns): $e');

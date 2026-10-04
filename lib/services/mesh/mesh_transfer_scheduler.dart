@@ -272,7 +272,9 @@ class MeshTransferScheduler {
         final self = MeshService.instance.tableCallsign;
         for (final peer in dialable.keys) {
           if (blocked(peer, toSend: true)) continue;
-          if (store.ownPendingTo(peer, selfCallsign: self)) {
+          if (store.ownPendingTo(peer,
+              selfCallsign: self,
+              alsoSelf: MeshService.instance.tableAliases)) {
             _dialTo(peer, dial, 'deliver own 1:1');
             return;
           }
@@ -295,7 +297,8 @@ class MeshTransferScheduler {
       // docs/mesh.md §6) rather than holding it forever.
       if (table != null && havePendingMsgs) {
         for (final own in store.ownPendingTargets(
-            MeshService.instance.tableCallsign)) {
+            MeshService.instance.tableCallsign,
+            alsoSelf: MeshService.instance.tableAliases)) {
           if (table.neighbors.keys
                   .any((n) => n.toUpperCase() == own.toUpperCase()) ||
               table.routes.containsKey(meshHashHex(meshHash(own)))) {

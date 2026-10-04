@@ -156,6 +156,19 @@ class XprsIngest {
 
   static String _base(String c) => NostrCrypto.bareCallsign(c);
 
+  /// Is [d] addressed to this station, under any name it answers to?
+  ///
+  /// [self] is the name we AIR; [aliases] are the ones we no longer air but
+  /// still answer to, which today means the callsign our key derives after an
+  /// operator has set their licensed one (XPRS.md 6.4.1). We wear one name on
+  /// the air and answer to both, so a 1:1 already addressed to the old one is
+  /// not lost for the sake of tidiness.
+  static bool _addressesUs(String? d, String self, Set<String> aliases) {
+    final to = _base((d ?? '').trim()).toUpperCase();
+    if (to.isEmpty) return false;
+    return to == _base(self.trim()).toUpperCase() || aliases.contains(to);
+  }
+
   /// The archive's name for how a packet arrived. A custody session and the
   /// overheard mesh both run over a BLE link — physically local, so they
   /// belong in the spool even though the monitor's sighting ring (rightly)
@@ -243,6 +256,7 @@ class XprsIngest {
     XprsPacket p, {
     required String bearer,
     required String selfCallsign,
+    Set<String> selfAliases = const {},
     int rssi = 0,
   }) {
     XprsMonitor.instance.offer(
@@ -384,8 +398,7 @@ class XprsIngest {
     // The preference governs the INDEXER — other people's traffic. A packet
     // addressed to us is our own mail and is kept either way.
     final forUs =
-        (_base(p['d'] ?? '').isNotEmpty &&
-                _base(p['d'] ?? '') == _base(selfCallsign)) ||
+        _addressesUs(p['d'], selfCallsign, selfAliases) ||
             // A group act is addressed to the GROUP, so the test above says no
             // to every one of them and, with the indexer off, the record of a
             // group we belong to was dropped as somebody else's chatter. 26.4
@@ -450,8 +463,10 @@ class XprsIngest {
       final to = _base(p['d'] ?? '');
       final self = _base(selfCallsign);
       // Undirected is a question to the room; directed to somebody else is
-      // not ours to answer.
-      if (self.isNotEmpty && (to.isEmpty || to == self)) {
+      // not ours to answer. Directed to a name we no longer air but still
+      // answer to IS ours, and the pong goes out under the name we do air.
+      if (self.isNotEmpty &&
+          (to.isEmpty || _addressesUs(p['d'], selfCallsign, selfAliases))) {
         _answerPing(p, self: self, bearer: _archiveBearer(bearer));
       }
       return;
@@ -937,7 +952,7 @@ class XprsIngest {
     // with the indexer preference off, was dropped -- so the room would have
     // gone quiet for anybody not also in LAN or BLE range. It survived on the
     // bench only because the LAN copy arrived too.
-    if (toC.isNotEmpty && toC == self ||
+    if (XprsArchive.instance.addressesUs(p['d']) ||
         XprsGroups.instance.concernsUs(p, self)) {
       XprsArchive.instance.admit(p, bearer: bearer);
       // AND DELIVER IT. This lane archived a message addressed to us and

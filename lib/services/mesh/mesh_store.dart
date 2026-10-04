@@ -452,21 +452,52 @@ class MeshStore {
   /// outbound has the LXMF retry ladder behind it, a stranger's mail has this
   /// store and nothing else.
   ///
+  /// Every name that makes a row OURS: the one we air, plus the ones we no
+  /// longer air but still answer to (XPRS.md 6.4.1, an operator who has set
+  /// their licensed callsign). Bare, uppercase, de-duplicated.
+  ///
+  /// Rows this store wrote before a rename carry the old name in `sender`, so
+  /// "is this mine" has to ask about all of them or our own older mail sorts
+  /// and reads as a stranger's.
+  static List<String> _selfNames(String self, Set<String> alsoSelf) {
+    final out = <String>{};
+    for (final n in [self, ...alsoSelf]) {
+      final u = n.trim().toUpperCase();
+      if (u.isNotEmpty) out.add(u);
+    }
+    return out.toList();
+  }
+
+  /// `UPPER(sender) IN (?,?)`, or a constant false when we have no name yet.
+  ///
+  /// `IN ()` is not valid SQL, and an empty name list used to be an `= ''`
+  /// that matched nothing, so the false branch has to keep that meaning.
+  /// It is `0 = 1` and not `0`: in an `ORDER BY` term sqlite reads a bare
+  /// integer as an ORDINAL COLUMN REFERENCE, so `ORDER BY (0)` is not "sort
+  /// by false", it is "1st ORDER BY term out of range" and the statement does
+  /// not even prepare.
+  static String _mineSql(List<String> names) => names.isEmpty
+      ? '0 = 1'
+      : 'UPPER(sender) IN (${List.filled(names.length, '?').join(',')})';
+
   /// [budget] bounds the batch in BYTES rather than rows, because that is what
   /// the bearer actually spends (§31.1).
   List<MeshPendingMsg> releasableFor(String target,
-      {int budget = 900, String selfCallsign = '', int? nowMs}) {
+      {int budget = 900,
+      String selfCallsign = '',
+      Set<String> alsoSelf = const {},
+      int? nowMs}) {
     final db = _db;
     if (db == null) return const [];
     final t = target.trim().toUpperCase();
     if (t.isEmpty) return const [];
-    final self = selfCallsign.trim().toUpperCase();
+    final names = _selfNames(selfCallsign, alsoSelf);
     final now = nowMs ?? _now();
     final rows = db.select(
         'SELECT am,target,sender,wire,ts,size,relts,reln FROM mesh_store '
         'WHERE state = 0 AND UPPER(target) = ? '
-        'ORDER BY (UPPER(sender) = ?) ASC, ts DESC LIMIT 64',
-        [t, self]);
+        'ORDER BY (${_mineSql(names)}) ASC, ts DESC LIMIT 64',
+        [t, ...names]);
     final out = <MeshPendingMsg>[];
     var spent = 0;
     for (final r in rows) {
@@ -632,24 +663,28 @@ class MeshStore {
 
   /// Do we hold a 1:1 WE wrote that is addressed to [target] itself? One
   /// indexed row, asked as a yes/no (docs/performance.md 8.7).
-  bool ownPendingTo(String target, {required String selfCallsign}) {
+  bool ownPendingTo(String target,
+      {required String selfCallsign, Set<String> alsoSelf = const {}}) {
     final db = _db;
     final t = target.trim().toUpperCase();
-    final self = selfCallsign.trim().toUpperCase();
-    if (db == null || t.isEmpty || self.isEmpty) return false;
+    final names = _selfNames(selfCallsign, alsoSelf);
+    if (db == null || t.isEmpty || names.isEmpty) return false;
     return db.select(
         'SELECT 1 FROM mesh_store WHERE state = 0 AND UPPER(target) = ? '
-        'AND UPPER(sender) = ? LIMIT 1',
-        [t, self]).isNotEmpty;
+        'AND ${_mineSql(names)} LIMIT 1',
+        [t, ...names]).isNotEmpty;
   }
 
   /// Distinct targets of in-transit frames WE originated (custodian path).
-  List<String> ownPendingTargets(String selfCallsign) {
+  List<String> ownPendingTargets(String selfCallsign,
+      {Set<String> alsoSelf = const {}}) {
     final db = _db;
-    if (db == null || selfCallsign.isEmpty) return const [];
+    final names = _selfNames(selfCallsign, alsoSelf);
+    if (db == null || names.isEmpty) return const [];
     final rows = db.select(
-        'SELECT DISTINCT target FROM mesh_store WHERE state = 0 AND sender = ?',
-        [selfCallsign.toUpperCase()]);
+        'SELECT DISTINCT target FROM mesh_store WHERE state = 0 '
+        'AND ${_mineSql(names)}',
+        names);
     return [for (final r in rows) r['target'] as String];
   }
 
@@ -797,18 +832,22 @@ class MeshStore {
   ///
   /// `sender != selfCallsign` is the test: our own outbound has the LXMF retry
   /// ladder behind it, a stranger's mail has this store and nothing else.
-  List<Map<String, dynamic>> heldJson({int limit = 200, String? selfCallsign}) {
+  List<Map<String, dynamic>> heldJson(
+      {int limit = 200,
+      String? selfCallsign,
+      Set<String> alsoSelf = const {}}) {
     final db = _db;
     if (db == null) return const [];
-    final self = (selfCallsign ?? '').trim().toUpperCase();
-    final rows = self.isEmpty
+    final names = _selfNames(selfCallsign ?? '', alsoSelf);
+    final rows = names.isEmpty
         ? db.select(
             'SELECT am, target, sender, wire, ts, size, urg, state, relts, reln '
             'FROM mesh_store ORDER BY ts DESC LIMIT ?', [limit])
         : db.select(
             'SELECT am, target, sender, wire, ts, size, urg, state, relts, reln '
             'FROM mesh_store '
-            'ORDER BY (UPPER(sender) = ?) ASC, ts DESC LIMIT ?', [self, limit]);
+            'ORDER BY (${_mineSql(names)}) ASC, ts DESC LIMIT ?',
+            [...names, limit]);
     final out = <Map<String, dynamic>>[];
     for (final r in rows) {
       final blob = r['wire'];

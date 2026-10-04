@@ -483,8 +483,39 @@ class XprsArchive {
 
   /// Our base callsign, set by the owner at init/profile switch so `mine` can
   /// be computed at flush time without asking a service from inside sqlite.
+  ///
+  /// This is the name this station AIRS: an operator's licensed callsign when
+  /// they have one, else the one their key derives (XPRS.md 6.4.1). We wear
+  /// exactly one name on the air (XPRS.md 3.0.1).
   String selfCallsign = '';
   String get _selfBase => _base(selfCallsign);
+
+  /// Names this station still ANSWERS to, bare and uppercase.
+  ///
+  /// An operator who sets their licensed callsign starts airing `CT1ABC`, but
+  /// every peer that has met them holds a binding for the callsign their key
+  /// derives, and a 1:1 already on its way is addressed to that one. Refusing
+  /// it as not-for-us would lose mail for the sake of tidiness.
+  ///
+  /// So we send under one name and answer to both. This holds the ones we no
+  /// longer air, which today means exactly one: the derived callsign. It is
+  /// deliberately NOT used by the echo skip (a packet bearing our old name is
+  /// not our own echo, and suppressing it would hide a diagnostic) and NOT by
+  /// closed-group membership, which is a verified record of a name and is not
+  /// ours to alias (XPRS.md 6.4.2).
+  Set<String> selfAlsoKnownAs = const {};
+
+  /// Is [d] addressed to this station, under any name it answers to?
+  ///
+  /// THE test for "our own mail". It was four hand-written comparisons, two of
+  /// which compared the whole string rather than the base, so a 1:1 to another
+  /// of our own devices (`X1SELF-2`, XPRS.md 3.1) was already read as
+  /// somebody else's at the gateway.
+  bool addressesUs(String? d) {
+    final to = _base((d ?? '').trim()).toUpperCase();
+    if (to.isEmpty) return false;
+    return to == _selfBase.toUpperCase() || selfAlsoKnownAs.contains(to);
+  }
 
   void _prune(CommonDatabase db, {int? nowMs}) {
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
