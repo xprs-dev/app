@@ -2253,6 +2253,14 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
 
   // THE PEOPLE: X1 callsigns, and nothing else.
   //
+  // Which now has a consequence worth stating, because an operator will
+  // otherwise look for themselves here and not find themselves: a licensed
+  // amateur transmitting as CT1ABC classifies as a STATION, not a user
+  // (xprsKindOf, XPRS.md 6.4.1). A licence says nothing about whether its
+  // holder is a person or a mast, and guessing would be worse than saying
+  // station, so they appear in the Stations list. The profile screen tells
+  // them so when they set it.
+  //
   // This asked "can this thing receive a 1:1 message" — which is true of every
   // NomadNet and Sideband peer on the network, and of a bare Reticulum
   // destination with no name at all. The screen listed `724d76c1` as a person
@@ -2271,7 +2279,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         child: Padding(
           padding: EdgeInsets.all(22),
           child: Text(
-              'No people heard yet.\n\nAn X1 callsign appears here as soon as this device hears it — over a radio, over the LAN, or through a hub.',
+              'No people heard yet.\n\nAn X1 callsign appears here as soon as this device hears it — over a radio, over the LAN, or through a hub. A licensed callsign is listed under Stations.',
               textAlign: TextAlign.center,
               style: TextStyle(color: _gMuted, fontSize: 13)),
         ),
@@ -2608,7 +2616,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       stat('Heard recently', '${at('devices', 'seen')}'),
       stat('People (X1)', '${at('users', 'reachable')} of '
           '${at('users', 'seen')}'),
-      stat('Stations (X2/X3)', '${at('stations', 'reachable')} of '
+      stat('Stations (X2, X3, licensed)', '${at('stations', 'reachable')} of '
           '${at('stations', 'seen')}'),
       stat('Seen all time', '$geo'),
       if (unnamed > 0) stat('Running XPRS, but unnamed', '$unnamed'),
