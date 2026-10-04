@@ -25,6 +25,7 @@
 library;
 
 import '../../util/nostr_crypto.dart';
+import 'xprs_callsign.dart';
 
 /// What the callsign says this device is (XPRS.md 3.1).
 enum XprsKind {
@@ -275,11 +276,16 @@ const Set<String> kXprsServiceAspects = {
   'relay',
 };
 
-/// A callsign this format could have issued: `X1`–`X5` plus 2–5 characters, or
-/// an amateur licence. Deliberately the shape only — whether the holder is
-/// entitled to it is [NostrCrypto.callsignMatchesKey]'s question.
-final RegExp _shaped =
-    RegExp(r'^(X[1-5][A-Z0-9]{2,5}|[A-Z0-9]{1,3}[0-9][A-Z0-9]*)(-[0-9]{1,2})?$');
+/// A callsign this format could have issued: `X1` to `X5` plus 2 to 5
+/// characters, or an amateur licence. Deliberately the shape only: whether the
+/// holder is entitled to it is [NostrCrypto.callsignMatchesKey]'s question for
+/// a derived callsign, and a signed `t:identity` for an issued one (6.4.2).
+///
+/// Delegates to [xprsIsCallsignShaped], the one grammar
+/// (lib/services/xprs/xprs_callsign.dart). Its own copy of the rule had no `/`
+/// group, so a station announcing `G0XYZ/P` matched nothing and fell off paths
+/// 3, 4, 4b and 5 of [_name]: it was heard, and it stayed nameless.
+bool _shapedCall(String c) => xprsIsCallsignShaped(c);
 
 /// Decide what [s] is. Returns null when it is not an XPRS device: a hub, a
 /// group address, an LXMF or NomadNet node, or anything we cannot name.
@@ -341,12 +347,12 @@ XprsDevice? classifyXprs(XprsCandidate s) {
     return (announced, XprsEvidence.remoteWire);
   }
   // 3. The station stated its callsign and its Reticulum address together.
-  if (paired.isNotEmpty && _shaped.hasMatch(paired)) {
+  if (paired.isNotEmpty && _shapedCall(paired)) {
     return (paired, XprsEvidence.beaconPairing);
   }
   // 4. The key could have produced the name.
   if (announced.isNotEmpty &&
-      _shaped.hasMatch(announced) &&
+      _shapedCall(announced) &&
       s.nostrPubHex.isNotEmpty &&
       NostrCrypto.callsignMatchesKey(announced, s.nostrPubHex)) {
     return (announced, XprsEvidence.announceVerified);
@@ -355,14 +361,14 @@ XprsDevice? classifyXprs(XprsCandidate s) {
   // key, and a key produces exactly one name. Nothing is claimed here.
   final derived = NostrCrypto.bareCallsign(s.derivedCallsign).toUpperCase();
   if (derived.isNotEmpty &&
-      _shaped.hasMatch(derived) &&
+      _shapedCall(derived) &&
       s.services.any(kXprsServiceAspects.contains)) {
     return (derived, XprsEvidence.announceVerified);
   }
   // 5. No key to check, but the name came in on an XPRS service aspect and is
   // callsign-shaped. Weakest, and still a name.
   if (announced.isNotEmpty &&
-      _shaped.hasMatch(announced) &&
+      _shapedCall(announced) &&
       s.nostrPubHex.isEmpty &&
       s.services.any(kXprsServiceAspects.contains)) {
     return (announced, XprsEvidence.announceClaimed);

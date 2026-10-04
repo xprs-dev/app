@@ -36,6 +36,7 @@ import '../log_service.dart';
 import 'xprs_archive.dart';
 import 'xprs_id.dart';
 import 'xprs_packet.dart';
+import 'xprs_vocab.dart';
 import 'xprs_sig.dart';
 
 class XprsReceiptCounters {
@@ -278,15 +279,15 @@ class XprsReceipt {
 
   static String _base(String c) => NostrCrypto.bareCallsign(c).toUpperCase();
 
-  /// A station address, not a group (§6.3) — the same test the funnel uses to
-  /// decide what is custody material.
-  static bool _isStation(String d) {
-    final s = d.trim().toUpperCase();
-    if (s.isEmpty || s.startsWith('#') || s.startsWith('!')) return false;
-    return RegExp(r'^(X[1345][A-Z0-9]{2,5}|[A-Z0-9]{1,3}[0-9][A-Z0-9]*)'
-            r'(-[0-9]{1,2})?(/[A-Z0-9]+)?$')
-        .hasMatch(s);
-  }
+  /// A station address, not a group (section 6.3): literally the same test the
+  /// funnel uses to decide what is custody material, now by calling it.
+  ///
+  /// Its own copy had `X[1345]` in the character class, so a closed group read
+  /// as a station here, which is the exact mistake xprs_vocab's doc comment
+  /// records. Unreachable in practice (this is only ever asked about a `d:`
+  /// already found equal to our own callsign, and ours is never `X5`), and not
+  /// worth keeping a second spelling of the rule to find out.
+  static bool _isStation(String d) => xprsAddressesStation(d);
 
   static String _nowIso() {
     final t = DateTime.now().toUtc();

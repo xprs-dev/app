@@ -43,6 +43,7 @@ import 'xprs_cadence.dart';
 import 'xprs_id.dart';
 import 'xprs_monitor.dart';
 import 'xprs_packet.dart';
+import 'xprs_presence.dart';
 import 'xprs_publisher.dart';
 import 'xprs_vocab.dart';
 import '../../platform/platform.dart' as platform;
@@ -815,10 +816,20 @@ class XprsCatchup {
     return out;
   }
 
-  static bool _looksLikeStation(String call) {
-    final c = call.trim().toUpperCase();
-    return c.startsWith('X2') || c.startsWith('X3');
-  }
+  /// Is this callsign a STATION, by the core's one rule?
+  ///
+  /// This used to be `startsWith('X2') || startsWith('X3')`, which is a
+  /// prefix test wearing the name of a kind test, and it had the defect every
+  /// such test has here: a station running under its operator's licensed
+  /// callsign (`CT1ABC`, XPRS.md 6.4.1) is a station by every definition the
+  /// rest of the core uses, and this one never asked it for anything. The
+  /// archive it holds was unreachable for the sake of two string prefixes.
+  ///
+  /// [xprsKindOf] is that rule, and it already answers `station` for a licence
+  /// as well as for `X2` and `X3` (xprs_presence.dart:190, pinned by
+  /// test/xprs_presence_test.dart).
+  static bool _looksLikeStation(String call) =>
+      xprsKindOf(call.trim().toUpperCase()) == XprsKind.station;
 
   /// Open a new window for [archiver], newest first: from the newest edge
   /// already opened (or the mark) to now.

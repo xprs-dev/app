@@ -8,6 +8,7 @@ library;
 
 import 'dart:convert';
 
+import 'xprs_callsign.dart';
 import 'xprs_packet.dart';
 
 /// How much a carried packet is worth keeping when the store is full
@@ -94,10 +95,11 @@ bool xprsAddressesStation(String? d) {
   // Callsign-SHAPED, not merely "has a digit". The looser form would let an
   // open group called `NET21` or `ROOM7` pass as a station, which is the same
   // mistake in the other direction: it would be couriered as somebody's mail.
-  return RegExp(
-    r'^(X[134][A-Z0-9]{2,5}|[A-Z0-9]{1,3}[0-9][A-Z0-9]*)'
-    r'(-[0-9]{1,2})?(/[A-Z0-9]+)?$',
-  ).hasMatch(s);
+  //
+  // The shape itself is [xprsIsCallsignShaped], the one grammar. The `X5`
+  // pre-test above is what keeps a closed group out; the shape cannot, because
+  // an `X5` callsign is as callsign-shaped as any other.
+  return xprsIsCallsignShaped(s);
 }
 
 /// Does this packet carry something a PERSON should be shown?
