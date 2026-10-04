@@ -100,6 +100,11 @@ class MeshService {
 
   MeshTable? _table;
   bool _canAdvertise = false;
+
+  /// Whether this node may transmit, not merely scan. Readable so a restart
+  /// (a callsign change, XPRS.md 6.4.1) can keep the state it already had:
+  /// [start] only ever RAISES it, so re-passing the current value is a no-op.
+  bool get canAdvertise => _canAdvertise;
   bool _running = false;
   Timer? _beaconTimer;
   Timer? _lanBeaconTimer;

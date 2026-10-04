@@ -7,6 +7,7 @@ import '../profile/profile_service.dart';
 import '../services/log_service.dart';
 import '../connections/bluetooth/ble_service.dart';
 import '../services/reticulum/rns_autostart.dart';
+import 'xprs/xprs_identity_adopt.dart';
 import '../wapp/background_wapp_manager.dart';
 import 'android_permissions_service.dart';
 
@@ -84,6 +85,11 @@ class PermissionGate {
 
     // Reticulum: brings up the BLE5 interface (scan + advertise).
     startRnsAutostart();
+
+    // And keep the air in step with this station's name: an operator setting
+    // their licensed callsign (XPRS.md 6.4.1) has to re-air its signed
+    // identity and rebuild the mesh table under the new name.
+    xprsBindWireCallsign();
 
     // Background wapps: Chat scans/advertises over BLE, reads GPS, and runs
     // under a foreground-service notification.

@@ -59,6 +59,29 @@ class ProfileService {
   /// still triggers a rebuild.
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
+  /// Emits the name this station AIRS, whenever it changes and never otherwise.
+  ///
+  /// [activeProfileNotifier] carries the profile ID, and an operator setting
+  /// their licensed callsign does not change their ID: it is the folder on
+  /// disk and must not move (XPRS.md 6.4.1 changes what goes in `f:`, not what
+  /// is on the filesystem). So every listener that has to act on a rename, the
+  /// mesh table, the RNS announce name, the signed `t:identity`, was DEAF to
+  /// the one edit that matters most to the air. [revision] is no use either:
+  /// it fires on an avatar colour.
+  ///
+  /// Empty until a profile loads, and empty again when the last one is
+  /// deleted.
+  final ValueNotifier<String> wireCallsignNotifier = ValueNotifier<String>('');
+
+  /// Fire [wireCallsignNotifier] only on a real change.
+  ///
+  /// Every mutator calls this, including [delete]: losing the active profile
+  /// changes what this station is called as surely as editing it does.
+  void _notifyWireCallsign() {
+    final cs = (activeProfile?.wireCallsign ?? '').trim();
+    if (cs != wireCallsignNotifier.value) wireCallsignNotifier.value = cs;
+  }
+
   /// True once [load] has completed at least once. Used by `main.dart`
   /// to decide whether to show WelcomePage or the launcher on boot.
   bool get isLoaded => _loaded;
@@ -122,6 +145,7 @@ class ProfileService {
     }
     _loaded = true;
     activeProfileNotifier.value = _activeId;
+    _notifyWireCallsign();
     // Ensure existing identities are mirrored to survives-uninstall storage on
     // boot too (not only when a profile changes), so users who installed before
     // this feature — or who never edit their profile — still get the safety net.
@@ -216,6 +240,7 @@ class ProfileService {
     await _persist();
     activeProfileNotifier.value = _activeId;
     revision.value++;
+    _notifyWireCallsign();
 
     if (isNew && encrypt && profile.nsec.isNotEmpty) {
       try {
@@ -243,6 +268,7 @@ class ProfileService {
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     await _persist();
     revision.value++;
+    _notifyWireCallsign();
   }
 
   /// Per-profile storage root (`devices/<id>/`) for any profile id — used
@@ -270,6 +296,7 @@ class ProfileService {
     await _persist();
     activeProfileNotifier.value = id;
     revision.value++;
+    _notifyWireCallsign();
   }
 
   /// Remove [id] from the on-disk list. If it was the active profile,
@@ -284,6 +311,7 @@ class ProfileService {
     await _persist();
     activeProfileNotifier.value = _activeId;
     revision.value++;
+    _notifyWireCallsign();
   }
 
   Future<void> _persist() async {

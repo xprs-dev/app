@@ -213,12 +213,22 @@ bool _profileWatch = false;
 void _watchProfileForAnnounce() {
   if (_profileWatch) return;
   _profileWatch = true;
-  ProfileService.instance.activeProfileNotifier.addListener(() {
+  void reAnnounce(String why) {
     final cs = (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
     if (cs.isEmpty || !RnsService.instance.isUp) return;
-    LogService.instance.add('RNS autostart: profile is now $cs — re-announcing');
+    LogService.instance.add('RNS autostart: $why is now $cs, re-announcing');
     unawaited(RnsService.instance.announce(cs));
-  });
+  }
+
+  ProfileService.instance.activeProfileNotifier
+      .addListener(() => reAnnounce('profile'));
+  // A profile SWITCH changes the id and fires the notifier above. Setting a
+  // licensed callsign does NOT change the id (it is the folder on disk), so it
+  // fires nothing there: the station went on announcing the name it came up
+  // with while every other layer had moved on, which is 36.12.2's
+  // unreachable-under-the-new-name failure with nothing reporting a fault.
+  ProfileService.instance.wireCallsignNotifier
+      .addListener(() => reAnnounce('callsign'));
 }
 
 /// Kick off the always-on node in the background and keep retrying until it is
