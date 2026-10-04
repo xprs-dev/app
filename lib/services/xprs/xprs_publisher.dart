@@ -41,6 +41,7 @@ import 'xprs_airtime.dart';
 import 'xprs_file_lift.dart';
 import '../../util/nostr_crypto.dart';
 import 'xprs_archive.dart';
+import 'xprs_callsign.dart';
 import 'xprs_body.dart';
 import 'xprs_group_keys.dart';
 import 'xprs_id.dart';
@@ -585,6 +586,33 @@ class XprsPublisher {
       // caller names a lane, it does not touch a bearer itself.
       if (onlyBearers != null && !onlyBearers.contains(b.name)) {
         report[b.name] = 'skipped';
+        return false;
+      }
+      // XPRS.md 6.4.1: "a packet whose `f:` is X1, X2, X3, X4 or X5 must never
+      // be originated onto a licensed frequency", and a station bridging
+      // licence-free traffic onto licensed spectrum "must drop packets from
+      // self-generated callsigns rather than relay them". It is the one rule
+      // in that document that is not ours to relax: it comes from national
+      // regulation and the operator, not the sender, answers for it.
+      //
+      // **This refuses nothing today, and saying so is the point.** No bearer
+      // registered below reaches licensed spectrum: Ble5 and LAN are ISM,
+      // Reticulum is the internet, and the LoRa bearer's send is already
+      // `refused`. reticulum-dart ships no KISS, no serial and no AX.25, and
+      // rns_iface_kind calls `radio`/`aprs`/`kiss` "forward-looking" receive
+      // labels. The firmware enforces the rule where it can actually bite,
+      // at the SA818 transmit gate (`xprs_is_self_generated`).
+      //
+      // It lives here, in the one function every outbound frame passes,
+      // because the day a KISS interface lands the rule is already on the
+      // door rather than being remembered. `verbatim` is exempt: a history
+      // replay re-airs the AUTHOR's packet, and whether THAT may go onto a
+      // licensed frequency is the relay rule above, decided by the gateway
+      // that owns the licence.
+      if (!verbatim &&
+          kXprsLicensedBearers.contains(b.name) &&
+          xprsIsSelfGenerated(p0?['f'] ?? '')) {
+        report[b.name] = 'unlicensed';
         return false;
       }
       // A 1:1 to a phone in the room takes the session, not the street.

@@ -375,6 +375,15 @@ const Set<String> kXprsBearers = {
   'other',
 };
 
+/// The bearers that are LICENSED SPECTRUM, where only a callsign issued by a
+/// competent authority may be in `f:` (XPRS.md 6.4.1).
+///
+/// `cb` and `pmr` are not here: they are licence-exempt in the allocations
+/// this app ships for (docs/spectrum.md). ISM, WiFi and the internet are not
+/// here either, where XPRS.md 6.4 permits "any, including a self-generated
+/// X1, X2 or X3".
+const Set<String> kXprsLicensedBearers = {'vhf', 'uhf', 'hf'};
+
 /// What a station says it does for other stations (`docs/XPRS.md` section 24,
 /// `serve:`). A fixed set: a word outside it is dropped rather than shown,
 /// because `serve:` is read to decide who to ask for something, and a made-up
