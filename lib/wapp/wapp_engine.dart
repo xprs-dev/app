@@ -715,7 +715,7 @@ class WappEngine {
     // device's callsign instead of a hardcoded default. Empty if no profile.
     final halIdentity = WasmFunction(
       (int ptr, int len) => _writeStr(
-          ptr, len, ProfileService.instance.activeProfile?.callsign ?? ''),
+          ptr, len, ProfileService.instance.activeProfile?.wireCallsign ?? ''),
       params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
     );
     // The active profile's Nostr public key as base64url (no padding) of the

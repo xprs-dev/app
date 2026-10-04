@@ -571,7 +571,7 @@ class RemoteApiService {
         final port = int.tryParse('${data['port'] ?? 4242}') ?? 4242;
         // Announce our callsign so peers/repeaters can show a human name (the
         // announce app_data is plaintext; this is a public presence beacon).
-        final cs = (ProfileService.instance.activeProfile?.callsign ?? '').trim();
+        final cs = (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
         final name = cs.isNotEmpty ? cs : 'xprs';
         // Serve content we already hold (received media, imports) over RNS.
         final arch = _mediaArchive();

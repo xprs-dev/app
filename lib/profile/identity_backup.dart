@@ -39,6 +39,15 @@ import '../platform/fs.dart';
 /// One identity restorable from a backup file.
 class RestorableIdentity {
   final String callsign;
+
+  /// The licensed callsign this identity transmitted under, or empty.
+  ///
+  /// Carried because a restore re-derives everything else from the nsec
+  /// (XPRS.md 3: the derived callsign IS a function of the key) but cannot
+  /// re-derive this one: an issued callsign has no arithmetic relationship to
+  /// any key (XPRS.md 6.4.2). Without it, restoring a backup would silently
+  /// put a licensed operator back on the air under an `X1`.
+  final String licenceCallsign;
   final String npub;
   final String nsec;
   final String nickname;
@@ -49,10 +58,12 @@ class RestorableIdentity {
     required this.nsec,
     required this.nickname,
     required this.createdAt,
+    this.licenceCallsign = '',
   });
 
   factory RestorableIdentity.fromJson(Map<String, dynamic> j) => RestorableIdentity(
         callsign: (j['callsign'] as String?) ?? '',
+        licenceCallsign: (j['licenceCallsign'] as String?) ?? '',
         npub: (j['npub'] as String?) ?? '',
         nsec: (j['nsec'] as String?) ?? '',
         nickname: (j['nickname'] as String?) ?? '',
@@ -162,6 +173,8 @@ class IdentityBackup {
       final identities = withKey
           .map((p) => {
                 'callsign': p.callsign,
+                if (p.licenceCallsign.isNotEmpty)
+                  'licenceCallsign': p.licenceCallsign,
                 'npub': p.npub,
                 'nsec': p.nsec,
                 'nickname': p.nickname,
@@ -176,6 +189,8 @@ class IdentityBackup {
             if (lockedNpubs.contains(r.npub) && !have.contains(r.npub)) {
               identities.add({
                 'callsign': r.callsign,
+                if (r.licenceCallsign.isNotEmpty)
+                  'licenceCallsign': r.licenceCallsign,
                 'npub': r.npub,
                 'nsec': r.nsec,
                 'nickname': r.nickname,

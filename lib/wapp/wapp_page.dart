@@ -534,7 +534,7 @@ class _WappPageState extends State<WappPage>
     // section-5 id, and the vote lands in the core activity archive under our
     // callsign. The heard copy returning through the spool is idempotent.
     if (_wappName == 'social') {
-      final self = (ProfileService.instance.activeProfile?.callsign ?? '')
+      final self = (ProfileService.instance.activeProfile?.wireCallsign ?? '')
           .toUpperCase();
       if (self.isNotEmpty) {
         _activityArchive?.setReaction(mid, self, like, true);
@@ -6564,7 +6564,7 @@ class _WappPageState extends State<WappPage>
         return (name: self.name, avatar: self.avatar);
       }
       // No display name set → show MY callsign, never a hex prefix.
-      final cs = ProfileService.instance.activeProfile?.callsign;
+      final cs = ProfileService.instance.activeProfile?.wireCallsign;
       if (cs != null && cs.isNotEmpty) return (name: cs, avatar: self.avatar);
     }
     // A NOSTR author (reticulum pubkey) with no kind-0 nickname: show a real

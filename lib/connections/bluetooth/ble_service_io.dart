@@ -293,7 +293,7 @@ class BleService {
     MeshService.instance.ourLxmfDest = () => RnsService.instance.lxmfDeliveryHex;
     MeshService.instance.onPeerSighting = (callsign, addr) {
       final cs = callsign.toUpperCase();
-      final my = (ProfileService.instance.activeProfile?.callsign ?? '')
+      final my = (ProfileService.instance.activeProfile?.wireCallsign ?? '')
           .trim()
           .toUpperCase();
       if (cs.isEmpty || cs == my) return;
@@ -767,7 +767,7 @@ class BleService {
 
   void _onNgDiscovered(String address, String callsign) {
     if (address.isEmpty) return;
-    final myCall = (ProfileService.instance.activeProfile?.callsign ?? '').trim();
+    final myCall = (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
     if (callsign.isNotEmpty && callsign == myCall) return; // ourselves
     _lastPeerAddr = address;
     _lastPeerCall = callsign;
@@ -1086,7 +1086,7 @@ class BleService {
   /// address, docs/ble5.md section 2) — so this is safe to call on a tick.
   void _armGattEndpoint() {
     if (!_ble5) return;
-    final cs = ProfileService.instance.activeProfile?.callsign ?? '';
+    final cs = ProfileService.instance.activeProfile?.wireCallsign ?? '';
     unawaited(Ble5Bus.instance.startServer(cs.isEmpty ? 'AURORA' : cs));
   }
 
@@ -1188,7 +1188,7 @@ class BleService {
     // dropped writes and broke notify). On non-BLE5 devices, fall back to the
     // ble_peripheral server + a legacy connectable presence beacon. No-op on
     // Linux/BlueZ.
-    final cs = ProfileService.instance.activeProfile?.callsign ?? '';
+    final cs = ProfileService.instance.activeProfile?.wireCallsign ?? '';
     if (_ble5) {
       // On BLE5 this is already up from _initBle5 and healed on the tick
       // (_armGattEndpoint); the call is idempotent and kept here so a wapp

@@ -92,10 +92,12 @@ class _WelcomePageState extends State<WelcomePage> {
       _error = null;
     });
     try {
-      final profile = ProfileService.instance.buildFromNsec(
-        id.nsec,
-        nickname: id.nickname,
-      );
+      // buildFromNsec re-derives the callsign from the key; a licensed one
+      // cannot be re-derived (XPRS.md 6.4.2), so it is restored here or not
+      // at all.
+      final profile = ProfileService.instance
+          .buildFromNsec(id.nsec, nickname: id.nickname)
+          .copyWith(licenceCallsign: id.licenceCallsign);
       await ProfileService.instance.saveAndActivate(profile);
       await _ensureBackupAccess();
       if (!mounted) return;

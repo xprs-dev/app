@@ -111,7 +111,7 @@ Future<void> ensureRnsAutostart() async {
 
     // Announce our callsign so peers/repeaters can show a human name (plaintext
     // presence beacon, same as the manual start path).
-    final cs = (ProfileService.instance.activeProfile?.callsign ?? '').trim();
+    final cs = (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
     final name = cs.isNotEmpty ? cs : 'xprs';
 
     // A page has no socket to reach a hub with and no radio to fall back to.
@@ -214,7 +214,7 @@ void _watchProfileForAnnounce() {
   if (_profileWatch) return;
   _profileWatch = true;
   ProfileService.instance.activeProfileNotifier.addListener(() {
-    final cs = (ProfileService.instance.activeProfile?.callsign ?? '').trim();
+    final cs = (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
     if (cs.isEmpty || !RnsService.instance.isUp) return;
     LogService.instance.add('RNS autostart: profile is now $cs — re-announcing');
     unawaited(RnsService.instance.announce(cs));

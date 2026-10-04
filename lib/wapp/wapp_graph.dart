@@ -1497,7 +1497,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     if (raw is! List || raw.isEmpty) return const [];
     final calls = raw.map((e) => e.toString().toUpperCase()).toList();
     final self =
-        (ProfileService.instance.activeProfile?.callsign ?? '').toUpperCase();
+        (ProfileService.instance.activeProfile?.wireCallsign ?? '').toUpperCase();
     final peers = (m['peers'] as num?)?.toInt() ?? calls.length;
     final more = peers > calls.length ? peers - calls.length : 0;
     return [

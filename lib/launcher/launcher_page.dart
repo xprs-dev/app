@@ -744,8 +744,8 @@ class _ProfileSwitcherState extends State<_ProfileSwitcher> {
     final label = active == null
         ? 'No profile'
         : (active.nickname.trim().isNotEmpty
-              ? '${active.nickname.trim()} (${active.callsign})'
-              : active.callsign);
+              ? '${active.nickname.trim()} (${active.wireCallsign})'
+              : active.wireCallsign);
     final cs = Theme.of(context).colorScheme;
 
     return PopupMenuButton<String>(
@@ -781,7 +781,7 @@ class _ProfileSwitcherState extends State<_ProfileSwitcher> {
                       // so a profile without one isn't listed as "X1ABCD" twice.
                       if (p.nickname.trim().isNotEmpty)
                         Text(
-                          p.callsign,
+                          p.wireCallsign,
                           style: TextStyle(
                             fontSize: 11,
                             color: cs.onSurfaceVariant,

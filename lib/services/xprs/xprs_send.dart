@@ -173,7 +173,7 @@ class XprsSend {
   /// happens after this returns.
   XprsSendOutcome message(String to, String text, {required bool private}) {
     final self =
-        (ProfileService.instance.activeProfile?.callsign ?? '').trim().toUpperCase();
+        (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim().toUpperCase();
     final dest = to.trim().toUpperCase();
     if (self.isEmpty || dest.isEmpty || text.isEmpty) {
       refused++;
@@ -255,7 +255,7 @@ class XprsSend {
   /// No custody copy and no outbox row; see [airBroadcast] for why.
   XprsSendOutcome broadcast(String text,
       {String scope = 'local', String replyTo = ''}) {
-    final self = (ProfileService.instance.activeProfile?.callsign ?? '')
+    final self = (ProfileService.instance.activeProfile?.wireCallsign ?? '')
         .trim()
         .toUpperCase();
     if (self.isEmpty || text.trim().isEmpty) {

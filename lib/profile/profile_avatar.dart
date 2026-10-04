@@ -51,7 +51,7 @@ Color profileColor(IwiProfile p) {
 
 /// Two-character initials for the circle fallback.
 String profileInitials(IwiProfile p) {
-  final src = (p.nickname.isNotEmpty ? p.nickname : p.callsign).trim();
+  final src = (p.nickname.isNotEmpty ? p.nickname : p.wireCallsign).trim();
   if (src.isEmpty) return '?';
   final letters = src.replaceAll(RegExp(r'\s+'), '');
   return letters.substring(0, letters.length >= 2 ? 2 : 1).toUpperCase();

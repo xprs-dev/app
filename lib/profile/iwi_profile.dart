@@ -25,7 +25,33 @@ class IwiProfile {
 
   /// Callsign derived from the npub (X1 + first 4 bech32 chars). Stays
   /// stable for the life of the profile because it is also the [id].
+  ///
+  /// This is the SELF-PROVING name: it is an arithmetic function of [npub], so
+  /// nobody can wear it without the key (XPRS.md 3). It never changes, even
+  /// for an operator who sets [licenceCallsign], because it is also the folder
+  /// on disk. What goes on the air is [wireCallsign].
   final String callsign;
+
+  /// The callsign a radio authority issued this operator, or empty.
+  ///
+  /// A licensed amateur transmits under the callsign on their licence and
+  /// nothing else will do (XPRS.md 6.4.1): an `X1` is self-generated, no
+  /// register lists it, and on licensed spectrum it identifies nobody. So when
+  /// this is set it is what goes in `f:` on every packet this station
+  /// originates, and a signed `t:identity` binds it to [npub] (XPRS.md 6.4.2).
+  ///
+  /// **Be exact about what holding this field proves: nothing.** An issued
+  /// callsign has no arithmetic relationship to any key, XPRS has no registry
+  /// and issues no credentials, and a second station can announce this same
+  /// callsign with a different key. Whether it was issued to this operator is
+  /// answered by their administration's public register, out of band, and
+  /// never by anything this app transmits.
+  ///
+  /// Validated on entry by `xprsIssuedCallsignRefusal`
+  /// (lib/services/xprs/xprs_callsign.dart), which rejects what certainly was
+  /// not issued: an `X1` to `X5` name, a foreign node number, and anything
+  /// that is not callsign-shaped.
+  final String licenceCallsign;
 
   /// Bech32-encoded Nostr public key (`npub1...`). Shown to users,
   /// safe to share, used as the publisher identity when signing wapps.
@@ -69,10 +95,20 @@ class IwiProfile {
     this.description = '',
     this.color = '',
     this.avatar = '',
+    this.licenceCallsign = '',
     this.nsecEnvelope,
   });
 
-  String get displayName => nickname.isNotEmpty ? nickname : callsign;
+  /// What this station calls itself ON THE AIR: the licensed callsign when the
+  /// operator has one, else the one their key derives (XPRS.md 6.4.1).
+  ///
+  /// Every `f:`, every announce name and `hal_identity` read this. NOT
+  /// [callsign], which is also [id] and the folder name on disk, and NOT
+  /// [displayName], which may be a nickname.
+  String get wireCallsign =>
+      licenceCallsign.isNotEmpty ? licenceCallsign : callsign;
+
+  String get displayName => nickname.isNotEmpty ? nickname : wireCallsign;
 
   IwiProfile copyWith({
     String? id,
@@ -84,6 +120,7 @@ class IwiProfile {
     String? description,
     String? color,
     String? avatar,
+    String? licenceCallsign,
     Map<String, dynamic>? nsecEnvelope,
     bool clearNsecEnvelope = false,
   }) {
@@ -97,6 +134,10 @@ class IwiProfile {
       description: description ?? this.description,
       color: color ?? this.color,
       avatar: avatar ?? this.avatar,
+      // '' clears it, so there is no clearLicenceCallsign flag to forget:
+      // unlike nsecEnvelope this field is not nullable, and an empty string
+      // already means "no licence".
+      licenceCallsign: licenceCallsign ?? this.licenceCallsign,
       nsecEnvelope:
           clearNsecEnvelope ? null : (nsecEnvelope ?? this.nsecEnvelope),
     );
@@ -115,6 +156,9 @@ class IwiProfile {
         'description': description,
         'color': color,
         'avatar': avatar,
+        // Only when set: every existing profiles.json stays byte-identical,
+        // and an older build reading a newer file ignores the key.
+        if (licenceCallsign.isNotEmpty) 'licenceCallsign': licenceCallsign,
       };
 
   factory IwiProfile.fromJson(Map<String, dynamic> json) {
@@ -130,6 +174,9 @@ class IwiProfile {
       description: (json['description'] as String?) ?? '',
       color: (json['color'] as String?) ?? '',
       avatar: (json['avatar'] as String?) ?? '',
+      // Absent means "no licence", which is every profile written before this
+      // existed. That is the whole migration.
+      licenceCallsign: (json['licenceCallsign'] as String?) ?? '',
       nsecEnvelope: envelope is Map ? envelope.cast<String, dynamic>() : null,
     );
   }

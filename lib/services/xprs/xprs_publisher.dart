@@ -771,7 +771,7 @@ class XprsPublisher {
       {String? mood, String? scope, String? replyTo}) {
     final body = text.trim();
     final call =
-        (ProfileService.instance.activeProfile?.callsign ?? '').trim();
+        (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
     if (body.isEmpty || call.isEmpty) {
       refused++;
       LogService.instance.add(
@@ -862,7 +862,7 @@ class XprsPublisher {
   /// key nothing is aired and the log says why. Returns per-bearer outcomes.
   Future<Map<String, String>> publishMailboxDecl(String holdCsv) async {
     final call =
-        (ProfileService.instance.activeProfile?.callsign ?? '').trim();
+        (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
     final hold = holdCsv
         .split(',')
         .map((c) => c.trim().toUpperCase())
@@ -1055,7 +1055,7 @@ class XprsPublisher {
       return air.report;
     }
     final call =
-        (ProfileService.instance.activeProfile?.callsign ?? '').trim();
+        (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
     final from = (p['f'] ?? '').toUpperCase();
     // A datagram is not signed. Section 7.7.6 says so of a chunk ("there is no
     // per-chunk signature ... the integrity is the whole-file hash"), and the

@@ -177,7 +177,7 @@ class MeshService {
   Timer? _startRetry;
 
   Future<void> start({required bool canAdvertise}) async {
-    final cs = (ProfileService.instance.activeProfile?.callsign ?? '').trim();
+    final cs = (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
     if (cs.isEmpty) {
       // BLE can come up before the profile finishes loading on slow devices —
       // a silent no-op here would leave the mesh dead for the whole session.

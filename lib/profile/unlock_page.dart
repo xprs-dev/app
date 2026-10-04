@@ -91,7 +91,7 @@ class _UnlockPageState extends State<UnlockPage> {
                   const SizedBox(height: 16),
                   Text(p.displayName,
                       style: Theme.of(context).textTheme.titleLarge),
-                  Text(p.callsign,
+                  Text(p.wireCallsign,
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall
