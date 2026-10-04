@@ -494,6 +494,18 @@ decides. Three consequences worth keeping:
   `XprsArchive.followed` a set. The receive funnel does one set lookup; the
   alternative — deriving a callsign from a key per packet — is a bech32 encode
   in the hottest path (performance.md 4.2).
+- **A name has two proofs, and both are lookups.** A derived callsign is
+  checked by arithmetic; one a radio authority issued has no arithmetic to
+  check, so it is believed on the binding a verified `t:identity` gave us
+  (`RnsService._callsignFor`, XPRS.md 3.0.1 and 6.4.2). Both answers are
+  memoised on `'<pub>|<announced>'`, bounded and drop-first, for the reason
+  above: this runs per node per graph build, and the fallback is itself a
+  bech32 encode. See [callsign.md](callsign.md).
+- **What this station is CALLED is one field read in one place.**
+  `IwiProfile.wireCallsign` is the name that goes on the air;
+  `IwiProfile.callsign` is the name the key derives, which is also the profile
+  id and its folder on disk and therefore cannot move. Seventeen readers were
+  asking the first question through the second one.
 
 Always-on is a SETTING gated on being a public archiver, not a rank: nothing
 about it goes on the wire, and a peer infers it from `serve:archive` plus

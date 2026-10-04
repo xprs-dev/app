@@ -73,7 +73,7 @@ All frames are carried in manufacturer data under company id `0xFFFF`, marker
 | `0x56` | `rnsChunk` | a fragment of a Reticulum packet exceeding one advertisement |
 | `0x41` | `aprs` | the compact direct or group text frame, and carried XPRS mail |
 | `0x47` | `presence` | **declared and never transmitted.** Nothing airs this subtype and nothing handles it; the real presence beacon is the legacy connectable advertisement below |
-| `0x4D` | `mesh` | **no longer aired.** The route beacon's distance-vector costs and have-bloom are exchanged in full over an MSP session instead, where they are acknowledged. Still read, so an un-updated peer is understood |
+| `0x4D` | `mesh` | **no longer aired.** The route beacon's distance-vector costs and have-bloom are exchanged in full over an MSP session instead, where they are acknowledged. Still read, so an un-updated peer is understood. Its callsign field was nine bytes and is now fifteen ([callsign.md](callsign.md)), which matters only on the read side |
 | `0x57` | `wfd` | WiFi-Direct negotiation |
 | `0x58` | `xprs` | the XPRS discovery beacon (`docs/XPRS.md` section 10.6) |
 

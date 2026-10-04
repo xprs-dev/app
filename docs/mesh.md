@@ -69,7 +69,14 @@ presence). It carries *only* control state — never message payloads:
 [ver1][callsign≤9][cond1][class1][ dv: (hash3, cost·4bits)×K ][ have: bloom ]
 ```
 
-- **callsign** — sender, plain (same identity as APRS/chat).
+- **callsign** — sender, plain (same identity as APRS/chat). The field was
+  capped at nine bytes and is now fifteen, the one ceiling every hop in XPRS
+  carries ([callsign.md](callsign.md)). A callsign too wide is **refused
+  rather than truncated**: a truncated callsign is not a shortened name, it is
+  a different station, and the MSP custody protocol was filing carried mail
+  under one. Widening the limit is backward-compatible to decode and **not** to
+  encode, so MSP custody with a station whose callsign is over nine characters
+  needs both ends updated; the log says so when it bites.
 - **class byte** — device type, self-declared: phone / tablet / computer /
   router-hub / ESP32-dongle / base-station appliance / other. Shown in the
   Bluetooth wapp (§12) and an input to custodian scoring (a router or dongle

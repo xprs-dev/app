@@ -24,6 +24,12 @@ committing; it fails only on NEW violations.
 
 ## By what you are about to touch
 
+### Naming a station, or a licensed operator's own callsign
+
+| doc | the sections that matter |
+|---|---|
+| [callsign.md](callsign.md) | Which of a profile's four names is which, and why `id`/`callsign` cannot become the licensed one. **§2** the one grammar, and the two files that fell through the gaps between the four it replaced. **§4** what the 6.4.2 binding proves and, at greater length, what it does not. **§6** one name on the air, two answered to, and the mail that is genuinely lost. |
+
 ### Moving bytes between two devices in radio range
 
 | doc | the sections that matter |

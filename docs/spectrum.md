@@ -489,10 +489,22 @@ software fixes that.
 ### 8.1 VHF and UHF
 
 An `X1` or `X3` callsign is self-generated and must never be originated onto
-licensed spectrum ([XPRS.md](XPRS.md) section 9.4.1): only a callsign issued by
+licensed spectrum ([XPRS.md](XPRS.md) section 6.4.1): only a callsign issued by
 a competent authority to the operator transmitting may be used here. Everything
 in this section applies to such an operator, who binds that callsign to their
-signing key with `t:identity` (section 9.4.2) and may not encrypt (section 9.4).
+signing key with `t:identity` (section 6.4.2) and may not encrypt (section 6.4).
+
+An operator enters that callsign in the profile editor, and from then on every
+packet this station originates carries it in `f:`
+([callsign.md](callsign.md)). **No bearer this app ships reaches licensed
+spectrum**, so the originate rule has nothing here to gate: the four
+registered bearers are BLE5 and LAN (ISM), Reticulum (the internet) and a LoRa
+bearer whose `send` already refuses, and reticulum-dart has no KISS, serial or
+AX.25 interface. The rule is enforced where it can bite, in the firmware's
+SA818 transmit gate and its iGate (`xprs_is_self_generated`), and the app
+keeps an inert check on its one outbound choke point
+(`XprsPublisher._fanOut`) so the day a KISS interface lands it is already on
+the door.
 
 | Band | Region 1 | Region 2 | Region 3 |
 |---|---|---|---|

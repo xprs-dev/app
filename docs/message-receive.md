@@ -114,6 +114,17 @@ if (toC.isNotEmpty && toC == self ||
 }
 ```
 
+> **Since then: "addressed to us" is `XprsArchive.addressesUs`, in one place.**
+> It was four hand-written comparisons (this one, the air lane's `forUs`, and
+> both of `PacketGateway`'s), two of which compared the WHOLE string rather
+> than the base, so a 1:1 to another of our own devices (`X1SELF-2`, XPRS.md
+> 3.1) read as somebody else's at the gateway. It also answers to a name we no
+> longer air: an operator who sets their licensed callsign
+> ([callsign.md](callsign.md)) keeps receiving mail addressed to the callsign
+> their key derives, because a peer that has not heard the new `t:identity`
+> yet is still writing to the old one. We send under one name and answer to
+> both.
+
 `onDeliver` is never called. There is no log line and no counter. An XPRS
 `t:message` addressed to this station that arrives over Reticulum is filed in
 the archive and disappears — and `_ReticulumBearer` is a bearer the sender's
