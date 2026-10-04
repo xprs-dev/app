@@ -23,7 +23,7 @@ import 'dart:math' show Random;
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 
 import '../../connections/bluetooth/ble5_radio.dart';
 import '../../connections/bluetooth/ble_rns_radio.dart';
@@ -11124,8 +11124,20 @@ class RnsService {
   /// Reduce a folder's current state from the LOCAL event store, synchronously
   /// (store.query is sync). Authoritative for owned folders.
   FolderState _localFolderStateSync(String folderId) {
+    final q = _localFolderQuery(folderId);
+    if (q.cached != null) return q.cached!;
+    return _keepLocalReduce(
+        folderId, q.count, reduceFolder(folderId, q.keyset, q.ops));
+  }
+
+  /// The local store's keyset and op-log for [folderId], and the reduction
+  /// already made of them when the op count has not moved.
+  ({NostrEvent? keyset, List<NostrEvent> ops, int count, FolderState? cached})
+      _localFolderQuery(String folderId) {
     final store = _relayStore;
-    if (store == null) return FolderState(folderId);
+    if (store == null) {
+      return (keyset: null, ops: const [], count: -1, cached: FolderState(folderId));
+    }
     final ks = store.query(
       NostrFilter(authors: [folderId], kinds: [kKindFolderKeyset], limit: 1),
     );
@@ -11141,13 +11153,19 @@ class RnsService {
     // The op-log only grows, so a stable (op count) means an unchanged
     // reduction — skip re-verifying every signature.
     final n = ops.length + ks.length;
-    if (_localReduceCount[folderId] == n) {
-      final cached = _localReduceCache[folderId];
-      if (cached != null) return cached;
-    }
-    final st = reduceFolder(folderId, ks.isEmpty ? null : ks.first, ops);
+    final cached =
+        _localReduceCount[folderId] == n ? _localReduceCache[folderId] : null;
+    return (
+      keyset: ks.isEmpty ? null : ks.first,
+      ops: ops,
+      count: n,
+      cached: cached,
+    );
+  }
+
+  FolderState _keepLocalReduce(String folderId, int count, FolderState st) {
     _localReduceCache[folderId] = st;
-    _localReduceCount[folderId] = n;
+    _localReduceCount[folderId] = count;
     return st;
   }
 
@@ -11191,8 +11209,21 @@ class RnsService {
 
   // Published folder state from the LOCAL store only (no DHT) — used by the disk
   // sync to diff against what we've already published.
-  Future<FolderState> _localFolderState(String folderId) async =>
-      _localFolderStateSync(folderId);
+  //
+  // A miss re-verifies the signature of every op (up to 5000), which took
+  // 1.8 s of the UI isolate in one piece at startup on the desktop, so the
+  // reduction runs on a worker. It is a pure function of the events.
+  Future<FolderState> _localFolderState(String folderId) async {
+    final q = _localFolderQuery(folderId);
+    if (q.cached != null) return q.cached!;
+    final st =
+        await compute(_reduceFolderOffThread, (folderId, q.keyset, q.ops));
+    return _keepLocalReduce(folderId, q.count, st);
+  }
+
+  static FolderState _reduceFolderOffThread(
+          (String, NostrEvent?, List<NostrEvent>) m) =>
+      reduceFolder(m.$1, m.$2, m.$3);
 
   // ── Owner disk folders (app-facing) ─────────────────────────────────────────
 

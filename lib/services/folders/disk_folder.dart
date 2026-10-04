@@ -7,10 +7,12 @@
  * Headless: dart:io + crypto only. Used by disk_folder_manager (owner sync) and
  * registered into the file node's serve source via CompositeFileSource.
  */
-import 'package:file/file.dart';
 import 'dart:typed_data';
 
+import 'package:file/file.dart';
+
 import 'package:crypto/crypto.dart' as crypto;
+import 'package:flutter/foundation.dart' show compute;
 
 import '../files/file_transfer.dart' show FileSource, PieceMask, RangedFileSource;
 import '../../platform/fs.dart';
@@ -52,6 +54,16 @@ class _DigestCatcher implements Sink<crypto.Digest> {
   void close() {}
 }
 
+/// A hash-cache entry as it crosses to a worker isolate: (size, mtimeMs, sha).
+typedef _Cached = (int, int, String);
+
+/// What one directory walk produced.
+typedef _Walk = ({
+  List<DiskFile> files,
+  Map<String, String> byHash,
+  Map<String, _Cached> cache,
+});
+
 class DiskFolderSource implements RangedFileSource {
   final String dirPath;
   final Map<String, String> _byHash = {}; // hex32 -> absolute path
@@ -65,17 +77,53 @@ class DiskFolderSource implements RangedFileSource {
   List<DiskFile> get files => _files;
   int get fileCount => _files.length;
 
-  /// (Re)build the index from the directory contents. Returns the file list.
-  List<DiskFile> scan() {
+  /// (Re)build the index from the directory contents, on the calling isolate.
+  /// Returns the file list.
+  List<DiskFile> scan() => _apply(_walk(dirPath, _cacheOut()));
+
+  /// Same result as [scan], built on a worker isolate; used at startup and by
+  /// the periodic owner sync. The walk (`listSync`, `statSync`) and the sha256
+  /// of every changed file used to run here with a yield every 4 MiB, and the
+  /// hash cache lives only in memory, so each launch re-hashed every shared
+  /// file on the UI isolate: 12.8 s of main-isolate CPU in the first 30 s on
+  /// the desktop, and typing lagged until it finished (architecture.md 2).
+  Future<List<DiskFile>> scanAsync() async =>
+      _apply(await compute(_walkOffThread, (dirPath, _cacheOut())));
+
+  static _Walk _walkOffThread((String, Map<String, _Cached>) m) =>
+      _walk(m.$1, m.$2);
+
+  Map<String, _Cached> _cacheOut() => {
+        for (final e in _hashCache.entries)
+          e.key: (e.value.size, e.value.mtimeMs, e.value.sha),
+      };
+
+  List<DiskFile> _apply(_Walk walked) {
+    _hashCache
+      ..clear()
+      ..addAll({
+        for (final e in walked.cache.entries)
+          e.key: _HashEntry(e.value.$1, e.value.$2, e.value.$3),
+      });
+    // Swap in the freshly-built index atomically.
+    _byHash
+      ..clear()
+      ..addAll(walked.byHash);
+    _files = walked.files;
+    return _files;
+  }
+
+  /// Index [dirPath], reusing [cache] for files whose size and mtime are
+  /// unchanged. Self-contained so it can run on any isolate.
+  static _Walk _walk(String dirPath, Map<String, _Cached> cache) {
     final out = <DiskFile>[];
-    _byHash.clear();
+    final byHash = <String, String>{};
+    final kept = <String, _Cached>{};
     final root = fs.directory(dirPath);
     if (!root.existsSync()) {
-      _files = const [];
-      return _files;
+      return (files: const <DiskFile>[], byHash: byHash, cache: kept);
     }
     final base = root.absolute.path;
-    final seen = <String>{};
     for (final e in root.listSync(recursive: true, followLinks: false)) {
       if (e is! File) continue;
       final abs = e.absolute.path;
@@ -90,29 +138,26 @@ class DiskFolderSource implements RangedFileSource {
         final stat = e.statSync();
         final size = stat.size;
         final mtime = stat.modified.millisecondsSinceEpoch;
-        final cached = _hashCache[abs];
+        final cached = cache[abs];
         final String sha;
-        if (cached != null && cached.size == size && cached.mtimeMs == mtime) {
-          sha = cached.sha; // unchanged — reuse, no re-read
+        if (cached != null && cached.$1 == size && cached.$2 == mtime) {
+          sha = cached.$3; // unchanged: reuse, no re-read
         } else {
           sha = _hashFile(e); // streaming hash, bounded memory
-          _hashCache[abs] = _HashEntry(size, mtime, sha);
         }
-        seen.add(abs);
-        _byHash[sha] = abs;
+        // Only files still present are kept, so vanished ones drop out.
+        kept[abs] = (size, mtime, sha);
+        byHash[sha] = abs;
         out.add(DiskFile(sha, rel, size, abs, mtime));
       } catch (_) {
-        // unreadable file — skip it
+        // unreadable file: skip it
       }
     }
-    // Drop cache entries for files that vanished.
-    _hashCache.removeWhere((k, _) => !seen.contains(k));
-    _files = out;
-    return out;
+    return (files: out, byHash: byHash, cache: kept);
   }
 
   /// sha256 of a file read in fixed-size chunks, so memory stays bounded
-  /// regardless of file size (the old readAsBytesSync loaded the whole file —
+  /// regardless of file size (the old readAsBytesSync loaded the whole file;
   /// over a big shared tree that was the out-of-memory).
   static String _hashFile(File f) {
     final catcher = _DigestCatcher();
@@ -130,86 +175,6 @@ class DiskFolderSource implements RangedFileSource {
     }
     input.close();
     return _hex(catcher.value!.bytes);
-  }
-
-  /// Like [_hashFile] but yields to the event loop periodically so hashing a
-  /// large file never freezes the UI isolate.
-  static Future<String> _hashFileAsync(File f) async {
-    final catcher = _DigestCatcher();
-    final input = crypto.sha256.startChunkedConversion(catcher);
-    final raf = await f.open();
-    try {
-      const chunkSize = 1 << 16; // 64 KiB
-      var sinceYield = 0;
-      while (true) {
-        final chunk = await raf.read(chunkSize);
-        if (chunk.isEmpty) break;
-        input.add(chunk);
-        if (++sinceYield >= 64) {
-          // ~4 MiB between yields
-          sinceYield = 0;
-          await Future<void>.delayed(Duration.zero);
-        }
-      }
-    } finally {
-      await raf.close();
-    }
-    input.close();
-    return _hex(catcher.value!.bytes);
-  }
-
-  /// (Re)build the index asynchronously, yielding between files so a large
-  /// shared folder is indexed in the background without freezing the UI. Same
-  /// result as [scan]; used at startup and by the periodic owner sync.
-  Future<List<DiskFile>> scanAsync() async {
-    final out = <DiskFile>[];
-    final byHash = <String, String>{};
-    final root = fs.directory(dirPath);
-    if (!root.existsSync()) {
-      _byHash.clear();
-      _files = const [];
-      return _files;
-    }
-    final base = root.absolute.path;
-    final seen = <String>{};
-    var sinceYield = 0;
-    for (final e in root.listSync(recursive: true, followLinks: false)) {
-      if (e is! File) continue;
-      final abs = e.absolute.path;
-      var rel = abs.startsWith(base) ? abs.substring(base.length) : abs;
-      rel = rel.replaceAll('\\', '/');
-      if (rel.startsWith('/')) rel = rel.substring(1);
-      if (rel.isEmpty) continue;
-      if (rel == kFolderKeyFile) continue;
-      if (rel.split('/').any((s) => s.startsWith('.'))) continue;
-      try {
-        final stat = e.statSync();
-        final size = stat.size;
-        final mtime = stat.modified.millisecondsSinceEpoch;
-        final cached = _hashCache[abs];
-        final String sha;
-        if (cached != null && cached.size == size && cached.mtimeMs == mtime) {
-          sha = cached.sha;
-        } else {
-          sha = await _hashFileAsync(e);
-          _hashCache[abs] = _HashEntry(size, mtime, sha);
-        }
-        seen.add(abs);
-        byHash[sha] = abs;
-        out.add(DiskFile(sha, rel, size, abs, mtime));
-      } catch (_) {}
-      if (++sinceYield >= 16) {
-        sinceYield = 0;
-        await Future<void>.delayed(Duration.zero);
-      }
-    }
-    _hashCache.removeWhere((k, _) => !seen.contains(k));
-    // Swap in the freshly-built index atomically.
-    _byHash
-      ..clear()
-      ..addAll(byHash);
-    _files = out;
-    return out;
   }
 
   @override
