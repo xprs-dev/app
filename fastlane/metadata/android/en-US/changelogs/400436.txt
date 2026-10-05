@@ -1,0 +1,5 @@
+* Chat looks like WhatsApp: a black background, familiar bubbles and text size, and a menu to archive or delete a chat.
+* Social is now Status. The newest status of the people you chat with shows at the top of Chat, and you can post one there.
+* Status, Chat and Mesh stay on the home screen, and a short tour explains them on first start.
+* A licensed radio operator can use their own callsign.
+* Things: a doorbell rings with the app closed, and a picture says when it was taken.
