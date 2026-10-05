@@ -162,7 +162,7 @@ class _HeroEmpty extends StatelessWidget {
             : (
                 Icons.auto_awesome,
                 'Finding what people are reading',
-                'Follow someone in Social and their posts land here first.',
+                'Follow someone in Status and their posts land here first.',
               );
 
     return Container(

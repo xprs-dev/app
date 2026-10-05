@@ -909,6 +909,10 @@ class PreferencesService {
   Future<void> setOnboardingComplete(bool v) =>
       _prefs.setBool('onboarding.complete', v);
 
+  // The first-run tour of Status, Chat and Mesh (AppsIntroPage), shown once.
+  bool get appsIntroSeen => _prefs.getBool('intro.apps.seen') ?? false;
+  Future<void> setAppsIntroSeen(bool v) => _prefs.setBool('intro.apps.seen', v);
+
   // Wapp Store default catalog source — the URL (or local path) the
   // install wapp seeds into its `source` KV on first run, so a future
   // deployment can point the store at a different catalog without

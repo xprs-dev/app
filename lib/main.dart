@@ -306,7 +306,7 @@ Future<void> _boot() async {
     name: 'Seed default wapps',
     description:
         'On a brand-new profile, installs the default set (Chat, Mail, '
-        'Social, Mesh and the system wapps) into the profile so the launcher '
+        'Status, Mesh and the system wapps) into the profile so the launcher '
         'is usable. Runs once per profile (guarded by a .seeded marker). '
         'Must run after profile-service so the active profile exists.',
     mode: BootStart.sequential,

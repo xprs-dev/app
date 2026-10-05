@@ -43,26 +43,23 @@ class LaunchCountStore {
     return prefs.topLaunchedWapps(n);
   }
 
-  /// What the module bars show on a fresh install: the user has launched
-  /// nothing yet, so "most used" is empty and the bars would fall back to
-  /// whatever the app list happens to order first. These are the ones a new
-  /// user is meant to open, most important first. Only the first three fit,
-  /// so this is a starting position, not a fixed layout — it is overridden the
-  /// moment the user pins or launches anything, and a wapp they actually use
-  /// takes the bar instead.
+  /// The three wapps a person needs to find first: Status (the `social`
+  /// install), Chat and Mesh. They hold the module bars until the user pins
+  /// something of their own, so a fresh install always shows them, and a
+  /// wapp opened often does not push one of them off the home screen; the
+  /// dock below is where most-used wapps go.
   ///
   /// Every id here must also be in `_kDefaultSeedNames` (launcher/seeding.dart)
   /// or it is never installed on a fresh profile, and naming it here does
   /// nothing at all: the resolver silently skips ids it cannot find.
   static const List<String> kDefaultModuleWapps = [
     'social',
-    'torrents',
     'chat',
-    'mp4player',
+    'mesh',
   ];
 
-  /// Pinned module bars, or the most-used wapps when the user pinned none,
-  /// topped up with [kDefaultModuleWapps] on a fresh profile.
+  /// Pinned module bars, else [kDefaultModuleWapps] first and the most-used
+  /// wapps after them.
   Future<List<String>> preferredModules(int n) => _preferred(n, dock: false);
 
   /// Pinned dock icons, or the most-used wapps when the user pinned none.
@@ -73,11 +70,9 @@ class LaunchCountStore {
     final pinned = dock ? prefs.homeDock : prefs.homeModules;
     if (pinned.isNotEmpty) return pinned.take(n).toList(growable: false);
     final top = prefs.topLaunchedWapps(n);
-    if (dock || top.length >= n) return top;
-    // Fresh profile (or barely used): fill the remaining bars with the
-    // defaults, keeping any real launch history first.
-    final out = List<String>.of(top);
-    for (final id in kDefaultModuleWapps) {
+    if (dock) return top;
+    final out = <String>[];
+    for (final id in [...kDefaultModuleWapps, ...top]) {
       if (out.length >= n) break;
       if (!out.contains(id)) out.add(id);
     }

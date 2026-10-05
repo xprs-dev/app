@@ -54,6 +54,7 @@ import '../services/android_permissions_service.dart';
 import '../services/permission_gate.dart';
 import '../services/update_service.dart';
 import '../version.dart';
+import 'apps_intro_page.dart';
 import 'update_page.dart';
 import 'groups_page.dart';
 import '../profile/iwi_profile.dart';

@@ -32,7 +32,7 @@ class WelcomeHeroSource implements HeroSource {
       ),
       _card(
         'follow',
-        'Follow someone in Social',
+        'Follow someone in Status',
         'Their posts land right here, in this banner, as soon as the mesh '
             'relays them.',
         now.subtract(const Duration(seconds: 1)),

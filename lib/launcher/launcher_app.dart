@@ -211,6 +211,20 @@ class _IwiAppState extends State<IwiApp> {
             return const Scaffold(
                 body: Center(child: CircularProgressIndicator()));
           }
+          // A person new to the app is told what Status, Chat and Mesh are
+          // before the home screen. "New" is a profile that has opened no
+          // wapp yet, so somebody updating is not shown it.
+          if (!prefs.appsIntroSeen) {
+            if (prefs.topLaunchedWapps(1).isEmpty) {
+              return AppsIntroPage(onDone: () async {
+                await prefs.setAppsIntroSeen(true);
+                if (mounted) setState(() {});
+              });
+            }
+            // Somebody updating: latch it, so the history is not scanned
+            // again on every rebuild (performance.md 8.7).
+            unawaited(prefs.setAppsIntroSeen(true));
+          }
           return const LauncherPage();
         },
       );
