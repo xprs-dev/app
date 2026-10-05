@@ -624,6 +624,13 @@ class _WappPageState extends State<WappPage>
 
   /// The room open in the Discord-like rooms widget ($type:"rooms").
   String? _roomsOpenId;
+  // Per rooms field: how many conversations the wapp holds archived, and how
+  // many of those have unread. Render state from ui.rooms.set, not a setting,
+  // so it stays out of _fieldValues (which is persisted and sent back).
+  final Map<String, (int, int)> _roomsArchived = {};
+  // Per rooms field: this station's callsign and the statuses the wapp heads
+  // the list with (ui.rooms.status). Render state, like the above.
+  final Map<String, (String, List<Map<String, dynamic>>)> _roomsStatus = {};
 
   /// People-search open on the conversation list. Host-owned because the search
   /// icon sits in the AppBar (next to the ☰) while the search field renders in
@@ -1985,8 +1992,28 @@ class _WappPageState extends State<WappPage>
                 .whereType<Map>()
                 .map((m) => m.map((k, v) => MapEntry(k.toString(), v)))
                 .toList();
+            // How many conversations the person archived, and how many of
+            // those hold unread: the "Archived" row at the top of the list.
+            _roomsArchived[fieldName] = (
+              (data['archived'] as num?)?.toInt() ?? 0,
+              (data['archived_unread'] as num?)?.toInt() ?? 0,
+            );
             changed = true;
           }
+        } else if (type == 'ui.rooms.status') {
+          // The statuses at the head of a rooms list: one per person.
+          final fieldName = data['field'] as String? ?? 'rooms';
+          final items = data['items'];
+          _roomsStatus[fieldName] = (
+            (data['me'] ?? '').toString(),
+            items is List
+                ? items
+                    .whereType<Map>()
+                    .map((m) => m.map((k, v) => MapEntry(k.toString(), v)))
+                    .toList()
+                : const <Map<String, dynamic>>[],
+          );
+          changed = true;
         } else if (type == 'ui.people.set') {
           // Replace a $type:"people" field's section list (the social-style
           // people list: Following / Followers with tags + row actions).
@@ -3619,6 +3646,20 @@ class _WappPageState extends State<WappPage>
               .map((m) => m.cast<String, dynamic>())
               .toList()
         : const <Map<String, dynamic>>[];
+    // Opening a room is one path whoever asks: a tap on the list, or the
+    // default the wide layout picks below.
+    void openRoom(String id) {
+      setState(() => _roomsOpenId = id);
+      store.clearUnread(id);
+      // Persist the cleared count NOW — the debounced save otherwise waits
+      // for the next message event, and a restart in between resurrects a
+      // badge the user already dismissed by reading.
+      _syncAppBadge();
+      _fieldValues['${field}_convo'] = id;
+      _convStore(field).relock(id); // reopened conversations start locked (9.2.1)
+      _sendCommand('${field}_open');
+    }
+
     // Default the open room to the one the wapp marked selected, else the first.
     var openId = _roomsOpenId;
     // On a NARROW screen the thread fills the display, so auto-adopting the
@@ -3656,16 +3697,16 @@ class _WappPageState extends State<WappPage>
           );
       openId = '${sel['id'] ?? ''}';
       if (openId.isEmpty) openId = null;
-      // Adopt the default as the REAL open room: its messages are on screen,
-      // so reading them must clear its unread exactly like a tap would —
-      // without this the open room kept its stale badge forever.
-      if (openId != null && store.items[openId]?.unread != 0) {
+      // Adopt the default as the REAL open room, through the same path as a
+      // tap. Reading it must clear its unread exactly like a tap would, and
+      // the wapp must be told it is open: the wapp paints a room's history
+      // when it is opened, so a default that only the host knew about sat
+      // highlighted on the list beside an empty pane.
+      if (openId != null) {
         final adopted = openId;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || _roomsOpenId != null) return;
-          setState(() => _roomsOpenId = adopted);
-          store.clearUnread(adopted);
-          _syncAppBadge();
+          openRoom(adopted);
         });
       }
     }
@@ -3683,16 +3724,33 @@ class _WappPageState extends State<WappPage>
       store: store,
       openId: openId,
       memberSections: members,
-      onOpenRoom: (id) {
-        setState(() => _roomsOpenId = id);
-        store.clearUnread(id);
-        // Persist the cleared count NOW — the debounced save otherwise waits
-        // for the next message event, and a restart in between resurrects a
-        // badge the user already dismissed by reading.
-        _syncAppBadge();
+      onOpenRoom: openRoom,
+      archivedCount: _roomsArchived[field]?.$1 ?? 0,
+      archivedUnread: _roomsArchived[field]?.$2 ?? 0,
+      onArchived: () => _sendCommand('${field}_archived'),
+      me: _roomsStatus[field]?.$1 ?? '',
+      statuses: _roomsStatus[field]?.$2 ?? const [],
+      onPostStatus: (text) {
+        _fieldValues['${field}_status_input'] = text;
+        _sendCommand('${field}_status_post');
+        _fieldValues.remove('${field}_status_input');
+      },
+      onStatusSeen: (id) {
+        _fieldValues['${field}_status_id'] = id;
+        _sendCommand('${field}_status_seen');
+        _fieldValues.remove('${field}_status_id');
+      },
+      // The row menu. The wapp owns the conversations, so it is the one that
+      // archives or deletes; the host only lets go of the room if it was open.
+      onArchive: (id) {
+        if (_roomsOpenId == id) setState(() => _roomsOpenId = null);
         _fieldValues['${field}_convo'] = id;
-        _convStore(field).relock(id); // reopened conversations start locked (9.2.1)
-        _sendCommand('${field}_open');
+        _sendCommand('${field}_archive');
+      },
+      onDelete: (id) {
+        if (_roomsOpenId == id) setState(() => _roomsOpenId = null);
+        _fieldValues['${field}_convo'] = id;
+        _sendCommand('${field}_delete');
       },
       onSend: (id, text) {
         _fieldValues['${field}_convo'] = id;

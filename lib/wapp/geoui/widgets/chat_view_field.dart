@@ -9,8 +9,9 @@
  * with the typed text (the renderer routes that to the wapp as a
  * `<field>_send` action carrying a `<field>_input` value).
  *
- * Colours follow the Telegram "Night" palette via [ChatPalette]: outgoing
- * #2B5278, incoming #182533, on a #0E1621 chat background.
+ * Colours and type sizes follow WhatsApp's dark theme via [ChatPalette]:
+ * outgoing #005C4B, incoming #202C33, on a pure black chat background, with the
+ * message text at the size WhatsApp uses on the same platform.
  */
 
 import 'dart:async';
@@ -22,7 +23,6 @@ import '../../../util/media_ref.dart';
 import '../../shared_media_fetch.dart';
 import '../conversation_store.dart';
 import 'chat_palette.dart';
-import 'generated_avatar.dart';
 import 'media_view.dart';
 
 /// `2026-09-08` as somebody would say it: today and yesterday by name, the
@@ -372,11 +372,11 @@ class _ChatViewFieldState extends State<ChatViewField> {
       (m['dir']?.toString() ?? 'in') == 'out';
 
   /// Secondary foreground *inside* a bubble (timestamps, badge labels, action
-  /// icons). The outgoing bubble is the solid accent blue, so the dim greys and
-  /// mid-tone accents that read fine on the dark incoming bubble wash out on
-  /// it — outgoing gets near-solid white instead.
-  static Color _onBubbleFg(bool outgoing, int incomingAlpha) =>
-      Colors.white.withAlpha(outgoing ? 235 : incomingAlpha);
+  /// icons). The outgoing bubble is a mid-tone green that dims the same greys
+  /// further, so outgoing gets a little more weight to read alike.
+  static Color _onBubbleFg(bool outgoing, int incomingAlpha) => ChatPalette
+      .text
+      .withAlpha(outgoing ? (incomingAlpha + 30).clamp(0, 255) : incomingAlpha);
 
   /// Signature verdict badge (xprs). verified=green, forged=red,
   /// unverified=grey (signed but sender key unknown). Nothing for unsigned.
@@ -472,14 +472,14 @@ class _ChatViewFieldState extends State<ChatViewField> {
     final Color color;
     switch (s) {
       case 'read':
-        // The bubble under it is already the accent blue, so read is the solid
-        // white double-tick and delivered is the dimmed single one.
+        // WhatsApp's blue double-tick for read, a grey single one for
+        // delivered.
         icon = Icons.done_all;
-        color = Colors.white;
+        color = ChatPalette.link;
         break;
       case 'delivered':
         icon = Icons.done;
-        color = Colors.white.withAlpha(190);
+        color = _onBubbleFg(true, 150);
         break;
       default:
         // Pending, or a state we do not render: show nothing at all.
@@ -487,7 +487,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
     }
     return Padding(
       padding: const EdgeInsets.only(left: 6),
-      child: Icon(icon, size: 13, color: color),
+      child: Icon(icon, size: 15, color: color),
     );
   }
 
@@ -616,7 +616,6 @@ class _ChatViewFieldState extends State<ChatViewField> {
         child: Column(
           children: [
             Expanded(child: _messageList(cs, messages)),
-            const Divider(height: 1),
             if (widget.composerAccessory != null) widget.composerAccessory!,
             _composeBar(cs),
           ],
@@ -671,7 +670,17 @@ class _ChatViewFieldState extends State<ChatViewField> {
     );
   }
 
-  Widget _messageList(ColorScheme cs, List<Map<String, dynamic>> messages) {
+  /// Widest a bubble may grow: most of the pane, as on a phone, but not a
+  /// line so long it is hard to read on a desktop window.
+  double _bubbleMaxW = 440;
+
+  Widget _messageList(ColorScheme cs, List<Map<String, dynamic>> messages) =>
+      LayoutBuilder(builder: (context, c) {
+        _bubbleMaxW = (c.maxWidth * 0.8).clamp(160.0, 560.0);
+        return _messageRows(cs, messages);
+      });
+
+  Widget _messageRows(ColorScheme cs, List<Map<String, dynamic>> messages) {
     // Indexes are maintained by _refreshDerived (not per frame).
 
     // Focused thread view: the tapped thread shown forum-style — the root
@@ -698,11 +707,13 @@ class _ChatViewFieldState extends State<ChatViewField> {
           Expanded(
             child: ListView.builder(
               controller: _scroll,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
               itemCount: op != null ? replies.length : members.length,
-              itemBuilder: (context, i) => _bubble(
-                  op != null ? replies[i] : members[i],
-                  inThread: true),
+              itemBuilder: (context, i) {
+                final list = op != null ? replies : members;
+                return _bubble(list[i],
+                    inThread: true, first: _startsRun(list, i));
+              },
             ),
           ),
         ],
@@ -710,18 +721,19 @@ class _ChatViewFieldState extends State<ChatViewField> {
     }
 
     if (messages.isEmpty) {
-      return Center(
+      return const Center(
         child: Text('No messages yet',
-            style: TextStyle(color: Colors.white.withAlpha(90), fontSize: 13)),
+            style: TextStyle(color: ChatPalette.secondary, fontSize: 14)),
       );
     }
     return ListView.builder(
       controller: _scroll,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       itemCount: messages.length,
       itemBuilder: (context, i) {
-        final bubble = _bubble(messages[i]);
         final head = _dayHeader(messages, i);
+        final bubble = _bubble(messages[i],
+            first: head != null || _startsRun(messages, i));
         if (head == null) return bubble;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -748,22 +760,34 @@ class _ChatViewFieldState extends State<ChatViewField> {
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Center(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: ChatPalette.inBubble,
-            borderRadius: BorderRadius.circular(10),
+            color: ChatPalette.raised,
+            borderRadius: BorderRadius.circular(ChatPalette.bubbleRadius),
           ),
           child: Text(
             _dayLabel(day),
             style: const TextStyle(
               color: ChatPalette.secondary,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
       ),
     );
+  }
+
+  /// Whether message [i] opens a run: the first of consecutive bubbles from
+  /// one sender. Only the first carries the tail and the sender's name, and
+  /// runs sit further apart than the bubbles inside one, the way WhatsApp
+  /// groups a burst of messages.
+  static bool _startsRun(List<Map<String, dynamic>> list, int i) {
+    if (i == 0) return true;
+    final a = list[i - 1], b = list[i];
+    if (a['sys'] == true || b['sys'] == true) return true;
+    return _isOut(a) != _isOut(b) ||
+        (a['from'] ?? '').toString() != (b['from'] ?? '').toString();
   }
 
   /// `2026-09-08` as somebody would say it: today and yesterday by name, this
@@ -949,7 +973,8 @@ class _ChatViewFieldState extends State<ChatViewField> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(bars,
-              style: const TextStyle(color: Colors.white, fontSize: 14)),
+              style: TextStyle(
+                  color: ChatPalette.text, fontSize: ChatPalette.bodySize)),
           Padding(
             padding: const EdgeInsets.only(top: 3),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -978,19 +1003,26 @@ class _ChatViewFieldState extends State<ChatViewField> {
     );
   }
 
-  Widget _bubble(Map<String, dynamic> m, {bool inThread = false}) {
-    // System note: a centered, muted status line (no avatar/name/bubble/badges).
+  Widget _bubble(Map<String, dynamic> m,
+      {bool inThread = false, bool first = true}) {
+    // System note: a centred pill like the day separator (no avatar, name,
+    // bubble or badges), the way WhatsApp shows "Messages are encrypted".
     if (m['sys'] == true) {
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 6),
         child: Center(
-          child: Text(
-            m['text']?.toString() ?? '',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                color: ChatPalette.secondary,
-                fontSize: 12,
-                fontStyle: FontStyle.italic),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: ChatPalette.raised,
+              borderRadius: BorderRadius.circular(ChatPalette.bubbleRadius),
+            ),
+            child: Text(
+              m['text']?.toString() ?? '',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: ChatPalette.secondary, fontSize: 12.5),
+            ),
           ),
         ),
       );
@@ -1035,13 +1067,21 @@ class _ChatViewFieldState extends State<ChatViewField> {
     final replies = mid.isEmpty ? 0 : (_replyCount[mid] ?? 0);
     // Outside a focused thread, a message that's part of a thread opens it on tap.
     final canOpen = !inThread && _isThreaded(m);
+    final bubbleColor = outgoing ? _outColor : _inColor;
+    const r = Radius.circular(ChatPalette.bubbleRadius);
+    // The first bubble of a run squares the corner on the sender's side and
+    // grows a tail there; the rest of the run is plain rounded rectangles.
     final bubble = Container(
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      constraints: const BoxConstraints(maxWidth: 440),
+      padding: const EdgeInsets.fromLTRB(9, 6, 9, 5),
+      constraints: BoxConstraints(maxWidth: _bubbleMaxW),
       decoration: BoxDecoration(
-        color: outgoing ? _outColor : _inColor,
-        borderRadius: BorderRadius.circular(16),
+        color: bubbleColor,
+        borderRadius: BorderRadius.only(
+          topLeft: first && !outgoing ? Radius.zero : r,
+          topRight: first && outgoing ? Radius.zero : r,
+          bottomLeft: r,
+          bottomRight: r,
+        ),
       ),
       child: _maybeIntrinsicWidth(
         tight,
@@ -1049,21 +1089,14 @@ class _ChatViewFieldState extends State<ChatViewField> {
         crossAxisAlignment:
             tight ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
         children: [
-          // Forum-style thread view: don't re-quote the root on every reply.
-          // Nested replies (parent != root) keep their quote for context.
-          if (parent.isNotEmpty &&
-              !(inThread && parent == _threadRootMid))
-            _quotedParent(parent, outgoing),
-          if (!outgoing && (from.isNotEmpty || via.isNotEmpty))
+          // The name heads a run only: a burst from one sender reads as one
+          // voice, and repeating it on every bubble was most of the noise.
+          if (first && !outgoing && (from.isNotEmpty || via.isNotEmpty))
             Padding(
               padding: const EdgeInsets.only(bottom: 2),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (from.isNotEmpty) ...[
-                    GeneratedAvatar(seed: from, size: 16),
-                    const SizedBox(width: 5),
-                  ],
                   if (from.isNotEmpty)
                     Flexible(
                       // The sender name opens their profile when the host
@@ -1076,10 +1109,10 @@ class _ChatViewFieldState extends State<ChatViewField> {
                         child: Text(
                           from,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: ChatPalette.accent,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                              color: ChatPalette.senderColor(from),
+                              fontSize: ChatPalette.senderSize,
+                              fontWeight: FontWeight.w600),
                         ),
                       ),
                     ),
@@ -1090,15 +1123,19 @@ class _ChatViewFieldState extends State<ChatViewField> {
                 ],
               ),
             ),
+          // The quote sits under the sender's name, as in WhatsApp.
+          // Forum-style thread view: don't re-quote the root on every reply.
+          // Nested replies (parent != root) keep their quote for context.
+          if (parent.isNotEmpty &&
+              !(inThread && parent == _threadRootMid))
+            _quotedParent(parent, outgoing),
           if (mediaRefs.isEmpty)
             (locked
                 ? _lockedText(revealMid, text, revealTip, outgoing)
-                : Text(shownText,
-                    style: const TextStyle(color: Colors.white, fontSize: 14)))
+                : Text(shownText, style: _bodyStyle))
           else ...[
             if (_textWithoutTokens(shownText).isNotEmpty)
-              Text(_textWithoutTokens(shownText),
-                  style: const TextStyle(color: Colors.white, fontSize: 14)),
+              Text(_textWithoutTokens(shownText), style: _bodyStyle),
             Padding(
               padding: const EdgeInsets.only(top: 4, bottom: 2),
               child: Wrap(
@@ -1124,7 +1161,8 @@ class _ChatViewFieldState extends State<ChatViewField> {
                   child: Text(
                     time,
                     style: TextStyle(
-                        color: _onBubbleFg(outgoing, 115), fontSize: 10),
+                        color: _onBubbleFg(outgoing, 150),
+                        fontSize: ChatPalette.metaSize),
                   ),
                 ),
               _encBadge(m),
@@ -1194,6 +1232,27 @@ class _ChatViewFieldState extends State<ChatViewField> {
       ),
     );
     final align = outgoing ? Alignment.centerRight : Alignment.centerLeft;
+    // Runs sit apart; bubbles inside one nearly touch.
+    final framed = Padding(
+      padding: EdgeInsets.only(top: first ? 6 : 1, bottom: 1),
+      child: first
+          ? Stack(
+              clipBehavior: Clip.none,
+              children: [
+                bubble,
+                Positioned(
+                  top: 0,
+                  left: outgoing ? null : -_tailW,
+                  right: outgoing ? -_tailW : null,
+                  child: CustomPaint(
+                    size: const Size(_tailW, 10),
+                    painter: _TailPainter(bubbleColor, outgoing),
+                  ),
+                ),
+              ],
+            )
+          : bubble,
+    );
     // A feed item carrying a `convo` (e.g. Activity) jumps to that conversation
     // on tap. Otherwise, tapping a threaded bubble opens its focused thread.
     final convo = (m['convo'] ?? '').toString();
@@ -1209,10 +1268,15 @@ class _ChatViewFieldState extends State<ChatViewField> {
         behavior: HitTestBehavior.opaque,
         onLongPress: () => _showMessageMenu(m, text, from, outgoing),
         onTap: onTap,
-        child: bubble,
+        child: framed,
       ),
     );
   }
+
+  static const double _tailW = 8;
+
+  static TextStyle get _bodyStyle =>
+      TextStyle(color: ChatPalette.text, fontSize: ChatPalette.bodySize);
 
   /// Long-press message menu: copy plus any host-provided local actions.
   void _showMessageMenu(
@@ -1407,9 +1471,9 @@ class _ChatViewFieldState extends State<ChatViewField> {
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
       decoration: BoxDecoration(
-        color: Colors.white.withAlpha(18),
+        color: Colors.black.withAlpha(50),
         borderRadius: BorderRadius.circular(6),
-        border: Border(left: BorderSide(color: accent, width: 2.5)),
+        border: Border(left: BorderSide(color: accent, width: 4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1423,9 +1487,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                  color: Colors.white.withAlpha(170),
-                  fontSize: 11,
-                  fontStyle: FontStyle.italic),
+                  color: ChatPalette.text.withAlpha(170), fontSize: 13),
             ),
           ),
         ],
@@ -1633,64 +1695,93 @@ class _ChatViewFieldState extends State<ChatViewField> {
     // hidden behind it; embedded/floating chats keep a flush 6px bottom.
     final extraBottom =
         widget.safeBottom ? MediaQuery.of(context).viewPadding.bottom : 0.0;
+    // WhatsApp's composer: a rounded pill floating on the chat, holding the
+    // text and its tools, beside a round green send button.
     final row = Container(
-      color: ChatPalette.windowBg,
-      padding: EdgeInsets.fromLTRB(8, 6, 6, 6 + extraBottom),
+      color: ChatPalette.chatBg,
+      padding: EdgeInsets.fromLTRB(6, 6, 6, 6 + extraBottom),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (widget.onAttach != null)
-            IconButton(
-              icon: const Icon(Icons.attach_file),
-              tooltip: 'Attach a file',
-              color: ChatPalette.accent,
-              onPressed: _attach,
-            ),
-          // The private/plain switch. It sits in the composer rather than in a
-          // menu because it applies to the NEXT message and may be flipped
-          // between any two of them: in XPRS the wire form is per packet
-          // (section 9.2), so there is no mode to enter and nothing to agree
-          // with the other end.
-          if (widget.onTogglePrivacy != null)
-            IconButton(
-              icon: Icon(widget.privacyOn ? Icons.lock : Icons.lock_open),
-              iconSize: 20,
-              tooltip: widget.privacyOn
-                  ? 'Private — the body is encrypted (tap for plain text)'
-                  : 'Plain text — anyone in range can read it (tap for private)',
-              color: widget.privacyOn
-                  ? ChatPalette.accent
-                  : Colors.orangeAccent.withAlpha(200),
-              onPressed: widget.onTogglePrivacy,
-            ),
           Expanded(
-            child: TextField(
-              controller: _input,
-              focusNode: _inputFocus,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-              minLines: 1,
-              maxLines: 3,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _send(),
-              decoration: InputDecoration(
-                hintText: widget.hint,
-                hintStyle: TextStyle(color: Colors.white.withAlpha(90)),
-                isDense: true,
-                filled: true,
-                fillColor: Colors.white.withAlpha(15),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: BorderSide.none,
-                ),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 48),
+              decoration: BoxDecoration(
+                color: ChatPalette.raised,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              padding: const EdgeInsets.only(left: 16, right: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _input,
+                      focusNode: _inputFocus,
+                      style: TextStyle(
+                          color: ChatPalette.text,
+                          fontSize: ChatPalette.bodySize),
+                      cursorColor: ChatPalette.accent,
+                      minLines: 1,
+                      maxLines: 5,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _send(),
+                      decoration: InputDecoration(
+                        hintText: widget.hint,
+                        hintStyle: TextStyle(
+                            color: ChatPalette.secondary,
+                            fontSize: ChatPalette.bodySize),
+                        isDense: true,
+                        border: InputBorder.none,
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  if (widget.onAttach != null)
+                    IconButton(
+                      icon: const Icon(Icons.attach_file),
+                      tooltip: 'Attach a file',
+                      color: ChatPalette.secondary,
+                      onPressed: _attach,
+                    ),
+                  // The private/plain switch. It sits in the composer rather
+                  // than in a menu because it applies to the NEXT message and
+                  // may be flipped between any two of them: in XPRS the wire
+                  // form is per packet (section 9.2), so there is no mode to
+                  // enter and nothing to agree with the other end.
+                  if (widget.onTogglePrivacy != null)
+                    IconButton(
+                      icon: Icon(
+                          widget.privacyOn ? Icons.lock : Icons.lock_open),
+                      iconSize: 20,
+                      tooltip: widget.privacyOn
+                          ? 'Private — the body is encrypted (tap for plain text)'
+                          : 'Plain text — anyone in range can read it (tap for private)',
+                      color: widget.privacyOn
+                          ? ChatPalette.secondary
+                          : Colors.orangeAccent.withAlpha(200),
+                      onPressed: widget.onTogglePrivacy,
+                    ),
+                ],
               ),
             ),
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            icon: const Icon(Icons.send),
-            color: ChatPalette.accent,
-            onPressed: _send,
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: Material(
+              color: ChatPalette.accent,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: IconButton(
+                icon: const Icon(Icons.send, size: 22),
+                color: ChatPalette.onAccent,
+                tooltip: 'Send',
+                onPressed: _send,
+              ),
+            ),
           ),
         ],
       ),
@@ -1701,4 +1792,32 @@ class _ChatViewFieldState extends State<ChatViewField> {
       children: [_attachPreview(cs), row],
     );
   }
+}
+
+/// The small triangle on the first bubble of a run, pointing at its sender's
+/// side of the chat. Its top edge is flush with the bubble's squared corner.
+class _TailPainter extends CustomPainter {
+  final Color color;
+  final bool outgoing;
+
+  const _TailPainter(this.color, this.outgoing);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final path = outgoing
+        ? (Path()
+          ..moveTo(0, 0)
+          ..lineTo(w, 0)
+          ..lineTo(0, h))
+        : (Path()
+          ..moveTo(w, 0)
+          ..lineTo(0, 0)
+          ..lineTo(w, h));
+    canvas.drawPath(path..close(), Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_TailPainter old) =>
+      old.color != color || old.outgoing != outgoing;
 }

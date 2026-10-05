@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../conversation_store.dart';
 import '../../../services/xprs/xprs_monitor.dart';
 import '../../../services/reticulum/rns_service.dart';
+import 'chat_palette.dart';
 import 'chat_view_field.dart';
 import 'people_view_field.dart';
 
@@ -68,6 +69,27 @@ class RoomsField extends StatefulWidget {
   /// the app that could not send a picture.
   final Future<String?> Function()? onAttach;
 
+  /// Conversations the person archived, and how many of them hold unread.
+  /// When there are any, an "Archived" row heads the list and [onArchived]
+  /// opens them.
+  final int archivedCount;
+  final int archivedUnread;
+  final VoidCallback? onArchived;
+
+  /// The three-dots menu on a row: archive the conversation, or delete it.
+  final void Function(String id)? onArchive;
+  final void Function(String id)? onDelete;
+
+  /// Statuses at the head of the list, the way Telegram heads it with
+  /// stories: this station's callsign, then the newest status of each person
+  /// it talks with, `{id, call, text, ts, mine, seen}`. The wapp decides who is
+  /// in it; this only draws it, posts through [onPostStatus] and reports an
+  /// opened one through [onStatusSeen]. No callback, no box.
+  final String me;
+  final List<Map<String, dynamic>> statuses;
+  final void Function(String text)? onPostStatus;
+  final void Function(String id)? onStatusSeen;
+
   const RoomsField({
     super.key,
     this.onTogglePrivacy,
@@ -88,6 +110,15 @@ class RoomsField extends StatefulWidget {
     this.onBlock,
     this.onDirectMessage,
     this.onAttach,
+    this.archivedCount = 0,
+    this.archivedUnread = 0,
+    this.onArchived,
+    this.onArchive,
+    this.onDelete,
+    this.me = '',
+    this.statuses = const [],
+    this.onPostStatus,
+    this.onStatusSeen,
   });
 
   @override
@@ -102,6 +133,14 @@ class _RoomsFieldState extends State<RoomsField> {
   bool _membersOpen = false;
 
   bool get _railExpanded => _railW > _threshold;
+
+  final _statusInput = TextEditingController();
+
+  @override
+  void dispose() {
+    _statusInput.dispose();
+    super.dispose();
+  }
 
   void _dragUpdate(DragUpdateDetails d) {
     _userSized = true; // the user's width choice outranks the auto sizing
@@ -152,7 +191,7 @@ class _RoomsFieldState extends State<RoomsField> {
     child: AnimatedContainer(
       duration: const Duration(milliseconds: 120),
       width: _railW,
-      color: cs.surfaceContainerHigh,
+      color: ChatPalette.windowBg,
       child: _rail(cs),
     ),
   );
@@ -162,7 +201,8 @@ class _RoomsFieldState extends State<RoomsField> {
     return Row(
       children: [
         _railBox(cs),
-        const VerticalDivider(width: 1, thickness: 1),
+        const VerticalDivider(
+            width: 1, thickness: 1, color: ChatPalette.divider),
         Expanded(child: _chat(cs)),
         AnimatedContainer(
           duration: const Duration(milliseconds: 160),
@@ -170,8 +210,12 @@ class _RoomsFieldState extends State<RoomsField> {
           child: _membersOpen
               ? Row(
                   children: [
-                    const VerticalDivider(width: 1, thickness: 1),
-                    Expanded(child: _members(cs)),
+                    const VerticalDivider(
+                        width: 1, thickness: 1, color: ChatPalette.divider),
+                    Expanded(
+                      child: Material(
+                          color: ChatPalette.windowBg, child: _members(cs)),
+                    ),
                   ],
                 )
               : null,
@@ -193,7 +237,7 @@ class _RoomsFieldState extends State<RoomsField> {
     final panelW = (maxW * 0.82).clamp(220.0, 340.0);
     if (widget.openId == null) {
       _railW = _expanded; // list fills the screen
-      return Material(color: cs.surfaceContainerHigh, child: _rail(cs));
+      return Material(color: ChatPalette.windowBg, child: _rail(cs));
     }
     // Back closes what is on top: the member panel first; with it closed the
     // pop propagates to the host, which closes the room back to the list.
@@ -221,7 +265,7 @@ class _RoomsFieldState extends State<RoomsField> {
               duration: const Duration(milliseconds: 160),
               width: _membersOpen ? panelW : 0,
               child: _membersOpen
-                  ? Material(color: cs.surface, child: _members(cs))
+                  ? Material(color: ChatPalette.windowBg, child: _members(cs))
                   : null,
             ),
           ),
@@ -240,6 +284,9 @@ class _RoomsFieldState extends State<RoomsField> {
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 6),
               children: [
+                if (widget.onPostStatus != null) _statusHeader(cs, expanded),
+                if (widget.archivedCount > 0 && widget.onArchived != null)
+                  _archivedTile(expanded),
                 for (final r in _byRecency()) _roomTile(cs, r, expanded),
               ],
             ),
@@ -249,7 +296,7 @@ class _RoomsFieldState extends State<RoomsField> {
           // rests in, and the list above is what you came for — the room you
           // want is usually already on it, and search is the fallback.
           if (widget.onSearch != null) ...[
-            const Divider(height: 1),
+            const Divider(height: 1, color: ChatPalette.divider),
             _searchTile(cs, expanded),
           ],
         ],
@@ -354,7 +401,7 @@ class _RoomsFieldState extends State<RoomsField> {
     final seenSec = (r['seen'] as num?)?.toInt() ?? 0;
     final age = _ago(ts > 0 ? ts : seenSec * 1000);
 
-    var icon = _avatar(cs, id, name, selected);
+    var icon = _avatar(cs, id, name, selected, expanded ? 48 : 44);
     // Collapsed rail: there is no row space beside a 44px avatar in a 64px
     // rail, so the count rides ON the avatar as a corner chip (a badge in the
     // row overflowed it). Expanded keeps the inline pill next to the name.
@@ -370,15 +417,15 @@ class _RoomsFieldState extends State<RoomsField> {
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
               constraints: const BoxConstraints(minWidth: 16),
               decoration: BoxDecoration(
-                color: cs.primary,
+                color: ChatPalette.accent,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: cs.surface, width: 1.5),
+                border: Border.all(color: ChatPalette.windowBg, width: 1.5),
               ),
               child: Text(
                 unread > 99 ? '99+' : '$unread',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onPrimary,
+                style: const TextStyle(
+                  color: ChatPalette.onAccent,
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
                 ),
@@ -388,7 +435,13 @@ class _RoomsFieldState extends State<RoomsField> {
         ],
       );
     }
+    final hasMenu = widget.onArchive != null || widget.onDelete != null;
     final tile = InkWell(
+      // Right-click on a desktop, long-press on a phone (below): the same
+      // menu as the three dots, which the collapsed rail has no room for.
+      onSecondaryTapUp: hasMenu
+          ? (d) => _menuAt(d.globalPosition, id, name)
+          : null,
       onTap: () {
         widget.onOpenRoom(id);
         // Narrow: the expanded rail is an overlay ON the chat, so picking a
@@ -398,14 +451,19 @@ class _RoomsFieldState extends State<RoomsField> {
           setState(() => _railW = _collapsed);
         }
       },
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(expanded ? 8.0 + depth * 14 : 8, 4, 8, 4),
+      // A WhatsApp list row: avatar, then the name with its age on the right,
+      // and under it the last line said with the unread count on the right.
+      child: Container(
+        color: selected && expanded ? ChatPalette.raised : null,
+        padding: EdgeInsets.fromLTRB(
+            expanded ? 12.0 + depth * 14 : 10, expanded ? 9 : 5, 10,
+            expanded ? 9 : 5),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             icon,
             if (expanded) ...[
-              const SizedBox(width: 10),
+              const SizedBox(width: 13),
               // Two lines: who, and what was last said. A list of bare names
               // cannot tell an active conversation from a dead one.
               Expanded(
@@ -417,14 +475,14 @@ class _RoomsFieldState extends State<RoomsField> {
                       children: [
                         if (live) ...[
                           Container(
-                            width: 7,
-                            height: 7,
+                            width: 8,
+                            height: 8,
                             decoration: const BoxDecoration(
-                              color: Color(0xFF3FB950),
+                              color: ChatPalette.accent,
                               shape: BoxShape.circle,
                             ),
                           ),
-                          const SizedBox(width: 5),
+                          const SizedBox(width: 6),
                         ],
                         Expanded(
                           child: Text(
@@ -432,9 +490,10 @@ class _RoomsFieldState extends State<RoomsField> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: selected ? cs.primary : cs.onSurface,
-                              fontWeight: unread > 0 || selected
-                                  ? FontWeight.w700
+                              color: ChatPalette.text,
+                              fontSize: ChatPalette.rowTitleSize,
+                              fontWeight: unread > 0
+                                  ? FontWeight.w600
                                   : FontWeight.w500,
                             ),
                           ),
@@ -445,47 +504,65 @@ class _RoomsFieldState extends State<RoomsField> {
                             child: Text(
                               age,
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: ChatPalette.rowMetaSize,
                                 color: unread > 0
-                                    ? cs.primary
-                                    : cs.onSurfaceVariant,
+                                    ? ChatPalette.accent
+                                    : ChatPalette.secondary,
                               ),
                             ),
                           ),
                       ],
                     ),
-                    if (sub.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 1),
-                        child: Text(
-                          sub,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: unread > 0
-                                ? cs.onSurface
-                                : cs.onSurfaceVariant,
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            sub,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: ChatPalette.rowSubtitleSize,
+                              color: ChatPalette.secondary,
+                            ),
                           ),
                         ),
-                      ),
+                        if (unread > 0)
+                          Container(
+                            margin: const EdgeInsets.only(left: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            constraints: const BoxConstraints(
+                                minWidth: 20, minHeight: 20),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: ChatPalette.accent,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              unread > 99 ? '99+' : '$unread',
+                              style: const TextStyle(
+                                color: ChatPalette.onAccent,
+                                fontSize: ChatPalette.rowMetaSize,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-              if (unread > 0)
-                Container(
-                  margin: const EdgeInsets.only(left: 6),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: cs.primary,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$unread',
-                    style: TextStyle(color: cs.onPrimary, fontSize: 11),
+              if (hasMenu)
+                SizedBox(
+                  width: 28,
+                  child: PopupMenuButton<String>(
+                    tooltip: 'More',
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.more_vert,
+                        size: 20, color: ChatPalette.secondary),
+                    color: ChatPalette.raised,
+                    itemBuilder: (_) => _menuItems(),
+                    onSelected: (v) => _rowAction(v, id, name),
                   ),
                 ),
             ],
@@ -493,12 +570,387 @@ class _RoomsFieldState extends State<RoomsField> {
         ),
       ),
     );
+    // The menu opens where the finger is.
+    final pressable = hasMenu
+        ? GestureDetector(
+            onLongPressStart: (d) => _menuAt(d.globalPosition, id, name),
+            child: tile,
+          )
+        : tile;
     // Collapsed: hovering tells the full name (desktop); the abbreviated
     // avatar label already carries the gist.
-    return expanded ? tile : Tooltip(message: name, child: tile);
+    return expanded ? pressable : Tooltip(message: name, child: pressable);
   }
 
-  Widget _avatar(ColorScheme cs, String id, String name, bool selected) {
+  // ── Statuses ──────────────────────────────────────────────────────────
+
+  void _postStatus() {
+    final text = _statusInput.text.trim();
+    if (text.isEmpty) return;
+    widget.onPostStatus?.call(text);
+    _statusInput.clear();
+    FocusScope.of(context).unfocus();
+  }
+
+  /// The box to post one's own status, as a pill like the composer's.
+  Widget _statusBox() {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.only(left: 14, right: 4),
+      decoration: BoxDecoration(
+        color: ChatPalette.raised,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.campaign_outlined,
+              size: 20, color: ChatPalette.secondary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _statusInput,
+              maxLines: 1,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _postStatus(),
+              cursorColor: ChatPalette.accent,
+              style: TextStyle(
+                  color: ChatPalette.text,
+                  fontSize: ChatPalette.rowSubtitleSize),
+              decoration: InputDecoration(
+                hintText: 'Post a status',
+                hintStyle: TextStyle(
+                    color: ChatPalette.secondary,
+                    fontSize: ChatPalette.rowSubtitleSize),
+                isDense: true,
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Post',
+            icon: const Icon(Icons.send, size: 20, color: ChatPalette.accent),
+            onPressed: _postStatus,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// One person's newest status as a ringed avatar: green while unseen, grey
+  /// once opened, the way a messenger marks a story.
+  Widget _statusCircle(ColorScheme cs, Map<String, dynamic> st) {
+    final call = '${st['call'] ?? ''}';
+    final mine = st['mine'] == true;
+    final seen = st['seen'] == true || mine;
+    return InkWell(
+      onTap: () => _openStatus(st),
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: 68,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(2.5),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: seen ? ChatPalette.secondary : ChatPalette.accent,
+                  width: seen ? 1.5 : 2.5,
+                ),
+              ),
+              child: _avatar(cs, call, call, false, 48),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              mine ? 'You' : call,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  color: ChatPalette.secondary, fontSize: ChatPalette.rowMetaSize),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusHeader(ColorScheme cs, bool expanded) {
+    final list = widget.statuses;
+    if (!expanded) {
+      // The collapsed rail has room for one circle: it opens the lot.
+      final fresh = list.any((s) => s['seen'] != true && s['mine'] != true);
+      return Tooltip(
+        message: 'Status',
+        child: InkWell(
+          onTap: () => _openStatusSheet(cs),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: ChatPalette.raised,
+                border: Border.all(
+                  color: fresh ? ChatPalette.accent : ChatPalette.raised,
+                  width: 2.5,
+                ),
+              ),
+              child: const Icon(Icons.campaign_outlined,
+                  color: ChatPalette.secondary),
+            ),
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+          child: _statusBox(),
+        ),
+        if (list.isNotEmpty)
+          SizedBox(
+            height: 86,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              children: [for (final st in list) _statusCircle(cs, st)],
+            ),
+          ),
+        const Divider(height: 1, color: ChatPalette.divider),
+      ],
+    );
+  }
+
+  /// The collapsed rail's way in: the box and every status, in a sheet.
+  void _openStatusSheet(ColorScheme cs) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: ChatPalette.windowBg,
+      isScrollControlled: true,
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(sheet).viewInsets.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: _statusBox(),
+              ),
+              for (final st in widget.statuses)
+                ListTile(
+                  leading: _avatar(cs, '${st['call']}', '${st['call']}',
+                      false, 40),
+                  title: Text(
+                      st['mine'] == true ? 'You' : '${st['call']}',
+                      style: const TextStyle(color: ChatPalette.text)),
+                  subtitle: Text('${st['text'] ?? ''}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: ChatPalette.secondary)),
+                  onTap: () {
+                    Navigator.pop(sheet);
+                    _openStatus(st);
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// One status, opened: who, when, the words, and a way to answer them in a
+  /// private chat.
+  void _openStatus(Map<String, dynamic> st) {
+    final id = '${st['id'] ?? ''}';
+    final call = '${st['call'] ?? ''}';
+    final mine = st['mine'] == true;
+    if (!mine && st['seen'] != true && id.isNotEmpty) {
+      widget.onStatusSeen?.call(id);
+    }
+    final ts = (st['ts'] as num?)?.toInt() ?? 0;
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: ChatPalette.raised,
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _avatar(cs, call, call, false, 40),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(mine ? 'Your status' : call,
+                        style: TextStyle(
+                            color: ChatPalette.text,
+                            fontSize: ChatPalette.rowTitleSize,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                  Text(_ago(ts * 1000),
+                      style: const TextStyle(
+                          color: ChatPalette.secondary,
+                          fontSize: ChatPalette.rowMetaSize)),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SelectableText('${st['text'] ?? ''}',
+                  style: TextStyle(
+                      color: ChatPalette.text,
+                      fontSize: ChatPalette.bodySize + 2,
+                      height: 1.35)),
+              if (!mine && widget.onDirectMessage != null) ...[
+                const SizedBox(height: 20),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: ChatPalette.accent,
+                      foregroundColor: ChatPalette.onAccent,
+                    ),
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: const Text('Message'),
+                    onPressed: () {
+                      Navigator.pop(sheet);
+                      widget.onDirectMessage!(call);
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The head of the list when anything is archived, as in WhatsApp: an icon,
+  /// "Archived", and how many conversations it holds (green when one of them
+  /// has something unread).
+  Widget _archivedTile(bool expanded) {
+    final n = widget.archivedCount;
+    final hot = widget.archivedUnread > 0;
+    final icon = SizedBox(
+      width: expanded ? 48 : 44,
+      height: expanded ? 30 : 44,
+      child: const Icon(Icons.archive_outlined,
+          color: ChatPalette.accent, size: 22),
+    );
+    final tile = InkWell(
+      onTap: widget.onArchived,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(expanded ? 12 : 10, 8, 10, 8),
+        child: Row(
+          children: [
+            icon,
+            if (expanded) ...[
+              const SizedBox(width: 13),
+              Expanded(
+                child: Text(
+                  'Archived',
+                  style: TextStyle(
+                    color: ChatPalette.text,
+                    fontSize: ChatPalette.rowTitleSize,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Text(
+                '${hot ? widget.archivedUnread : n}',
+                style: TextStyle(
+                  color: hot ? ChatPalette.accent : ChatPalette.secondary,
+                  fontSize: ChatPalette.rowMetaSize,
+                  fontWeight: hot ? FontWeight.w700 : FontWeight.w400,
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+          ],
+        ),
+      ),
+    );
+    return expanded
+        ? tile
+        : Tooltip(message: 'Archived ($n)', child: tile);
+  }
+
+  List<PopupMenuEntry<String>> _menuItems() => [
+    if (widget.onArchive != null)
+      const PopupMenuItem(
+        value: 'archive',
+        child: Row(children: [
+          Icon(Icons.archive_outlined, size: 20, color: ChatPalette.secondary),
+          SizedBox(width: 12),
+          Text('Archive chat', style: TextStyle(color: ChatPalette.text)),
+        ]),
+      ),
+    if (widget.onDelete != null)
+      const PopupMenuItem(
+        value: 'delete',
+        child: Row(children: [
+          Icon(Icons.delete_outline, size: 20, color: Color(0xFFF15C6D)),
+          SizedBox(width: 12),
+          Text('Delete chat', style: TextStyle(color: Color(0xFFF15C6D))),
+        ]),
+      ),
+  ];
+
+  Future<void> _menuAt(Offset at, String id, String name) async {
+    final v = await showMenu<String>(
+      context: context,
+      color: ChatPalette.raised,
+      position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
+      items: _menuItems(),
+    );
+    if (v != null) _rowAction(v, id, name);
+  }
+
+  Future<void> _rowAction(String action, String id, String name) async {
+    if (action == 'archive') {
+      widget.onArchive?.call(id);
+      return;
+    }
+    if (action != 'delete') return;
+    // Deleting cannot be undone, so it is asked once, by name.
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        backgroundColor: ChatPalette.raised,
+        title: Text('Delete $name?',
+            style: const TextStyle(color: ChatPalette.text)),
+        content: const Text(
+          'Its messages are removed from this device. This cannot be undone.',
+          style: TextStyle(color: ChatPalette.secondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: ChatPalette.accent)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('Delete chat',
+                style: TextStyle(color: Color(0xFFF15C6D))),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) widget.onDelete?.call(id);
+  }
+
+  Widget _avatar(
+      ColorScheme cs, String id, String name, bool selected, double size) {
     // The label is the NAME, abbreviated — never a bare symbol. Channels are
     // called "#DEV (global)": strip the '#' and the scope suffix, keep up to
     // four letters ("DEV", "NEWS", "NOMA"), so a collapsed rail still reads.
@@ -514,13 +966,15 @@ class _RoomsFieldState extends State<RoomsField> {
     final hue = (id.hashCode & 0xff) / 255.0;
     final bg = HSLColor.fromAHSL(1, hue * 360, 0.5, 0.45).toColor();
     return Container(
-      width: 44,
-      height: 44,
+      width: size,
+      height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: bg,
         shape: BoxShape.circle,
-        border: selected ? Border.all(color: cs.primary, width: 2.5) : null,
+        border: selected
+            ? Border.all(color: ChatPalette.accent, width: 2.5)
+            : null,
       ),
       child: Text(
         label,
@@ -550,16 +1004,19 @@ class _RoomsFieldState extends State<RoomsField> {
                 height: 38,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
+                  color: ChatPalette.raised,
                   borderRadius: BorderRadius.circular(19),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.search, size: 18, color: cs.onSurfaceVariant),
-                    const SizedBox(width: 8),
+                    const Icon(Icons.search,
+                        size: 20, color: ChatPalette.secondary),
+                    const SizedBox(width: 10),
                     Text(
                       'Search',
-                      style: TextStyle(color: cs.onSurfaceVariant),
+                      style: TextStyle(
+                          color: ChatPalette.secondary,
+                          fontSize: ChatPalette.rowSubtitleSize),
                     ),
                   ],
                 ),
@@ -568,11 +1025,11 @@ class _RoomsFieldState extends State<RoomsField> {
                 width: 44,
                 height: 44,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
+                decoration: const BoxDecoration(
+                  color: ChatPalette.raised,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.search, color: cs.onSurfaceVariant),
+                child: const Icon(Icons.search, color: ChatPalette.secondary),
               ),
       ),
     );
@@ -602,11 +1059,12 @@ class _RoomsFieldState extends State<RoomsField> {
         // see isDirect above.
         if (!isDirect)
           Container(
-          height: 48,
+          height: 52,
           padding: const EdgeInsets.only(left: 4, right: 12),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
+            color: ChatPalette.windowBg,
             border: Border(
-              bottom: BorderSide(color: cs.outlineVariant, width: 1),
+              bottom: BorderSide(color: ChatPalette.divider, width: 1),
             ),
           ),
           child: Row(
@@ -624,8 +1082,10 @@ class _RoomsFieldState extends State<RoomsField> {
                       name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+                      style: TextStyle(
+                        color: ChatPalette.text,
+                        fontSize: ChatPalette.rowTitleSize,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
@@ -633,6 +1093,7 @@ class _RoomsFieldState extends State<RoomsField> {
               ),
               IconButton(
                 tooltip: 'Members',
+                color: ChatPalette.secondary,
                 icon: Icon(_membersOpen ? Icons.group : Icons.group_outlined),
                 onPressed: () => setState(() => _membersOpen = !_membersOpen),
               ),
@@ -641,10 +1102,13 @@ class _RoomsFieldState extends State<RoomsField> {
         ),
         Expanded(
           child: open == null
-              ? Center(
-                  child: Text(
-                    'Pick a room',
-                    style: TextStyle(color: cs.onSurfaceVariant),
+              ? const ColoredBox(
+                  color: ChatPalette.chatBg,
+                  child: Center(
+                    child: Text(
+                      'Pick a room',
+                      style: TextStyle(color: ChatPalette.secondary),
+                    ),
                   ),
                 )
               : GestureDetector(
@@ -667,7 +1131,7 @@ class _RoomsFieldState extends State<RoomsField> {
                     key: ValueKey('room-$open'),
                     fieldName: 'rooms_chat',
                     label: '',
-                    hint: 'Message…',
+                    hint: 'Message',
                     fill: true,
                     safeBottom: true,
                     // The OPEN room, so this is where its tail is read from
@@ -708,9 +1172,9 @@ class _RoomsFieldState extends State<RoomsField> {
           height: 48,
           alignment: Alignment.centerLeft,
           padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             border: Border(
-              bottom: BorderSide(color: cs.outlineVariant, width: 1),
+              bottom: BorderSide(color: ChatPalette.divider, width: 1),
             ),
           ),
           child: Text(

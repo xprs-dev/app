@@ -541,7 +541,7 @@ class _ConversationsFieldState extends State<ConversationsField> {
     final cs = Theme.of(context).colorScheme;
     final selected = it.id == _openId;
     return Material(
-      color: selected ? ChatPalette.outBubble : Colors.transparent,
+      color: selected ? ChatPalette.raised : Colors.transparent,
       child: InkWell(
         onTap: () => _select(it.id),
         child: Padding(
@@ -570,10 +570,8 @@ class _ConversationsFieldState extends State<ConversationsField> {
                             it.subtitle.isEmpty ? 'No messages yet' : it.subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                color: selected
-                                    ? Colors.white70
-                                    : ChatPalette.secondary,
+                            style: const TextStyle(
+                                color: ChatPalette.secondary,
                                 fontSize: 12.5),
                           ),
                         ),
@@ -581,10 +579,8 @@ class _ConversationsFieldState extends State<ConversationsField> {
                           Padding(
                             padding: const EdgeInsets.only(left: 6),
                             child: Text(it.badge,
-                                style: TextStyle(
-                                    color: selected
-                                        ? Colors.white
-                                        : ChatPalette.accent,
+                                style: const TextStyle(
+                                    color: ChatPalette.accent,
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600)),
                           ),
@@ -613,7 +609,7 @@ class _ConversationsFieldState extends State<ConversationsField> {
                                 borderRadius: BorderRadius.circular(10)),
                             child: Text('${it.unread}',
                                 style: const TextStyle(
-                                    color: Colors.white,
+                                    color: ChatPalette.onAccent,
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold)),
                           ),
