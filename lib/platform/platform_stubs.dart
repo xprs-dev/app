@@ -51,6 +51,11 @@ Future<void> raiseAppWindow() async {
 /// Remove app-posted OS notifications. No-op on web (there are none).
 Future<void> clearSystemNotifications() async {}
 
+/// Withdraw the OS notifications about one target (see platform_io). No-op on
+/// web: the in-app layer is the only notification surface there.
+Future<void> withdrawSystemNotifications(
+    {required String wapp, String? convo, String? view, bool all = false}) async {}
+
 /// True when the current platform supports spawning subprocesses
 /// (Linux / macOS / Windows). Web and mobile return false so
 /// callers can show a graceful "not supported here" message.

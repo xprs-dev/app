@@ -136,6 +136,7 @@ class NotificationStore {
   final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
 
   EventSubscription<NotificationShownEvent>? _sub;
+  EventSubscription<NotificationsSeenEvent>? _seenSub;
   bool _initialised = false;
   int _seenMs = 0;
 
@@ -144,6 +145,20 @@ class NotificationStore {
     _initialised = true;
     _sub = EventBus().on<NotificationShownEvent>((e) {
       unawaited(record(e.notification).catchError((_) {}));
+    });
+    // Shown what they were about (NotificationService.markSeen): the same
+    // rule that withdraws them from the OS shade marks them read here.
+    _seenSub = EventBus().on<NotificationsSeenEvent>((e) {
+      unawaited(_markSeenWhere((n) => e.all
+          ? n.source == e.source
+          : NotificationService.isAbout(
+              nSource: n.source,
+              nConvo: n.convo,
+              nView: n.view,
+              source: e.source,
+              convo: e.convo,
+              view: e.view))
+          .catchError((_) {}));
     });
     ProfileService.instance.activeProfileNotifier.addListener(_reload);
     unawaited(_load());
@@ -193,16 +208,6 @@ class NotificationStore {
     try {
       await _persistItems(next);
     } catch (_) {}
-  }
-
-  /// Mark everything from one source as read — the panel that owns those
-  /// notifications was opened, so the bell must agree with it.
-  ///
-  /// Exact, per row. It used to drag the single global watermark forward to
-  /// this source's newest timestamp, which silently marked every OTHER
-  /// source's older notifications read too.
-  Future<void> markSeenBySource(String source) async {
-    await _markSeenWhere((n) => n.source == source);
   }
 
   Future<void> markAllSeen() async {
@@ -259,6 +264,8 @@ class NotificationStore {
   void reset() {
     _sub?.cancel();
     _sub = null;
+    _seenSub?.cancel();
+    _seenSub = null;
     _initialised = false;
     _seenMs = 0;
     items.value = const [];

@@ -194,6 +194,25 @@ Future<void> clearSystemNotifications() async {
   } catch (_) {}
 }
 
+/// Withdraw the OS notifications about what the person is now looking at: a
+/// conversation [convo] or a view [view] inside [wapp], or, with neither, the
+/// notifications of [wapp] that named no target. The rule that decides what
+/// counts as seen is NotificationService.markSeen's; this only carries it to
+/// the shade. Android only: a desktop toast is transient already.
+Future<void> withdrawSystemNotifications(
+    {required String wapp, String? convo, String? view, bool all = false}) async {
+  try {
+    if (Platform.isAndroid) {
+      await _bgChannel.invokeMethod('notify_seen', {
+        'wapp': wapp,
+        if (all) 'all': true,
+        if (convo != null && convo.isNotEmpty) 'convo': convo,
+        if (view != null && view.isNotEmpty) 'view': view,
+      });
+    }
+  } catch (_) {}
+}
+
 // Native bridge for Android system notifications (shared with the foreground
 // service). A rolling id so distinct events stack instead of replacing.
 const MethodChannel _bgChannel = MethodChannel('com.xprs.app/bg_service');

@@ -87,6 +87,18 @@ object BgBridge {
                     clearEvents(appCtx)
                     result.success(true)
                 }
+                // The person has been shown what some notifications were
+                // about (NotificationService.markSeen): withdraw exactly those.
+                "notify_seen" -> {
+                    withdraw(
+                        appCtx,
+                        wapp = call.argument<String>("wapp") ?: "",
+                        convo = call.argument<String>("convo"),
+                        view = call.argument<String>("view"),
+                        all = call.argument<Boolean>("all") ?: false,
+                    )
+                    result.success(true)
+                }
                 "media.update" -> {
                     MediaController.update(
                         appCtx,
@@ -122,11 +134,45 @@ object BgBridge {
      * never saw. Service/media notifications live at 7001/7002 — untouched. */
     fun clearEvents(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
-        synchronized(postedEventIds) {
-            for (id in postedEventIds) nm.cancel(id)
-            postedEventIds.clear()
+        synchronized(postedEventIds) { postedEventIds.clear() }
+        // Event notifications are posted with a TAG (what they are about), and
+        // a tagged one is only cancelled by its tag and id together.
+        for (sbn in nm.activeNotifications) {
+            if (sbn.id in 9000..9099) nm.cancel(sbn.tag, sbn.id)
         }
         for (id in 9000..9099) nm.cancel(id)
+    }
+
+    /** What an event notification is about, as its tag:
+     * `xprs` | wapp | convo | view. Read back from the shade itself, so a
+     * notification posted by a previous process (headless from boot) can be
+     * withdrawn by this one, which never knew its id. */
+    private const val TAG_SEP = "\u0001"
+    private fun aboutTag(wapp: String?, convo: String?, view: String?) =
+        listOf("xprs", wapp ?: "", convo ?: "", view ?: "").joinToString(TAG_SEP)
+
+    /** Withdraw the event notifications about one target. The rule is the
+     * Dart side's (NotificationService.markSeen): same wapp, and then the same
+     * conversation, or the same view, or (for a target-less ask) only the
+     * notifications that named no target at all. */
+    fun withdraw(
+        context: Context, wapp: String, convo: String?, view: String?, all: Boolean = false,
+    ) {
+        if (wapp.isEmpty()) return
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        for (sbn in nm.activeNotifications) {
+            val parts = (sbn.tag ?: continue).split(TAG_SEP)
+            if (parts.size != 4 || parts[0] != "xprs" || parts[1] != wapp) continue
+            val nConvo = parts[2]
+            val nView = parts[3]
+            val about = when {
+                all -> true // a screen listing all of this wapp's notifications
+                nConvo.isNotEmpty() -> nConvo == (convo ?: "")
+                nView.isNotEmpty() -> nView == (view ?: "")
+                else -> true // about the wapp itself: seen once it is open
+            }
+            if (about) nm.cancel(sbn.tag, sbn.id)
+        }
     }
 
     /** Post a heads-up notification for a message/event. Tapping opens the
@@ -186,6 +232,6 @@ object BgBridge {
             .apply { if (pi != null) setContentIntent(pi) }
             .build()
         synchronized(postedEventIds) { postedEventIds.add(id) }
-        nm.notify(id, n)
+        nm.notify(aboutTag(wapp, convo, view), id, n)
     }
 }

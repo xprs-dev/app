@@ -173,9 +173,89 @@ class SystemTrayNotificationBackend implements NotificationBackend {
 
 // ── Service ─────────────────────────────────────────────────────────
 
-class NotificationService {
+class NotificationService with WidgetsBindingObserver {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
+
+  // ── Seen: one rule for every notification, from every wapp ──────────
+  //
+  // A notification is SEEN once the person has been shown what it is about:
+  // the conversation it names (`convo`), the view it names (`view`), or, when
+  // it names neither, its wapp. Seen means it leaves the OS shade and the bell.
+  // Nothing here knows any wapp: the page that hosts a wapp says what it is
+  // showing ([viewing]), whichever wapp that is, and this decides. The same
+  // rule keeps a notification about what is on screen from being raised at all
+  // ([show]), whichever engine raised it.
+
+  /// Whether a notification from [nSource] about [nConvo]/[nView] is about the
+  /// target ([source], [convo], [view]) the person is being shown.
+  static bool isAbout({
+    required String nSource,
+    String? nConvo,
+    String? nView,
+    required String source,
+    String? convo,
+    String? view,
+  }) {
+    if (nSource != source) return false;
+    if ((nConvo ?? '').isNotEmpty) return nConvo == convo;
+    if ((nView ?? '').isNotEmpty) return nView == view;
+    return true; // about the wapp itself: seen once any of it is on screen
+  }
+
+  /// What the person is being shown now, if a wapp page is in front.
+  ({String source, String? convo, String? view})? _onScreen;
+  bool _foreground = true;
+
+  /// A wapp page is showing [convo] or [view] of [source] (or the wapp with
+  /// neither). Cheap to call on every build: it acts only on a change.
+  void viewing(String source, {String? convo, String? view}) {
+    final c = (convo ?? '').isEmpty ? null : convo;
+    final v = (view ?? '').isEmpty ? null : view;
+    final s = _onScreen;
+    if (s != null && s.source == source && s.convo == c && s.view == v) return;
+    _onScreen = (source: source, convo: c, view: v);
+    if (_foreground) markSeen(source, convo: c, view: v);
+  }
+
+  /// The page for [source] is gone; nothing of it is on screen.
+  void leftView(String source) {
+    if (_onScreen?.source == source) _onScreen = null;
+  }
+
+  /// The person has been shown this target: withdraw the notifications about
+  /// it from the OS shade, and mark them seen on the bell. [all] is a screen
+  /// that lists every notification of [source] (a wapp's own notifications
+  /// panel): looking at it is seeing all of them.
+  void markSeen(String source, {String? convo, String? view, bool all = false}) {
+    EventBus().fire(
+        NotificationsSeenEvent(source, convo: convo, view: view, all: all));
+    if (source.startsWith('wapp:')) {
+      unawaited(platform.withdrawSystemNotifications(
+          wapp: source.substring(5), convo: convo, view: view, all: all));
+    }
+  }
+
+  bool _onScreenNow(XprsNotification n) {
+    final s = _onScreen;
+    if (!_foreground || s == null) return false;
+    return isAbout(
+        nSource: n.source,
+        nConvo: n.convo,
+        nView: n.view,
+        source: s.source,
+        convo: s.convo,
+        view: s.view);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    // Coming back to a screen is being shown it again: what arrived about it
+    // while the app was away was posted to the shade, and is seen now.
+    final s = _onScreen;
+    if (_foreground && s != null) markSeen(s.source, convo: s.convo, view: s.view);
+  }
 
   final List<NotificationBackend> _backends = [];
 
@@ -197,6 +277,10 @@ class NotificationService {
   void init() {
     if (_initialised) return;
     _initialised = true;
+    // A headless engine has no lifecycle and nothing on screen.
+    final lc = WidgetsBinding.instance.lifecycleState;
+    _foreground = lc == null || lc == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
 
     // The system-tray backend defers its actual per-OS routing to
     // the platform abstraction, so we always register it — on web
@@ -262,6 +346,9 @@ class NotificationService {
       if (guard.contains(tag)) return false;
       guard.add(tag);
     }
+    // About what the person is looking at right now: the screen already says
+    // it, so there is nothing to raise (and, tagged, nothing to raise later).
+    if (_onScreenNow(n)) return false;
     history.add(n);
     if (history.length > maxHistory) {
       history.removeAt(0);
@@ -278,6 +365,10 @@ class NotificationService {
   /// cases. Not used at runtime.
   @visibleForTesting
   void reset() {
+    // Only init() added it, and a test that never ran init has no binding.
+    if (_initialised) WidgetsBinding.instance.removeObserver(this);
+    _onScreen = null;
+    _foreground = true;
     _errorSub?.cancel();
     _errorSub = null;
     _backends.clear();
@@ -290,6 +381,27 @@ class NotificationService {
 /// Fired on [EventBus] after a notification is handed to backends.
 /// History / debug UIs and [NotificationLayer] subscribe to this for
 /// live updates.
+/// Fired when the person has been shown what notifications from [source]
+/// about [convo]/[view] were about ([NotificationService.markSeen]). The bell
+/// and the in-app cards drop what matches ([NotificationService.isAbout]).
+class NotificationsSeenEvent extends AppEvent {
+  final String source;
+  final String? convo;
+  final String? view;
+  final bool all;
+  NotificationsSeenEvent(this.source, {this.convo, this.view, this.all = false});
+
+  bool covers(XprsNotification n) => all
+      ? n.source == source
+      : NotificationService.isAbout(
+      nSource: n.source,
+      nConvo: n.convo,
+      nView: n.view,
+      source: source,
+      convo: convo,
+      view: view);
+}
+
 class NotificationShownEvent extends AppEvent {
   final XprsNotification notification;
   NotificationShownEvent(this.notification);
@@ -318,12 +430,18 @@ class _NotificationLayerState extends State<NotificationLayer> {
 
   final List<_VisibleNotification> _visible = [];
   EventSubscription<NotificationShownEvent>? _sub;
+  EventSubscription<NotificationsSeenEvent>? _seenSub;
   int _nextKey = 0;
 
   @override
   void initState() {
     super.initState();
     _sub = EventBus().on<NotificationShownEvent>(_onShown);
+    // A card about what the person has just been shown has said its piece.
+    _seenSub = EventBus().on<NotificationsSeenEvent>((e) {
+      if (!mounted || !_visible.any((v) => e.covers(v.notification))) return;
+      setState(() => _visible.removeWhere((v) => e.covers(v.notification)));
+    });
   }
 
   void _onShown(NotificationShownEvent e) {
@@ -355,6 +473,7 @@ class _NotificationLayerState extends State<NotificationLayer> {
   @override
   void dispose() {
     _sub?.cancel();
+    _seenSub?.cancel();
     super.dispose();
   }
 

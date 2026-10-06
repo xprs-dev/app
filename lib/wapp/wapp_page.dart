@@ -2376,19 +2376,9 @@ class _WappPageState extends State<WappPage>
               _convStores.values.any((s) => !s.mayNotifyFor(convoId))) {
             continue;
           }
-          // A message for the thread you already have OPEN is not a popup — the
-          // window is right there and ui.convo.msg is updating it. Only while
-          // foregrounded: backgrounded, the page has handed its engine to the
-          // headless manager, which raises notifications and where no thread is
-          // on screen. _bgKeepAlive is the media-playback keepalive (false for
-          // chat), telling "you are looking at this" apart from "ticking in the
-          // background for audio".
-          if (convoId != null &&
-              convoId.isNotEmpty &&
-              !_bgKeepAlive &&
-              (convoId == _roomsOpenId || convoId == _convOpenId)) {
-            continue;
-          }
+          // A message for the thread already on screen is not raised: that is
+          // NotificationService's rule now (show -> _onScreenNow), the same
+          // for every engine and every wapp, fed by _reportOnScreen.
           final levelStr = (data['level'] as String? ?? 'info').toLowerCase();
           final level = switch (levelStr) {
             'success' => NotificationLevel.success,
@@ -2396,11 +2386,16 @@ class _WappPageState extends State<WappPage>
             'error' || 'err' => NotificationLevel.error,
             _ => NotificationLevel.info,
           };
-          final scopeStr = (data['scope'] as String? ?? 'app').toLowerCase();
+          // Unsaid means both, as BackgroundWappManager raises it: the page
+          // engine outlives the window going to the background, and whichever
+          // engine raises a tag first owns it, so an in-app-only default here
+          // kept a message out of the shade. The tray backend stays quiet
+          // while the app is in front.
+          final scopeStr = (data['scope'] as String? ?? 'both').toLowerCase();
           final scope = switch (scopeStr) {
             'system' => NotificationScope.system,
-            'both' => NotificationScope.both,
-            _ => NotificationScope.app,
+            'app' => NotificationScope.app,
+            _ => NotificationScope.both,
           };
           NotificationService.instance.show(
             XprsNotification(
@@ -4319,6 +4314,7 @@ class _WappPageState extends State<WappPage>
   /// Drain the curated firehose host-side into the Social "All" archive.
   @override
   void dispose() {
+    NotificationService.instance.leftView('wapp:$_wappName');
     WidgetsBinding.instance.removeObserver(this);
     RnsService.instance.removeProfileListener(_onProfilesChanged);
     RnsService.instance.removeNostrListener(_onNostrChanged);
@@ -4467,8 +4463,32 @@ class _WappPageState extends State<WappPage>
         RnsService.instance.reachableByCallsign(id);
   }
 
+  /// A view this page pushed over itself (a Status thread, `post:<id>`), so
+  /// the notifications about it are the ones that count as seen meanwhile.
+  String? _openView;
+  String? _reportedOnScreen;
+
+  /// Tell the notification core what this page is showing: the open
+  /// conversation, a view pushed over it, or the wapp itself. Whatever wapp
+  /// this is; the rule for what that makes SEEN is the core's
+  /// (NotificationService.markSeen). Reported after the frame, and only when it
+  /// changed, because marking seen updates other widgets.
+  void _reportOnScreen() {
+    final convo = _roomsOpenId ?? _convOpenId;
+    final view = _openView;
+    final key = '${convo ?? ''}\u0001${view ?? ''}';
+    if (key == _reportedOnScreen) return;
+    _reportedOnScreen = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      NotificationService.instance
+          .viewing('wapp:$_wappName', convo: convo, view: view);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    _reportOnScreen();
     if (_tabController == null) {
       // Give the open a voice. The social wapp spends this moment loading and
       // firing its first firehose poll; a spinner + "Getting fresh posts" beats a
@@ -5869,6 +5889,9 @@ class _WappPageState extends State<WappPage>
     // (and the badge stayed lit for the other two).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       RnsService.instance.nostrNotificationsMarkRead();
+      // And the bell and the OS shade agree: this panel lists every
+      // notification of this wapp, so they are all seen (one rule, the core's).
+      NotificationService.instance.markSeen('wapp:$_wappName', all: true);
       if (mounted) setState(() {});
     });
     if (events.isEmpty) {
@@ -7670,6 +7693,10 @@ class _WappPageState extends State<WappPage>
     final mid = (post['mid'] ?? '').toString();
     if (mid.isEmpty) return;
     _keepPostMedia(post); // opening a thread = an interaction — keep its media
+    // The thread is a view of its own: what was said about it is seen now.
+    final outer = _openView;
+    _openView = 'post:$mid';
+    _reportOnScreen();
     Navigator.of(context)
         .push(
           MaterialPageRoute(
@@ -7723,6 +7750,7 @@ class _WappPageState extends State<WappPage>
           // Back on the stream: pull the latest + repaint so posts that arrived
           // while reading the thread appear ("updates falling in").
           if (!mounted) return;
+          _openView = outer;
           _sendCommand('activity_refresh');
           setState(() {});
         });

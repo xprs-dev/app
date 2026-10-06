@@ -66,7 +66,12 @@ void main() {
     await store.record(_n('msg:1', source: 'wapp:chat'));
     expect(store.unreadCount.value, 2);
 
-    await store.markSeenBySource('wapp:social');
+    // The Status notifications panel lists every one of its notifications,
+    // so looking at it sees them all: one rule, NotificationService's.
+    store.init();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    NotificationService.instance.markSeen('wapp:social', all: true);
+    await Future<void>.delayed(Duration.zero);
 
     expect(store.unreadCount.value, 1,
         reason: 'reading the social panel says nothing about chat');

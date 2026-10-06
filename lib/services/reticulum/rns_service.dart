@@ -105,7 +105,6 @@ import 'package:reticulum/reticulum.dart'
 import 'package:reticulum/reticulum.dart' show BlossomServer;
 
 import '../notification_service.dart';
-import '../notification_store.dart';
 import '../../profile/profile_db.dart';
 import '../../profile/profile_service.dart';
 import '../../profile/storage_paths.dart';
@@ -9483,9 +9482,6 @@ class RnsService {
     final now = DateTime.now().millisecondsSinceEpoch;
     _notifSeenMs = now;
     PreferencesService.instanceSync?.notifSeenMs = now;
-    // The launcher's bell counts the same events from the other side; leaving it
-    // lit after the user has read them is the same bug wearing a different hat.
-    NotificationStore.instance.markSeenBySource('wapp:social');
   }
 
   /// (upvotes, downvotes, myVote ∈ {-1,0,1}) for a post.
