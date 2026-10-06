@@ -120,8 +120,8 @@ Wapp source lives in `../apps` (the `xprs-dev/apps` repo), not here;
 `assets/wapps/*.wapp` are built copies. Ship chain:
 
 ```sh
-cd ../apps/<name> && WASI_SDK_PATH=~/wasi-sdk make          # -Werror
-cd ../ && ./build-archive.sh <name>
+cd ../apps/<name> && WASI_SDK_PATH=~/temp/wasi-sdk make          # -Werror
+cd ../ && WASI_SDK_PATH=~/temp/wasi-sdk ./build-archive.sh <name>
 cp binaries/<name>/<name>-<version>.wapp ../app/assets/wapps/<name>.wapp
 ```
 
