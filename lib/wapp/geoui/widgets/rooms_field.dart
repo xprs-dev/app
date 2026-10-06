@@ -996,15 +996,17 @@ class _RoomsFieldState extends State<RoomsField> {
       ),
     );
     // A room is a place and keeps its initials. A conversation with one
-    // station shows the picture that station announced (XPRS.md 6.3.2), with
-    // the initials until it has one.
+    // station shows the picture that station announced (XPRS.md 6.3.2), and
+    // until it has one the identicon it wears in Status and everywhere else:
+    // four letters of a callsign ("X1AR") told two stations apart badly and
+    // made the same person look different in each wapp.
     if (id.startsWith('#')) return initials;
     return Container(
       width: size,
       height: size,
       foregroundDecoration:
           BoxDecoration(shape: BoxShape.circle, border: border),
-      child: StationAvatar(callsign: id, size: size, fallback: initials),
+      child: StationAvatar(callsign: id, size: size),
     );
   }
 

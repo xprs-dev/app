@@ -232,6 +232,10 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
     final action = (it['action'] ?? '').toString();
     final actionLabel = (it['actionLabel'] ?? '').toString();
     final avatar = (it['avatar'] ?? '').toString();
+    // `call`: the station the row is ABOUT when its id is not one (a packet,
+    // a message). Without it a list of packets wore one identicon per packet
+    // id, so the same sender looked like a different person on every row.
+    final call = (it['call'] ?? '').toString();
     // `picture`: a photo of the THING the row is (a board, a product), drawn
     // as a wide thumbnail instead of a 44 px circle, because a person picking
     // hardware out of a list confirms it by the picture and cannot from a
@@ -312,9 +316,9 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
                 // (XPRS.md 6.3.2); until then, or for anything else, the icon
                 // or the identicon it always had.
                 _stationOr(
-                  id,
+                  call.isNotEmpty ? call : id,
                   iconName.isEmpty
-                      ? GeneratedAvatar(seed: id, size: 44)
+                      ? null
                       : SizedBox(
                           width: 44,
                           height: 44,
@@ -466,12 +470,22 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
 /// The callsign a row id names, if it names one station: a bare callsign or
 /// a wapp's `go:`/`arc:` link to one. Rooms (`#...`) and anything else, null.
 final RegExp _callsignShape = RegExp(r'^[A-Z0-9]{3,10}$');
-Widget _stationOr(String id, Widget fallback) {
-  var c = id.trim().toUpperCase();
+///
+/// [icon] null means the identicon, seeded by the CALLSIGN for a station (as
+/// every other screen seeds it: `go:X1MEZA` drew a different face from the
+/// chat list's X1MEZA) and by the id for anything else.
+Widget _stationOr(String id, Widget? icon) {
+  // As given, not upper-cased: a callsign is upper case on the wire, and a
+  // packet id ("d92aa7") upper-cased looked like one, so every packet row
+  // asked the core for a stranger's picture and spent the fetch budget
+  // (performance.md 8.17) on stations that do not exist.
+  var c = id.trim();
   final colon = c.indexOf(':');
   if (colon > 0 && colon < 4) c = c.substring(colon + 1);
-  if (!_callsignShape.hasMatch(c)) return fallback;
-  return StationAvatar(callsign: c, size: 44, fallback: fallback);
+  if (!_callsignShape.hasMatch(c)) {
+    return icon ?? GeneratedAvatar(seed: id, size: 44);
+  }
+  return StationAvatar(callsign: c, size: 44, fallback: icon);
 }
 
 class _TokenAvatar extends StatefulWidget {

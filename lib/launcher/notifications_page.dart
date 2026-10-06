@@ -77,7 +77,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     _chip('wapp', 'Wapps'),
                     _chip('host', 'Host'),
                     for (final level in NotificationLevel.values)
-                      _chip(level.name, level.name),
+                      _chip(level.name,
+                          '${level.name[0].toUpperCase()}${level.name.substring(1)}'),
                   ],
                 ),
               ),

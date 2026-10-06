@@ -16,6 +16,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'dart:ui' as ui;
 
+import '../../../profile/profile_service.dart';
+import '../../../profile/station_avatar.dart';
 import '../../../services/media_disk_cache.dart';
 import '../../../services/reticulum/rns_service.dart';
 import '../../native/inline_video_player.dart';
@@ -920,7 +922,11 @@ class _ActivityFeedState extends State<ActivityFeed> {
     if (widget.selfAvatar != null) {
       return CircleAvatar(radius: 18, backgroundImage: widget.selfAvatar);
     }
-    return GeneratedAvatar(seed: call.isNotEmpty ? call : 'me', size: 36);
+    // Our own callsign, so the composer wears the identicon our posts do.
+    final own = ProfileService.instance.activeProfile?.wireCallsign ?? '';
+    return StationAvatar(
+        callsign: call.isNotEmpty ? call : (own.isNotEmpty ? own : 'me'),
+        size: 36);
   }
 }
 

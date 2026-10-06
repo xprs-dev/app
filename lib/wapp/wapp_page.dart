@@ -6261,7 +6261,9 @@ class _WappPageState extends State<WappPage>
               children: [for (final a in toolbarActions) _toolbarButton(a)],
             ),
           ),
-        if (screen.getBool('search') == true) _buildSearchBar(name),
+        if (screen.getBool('search') == true)
+          _buildSearchBar(name,
+              autofocus: screen.getBool('hidden') == true),
         Expanded(
           child: PeopleViewField(
             fieldName: name,
@@ -6364,12 +6366,17 @@ class _WappPageState extends State<WappPage>
   /// A persistent search box above a people list. As the user types it sends
   /// `<field>_search` with the query in `<field>_query`; the wapp filters and
   /// re-renders the list. Empty query restores the normal view.
-  Widget _buildSearchBar(String field) {
+  ///
+  /// [autofocus] on a screen that exists only to search (a hidden one, opened
+  /// by a Search action): the person came to type, and their first keys went
+  /// nowhere. Not on a tab, where it would raise a phone's keyboard unasked.
+  Widget _buildSearchBar(String field, {bool autofocus = false}) {
     final ctl = _searchCtl.putIfAbsent(field, () => TextEditingController());
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 2),
       child: TextField(
         controller: ctl,
+        autofocus: autofocus,
         textInputAction: TextInputAction.search,
         decoration: InputDecoration(
           isDense: true,
