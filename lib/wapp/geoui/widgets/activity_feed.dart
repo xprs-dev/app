@@ -788,6 +788,7 @@ class _ActivityFeedState extends State<ActivityFeed> {
               Expanded(
                 child: TextField(
                   controller: _input,
+                  textCapitalization: TextCapitalization.sentences,
                   focusNode: _composeFocus,
                   autofocus: true,
                   onTapOutside: (_) => _collapseComposer(),
@@ -1720,6 +1721,7 @@ class _ActivityThreadPageState extends State<ActivityThreadPage> {
               Expanded(
                 child: TextField(
                   controller: _input,
+                  textCapitalization: TextCapitalization.sentences,
                   focusNode: _inputFocus,
                   style: const TextStyle(color: Colors.white),
                   minLines: 1,

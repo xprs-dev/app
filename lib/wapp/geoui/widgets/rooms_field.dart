@@ -610,6 +610,8 @@ class _RoomsFieldState extends State<RoomsField> {
           Expanded(
             child: TextField(
               controller: _statusInput,
+              // A message is written as a sentence: capital first letter.
+              textCapitalization: TextCapitalization.sentences,
               maxLines: 1,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _postStatus(),

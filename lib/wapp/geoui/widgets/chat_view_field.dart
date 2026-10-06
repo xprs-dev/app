@@ -1718,6 +1718,8 @@ class _ChatViewFieldState extends State<ChatViewField> {
                     child: TextField(
                       controller: _input,
                       focusNode: _inputFocus,
+                      // A message is written as a sentence: capital first letter.
+                      textCapitalization: TextCapitalization.sentences,
                       style: TextStyle(
                           color: ChatPalette.text,
                           fontSize: ChatPalette.bodySize),
