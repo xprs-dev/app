@@ -5,13 +5,14 @@ part of 'launcher.dart';
 /// Wapps that are installed but temporarily hidden from the grid (their
 /// implementation isn't finished yet). Folder names, matched during the scan.
 ///
-/// The Wapp Store (`install`) was here until it read one canonical catalog
-/// (https://xprs.dev/apps) and could install, search and remove; it is a
-/// grid tile again, and seeding.dart no longer skips it either.
 /// `torrents`, `mail` and `mp4player` are hidden for a different reason again:
 /// they work, they are simply not what this network is being used for right
 /// now. Nothing behind them is removed -- the wapps still ship in assets/ and
 /// still run if started -- so unhiding is deleting a word from this set.
+///
+/// `terminal`, `circles` and the Wapp Store (`install`) are hidden for the
+/// same reason (2026-10-06): unused, and on the grid they only confused. The
+/// store's catalog publishes one demo app, so it offered nothing to install.
 const Set<String> _kHiddenWapps = {
   'maps',
   'atm',
@@ -19,6 +20,9 @@ const Set<String> _kHiddenWapps = {
   'torrents',
   'mail',
   'mp4player',
+  'terminal',
+  'circles',
+  'install',
 };
 
 /// Outcome of the unmet-dependency dialog shown before launching a wapp.
