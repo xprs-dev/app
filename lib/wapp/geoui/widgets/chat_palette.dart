@@ -1,8 +1,9 @@
 // ChatPalette: the shared colour palette and type scale for the GeoUI
 // messaging widgets (ChatViewField bubbles/background, ConversationsField and
-// RoomsField lists, and the wapp page chrome). The values follow WhatsApp's
-// dark theme, the messenger most people already know, so a chat here reads as
-// familiar on first sight. This is generic styling: no app (APRS, Circles and
+// RoomsField lists, and the wapp page chrome). The layout and surfaces follow
+// WhatsApp's dark theme, the messenger most people already know, so a chat
+// here reads as familiar on first sight; the accent and the outgoing bubble
+// are Telegram's blue rather than WhatsApp's green. This is generic styling: no app (APRS, Circles and
 // so on) knowledge lives here, and every chat-based wapp shares it.
 
 import 'package:flutter/foundation.dart';
@@ -19,8 +20,8 @@ abstract final class ChatPalette {
   /// Incoming (received) message bubble.
   static const Color inBubble = Color(0xFF202C33);
 
-  /// Outgoing (sent) message bubble. WhatsApp's dark teal-green.
-  static const Color outBubble = Color(0xFF005C4B);
+  /// Outgoing (sent) message bubble. Telegram's night-theme blue.
+  static const Color outBubble = Color(0xFF2B5278);
 
   /// A raised surface: the composer's input pill, search boxes, the day
   /// separator and the selected row of a conversation list.
@@ -36,11 +37,11 @@ abstract final class ChatPalette {
   static const Color secondary = Color(0xFF8696A0);
 
   /// Accent: sender actions, tab indicator, unread badges, the send button.
-  /// WhatsApp's green.
-  static const Color accent = Color(0xFF21C063);
+  /// Telegram's blue.
+  static const Color accent = Color(0xFF2AABEE);
 
   /// Text drawn ON the accent (an unread count, the send icon).
-  static const Color onAccent = Color(0xFF000000);
+  static const Color onAccent = Color(0xFFFFFFFF);
 
   /// Links and the read double-tick.
   static const Color link = Color(0xFF53BDEB);

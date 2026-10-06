@@ -9,8 +9,8 @@
  * with the typed text (the renderer routes that to the wapp as a
  * `<field>_send` action carrying a `<field>_input` value).
  *
- * Colours and type sizes follow WhatsApp's dark theme via [ChatPalette]:
- * outgoing #005C4B, incoming #202C33, on a pure black chat background, with the
+ * Colours and type sizes come from [ChatPalette]: Telegram's blue outgoing
+ * bubble (#2B5278), incoming #202C33, on a pure black chat background, with the
  * message text at the size WhatsApp uses on the same platform.
  */
 
