@@ -504,13 +504,16 @@ class _ActivityFeedState extends State<ActivityFeed> {
           constraints: const BoxConstraints(maxWidth: 640),
           child: Column(
             children: [
-              // The filter bar stays at the top (it says WHAT you are reading),
-              // but the composer belongs at the BOTTOM, on the thumb, where the
-              // Chat wapp puts it. Writing is the last thing you do on this
-              // screen, not the first — and a composer above the stream pushed
-              // the newest post down and out of sight.
+              // The filter bar says WHAT you are reading; under it, the box to
+              // write a status, at the head of the stream it adds to, the way
+              // every feed people already know places it. Collapsed it is one
+              // line, so the newest post is still in view; the "N new posts"
+              // pill sits just under it, where those posts will appear.
               if (!widget.readOnly) ...[
                 _filterBar(cs),
+                Divider(height: 1, color: cs.outlineVariant.withAlpha(45)),
+                _composer(cs),
+                if (_newCount > 0) _newPostsPill(cs),
                 Divider(height: 1, color: cs.outlineVariant.withAlpha(45)),
               ],
               Expanded(
@@ -587,13 +590,6 @@ class _ActivityFeedState extends State<ActivityFeed> {
                         ),
                 ),
               ),
-              // Composer last: it sits on the bottom edge, above the keyboard,
-              // exactly where Chat's is. The "N new posts" pill rides just above
-              // it so the two live together instead of straddling the stream.
-              if (!widget.readOnly) ...[
-                if (_newCount > 0) _newPostsPill(cs),
-                _composer(cs),
-              ],
             ],
           ),
         ),
@@ -1307,6 +1303,10 @@ class ActivityPostCard extends StatelessWidget {
                               size: mediaSizeHint(raw),
                               from: from,
                               tapOnly: true,
+                              // A status picture is a preview the packet lane
+                              // carries (7.7.7): shown on sight. Anything
+                              // larger still waits for a tap.
+                              fetchSmallOnSight: true,
                               inlineThumb: i == 0
                                   ? activityInlineThumb(raw)
                                   : null,

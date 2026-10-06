@@ -320,6 +320,12 @@ class XprsCatchup {
   static const Duration mailboxEvery = Duration(hours: 24);
   int _mailboxAtMs = 0;
 
+  /// The decoration (6.3.2: a name, a picture, a line) goes back on air once
+  /// a day. "The decoration is larger and changes once a year, so it goes out
+  /// rarely"; a change airs it at once, from the profiles service.
+  static const Duration decorationEvery = Duration(hours: 24);
+  int _decorationAtMs = 0;
+
   /// The longest this device will go without asking a station it can hear.
   ///
   /// Ten minutes is section 36.10.1's own catch-up cadence and it lands exactly
@@ -337,6 +343,7 @@ class XprsCatchup {
     if (selfCallsign.isEmpty) return;
     unawaited(_airIdentity());
     unawaited(_airMailbox());
+    unawaited(_airDecoration());
     unawaited(tick(selfCallsign));
     if (_armed || !platform.isAndroid) return;
     _armed = true;
@@ -369,6 +376,10 @@ class XprsCatchup {
     if (now - _mailboxAtMs >= mailboxEvery.inMilliseconds) {
       _mailboxAtMs = now;
       unawaited(_airMailbox());
+    }
+    if (now - _decorationAtMs >= decorationEvery.inMilliseconds) {
+      _decorationAtMs = now;
+      unawaited(_airDecoration());
     }
     _ticking = true;
     unawaited(tick(_selfCallsign).whenComplete(() => _ticking = false));
@@ -480,6 +491,37 @@ class XprsCatchup {
       _identityAtMs = 0;
     }
   }
+
+  /// Put the decoration on air; retry on the next tick if no bearer took it,
+  /// exactly like [_airIdentity].
+  ///
+  /// A desktop has no native heartbeat to retry on, and its bearers are
+  /// rarely up at the first try (the LAN has found nobody yet), so there the
+  /// retry is a one-shot timer: once a minute, twenty times at most.
+  Future<void> _airDecoration() async {
+    _decorationAtMs = nowMs();
+    var carried = false;
+    try {
+      final report = await XprsPublisher.instance.publishDecoration();
+      carried = report.values.any((v) => v == 'sent');
+    } catch (e) {
+      LogService.instance.add('XPRS: decoration airing failed: $e');
+    }
+    if (carried) {
+      _decorationRetries = 0;
+      return;
+    }
+    _decorationAtMs = 0;
+    if (platform.isAndroid || _decorationRetries >= 20) return;
+    _decorationRetries++;
+    _decorationRetry?.cancel();
+    _decorationRetry = Timer(const Duration(minutes: 1), () {
+      unawaited(_airDecoration());
+    });
+  }
+
+  int _decorationRetries = 0;
+  Timer? _decorationRetry;
 
   /// Announce this station's chosen archiver devices as a signed `t:mailbox`
   /// (13.12) — the same stations it sends copies of its publications to (36),

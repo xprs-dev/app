@@ -28,6 +28,7 @@ import '../log_service.dart';
 import '../preferences_service.dart';
 import '../xprs/xprs_airtime.dart';
 import '../xprs/xprs_archive.dart';
+import '../xprs/xprs_profiles.dart';
 import '../xprs/xprs_groups.dart';
 import '../xprs/xprs_catchup.dart';
 import '../xprs/xprs_command_courier.dart';
@@ -436,6 +437,10 @@ class MeshService {
         // A picture too big for the packet lane travels as its preview; the
         // original is named by the companion description (§7.7.1).
         MediaPreviews.instance.archive = (() => mediaArchive);
+        // Pictures (6.3.2): ours goes on the air when the profile changes,
+        // theirs are fetched through MediaFetch, so it starts once the
+        // archive both of those use is in place.
+        XprsProfiles.instance.start();
         XprsFileLift.preview = (sha) {
           final p = MediaPreviews.instance.previewOf(sha);
           return p == null ? null : '$p.jpg';

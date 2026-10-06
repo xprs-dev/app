@@ -29,6 +29,8 @@ import 'package:flutter/material.dart';
 import '../../../profile/storage_paths.dart';
 import '../../../services/preferences_service.dart';
 import '../../../services/media/media_fetch.dart';
+import '../../../services/media/media_ref_index.dart' show MediaRefInfo;
+import '../../../services/xprs/xprs_inline_file.dart' show kInlineMaxBytes;
 import '../../../services/reticulum/rns_service.dart';
 import '../../../util/media_archive.dart';
 import '../../../util/media_ref.dart';
@@ -62,6 +64,12 @@ class MediaThumbnail extends StatefulWidget {
   /// user should choose to fetch.
   final bool tapOnly;
 
+  /// With [tapOnly], still fetch on sight a file the packet lane carries
+  /// (XPRS.md 7.7.7: "a file the packet lane can carry, previews included,
+  /// may be fetched on sight"). A status picture is a preview of known size;
+  /// the original behind it still waits for a tap.
+  final bool fetchSmallOnSight;
+
   /// Draw the size badge on the thumbnail. On a chat/download tile it tells you
   /// how big a fetch will be; on a listing poster it is noise, so the gallery
   /// turns it off.
@@ -76,6 +84,7 @@ class MediaThumbnail extends StatefulWidget {
       this.size,
       this.from,
       this.tapOnly = false,
+      this.fetchSmallOnSight = false,
       this.showSize = true,
       this.inlineThumb});
 
@@ -174,24 +183,37 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
   // no flicker.
   Uint8List? _preview;
 
+  /// The size the sender announced: the hint the caller passed, else the one
+  /// the core recorded from the packet's `size:` field. Read once per file, in
+  /// initState, never per build (a store read per frame is performance.md 8.7).
+  int? _size;
+
+  void _readSize() =>
+      _size = widget.size ?? MediaFetch.instance.describe(ref.sha256)?.size;
+
+  bool get _tapOnly =>
+      widget.tapOnly &&
+      !(widget.fetchSmallOnSight && _size != null && _size! <= kInlineMaxBytes);
+
   /// True when the file is over the auto-download threshold (or auto-download is
   /// off) — it waits for an explicit tap instead of fetching automatically.
   bool get _tooLargeForAuto {
     final maxMb = PreferencesService.instanceSync?.mediaAutoMaxMb ?? 10;
     if (maxMb <= 0) return true; // auto-download disabled
-    final sz = widget.size;
+    final sz = _size;
     return sz != null && sz > maxMb * 1024 * 1024;
   }
 
   @override
   void initState() {
     super.initState();
+    _readSize();
     final a = sharedMediaArchive();
     final have = a != null && a.getMeta(ref.sha256) != null;
     // Auto-fetching (small/unknown size) → run/resume an attempt window. Large
     // files — and anything in tap-only mode (Activity) — wait for an explicit
     // tap (download chip; no auto window).
-    if (!have && !_tooLargeForAuto && !widget.tapOnly) _maybeBeginWindow();
+    if (!have && !_tooLargeForAuto && !_tapOnly) _maybeBeginWindow();
   }
 
   @override
@@ -201,6 +223,7 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
     // State objects when widgets lack a stable key), drop the cached preview and
     // playback so we don't render the previous file's image for the new ref.
     if (old.ref.sha256 != widget.ref.sha256) {
+      _readSize();
       _preview = null;
       _playing = false;
       _playWhenReady = false;
@@ -209,7 +232,7 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
       _poll = null;
       final a = sharedMediaArchive();
       final have = a != null && a.getMeta(ref.sha256) != null;
-      if (!have && !_tooLargeForAuto && !widget.tapOnly) _maybeBeginWindow();
+      if (!have && !_tooLargeForAuto && !_tapOnly) _maybeBeginWindow();
     }
   }
 
@@ -236,7 +259,7 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
     _lastByteMs = _nowMs;
     // ignore: discarded_futures
     MediaFetch.instance.want(ref,
-        from: widget.from, size: widget.size, userTapped: _requested);
+        from: widget.from, size: _size, userTapped: _requested);
     _startPoll();
   }
 
@@ -273,7 +296,7 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
         if (t.tick % 20 == 0) {
           // ignore: discarded_futures
           MediaFetch.instance.want(ref,
-              from: widget.from, size: widget.size, userTapped: _requested);
+              from: widget.from, size: _size, userTapped: _requested);
         }
       } else if (_nowMs - _lastByteMs >= _windowSec * 1000) {
         // Transfer started but stalled (no new bytes for 5 min) — abandon.
@@ -295,7 +318,7 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
     // and the card gave up while the bytes were landing.
     final p = MediaFetch.instance.progress(ref.sha256);
     if (p.received <= 0) return null;
-    final total = p.total > 0 ? p.total : (widget.size ?? 0);
+    final total = p.total > 0 ? p.total : (_size ?? 0);
     return (received: p.received, total: total);
   }
 
@@ -326,7 +349,7 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
   }
 
   String? get _sizeLabel =>
-      widget.size == null ? null : formatBytes(widget.size!);
+      _size == null ? null : formatBytes(_size!);
 
   /// The 32-byte file hash (ref.sha256 is base64url), for the progress lookup.
   Uint8List? _shaBytes() {
@@ -596,7 +619,7 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
     if (archive == null || meta == null) {
       if (widget.inlineThumb != null) return _inlinePreview(cs);
       if (_poll?.isActive ?? false) return _lookingChip(cs);
-      if ((_tooLargeForAuto || widget.tapOnly) && !_requested) {
+      if ((_tooLargeForAuto || _tapOnly) && !_requested) {
         return _downloadChip(cs);
       }
       return _notAvailableChip(cs);
@@ -800,7 +823,88 @@ class MediaViewerPage extends StatefulWidget {
 }
 
 class _MediaViewerPageState extends State<MediaViewerPage> {
-  MediaRef get _ref => widget.mediaRef;
+  /// What is on screen: the reference opened, or the original behind it once
+  /// that has arrived.
+  late MediaRef _ref = widget.mediaRef;
+
+  /// The full-resolution original a carried preview stands for, described by
+  /// the companion `t:file r:` (XPRS.md 7.7.7). Read once, here, never per
+  /// build. Null when the picture is not a preview.
+  MediaRefInfo? _original;
+  MediaRef? _originalRef;
+  bool _asked = false;
+  StreamSubscription<MediaEvent>? _events;
+
+  @override
+  void initState() {
+    super.initState();
+    _original = MediaFetch.instance.originalOf(widget.mediaRef.sha256);
+    final o = _original;
+    _originalRef = o == null ? null : MediaRef.parse('file:${o.sha}.${o.ext}');
+    final r = _originalRef;
+    if (r != null && (sharedMediaArchive()?.has(r.sha256) ?? false)) _ref = r;
+  }
+
+  @override
+  void dispose() {
+    _events?.cancel();
+    super.dispose();
+  }
+
+  /// Ask for the original, through the one door there is. The lane is the
+  /// core's to choose (a link fetches it, a shared radio waits for a tap, and
+  /// this IS the tap), and the arrival is an event, not a poll.
+  void _fetchOriginal() {
+    final r = _originalRef;
+    if (r == null || _asked) return;
+    setState(() => _asked = true);
+    _events ??= MediaFetch.instance.events.listen((e) {
+      if (e.sha != r.sha256 || !mounted) return;
+      if (sharedMediaArchive()?.has(r.sha256) ?? false) {
+        setState(() => _ref = r);
+      } else if (e.state == MediaState.failed) {
+        setState(() => _asked = false);
+      } else {
+        setState(() {});
+      }
+    });
+    unawaited(MediaFetch.instance
+        .want(r, from: _original?.from, size: _original?.size, userTapped: true)
+        .then((ok) {
+      if (mounted && ok) setState(() => _ref = r);
+    }).catchError((_) {}));
+  }
+
+  Widget? _originalBar() {
+    final r = _originalRef;
+    final o = _original;
+    if (r == null || o == null || _ref.sha256 == r.sha256) return null;
+    final p = MediaFetch.instance.progress(r.sha256);
+    final size = o.size == null ? '' : ' · ${formatBytes(o.size!)}';
+    final label = !_asked
+        ? 'Full resolution$size'
+        : (p.received > 0 && (o.size ?? 0) > 0)
+            ? 'Getting the original… ${(100 * p.received / o.size!).clamp(0, 100).round()}%'
+            : 'Getting the original…';
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Align(
+          heightFactor: 1,
+          child: FilledButton.icon(
+            onPressed: _asked ? null : _fetchOriginal,
+            icon: _asked
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.hd_outlined),
+            label: Text(label),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -816,6 +920,7 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
         title: Text(title, style: const TextStyle(fontSize: 16)),
       ),
       body: Center(child: _body(archive, meta)),
+      bottomNavigationBar: _originalBar(),
     );
   }
 
@@ -830,10 +935,16 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
         if (data == null) {
           return _fallback(Icons.broken_image, 'Image data missing.');
         }
+        // Decoded at most 2048 px wide: a phone photograph at its full 12
+        // megapixels is a 48 MB texture for a screen a fraction of that
+        // (performance.md 8.14), and the zoom has room to spare at 2048.
         return InteractiveViewer(
           minScale: 0.5,
           maxScale: 6,
-          child: Image.memory(data, fit: BoxFit.contain),
+          child: Image(
+              image: ResizeImage(MemoryImage(data),
+                  width: 2048, allowUpscaling: false),
+              fit: BoxFit.contain),
         );
       case MediaKind.video:
       case MediaKind.audio:

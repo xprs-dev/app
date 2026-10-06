@@ -417,7 +417,7 @@ void main() {
     expect(rows.first['bearer'], 'none',
         reason: 'aired nowhere, and the row says so');
   });
-  group('a key binding is not chatter (9.3.2, 18.1)', () {
+  group('a key binding is not chatter (6.3.2, 18.1)', () {
     // It used to be grouped with `observation` and `service`, so a station that
     // was not an always-on archiver kept NO identities at all — measured on the
     // bench as a phone with zero key bindings and fifteen receipts it could not
@@ -459,7 +459,7 @@ void main() {
     });
 
     test('a key-only announcement does not evict the decoration', () {
-      // 9.3.2 splits the announcement in two because both do not fit, and they
+      // 6.3.2 splits the announcement in two because both do not fit, and they
       // are re-sent on different cadences: "the key binding is small and must
       // be repeated often ... the decoration is larger and changes once a year".
       a.admit(idOf('X1QZ3N', '2026-08-08_10:00:00', key: false), bearer: 'ble');
@@ -468,6 +468,47 @@ void main() {
       a.flush();
       expect(idRows('X1QZ3N'), 2,
           reason: 'one key-bearing row and one decoration row');
+    });
+
+    test('a split decoration keeps each field at its newest (6.3.2)', () {
+      // The picture and the description can arrive in separate packets, and
+      // the rule is per FIELD: the newest picture, the newest description, the
+      // newest key, whichever packets they came in.
+      XprsPacket w(String ts, String rest) =>
+          XprsPacket.parse('t:identity f:X1QZ3N ts:$ts $rest')!;
+      a.admit(w('2026-08-08_10:00:00',
+              'nick:joao file:nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg'),
+          bearer: 'ble');
+      a.admit(w('2026-08-08_10:00:01', 'm:sailing'), bearer: 'ble');
+      a.flush();
+      a.admit(idOf('X1QZ3N', '2026-08-08_10:30:00'), bearer: 'ble');
+      a.flush();
+      expect(idRows('X1QZ3N'), 3,
+          reason: 'key, picture and description each keep their newest');
+      // A newer picture replaces the older picture packet, and only that one.
+      a.admit(w('2026-08-09_09:00:00',
+              'file:AAAAAGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg'),
+          bearer: 'ble');
+      a.flush();
+      final wires = [
+        for (final r in a.query(types: const ['identity'], limit: 10))
+          '${r['wire']}'
+      ];
+      expect(wires.where((x) => x.contains('nYxKzGm4')), hasLength(1),
+          reason: 'the old packet still carries the newest nick');
+      expect(wires.where((x) => x.contains('m:sailing')), hasLength(1));
+      // A newer nick+file packet covers both fields of the old one.
+      a.admit(w('2026-08-10_09:00:00',
+              'nick:jo file:BBBBBGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg'),
+          bearer: 'ble');
+      a.flush();
+      final after = [
+        for (final r in a.query(types: const ['identity'], limit: 10))
+          '${r['wire']}'
+      ];
+      expect(after.where((x) => x.contains('nYxKzGm4')), isEmpty);
+      expect(after.where((x) => x.contains('AAAAAGm4v')), isEmpty);
+      expect(idRows('X1QZ3N'), 3);
     });
 
     test('two stations keep two bindings each at most', () {

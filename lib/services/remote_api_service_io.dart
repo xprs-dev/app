@@ -12,6 +12,7 @@ import 'dart:typed_data';
 
 import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_monitor.dart';
+import 'xprs/xprs_profiles.dart';
 import 'xprs/xprs_bridge.dart';
 import 'xprs/xprs_climate.dart';
 import 'xprs/xprs_ingest.dart';
@@ -1792,6 +1793,21 @@ class RemoteApiService {
           // station" is the first question when a peer is heard but never
           // answers (36.12.1).
           'lxmfDest': RnsService.instance.lxmfDestForCallsign(call),
+          // What the station said about itself (6.3.2), as this one kept it,
+          // and whether the picture's bytes are here.
+          'decoration': () {
+            final d = XprsProfiles.instance.decorationFor(call);
+            if (d == null) return null;
+            return {
+              'nick': d.nick,
+              'file': d.picture?.token,
+              'about': d.about,
+              'held': d.picture == null
+                  ? false
+                  : (MediaFetch.instance.archive?.call()?.has(d.picture!.sha256) ??
+                      false),
+            };
+          }(),
           'declared': XprsArchive.instance.holdersFor(call),
           'sightings': [
             for (final s in XprsGossip.instance.whereIs(call))
@@ -2161,6 +2177,10 @@ class RemoteApiService {
       // minutes on a busy node, and out of logcat too. Pin it here so it is
       // always one request away.
       'vmService': LogService.instance.vmServiceUri,
+      // Pictures (XPRS.md 6.3.2): ours as a token, and what the core did with
+      // everybody else's. Counters only; nothing is logged per picture.
+      'avatar': p?.avatar,
+      'profiles': XprsProfiles.instance.status(),
       'mesh': mesh,
       'platform': platform.platformName(),
       'apiPort': _port,

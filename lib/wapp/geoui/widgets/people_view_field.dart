@@ -19,6 +19,7 @@ import '../../../util/media_ref.dart';
 import '../../shared_media_fetch.dart' show resolveSharedMedia;
 import '../geoui_renderer.dart' show geoUiResolveIcon;
 import '../avatar_image.dart' show bannerImage;
+import '../../../profile/station_avatar.dart';
 import 'generated_avatar.dart';
 import 'media_view.dart' show sharedMediaArchive;
 
@@ -306,17 +307,23 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
                         GeneratedAvatar(seed: id, size: 44),
                   ),
                 )
-              else if (iconName.isEmpty)
-                GeneratedAvatar(seed: id, size: 44)
               else
-                SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: Icon(
-                    geoUiResolveIcon(iconName),
-                    size: 30,
-                    color: cs.onSurfaceVariant,
-                  ),
+                // A row that names one station shows the picture it announced
+                // (XPRS.md 6.3.2); until then, or for anything else, the icon
+                // or the identicon it always had.
+                _stationOr(
+                  id,
+                  iconName.isEmpty
+                      ? GeneratedAvatar(seed: id, size: 44)
+                      : SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: Icon(
+                            geoUiResolveIcon(iconName),
+                            size: 30,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
                 ),
               const SizedBox(width: 12),
               Expanded(
@@ -456,6 +463,17 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
 /// <ext>`) — a torrent's favicon-style icon. Reads the bytes from the local
 /// archive, kicks off a fetch when we do not hold them yet, and shows the
 /// generated avatar until they land (so the row is never blank).
+/// The callsign a row id names, if it names one station: a bare callsign or
+/// a wapp's `go:`/`arc:` link to one. Rooms (`#...`) and anything else, null.
+final RegExp _callsignShape = RegExp(r'^[A-Z0-9]{3,10}$');
+Widget _stationOr(String id, Widget fallback) {
+  var c = id.trim().toUpperCase();
+  final colon = c.indexOf(':');
+  if (colon > 0 && colon < 4) c = c.substring(colon + 1);
+  if (!_callsignShape.hasMatch(c)) return fallback;
+  return StationAvatar(callsign: c, size: 44, fallback: fallback);
+}
+
 class _TokenAvatar extends StatefulWidget {
   final String token;
   final String seed;

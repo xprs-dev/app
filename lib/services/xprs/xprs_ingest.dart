@@ -45,6 +45,7 @@ import '../media/media_ref_index.dart';
 import 'xprs_file_acl.dart';
 import 'xprs_inline_file.dart';
 import 'xprs_sig.dart';
+import 'xprs_profiles.dart';
 import 'xprs_vocab.dart';
 import '../../util/xprs_crypto.dart';
 import '../background_service.dart';
@@ -372,6 +373,9 @@ class XprsIngest {
     // else is a key offered for somebody else's name.
     if (p.type == 'identity') {
       _bindIdentity(from, p);
+      // The decoration (6.3.2): a name, a picture, a line. Checked against the
+      // key just bound or already held; the bytes are fetched on a budget.
+      XprsProfiles.instance.offer(from, p);
     } else if (((p.type == 'request' && p['q'] == 'owner') ||
             p.type == 'result') &&
         p.has('k') &&
@@ -693,6 +697,8 @@ class XprsIngest {
         return;
       }
       hook(callsign, hex);
+      // A decoration that arrived before this key could not be checked then.
+      XprsProfiles.instance.keyLearned(callsign);
       if (_bound.length >= 256) _bound.remove(_bound.first);
       _bound.add(pair);
     } catch (_) {
@@ -777,6 +783,9 @@ class XprsIngest {
   /// of the packet lane is neither.
   static bool _describesFile(XprsPacket p) =>
       p.type == 'message' ||
+      // A status with a picture (7.7.7, section 27): public by having no `d:`,
+      // and its size is what a screen showing it decides with.
+      (p.type == 'status' && p.has('file')) ||
       (p.type == 'file' && p.has('r') && !xprsIsInlineChunk(p));
 
   /// An XPRS datagram off the Reticulum 'xprs' tag. Never shown as a sighting
@@ -842,7 +851,10 @@ class XprsIngest {
     // never verify anything: a mailbox declaration arriving over the hubs
     // was refused for want of a key that had also arrived over the hubs --
     // two strangers meeting on the internet could not bootstrap at all.
-    if (p.type == 'identity') _bindIdentity(fromC, p);
+    if (p.type == 'identity') {
+      _bindIdentity(fromC, p);
+      XprsProfiles.instance.offer(fromC, p);
+    }
 
     // A GROUP ACT OFF THE INTERNET LANE. The radio lane feeds every
     // `t:moderate` to the roster ("it goes HERE, in the funnel, the one place

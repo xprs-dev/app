@@ -2310,8 +2310,13 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             : p.dm.isNotEmpty
                 ? 'lxmf'
                 : (p.services.isNotEmpty ? p.services.first : '');
-    final avatar =
-        (p.xprs && p.npub.isNotEmpty) ? widget.avatarFor?.call(p.npub) : null;
+    // The picture the station announced (XPRS.md 6.3.2) first, then a NOSTR
+    // kind-0 picture. A list row, not the canvas: nothing here runs per frame.
+    final call = ((p.meta['callsign'] ?? '') as Object).toString().trim();
+    final avatar = (p.xprs && call.isNotEmpty
+            ? stationAvatarImage(call, px: 96)
+            : null) ??
+        ((p.xprs && p.npub.isNotEmpty) ? widget.avatarFor?.call(p.npub) : null);
     void onRowTap() {
       if (p.services.contains('node')) {
         // A NomadNet node → browse its pages.

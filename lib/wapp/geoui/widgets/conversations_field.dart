@@ -10,6 +10,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../conversation_store.dart';
 import 'chat_palette.dart';
+import '../../../profile/station_avatar.dart';
 import 'chat_view_field.dart';
 import 'generated_avatar.dart';
 
@@ -534,8 +535,16 @@ class _ConversationsFieldState extends State<ConversationsField> {
   // A deterministic identicon for every conversation — groups and people alike,
   // no initials. Seeded by the title so the same group/person shows the same
   // generated icon (design + colour) on every install.
-  Widget _avatar(ConversationItem it, double size) =>
-      GeneratedAvatar(seed: it.title.isNotEmpty ? it.title : it.id, size: size);
+  /// A conversation with one station shows the picture it announced
+  /// (XPRS.md 6.3.2); a room, or a station without one, the identicon.
+  Widget _avatar(ConversationItem it, double size) {
+    final seed = it.title.isNotEmpty ? it.title : it.id;
+    final fallback = GeneratedAvatar(seed: seed, size: size);
+    if (it.id.isEmpty || it.id.startsWith('#') || it.id.contains(':')) {
+      return fallback;
+    }
+    return StationAvatar(callsign: it.id, size: size, fallback: fallback);
+  }
 
   Widget _tile(BuildContext context, ConversationItem it) {
     final cs = Theme.of(context).colorScheme;

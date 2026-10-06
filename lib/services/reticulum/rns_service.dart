@@ -41,6 +41,7 @@ import '../receive/packet_gateway.dart';
 import '../receive/core_state.dart';
 import '../receive/wapp_delivery.dart';
 import '../xprs/xprs_ingest.dart';
+import '../xprs/xprs_profiles.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_monitor.dart';
 import '../xprs/xprs_presence.dart';
@@ -199,6 +200,11 @@ class RnsService {
     };
     // And the other direction: a `t:identity` heard on any bearer teaches this
     // map a key it would otherwise only learn from an announce or a wapp.
+    // The kind-0 note is how NOSTR clients see this station's name and
+    // picture; the profiles service decides when, this node how.
+    XprsProfiles.instance.kind0Publisher = ({name, about, picture}) async {
+      await publishMetadata(name: name, about: about, picture: picture);
+    };
     XprsIngest.onIdentity = (callsign, hex) {
       recordCallsignPubkey(callsign, hex, onlyIfUnknown: true);
       LogService.instance.add('XPRS: $callsign signs with ${hex.substring(0, 8)}…');

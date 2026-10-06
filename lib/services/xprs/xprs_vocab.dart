@@ -555,3 +555,29 @@ bool xprsReadingIsScoped(XprsPacket p) {
   final link = p['link'];
   return link != null && kXprsBearers.contains(link);
 }
+
+/// A display name as section 6.3.1 lets it go on the air: one to sixteen
+/// ASCII letters, digits, `-` and `_`. Spaces become `-` (no value but `m:`
+/// may hold one) and accented letters lose their accent, because the format is
+/// ASCII; anything else is dropped. Empty when nothing usable is left.
+String xprsNickValue(String name) {
+  const fold = {
+    'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a',
+    'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+    'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+    'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o', 'ø': 'o',
+    'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
+    'ç': 'c', 'ñ': 'n', 'ß': 'ss', 'ý': 'y', 'ÿ': 'y',
+  };
+  final out = StringBuffer();
+  for (final ch in name.trim().replaceAll(RegExp(r'\s+'), '-').split('')) {
+    final lower = ch.toLowerCase();
+    var c = fold[lower] ?? ch;
+    if (fold.containsKey(lower) && ch != lower) c = c.toUpperCase();
+    for (final u in c.split('')) {
+      if (RegExp(r'[A-Za-z0-9_-]').hasMatch(u)) out.write(u);
+    }
+  }
+  final s = out.toString();
+  return s.length > 16 ? s.substring(0, 16) : s;
+}

@@ -35,9 +35,9 @@ a kind-1 text note.
 **A second design for the same feed exists on paper.** [XPRS.md](XPRS.md)
 section 27 specifies `t:status` — a short post about the sender, now — as the
 packet a townhall is made of, with an optional `mood:` from a closed list of
-thirty so a client can theme itself; section 9.3.2 gives an identity an avatar
-by content hash and a line of description, which is this wapp's kind-0 profile
-by another route. None of it is implemented, and nothing here needs to change.
+thirty so a client can theme itself. Section 6.3.2 gives an identity an avatar
+by content hash and a line of description; that part IS implemented, in the
+core and for every screen (below, "Profile pictures").
 
 The differences worth knowing before anyone tries to bridge the two:
 
@@ -46,7 +46,7 @@ The differences worth knowing before anyone tries to bridge the two:
 | Reach | wss relays and Reticulum indexers | any bearer, including LoRa and packet radio |
 | Catching up | poll a relay, hours-deep (§4, §11) | `cmd:history` asks a station to re-air what it kept, paged with `code:206` |
 | Following | kind-3 follow lists, published | a list on the device, deliberately never a packet |
-| Profile picture | a URL in kind-0 | a sha256 in `file:`, fetched with `cmd:file` |
+| Profile picture | inline in kind-0 (the same thumbnail, for NOSTR clients) | a sha256 in `file:`, fetched with `cmd:file` (implemented) |
 | Mentions | a `p` tag beside the content | `@CALLSIGN` **inside** the text (section 6.5.2), because `m:` is not opaque to the protocol the way NOSTR content is |
 | Notifications | a dedicated `kinds:[1,6,7] #p:me` subscription | a station finds its own callsign after an `@` |
 | Threading | an `e` tag per NIP-10 | `r:` for the parent and `root:` for the thread, so a lost middle does not orphan the replies under it |
@@ -336,3 +336,62 @@ causes, the on-device debug workflow, the final main-isolate poll-and-close desi
 and the curation/likes/profiles work) is in the project memory
 `nostr-engine-isolate-socket-freeze` and across commits `d70c7e4`, `c184d2b`,
 `45d0c91`, `d53708d`, `419dc34`, `b04c8de`.
+
+## Profile pictures (XPRS.md 6.3.2)
+
+A station's picture, name and description travel as the decoration of
+`t:identity`, and every screen that shows a callsign reads them from one place.
+
+- **Making one.** Both profile editors hand the picked image to
+  `XprsProfiles.pictureTokenFor`: a square JPEG of at most 8 KiB (128, 96 or 64
+  px), made on a worker with `MediaPreviews.avatarThumb`, stored in the media
+  archive like any shared file. The profile's `avatar` is its `file:` token. An
+  older profile's image (a file in its own folder, possibly inside an encrypted
+  container) is converted once, on start.
+- **Saying it.** `XprsProfiles` watches the profile; five seconds after a change
+  of name, picture or description, `XprsPublisher.publishDecoration` airs
+  `nick: file: m:`, every field stated and `-` for an empty one, signed, as one
+  packet when it fits 184 bytes and as two when it does not; and a NOSTR kind-0
+  note carries the same thumbnail inline for NOSTR clients. Otherwise once a
+  day (`XprsCatchup.decorationEvery`). Deposited with the archivers.
+- **Keeping theirs.** The receive door hands every decoration to
+  `XprsProfiles.offer`; it is checked against the key already held for the
+  callsign, and the newest value per field wins. One that arrived before its
+  key is read again from the archive when the key is learned.
+- **Fetching the bytes.** Through `MediaFetch.want` only, so the packet lane
+  carries it across public hubs. Followed stations and correspondents when the
+  picture is learned; anyone else only while a screen shows them, ten per ten
+  minutes; two at a time; a miss is not retried for six hours.
+- **Showing it.** `StationAvatar` / `stationAvatarImage`
+  (`lib/profile/station_avatar.dart`): own picture from the profile, anyone
+  else's from `XprsProfiles`, decoded at the size drawn, the identicon until
+  then. Used by the chat lists and status circles, the people lists, the
+  profile view, the feed authors and the mesh list.
+- **Checking it.** `/api/status` reports `avatar` and `profiles` (counters);
+  `/api/xprs/whois?call=` reports what this station kept of that one's
+  decoration and whether the picture's bytes are here.
+
+## Pictures in a status (XPRS.md 16, 7.7.7)
+
+"`file:` attaches a photograph" to a status, and it is attached the way a
+message attaches one, by the same three functions (`xprsLiftFile`,
+`XprsSend.airFileCompanion`, `XprsSend.onFileShared`), called from
+`XprsPublisher.composeStatus`:
+
+- the reference is a FIELD beside `m:`, with `size:`, never caption text, and a
+  picture with no words is a status with no `m:`;
+- a picture too large for the packet lane goes as its preview (at most 24 kB),
+  with a companion `t:file r:<status id>` naming the original;
+- the receive door records the reference and its size (`MediaRefIndex`, and the
+  audience in `XprsFileAcl`: public, there being no `d:`).
+
+The Status wapp names the picture back into the row's text (`status_text`), once,
+for the host to draw. The feed fetches a preview on sight (`fetchSmallOnSight`:
+the packet lane carries it) and anything larger on a tap; the full-screen viewer
+offers "Full resolution" for a preview whose original is described, through
+`MediaFetch.want`.
+
+Validated on hardware (2026-10-06, desktop X16JK8 and C61 X1ARKL over LAN and
+Reticulum): both directions, in a 1:1 chat and in a status, the preview shown
+without a tap and the original fetched from the viewer.
+

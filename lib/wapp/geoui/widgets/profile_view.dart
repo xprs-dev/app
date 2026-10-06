@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import 'activity_feed.dart' show ActivityPostCard, activityFormatMentions;
-import 'generated_avatar.dart';
+import '../../../profile/station_avatar.dart';
 
 class ProfileView extends StatefulWidget {
   final String callsign;
@@ -837,9 +837,12 @@ class _ProfileViewState extends State<ProfileView> {
   Widget _avatar(String call, double radius) {
     // A real avatar image (from the profile's kind-0 "picture") wins; otherwise
     // the same deterministic identicon used in the Messages list.
-    if (widget.avatarImage != null) {
+    // The picture the station announced itself (XPRS.md 6.3.2) wins; a
+    // NOSTR kind-0 picture is for stations that only speak NOSTR; else the
+    // identicon.
+    if (stationPictureRef(call) == null && widget.avatarImage != null) {
       return CircleAvatar(radius: radius, backgroundImage: widget.avatarImage);
     }
-    return GeneratedAvatar(seed: call, size: radius * 2);
+    return StationAvatar(callsign: call, size: radius * 2);
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../conversation_store.dart';
 import '../../../services/xprs/xprs_monitor.dart';
 import '../../../services/reticulum/rns_service.dart';
+import '../../../profile/station_avatar.dart';
 import 'chat_palette.dart';
 import 'chat_view_field.dart';
 import 'people_view_field.dart';
@@ -965,16 +966,16 @@ class _RoomsFieldState extends State<RoomsField> {
     if (label.isEmpty) label = name.isNotEmpty ? name[0].toUpperCase() : '#';
     final hue = (id.hashCode & 0xff) / 255.0;
     final bg = HSLColor.fromAHSL(1, hue * 360, 0.5, 0.45).toColor();
-    return Container(
+    final border =
+        selected ? Border.all(color: ChatPalette.accent, width: 2.5) : null;
+    final initials = Container(
       width: size,
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: bg,
         shape: BoxShape.circle,
-        border: selected
-            ? Border.all(color: ChatPalette.accent, width: 2.5)
-            : null,
+        border: border,
       ),
       child: Text(
         label,
@@ -991,6 +992,17 @@ class _RoomsFieldState extends State<RoomsField> {
           letterSpacing: label.length >= 3 ? -0.3 : 0,
         ),
       ),
+    );
+    // A room is a place and keeps its initials. A conversation with one
+    // station shows the picture that station announced (XPRS.md 6.3.2), with
+    // the initials until it has one.
+    if (id.startsWith('#')) return initials;
+    return Container(
+      width: size,
+      height: size,
+      foregroundDecoration:
+          BoxDecoration(shape: BoxShape.circle, border: border),
+      child: StationAvatar(callsign: id, size: size, fallback: initials),
     );
   }
 

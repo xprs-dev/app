@@ -1364,6 +1364,25 @@ had read §8:
   structs, draw from those. A wapp's cost is what it does *per event*, and an
   event on a hot topic is a hot loop.
 
+### 8.17 A face costs airtime: the budgets of a profile picture (2026-10-06)
+
+Profile pictures (XPRS.md 6.3.2) are bytes every station would like and nobody
+asked for, on channels other people share, so each cost is bounded where it is
+paid:
+
+- **Size.** At most 8 KiB, so the packet lane carries it (a few dozen
+  250-byte packets) and it crosses a public hub. Made once, on a worker.
+- **Saying it.** The decoration is aired on a change and once a day, never with
+  the 30-minute key binding, and in its own advert slot so it never displaces
+  the binding.
+- **Fetching it.** Known stations when learned; strangers only while on screen,
+  10 per 10 minutes, 2 in flight, one ask per picture, a miss remembered for six
+  hours. Counters on `/api/status`, no log line per picture.
+- **Showing it.** Decoded at the size drawn, the archive read once per picture,
+  never a full-size decode on the UI isolate (8.9, 8.14). The old path decoded
+  whatever was picked, at full size, on the UI isolate, and read it with a
+  synchronous file check; it is gone.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile

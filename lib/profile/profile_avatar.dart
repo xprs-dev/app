@@ -16,8 +16,10 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../wapp/geoui/widgets/generated_avatar.dart';
+import '../util/media_ref.dart';
 import 'iwi_profile.dart';
 import 'profile_service.dart';
+import 'station_avatar.dart';
 
 /// Map a [kProfileColors] name to a concrete colour.
 Color profileColor(IwiProfile p) {
@@ -77,7 +79,19 @@ class ProfileAvatar extends StatelessWidget {
     final fallback = GeneratedAvatar(seed: profile.callsign, size: size);
 
     if (profile.avatar.isEmpty) return fallback;
+    final px = (size * (MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0))
+        .ceil();
 
+    // The picture as other stations see it: a file in the media store.
+    final ref = MediaRef.parse(profile.avatar);
+    if (ref != null) {
+      final bytes = stationPictureBytes(ref.sha256);
+      if (bytes == null) return fallback;
+      return _round(bytes, px, fallback);
+    }
+
+    // A profile from before that (XprsProfiles migrates it): the image in the
+    // profile's own folder, decoded at the size it is drawn, not as picked.
     return FutureBuilder<Uint8List?>(
       future: ProfileService.instance
           .storageForProfile(profile.id)
@@ -85,17 +99,20 @@ class ProfileAvatar extends StatelessWidget {
       builder: (context, snap) {
         final bytes = snap.data;
         if (bytes == null || bytes.isEmpty) return fallback;
-        return ClipOval(
-          child: Image.memory(
-            bytes,
-            width: size,
-            height: size,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            errorBuilder: (_, __, ___) => fallback,
-          ),
-        );
+        return _round(bytes, px, fallback);
       },
     );
   }
+
+  Widget _round(Uint8List bytes, int px, Widget fallback) => ClipOval(
+        child: Image.memory(
+          bytes,
+          width: size,
+          height: size,
+          cacheWidth: px,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => fallback,
+        ),
+      );
 }

@@ -96,7 +96,10 @@ class MediaRefIndex {
     if (ref == null) return;
     String role;
     String msg;
-    if (p.type == 'message') {
+    // A status carries a picture exactly as a message does (XPRS.md 7.7.7,
+    // section 27): its size is what a screen decides with, and its companion
+    // `t:file r:` names the original the same way.
+    if (p.type == 'message' || p.type == 'status') {
       role = 'carried';
       msg = msgId;
     } else if (p.type == 'file' && p.has('r') && !xprsIsInlineChunk(p)) {

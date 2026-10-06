@@ -418,44 +418,52 @@ class XprsArchive {
          followedPresenceMax]);
   }
 
-  /// Keep only the NEWEST identity announcement of each shape, per callsign.
+  /// Keep, per callsign, only the identity announcements that still carry the
+  /// newest value of some field.
   ///
-  /// §9.3.2: "An identity announcement carries any subset of these fields, and
+  /// §6.3.2: "An identity announcement carries any subset of these fields, and
   /// a receiver keeps, for each field, **the value from the newest verifiable
   /// announcement that carried it**." A station re-announces every thirty
   /// minutes (§18.1) and each announcement carries a fresh `ts:`, so each is a
-  /// different §5 identifier and a different row — 48 rows a day per station if
-  /// nothing collapses them. That growth is why identity was lumped in with
-  /// chatter and dropped wholesale, which threw away the binding to avoid the
-  /// duplication.
+  /// different §5 identifier and a different row: 48 rows a day per station if
+  /// nothing collapses them.
   ///
-  /// Collapsing by SHAPE rather than by callsign is what §9.3.2 forces: the
-  /// same section splits the announcement in two because the key binding and
-  /// the decoration do not fit in one packet, and they are re-sent on different
-  /// cadences — "the key binding is small and must be repeated often ... the
-  /// decoration is larger and changes once a year". Keeping only the newest per
-  /// callsign would let a key-only announcement evict the avatar and the
-  /// description. So: newest key-bearing row, and newest decoration row. Two
-  /// per station, for ever.
+  /// The fields are `k:` (the key binding, re-sent often) and the decoration,
+  /// `nick:`, `file:` and `m:`, which may arrive split across packets because
+  /// the whole does not fit one frame on every bearer. A row goes only when
+  /// every field it carries is also carried by a NEWER row, so a key-only
+  /// announcement can never evict the picture, and a picture-only one can never
+  /// evict the description. Newest is the packet's own `ts:`, not when we heard
+  /// it, so a re-aired old announcement cannot displace a newer one.
+  ///
+  /// Only a verified row covers a verified one: a decoration stored while the
+  /// sender's key was still unknown must not evict the one that was checked.
+  /// Unverified rows are collapsed among themselves the same way. At most four
+  /// rows of each kind per station, for ever.
+  static const _identityFields = ['k', 'nick', 'file', 'm'];
+
   static void _collapseIdentities(CommonDatabase db, String fromc) {
     if (fromc.isEmpty) return;
-    for (final bearing in [1, 0]) {
-      final rows = db.select(
-          "SELECT id, wire FROM packets WHERE type = 'identity' AND fromc = ? "
-          'ORDER BY pts DESC, ts DESC',
-          [fromc]);
-      final same = <String>[];
-      for (final r in rows) {
-        final w = r['wire'] as String? ?? '';
-        // `k:` is the key binding; anything else is decoration (§9.3.2).
-        final hasKey = w.contains(' k:npub') ? 1 : 0;
-        if (hasKey == bearing) same.add(r['id'] as String);
+    final rows = db.select(
+        "SELECT id, wire, sig FROM packets WHERE type = 'identity' AND fromc = ? "
+        'ORDER BY pts DESC, ts DESC LIMIT 64',
+        [fromc]);
+    final coveredVerified = <String>{};
+    final coveredAny = <String>{};
+    for (final r in rows) {
+      final p = XprsPacket.parse(r['wire'] as String? ?? '');
+      final fields = <String>{
+        for (final f in _identityFields)
+          if (p != null && p.has(f)) f,
+      };
+      final verified = (r['sig'] as int? ?? 0) == XprsSigState.verified.index;
+      final covered = verified ? coveredVerified : coveredAny;
+      if (fields.every(covered.contains)) {
+        db.execute('DELETE FROM packets WHERE id = ?', [r['id']]);
+        continue;
       }
-      // The first is the newest — ordered by the packet's own ts:, not by when
-      // we heard it, so a re-aired old announcement cannot displace a newer one.
-      for (final id in same.skip(1)) {
-        db.execute('DELETE FROM packets WHERE id = ?', [id]);
-      }
+      coveredAny.addAll(fields);
+      if (verified) coveredVerified.addAll(fields);
     }
   }
 

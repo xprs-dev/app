@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' hide File, Directory, FileSystemEntity, Link;
 import 'package:file/file.dart';
 import 'dart:math';
 import 'dart:typed_data';
@@ -81,6 +80,8 @@ import '../util/time_ago.dart';
 import '../services/wapp_unread_service.dart';
 import '../services/hero/hero_inbox.dart';
 import '../profile/profile_service.dart';
+import '../profile/station_avatar.dart';
+import '../services/xprs/xprs_profiles.dart';
 import '../profile/profile_storage.dart';
 import 'coin/coin_host_bridge.dart';
 import 'coin/atm_host_bridge.dart';
@@ -6595,7 +6596,41 @@ class _WappPageState extends State<WappPage>
 
   /// Resolve a post author to name+avatar: prefer a wapp-pushed profile
   /// (ui.profile.set), else the built-in stream profile lookup.
+  static final RegExp _xprsAuthor = RegExp(r'^[A-Z0-9]{3,10}(-[0-9]{1,2})?$');
+
+  /// A NOSTR kind-0 picture for an XPRS author that announced none itself.
+  ImageProvider? _feedProfileAvatarFallback(String from) {
+    final pic = _wappProfiles[from]?['pic'];
+    return pic == null ? null : avatarImage(pic);
+  }
+
   ({String? name, ImageProvider? avatar}) _feedProfileFor(String from) {
+    // A callsign author: our own posts carry our profile, and anybody else's
+    // carry what that station said about itself, signed (XPRS.md 6.3.1/6.3.2;
+    // "an unsigned or unverifiable nickname is a claim by nobody"). Both rank
+    // above the name caches below, which once held a stale name for our own
+    // callsign and showed it on every post we made.
+    if (isOwnCallsign(from)) {
+      final self = ProfileService.instance.activeProfile;
+      final nick = (self?.nickname ?? '').trim();
+      return (
+        name: nick.isNotEmpty ? nick : self?.wireCallsign,
+        avatar: stationAvatarImage(from, px: 128, want: false),
+      );
+    }
+    // An XPRS station (a callsign, not a NOSTR key prefix): its name is the
+    // nickname it announced and signed, or its callsign. "A receiver that
+    // cannot check the signature shows the callsign and not the nickname"
+    // (6.3.1), so no cached name outranks that; the caches below once showed
+    // X3ARK on posts from X1ARKL.
+    if (_xprsAuthor.hasMatch(from)) {
+      final announced = XprsProfiles.instance.decorationFor(from);
+      final pic = stationAvatarImage(from, px: 128);
+      return (
+        name: announced?.nick ?? from,
+        avatar: pic ?? _feedProfileAvatarFallback(from),
+      );
+    }
     final p = _wappProfiles[from];
     if (p != null && (p['name'] != null || p['pic'] != null)) {
       final pic = p['pic'];
@@ -8075,7 +8110,18 @@ class _WappPageState extends State<WappPage>
         avatar: _loadSelfProfile().avatar,
       );
     }
+    // The picture the station announced itself (XPRS.md 6.3.2) wins; the
+    // NOSTR kind-0 note below is for stations that only speak NOSTR.
+    final announced = stationAvatarImage(callsign, px: 256);
+    final announcedNick = XprsProfiles.instance.nickFor(callsign);
     final meta = RnsService.instance.profileMetaFor(callsign);
+    if (announced != null || (announcedNick ?? '').isNotEmpty) {
+      final pic = (meta?['picture'] ?? '').toString();
+      return (
+        name: announcedNick,
+        avatar: announced ?? (pic.isEmpty ? null : _imageForPicture(pic)),
+      );
+    }
     if (meta == null) {
       // Not cached yet — if we follow this callsign, auto-fetch its NOSTR
       // profile (deduped + TTL-gated in the service; repaints via the listener).
@@ -8093,72 +8139,27 @@ class _WappPageState extends State<WappPage>
   }
 
   /// Read our own profile (nickname/description/avatar) for the profile view.
+  /// The picture is the one other stations see, from the media store; the
+  /// profile's storage is not touched here (it may be an encrypted container,
+  /// and a synchronous file check does not belong on this isolate).
   SelfData _loadSelfProfile() {
     final p = ProfileService.instance.activeProfile;
     if (p == null) return (name: null, about: null, avatar: null);
-    ImageProvider? avatar;
-    if (p.avatar.isNotEmpty) {
-      try {
-        final path = ProfileService.instance
-            .storageForProfile(p.id)
-            .getAbsolutePath(p.avatar);
-        final f = fs.file(path);
-        if (f.existsSync()) avatar = FileImage(f);
-      } catch (_) {}
-    }
-    return (name: p.nickname, about: p.description, avatar: avatar);
+    return (
+      name: p.nickname,
+      about: p.description,
+      avatar: stationAvatarImage(p.wireCallsign, px: 256, want: false),
+    );
   }
 
-  /// Open the profile editor, then publish the updated profile as a NOSTR
-  /// kind-0 note so peers can fetch it by npub.
+  /// Open the profile editor. Saving is all it takes: the core puts the
+  /// changed name, picture and description on the air (XprsProfiles), as a
+  /// `t:identity` decoration and a NOSTR kind-0 note, whichever editor saved.
   Future<void> _editOwnProfile() async {
     final p = ProfileService.instance.activeProfile;
     if (p == null) return;
-    final saved = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => ProfileEditPage(profile: p)),
-    );
-    if (saved != true) return;
-    // The avatar lives at a fixed path ('avatar.png'); evict the cached image so
-    // a freshly-picked picture re-decodes instead of showing the old one.
-    final edited = ProfileService.instance.activeProfile;
-    if (edited != null && edited.avatar.isNotEmpty) {
-      try {
-        final path = ProfileService.instance
-            .storageForProfile(edited.id)
-            .getAbsolutePath(edited.avatar);
-        await FileImage(fs.file(path)).evict();
-      } catch (_) {}
-    }
-    await _publishOwnProfileMetadata();
-  }
-
-  /// Build the signed kind-0 metadata note from the active profile: nickname →
-  /// name, description → about, avatar → a small inline `data:` PNG so the
-  /// picture travels WITH the note over the relay (reliable between peers; no
-  /// dependency on the media swarm / public hosts).
-  Future<void> _publishOwnProfileMetadata() async {
-    final p = ProfileService.instance.activeProfile;
-    if (p == null) return;
-    String? picture;
-    if (p.avatar.isNotEmpty) {
-      try {
-        final path = ProfileService.instance
-            .storageForProfile(p.id)
-            .getAbsolutePath(p.avatar);
-        final f = fs.file(path);
-        if (await f.exists()) {
-          final bytes = await f.readAsBytes();
-          final thumb = await _thumbnailPng(bytes, 96);
-          if (thumb != null) {
-            picture = 'data:image/png;base64,${base64Encode(thumb)}';
-          }
-        }
-      } catch (_) {}
-    }
-    await RnsService.instance.publishMetadata(
-      name: p.nickname,
-      about: p.description,
-      picture: picture,
     );
   }
 

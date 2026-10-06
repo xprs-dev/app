@@ -39,6 +39,7 @@ import 'xprs_ingest.dart';
 import 'xprs_lan.dart';
 import 'xprs_airtime.dart';
 import 'xprs_file_lift.dart';
+import 'xprs_send.dart';
 import '../../util/nostr_crypto.dart';
 import 'xprs_archive.dart';
 import 'xprs_callsign.dart';
@@ -812,7 +813,38 @@ class XprsPublisher {
     final ts = '${now.year}-${two(now.month)}-${two(now.day)}_'
         '${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
 
-    var head = 't:status f:${call.toUpperCase()} ts:$ts';
+    final built = _statusFor(call.toUpperCase(), ts, body,
+        mood: mood, scope: scope, replyTo: replyTo);
+    if (built.wires.isEmpty) {
+      refused++;
+      return (wires: const [], id: '');
+    }
+    final lift = built.lift;
+    if (lift.hasPreview) {
+      XprsSend.airFileCompanion(call.toUpperCase(), '', built.id, lift);
+    }
+    if (lift.found) {
+      XprsSend.onFileShared?.call(lift.file!, '', original: lift.original);
+    }
+    return (wires: built.wires, id: built.id);
+  }
+
+  /// The wires of one status, built and signed, and the file it carries.
+  ///
+  /// A picture is a field beside the words, never caption text (XPRS.md
+  /// 7.7.7), and one too large for the packet lane travels as its preview
+  /// with a companion `t:file` naming the original. The same lift, companion
+  /// and hand-off every other sender uses (XprsSend): three shared functions,
+  /// so a status cannot drift from a message.
+  ({List<String> wires, String id, XprsFileLift lift}) _statusFor(
+      String call, String ts, String body,
+      {String? mood, String? scope, String? replyTo, BigInt? signingKey}) {
+    final lift = xprsLiftFile(body);
+    var head = 't:status f:$call ts:$ts';
+    if (lift.found) {
+      head += ' file:${lift.file}';
+      if (lift.size != null) head += ' size:${lift.size}';
+    }
     if (mood != null && mood.trim().isNotEmpty) {
       head += ' mood:${mood.trim().toLowerCase()}';
     }
@@ -823,13 +855,19 @@ class XprsPublisher {
     final parent = (replyTo ?? '').trim().toLowerCase();
     if (parent.isNotEmpty) head += ' r:$parent';
 
-    final built = _compose(head, body);
+    final built =
+        _compose(head, lift.found ? lift.text : body, signingKey: signingKey);
     if (built.wires.isEmpty || built.whole == null) {
-      refused++;
-      return (wires: const [], id: '');
+      return (wires: const [], id: '', lift: lift);
     }
-    return (wires: built.wires, id: xprsIdentifier(built.whole!));
+    return (wires: built.wires, id: xprsIdentifier(built.whole!), lift: lift);
   }
+
+  /// Test seam: the wires [composeStatus] would air for [text] from [call].
+  @visibleForTesting
+  List<String> debugStatusWires(String call, String text,
+          {String ts = '2026-10-06_12:00:00', BigInt? signingKey}) =>
+      _statusFor(call, ts, text.trim(), signingKey: signingKey).wires;
 
   /// Publish a `t:status` (section 27). Returns per-bearer outcomes:
   /// 'sent' | 'refused' | 'inactive' | 'scope' — empty map when nothing
@@ -986,6 +1024,110 @@ class XprsPublisher {
     LogService.instance.add('XPRS: identity $call k:${npub.substring(0, 12)}… '
         '— ${report.entries.map((e) => "${e.key}:${e.value}").join(", ")}');
     return report;
+  }
+
+  /// The smallest advertisement a BLE5 controller in the field carries
+  /// (docs/ble5.md section 3, measured 184 B). A frame over it is refused
+  /// rather than truncated, so the packet carrying the picture has to fit it
+  /// or it never reaches the radio half of the mesh.
+  static const int decorationFrameMax = 184;
+
+  /// The decoration of section 6.3.2, COMPOSED: `nick:`, `file:` and `m:`,
+  /// signed, as one packet when all three fit [decorationFrameMax] and as two
+  /// when they do not (nick and picture first, the description alone).
+  ///
+  /// Every field is always stated, with `-` for "none": the section keeps,
+  /// per field, the value from the newest announcement that CARRIED it, so a
+  /// field left out means "unchanged" and only `-` can take a picture back.
+  ///
+  /// [fileToken] is `file:<sha>.<ext>`, or empty for no picture. Pure: the
+  /// caller supplies the time and the key, so a test has no profile to fake.
+  /// Empty when there is nothing that can be signed, because an unsigned
+  /// decoration is a claim by nobody (6.3.1) and binds nothing anywhere.
+  static List<String> composeDecoration({
+    required String call,
+    required String nick,
+    required String fileToken,
+    required String about,
+    required String ts,
+    required BigInt? signingKey,
+  }) {
+    final c = call.trim().toUpperCase();
+    if (c.isEmpty || signingKey == null) return const [];
+    var n = xprsNickValue(nick);
+    final ref = fileToken.startsWith('file:') ? fileToken.substring(5) : '';
+    final f = ref.isEmpty ? '-' : ref;
+    final m = about.replaceAll(RegExp(r'\s+'), ' ').trim();
+    String? signed(String head, {String? body}) {
+      var p = XprsPacket.parse(body == null ? head : '$head m:$body');
+      if (p == null) return null;
+      p = xprsSign(p, signingKey);
+      return p.encode();
+    }
+
+    int bytes(String w) => utf8.encode(w).length;
+    final env = 't:identity f:$c ts:$ts';
+    // The whole decoration in one packet, when the smallest controller takes it.
+    final whole = signed('$env nick:${n.isEmpty ? '-' : n} file:$f',
+        body: m.isEmpty ? '-' : m);
+    if (whole != null && bytes(whole) <= decorationFrameMax) return [whole];
+    // Otherwise the picture and the name, shortening the name until it fits.
+    String? a;
+    while (true) {
+      a = signed('$env nick:${n.isEmpty ? '-' : n} file:$f');
+      if (a == null) return const [];
+      if (bytes(a) <= decorationFrameMax) break;
+      if (n.isEmpty) return const [];
+      n = n.length > 1 ? n.substring(0, n.length - 1) : '';
+    }
+    // And the description on its own, trimmed to the format's 250 bytes.
+    var body = m.isEmpty ? '-' : m;
+    String? b;
+    while (true) {
+      b = signed(env, body: body);
+      if (b == null) return [a];
+      if (bytes(b) <= XprsPacket.maxBytes) break;
+      final cut = utf8.decode(utf8.encode(body).sublist(0, utf8.encode(body).length - 4),
+          allowMalformed: true);
+      body = cut.replaceAll('�', '').trimRight();
+      if (body.isEmpty) return [a];
+    }
+    return [a, b];
+  }
+
+  /// Put this station's decoration on the air (6.3.2): the nickname, the
+  /// picture and the description from the active profile, under the name the
+  /// station transmits with. Rare by design ("the decoration is larger and
+  /// changes once a year"): on a change, and once a day, never on every key
+  /// beacon. Deposited with the archivers like any publication, so a follower
+  /// who was away recovers it from them (`kind:identity`).
+  Future<Map<String, String>> publishDecoration() async {
+    final profile = ProfileService.instance.activeProfile;
+    if (profile == null) return const {};
+    final now = DateTime.now().toUtc();
+    String two(int n) => n.toString().padLeft(2, '0');
+    final ts = '${now.year}-${two(now.month)}-${two(now.day)}_'
+        '${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
+    final wires = composeDecoration(
+      call: profile.wireCallsign,
+      nick: profile.nickname,
+      fileToken: profile.avatar.startsWith('file:') ? profile.avatar : '',
+      about: profile.description,
+      ts: ts,
+      signingKey: xprsProfileScalar(),
+    );
+    if (wires.isEmpty) return const {};
+    final air = await _fanOut(wires, slot: 'decoration');
+    for (final w in wires) {
+      XprsIngest.own(w, bearer: air.carriedBy ?? 'none');
+    }
+    depositArchivers(wires, what: 'decoration');
+    // Said when something carried it: a station with no bearer up retries on
+    // the next tick, and that is not news every five seconds (perf. 8.10).
+    if (air.report.values.any((v) => v == 'sent')) LogService.instance.add('XPRS: decoration ${wires.length} packet(s) '
+        '${[for (final w in wires) utf8.encode(w).length].join('+')} B: '
+        '${air.report.entries.map((e) => "${e.key}:${e.value}").join(", ")}');
+    return air.report;
   }
 
   /// Publish one caller-composed wire (spec/API-HTTP.md send semantics):
@@ -1470,8 +1612,9 @@ class XprsPublisher {
 
     XprsPacket? make(String m) => XprsPacket.parse('$head m:$m');
 
-    // The unsplit packet, signed, when it fits.
-    final whole = make(body);
+    // The unsplit packet, signed, when it fits. A picture with no words is a
+    // packet with no `m:` at all, not an empty one (7.7.7).
+    final whole = body.isEmpty ? XprsPacket.parse(head) : make(body);
     if (whole == null) return (wires: const [], whole: null);
     final signedWhole = d != null ? xprsSign(whole, d) : whole;
     if (signedWhole.fits) {

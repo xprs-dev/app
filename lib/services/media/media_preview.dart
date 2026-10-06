@@ -47,6 +47,13 @@ const List<int> kPreviewQualities = [60, 45, 30, 20];
 /// costs more than the courtesy is worth, and the receiver taps instead.
 const int kPreviewSourceMax = 20 * 1024 * 1024;
 
+/// A profile picture (XPRS.md §6.3.2): a square thumbnail small enough that
+/// fetching it costs a few dozen packets on the packet lane, the one lane that
+/// crosses a public hub. A picture a peer cannot fetch is no picture at all.
+const int kAvatarMaxBytes = 8 * 1024;
+const List<int> kAvatarSides = [128, 96, 64];
+const List<int> kAvatarQualities = [70, 55, 40];
+
 class MediaPreviews {
   MediaPreviews._();
   static final MediaPreviews instance = MediaPreviews._();
@@ -114,6 +121,42 @@ class MediaPreviews {
     LogService.instance.add('media: preview ${small.length} B for '
         '${meta.size} B picture');
     return ptoken;
+  }
+
+  /// A square, upright JPEG of [source] for a profile picture, at most
+  /// [kAvatarMaxBytes]: centre-cropped, then stepped down in side and quality
+  /// until it fits. Pure and static so it runs on a worker isolate. Null when
+  /// the source is too large to decode, cannot be decoded here, or nothing
+  /// small enough comes out.
+  static Uint8List? avatarThumb(Uint8List source) {
+    if (source.isEmpty || source.length > kPreviewSourceMax) return null;
+    img.Image? decoded;
+    try {
+      decoded = img.decodeImage(source);
+    } catch (_) {
+      return null;
+    }
+    if (decoded == null) return null;
+    final upright = img.bakeOrientation(decoded);
+    final side = upright.width < upright.height ? upright.width : upright.height;
+    if (side <= 0) return null;
+    final square = img.copyCrop(upright,
+        x: (upright.width - side) ~/ 2,
+        y: (upright.height - side) ~/ 2,
+        width: side,
+        height: side);
+    for (final s in kAvatarSides) {
+      final scaled = side > s ? img.copyResize(square, width: s, height: s) : square;
+      for (final q in kAvatarQualities) {
+        try {
+          final out = img.encodeJpg(scaled, quality: q);
+          if (out.length <= kAvatarMaxBytes) return out;
+        } catch (_) {
+          return null;
+        }
+      }
+    }
+    return null;
   }
 
   /// Decode, downscale and JPEG-encode until the result fits

@@ -23,6 +23,7 @@ import 'profile_service.dart';
 import '../services/android_permissions_service.dart';
 import '../services/preferences_service.dart';
 import '../services/xprs/xprs_callsign.dart';
+import '../services/xprs/xprs_profiles.dart';
 
 class ProfileEditPage extends StatefulWidget {
   final IwiProfile profile;
@@ -167,11 +168,17 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     if (file == null) return;
     final bytes = await file.readAsBytes();
     if (bytes.isEmpty) return;
-    // Store inside the profile's own folder so it travels with the identity.
-    await ProfileService.instance
-        .storageForProfile(_p.id)
-        .writeBytes('avatar.png', bytes);
-    setState(() => _p = _p.copyWith(avatar: 'avatar.png'));
+    // The core makes the picture: a small square thumbnail, off the UI
+    // isolate, kept as a file other stations can fetch (XPRS.md 6.3.2). The
+    // profile names it; Save puts it on the air.
+    final token = await XprsProfiles.instance.pictureTokenFor(bytes);
+    if (!mounted) return;
+    if (token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('That picture could not be read. Try a JPEG or PNG.')));
+      return;
+    }
+    setState(() => _p = _p.copyWith(avatar: token));
   }
 
   void _removeAvatar() => setState(() => _p = _p.copyWith(avatar: ''));
