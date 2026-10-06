@@ -1,0 +1,4 @@
+* Profile pictures reach other stations: set one in your profile and the people around you see it in Chat, Status and the people lists. Removing it reaches them too.
+* Pictures in a status are now seen by others, shown straight away as a small preview, with the full picture one tap away.
+* The Status box sits at the top of the feed.
+* Posts show the name each station signed, or its callsign.
