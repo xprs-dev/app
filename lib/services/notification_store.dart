@@ -161,8 +161,14 @@ class NotificationStore {
           .catchError((_) {}));
     });
     ProfileService.instance.activeProfileNotifier.addListener(_reload);
-    unawaited(_load());
+    _loading = _load();
+    unawaited(_loading);
   }
+
+  /// The history load in flight. A notification recorded before it lands
+  /// waits for it: the load REPLACES the list, so one raised at startup was
+  /// recorded and then wiped off the bell by its own history arriving.
+  Future<void>? _loading;
 
   /// Whether [n] belongs on the bell at all.
   ///
@@ -178,6 +184,7 @@ class NotificationStore {
 
   Future<void> record(XprsNotification n) async {
     if (!countsOnBell(n)) return;
+    await _loading;
     var incoming = StoredNotification.fromNotification(n);
     // Same id = same notification. Replace it in place instead of stacking
     // another copy on top of it -- and carry the OLD row's seen flag and
@@ -221,6 +228,7 @@ class NotificationStore {
   /// Flag every row matching [pick] as seen and persist. No-op when nothing
   /// changes, so a second call (page open then page close) costs nothing.
   Future<void> _markSeenWhere(bool Function(StoredNotification) pick) async {
+    await _loading; // or the load lands afterwards with the unseen rows
     var changed = false;
     final next = <StoredNotification>[];
     for (final n in items.value) {
@@ -267,6 +275,7 @@ class NotificationStore {
     _seenSub?.cancel();
     _seenSub = null;
     _initialised = false;
+    _loading = null;
     _seenMs = 0;
     items.value = const [];
     unreadCount.value = 0;
@@ -274,7 +283,8 @@ class NotificationStore {
   }
 
   void _reload() {
-    unawaited(_load());
+    _loading = _load();
+    unawaited(_loading);
   }
 
   Future<void> _load() async {

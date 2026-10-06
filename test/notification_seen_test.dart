@@ -66,10 +66,9 @@ void main() {
   group('seen leaves the bell', () {
     setUp(() async {
       NotificationStore.instance.reset();
+      // record() waits for init's history load itself (a fixed delay here
+      // lost to it under a loaded full-suite run).
       NotificationStore.instance.init();
-      // init loads the profile's history (none in a test) asynchronously; let
-      // it land before recording, or it replaces what was recorded.
-      await Future<void>.delayed(const Duration(milliseconds: 50));
     });
 
     test('marking a view seen marks exactly its rows', () async {

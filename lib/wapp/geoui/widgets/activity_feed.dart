@@ -12,6 +12,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/gestures.dart';
 import '../../../services/social/note_text.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'dart:ui' as ui;
@@ -97,7 +98,8 @@ class ActivityFeed extends StatefulWidget {
 
   /// Open a publication's full-screen forum thread (replies). The host pushes
   /// the thread page.
-  final void Function(Map<String, dynamic> post)? onOpenThread;
+  /// [reply]: opened with the reply button, so the thread's box takes focus.
+  final void Function(Map<String, dynamic> post, {bool reply})? onOpenThread;
 
   /// Callsigns we follow (for the Following filter).
   final Set<String> followedCalls;
@@ -585,7 +587,8 @@ class _ActivityFeedState extends State<ActivityFeed> {
                             onFollow: widget.onFollow,
                             isFollowing: _isFollowed,
                             onTap: () => widget.onOpenThread?.call(posts[i]),
-                            onReply: () => widget.onOpenThread?.call(posts[i]),
+                            onReply: () =>
+                                widget.onOpenThread?.call(posts[i], reply: true),
                             mentionResolver: widget.mentionResolver,
                             onMentionTap: widget.onMentionTap,
                           ),
@@ -788,7 +791,16 @@ class _ActivityFeedState extends State<ActivityFeed> {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: TextField(
+                // Enter is a new line in a status, so a keyboard posts with
+                // Ctrl+Enter (Cmd+Enter on a Mac), as other composers do.
+                child: CallbackShortcuts(
+                  bindings: {
+                    const SingleActivator(LogicalKeyboardKey.enter,
+                        control: true): _post,
+                    const SingleActivator(LogicalKeyboardKey.enter,
+                        meta: true): _post,
+                  },
+                  child: TextField(
                   controller: _input,
                   textCapitalization: TextCapitalization.sentences,
                   focusNode: _composeFocus,
@@ -806,6 +818,7 @@ class _ActivityFeedState extends State<ActivityFeed> {
                     isDense: true,
                     border: InputBorder.none,
                   ),
+                ),
                 ),
               ),
             ],
@@ -1456,6 +1469,10 @@ class ActivityPostCard extends StatelessWidget {
 class ActivityThreadPage extends StatefulWidget {
   final Map<String, dynamic> root;
 
+  /// Opened to reply (the reply button), not to read: the box takes focus,
+  /// or the first keys typed go nowhere.
+  final bool focusReply;
+
   /// All replies in the thread (direct + nested), any order.
   final List<Map<String, dynamic>> Function(String rootMid) loadThread;
   final int Function(String mid)? replyCount;
@@ -1494,6 +1511,7 @@ class ActivityThreadPage extends StatefulWidget {
   const ActivityThreadPage({
     super.key,
     required this.root,
+    this.focusReply = false,
     required this.loadThread,
     required this.onReply,
     this.replyCount,
@@ -1729,6 +1747,7 @@ class _ActivityThreadPageState extends State<ActivityThreadPage> {
                   controller: _input,
                   textCapitalization: TextCapitalization.sentences,
                   focusNode: _inputFocus,
+                  autofocus: widget.focusReply,
                   style: const TextStyle(color: Colors.white),
                   minLines: 1,
                   maxLines: 5,

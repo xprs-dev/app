@@ -460,7 +460,15 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                     onTap: _editRnsServers,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 24),
+
+                // ── Hosting: its own heading, or its text reads as Reticulum's ──
+                Text('Hosting',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: cs.primary,
+                          fontWeight: FontWeight.w600,
+                        )),
+                const SizedBox(height: 4),
                 Text(
                   'Host for the mesh: act as a NOSTR relay + file host so peers '
                   'have a free place to store notes and files. Tiered fair-use '

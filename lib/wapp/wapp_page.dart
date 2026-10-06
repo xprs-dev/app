@@ -7696,7 +7696,7 @@ class _WappPageState extends State<WappPage>
     });
   }
 
-  void _openActivityThread(Map<String, dynamic> post) {
+  void _openActivityThread(Map<String, dynamic> post, {bool reply = false}) {
     final mid = (post['mid'] ?? '').toString();
     if (mid.isEmpty) return;
     _keepPostMedia(post); // opening a thread = an interaction — keep its media
@@ -7709,6 +7709,7 @@ class _WappPageState extends State<WappPage>
           MaterialPageRoute(
             builder: (_) => ActivityThreadPage(
               root: post,
+              focusReply: reply,
               revision: _activityRev,
               loadThread: (rootMid) =>
                   _activeActivityArchive?.threadReplies(rootMid) ??
