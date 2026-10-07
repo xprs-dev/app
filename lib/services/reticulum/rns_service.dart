@@ -1933,6 +1933,7 @@ class RnsService {
     'interfaces': _ifaces.length + (_server != null ? 1 : 0),
     'inbox': _inbox.length,
     'announcesHeard': _rxAnnounces,
+    'announcesRebroadcast': _transport?.announcesRebroadcast ?? 0,
     'wappLxmfIn': _wappLxmfIn,
     'provided': _files?.providedCount ?? 0,
     'dhtStored': _files?.dhtStoredKeys ?? 0,

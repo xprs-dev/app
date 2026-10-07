@@ -1347,6 +1347,15 @@ class BleService {
   // peer, then [_flushPendingGatt] sends them. Bounded so a peer that never
   // appears can't grow this unbounded.
   final List<Uint8List> _pendingGatt = [];
+
+  /// Counters, not a line per payload (performance.md 8.7, 8.10): a station
+  /// that bridges a hub's announces sends several a second, and with no link
+  /// the queued/dropped pair alternated, so the log's duplicate folding never
+  /// caught it and the ring held two and a half minutes of it.
+  int _gattSent = 0;
+  int _gattQueued = 0;
+  int _gattDropped = 0;
+  bool _gattDropSaid = false;
   // Most recently discovered connectable XPRS peer. Android dedups scan
   // results (a peer is reported once, then suppressed), so we remember the last
   // one and dial it when data is queued — not only on a fresh discovery event.
@@ -1410,18 +1419,25 @@ class BleService {
       for (final id in peers) {
         _queue.enqueue(BLEOutgoingMessage(payload: payload, targetDeviceId: id));
       }
-      LogService.instance
-          .add('BLE: ${payload.length}B -> GATT, ${peers.length} peer(s)');
+      _gattSent++;
       return;
     }
+    // One line when the wait starts and one when it first overflows; the
+    // rest is counted (gattStatus: queued, dropped).
+    if (_pendingGatt.isEmpty) {
+      LogService.instance.add('BLE: no GATT link — queuing for one');
+    }
     _pendingGatt.add(payload);
+    _gattQueued++;
     if (_pendingGatt.length > 16) {
       _pendingGatt.removeAt(0);
-      LogService.instance.add(
-          'BLE: queue full — dropped the oldest pending payload');
+      _gattDropped++;
+      if (!_gattDropSaid) {
+        _gattDropSaid = true;
+        LogService.instance.add(
+            'BLE: GATT queue full — dropping the oldest until a link opens');
+      }
     }
-    LogService.instance.add('BLE: ${payload.length}B queued for a GATT link '
-        '(${_pendingGatt.length} waiting)');
     _maybeAutoPair(); // dial the last-seen peer now (Android won't re-report it)
   }
 
@@ -1438,6 +1454,9 @@ class BleService {
             ? [_ngServerCentral!]
             : (_gattServer?.clientIds.toList() ?? <String>[]),
         'pendingGatt': _pendingGatt.length,
+        'sentToGatt': _gattSent,
+        'queuedForGatt': _gattQueued,
+        'droppedForGatt': _gattDropped,
         'lastPeer': _lastPeerAddr.isEmpty ? null : _lastPeerAddr,
         'idleMs': _gattActivityMs == 0
             ? null
@@ -1498,6 +1517,7 @@ class BleService {
     LogService.instance.add(
         'BLE: flushed ${_pendingGatt.length} queued payload(s) to $peer');
     _pendingGatt.clear();
+    _gattDropSaid = false;
   }
 
   void clearAdverts(Object owner) {

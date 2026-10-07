@@ -1405,6 +1405,14 @@ then covered 77 seconds.
   `/api/rns/status` replace two per-event lines (8.10). The one announce still
   logged is the one that teaches something: a callsign learned for the first
   time.
+- **The census after the fix found two more of the same.** With the announce
+  line gone the ring still covered two and a half minutes: the transport's
+  `rebroadcast <dest> -> <iface>` (one line per announce per interface) and
+  BLE's queued/dropped pair while no GATT link was up, which alternated, so
+  `LogService`'s duplicate folding never caught it. Both are counters now
+  (`announcesRebroadcast` on `/api/rns/status`; `sentToGatt`, `queuedForGatt`,
+  `droppedForGatt` in the GATT status), with one line when a wait starts and
+  one when its queue first overflows.
 
 How it was found, which is the reusable part: `dumpsys meminfo` to see that
 the process was large, the 8.7 log census to see what the station was busy

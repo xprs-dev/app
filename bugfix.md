@@ -16,6 +16,15 @@ are the ones that were not.
    in a wapp. The XPRS wapp now shows one row per packet with "heard xN", so
    the count is visible there.
 
+1b. **The C61 re-airs the public hubs' announce flood onto LAN (and BLE5).**
+   On 2026-10-07 the log showed every hub announce rebroadcast to `lan` and
+   `ble5` at hops=2, about three a second each, with the BLE GATT queue full
+   and dropping. `rns_transport.dart` has `edgeQuiet`/`edgeBridge` modes that
+   keep the internet flood off edge bearers; check which mode the phone runs
+   in and whether a station should carry hub announces onto a shared radio at
+   all (performance.md 8.11, 8.14). Now visible as `announcesRebroadcast` on
+   `/api/rns/status`.
+
 ## Wapps
 
 2. **Archiver: "Mine: 74.8k packets".** Far more than one station plausibly
