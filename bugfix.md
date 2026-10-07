@@ -25,6 +25,14 @@ are the ones that were not.
    all (performance.md 8.11, 8.14). Now visible as `announcesRebroadcast` on
    `/api/rns/status`.
 
+1c. **The C61's native heap is 140 MB twenty minutes after start** (170 MB at
+   ten hours). Not the announce leak (that was Dart heap, fixed in `576d5c0`),
+   and present from start-up, so likely baseline: sqlite page caches (the
+   archive holds 217k backfilled messages), 18 wapp engines' linear memory,
+   decoded images. Attribute it with a profile build and heapprofd by mapping
+   (performance.md, "Profiling native memory on a stock device"), then soak
+   for hours to see whether it grows.
+
 ## Wapps
 
 2. **Archiver: "Mine: 74.8k packets".** Far more than one station plausibly
