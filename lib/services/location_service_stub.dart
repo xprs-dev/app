@@ -12,4 +12,11 @@ class LocationService {
 
   /// No device GPS on web — always null.
   Future<({double lat, double lon})?> currentPosition() async => null;
+
+  /// No device GPS on web: never a fix for a peer.
+  Future<({double lat, double lon, double acc})?> fixForPeer({
+    Duration maxAge = const Duration(minutes: 5),
+    Duration timeLimit = const Duration(seconds: 20),
+  }) async =>
+      null;
 }

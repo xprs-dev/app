@@ -386,6 +386,13 @@ class PreferencesService {
   String get xprsMailboxHold => _prefs.getString('xprs.mailboxHold') ?? '';
   set xprsMailboxHold(String v) => _prefs.setString('xprs.mailboxHold', v);
 
+  /// Stations whose own verified `owner:` names this profile (XPRS 11.9),
+  /// kept by `XprsOwnedStations`. Learned, never typed in.
+  List<String> get xprsOwnedStations =>
+      _prefs.getStringList('xprs.ownedStations') ?? const [];
+  set xprsOwnedStations(List<String> v) =>
+      _prefs.setStringList('xprs.ownedStations', v);
+
 
   /// Mirror app releases over Reticulum for the phones around this station.
   ///

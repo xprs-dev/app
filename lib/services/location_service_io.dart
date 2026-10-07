@@ -120,6 +120,39 @@ class LocationService {
     }
   }
 
+  /// One fix for somebody else's question, typically a station of ours asking
+  /// where we both are (XPRS.md 8, `q:pos`). NEVER prompts: it runs headless,
+  /// in a pocket, and a permission dialog nobody is looking at is a dialog
+  /// that stays up. A fix the OS already holds and is younger than [maxAge]
+  /// costs nothing and is used as it is; otherwise one medium-accuracy fix,
+  /// given [timeLimit], and no stream is left running (performance.md 4.2).
+  /// Null when location is off, not granted, or nothing came in time.
+  Future<({double lat, double lon, double acc})?> fixForPeer({
+    Duration maxAge = const Duration(minutes: 5),
+    Duration timeLimit = const Duration(seconds: 20),
+  }) async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return null;
+      final perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        return null;
+      }
+      Position? p = await Geolocator.getLastKnownPosition();
+      if (p == null || DateTime.now().difference(p.timestamp) > maxAge) {
+        p = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: timeLimit,
+        );
+      }
+      _set(p);
+      return (lat: p.latitude, lon: p.longitude, acc: p.accuracy);
+    } catch (e) {
+      debugPrint('LocationService.fixForPeer: $e');
+      return null;
+    }
+  }
+
   /// Stop the stream when nobody is reading it, or when the battery tier says
   /// the phone is scraping by. Never stops it while a fix is being consumed.
   void _idle() {

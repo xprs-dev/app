@@ -25,6 +25,7 @@ import 'dart:typed_data';
 
 import '../../util/nostr_crypto.dart';
 import '../log_service.dart';
+import '../location_service.dart';
 import '../preferences_service.dart';
 import 'xprs_archive.dart';
 import 'xprs_files.dart';
@@ -33,6 +34,7 @@ import 'xprs_gossip.dart';
 import '../reticulum/rns_service.dart';
 import 'xprs_id.dart';
 import 'xprs_ingest.dart';
+import 'xprs_owned_stations.dart';
 import 'xprs_packet.dart';
 import 'xprs_publisher.dart';
 import 'xprs_sig.dart';
@@ -75,6 +77,9 @@ class XprsHistoryServer {
         'notFound': notFound,
         'refusedBusy': refusedBusy,
         'refusedBudget': refusedBudget,
+        'posAnswered': posAnswered,
+        'posNotOwned': posNotOwned,
+        'owned': XprsOwnedStations.instance.all,
         'asksLastHour': asksLastHour,
         'chainFor': _chainFor,
       };
@@ -161,6 +166,14 @@ class XprsHistoryServer {
     // single signature of ours.
     if ((p['q'] ?? '') == 'identity') {
       unawaited(XprsPublisher.instance.publishIdentity());
+      return;
+    }
+    // `q:pos` (section 8) from one of our own stations: a card in the
+    // pocket asking where we both are, because the phone already knows and
+    // the card's receiver costs it thirty milliamps a fix.
+    if (p.type == 'request' &&
+        (p['q'] ?? '').split(',').map((w) => w.trim()).contains('pos')) {
+      _onPosAsk(p, selfBase: selfBase);
       return;
     }
     final cmd = p['cmd'] ?? '';
@@ -500,6 +513,80 @@ class XprsHistoryServer {
     return XprsPublisher.instance
         .publishWire(wire, slot: key, ttl: ttl, verbatim: true)
         .then((r) => r.values.any((v) => v == 'sent'));
+  }
+
+  /// How often an unknown station that asks for our position is asked who
+  /// owns it, and how long its asks are remembered.
+  static const Duration policyAskEvery = Duration(hours: 1);
+  final Map<String, int> _policyAskedAt = {};
+  int posAnswered = 0, posNotOwned = 0;
+
+  /// A position is a person's, so it goes only to a station this profile
+  /// owns (11.9), on a request that station signed, and only what the phone
+  /// is allowed to know: location off or not granted is silence, not an
+  /// error. A station we do not know to be ours is asked `q:policy` once an
+  /// hour instead; its answer, if it names us, lets its next ask through.
+  void _onPosAsk(XprsPacket p, {required String selfBase}) {
+    final from = _base(p['f'] ?? '');
+    if (from.isEmpty || from == selfBase) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final id = xprsIdentifier(p);
+    _answeredIds.removeWhere((_, t) => now - t > answeredWindow.inMilliseconds);
+    if (_answeredIds.containsKey(id)) return;
+    _answeredIds[id] = now;
+    if (!p.has('sig') ||
+        xprsVerify(p, XprsArchive.instance.keyResolver?.call(from)) !=
+            XprsSigState.verified) {
+      return;
+    }
+    if (!XprsOwnedStations.instance.isOwned(from)) {
+      posNotOwned++;
+      final last = _policyAskedAt[from] ?? 0;
+      if (now - last < policyAskEvery.inMilliseconds) return;
+      _policyAskedAt[from] = now;
+      final ask = _signed('t:request f:$selfBase d:$from ts:${_ts()} q:policy');
+      if (ask != null) {
+        unawaited(_air('xprs-pos:policy', ask.encode(),
+            const Duration(seconds: 30), to: from));
+      }
+      LogService.instance.add('XPRS: $from asked our position; asking who owns it');
+      return;
+    }
+    unawaited(_airPos(selfBase, from));
+  }
+
+  Future<void> _airPos(String self, String to) async {
+    final fix = await LocationService.instance.fixForPeer();
+    if (fix == null) return;
+    // Decimals by what the fix supports (15.1): 4 is a normal fix, 5 only
+    // when the phone claims better than five metres.
+    final dec = fix.acc > 0 && fix.acc < 5 ? 5 : 4;
+    final acc = fix.acc > 0 ? ' acc:${fix.acc.round()}m' : '';
+    final ans = _signed('t:observation f:$self d:$to '
+        'pos:${fix.lat.toStringAsFixed(dec)},${fix.lon.toStringAsFixed(dec)}'
+        '$acc ts:${_ts()} s:pos');
+    if (ans == null) return;
+    posAnswered++;
+    // On the air for two and a half minutes: a phone advertises five
+    // seconds of every minute (Ble5.kt) and rotates its frames through that
+    // window, so thirty seconds is at most one window and a card that missed
+    // it never hears the answer (measured, 2026-10-07).
+    await _air('xprs-pos', ans.encode(), const Duration(seconds: 150), to: to);
+  }
+
+  XprsPacket? _signed(String wire) {
+    var p = XprsPacket.parse(wire);
+    if (p == null || !p.fits) return null;
+    final d = signingKey();
+    if (d == null) return null;
+    return xprsSign(p, d);
+  }
+
+  static String _ts() {
+    final now = DateTime.now().toUtc();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${now.year}-${two(now.month)}-${two(now.day)}_'
+        '${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
   }
 
   /// The person, with any device suffix removed: `X1ABCD-1` -> `X1ABCD`

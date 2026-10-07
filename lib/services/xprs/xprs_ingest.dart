@@ -38,7 +38,9 @@ import 'xprs_gossip.dart';
 import 'xprs_monitor.dart';
 import 'xprs_id.dart';
 import 'xprs_outbox.dart';
+import 'xprs_owned_stations.dart';
 import 'xprs_packet.dart';
+import 'xprs_presence.dart';
 import '../../util/media_ref.dart';
 import '../media/media_fetch.dart';
 import '../media/media_ref_index.dart';
@@ -156,6 +158,28 @@ class XprsIngest {
   static int pongsSent = 0;
 
   static String _base(String c) => NostrCrypto.bareCallsign(c);
+
+  /// A station saying who owns it (XPRS.md 11.9), on any lane. Verified, and
+  /// only when the statement would change what [XprsOwnedStations] holds:
+  /// every station answers `q:policy` to anybody, and a phone that verified
+  /// each of those answers would pay a curve operation for other people's
+  /// business (performance.md 8.15).
+  static void _noteOwner(XprsPacket p, String from, String selfBase) {
+    if (!XprsOwnedStations.isOwnerStatement(p)) return;
+    final owner = p['owner'] ?? '';
+    final st = _base(from);
+    if (xprsKindOf(st) != XprsKind.station ||
+        !XprsOwnedStations.instance.concerns(st, owner, selfBase)) {
+      return;
+    }
+    if (!p.has('sig') ||
+        xprsVerify(p, XprsArchive.instance.keyResolver?.call(st)) !=
+            XprsSigState.verified) {
+      return;
+    }
+    XprsOwnedStations.instance.learn(st, owner, selfBase);
+    LogService.instance.add('XPRS: $st says its owners are $owner');
+  }
 
   /// Is [d] addressed to this station, under any name it answers to?
   ///
@@ -397,6 +421,8 @@ class XprsIngest {
     // whether the act arrived over BLE, LAN, or a custody session. Cheap --
     // the act is stored and the replay is redone only when one arrives, never
     // per message (docs/performance.md 8.7).
+    _noteOwner(p, from, _base(selfCallsign));
+
     if (p.type == 'moderate') XprsGroups.instance.offer(p);
 
     // The preference governs the INDEXER — other people's traffic. A packet
@@ -864,6 +890,8 @@ class XprsIngest {
     // anything until a restart replayed the archive. Same call, same place:
     // `offer` verifies the signature itself (26.8: a newcomer trusts the
     // carrier for nothing), so it needs no declaration from anyone.
+    _noteOwner(p, fromC, self);
+
     if (p.type == 'moderate') XprsGroups.instance.offer(p);
 
     // A RECEIPT OFF THE INTERNET LANE. This branch did not exist, so a

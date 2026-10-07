@@ -42,6 +42,7 @@ import 'xprs_archive.dart';
 import 'xprs_cadence.dart';
 import 'xprs_id.dart';
 import 'xprs_monitor.dart';
+import 'xprs_owned_stations.dart';
 import 'xprs_packet.dart';
 import 'xprs_presence.dart';
 import 'xprs_publisher.dart';
@@ -341,6 +342,12 @@ class XprsCatchup {
   void start(String selfCallsign) {
     _selfCallsign = selfCallsign;
     if (selfCallsign.isEmpty) return;
+    final owned = XprsOwnedStations.instance;
+    owned.load = () => PreferencesService.instanceSync?.xprsOwnedStations ?? const [];
+    owned.save = (v) => PreferencesService.instanceSync?.xprsOwnedStations = v;
+    // A card that just became ours is the first mailbox to declare: say so
+    // on the next tick rather than at tomorrow's period.
+    owned.onChanged = () => _mailboxAtMs = 0;
     unawaited(_airIdentity());
     unawaited(_airMailbox());
     unawaited(_airDecoration());
@@ -532,7 +539,14 @@ class XprsCatchup {
   /// tick if no bearer took it, exactly like [_airIdentity].
   Future<void> _airMailbox() async {
     _mailboxAtMs = nowMs();
-    final list = PreferencesService.instanceSync?.xprsArchivers ?? const [];
+    // Our own movable stations first (9.12, in order of preference): a card
+    // in the owner's pocket meets the owner more often than any archiver,
+    // and holds mail for them because this declaration names it. It is NOT
+    // added to the archiver list: a card cannot serve history (12.9.4), and
+    // that list is also where copies of our publications go.
+    final cards = XprsOwnedStations.instance.portable;
+    final chosen = PreferencesService.instanceSync?.xprsArchivers ?? const [];
+    final list = [...cards, ...chosen.where((c) => !cards.contains(c))];
     if (list.isEmpty) return;
     try {
       final report =
