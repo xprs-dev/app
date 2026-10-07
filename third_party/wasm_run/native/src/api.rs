@@ -777,7 +777,11 @@ impl WasmRunModuleId {
         let output: Vec<WasmVal> = unsafe {
             let pointer = new_leak_box_ptr(inputs);
             let result = f(function_id, pointer);
-            pointer.drop_in_place();
+            // PATCHED (xprs): free the box, not only its contents. drop_in_place
+            // ran DartCObject's destructor and left the Box from new_leak_box_ptr
+            // allocated: a few dozen bytes per wasm->host call, every hal_* call
+            // of every wapp, which grew the C61's native heap ~20 MB an hour.
+            drop(Box::from_raw(pointer));
             result.wire2api()
         };
         // TODO: use Drop for this
