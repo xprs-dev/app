@@ -1,0 +1,5 @@
+* Your XPRS card (SenseCAP T1000-E) asks your phone where you both are, and the app answers it, only for a card that says it is yours, and only when location is allowed. Your card is also named first as the place your mail can wait.
+* Chat in Telegram's blue; post with Ctrl+Enter, and replies go where you asked.
+* Search finds your own chats and keys, and every station shows one face everywhere.
+* A notification leaves the shade once you have seen what it was about.
+* Lighter in the background: fewer log lines, a bounded announce inbox, and less memory held.
