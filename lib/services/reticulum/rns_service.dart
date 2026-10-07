@@ -782,7 +782,16 @@ class RnsService {
   // folders are usable offline and a reconnect doesn't rebuild/rescan them.
   bool _localReady = false;
   String _mode = '';
+  /// The last announces heard, for `/api/rns/inbox`. A RING: every announce a
+  /// public hub relays lands here (about two a second on a busy hub), and as a
+  /// plain list it held 60,091 of them after ten hours on the C61 and grew for
+  /// the life of the process (docs/performance.md 8.18).
   final List<Map<String, dynamic>> _inbox = [];
+  static const int _inboxMax = 64;
+
+  /// LXMF wapp datagrams routed to a wapp inbox: a counter on /api/rns/status,
+  /// not a log line each (performance.md 8.10).
+  int _wappLxmfIn = 0;
 
   // Per-wapp datagram channel: wapps (e.g. circles) exchange opaque, app-tagged
   // datagrams over the dedicated "xprs/wapp" destination. Inbound datagrams
@@ -1923,6 +1932,8 @@ class RnsService {
     },
     'interfaces': _ifaces.length + (_server != null ? 1 : 0),
     'inbox': _inbox.length,
+    'announcesHeard': _rxAnnounces,
+    'wappLxmfIn': _wappLxmfIn,
     'provided': _files?.providedCount ?? 0,
     'dhtStored': _files?.dhtStoredKeys ?? 0,
     'dhtReplicas': _files?.dhtReplicasStored ?? 0,
@@ -3794,9 +3805,7 @@ class RnsService {
             // Wapp datagrams ride LXMF too — route them to the wapp inbox instead
             // of surfacing them as chat messages.
             if (_routeWappLxmf(m)) {
-              LogService.instance.add(
-                'LXMF: wapp datagram from ${_hex(m.sourceHash)} (${m.contentString.isEmpty ? 'addressed' : m.contentString})',
-              );
+              _wappLxmfIn++;
               return;
             }
             // The SAME message can arrive twice — the sender's direct push
@@ -5296,6 +5305,7 @@ class RnsService {
     // from it over Reticulum. Direct fetch from the known sender is far more
     // reliable than the file-DHT on a large foreign public testnet (where the
     // XOR-closest provider nodes are reference nodes that ignore our overlay).
+    String? newCallsign;
     final chatHash = RnsDestination.hash(ann.identity, _app, _aspects);
     if (RnsCrypto.constantTimeEquals(ann.destHash, chatHash)) {
       // A chat announce is also proof of an XPRS node → DHT overlay member
@@ -5306,6 +5316,7 @@ class RnsService {
       final cs = text.trim();
       if (cs.isNotEmpty && cs.length <= 20 && !cs.contains(' ')) {
         final isNewPeer = _callIdentity[cs]?.hexHash != ann.identity.hexHash;
+        if (isNewPeer) newCallsign = cs;
         _callsignDest[cs] = _hex(ann.destHash);
         _callIdentity[cs] = ann.identity;
         // Persist the discovered peer so backfill can query it on the next
@@ -5329,9 +5340,18 @@ class RnsService {
       'text': text,
       'via': via,
     });
-    LogService.instance.add(
-      'RNS: rx from ${ann.identity.hexHash} via $via: "$text"',
-    );
+    if (_inbox.length > _inboxMax) {
+      _inbox.removeRange(0, _inbox.length - _inboxMax);
+    }
+    // No line per announce: a busy hub relays about two a second, which was
+    // most of the log ring (performance.md 8.10). The count is
+    // `announcesHeard` on /api/rns/status; a callsign learned for the first
+    // time is the one fact worth a line.
+    if (newCallsign != null) {
+      LogService.instance.add(
+        'RNS: learned $newCallsign at ${ann.identity.hexHash} via $via',
+      );
+    }
   }
 
   /// Fetch a file by its sha256 (32B) from a peer we have a path to. [peerDestHex]

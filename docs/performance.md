@@ -1383,6 +1383,34 @@ paid:
   whatever was picked, at full size, on the UI isolate, and read it with a
   synchronous file check; it is gone.
 
+### 8.18 A debug list that keeps everything the internet says (2026-10-07)
+
+The C61 was killed under memory pressure overnight. Restarted, it stood at
+355 MB PSS with 105 MB already in swap after ten hours, the second largest
+process on a phone that also runs a 750 MB mining app. `/api/rns/status` gave
+it away in one field: **`inbox: 60091`**.
+
+`RnsService._inbox` was a plain list that every validated announce was
+appended to, for `/api/rns/inbox`, a diagnostic. A public hub relays about two
+announces a second, most of them from nodes that are not ours and carry no
+text, so it grew by roughly 2.5 MB an hour of Dart heap for the life of the
+process, and nothing ever read it except the endpoint. Each one also wrote a
+`RNS: rx from ... via ...` line: 170 of the 2000 lines in the log ring, which
+then covered 77 seconds.
+
+- **A list that only a diagnostic reads is still a list.** It is now a ring
+  of 64. The test is the same as 8.7's: ask what bounds it, and if the answer
+  is "the network", it is unbounded.
+- **Count, do not log.** `announcesHeard` and `wappLxmfIn` on
+  `/api/rns/status` replace two per-event lines (8.10). The one announce still
+  logged is the one that teaches something: a callsign learned for the first
+  time.
+
+How it was found, which is the reusable part: `dumpsys meminfo` to see that
+the process was large, the 8.7 log census to see what the station was busy
+with, then every count on `/api/status` and `/api/rns/status`, looking for the
+one that grows with uptime instead of with the network's size.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile
