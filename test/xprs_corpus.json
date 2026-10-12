@@ -190,6 +190,11 @@
 "id": "e1e55c"
 },
 {
+"wire": "t:identity f:X1QZ3N ts:2026-08-09_09:00:00 nick:joao file:- sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK m:-",
+"bytes": null,
+"id": "37f564"
+},
+{
 "wire": "t:identity f:CT1ABC ts:2026-08-08_14:26:40 k:npub1qz3n7fu9j9uenmyva7ha6x9eqwymytv2847ccv4vxdmn45y50q7h7k5f sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 171,
 "id": "52f750"
@@ -490,9 +495,19 @@
 "id": "d03014"
 },
 {
+"wire": "t:message f:X1QZ3N ts:2026-08-08_14:26:40 scope:regional m:road to the bridge is flooded, go round by the mill",
+"bytes": null,
+"id": "deedff"
+},
+{
 "wire": "t:message f:X16JK8 ts:2026-08-19_14:37:08 scope:local sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK m:hello from the Chat wapp, locally",
 "bytes": null,
 "id": "81ed04"
+},
+{
+"wire": "t:message f:X1QZ3N ts:2026-08-19_14:51:30 scope:regional m:anyone on the valley mesh tonight?",
+"bytes": null,
+"id": "543ed6"
 },
 {
 "wire": "t:message f:X9WEB ts:2026-08-19_14:58:01 m:round two global",
@@ -1098,6 +1113,16 @@
 "wire": "t:service f:X3DCK0 serve:archive,meshtastic count:212 ts:2026-09-19_12:00:00 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 141,
 "id": "0c5d1a"
+},
+{
+"wire": "t:channel f:X3DCK0 freq:869.525MHz mode:lora bw:250kHz ch:public power:14dBm kind:gateway ts:2026-09-20_12:00:00",
+"bytes": 112,
+"id": "a5e674"
+},
+{
+"wire": "t:service f:X3DCK0 serve:archive,meshcore count:212 ts:2026-09-20_12:00:00 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 139,
+"id": "beb854"
 },
 {
 "wire": "t:observation f:X1BOA3 pos:38.6902,-9.4012 spd:6kt dir:275deg o:262degm type:boat ts:2026-08-08_14:26:40",

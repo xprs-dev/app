@@ -81,6 +81,8 @@ IconData convIcon(String name) {
       return Icons.warning_amber;
     case 'public':
       return Icons.public;
+    case 'cell_tower':
+      return Icons.cell_tower;
     case 'add':
       return Icons.add;
     case 'edit':

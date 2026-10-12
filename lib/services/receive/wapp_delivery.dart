@@ -235,7 +235,8 @@ class WappDelivery {
       // (BLE, LoRa, LAN, Reticulum) carried the packet — so a wapp renders the
       // message tappable and asks the core to open it. Never a guess from bars.
       'obfuscated': p.has('xr'),
-      // §13.11's verdict, NORMALISED: 'global' | 'local' | 'country'.
+      // XPRS.md 9.11's verdict, NORMALISED: 'global' | 'regional' | 'local'
+      // | 'country' | 'unknown'.
       //
       // A wapp can read `scope:` out of `fields` and three of them will get it
       // wrong the same way, because an ABSENT field, an empty one and the word
@@ -246,6 +247,11 @@ class WappDelivery {
       // leaving each wapp to re-derive them. The country codes stay in
       // `fields` for whoever needs the letters.
       'scope': xprsScope(p).scope.name,
+      // And whether it came from inside that scope: false for a packet heard
+      // on a bearer wider than its scope (scope:local off Reticulum) or with a
+      // scope word nobody here knows. Decided here, once, at the receive
+      // point; a wapp files such a packet in no scoped room (9.11.1).
+      'inRange': xprsReachAdmits(xprsScopeReach(p), xprsBearerReach(bearer)),
       // How it got here. `via:` is the §13 relay chain and is already on the
       // wire; `bearer` and `rssi` are what this station observed.
       'bearer': bearer,

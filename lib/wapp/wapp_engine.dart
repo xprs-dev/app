@@ -3918,9 +3918,10 @@ class WappEngine {
     // check was actively wrong — the core splits per §6.6, so a long Local post
     // now travels instead of being refused.
     //
-    // `scope` is §13.11's reach, not a lane: `local` for the bearers in range
-    // (§13.11.1), `global`, or ISO 3166-1 codes. It can only ever NARROW where
-    // the words go; the core still ranks and picks the bearers.
+    // `scope` is XPRS.md 9.11's reach, not a lane: `local` for the local
+    // bearers, `regional` for those plus LoRa and radio, `global`, or ISO
+    // 3166-1 codes. It can only ever NARROW where the words go; the core
+    // still ranks and picks the bearers.
     //
     //   returns  2 plain, 0 malformed.
     //

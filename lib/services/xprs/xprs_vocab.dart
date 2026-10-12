@@ -289,17 +289,25 @@ XprsPacket xprsAppendVia(XprsPacket p, String self) {
 }
 
 /// How far a packet may travel, geographically and by network
-/// (`docs/XPRS.md` section 13.11).
+/// (`XPRS.md` section 9.11).
 enum XprsScope {
   /// Anywhere, including the internet. The default when `scope:` is absent.
   global,
 
-  /// Only the bearers in range now — Bluetooth, WiFi Direct, WiFi Aware, a LAN.
+  /// Local and regional bearers only: LoRa, HaLow and radio as well as the
+  /// local ones, never the internet or a satellite.
+  regional,
+
+  /// Only the local bearers: Bluetooth, WiFi Direct/Aware, ESP-NOW, a LAN.
   /// Never carried, never gatewayed.
   local,
 
   /// One or more ISO 3166-1 alpha-2 country codes.
   country,
+
+  /// A lowercase word this implementation does not know. Read, never relayed,
+  /// carried or gated (9.11): skipped, it would read as global.
+  unknown,
 }
 
 /// The scope of [p], and the country codes when it names any.
@@ -309,18 +317,69 @@ enum XprsScope {
     return (scope: XprsScope.global, countries: const []);
   }
   if (v == 'local') return (scope: XprsScope.local, countries: const []);
+  if (v == 'regional') return (scope: XprsScope.regional, countries: const []);
+  if (v.contains(RegExp('[a-z]'))) {
+    return (scope: XprsScope.unknown, countries: const []);
+  }
   return (
     scope: XprsScope.country,
     countries: v.split(',').where((c) => c.isNotEmpty).toList()
   );
 }
 
-/// Whether [p] may be handed to a carrier at all (section 13.11.3).
+/// The three bearer classes of XPRS.md 9.11, ordered: a scope admits its own
+/// class and every narrower one.
+enum XprsReach { local, regional, global }
+
+/// The class a packet's scope allows, or null for a scope word nobody here
+/// knows (which goes nowhere). A country scope is global by class: it is
+/// bounded by position, which is a separate question.
+XprsReach? xprsScopeReach(XprsPacket p) => switch (xprsScope(p).scope) {
+      XprsScope.local => XprsReach.local,
+      XprsScope.regional => XprsReach.regional,
+      XprsScope.global || XprsScope.country => XprsReach.global,
+      XprsScope.unknown => null,
+    };
+
+/// May a packet of reach [scope] go on, or have come from, a bearer of class
+/// [bearer]? Never for an unknown scope.
+bool xprsReachAdmits(XprsReach? scope, XprsReach bearer) =>
+    scope != null && bearer.index <= scope.index;
+
+/// The class of a bearer, by the `link:` vocabulary (section 15.6.1) and the
+/// names this app's lanes use. Anything else is global, the conservative
+/// reading 9.11 asks for.
+XprsReach xprsBearerReach(String bearer) {
+  switch (bearer.trim().toLowerCase()) {
+    case 'ble':
+    case 'ble5':
+    case 'wifi':
+    case 'espnow':
+    case 'lan':
+    case 'custody': // handed over in person, over GATT
+      return XprsReach.local;
+    case 'lora':
+    case 'halow':
+    case 'vhf':
+    case 'uhf':
+    case 'hf':
+    case 'cb':
+    case 'pmr':
+      return XprsReach.regional;
+    default: // internet, satellite, rns, reticulum, tcp, other
+      return XprsReach.global;
+  }
+}
+
+/// Whether [p] may be handed to a carrier at all (section 9.11.1).
 ///
 /// A `local` packet is for the bearers in range now, so carrying it to another
 /// town is precisely what it excludes — and the refusal belongs at admission,
 /// not at transmission, or a parked copy leaks later.
-bool xprsMayCarry(XprsPacket p) => xprsScope(p).scope != XprsScope.local;
+bool xprsMayCarry(XprsPacket p) {
+  final s = xprsScope(p).scope;
+  return s != XprsScope.local && s != XprsScope.unknown;
+}
 
 /// Types that are PRESENCE, not correspondence: true of a packet that says
 /// where a station is, what it hears or what it offers, right now.

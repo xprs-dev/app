@@ -87,8 +87,9 @@ abstract class XprsBearer {
   /// publisher names a radio generation (`ble5`).
   String get archiveBearer => name;
 
-  /// Whether a `scope:local` packet may use this bearer (section 13.11.1:
-  /// local names the short-range bearers, not a distance).
+  /// Whether this is a local-class bearer (XPRS.md 9.11: local names the
+  /// short-range bearers, not a distance). The full class, local, regional
+  /// or global, is [xprsBearerReach] of [name].
   bool get shortRange;
 
   Future<bool> get active;
@@ -372,8 +373,10 @@ class _LoraBearer implements XprsBearer {
   String get name => 'lora';
   @override
   String get archiveBearer => 'lora';
+  /// LoRa is regional (XPRS.md 9.11.1), not local: a Local-room packet
+  /// stays off it. It carries the Regional room.
   @override
-  bool get shortRange => true;
+  bool get shortRange => false;
   @override
   Future<bool> get active async =>
       _lora.status == LoraStatus.available;
@@ -565,10 +568,12 @@ class XprsPublisher {
     String? carriedBy;
 
     // A packet's own scope decides which bearers may carry it at all
-    // (section 13.11.1: `local` names bearers, not a distance). Read from the
-    // first wire; every part of a split message repeats the envelope.
+    // (XPRS.md 9.11: each bearer has a class, and a scope admits its own and
+    // the narrower ones). Read from the first wire; every part of a split
+    // message repeats the envelope.
     final p0 = XprsPacket.parse(wires.first);
-    final local = p0 != null && xprsScope(p0).scope != XprsScope.global;
+    final reach = p0 == null ? XprsReach.global : xprsScopeReach(p0);
+    final country = p0 != null && xprsScope(p0).scope == XprsScope.country;
     _sessionPending = wires;
 
     // Who this is for, if it is for one station. Read once: every part of a
@@ -646,10 +651,12 @@ class XprsPublisher {
         report[b.name] = 'session';
         return false;
       }
-      if (local && !b.shortRange) {
-        // A local packet never leaves the short-range bearers (13.11.1), and a
-        // node that cannot place itself does not gateway a country scope
-        // (13.11.3) — both land here.
+      final bearerReach = xprsBearerReach(b.name);
+      if (!xprsReachAdmits(reach, bearerReach) ||
+          (country && bearerReach == XprsReach.global)) {
+        // Local stays on the local bearers, regional adds LoRa and never the
+        // internet (9.11), and a node that cannot place itself does not
+        // gateway a country scope (9.11.3) -- all land here.
         report[b.name] = 'scope';
         return false;
       }
@@ -749,6 +756,10 @@ class XprsPublisher {
     for (final w in wires) {
       final p = XprsPacket.parse(w);
       if (p == null || (p['d'] ?? '').trim().isNotEmpty) continue;
+      // The deposit travels over Reticulum, the internet: only what its scope
+      // lets onto the internet goes (XPRS.md 9.11). A Local- or Regional-room
+      // message stays on the air it was said on.
+      if (!xprsReachAdmits(xprsScopeReach(p), XprsReach.global)) continue;
       for (final call in archivers) {
         final send = depositTo;
         if (send != null) {

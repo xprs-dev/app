@@ -280,9 +280,14 @@ class XprsSend {
       head += ' file:${lift.file}';
       if (lift.size != null) head += ' size:${lift.size}';
     }
-    // §13.11: global IS the absent field. Writing `scope:global` would be
+    // 9.11: global IS the absent field. Writing `scope:global` would be
     // twelve bytes saying the default on a bearer that charges by the byte.
-    if (reach.isNotEmpty && reach != 'global') head += ' scope:$reach';
+    // Country codes go on the wire in uppercase: a lowercase word is one a
+    // receiver does not know, and 9.11 has it stop relaying the packet.
+    if (reach.isNotEmpty && reach != 'global') {
+      final word = reach == 'local' || reach == 'regional' ? reach : reach.toUpperCase();
+      head += ' scope:$word';
+    }
     final parent = replyTo.trim().toLowerCase();
     if (parent.isNotEmpty) head += ' r:$parent';
 
@@ -314,14 +319,15 @@ class XprsSend {
     return XprsSendOutcome(form: 'm', id: id, parts: built.packets.length);
   }
 
-  /// `local`, `global`, or a comma list of ISO 3166-1 alpha-2 codes (§13.11).
+  /// `local`, `regional`, `global`, or a comma list of ISO 3166-1 alpha-2
+  /// codes (XPRS.md 9.11).
   ///
   /// Public so it can be tested on its own: a scope word is the difference
   /// between "the people in this building" and "everyone", and a typo that
   /// reached the wire would be read as a country list and silence every
   /// bearer — a failure that looks exactly like a radio that is off.
   static bool scopeOk(String s) {
-    if (s.isEmpty || s == 'local' || s == 'global') return true;
+    if (s.isEmpty || s == 'local' || s == 'regional' || s == 'global') return true;
     // Uppercase on the wire; lowercased here, so check the shape, not the case.
     for (final c in s.split(',')) {
       final t = c.trim();

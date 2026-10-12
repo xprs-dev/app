@@ -443,10 +443,11 @@ Social wapp does not know its station has archivers, and must not.
 It was implemented in the status fan-out alone. Statuses have their own
 `airStatus`; everything else airs through `publishWire`, which deposited
 nothing — so what was deposited depended on which function happened to air the
-packet rather than on what it was. A reaction on somebody's post and a Local
-room message are publications too. `XprsPublisher.depositArchivers` is now the
-one rule, called from both, skipping anything with a `d:` (mail has its own
-custody path, 12.7).
+packet rather than on what it was. A reaction on somebody's post is a
+publication too. `XprsPublisher.depositArchivers` is now the one rule, called
+from both, skipping anything with a `d:` (mail has its own custody path, 12.7)
+and anything whose scope keeps it off the internet: the deposit rides
+Reticulum, and a Local- or Regional-room message never does (XPRS.md 9.11).
 
 **And an archiver is replaced, never merely lost.** The offers a station
 chooses from are built from what it HEARS on the air, so a station with no

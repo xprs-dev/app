@@ -1844,6 +1844,8 @@ IconData geoUiResolveIcon(String name) {
     case 'public':
     case 'globe':
       return Icons.public;
+    case 'cell_tower':
+      return Icons.cell_tower;
     case 'visibility':
       return Icons.visibility;
     case 'lock':

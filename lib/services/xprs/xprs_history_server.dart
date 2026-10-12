@@ -279,7 +279,20 @@ class XprsHistoryServer {
         // everybody's sealed DMs, and the asker's own mail competed with all
         // of them for the slots (the C61, 2026-09-15).
         mailFor: from,
-        limit: pageSize + 1);
+        limit: pageSize + 1)
+      // XPRS.md 9.11: never served out of range. A record whose scope does
+      // not admit the bearer this answer leaves on stays here (a Local-room
+      // message asked for over Reticulum), and so does one heard on a bearer
+      // wider than its scope. Our own records were sent in range.
+      ..removeWhere((r) {
+        final pk = XprsPacket.parse(r['wire'] as String? ?? '');
+        if (pk == null) return false;
+        final reach = xprsScopeReach(pk);
+        if (!xprsReachAdmits(reach, xprsBearerReach(bearer))) return true;
+        final own = r['own'] == true || r['own'] == 1;
+        return !own &&
+            !xprsReachAdmits(reach, xprsBearerReach(r['bearer'] as String? ?? ''));
+      });
     answered++;
 
     if (rows.isEmpty) {

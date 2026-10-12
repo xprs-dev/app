@@ -146,9 +146,11 @@ not a special case:
 - **LAN to Bluetooth.** The same, in reverse, through the broadcast-parcel
   chunker any XPRS scanner already reassembles.
 
-`scope:local` packets **do** cross, because both are short-range bearers
-(section 13.11.1). They still never reach APRS-IS or the internet: that gateway
-is a separate path and is not fed from here.
+`scope:local` and `scope:regional` packets **do** cross, because both are
+local-class bearers (XPRS.md 9.11). They still never reach APRS-IS or the
+internet: that gateway is a separate path and is not fed from here. A packet
+heard on a bearer wider than its scope (`scope:local` off Reticulum) does not
+cross at all: it has already left its range (`XprsBridge.outOfRange`).
 
 The asymmetry worth knowing: a LAN carries more in a second than the radio
 carries in a minute, so the Bluetooth direction is the one that needs a limit,

@@ -988,8 +988,22 @@ class XprsArchive {
           'sig': XprsSigState.values[(r['sig'] as int)].name,
           'heard': r['heard'],
           'wire': r['wire'],
+          ..._reachOf(r['wire'] as String, r['bearer'] as String? ?? '',
+              (r['own'] as int) != 0),
         }
     ];
+  }
+
+  /// XPRS.md 9.11 for a stored row: its scope, normalised as the live delivery
+  /// states it, and whether it was heard in range. Our own rows were sent in
+  /// range; a row heard on a bearer wider than its scope is in no room.
+  static Map<String, Object> _reachOf(String wire, String bearer, bool own) {
+    final p = XprsPacket.parse(wire);
+    if (p == null) return const {'scope': 'global', 'inRange': true};
+    return {
+      'scope': xprsScope(p).scope.name,
+      'inRange': own || xprsReachAdmits(xprsScopeReach(p), xprsBearerReach(bearer)),
+    };
   }
 
   /// The packet time (ms) of the newest row [fromc] authored among [types],

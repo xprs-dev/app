@@ -115,6 +115,9 @@ class XprsBridge {
 
   static int skippedLocal = 0;
 
+  /// Heard on a bearer wider than its scope (XPRS.md 9.11): not carried on.
+  static int outOfRange = 0;
+
   /// Identifiers already carried, per target lane, so a packet heard twice is
   /// bridged once. Bounded — a busy room must not turn this into a leak.
   final Map<String, int> _sent = {};
@@ -143,6 +146,7 @@ class XprsBridge {
         'refusedByRule': refusedByRule,
         'laneUnavailable': laneUnavailable,
         'skippedLocal': skippedLocal,
+        'outOfRange': outOfRange,
         'policy': {'bridge': policy.bridge, 'archivers': policy.archivers},
       };
 
@@ -159,9 +163,17 @@ class XprsBridge {
     if (id.isEmpty) return;
     _sweep();
 
-    // §13.11.1: `local` names the bearers in range, not a distance. It may
-    // cross between short-range lanes and must never reach the internet.
-    final local = xprsScope(p).scope == XprsScope.local;
+    // XPRS.md 9.11: a scope binds at both ends of a hop. A packet heard on a
+    // bearer wider than its scope -- scope:local off Reticulum -- has left
+    // its range and goes no further from here; nor does one whose scope word
+    // nobody here knows. Local and regional may cross between the local
+    // lanes below, and only global reaches the archivers over the internet.
+    final reach = xprsScopeReach(p);
+    if (!xprsReachAdmits(reach, xprsBearerReach(_lane(bearer)))) {
+      outOfRange++;
+      return;
+    }
+    final local = !xprsReachAdmits(reach, XprsReach.global);
 
     // The §13 decision, once, for every lane this packet might take. A wire
     // that may not be relayed at all is not bridged either.
@@ -270,6 +282,7 @@ class XprsBridge {
     refusedByRule = 0;
     laneUnavailable = 0;
     skippedLocal = 0;
+    outOfRange = 0;
     instance._sent.clear();
     instance.now = () => DateTime.now().millisecondsSinceEpoch;
     instance.policy = const XprsBridgePolicy();

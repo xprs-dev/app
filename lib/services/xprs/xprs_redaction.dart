@@ -191,8 +191,9 @@ class XprsRedaction {
   /// Air [text] with its `((...))` spans hidden, and echo the author's own
   /// barred copy on `xprs.redacted` as `{convo, id, m, ok}`.
   ///
-  /// [convo] is where it goes: `#LOCAL` is the undirected room, anything else
-  /// is a callsign or `#` + a group's X5 callsign. [pass] empty = the default.
+  /// [convo] is where it goes: `#LOCAL`, `#REGIONAL` and `#GLOBAL` are the
+  /// undirected rooms (XPRS.md 9.11), anything else is a callsign or `#` + a
+  /// group's X5 callsign. [pass] empty = the default.
   Future<void> hide(String convo, String text, String pass) async {
     final passphrase = pass.isEmpty ? XprsCrypto.kXrDefaultPassphrase : pass;
     final res = await compute(xrRedactCompute,
@@ -262,8 +263,9 @@ class XprsRedaction {
 
   /// The wire a redacted post travels as.
   ///
-  /// `#LOCAL` is the undirected room: it becomes a scoped broadcast
-  /// (§13.11.1) with no `d:`, not an addressed packet. Anything else is a
+  /// `#LOCAL`, `#REGIONAL` and `#GLOBAL` are the undirected rooms: each becomes
+  /// a broadcast with no `d:` and its scope (XPRS.md 9.11; global is the
+  /// absent field), not an addressed packet. Anything else is a
   /// station's callsign, or `#` + a group's X5 callsign. `m:` is last by
   /// grammar and `xr:` precedes it, as in the §6.2.1 worked packet.
   @visibleForTesting
@@ -275,8 +277,13 @@ class XprsRedaction {
     required String barred,
   }) {
     final room = convo.trim();
-    if (room.toUpperCase() == '#LOCAL') {
-      return 't:message f:$self ts:$ts scope:local xr:$xr m:$barred';
+    switch (room.toUpperCase()) {
+      case '#LOCAL':
+        return 't:message f:$self ts:$ts scope:local xr:$xr m:$barred';
+      case '#REGIONAL':
+        return 't:message f:$self ts:$ts scope:regional xr:$xr m:$barred';
+      case '#GLOBAL':
+        return 't:message f:$self ts:$ts xr:$xr m:$barred';
     }
     final dest = room.startsWith('#') ? room.substring(1) : room;
     return 't:message f:$self d:$dest ts:$ts xr:$xr m:$barred';
