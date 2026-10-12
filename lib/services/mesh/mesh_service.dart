@@ -304,6 +304,12 @@ class MeshService {
         // deposits another copy and keeps its ladder running.
         XprsOutbox.instance.init(
             wappsDataStorage(prefs).getAbsolutePath('xprs_outbox.sqlite3'));
+        // A group act whose signer we hold no key for is parked, not lost; ask
+        // that station for its binding now rather than at its next periodic
+        // announcement (18.1). That is the invitee's acceptance (26.3.1)
+        // reaching an admin who had never heard the invitee's `t:identity`.
+        XprsGroups.instance.onUnknownSigner =
+            (c) => unawaited(XprsPublisher.instance.askIdentity(c));
         var n = 0;
         for (final g in XprsGroupKeys.instance.followedGroups()) {
           n += XprsGroups.instance.hydrate(XprsGroupKeys.instance.actsFor(g));

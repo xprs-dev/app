@@ -725,6 +725,9 @@ class XprsIngest {
       hook(callsign, hex);
       // A decoration that arrived before this key could not be checked then.
       XprsProfiles.instance.keyLearned(callsign);
+      // And a group act it signed before we held its key (26.3.1: a member's
+      // acceptance is signed by the member).
+      XprsGroups.instance.keyLearned(callsign);
       if (_bound.length >= 256) _bound.remove(_bound.first);
       _bound.add(pair);
     } catch (_) {

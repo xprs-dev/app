@@ -382,6 +382,32 @@ void main() {
       expect(m.statusJson()['rejected'], 0,
           reason: 'a missing key is a bootstrap state, not a lie');
     });
+
+    test('an acceptance that beat its signer\'s key counts once the key is learned',
+        () {
+      // The admin holds the group's key but has never heard the invitee's
+      // t:identity, so the invitee's acceptance cannot be checked on arrival.
+      final asked = <String>[];
+      m.onUnknownSigner = asked.add;
+      addTearDown(() => m.onUnknownSigner = null);
+      final known = <String>{g};
+      m.keyResolver = (call) => known.contains(call) ? _keys[call]?.pub : null;
+      final grant = _act(g, '2026-08-08_10:00:00', 'grant:X1RD89');
+      m.offer(grant, nowMs: now);
+      final accept =
+          _accept('X1RD89', '2026-08-08_11:00:00', xprsIdentifier(grant));
+      expect(m.offer(accept, nowMs: now), isFalse);
+      expect(m.offer(accept, nowMs: now), isFalse); // heard twice, asked once
+      expect(m.rosterOf(g, nowMs: now).roles['X1RD89'], XprsRole.invited);
+      expect(asked, ['X1RD89'], reason: 'the signer is asked for its key (18.1)');
+      // Its t:identity arrives.
+      known.add('X1RD89');
+      m.keyLearned('X1RD89');
+      expect(m.rosterOf(g, nowMs: now).roles['X1RD89'], XprsRole.member);
+      // Nothing left parked: learning the key again changes nothing.
+      m.keyLearned('X1RD89');
+      expect(m.statusJson()['accepted'], 2);
+    });
   });
 
   test('role:sub lists a subgroup and confers nothing', () {

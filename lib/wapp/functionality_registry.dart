@@ -399,6 +399,34 @@ class FunctionalityRegistry {
           [],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef(
+          'hal_xprs_group_create',
+          'Mint a closed group (XPRS \u00a726.1) and announce it. The core '
+          'generates and keeps the group key, records this station as a '
+          'member and writes the group\'s X5 callsign into out',
+          [
+            ParamDef('nick', 'string', 'Readable name for the group, may be empty'),
+          ],
+          ReturnDef('int', 'Bytes written, -1 when no group could be minted')),
+      EndpointDef(
+          'hal_xprs_group_invite',
+          'Offer membership of a closed group to one station (XPRS \u00a726.3, '
+          'a grant with role member). Signed by the core with the group key; '
+          'only the admin holds it. Not a member until they accept (\u00a726.3.1)',
+          [
+            ParamDef('group', 'string', 'The group, "X5..." or "#X5..."'),
+            ParamDef('call', 'string', 'The callsign to invite'),
+          ],
+          ReturnDef('int', '0 offered, -1 refused (not the admin)')),
+      EndpointDef(
+          'hal_xprs_group_accept',
+          'Accept the membership of a closed group this station was offered '
+          '(XPRS \u00a726.3.1). Signed by the core with the profile key; the '
+          'core finds the offer, the caller names only the group',
+          [
+            ParamDef('group', 'string', 'The group, "X5..." or "#X5..."'),
+          ],
+          ReturnDef('int', '0 joined, -1 refused (no offer for this station)')),
+      EndpointDef(
           'hal_xprs_send',
           'Air one caller-composed XPRS wire: section 4 validated, signed '
           'when it speaks as this station, scope rules applied, own copy '

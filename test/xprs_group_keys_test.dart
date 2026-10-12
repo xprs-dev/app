@@ -64,6 +64,10 @@ void main() {
     final mineCalls = k.mine().map((e) => e.callsign).toList();
     expect(mineCalls, contains(own.callsign));
     expect(mineCalls, isNot(contains(g)));
+    // Holding the key is the admin's alone; a member's row has the npub only.
+    expect(k.holdsKey(own.callsign), isTrue);
+    expect(k.holdsKey(g), isFalse);
+    expect(k.npubFor(g), isNotNull);
     // rememberGroupKey on the administered group does not wipe its nsec.
     k.rememberGroupKey(own.callsign, npub);
     expect(k.scalarFor(own.callsign), isNotNull,

@@ -1810,6 +1810,8 @@ IconData geoUiResolveIcon(String name) {
       return Icons.favorite_border;
     case 'person_add':
       return Icons.person_add_alt_1;
+    case 'group_add':
+      return Icons.group_add_outlined;
     case 'person_remove':
       return Icons.person_remove_alt_1;
     case 'block':

@@ -4081,8 +4081,12 @@ class _WappPageState extends State<WappPage>
       // AN EMPTY TEXT FIELD IS AN ANSWER. It means the default -- the
       // passphrase of §6.2.1, an unnamed file, a cleared value -- and the wapp
       // that asked is the one that knows what its blank means. Only a prompt
-      // with nothing to type in (chips alone) still needs a choice made.
-      if (selected.isEmpty && input == null && t.isEmpty) return;
+      // with nothing to type in (chips alone) still needs a choice made. One
+      // with neither chips nor a field is a plain yes/no, and its button is
+      // the yes: refusing it left a dead "Join" on the screen.
+      if (selected.isEmpty && input == null && t.isEmpty && chips.isNotEmpty) {
+        return;
+      }
       Navigator.pop(ctx);
       result(selected, t);
     }

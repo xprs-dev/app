@@ -136,6 +136,16 @@ class XprsGroupKeys {
     return (rows.first['npub'] ?? '').toString();
   }
 
+  /// Whether this station holds the group's PRIVATE key, i.e. administers
+  /// it. One indexed row. [npubFor] is no answer to this: a member keeps the
+  /// group's public key too ([rememberGroupKey]), with an empty nsec.
+  bool holdsKey(String callsign) {
+    final rows = _db?.select(
+        "SELECT 1 FROM xprs_groups WHERE callsign = ? AND nsec != ''",
+        [callsign.trim().toUpperCase()]);
+    return rows != null && rows.isNotEmpty;
+  }
+
   /// Every group this station administers.
   List<XprsOwnGroup> mine() {
     final rows = _db?.select(

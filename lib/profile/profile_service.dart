@@ -236,13 +236,16 @@ class ProfileService {
     without.add(profile);
     without.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     _profiles = without;
-    _activeId = profile.id;
-    await _persist();
-    activeProfileNotifier.value = _activeId;
-    revision.value++;
-    _notifyWireCallsign();
 
+    // Encrypt BEFORE the profile is announced as active. Enabling wipes the
+    // profile's data/ tree, and announcing it first lets the services open
+    // their stores there (mesh, xprs_archive, xprs_groups, ...), so the wipe
+    // unlinked databases still held open: every write after onboarding went
+    // to a deleted file until the next restart, and a group created then
+    // failed with "readonly". Encrypting first also means those stores are
+    // opened with the profile key, not in the clear.
     if (isNew && encrypt && profile.nsec.isNotEmpty) {
+      await _persist();
       try {
         await ProfileEncryption.enableWithDeviceKey(profile.id);
       } catch (e) {
@@ -252,6 +255,12 @@ class ProfileService {
         LogService.instance.add('encryption: default enable failed: $e');
       }
     }
+
+    _activeId = profile.id;
+    await _persist();
+    activeProfileNotifier.value = _activeId;
+    revision.value++;
+    _notifyWireCallsign();
   }
 
   /// Replace an existing profile in place (same [id]) without changing

@@ -194,6 +194,7 @@ class XprsGroups {
         rejected++;
       } else {
         unverified++;
+        _park(signer, p);
       }
       return false;
     }
@@ -252,6 +253,47 @@ class XprsGroups {
     // use, so it gets a core topic.
     CoreState.instance.changed(CoreState.groups);
     return true;
+  }
+
+  /// Acts that arrived before their signer's key, waiting for [keyLearned].
+  /// A member's acceptance (26.3.1) is signed by the MEMBER, and an admin
+  /// that has not yet heard that station's `t:identity` could not check it:
+  /// the act was counted unverified and dropped, so the admin never saw the
+  /// member join until a restart replayed the archive. Bounded, oldest out;
+  /// losing one costs only that wait again.
+  final Map<String, List<XprsPacket>> _parked = {};
+
+  /// Asked to fetch the key of a station whose act was parked. Injected the
+  /// way [keyResolver] is; the caller throttles (section 18.1's `q:identity`).
+  void Function(String signer)? onUnknownSigner;
+  static const int _maxParked = 64;
+  int _parkedCount = 0;
+
+  void _park(String signer, XprsPacket p) {
+    final list = _parked.putIfAbsent(signer, () => <XprsPacket>[]);
+    final id = xprsIdentifier(p);
+    if (list.any((q) => xprsIdentifier(q) == id)) return;
+    list.add(p);
+    _parkedCount++;
+    onUnknownSigner?.call(signer);
+    while (_parkedCount > _maxParked && _parked.isNotEmpty) {
+      final first = _parked.entries.first;
+      first.value.removeAt(0);
+      _parkedCount--;
+      if (first.value.isEmpty) _parked.remove(first.key);
+    }
+  }
+
+  /// A key for [call] was learned just now: offer again the acts it signed
+  /// that could not be checked when they arrived.
+  void keyLearned(String call) {
+    final list = _parked.remove(call.trim().toUpperCase());
+    if (list == null) return;
+    _parkedCount -= list.length;
+    for (final p in list) {
+      unverified--;
+      offer(p);
+    }
   }
 
   /// Does this `t:moderate` belong to a group THIS station is part of?
@@ -518,6 +560,8 @@ class XprsGroups {
 
   void clear() {
     _acts.clear();
+    _parked.clear();
+    _parkedCount = 0;
     _cache.clear();
     _nextChange.clear();
     accepted = 0;

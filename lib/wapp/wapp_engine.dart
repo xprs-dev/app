@@ -33,6 +33,7 @@ import '../services/social/node_role_api.dart';
 import '../services/mesh/mesh_carry_broker.dart';
 import '../services/mesh/mesh_service.dart';
 import '../services/xprs/xprs_group_keys.dart';
+import '../services/xprs/xprs_group_ops.dart';
 import '../services/xprs/xprs_groups.dart';
 import '../services/xprs/xprs_archive.dart';
 import '../services/flash/flash_service.dart';
@@ -4144,10 +4145,12 @@ class WappEngine {
           }
         }
         // The key-holder belongs even when an old group never recorded it.
-        // One indexed row (`npubFor`), not `mine()` — that is a full SELECT
+        // One indexed row (`holdsKey`), not `mine()` — that is a full SELECT
         // plus a list build to answer a yes/no about ONE group, and this runs
         // on every roster change while the room is open (performance.md 8.7).
-        final weHoldKey = XprsGroupKeys.instance.npubFor(g) != null;
+        // Not `npubFor`: a member keeps the group's public key too, and was
+        // listed here as the admin.
+        final weHoldKey = XprsGroupKeys.instance.holdsKey(g);
         if (weHoldKey && me.isNotEmpty && !out.any((m) => m['call'] == me)) {
           out.insert(0, {'call': me, 'role': 'admin', 'state': 'member'});
         }
@@ -4161,6 +4164,86 @@ class WappEngine {
         return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
       },
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_create(nick, out, cap): mint a closed group (26.1) and
+    // write its X5 callsign into `out`. The key is generated and kept HERE;
+    // the wapp gets a name for the group, never the key. Same door the Groups
+    // page and POST /api/xprs/group/create go through (XprsGroupOps.create),
+    // so the self-grant, the self-acceptance and the announcement happen for
+    // every caller alike. Composing is synchronous and airing is not, the
+    // contract hal_xprs_status has: the callsign is written before anything
+    // is aired, so the wapp can open the room at once (architecture.md 4).
+    // Bytes written, -1 when no group could be minted (no profile open).
+    final halXprsGroupCreate = WasmFunction(
+      (int nPtr, int nLen, int outPtr, int outCap) {
+        if (outCap <= 0) return -1;
+        final nick = nLen > 0 ? _readStr(nPtr, nLen) : '';
+        // A store that fails must come back as a refusal the wapp can say,
+        // not an exception through the wasm boundary. And never with the
+        // exception's text: a failed INSERT here carries the group's nsec in
+        // its bound parameters.
+        final ({String callsign, String npub, String nick})? g;
+        try {
+          g = XprsGroupOps.create(nick: nick);
+        } catch (e) {
+          LogService.instance.add('xprs: group create failed (${e.runtimeType})');
+          return -1;
+        }
+        if (g == null) return -1;
+        return _writeStr(outPtr, outCap, g.callsign);
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_invite(group, call): the group offers membership to one
+    // station (26.3, a grant with role member). Signed with the group's key,
+    // which only the admin holds, so the wapp asks and the core signs; the
+    // invitee is not a member until they accept (26.3.1). Same door as the
+    // Groups page and POST /api/xprs/group/grant (XprsGroupOps.grant): our own
+    // roster moves now and core.groups fires, airing is fire-and-forget.
+    // 0 = offered, -1 = refused (not the admin, or nothing to offer).
+    final halXprsGroupInvite = WasmFunction(
+      (int gPtr, int gLen, int cPtr, int cLen) {
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        final call = _readStr(cPtr, cLen).trim().toUpperCase();
+        if (g.isEmpty || call.isEmpty) return -1;
+        try {
+          return XprsGroupOps.grant(g, [call], role: 'member').ok ? 0 : -1;
+        } catch (e) {
+          LogService.instance.add('xprs: group invite failed (${e.runtimeType})');
+          return -1;
+        }
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_accept(group): this station takes up the membership it
+    // was offered (26.3.1, the member's own half). Signed with the PROFILE
+    // key, the person speaking for themselves. The core finds the offer that
+    // names us, so the wapp never handles a grant id; an offer that is gone
+    // (withdrawn, or never made) is a refusal. Same door as the Groups page
+    // and POST /api/xprs/group/accept (XprsGroupOps.accept).
+    // 0 = joined, -1 = refused (no offer for this station).
+    final halXprsGroupAccept = WasmFunction(
+      (int gPtr, int gLen) {
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        final me = MeshService.instance.tableCallsign.trim().toUpperCase();
+        if (g.isEmpty || me.isEmpty) return -1;
+        try {
+          final r = XprsGroups.instance.rosterOf(g,
+              haveKey: XprsGroups.instance.keyResolver?.call(g) != null);
+          final offer = r.offers[me];
+          if (offer == null) return -1;
+          return XprsGroupOps.accept(g, me, offer).ok ? 0 : -1;
+        } catch (e) {
+          LogService.instance.add('xprs: group accept failed (${e.runtimeType})');
+          return -1;
+        }
+      },
+      params: [ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
     // hal_xprs_set_pref("key=value"): archive / archiveMaxMb / archiveMaxDays
@@ -4623,6 +4706,9 @@ class WappEngine {
       WasmImport('hal', 'xprs_history', halXprsHistory),
       WasmImport('hal', 'xprs_groups', halXprsGroups),
       WasmImport('hal', 'xprs_group_roster', halXprsGroupRoster),
+      WasmImport('hal', 'xprs_group_create', halXprsGroupCreate),
+      WasmImport('hal', 'xprs_group_invite', halXprsGroupInvite),
+      WasmImport('hal', 'xprs_group_accept', halXprsGroupAccept),
       WasmImport('hal', 'xprs_send', halXprsSend),
       WasmImport('hal', 'xprs_unlock', halXprsUnlock),
       WasmImport('hal', 'xprs_redact', halXprsRedact),
