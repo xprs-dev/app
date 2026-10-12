@@ -1,0 +1,2 @@
+* Chat has three rooms by range: Local (Bluetooth and the local network), Regional (LoRa and radio, never the internet) and Global (everywhere). A message stays in the range its room gives it, also when other stations pass it on.
+* Closed groups: create one from the chat menu, invite people from its member list, and join a group you are invited to.
