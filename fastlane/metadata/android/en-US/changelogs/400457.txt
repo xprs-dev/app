@@ -1,0 +1,1 @@
+* Share app: give XPRS to an Android phone next to you, no internet needed. Open the menu, tap Share app, and the other phone scans two QR codes: one to join this phone's hotspot, one to download.
