@@ -79,6 +79,7 @@ import '../wapp/wapp_page.dart';
 
 import 'hardware_page.dart';
 import 'muted_page.dart';
+import 'share_app_page.dart';
 
 part 'wapp_manifest.dart';
 part 'seeding.dart';

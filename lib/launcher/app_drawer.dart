@@ -65,6 +65,12 @@ class _AppDrawer extends StatelessWidget {
               title: const Text('Groups'),
               onTap: () => _open(context, const GroupsPage()),
             ),
+            if (platform.platformName() == 'android')
+              ListTile(
+                leading: const Icon(Icons.share),
+                title: const Text('Share app'),
+                onTap: () => _open(context, const ShareAppPage()),
+              ),
             const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.settings),
