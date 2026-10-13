@@ -17,6 +17,9 @@ part of 'launcher.dart';
 /// `bluetooth` (2026-10-13): Bluetooth is the core's bearer and needs no app
 /// of its own; a tile named after the radio only made people think they had
 /// to set something up there.
+///
+/// `xprs` (2026-10-13): a browser of raw packets and the stations behind
+/// them. Few people could say what it was for, and nothing else needs it.
 const Set<String> _kHiddenWapps = {
   'maps',
   'atm',
@@ -28,6 +31,7 @@ const Set<String> _kHiddenWapps = {
   'circles',
   'install',
   'bluetooth',
+  'xprs',
 };
 
 /// Outcome of the unmet-dependency dialog shown before launching a wapp.
