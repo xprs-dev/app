@@ -1,0 +1,3 @@
+* Security: the remote control API is off unless you turn it on in Settings, and then it only answers this device, or a computer connected over adb.
+* Security: the identity backup on the phone's storage is always encrypted with your passphrase. A plaintext backup left by an earlier version is removed.
+* Chat: folders inside a closed group, and a picture for each group and folder.
