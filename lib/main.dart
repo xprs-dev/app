@@ -392,7 +392,7 @@ Future<void> _boot() async {
       Future<void>.delayed(const Duration(seconds: 3), warmVideoDecoderModule));
 
   // Remote-control API: start after runApp so the root navigator is live
-  // (it backs /api/launch). Gated by a setting (default on); see Settings.
+  // (it backs /api/launch). Gated by a setting (default off); see Settings.
   final prefs = await PreferencesService.instance();
   if (prefs.remoteApiEnabled) {
     await RemoteApiService.instance.start(

@@ -373,8 +373,8 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 const SizedBox(height: 4),
                 Text(
                   'Exposes a JSON HTTP API (status, logs, launch a wapp) on '
-                  'port ${_prefs?.remoteApiPort ?? 3456}. Reachable over the '
-                  'network — turn off on untrusted networks.',
+                  'port ${_prefs?.remoteApiPort ?? 3456}, for development. '
+                  'Reachable only from this device, or a computer over adb.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: cs.onSurfaceVariant,
                       ),
@@ -392,7 +392,7 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                     title: const Text('Remote control API'),
                     subtitle: Text(
                       RemoteApiService.instance.running
-                          ? 'Listening on 0.0.0.0:${_prefs?.remoteApiPort ?? 3456}'
+                          ? 'Listening on 127.0.0.1:${_prefs?.remoteApiPort ?? 3456}'
                           : 'Off',
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),

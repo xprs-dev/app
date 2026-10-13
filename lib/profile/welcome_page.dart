@@ -457,10 +457,15 @@ class _WelcomePageState extends State<WelcomePage> {
   /// (and on desktop). Skipping is fine — the profile editor can enable it
   /// later, and the auto-backup just stays idle until then.
   Future<void> _ensureBackupAccess() async {
-    if (await AndroidPermissionsService.instance.hasAllFilesAccess()) {
+    final prefs = PreferencesService.instanceSync;
+    var pass = prefs?.identityBackupPassphrase ?? '';
+    // On Android the backup lives in shared storage and is written only
+    // encrypted, so the nudge also asks for the passphrase.
+    final needPass = IdentityBackup.instance.requiresPassphrase && pass.isEmpty;
+    final hasAccess =
+        await AndroidPermissionsService.instance.hasAllFilesAccess();
+    if (hasAccess && !needPass) {
       // Already granted (or desktop) — make sure the first backup is written.
-      final pass =
-          PreferencesService.instanceSync?.identityBackupPassphrase ?? '';
       await IdentityBackup.instance.backupAll(
         ProfileService.instance.profiles,
         passphrase: pass,
@@ -468,14 +473,38 @@ class _WelcomePageState extends State<WelcomePage> {
       return;
     }
     if (!mounted) return;
+    final controller = TextEditingController();
     final allow = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Protect your identity'),
-        content: const Text(
-          'Allow storage access so XPRS can keep a backup of your secret '
-          'key on this phone. It lets you restore this identity if you '
-          'reinstall the app or clear its data.',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Allow storage access so XPRS can keep a backup of your secret '
+              'key on this phone. It lets you restore this identity if you '
+              'reinstall the app or clear its data.',
+            ),
+            if (needPass) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'The backup is encrypted with this passphrase. If you forget '
+                'it, the backup cannot be restored.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: controller,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  hintText: 'Passphrase',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
@@ -489,16 +518,22 @@ class _WelcomePageState extends State<WelcomePage> {
         ],
       ),
     );
+    final entered = controller.text;
+    controller.dispose();
     if (allow != true) return;
-    final ok = await AndroidPermissionsService.instance.requestAllFilesAccess();
-    if (ok) {
-      final pass =
-          PreferencesService.instanceSync?.identityBackupPassphrase ?? '';
-      await IdentityBackup.instance.backupAll(
-        ProfileService.instance.profiles,
-        passphrase: pass,
-      );
+    if (needPass) {
+      if (entered.isEmpty) return;
+      prefs?.identityBackupPassphrase = entered;
+      pass = entered;
     }
+    if (!hasAccess &&
+        !await AndroidPermissionsService.instance.requestAllFilesAccess()) {
+      return;
+    }
+    await IdentityBackup.instance.backupAll(
+      ProfileService.instance.profiles,
+      passphrase: pass,
+    );
   }
 
   @override

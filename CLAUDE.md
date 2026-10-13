@@ -133,6 +133,15 @@ desktop-only binaries (mp4player's `bin/ffmpeg-*`) goes to `desktop/wapps/` in
 full, with a copy minus `bin/` in `assets/wapps/`. Linux and Windows bundles
 install `desktop/wapps/`, and seeding prefers it.
 
+## The remote API is off by default
+
+Every `/api/...` check (status, log, bearers, archiver) needs Settings > Remote
+control API turned on first, on each device, and again after `adb uninstall` or
+a data wipe. It listens on 127.0.0.1 only: reach a phone through `adb forward`,
+never its WiFi address. Headless desktop stations set
+`"flutter.remoteApi.enabled": true` in `~/.local/share/xprs/shared_preferences.json`.
+`docs/validation.md` has the details and what "off" looks like.
+
 ## Debugging a wapp
 
 `hal_log` from a **foreground page engine does not reach LogService**, so it

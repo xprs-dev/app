@@ -78,6 +78,17 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   }
 
   Future<void> _backupNow() async {
+    // Shared storage only ever holds an encrypted backup: ask for the
+    // passphrase first.
+    if (IdentityBackup.instance.requiresPassphrase &&
+        (PreferencesService.instanceSync?.identityBackupPassphrase ?? '')
+            .isEmpty) {
+      return _changePassphrase();
+    }
+    await _writeBackup();
+  }
+
+  Future<void> _writeBackup() async {
     setState(() => _backupBusy = true);
     if (!await AndroidPermissionsService.instance.hasAllFilesAccess()) {
       final ok =
@@ -116,11 +127,16 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Encrypt the backup with a passphrase. Leave blank for a '
-              'plaintext backup. If you forget it, the backup cannot be '
-              'restored — there is no recovery.',
-              style: TextStyle(fontSize: 12),
+            Text(
+              IdentityBackup.instance.requiresPassphrase
+                  ? 'The backup is kept in shared storage, so it is always '
+                      'encrypted. Leave blank to keep no backup. If you '
+                      'forget the passphrase, the backup cannot be restored: '
+                      'there is no recovery.'
+                  : 'Encrypt the backup with a passphrase. Leave blank for a '
+                      'plaintext backup. If you forget it, the backup cannot be '
+                      'restored — there is no recovery.',
+              style: const TextStyle(fontSize: 12),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -148,7 +164,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     );
     if (result == null) return; // cancelled
     prefs?.identityBackupPassphrase = result;
-    await _backupNow();
+    await _writeBackup();
   }
 
   @override
@@ -862,11 +878,14 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  const Text(
-                    'A plaintext backup holds your secret key in the clear — '
-                    'anyone with access to this phone\'s storage can read it. '
-                    'Add a passphrase to encrypt it.',
-                    style: TextStyle(fontSize: 11),
+                  Text(
+                    IdentityBackup.instance.requiresPassphrase
+                        ? 'The backup is encrypted with your passphrase. '
+                            'Without one, no backup is kept.'
+                        : 'A plaintext backup holds your secret key in the clear — '
+                            'anyone with access to this phone\'s storage can read it. '
+                            'Add a passphrase to encrypt it.',
+                    style: const TextStyle(fontSize: 11),
                   ),
                 ],
               ),

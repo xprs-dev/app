@@ -10,6 +10,45 @@ This document is the acceptance bar. It exists because the alternative — handi
 doesn't scale: their patience and their time. Every round trip that ends in "it still
 doesn't work" is a round trip that should have been caught here.
 
+## Before any test: turn the remote API on
+
+> **The remote API is OFF by default. Every check in this document that reads
+> `/api/...` (logs, status, versions, bearers, archiver state) fails until you
+> turn it on, on every device you test with.**
+
+It was on by default through v1.2.25. A security report against the F-Droid
+submission (GHSA-6m5w-4w3h-c2j9) showed that anyone on the same WiFi could use
+it to send as the user and push an update install. It is now a developer
+switch, it listens on **127.0.0.1 only**, and it refuses any request that comes
+from a browser (an `Origin` or `Sec-Fetch-*` header, or a `Host` that is not
+loopback) with a 403.
+
+Turn it on:
+
+- **Phone:** Settings > Remote control > Remote control API. Then reach it over
+  adb, never the phone's WiFi address:
+  ```sh
+  adb forward tcp:3458 tcp:3456
+  curl -s http://127.0.0.1:3458/api/status
+  ```
+  The switch lives in app data. `adb uninstall`, `pm clear` and "Clear data"
+  turn it off again, so re-enable it after any of those. An update installed
+  over the app keeps it.
+- **Desktop:** the same switch, or for a headless station on Xvfb set it in
+  `~/.local/share/xprs/shared_preferences.json` before launching:
+  ```json
+  "flutter.remoteApi.enabled": true,
+  "flutter.remoteApi.port": 3466
+  ```
+
+What "off" looks like, so it is not mistaken for a broken build: `curl: (7)
+Failed to connect` on the desktop, and `curl: (52) Empty reply from server`
+through an `adb forward` (the forward accepts, finds nothing listening on the
+phone, and hangs up). A 403 means the API
+is on and refused the request: it came from a browser, or named a host other
+than `127.0.0.1`/`localhost`. Check `/api/status` once after every install,
+before trusting any other result.
+
 ## The rule
 
 > **No task is complete until it has been validated end-to-end on a real connected
@@ -70,7 +109,7 @@ For any UI-affecting change, before claiming done:
    button is there and enabled, the message sent, the list updated, the badge
    cleared. A screenshot of the wrong screen is not validation; look at it.
 5. **Cross-check the logs** for silent failure: `GET /api/log` (the in-app ring, no
-   debug build needed). A UI that *looks* right while the log shows an exception is
+   debug build needed; the remote API must be on, see above). A UI that *looks* right while the log shows an exception is
    not validated.
 
 Only after the screenshot shows the feature working do you say it's done — and say

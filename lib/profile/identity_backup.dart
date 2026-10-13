@@ -15,10 +15,16 @@
  *   - Desktop: $HOME/.config/xprs/identity-backup.json (deliberately OUTSIDE
  *     ~/.local/share/xprs so wiping app data doesn't take the backup with it).
  *
- * The backup is plaintext by default (always restorable, zero friction). If the
- * user sets a passphrase it is AES-256-GCM encrypted with a PBKDF2-HMAC-SHA256
- * key. We never store the passphrase in the backup — the user must remember it
- * (the device keystore can't help: it is wiped on uninstall too).
+ * On Android the file sits in shared storage, where any app with all-files
+ * access (or legacy storage below Android 11) can read it, so it is ONLY ever
+ * written encrypted: AES-256-GCM with a PBKDF2-HMAC-SHA256 key from the user's
+ * passphrase. Without a passphrase nothing is written there, and a plaintext
+ * file left by an older build is deleted (after it has had its chance to be
+ * restored from on the welcome page). On desktop the file sits beside the
+ * profile store under the user's own home, so it may stay plaintext when no
+ * passphrase is set. We never store the passphrase in the backup: the user
+ * must remember it (the device keystore can't help: it is wiped on uninstall
+ * too). The key derivation runs on a worker isolate, never the UI isolate.
  *
  * Writes are best-effort and atomic (tmp + rename); failures are logged, never
  * thrown into the caller, so a missing permission never breaks profile saves.
@@ -29,6 +35,7 @@ import 'package:file/file.dart';
 import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart' show compute;
 
 import '../platform/platform.dart' as platform;
 import '../services/android_permissions_service.dart';
@@ -89,6 +96,10 @@ class IdentityBackup {
   static const int _kdfIters = 120000;
 
   bool get _isAndroid => platform.platformName() == 'android';
+
+  /// True where the backup lives in storage other apps can read (Android
+  /// shared storage): there it is written only when a passphrase is set.
+  bool get requiresPassphrase => _isAndroid;
 
   /// Directory for the backup, or null when it isn't reachable (e.g. Android
   /// all-files-access not granted yet). Creates it when [create] is true.
@@ -167,6 +178,10 @@ class IdentityBackup {
           .map((p) => p.npub)
           .toSet();
       if (withKey.isEmpty && lockedNpubs.isEmpty) return;
+      if (requiresPassphrase && passphrase.isEmpty) {
+        await _removePlaintext();
+        return;
+      }
       final f = await _file(create: true);
       if (f == null) return;
 
@@ -219,6 +234,19 @@ class IdentityBackup {
     }
   }
 
+  /// Delete a plaintext backup an older build left in shared storage. An
+  /// encrypted one is kept: it exposes nothing and may be the user's only copy.
+  Future<void> _removePlaintext() async {
+    final f = await _file();
+    if (f == null || !await f.exists() || await isEncrypted()) return;
+    try {
+      await f.delete();
+      LogService.instance.add('IdentityBackup: removed plaintext backup ${f.path}');
+    } catch (e) {
+      LogService.instance.add('IdentityBackup: could not remove ${f.path}: $e');
+    }
+  }
+
   /// Read the backed-up identities. Returns [] when there is no backup. Throws
   /// [BadPassphrase] when the file is encrypted and [passphrase] is wrong/missing.
   Future<List<RestorableIdentity>> readBackup({String passphrase = ''}) async {
@@ -251,64 +279,78 @@ class IdentityBackup {
   }
 
   // ── crypto: AES-256-GCM with a PBKDF2-HMAC-SHA256 key ────────────────────
-  Future<Map<String, dynamic>> _encrypt(
-      String plaintext, String passphrase) async {
-    final salt = _randomBytes(16);
-    final key = await _deriveKey(passphrase, salt, _kdfIters);
-    final algo = AesGcm.with256bits();
-    final nonce = algo.newNonce();
-    final box = await algo.encrypt(
-      utf8.encode(plaintext),
-      secretKey: key,
-      nonce: nonce,
-    );
-    return {
-      'encrypted': true,
-      'kdf': {
-        'algo': 'pbkdf2-hmac-sha256',
-        'iters': _kdfIters,
-        'salt': base64Encode(salt),
-      },
-      'iv': base64Encode(nonce),
-      'mac': base64Encode(box.mac.bytes),
-      'ct': base64Encode(box.cipherText),
-    };
-  }
+  // PBKDF2 at this iteration count is long pure-Dart work, and backupAll runs
+  // on every boot and profile save, so both
+  // directions go through compute() (a worker isolate; inline on web).
+  Future<Map<String, dynamic>> _encrypt(String plaintext, String passphrase) =>
+      compute(_encryptJob, [plaintext, passphrase, _randomBytes(16)]);
 
   Future<String> _decrypt(Map<String, dynamic> raw, String passphrase) async {
     try {
-      final kdf = (raw['kdf'] as Map).cast<String, dynamic>();
-      final salt = base64Decode(kdf['salt'] as String);
-      final iters = (kdf['iters'] as num?)?.toInt() ?? _kdfIters;
-      final key = await _deriveKey(passphrase, salt, iters);
-      final algo = AesGcm.with256bits();
-      final box = SecretBox(
-        base64Decode(raw['ct'] as String),
-        nonce: base64Decode(raw['iv'] as String),
-        mac: Mac(base64Decode(raw['mac'] as String)),
-      );
-      final clear = await algo.decrypt(box, secretKey: key);
-      return utf8.decode(clear);
+      return await compute(_decryptJob, [Map<String, dynamic>.of(raw), passphrase]);
     } catch (_) {
       throw const BadPassphrase('Wrong passphrase or corrupt backup');
     }
-  }
-
-  Future<SecretKey> _deriveKey(
-      String passphrase, List<int> salt, int iters) async {
-    final pbkdf2 = Pbkdf2(
-      macAlgorithm: Hmac.sha256(),
-      iterations: iters,
-      bits: 256,
-    );
-    return pbkdf2.deriveKey(
-      secretKey: SecretKey(utf8.encode(passphrase)),
-      nonce: salt,
-    );
   }
 
   List<int> _randomBytes(int n) {
     final r = Random.secure();
     return List<int>.generate(n, (_) => r.nextInt(256));
   }
+}
+
+Future<SecretKey> _deriveKey(String passphrase, List<int> salt, int iters) {
+  final pbkdf2 = Pbkdf2(
+    macAlgorithm: Hmac.sha256(),
+    iterations: iters,
+    bits: 256,
+  );
+  return pbkdf2.deriveKey(
+    secretKey: SecretKey(utf8.encode(passphrase)),
+    nonce: salt,
+  );
+}
+
+/// compute() entry point: [plaintext, passphrase, salt].
+Future<Map<String, dynamic>> _encryptJob(List<Object> args) async {
+  final plaintext = args[0] as String;
+  final salt = args[2] as List<int>;
+  final key = await _deriveKey(
+      args[1] as String, salt, IdentityBackup._kdfIters);
+  final algo = AesGcm.with256bits();
+  final nonce = algo.newNonce();
+  final box = await algo.encrypt(
+    utf8.encode(plaintext),
+    secretKey: key,
+    nonce: nonce,
+  );
+  return {
+    'encrypted': true,
+    'kdf': {
+      'algo': 'pbkdf2-hmac-sha256',
+      'iters': IdentityBackup._kdfIters,
+      'salt': base64Encode(salt),
+    },
+    'iv': base64Encode(nonce),
+    'mac': base64Encode(box.mac.bytes),
+    'ct': base64Encode(box.cipherText),
+  };
+}
+
+/// compute() entry point: [raw backup map, passphrase]. Throws on a wrong
+/// passphrase or a corrupt file.
+Future<String> _decryptJob(List<Object> args) async {
+  final raw = args[0] as Map<String, dynamic>;
+  final kdf = (raw['kdf'] as Map).cast<String, dynamic>();
+  final salt = base64Decode(kdf['salt'] as String);
+  final iters = (kdf['iters'] as num?)?.toInt() ?? IdentityBackup._kdfIters;
+  final key = await _deriveKey(args[1] as String, salt, iters);
+  final algo = AesGcm.with256bits();
+  final box = SecretBox(
+    base64Decode(raw['ct'] as String),
+    nonce: base64Decode(raw['iv'] as String),
+    mac: Mac(base64Decode(raw['mac'] as String)),
+  );
+  final clear = await algo.decrypt(box, secretKey: key);
+  return utf8.decode(clear);
 }

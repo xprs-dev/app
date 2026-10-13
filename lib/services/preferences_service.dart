@@ -76,10 +76,10 @@ class PreferencesService {
   // ── Remote-control API ───────────────────────────────────────────
   //
   // Opens a JSON HTTP server (RemoteApiService) on [remoteApiPort] so the
-  // app can be driven/inspected remotely (status, logs, launch a wapp).
-  // Binds 0.0.0.0, so it is reachable from the network — turn it off on
-  // untrusted networks. Default on for development convenience.
-  bool get remoteApiEnabled => _prefs.getBool('remoteApi.enabled') ?? true;
+  // app can be driven/inspected from a test bench (status, logs, launch a
+  // wapp). Off by default: it is a developer switch, and it binds loopback
+  // only, so it is reached over `adb forward` or from the same machine.
+  bool get remoteApiEnabled => _prefs.getBool('remoteApi.enabled') ?? false;
   set remoteApiEnabled(bool v) => _prefs.setBool('remoteApi.enabled', v);
 
   int get remoteApiPort => _prefs.getInt('remoteApi.port') ?? 3456;

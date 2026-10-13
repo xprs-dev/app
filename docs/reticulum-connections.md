@@ -70,7 +70,7 @@ other. The obvious reading — "announces do not cross a public hub, so discover
 is impossible" — was wrong, and one HTTP call said so:
 
 ```sh
-adb forward tcp:3461 tcp:3456                       # the app's API, on by default
+adb forward tcp:3461 tcp:3456                       # the app's API (off by default: docs/validation.md)
 curl -s 'http://127.0.0.1:3461/api/rns/route?dest=<32hex>'
 {"path":{"nextHop":"07d20e92…","via":"tcp:use.inertia.chat:4242","hops":2,"ageMs":22186}}
 ```

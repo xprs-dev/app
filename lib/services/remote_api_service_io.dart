@@ -104,8 +104,11 @@ class RemoteApiService {
     if (port != null) _port = port;
     if (_server != null) return;
     try {
-      _server = await HttpServer.bind(InternetAddress.anyIPv4, _port, shared: true);
-      LogService.instance.add('RemoteApi: listening on 0.0.0.0:$_port');
+      // Loopback only: the API can install updates and send as the user, so
+      // nothing on the network may reach it. `adb forward` lands on loopback.
+      _server = await HttpServer.bind(InternetAddress.loopbackIPv4, _port,
+          shared: true);
+      LogService.instance.add('RemoteApi: listening on 127.0.0.1:$_port');
       _server!.listen(_handle, onError: (e) {
         LogService.instance.add('RemoteApi: request error: $e');
       });
@@ -113,6 +116,23 @@ class RemoteApiService {
       _server = null;
       LogService.instance.add('RemoteApi: bind failed on $_port: $e');
     }
+  }
+
+  /// True for a request from a bench tool (curl, a script, `adb forward`),
+  /// false for one a browser makes. A web page can aim a request at
+  /// 127.0.0.1 or rebind its own name to it; browsers mark those with an
+  /// Origin or Sec-Fetch-* header and the page's own name in Host.
+  static bool _fromBench(HttpRequest req) {
+    final h = req.headers;
+    if (h.value('origin') != null || h.value('sec-fetch-site') != null) {
+      return false;
+    }
+    final host = h.host;
+    return host == null ||
+        host == '127.0.0.1' ||
+        host == 'localhost' ||
+        host == '::1' ||
+        host == '[::1]';
   }
 
   Future<void> stop() async {
@@ -128,13 +148,10 @@ class RemoteApiService {
 
   Future<void> _handle(HttpRequest req) async {
     final res = req.response;
-    res.headers.set('Access-Control-Allow-Origin', '*');
-    res.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.headers.set('Access-Control-Allow-Headers', 'Content-Type');
     final path = req.uri.path;
     try {
-      if (req.method == 'OPTIONS') {
-        res.statusCode = HttpStatus.ok;
+      if (!_fromBench(req)) {
+        res.statusCode = HttpStatus.forbidden;
         await res.close();
         return;
       }
