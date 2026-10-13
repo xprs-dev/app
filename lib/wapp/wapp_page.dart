@@ -3803,7 +3803,6 @@ class _WappPageState extends State<WappPage>
         _sendCommand('${field}_new');
       },
       onNewChat: () => _sendCommand('${field}_newchat'),
-      onSearch: () => _sendCommand('${field}_search'),
       onMemberTap: (id) {
         _fieldValues['room_members_id'] = id;
         _sendCommand('room_members_tap');
@@ -5428,6 +5427,9 @@ class _WappPageState extends State<WappPage>
           ),
         if (actions.isNotEmpty) const PopupMenuDivider(),
         for (var i = 0; i < _menuScreens.length; i++)
+          // `"appbar_only": true`: the icon in the bar is the way in, so the
+          // menu does not list it a second time.
+          if (_menuScreens[i].getBool('appbar_only') != true)
           PopupMenuItem<String>(
             value: 'panel:$i',
             child: ListTile(
@@ -6243,9 +6245,22 @@ class _WappPageState extends State<WappPage>
               .map((m) => m.map((k, v) => MapEntry(k.toString(), v)))
               .toList()
         : const <Map<String, dynamic>>[];
-    final displaySections = _wappName == 'social' && name == 'follows_list'
+    final hydrated = _wappName == 'social' && name == 'follows_list'
         ? _hydrateFollowingPeople(sections)
         : sections;
+    // Filter tabs (`"tabs": "People,Groups"` on the screen): a row of chips
+    // under the search box. "All" shows every section; another one shows the
+    // sections the wapp tagged `"tab": "<that label>"`. Purely a view filter,
+    // so choosing one costs no command and no re-query.
+    final tabLabels = (screen.getString('tabs') ?? '')
+        .split(',')
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+    final tab = _peopleTab[name] ?? '';
+    final displaySections = tabLabels.isEmpty || !tabLabels.contains(tab)
+        ? hydrated
+        : hydrated.where((s) => s['tab'] == tab).toList();
     final playerGroup = screen.children
         .where((c) => c.keyword == 'group' && c.type == 'player')
         .firstOrNull;
@@ -6331,6 +6346,8 @@ class _WappPageState extends State<WappPage>
         if (screen.getBool('search') == true)
           _buildSearchBar(name,
               autofocus: screen.getBool('hidden') == true),
+        if (tabLabels.isNotEmpty)
+          _buildPeopleTabs(name, tabLabels, tab),
         Expanded(
           child: PeopleViewField(
             fieldName: name,
@@ -6426,6 +6443,31 @@ class _WappPageState extends State<WappPage>
     return ico != null
         ? OutlinedButton.icon(onPressed: onTap, icon: ico, label: Text(label))
         : OutlinedButton(onPressed: onTap, child: Text(label));
+  }
+
+  /// The chosen filter tab of each people screen, by field ('' is "All").
+  final Map<String, String> _peopleTab = {};
+
+  Widget _buildPeopleTabs(String field, List<String> labels, String current) {
+    return SizedBox(
+      height: 48,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        children: [
+          for (final l in ['All', ...labels])
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(l),
+                selected: l == 'All' ? current.isEmpty : l == current,
+                onSelected: (_) =>
+                    setState(() => _peopleTab[field] = l == 'All' ? '' : l),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   // Per-field search controllers + a debounce so live typing doesn't fire a
