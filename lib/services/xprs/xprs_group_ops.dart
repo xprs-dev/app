@@ -14,7 +14,10 @@
  */
 import 'dart:async';
 
+import '../../util/media_ref.dart';
 import '../../util/nostr_crypto.dart';
+import '../media/media_fetch.dart';
+import '../media/media_preview.dart';
 import '../reticulum/rns_service.dart';
 import 'xprs_archive.dart';
 import 'xprs_group_act.dart';
@@ -22,8 +25,10 @@ import 'xprs_group_keys.dart';
 import 'xprs_groups.dart';
 import 'xprs_id.dart';
 import 'xprs_packet.dart';
+import 'xprs_profiles.dart';
 import 'xprs_publisher.dart';
 import 'xprs_sig.dart';
+import 'xprs_vocab.dart';
 
 /// What an attempt did. A refusal is never silent: every caller shows the
 /// reason, because "nothing happened" is the failure mode section 26 is
@@ -85,6 +90,92 @@ class XprsGroupOps {
       }
     }
     return (callsign: g.callsign, npub: g.npub, nick: g.nick);
+  }
+
+  /// A folder inside [parent]: a subgroup (10.2). "A subgroup is not a new
+  /// kind of thing": its own key, its own `X5` callsign, its own roster, and
+  /// a `grant:<X5> role:sub` signed by the parent that lists it. Only the
+  /// parent's admin can sign that, and the admin keeps the folder's key too,
+  /// which is 10.2's "ordinary case": authority over a subgroup is holding
+  /// its key, never a walk up the tree.
+  ///
+  /// Null when we do not administer [parent], when the parent already sits
+  /// at the fifth level (10.2: a deeper listing is ignored by every client,
+  /// so minting one would make a folder nobody can see), or when nothing
+  /// could be minted. Membership does not travel down: who is offered a
+  /// place in the folder is the caller's to say, with [grant].
+  static ({String callsign, String npub, String nick})? createFolder(
+      String parent,
+      {String nick = ''}) {
+    final p = parent.trim().replaceFirst('#', '').toUpperCase();
+    if (!XprsGroupKeys.instance.holdsKey(p)) return null;
+    if (XprsGroups.depthIn(XprsGroups.instance.parents(), p) >=
+        XprsGroups.maxDepth) {
+      return null;
+    }
+    final g = create(nick: nick);
+    if (g == null) return null;
+    final listed = grant(p, [g.callsign], role: 'sub');
+    if (!listed.ok) {
+      // A folder no parent lists is a stray group under a name nobody chose.
+      forget(g.callsign);
+      return null;
+    }
+    return g;
+  }
+
+  /// A group's picture (6.3.2 applied to the group's own `t:identity`, 10.1:
+  /// "a group is a station"). [token] is `file:<sha>.<ext>` of a thumbnail
+  /// already in the media archive, or empty to take the picture back with
+  /// `file:-`. Signed with the group's key, so only the admin can say it.
+  ///
+  /// The name goes out with it every time: a decoration states every field
+  /// it has (6.3.2), so a picture announced without the name would read as
+  /// the name being cleared.
+  static XprsGroupOpResult setPicture(String group, String token) {
+    final g = group.trim().replaceFirst('#', '').toUpperCase();
+    final scalar = XprsGroupKeys.instance.scalarFor(g);
+    if (scalar == null) {
+      return XprsGroupOpResult.failed('only the admin of $g can do that');
+    }
+    final t = token.trim();
+    if (t.isNotEmpty) {
+      final ref = MediaRef.parse(t);
+      final meta = ref == null
+          ? null
+          : MediaFetch.instance.archive?.call()?.getMeta(ref.sha256);
+      // performance.md 8.17: a picture is at most 8 KiB, so the packet lane
+      // carries it across a public hub. A reference to anything larger would
+      // ask every member to fetch it.
+      if (meta == null || meta.size > kAvatarMaxBytes) {
+        return const XprsGroupOpResult.failed('not a picture this station holds');
+      }
+    }
+    final wires = XprsPublisher.composeDecoration(
+      call: g,
+      nick: XprsGroupKeys.instance.nickFor(g),
+      fileToken: t,
+      about: '',
+      ts: xprsNowTs(),
+      signingKey: scalar,
+    );
+    if (wires.isEmpty) {
+      return const XprsGroupOpResult.failed('the act did not compose or fit');
+    }
+    final airs = <Future<void>>[];
+    for (final w in wires) {
+      final p = XprsPacket.parse(w);
+      if (p == null) continue;
+      // Our own screens see it now: a station never hears itself.
+      XprsProfiles.instance.own(g, p);
+      airs.add(_air(p));
+    }
+    // The archive is where the picture is read back from after a restart,
+    // and it writes every 20 s. Flushing on an act somebody just tapped is
+    // performance.md 8.12's rule: measured here, a restart inside that
+    // window came back without the picture.
+    unawaited(Future.wait(airs).then((_) => XprsArchive.instance.flush()));
+    return XprsGroupOpResult.ok(wires.first);
   }
 
   /// The group speaking about somebody (26.3): grant, or revoke. Signed with

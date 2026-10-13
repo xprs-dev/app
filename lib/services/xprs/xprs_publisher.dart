@@ -214,6 +214,21 @@ class _ReticulumBearer implements XprsBearer {
     final bytes = Uint8List.fromList(utf8.encode(wire));
     final p = XprsPacket.parse(wire);
     final dest = p?['d']?.trim().toUpperCase() ?? '';
+    // A group's own announcement (10.1) is undirected, so on this lane it is
+    // an announce, and the hubs do not cross-forward those (above). Who needs
+    // a group's name and picture is its members, and for a folder (10.2) the
+    // members of the groups above it, whose tree shows it: they get it
+    // addressed, the way a group post reaches them. The announce still goes
+    // out below for whoever is in reach of it.
+    if (dest.isEmpty && p != null && p.type == 'identity') {
+      final g = (p['f'] ?? '').trim().toUpperCase();
+      if (g.startsWith('X5')) {
+        final tree = XprsGroups.instance.parents();
+        unawaited(_sendToMembers(g, bytes, also: [
+          for (var up = tree[g]; up != null; up = tree[up]) up,
+        ]));
+      }
+    }
     if (dest.isNotEmpty && !xprsAddressesStation(dest)) {
       return await _sendToMembers(dest, bytes,
           named: XprsPublisher.namedInAct(p));
@@ -275,16 +290,18 @@ class _ReticulumBearer implements XprsBearer {
   /// line then reads `reticulum:refused` and the radios still carry the post —
   /// a visible answer instead of a packet that went nowhere in silence.
   Future<XprsSendResult> _sendToMembers(String group, Uint8List bytes,
-      {List<String> named = const []}) async {
+      {List<String> named = const [], List<String> also = const []}) async {
     final me = XprsArchive.instance.selfCallsign.trim().toUpperCase();
-    final roster = XprsGroups.instance.rosterOf(group);
     final targets = <String>{};
-    for (final e in roster.roles.entries) {
-      if (e.value == XprsRole.member ||
-          e.value == XprsRole.mod ||
-          e.value == XprsRole.admin) {
-        targets.add(e.key);
+    for (final g in [group, ...also]) {
+      for (final e in XprsGroups.instance.rosterOf(g).roles.entries) {
+        if (e.value == XprsRole.member ||
+            e.value == XprsRole.mod ||
+            e.value == XprsRole.admin) {
+          targets.add(e.key);
+        }
       }
+      targets.remove(g);
     }
     targets.addAll(named);
     targets.remove(group);
@@ -312,8 +329,12 @@ class _ReticulumBearer implements XprsBearer {
       // found nothing to bundle. Flush first -- a handful of rows, on an act a
       // person just tapped, not on any poll.
       XprsArchive.instance.flush();
+      // Every identity row the archive keeps for the group, not the newest
+      // alone: it keeps the key binding and the decoration (a name and a
+      // picture, 6.3.2) as separate rows, and the newest is the decoration,
+      // which carries no key and verifies against nothing a newcomer holds.
       for (final r in XprsArchive.instance
-          .query(types: const ['identity'], only: group, limit: 1)) {
+          .query(types: const ['identity'], only: group, limit: 4)) {
         final w = r['wire'];
         if (w is String && w.isNotEmpty) bundle.add(Uint8List.fromList(utf8.encode(w)));
       }
@@ -321,6 +342,22 @@ class _ReticulumBearer implements XprsBearer {
           .query(types: const ['moderate'], only: group, limit: 64)) {
         final w = r['wire'];
         if (w is String && w.isNotEmpty) bundle.add(Uint8List.fromList(utf8.encode(w)));
+      }
+      // A folder (10.2): the parent's listing of it travels too, or a
+      // newcomer who joined the parent before the folder existed is shown
+      // the folder as a group of its own, outside the tree it belongs in.
+      final up = XprsGroups.instance.parents()[group];
+      if (up != null) {
+        for (final r in XprsArchive.instance
+            .query(types: const ['moderate'], only: up, limit: 64)) {
+          final w = r['wire'];
+          final a = w is String ? XprsPacket.parse(w) : null;
+          if (a == null || (a['role'] ?? '') != 'sub') continue;
+          if (!(a['grant'] ?? '').toUpperCase().split(',').contains(group)) {
+            continue;
+          }
+          bundle.add(Uint8List.fromList(utf8.encode(w as String)));
+        }
       }
     }
     final sends = <Future<bool>>[];

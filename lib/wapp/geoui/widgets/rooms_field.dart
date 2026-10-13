@@ -323,15 +323,9 @@ class _RoomsFieldState extends State<RoomsField> {
       return seen > 0 ? seen * 1000 : 0; // wapp reports epoch SECONDS
     }
 
-    final idx = {for (var i = 0; i < rows.length; i++) '${rows[i]['id']}': i};
-    rows.sort((a, b) {
-      final ra = rank(a), rb = rank(b);
-      if (ra != rb) return rb.compareTo(ra);
-      // Never-touched rows keep their given order (the room tree's shape).
-      return (idx['${a['id']}'] ?? 0).compareTo(idx['${b['id']}'] ?? 0);
-    });
-    return rows;
+    return roomsTreeByRank(rows, rank);
   }
+
 
   /// "2m" / "4h" / "yd" / "3d" — a chat list wants an age, not a clock.
   static String _ago(int ms) {
@@ -995,11 +989,24 @@ class _RoomsFieldState extends State<RoomsField> {
         ),
       ),
     );
-    // A room is a place and keeps its initials. A conversation with one
+    // An open room is a place and keeps its initials. A conversation with one
     // station shows the picture that station announced (XPRS.md 6.3.2), and
     // until it has one the identicon it wears in Status and everywhere else:
     // four letters of a callsign ("X1AR") told two stations apart badly and
     // made the same person look different in each wapp.
+    // A closed group is a station too (XPRS.md 10.1) and may announce a
+    // picture of its own; until it does, or while it is on its way, the
+    // initials stand in for it.
+    if (id.startsWith('#X5')) {
+      return Container(
+        width: size,
+        height: size,
+        foregroundDecoration:
+            BoxDecoration(shape: BoxShape.circle, border: border),
+        child: StationAvatar(
+            callsign: id.substring(1), size: size, fallback: initials),
+      );
+    }
     if (id.startsWith('#')) return initials;
     return Container(
       width: size,
@@ -1089,6 +1096,11 @@ class _RoomsFieldState extends State<RoomsField> {
               // back (the host closes the room on narrow). A second arrow in
               // this header sat directly under it doing something different.
               const SizedBox(width: 8),
+              // A closed group shows its face here too (XPRS.md 10.1).
+              if (open != null && open.startsWith('#X5')) ...[
+                _avatar(cs, open, name, false, 34),
+                const SizedBox(width: 10),
+              ],
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1211,4 +1223,65 @@ class _RoomsFieldState extends State<RoomsField> {
       ],
     );
   }
+}
+
+/// [rows] ordered most recent first, with each row that names a `parent`
+/// on the list drawn under it rather than among the roots: a folder inside
+/// a group (XPRS.md 10.2) belongs beside its group, not wherever its last
+/// message put it. Siblings are ordered the same way the roots are, and a
+/// branch moves up with its busiest row. A row whose parent is not on the
+/// list is a root. Pure, so the order is a test rather than a screenshot.
+List<Map<String, dynamic>> roomsTreeByRank(
+    List<Map<String, dynamic>> rows, int Function(Map<String, dynamic>) rank) {
+  final idx = {for (var i = 0; i < rows.length; i++) '${rows[i]['id']}': i};
+  final kids = <String, List<Map<String, dynamic>>>{};
+  final roots = <Map<String, dynamic>>[];
+  for (final r in rows) {
+    final up = '${r['parent'] ?? ''}';
+    if (up.isNotEmpty && up != '${r['id']}' && idx.containsKey(up)) {
+      kids.putIfAbsent(up, () => []).add(r);
+    } else {
+      roots.add(r);
+    }
+  }
+  final best = <String, int>{};
+  int branch(Map<String, dynamic> r, Set<String> seen) {
+    final id = '${r['id']}';
+    final hit = best[id];
+    if (hit != null) return hit;
+    var b = rank(r);
+    if (seen.add(id)) {
+      for (final k in kids[id] ?? const <Map<String, dynamic>>[]) {
+        final kb = branch(k, seen);
+        if (kb > b) b = kb;
+      }
+    }
+    return best[id] = b;
+  }
+
+  int order(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final ra = branch(a, {}), rb = branch(b, {});
+    if (ra != rb) return rb.compareTo(ra);
+    // Never-touched rows keep their given order (the room tree's shape).
+    return (idx['${a['id']}'] ?? 0).compareTo(idx['${b['id']}'] ?? 0);
+  }
+
+  final out = <Map<String, dynamic>>[];
+  final placed = <String>{};
+  void place(Map<String, dynamic> r) {
+    if (!placed.add('${r['id']}')) return;
+    out.add(r);
+    for (final k in [...?kids['${r['id']}']]..sort(order)) {
+      place(k);
+    }
+  }
+
+  for (final r in roots..sort(order)) {
+    place(r);
+  }
+  // A cycle of parents has no root to hang from; draw it flat.
+  for (final r in rows) {
+    place(r);
+  }
+  return out;
 }

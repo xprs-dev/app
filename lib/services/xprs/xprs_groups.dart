@@ -527,6 +527,73 @@ class XprsGroups {
         {for (final e in offered.entries) e.key: e.value.id});
   }
 
+  /// The tree the `role:sub` listings make (26.2): each listed group mapped
+  /// to the group that lists it, over every record this station keeps.
+  ///
+  /// Built from the cached rosters, so it costs a map walk per group and
+  /// runs when a screen asks, never per packet. The rules that keep a
+  /// listing from becoming a weapon are applied in [treeOf].
+  Map<String, String> parents() => treeOf({
+        for (final g in _acts.keys)
+          g: [
+            for (final e in rosterOf(g).roles.entries)
+              if (e.value == XprsRole.sub) e.key,
+          ],
+      });
+
+  /// Pure half of [parents]: [listings] maps a group to the groups it lists.
+  ///
+  /// 26.2: "Five levels, counting the root. A client ignores a listing that
+  /// would place a group deeper than that", and "a listing that names a
+  /// group already in its own ancestry" is ignored too. A group listed by two
+  /// parents takes the one whose callsign sorts first, so every station
+  /// draws the same tree from the same packets.
+  static Map<String, String> treeOf(Map<String, Iterable<String>> listings) {
+    final up = <String, String>{};
+    for (final p in listings.keys.toList()..sort()) {
+      for (final c in listings[p]!) {
+        if (c == p) continue;
+        up.putIfAbsent(c, () => p);
+      }
+    }
+    // Cycles first, all at once: a listing that closes a loop is ignored, and
+    // which one that is must not depend on the order the walk visits them.
+    for (final c in up.keys.toList()..sort()) {
+      final seen = <String>{c};
+      var at = up[c];
+      while (at != null) {
+        if (!seen.add(at)) {
+          up.remove(c);
+          break;
+        }
+        at = up[at];
+      }
+    }
+    // Then depth: a root is level 1, so a group whose chain to its root is
+    // longer than four listings is cut loose.
+    final out = <String, String>{};
+    for (final e in up.entries) {
+      var depth = 1;
+      String? at = e.key;
+      while ((at = up[at]) != null) {
+        depth++;
+      }
+      if (depth <= maxDepth) out[e.key] = e.value;
+    }
+    return out;
+  }
+
+  /// How deep [group] sits in [tree], counting a root as 1 (26.2).
+  static int depthIn(Map<String, String> tree, String group) {
+    var depth = 1;
+    String? at = group.trim().toUpperCase();
+    final seen = <String>{};
+    while ((at = tree[at]) != null && seen.add(at!)) {
+      depth++;
+    }
+    return depth;
+  }
+
   /// For the diagnostics. Counts, never the roster itself -- a status endpoint
   /// that serialises every member of every group is a page fetch to count.
   Map<String, dynamic> statusJson() => {

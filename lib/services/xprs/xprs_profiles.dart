@@ -33,6 +33,7 @@ import '../log_service.dart';
 import '../media/media_fetch.dart';
 import '../media/media_preview.dart';
 import 'xprs_archive.dart';
+import 'xprs_groups.dart';
 import 'xprs_id.dart';
 import 'xprs_packet.dart';
 import 'xprs_publisher.dart';
@@ -78,6 +79,11 @@ class XprsProfiles {
   /// screen asking: followed, or a correspondent.
   bool Function(String call)? isKnown;
 
+  /// The stations to ask for [call]'s picture, best first. A person holds
+  /// their own; a group (10.1) is a key, not a station, so its picture is
+  /// asked of its members, whose roster lists the admin who made it first.
+  List<String> Function(String call)? holdersFor;
+
   /// Publish the NOSTR kind-0 note (name, about, picture). Set by the node,
   /// so this file stays free of it.
   Future<void> Function({String? name, String? about, String? picture})?
@@ -118,6 +124,17 @@ class XprsProfiles {
     final call = _base(p['f'] ?? from);
     if (call.isEmpty) return;
     if (_apply(call, p, verify: true)) revision.value++;
+  }
+
+  /// A decoration we signed ourselves, for a callsign whose key we hold (a
+  /// group we administer, 10.1). Applied without a check, because we just
+  /// signed it, and because a station never hears its own packet back.
+  void own(String call, XprsPacket p) {
+    if (!_decorates(p)) return;
+    final c = _base(call);
+    if (c.isEmpty) return;
+    if (!_loaded.contains(c)) _load(c);
+    if (_apply(c, p, verify: false)) revision.value++;
   }
 
   /// A key for [call] was learned just now: read its decoration again, since
@@ -261,12 +278,30 @@ class XprsProfiles {
       (isKnown ?? _defaultKnown)(call);
 
   static bool _defaultKnown(String call) {
+    // A group whose record we keep is ours: we belong to it or were asked to.
+    if (XprsGroups.instance.known.contains(call)) return true;
     final a = XprsArchive.instance;
     if (a.followed.contains(call) || a.followedStations.contains(call)) {
       return true;
     }
     final self = a.selfCallsign;
     return self.isNotEmpty && a.hasExchanged(self, call);
+  }
+
+  static const int _groupHolders = 3;
+
+  static List<String> _defaultHolders(String call) {
+    if (!call.startsWith('X5')) return [call];
+    final me = _base(XprsArchive.instance.selfCallsign);
+    return [
+      for (final e in XprsGroups.instance.rosterOf(call).roles.entries)
+        if (e.key != call &&
+            e.key != me &&
+            (e.value == XprsRole.member ||
+                e.value == XprsRole.mod ||
+                e.value == XprsRole.admin))
+          e.key,
+    ].take(_groupHolders).toList();
   }
 
   bool _holds(String sha) {
@@ -299,10 +334,17 @@ class XprsProfiles {
       _inFlight.add(sha);
       final go = fetch ??
           (MediaRef r, String from) => MediaFetch.instance.want(r, from: from);
-      unawaited(go(ref, call)
-          .timeout(_askFor, onTimeout: () => false)
-          .catchError((_) => false)
-          .then((ok) {
+      // One holder after another, each on the same clock, until one answers.
+      Future<bool> ask(List<String> from) async {
+        for (final h in from) {
+          final ok = await go(ref, h)
+              .timeout(_askFor, onTimeout: () => false)
+              .catchError((_) => false);
+          if (ok || _holds(sha)) return true;
+        }
+        return false;
+      }
+      unawaited(ask((holdersFor ?? _defaultHolders)(call)).then((ok) {
         _inFlight.remove(sha);
         if (ok || _holds(sha)) {
           fetched++;

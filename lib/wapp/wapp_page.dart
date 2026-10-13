@@ -43,6 +43,7 @@ import 'geoui/widgets/chat_palette.dart';
 import 'geoui/widgets/chat_view_field.dart';
 import '../services/social/nostr_all_poller.dart';
 import '../services/media/media_fetch.dart';
+import '../services/media/media_preview.dart' show kPreviewSourceMax;
 import '../services/social/nomadnet_poller.dart';
 import 'geoui/widgets/activity_feed.dart';
 import 'geoui/widgets/micron_view.dart';
@@ -2483,6 +2484,10 @@ class _WappPageState extends State<WappPage>
           unawaited(_handleFilePick(data));
         } else if (type == 'media.session') {
           _handleMediaSession(data);
+        } else if (type == 'ui.pick.picture') {
+          // A wapp wants a picture for something it names (a group's face):
+          // the picker, the thumbnail, and the token back as picture_picked.
+          unawaited(_handlePicturePick(data));
         } else if (type == 'fs.pick') {
           // A wapp wants the user to browse and pick a file OR folder (Files
           // wapp "Add / Share"). Show the file/folder navigator; deliver the
@@ -3358,6 +3363,46 @@ class _WappPageState extends State<WappPage>
     } catch (_) {
       return null;
     }
+  }
+
+  /// Pick a picture for something a wapp names (`ui.pick.picture {id}`), and
+  /// answer with the command `picture_picked {picture_id, picture_token}`.
+  ///
+  /// The picture is what every station picture is: a small square JPEG the
+  /// core makes on a worker (XprsProfiles.pictureTokenFor, performance.md
+  /// 8.17), kept in the media archive so any station that asks is answered.
+  /// The original is neither kept nor advertised, unlike an attachment.
+  Future<void> _handlePicturePick(Map<String, dynamic> data) async {
+    final id = (data['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    void say(String m) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+      }
+    }
+
+    try {
+      const images = XTypeGroup(
+        label: 'Images',
+        extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'],
+      );
+      final file = await openFile(acceptedTypeGroups: const [images]);
+      if (file == null) return;
+      if (await file.length() > kPreviewSourceMax) {
+        say('${file.name} is too large for a picture.');
+        return;
+      }
+      // arch-ignore: no-whole-file-read a picked picture is decoded whole to make an 8 KiB thumbnail, refused above kPreviewSourceMax
+      final source = await file.readAsBytes();
+      final token = await XprsProfiles.instance.pictureTokenFor(source);
+      if (token == null) {
+        say('That picture could not be read. Try a JPEG or PNG.');
+        return;
+      }
+      _fieldValues['picture_id'] = id;
+      _fieldValues['picture_token'] = token;
+      _sendCommand('picture_picked');
+    } catch (_) {}
   }
 
   /// Browse and pick a file OR folder; return it to the wapp as fs.picked.

@@ -419,6 +419,64 @@ void main() {
         reason: 'listing confers no authority (26.2)');
   });
 
+  group('folders: the tree role:sub listings make (10.2)', () {
+    test('a listed group hangs under the group that lists it', () {
+      m.offer(_act(g, '2026-08-08_10:00:00', 'grant:X5K2M9,X5T4WD role:sub'),
+          nowMs: now);
+      final t = m.parents();
+      expect(t['X5K2M9'], g);
+      expect(t['X5T4WD'], g);
+      expect(t[g], isNull, reason: 'a root has no parent');
+    });
+
+    test('a delisted folder is a root again', () {
+      m.offer(_act(g, '2026-08-08_10:00:00', 'grant:X5K2M9 role:sub'),
+          nowMs: now);
+      m.offer(_act(g, '2026-08-08_11:00:00', 'revoke:X5K2M9'), nowMs: now);
+      expect(m.parents()['X5K2M9'], isNull);
+    });
+
+    test('a listing by somebody other than the group lists nothing', () {
+      // Only the admin may appoint (26.3); a member signing role:sub is not
+      // the group speaking.
+      m.offer(_act('X1RD89', '2026-08-08_10:00:00', 'grant:X5K2M9 role:sub'),
+          nowMs: now);
+      expect(m.parents()['X5K2M9'], isNull);
+    });
+
+    test('five levels counting the root; a deeper listing is ignored', () {
+      final t = XprsGroups.treeOf({
+        'X5L1': ['X5L2'],
+        'X5L2': ['X5L3'],
+        'X5L3': ['X5L4'],
+        'X5L4': ['X5L5'],
+        'X5L5': ['X5L6'],
+      });
+      expect(t['X5L5'], 'X5L4');
+      expect(XprsGroups.depthIn(t, 'X5L5'), 5);
+      expect(t.containsKey('X5L6'), isFalse);
+    });
+
+    test('a listing that closes a cycle is ignored, whoever drew it', () {
+      final t = XprsGroups.treeOf({
+        'X5AA': ['X5BB'],
+        'X5BB': ['X5AA'],
+        'X5CC': ['X5DD'],
+      });
+      expect(t.containsKey('X5AA') && t.containsKey('X5BB'), isFalse);
+      expect(t['X5DD'], 'X5CC');
+      expect(XprsGroups.treeOf({'X5AA': ['X5AA']}), isEmpty,
+          reason: 'a group listing itself is not a folder');
+    });
+
+    test('two parents: every station picks the same one', () {
+      final a = XprsGroups.treeOf({'X5PB': ['X5KID'], 'X5PA': ['X5KID']});
+      final b = XprsGroups.treeOf({'X5PA': ['X5KID'], 'X5PB': ['X5KID']});
+      expect(a['X5KID'], 'X5PA');
+      expect(b['X5KID'], 'X5PA');
+    });
+  });
+
   group('durable store — a member survives a restart', () {
     late Directory tmp;
     late String path;

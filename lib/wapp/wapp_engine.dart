@@ -4083,6 +4083,9 @@ class WappEngine {
           for (final g in XprsGroupKeys.instance.mine()) g.callsign: g.nick
         };
         final calls = <String>{...mine.keys, ...XprsGroups.instance.known};
+        // Folders (26.2): the group each one is listed under, decided once
+        // in the core so every wapp draws the same tree.
+        final tree = XprsGroups.instance.parents();
         final out = <Map<String, dynamic>>[];
         for (final c in calls) {
           final r = XprsGroups.instance.rosterOf(c,
@@ -4112,6 +4115,7 @@ class WappEngine {
                 .length,
             'candidates': r.offers.length,
             'verified': r.verified,
+            if (tree[c] != null) 'parent': tree[c],
           });
         }
         final bytes = utf8.encode(jsonEncode(out));
@@ -4208,12 +4212,78 @@ class WappEngine {
       (int gPtr, int gLen, int cPtr, int cLen) {
         final g =
             _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
-        final call = _readStr(cPtr, cLen).trim().toUpperCase();
-        if (g.isEmpty || call.isEmpty) return -1;
+        // One callsign, or several separated by commas: 26.3 makes
+        // "admitting a dozen people one packet rather than a dozen", and a
+        // folder offered to a whole group is exactly that dozen. Eight per
+        // act keeps the grant inside one packet.
+        final calls = [
+          for (final c in _readStr(cPtr, cLen).split(','))
+            if (c.trim().isNotEmpty) c.trim().toUpperCase(),
+        ];
+        if (g.isEmpty || calls.isEmpty) return -1;
         try {
-          return XprsGroupOps.grant(g, [call], role: 'member').ok ? 0 : -1;
+          var ok = true;
+          for (var i = 0; i < calls.length; i += 8) {
+            final chunk = calls.sublist(i, (i + 8).clamp(0, calls.length));
+            ok &= XprsGroupOps.grant(g, chunk, role: 'member').ok;
+          }
+          return ok ? 0 : -1;
         } catch (e) {
           LogService.instance.add('xprs: group invite failed (${e.runtimeType})');
+          return -1;
+        }
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_folder(parent, nick, out, cap): a folder inside a
+    // closed group, which XPRS.md 10.2 calls a subgroup: a group of its own,
+    // minted and kept here like hal_xprs_group_create's, and listed by the
+    // parent with `grant:<X5> role:sub`. Only the parent's admin can sign the
+    // listing. Same contract as create: the folder's callsign is written
+    // before anything is aired. Who is offered a place in it is the wapp's to
+    // say, with hal_xprs_group_invite: membership does not travel down.
+    // Bytes written, -1 when refused (not the admin, too deep, no profile).
+    final halXprsGroupFolder = WasmFunction(
+      (int pPtr, int pLen, int nPtr, int nLen, int outPtr, int outCap) {
+        if (outCap <= 0) return -1;
+        final parent =
+            _readStr(pPtr, pLen).trim().replaceFirst('#', '').toUpperCase();
+        final nick = nLen > 0 ? _readStr(nPtr, nLen) : '';
+        if (parent.isEmpty) return -1;
+        final ({String callsign, String npub, String nick})? g;
+        try {
+          g = XprsGroupOps.createFolder(parent, nick: nick);
+        } catch (e) {
+          LogService.instance.add('xprs: folder create failed (${e.runtimeType})');
+          return -1;
+        }
+        if (g == null) return -1;
+        return _writeStr(outPtr, outCap, g.callsign);
+      },
+      params: [
+        ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32,
+        ValueTy.i32
+      ],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_picture(group, token): the group's picture, announced
+    // in its own `t:identity` (XPRS.md 6.3.2, a group being a station, 10.1)
+    // and signed with the group key, so only its admin can set it. [token]
+    // is the `file:` reference the host's picture picker made (a small
+    // square thumbnail, performance.md 8.17); empty takes the picture back.
+    // Members' screens fetch and draw it like any station's picture.
+    // 0 = announced, -1 = refused.
+    final halXprsGroupPicture = WasmFunction(
+      (int gPtr, int gLen, int tPtr, int tLen) {
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        if (g.isEmpty) return -1;
+        final token = tLen > 0 ? _readStr(tPtr, tLen).trim() : '';
+        try {
+          return XprsGroupOps.setPicture(g, token).ok ? 0 : -1;
+        } catch (e) {
+          LogService.instance.add('xprs: group picture failed (${e.runtimeType})');
           return -1;
         }
       },
@@ -4710,6 +4780,8 @@ class WappEngine {
       WasmImport('hal', 'xprs_group_create', halXprsGroupCreate),
       WasmImport('hal', 'xprs_group_invite', halXprsGroupInvite),
       WasmImport('hal', 'xprs_group_accept', halXprsGroupAccept),
+      WasmImport('hal', 'xprs_group_folder', halXprsGroupFolder),
+      WasmImport('hal', 'xprs_group_picture', halXprsGroupPicture),
       WasmImport('hal', 'xprs_send', halXprsSend),
       WasmImport('hal', 'xprs_unlock', halXprsUnlock),
       WasmImport('hal', 'xprs_redact', halXprsRedact),

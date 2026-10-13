@@ -12,11 +12,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hex/hex.dart';
 import 'package:image/image.dart' as img;
 import 'package:xprs/services/media/media_preview.dart';
+import 'package:xprs/services/xprs/xprs_groups.dart';
+import 'package:xprs/services/xprs/xprs_id.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_profiles.dart';
 import 'package:xprs/services/xprs/xprs_publisher.dart';
+import 'package:xprs/services/xprs/xprs_sig.dart';
 import 'package:xprs/util/media_ref.dart';
 import 'package:xprs/util/nostr_crypto.dart';
+
+({BigInt d, Uint8List pub}) _key() {
+  final kp = NostrCrypto.generateKeyPair();
+  var d = BigInt.zero;
+  for (final b in HEX.decode(kp.privateKeyHex)) {
+    d = (d << 8) | BigInt.from(b);
+  }
+  return (d: d, pub: Uint8List.fromList(HEX.decode(kp.publicKeyHex)));
+}
 
 String _token(Uint8List b) {
   final sha = base64Url.encode(sha256.convert(b).bytes).replaceAll('=', '');
@@ -88,5 +100,73 @@ void main() {
       b.offer('X16JK8', XprsPacket.parse(w)!);
     }
     expect(b.pictureFor('X16JK8'), isNull);
+  });
+
+  // A group is a station (10.1): its picture is a decoration signed with the
+  // GROUP's key. The group has no mailbox and holds no bytes, so a member
+  // asks the stations its roster lists, the admin who made it first.
+  test('a group picture: signed by the group, fetched from its members',
+      () async {
+    final grp = _key(), admin = _key();
+    const gc = 'X5GULF', ac = 'X1ANNA';
+    final keys = {gc: grp.pub, ac: admin.pub};
+    final groups = XprsGroups.instance
+      ..clear()
+      ..keyResolver = (c) => keys[c];
+    // The admin's own creation acts: a self-grant, then the acceptance.
+    final grant = xprsSign(
+        XprsPacket.parse(
+            't:moderate f:$gc d:$gc ts:2026-10-06_10:00:00 grant:$ac')!,
+        grp.d);
+    groups.offer(grant);
+    groups.offer(xprsSign(
+        XprsPacket.parse('t:moderate f:$ac d:$gc ts:2026-10-06_10:00:01 '
+            'r:${xprsIdentifier(grant)} accept:member')!,
+        admin.d));
+
+    final thumb = MediaPreviews.avatarThumb(
+        img.encodeJpg(img.Image(width: 64, height: 64)))!;
+    final token = _token(thumb);
+    final wires = XprsPublisher.composeDecoration(
+        call: gc, nick: 'Gulf-net', fileToken: token, about: '',
+        ts: '2026-10-06_10:30:00', signingKey: grp.d);
+    expect(wires, isNotEmpty);
+    expect(XprsPacket.parse(wires.first)!['f'], gc);
+
+    final b = XprsProfiles.instance;
+    final held = <String, Uint8List>{};
+    final askedOf = <String>[];
+    b.keyResolver = (c) => keys[c];
+    b.identityRows = (c) => const [];
+    b.isKnown = null; // a group whose record we keep is known by default
+    b.holdersFor = null; // and its holders come from its roster
+    b.holds = held.containsKey;
+    b.fetch = (ref, from) async {
+      askedOf.add(from);
+      if (from != ac) return false;
+      held[ref.sha256] = thumb;
+      return true;
+    };
+    for (final w in wires) {
+      b.offer(gc, XprsPacket.parse(w)!);
+    }
+    for (var i = 0; i < 4; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(b.nickFor(gc), 'Gulf-net');
+    expect(b.pictureFor(gc)?.token, token);
+    expect(askedOf, [ac], reason: 'asked of the member, never of the X5');
+    expect(held[MediaRef.parse(token)!.sha256], thumb);
+
+    // A decoration signed by somebody else is not the group's.
+    final forged = XprsPublisher.composeDecoration(
+        call: gc, nick: 'Taken', fileToken: '', about: '',
+        ts: '2026-10-07_10:30:00', signingKey: admin.d);
+    for (final w in forged) {
+      b.offer(gc, XprsPacket.parse(w)!);
+    }
+    expect(b.nickFor(gc), 'Gulf-net');
+    expect(b.pictureFor(gc)?.token, token);
+    groups.clear();
   });
 }

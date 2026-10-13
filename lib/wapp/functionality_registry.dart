@@ -393,9 +393,11 @@ class FunctionalityRegistry {
           'hal_xprs_groups',
           'The closed groups (XPRS \u00a726) this station knows, with OUR '
           'standing in each \u2014 '
-          '[{call,nick,role,admin,members,candidates,verified}]. `role` is one '
-          'of admin/mod/member/invited/none; only member, mod and admin may '
-          'post (\u00a726.3.1: a grant confers nothing until accepted)',
+          '[{call,nick,role,admin,members,candidates,verified,parent}]. '
+          '`role` is one of admin/mod/member/invited/none; only member, mod '
+          'and admin may post (\u00a726.3.1: a grant confers nothing until '
+          'accepted). `parent` names the group that lists this one as a '
+          'subgroup (\u00a710.2), absent for a root',
           [],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef(
@@ -414,9 +416,33 @@ class FunctionalityRegistry {
           'only the admin holds it. Not a member until they accept (\u00a726.3.1)',
           [
             ParamDef('group', 'string', 'The group, "X5..." or "#X5..."'),
-            ParamDef('call', 'string', 'The callsign to invite'),
+            ParamDef('call', 'string',
+                'The callsign to invite, or several separated by commas'),
           ],
           ReturnDef('int', '0 offered, -1 refused (not the admin)')),
+      EndpointDef(
+          'hal_xprs_group_folder',
+          'Make a folder inside a closed group: a subgroup (XPRS \u00a710.2) '
+          'with its own key and roster, listed by the parent with role:sub. '
+          'Only the parent\'s admin can list it. Writes the folder\'s X5 '
+          'callsign into out; nobody is offered a place in it until invited',
+          [
+            ParamDef('parent', 'string', 'The parent group, "X5..." or "#X5..."'),
+            ParamDef('nick', 'string', 'Readable name for the folder, may be empty'),
+          ],
+          ReturnDef('int',
+              'Bytes written, -1 when refused (not the admin, or too deep)')),
+      EndpointDef(
+          'hal_xprs_group_picture',
+          'Set a closed group\'s picture: its own t:identity with file: '
+          '(XPRS \u00a76.3.2, \u00a710.1), signed with the group key, so only '
+          'its admin can. The token is a picture the host\'s picker made; '
+          'empty takes the picture back',
+          [
+            ParamDef('group', 'string', 'The group, "X5..." or "#X5..."'),
+            ParamDef('token', 'string', 'file:<sha>.<ext>, or empty'),
+          ],
+          ReturnDef('int', '0 announced, -1 refused')),
       EndpointDef(
           'hal_xprs_group_accept',
           'Accept the membership of a closed group this station was offered '
