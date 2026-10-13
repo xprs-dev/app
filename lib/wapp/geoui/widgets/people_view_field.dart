@@ -14,6 +14,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../util/media_ref.dart';
 import '../../shared_media_fetch.dart' show resolveSharedMedia;
@@ -40,6 +41,15 @@ class PeopleViewField extends StatefulWidget {
   /// Message shown when the active section has no rows.
   final String? emptyText;
 
+  /// Optional heading above [emptyText] (`empty_title`). With it, the empty
+  /// state reads as a page that explains the screen rather than a caption.
+  final String? emptyTitle;
+
+  /// Optional SVG drawing above the heading (`empty_art`): a path inside the
+  /// wapp, read through [loadAsset] once, never per build.
+  final String? emptyArt;
+  final Future<String?> Function(String path)? loadAsset;
+
   const PeopleViewField({
     super.key,
     required this.fieldName,
@@ -47,6 +57,9 @@ class PeopleViewField extends StatefulWidget {
     required this.onTap,
     required this.onAction,
     this.emptyText,
+    this.emptyTitle,
+    this.emptyArt,
+    this.loadAsset,
   });
 
   @override
@@ -72,10 +85,34 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
           '${x['title']}:${((x['items'] as List?) ?? const []).length}',
       ].join('|');
 
+  /// The empty-state drawing, read once per path.
+  String? _artSvg;
+  String? _artPath;
+
+  void _loadArt() {
+    final path = widget.emptyArt;
+    final load = widget.loadAsset;
+    if (path == _artPath) return;
+    _artPath = path;
+    _artSvg = null;
+    if (path == null || path.isEmpty || load == null) return;
+    load(path).then((svg) {
+      if (!mounted || _artPath != path) return;
+      setState(() => _artSvg = svg);
+    }, onError: (_) {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadArt();
+  }
+
   @override
   void didUpdateWidget(covariant PeopleViewField old) {
     super.didUpdateWidget(old);
     if (_shape(old.sections) != _shape(widget.sections)) _pinned = false;
+    _loadArt();
   }
 
   @override
@@ -210,6 +247,10 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
   }
 
   Widget _empty(ColorScheme cs) {
+    final title = widget.emptyTitle;
+    if ((title?.isNotEmpty ?? false) || _artSvg != null) {
+      return _emptyPage(cs, title);
+    }
     return Center(
       child: Text(
         (widget.emptyText?.isNotEmpty ?? false)
@@ -217,6 +258,64 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
             : 'Nobody here yet.',
         textAlign: TextAlign.center,
         style: TextStyle(color: cs.onSurfaceVariant),
+      ),
+    );
+  }
+
+  /// The explained empty state: a drawing, a heading and readable body text,
+  /// for a screen whose first visit is also its emptiest.
+  Widget _emptyPage(ColorScheme cs, String? title) {
+    final text = Theme.of(context).textTheme;
+    final body = widget.emptyText ?? '';
+    final art = _artSvg;
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: box.hasBoundedHeight && box.maxHeight > 56
+                ? box.maxHeight - 56
+                : 0,
+          ),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (art != null)
+                    Center(
+                      child: SvgPicture.string(
+                        art,
+                        height: 170,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  if (art != null) const SizedBox(height: 24),
+                  if (title?.isNotEmpty ?? false)
+                    Text(
+                      title!,
+                      style: text.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                  if (body.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      body,
+                      style: text.bodyLarge?.copyWith(
+                        height: 1.45,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

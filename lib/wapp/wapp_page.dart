@@ -4798,8 +4798,17 @@ class _WappPageState extends State<WappPage>
                           i,
                           selected: _tabController!.index == i,
                         ),
-                        text: _i18n.resolve(_tabNames[i]),
                         iconMargin: const EdgeInsets.only(bottom: 2),
+                        // Large system text clipped "My archivers" at the
+                        // tab's edge; a long name now shrinks to fit instead.
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _i18n.resolve(_tabNames[i]),
+                            maxLines: 1,
+                            softWrap: false,
+                          ),
+                        ),
                       ),
                   ],
                 )
@@ -6208,6 +6217,15 @@ class _WappPageState extends State<WappPage>
     _sendCommand('profile');
   }
 
+  /// An empty-state drawing (`empty_art`) shipped inside this wapp. Only an
+  /// .svg path within the package is read; anything else is refused.
+  Future<String?> _readWappArt(String path) async {
+    if (!path.endsWith('.svg') || path.contains('..') || path.startsWith('/')) {
+      return null;
+    }
+    return _pkg.readString(path);
+  }
+
   /// A full-height people list (Following / Followers, tags, row actions).
   ///
   /// Two optional headers render above the list:
@@ -6318,6 +6336,9 @@ class _WappPageState extends State<WappPage>
             fieldName: name,
             sections: displaySections,
             emptyText: field.getString('empty'),
+            emptyTitle: field.getString('empty_title'),
+            emptyArt: field.getString('empty_art'),
+            loadAsset: _readWappArt,
             onTap: (id) {
               if (_wappName == 'social' && name == 'follows_list') {
                 _openNostrProfile(id);

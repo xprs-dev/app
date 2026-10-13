@@ -1074,6 +1074,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
             fieldName: name,
             sections: sections,
             emptyText: field.getString('empty'),
+            emptyTitle: field.getString('empty_title'),
             onTap: (id) {
               widget.bindings.setValue('${name}_id', id);
               widget.onAction?.call('${name}_tap');
@@ -1293,6 +1294,32 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
     );
   }
 
+  /// Whether every label fits one equal share of [width] as a segment.
+  /// Measured with the text scale in force, because that is what broke it.
+  bool _segmentsFit(BuildContext context, Iterable<String> labels, double width) {
+    if (!width.isFinite) return true;
+    final n = labels.length;
+    if (n == 0) return true;
+    final style = Theme.of(context).textTheme.labelLarge;
+    final scaler = MediaQuery.textScalerOf(context);
+    final share = width / n;
+    // 12dp padding each side, the 18dp tick and its 8dp gap on the selected
+    // segment, and the 1dp divider.
+    const chrome = 12.0 * 2 + 18 + 8 + 1;
+    for (final l in labels) {
+      final tp = TextPainter(
+        text: TextSpan(text: l, style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final w = tp.width;
+      tp.dispose();
+      if (w + chrome > share) return false;
+    }
+    return true;
+  }
+
   Widget _renderEnumField(
       String name, String label, String? tip, GeoUiBlock field) {
     final cs = Theme.of(context).colorScheme;
@@ -1315,35 +1342,61 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
             ),
           if (tip == null) const SizedBox(height: 8),
           if (options.length <= 4)
-            SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<String>(
-                style: SegmentedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+            LayoutBuilder(builder: (context, box) {
+              final labels = [
+                for (final o in options)
+                  (o.name ?? '', _t(o.getString('label')) ?? (o.name ?? '')),
+              ];
+              void choose(String v) {
+                widget.bindings.setValue(name, v);
+                setState(() {});
+                // Same contract as a bool's `apply`: choosing an option can
+                // take effect at once (a search filter has no Apply button).
+                final apply = field.getString('apply');
+                if (apply != null && apply.isNotEmpty) {
+                  widget.onAction?.call(apply);
+                }
+              }
+
+              // A segment split "three months" into "month / s" on a 360dp
+              // phone with large text. When the widest label (plus the
+              // segment's padding and the selected tick) does not fit an
+              // equal share of the row, the options wrap as chips instead.
+              if (!_segmentsFit(context, labels.map((l) => l.$2), box.maxWidth)) {
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final (v, l) in labels)
+                      ChoiceChip(
+                        label: Text(l),
+                        selected: v == current,
+                        onSelected: (_) => choose(v),
+                      ),
+                  ],
+                );
+              }
+              return SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<String>(
+                  style: SegmentedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    visualDensity: VisualDensity.compact,
                   ),
-                  visualDensity: VisualDensity.compact,
+                  segments: [
+                    for (final (v, l) in labels)
+                      ButtonSegment(
+                        value: v,
+                        label: Text(l, maxLines: 1, softWrap: false),
+                      ),
+                  ],
+                  selected: {current},
+                  onSelectionChanged: (v) => choose(v.first),
                 ),
-                segments: options.map((o) {
-                  final optName = o.name ?? '';
-                  final optLabel =
-                      _t(o.getString('label')) ?? optName;
-                  return ButtonSegment(
-                      value: optName, label: Text(optLabel));
-                }).toList(),
-                selected: {current},
-                onSelectionChanged: (v) {
-                  widget.bindings.setValue(name, v.first);
-                  setState(() {});
-                  // Same contract as a bool's `apply`: choosing an option can
-                  // take effect at once (a search filter has no Apply button).
-                  final apply = field.getString('apply');
-                  if (apply != null && apply.isNotEmpty) {
-                    widget.onAction?.call(apply);
-                  }
-                },
-              ),
-            )
+              );
+            })
           else
             DropdownButtonFormField<String>(
               value: current.isEmpty ? null : current,

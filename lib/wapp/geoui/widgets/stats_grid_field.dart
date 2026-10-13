@@ -34,17 +34,51 @@ class StatsGridField extends StatelessWidget {
       // not information.
       final cols = math.max(2, (constraints.maxWidth / 220).floor());
       final gap = 10.0;
-      final cellW = (constraints.maxWidth - gap * (cols - 1)) / cols;
 
-      final children = <Widget>[];
+      // Tiles side by side share one height: a label that takes two lines
+      // must not leave its neighbour looking short.
+      final rows = <Widget>[];
+      var pending = <Map<String, dynamic>>[];
+      void flush() {
+        if (pending.isEmpty) return;
+        rows.add(IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < cols; i++) ...[
+                if (i > 0) SizedBox(width: gap),
+                Expanded(
+                  child: i < pending.length
+                      ? _StatTile(tile: pending[i], onTap: onTap)
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ],
+          ),
+        ));
+        pending = [];
+      }
+
       for (final t in tiles) {
         final wide = t['spark'] is List && (t['spark'] as List).isNotEmpty;
-        children.add(SizedBox(
-          width: wide ? constraints.maxWidth : cellW,
-          child: _StatTile(tile: t, onTap: onTap),
-        ));
+        if (wide) {
+          flush();
+          rows.add(_StatTile(tile: t, onTap: onTap));
+        } else {
+          pending.add(t);
+          if (pending.length == cols) flush();
+        }
       }
-      return Wrap(spacing: gap, runSpacing: gap, children: children);
+      flush();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) SizedBox(height: gap),
+            rows[i],
+          ],
+        ],
+      );
     });
   }
 }
@@ -88,7 +122,7 @@ class _StatTile extends StatelessWidget {
         children: [
           Text(
             label.toUpperCase(),
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 11,
@@ -102,27 +136,36 @@ class _StatTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
+              // A word value ("not heard") in a half-width cell inside a
+              // group card was cut to "not he...": it shrinks to fit instead.
               Flexible(
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 26,
-                    height: 1.1,
-                    fontWeight: FontWeight.w700,
-                    color: valueColor,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 26,
+                      height: 1.1,
+                      fontWeight: FontWeight.w700,
+                      color: valueColor,
+                    ),
                   ),
                 ),
               ),
               if (unit.isNotEmpty) ...[
                 const SizedBox(width: 4),
-                Text(
+                Flexible(
+                  child: Text(
                   unit,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     color: cs.onSurfaceVariant,
+                  ),
                   ),
                 ),
               ],

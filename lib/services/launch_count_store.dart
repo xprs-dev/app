@@ -58,8 +58,13 @@ class LaunchCountStore {
     'mesh',
   ];
 
-  /// Pinned module bars, else [kDefaultModuleWapps] first and the most-used
-  /// wapps after them.
+  /// The bars that never move: Status on top, Chat right under it. A pin or
+  /// a launch count only decides what fills the bars after these two, so
+  /// neither can be pushed off the home screen or reordered below another.
+  static const List<String> kFixedModuleWapps = ['social', 'chat'];
+
+  /// [kFixedModuleWapps] first, then the pinned module bars, else the rest of
+  /// [kDefaultModuleWapps] and the most-used wapps after them.
   Future<List<String>> preferredModules(int n) => _preferred(n, dock: false);
 
   /// Pinned dock icons, or the most-used wapps when the user pinned none.
@@ -68,11 +73,12 @@ class LaunchCountStore {
   Future<List<String>> _preferred(int n, {required bool dock}) async {
     final prefs = await PreferencesService.instance();
     final pinned = dock ? prefs.homeDock : prefs.homeModules;
-    if (pinned.isNotEmpty) return pinned.take(n).toList(growable: false);
+    if (dock && pinned.isNotEmpty) return pinned.take(n).toList(growable: false);
     final top = prefs.topLaunchedWapps(n);
     if (dock) return top;
+    final rest = pinned.isNotEmpty ? pinned : [...kDefaultModuleWapps, ...top];
     final out = <String>[];
-    for (final id in [...kDefaultModuleWapps, ...top]) {
+    for (final id in [...kFixedModuleWapps, ...rest]) {
       if (out.length >= n) break;
       if (!out.contains(id)) out.add(id);
     }

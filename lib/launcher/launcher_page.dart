@@ -13,6 +13,10 @@ part of 'launcher.dart';
 /// `terminal`, `circles` and the Wapp Store (`install`) are hidden for the
 /// same reason (2026-10-06): unused, and on the grid they only confused. The
 /// store's catalog publishes one demo app, so it offered nothing to install.
+///
+/// `bluetooth` (2026-10-13): Bluetooth is the core's bearer and needs no app
+/// of its own; a tile named after the radio only made people think they had
+/// to set something up there.
 const Set<String> _kHiddenWapps = {
   'maps',
   'atm',
@@ -23,6 +27,7 @@ const Set<String> _kHiddenWapps = {
   'terminal',
   'circles',
   'install',
+  'bluetooth',
 };
 
 /// Outcome of the unmet-dependency dialog shown before launching a wapp.
