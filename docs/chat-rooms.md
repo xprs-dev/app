@@ -171,11 +171,11 @@ The Chat wapp renders through a generic host widget `$type:"rooms"`
 (`lib/wapp/geoui/widgets/rooms_field.dart`, wired by `_buildRoomsScreen` in
 `wapp_page.dart`): a thin left icon rail of rooms that expands on a left→right
 drag into room names + the nested sub-room tree (with a `+` to create a room and
-a bottom gear to Settings), the chat pane in the center, and a member list that
-slides in from the right showing each member's reputation level (tap a member as
-an authority for the moderation actions). On a phone the rail and member panel
-overlay the chat with a tap-to-close scrim; on wide screens all three panes sit
-side by side. The widget is app-agnostic — the wapp drives it with `ui.rooms.set`
-(the rail), the usual `ui.convo.*` (chat), and `ui.people.set` (members), and
-handles `rooms_open` / `rooms_send` / `rooms_new` / `rooms_settings` /
-`room_members_tap`.
+a bottom gear to Settings) and the chat pane in the center. The header's people
+button sends `rooms_members`; the wapp answers by opening a full-size screen
+carrying the reusable `$type:"members"` panel (`members_panel_field.dart`,
+documented in `apps/wapps.md`), which lists the roster a page at a time with
+search, filter chips and the admin's buttons (Invite, New folder, Picture). The
+widget is app-agnostic — the wapp drives it with `ui.rooms.set` (the rail) and
+the usual `ui.convo.*` (chat), and handles `rooms_open` / `rooms_send` /
+`rooms_new` / `rooms_settings` / `rooms_members`.

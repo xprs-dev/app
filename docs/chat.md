@@ -56,10 +56,10 @@ never contains app-specific logic; the Chat wapp is portable C compiled to
 **Host↔wapp contract used by Chat:**
 
 - Wapp → host (rendering): `ui.rooms.set` (the rail), `ui.convo.upsert/msg/react/
-  status` (message surface), `ui.people.set` (member roster), `ui.prompt`
+  status` (message surface), `ui.members.set` (member roster, a page at a time), `ui.prompt`
   (moderation / new-room / approval dialogs), `ui.screen.open` (Settings/Members).
 - Host → wapp (input): commands `rooms_open`, `rooms_send`, `rooms_new`,
-  `rooms_settings`, `room_members`, `room_members_tap`, `prompt` (dialog result),
+  `rooms_settings`, `rooms_members`, `members_page`, `members_tap`, `members_action`, `prompt` (dialog result),
   plus the Settings actions (`ble_apply`, `pubkey_apply`, …).
 - HALs the wapp leans on: `hal_nostr_post(kind,content,tags)`,
   `hal_nostr_subscribe`/`_event_recv`/`_unsubscribe`, `hal_nostr_self`,

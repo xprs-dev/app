@@ -59,6 +59,7 @@ import 'geoui/geo_chat_archive.dart';
 import 'geoui/activity_archive.dart';
 import 'geoui/widgets/conversations_field.dart';
 import 'geoui/widgets/people_view_field.dart';
+import 'geoui/widgets/members_panel_field.dart';
 import 'geoui/widgets/rooms_field.dart';
 import 'shared_media_fetch.dart';
 import 'geoui/tile_cache.dart';
@@ -2041,6 +2042,38 @@ class _WappPageState extends State<WappPage>
                 : const <Map<String, dynamic>>[],
           );
           changed = true;
+        } else if (type == 'ui.members.set') {
+          // One page of a $type:"members" panel's roster. Offset 0 replaces
+          // the rows; a later offset appends only when it continues what is
+          // held, so a slow answer to a superseded query cannot splice in.
+          final fieldName = data['field'] as String? ?? 'members';
+          final held = _fieldValues[fieldName] is Map
+              ? Map<String, dynamic>.from(_fieldValues[fieldName] as Map)
+              : <String, dynamic>{};
+          final offset = (data['offset'] as num?)?.toInt() ?? 0;
+          final rows = data['rows'] is List
+              ? (data['rows'] as List)
+                    .whereType<Map>()
+                    .map((m) => m.map((k, v) => MapEntry(k.toString(), v)))
+                    .toList()
+              : <Map<String, dynamic>>[];
+          final have = held['rows'] is List ? (held['rows'] as List) : const [];
+          if (data['reset'] == true) {
+            _membersQuery.remove(fieldName);
+            _membersFilter.remove(fieldName);
+          }
+          if (offset == 0) {
+            held['rows'] = rows;
+          } else if (offset == have.length) {
+            held['rows'] = [...have, ...rows];
+          }
+          for (final k in const [
+            'total', 'title', 'subtitle', 'actions', 'filters',
+          ]) {
+            if (data.containsKey(k)) held[k] = data[k];
+          }
+          _fieldValues[fieldName] = held;
+          changed = true;
         } else if (type == 'ui.people.set') {
           // Replace a $type:"people" field's section list (the social-style
           // people list: Following / Followers with tags + row actions).
@@ -3706,12 +3739,6 @@ class _WappPageState extends State<WappPage>
               .map((m) => m.cast<String, dynamic>())
               .toList()
         : const <Map<String, dynamic>>[];
-    final members = (_fieldValues['room_members'] is List)
-        ? (_fieldValues['room_members'] as List)
-              .whereType<Map>()
-              .map((m) => m.cast<String, dynamic>())
-              .toList()
-        : const <Map<String, dynamic>>[];
     // Opening a room is one path whoever asks: a tap on the list, or the
     // default the wide layout picks below.
     void openRoom(String id) {
@@ -3789,7 +3816,6 @@ class _WappPageState extends State<WappPage>
       rooms: rooms,
       store: store,
       openId: openId,
-      memberSections: members,
       onOpenRoom: openRoom,
       archivedCount: _roomsArchived[field]?.$1 ?? 0,
       archivedUnread: _roomsArchived[field]?.$2 ?? 0,
@@ -3828,9 +3854,11 @@ class _WappPageState extends State<WappPage>
         _sendCommand('${field}_new');
       },
       onNewChat: () => _sendCommand('${field}_newchat'),
-      onMemberTap: (id) {
-        _fieldValues['room_members_id'] = id;
-        _sendCommand('room_members_tap');
+      // The header's people button: the wapp pushes the first page of the
+      // room's members and opens its members screen.
+      onMembers: () {
+        _fieldValues['${field}_convo'] = _roomsOpenId ?? '';
+        _sendCommand('${field}_members');
       },
       onSenderTap: _showProfile,
       onReveal: (mid) {
@@ -5658,6 +5686,10 @@ class _WappPageState extends State<WappPage>
     // People screen — a screen carrying a `$type:"people"` field renders as
     // a full-height social list (sections + rows + actions) with the screen's
     // own action buttons (e.g. "Follow a callsign") as a compact header row.
+    final membersField = screen.children
+        .where((c) => c.keyword == 'field' && c.type == 'members')
+        .firstOrNull;
+    if (membersField != null) return _buildMembersScreen(membersField);
     final peopleField = screen.children
         .where((c) => c.keyword == 'field' && c.type == 'people')
         .firstOrNull;
@@ -6274,6 +6306,45 @@ class _WappPageState extends State<WappPage>
   ///  • when the screen sets `"toolbar": true`, its top-level `<action>`s render
   ///    as a button row at the top (so a list panel can carry an "Add" button
   ///    without an options menu). Otherwise actions stay in the ⋮ options menu.
+  /// A screen carrying a `$type:"members"` field is the reusable members
+  /// panel (members_panel_field.dart): the wapp keeps the roster and answers a
+  /// page at a time, so a group of hundreds costs the rows on screen.
+  Widget _buildMembersScreen(GeoUiBlock field) {
+    final name = field.name ?? 'members';
+    final held = _fieldValues[name];
+    void page(int offset) {
+      _fieldValues['${name}_query'] = _membersQuery[name] ?? '';
+      _fieldValues['${name}_filter'] = _membersFilter[name] ?? '';
+      _fieldValues['${name}_offset'] = offset;
+      _sendCommand('${name}_page');
+    }
+
+    return MembersPanelField(
+      fieldName: name,
+      data: held is Map ? Map<String, dynamic>.from(held) : const {},
+      query: _membersQuery[name] ?? '',
+      filter: _membersFilter[name] ?? '',
+      emptyText: field.getString('empty'),
+      onSearch: (q) {
+        setState(() => _membersQuery[name] = q);
+        page(0);
+      },
+      onFilter: (f) {
+        setState(() => _membersFilter[name] = f);
+        page(0);
+      },
+      onMore: page,
+      onTap: (id) {
+        _fieldValues['${name}_id'] = id;
+        _sendCommand('${name}_tap');
+      },
+      onAction: (id) {
+        _fieldValues['${name}_id'] = id;
+        _sendCommand('${name}_action');
+      },
+    );
+  }
+
   Widget _buildPeopleScreen(GeoUiBlock screen, GeoUiBlock field) {
     final name = field.name ?? 'people';
     final stored = _fieldValues[name];
@@ -6485,6 +6556,9 @@ class _WappPageState extends State<WappPage>
 
   /// The chosen filter tab of each people screen, by field ('' is "All").
   final Map<String, String> _peopleTab = {};
+  // A $type:"members" panel's search text and filter, per field.
+  final Map<String, String> _membersQuery = {};
+  final Map<String, String> _membersFilter = {};
 
   Widget _buildPeopleTabs(String field, List<String> labels, String current) {
     return SizedBox(

@@ -6,7 +6,6 @@ import '../../../services/reticulum/rns_service.dart';
 import '../../../profile/station_avatar.dart';
 import 'chat_palette.dart';
 import 'chat_view_field.dart';
-import 'people_view_field.dart';
 
 /// `$type:"rooms"` — a Discord-like chat layout, driven entirely by the wapp.
 ///
@@ -19,7 +18,7 @@ import 'people_view_field.dart';
 ///
 /// Data in: `ui.rooms.set {rooms:[{id,name,icon,parent,depth,unread,selected}]}`
 /// for the rail, the usual `ui.convo.*` for the open room's messages, and
-/// `ui.people.set` (field `room_members`) for the member panel.
+/// the header's people button, which asks the host to open the members panel.
 class RoomsField extends StatefulWidget {
   /// Rail rooms, pre-ordered (root first, children after their parent).
   final List<Map<String, dynamic>> rooms;
@@ -30,9 +29,6 @@ class RoomsField extends StatefulWidget {
   /// The selected room id (whose chat is shown), or null.
   final String? openId;
 
-  /// `ui.people.set` sections for the right-side member list.
-  final List<Map<String, dynamic>> memberSections;
-
   final void Function(String id) onOpenRoom;
   final void Function(String id, String text) onSend;
   final void Function(String parentId) onNewRoom;
@@ -41,7 +37,8 @@ class RoomsField extends StatefulWidget {
   /// a direct conversation. Distinct from onNewRoom, which creates a place.
   final VoidCallback? onNewChat;
 
-  final void Function(String id) onMemberTap;
+  /// The header's people button: open the members panel for the open room.
+  final void Function() onMembers;
   final void Function(String from)? onSenderTap;
   final void Function(String mid)? onReveal;
 
@@ -94,12 +91,11 @@ class RoomsField extends StatefulWidget {
     required this.rooms,
     required this.store,
     required this.openId,
-    required this.memberSections,
     required this.onOpenRoom,
     required this.onSend,
     required this.onNewRoom,
     this.onNewChat,
-    required this.onMemberTap,
+    required this.onMembers,
     this.onSenderTap,
     this.onReveal,
     this.onHide,
@@ -126,7 +122,6 @@ class _RoomsFieldState extends State<RoomsField> {
   static const double _expanded = 248;
   static const double _threshold = 150;
   double _railW = _collapsed;
-  bool _membersOpen = false;
 
   bool get _railExpanded => _railW > _threshold;
 
@@ -200,22 +195,6 @@ class _RoomsFieldState extends State<RoomsField> {
         const VerticalDivider(
             width: 1, thickness: 1, color: ChatPalette.divider),
         Expanded(child: _chat(cs)),
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          width: _membersOpen ? 260 : 0,
-          child: _membersOpen
-              ? Row(
-                  children: [
-                    const VerticalDivider(
-                        width: 1, thickness: 1, color: ChatPalette.divider),
-                    Expanded(
-                      child: Material(
-                          color: ChatPalette.windowBg, child: _members(cs)),
-                    ),
-                  ],
-                )
-              : null,
-        ),
       ],
     );
   }
@@ -230,44 +209,11 @@ class _RoomsFieldState extends State<RoomsField> {
   // and grew a second arrow in the thread header; two stacked back buttons
   // with different meanings helped nobody.
   Widget _narrow(ColorScheme cs, double maxW) {
-    final panelW = (maxW * 0.82).clamp(220.0, 340.0);
     if (widget.openId == null) {
       _railW = _expanded; // list fills the screen
       return Material(color: ChatPalette.windowBg, child: _rail(cs));
     }
-    // Back closes what is on top: the member panel first; with it closed the
-    // pop propagates to the host, which closes the room back to the list.
-    return PopScope(
-      canPop: !_membersOpen,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        setState(() => _membersOpen = false);
-      },
-      child: Stack(
-        children: [
-          Positioned.fill(child: _chat(cs)),
-          if (_membersOpen)
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () => setState(() => _membersOpen = false),
-                child: Container(color: Colors.black.withValues(alpha: 0.45)),
-              ),
-            ),
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              width: _membersOpen ? panelW : 0,
-              child: _membersOpen
-                  ? Material(color: ChatPalette.windowBg, child: _members(cs))
-                  : null,
-            ),
-          ),
-        ],
-      ),
-    );
+    return _chat(cs);
   }
 
   Widget _rail(ColorScheme cs) {
@@ -960,8 +906,14 @@ class _RoomsFieldState extends State<RoomsField> {
         shape: BoxShape.circle,
         border: border,
       ),
-      child: Text(
+      // One line that shrinks to the circle: on a narrow phone "EMBA" at 34
+      // wrapped to "EMB" over "A".
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
         label,
+        maxLines: 1,
+        softWrap: false,
         style: TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w700,
@@ -974,6 +926,7 @@ class _RoomsFieldState extends State<RoomsField> {
               : 10.5,
           letterSpacing: label.length >= 3 ? -0.3 : 0,
         ),
+      ),
       ),
     );
     // An open room is a place and keeps its initials. A conversation with one
@@ -1065,8 +1018,8 @@ class _RoomsFieldState extends State<RoomsField> {
               IconButton(
                 tooltip: 'Members',
                 color: ChatPalette.secondary,
-                icon: Icon(_membersOpen ? Icons.group : Icons.group_outlined),
-                onPressed: () => setState(() => _membersOpen = !_membersOpen),
+                icon: const Icon(Icons.group_outlined),
+                onPressed: widget.onMembers,
               ),
             ],
           ),
@@ -1083,21 +1036,6 @@ class _RoomsFieldState extends State<RoomsField> {
                   ),
                 )
               : GestureDetector(
-                  // Swipe left over the chat reveals the member panel — but ONLY
-                  // on a wide layout. On a phone, Android's own back gesture is
-                  // an inward swipe from the screen edge, which arrives here as
-                  // exactly this leftward drag: trying to leave a conversation
-                  // opened the member list instead, over and over, with no way
-                  // out. The header's group button is the way in on narrow.
-                  onHorizontalDragEnd: MediaQuery.of(context).size.width < 640
-                      ? null
-                      : (d) {
-                          if ((d.primaryVelocity ?? 0) < -200) {
-                            setState(() => _membersOpen = true);
-                          } else if ((d.primaryVelocity ?? 0) > 200) {
-                            setState(() => _membersOpen = false);
-                          }
-                        },
                   child: ChatViewField(
                     key: ValueKey('room-$open'),
                     fieldName: 'rooms_chat',
@@ -1131,37 +1069,6 @@ class _RoomsFieldState extends State<RoomsField> {
                     onAttach: widget.onAttach,
                   ),
                 ),
-        ),
-      ],
-    );
-  }
-
-  Widget _members(ColorScheme cs) {
-    return Column(
-      children: [
-        Container(
-          height: 48,
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: const BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: ChatPalette.divider, width: 1),
-            ),
-          ),
-          child: Text(
-            'Members',
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-        ),
-        Expanded(
-          child: PeopleViewField(
-            fieldName: 'room_members',
-            sections: widget.memberSections,
-            onTap: widget.onMemberTap,
-            onAction: (action, id) => widget.onMemberTap(id),
-          ),
         ),
       ],
     );
