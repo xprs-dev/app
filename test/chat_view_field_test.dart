@@ -316,4 +316,95 @@ void main() {
       expect(find.byIcon(Icons.lock_open), findsOneWidget);
     });
   });
+
+  group('the composer on a narrow screen', () {
+    // A long message used to be squeezed into a column between the attach, lock
+    // and send buttons. Past one line the text takes the whole pill and the
+    // tools drop to its right-hand corner.
+    testWidgets('a long message moves the buttons below, to the right',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ChatViewField(
+            fieldName: 'chat',
+            label: 'Chat',
+            fill: true,
+            messages: const [],
+            onSend: sent.add,
+            onAttach: () async => null,
+            onTogglePrivacy: () {},
+          ),
+        ),
+      ));
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pump();
+
+      final field = find.byType(TextField);
+      final send = find.byIcon(Icons.send);
+
+      // One short line: the buttons sit beside the text.
+      await tester.enterText(field, 'hi');
+      await tester.pump();
+      final shortField = tester.getRect(field);
+      final shortSend = tester.getRect(send);
+      expect(shortSend.left, greaterThan(shortField.right - 1),
+          reason: 'beside the field');
+
+      // A long one: the field takes the width and the buttons go underneath.
+      await tester.enterText(
+          field,
+          'this message is long enough that it cannot possibly fit on a '
+          'single line of a phone held upright, so it wraps');
+      await tester.pump();
+      final longField = tester.getRect(field);
+      final longSend = tester.getRect(send);
+      expect(longSend.top, greaterThanOrEqualTo(longField.bottom - 1),
+          reason: 'below the text');
+      expect(longSend.right, greaterThan(300), reason: 'at the right edge');
+      expect(longField.width, greaterThan(shortField.width),
+          reason: 'the text uses the full width');
+      expect(find.byIcon(Icons.attach_file), findsOneWidget);
+      expect(tester.getRect(find.byIcon(Icons.attach_file)).top,
+          greaterThanOrEqualTo(longField.bottom - 1));
+
+      // Back to one line when the text is cleared, and still typing in it.
+      await tester.enterText(field, '');
+      await tester.pump();
+      expect(tester.getRect(send).left,
+          greaterThan(tester.getRect(field).right - 1));
+    });
+
+    testWidgets('moving the buttons keeps the field focused', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ChatViewField(
+            fieldName: 'chat',
+            label: 'Chat',
+            fill: true,
+            messages: const [],
+            onSend: sent.add,
+            onAttach: () async => null,
+          ),
+        ),
+      ));
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pump();
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.enterText(
+          find.byType(TextField),
+          'this message is long enough that it cannot possibly fit on a '
+          'single line of a phone held upright, so it wraps');
+      await tester.pump();
+      final focused = tester
+          .widget<EditableText>(find.byType(EditableText))
+          .focusNode
+          .hasFocus;
+      expect(focused, isTrue);
+    });
+  });
 }

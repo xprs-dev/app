@@ -1700,104 +1700,178 @@ class _ChatViewFieldState extends State<ChatViewField> {
     );
   }
 
+  /// The one text field, kept alive by a key because the composer re-parents
+  /// it when a message grows past a line (below): focus, cursor and any IME
+  /// composition survive the move.
+  final GlobalKey _inputKey = GlobalKey();
+
+  Widget _textField({bool tall = false}) => TextField(
+        key: _inputKey,
+        controller: _input,
+        focusNode: _inputFocus,
+        // A message is written as a sentence: capital first letter.
+        textCapitalization: TextCapitalization.sentences,
+        style:
+            TextStyle(color: ChatPalette.text, fontSize: ChatPalette.bodySize),
+        cursorColor: ChatPalette.accent,
+        minLines: 1,
+        maxLines: 5,
+        textInputAction: TextInputAction.send,
+        onSubmitted: (_) => _send(),
+        decoration: InputDecoration(
+          hintText: widget.hint,
+          hintStyle: TextStyle(
+              color: ChatPalette.secondary, fontSize: ChatPalette.bodySize),
+          isDense: true,
+          border: InputBorder.none,
+          // Under a tall message the buttons are right below: no slack.
+          contentPadding: EdgeInsets.only(top: 12, bottom: tall ? 2 : 12),
+        ),
+      );
+
+  List<Widget> _composeTools() => [
+        if (widget.onAttach != null)
+          IconButton(
+            icon: const Icon(Icons.attach_file),
+            tooltip: 'Attach a file',
+            color: ChatPalette.secondary,
+            onPressed: _attach,
+          ),
+        // The private/plain switch. It sits in the composer rather than in a
+        // menu because it applies to the NEXT message and may be flipped
+        // between any two of them: in XPRS the wire form is per packet
+        // (section 9.2), so there is no mode to enter and nothing to agree
+        // with the other end.
+        if (widget.onTogglePrivacy != null)
+          IconButton(
+            icon: Icon(widget.privacyOn ? Icons.lock : Icons.lock_open),
+            iconSize: 20,
+            tooltip: widget.privacyOn
+                ? 'Encrypted: tap to send this conversation as clear text'
+                : 'Clear text: anyone in range can read it. Tap to encrypt',
+            color: widget.privacyOn
+                ? ChatPalette.secondary
+                : Colors.orangeAccent.withAlpha(200),
+            onPressed: widget.onTogglePrivacy,
+          ),
+      ];
+
+  Widget _sendButton() => SizedBox(
+        width: 48,
+        height: 48,
+        child: Material(
+          color: ChatPalette.accent,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: IconButton(
+            icon: const Icon(Icons.send, size: 22),
+            color: ChatPalette.onAccent,
+            tooltip: 'Send',
+            onPressed: _send,
+          ),
+        ),
+      );
+
+  /// Would [text] need more than one line with the tools BESIDE the field?
+  /// Always measured at that narrow width, never at the width the field has
+  /// once the tools drop below: asking the wide layout would let a message
+  /// that just wrapped fit again, move the tools back, and wrap again.
+  bool _needsMoreThanOneLine(String text, double narrowWidth) {
+    if (text.contains('\n')) return true;
+    if (text.isEmpty || narrowWidth <= 0) return false;
+    final tp = TextPainter(
+      text: TextSpan(
+          text: text,
+          style: TextStyle(fontSize: ChatPalette.bodySize)),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: narrowWidth);
+    final lines = tp.computeLineMetrics().length;
+    tp.dispose();
+    return lines > 1;
+  }
+
   Widget _composeRow(ColorScheme cs) {
     // On a full-screen chat, pad past the Android nav bar so the input isn't
     // hidden behind it; embedded/floating chats keep a flush 6px bottom.
     final extraBottom =
         widget.safeBottom ? MediaQuery.of(context).viewPadding.bottom : 0.0;
+    final tools = _composeTools();
     // WhatsApp's composer: a rounded pill floating on the chat, holding the
-    // text and its tools, beside a round green send button.
-    final row = Container(
-      color: ChatPalette.chatBg,
-      padding: EdgeInsets.fromLTRB(6, 6, 6, 6 + extraBottom),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
+    // text and its tools, beside a round send button. A message that grows
+    // past one line takes the pill's whole width and the tools move down to
+    // its right-hand corner, so long text is not squeezed into a column
+    // between buttons.
+    final row = LayoutBuilder(builder: (context, box) {
+      // The pane's real width, not the window's (a wide layout puts the chat
+      // beside a rail). Beside the field the pill holds: 16 left padding, the
+      // tools (48 each), 4 right padding; outside it the 6 gap and the 48
+      // send button; the row has 6 of padding each side.
+      final narrowField =
+          box.maxWidth - 12 - 6 - 48 - 16 - 4 - 48.0 * tools.length;
+      return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _input,
+      builder: (context, value, _) {
+        final tall = _needsMoreThanOneLine(value.text, narrowField);
+        if (tall) {
+          return Container(
+            color: ChatPalette.chatBg,
+            padding: EdgeInsets.fromLTRB(6, 6, 6, 6 + extraBottom),
             child: Container(
-              constraints: const BoxConstraints(minHeight: 48),
               decoration: BoxDecoration(
                 color: ChatPalette.raised,
                 borderRadius: BorderRadius.circular(24),
               ),
-              padding: const EdgeInsets.only(left: 16, right: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              padding: const EdgeInsets.fromLTRB(16, 0, 6, 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _input,
-                      focusNode: _inputFocus,
-                      // A message is written as a sentence: capital first letter.
-                      textCapitalization: TextCapitalization.sentences,
-                      style: TextStyle(
-                          color: ChatPalette.text,
-                          fontSize: ChatPalette.bodySize),
-                      cursorColor: ChatPalette.accent,
-                      minLines: 1,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _send(),
-                      decoration: InputDecoration(
-                        hintText: widget.hint,
-                        hintStyle: TextStyle(
-                            color: ChatPalette.secondary,
-                            fontSize: ChatPalette.bodySize),
-                        isDense: true,
-                        border: InputBorder.none,
-                        contentPadding:
-                            const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
+                  _textField(tall: true),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ...tools,
+                      const SizedBox(width: 4),
+                      _sendButton(),
+                    ],
                   ),
-                  if (widget.onAttach != null)
-                    IconButton(
-                      icon: const Icon(Icons.attach_file),
-                      tooltip: 'Attach a file',
-                      color: ChatPalette.secondary,
-                      onPressed: _attach,
-                    ),
-                  // The private/plain switch. It sits in the composer rather
-                  // than in a menu because it applies to the NEXT message and
-                  // may be flipped between any two of them: in XPRS the wire
-                  // form is per packet (section 9.2), so there is no mode to
-                  // enter and nothing to agree with the other end.
-                  if (widget.onTogglePrivacy != null)
-                    IconButton(
-                      icon: Icon(
-                          widget.privacyOn ? Icons.lock : Icons.lock_open),
-                      iconSize: 20,
-                      tooltip: widget.privacyOn
-                          ? 'Encrypted: tap to send this conversation as clear text'
-                          : 'Clear text: anyone in range can read it. Tap to encrypt',
-                      color: widget.privacyOn
-                          ? ChatPalette.secondary
-                          : Colors.orangeAccent.withAlpha(200),
-                      onPressed: widget.onTogglePrivacy,
-                    ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(width: 6),
-          SizedBox(
-            width: 48,
-            height: 48,
-            child: Material(
-              color: ChatPalette.accent,
-              shape: const CircleBorder(),
-              clipBehavior: Clip.antiAlias,
-              child: IconButton(
-                icon: const Icon(Icons.send, size: 22),
-                color: ChatPalette.onAccent,
-                tooltip: 'Send',
-                onPressed: _send,
+          );
+        }
+        return Container(
+          color: ChatPalette.chatBg,
+          padding: EdgeInsets.fromLTRB(6, 6, 6, 6 + extraBottom),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  decoration: BoxDecoration(
+                    color: ChatPalette.raised,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  padding: const EdgeInsets.only(left: 16, right: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(child: _textField()),
+                      ...tools,
+                    ],
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 6),
+              _sendButton(),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
+    });
     if (_pending.isEmpty) return row;
     return Column(
       mainAxisSize: MainAxisSize.min,
