@@ -1456,7 +1456,9 @@ class _WappPageState extends State<WappPage>
       // permission read afterwards would be a permission that did nothing.
       _engine.grantedPermissions =
           declaredPermissions(await _pkg.readString('manifest.json'));
+      final loadWatch = Stopwatch()..start();
       await _engine.load(wasmBytes);
+      final loadMs = loadWatch.elapsedMilliseconds;
       // Route PCM the wapp decodes straight to the speaker. Degrades to silence
       // (never crashes) on platforms without the PCM plugin.
       _audioOut = WasmAudioOutput();
@@ -1473,8 +1475,31 @@ class _WappPageState extends State<WappPage>
           if (mounted) _drainOutbox();
         });
       };
+      final initWatch = Stopwatch()..start();
       _engine.init();
       _drainOutbox();
+      // module_init runs on this isolate before the first frame, so what it
+      // costs is how long the page stays blank. Say so when it is not small.
+      if (loadMs + initWatch.elapsedMilliseconds > 150) {
+        LogService.instance.add(
+          'perf: wapp $_wappName load ${loadMs}ms init '
+          '${initWatch.elapsedMilliseconds}ms before first frame',
+        );
+      }
+      // One event after the first frame, so a wapp can leave work that is not
+      // needed to draw (an archive catch-up) until the screen is up. A wapp
+      // with nothing pending returns from it at once.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final w = Stopwatch()..start();
+        _engine.handleEvent();
+        _drainOutbox();
+        if (w.elapsedMilliseconds > 50) {
+          LogService.instance.add(
+            'perf: wapp $_wappName deferred start ${w.elapsedMilliseconds}ms',
+          );
+        }
+      });
 
       final interval = _engine.tickIntervalMs;
 
