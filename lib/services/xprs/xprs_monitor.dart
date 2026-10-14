@@ -236,6 +236,13 @@ class XprsMonitor {
   XprsMonitor._();
   static final XprsMonitor instance = XprsMonitor._();
 
+  /// The station's key as an npub, from the one callsign-to-key map the core
+  /// keeps (wired by RnsService, the owner of that map, as the archive's
+  /// keyResolver is). [stationJson] reports it so a wapp setting up a station
+  /// it already owns can seal to it (`hal_encrypt`) without having heard that
+  /// station ask to be claimed. Null when no key is known for the callsign.
+  String? Function(String callsign)? npubOf;
+
   /// How many sightings are kept. A few hundred is a couple of minutes of a
   /// busy street, which is what a person looking at a live trace wants; the
   /// point of this view is what is happening now.
@@ -672,6 +679,7 @@ class XprsMonitor {
       if (s.hears.isNotEmpty) 'hears': s.hears,
       if (s.sigHeadline != null) 'sig': s.sigHeadline!.name,
       if (s.readings.isNotEmpty) 'readings': s.readings,
+      if (npubOf?.call(s.callsign) case final npub?) 'npub': npub,
     };
   }
 

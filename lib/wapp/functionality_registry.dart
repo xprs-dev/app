@@ -335,7 +335,8 @@ class FunctionalityRegistry {
           'hal_xprs_station',
           'One station heard this hour, flat: {call,kind,bearer,bearers,rssi,'
           'lastMs,agoMs,lastDirectMs,packets,peers?,mail?,uptime?,lifetime?,'
-          'fw?,count?,serve?,hears?,sig?,readings?}',
+          'fw?,count?,serve?,hears?,sig?,readings?,npub?}; npub is the '
+          'station key the core holds for it, to seal to with hal_encrypt',
           [ParamDef('call', 'string', 'its callsign')],
           ReturnDef('int', 'Bytes written, 0 when not heard, negated required size if too small')),
       EndpointDef(

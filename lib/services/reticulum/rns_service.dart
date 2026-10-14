@@ -147,6 +147,17 @@ const List<String> _aspectsWapp = ['wapp'];
 
 class RnsService {
   RnsService._() {
+    // The Firmwares wapp seals a station's WiFi password to the station's
+    // key, and reads that key through hal_xprs_station: the same map again.
+    XprsMonitor.instance.npubOf = (call) {
+      final hex = pubkeyForCallsign(call);
+      if (hex == null || hex.isEmpty) return null;
+      try {
+        return NostrCrypto.encodeNpub(hex);
+      } catch (_) {
+        return null;
+      }
+    };
     // The XPRS archive verifies signatures with whatever keys this node has
     // learned from beacons and announces. Wired here, in the one place that
     // owns the callsign→key map, so the archive itself needs no node.
