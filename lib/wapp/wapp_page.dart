@@ -5011,6 +5011,17 @@ class _WappPageState extends State<WappPage>
             IconButton(
               icon: Icon(_panelIcon(i)),
               tooltip: _i18n.resolve(actions.first.getString('label') ?? name),
+              // Same slim box as the ☰ beside it: the default 48dp one left a
+              // visible hole between this icon and the menu. Tall enough to
+              // hit, not wide enough to push the neighbours away.
+              padding: _kAppBarIconPad,
+              constraints: const BoxConstraints(minWidth: 0, minHeight: 48),
+              visualDensity: VisualDensity.compact,
+              // The theme pads every button's tap target out to 48dp, which
+              // is what kept the gap open however slim the box was made.
+              style: IconButton.styleFrom(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               onPressed: () => _onWappAction(actions.first.name!),
             ),
           );
