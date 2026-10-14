@@ -4490,8 +4490,10 @@ class _WappPageState extends State<WappPage>
     final open = _convStore('conversations').items[id];
     final title = (open?.title ?? '').isNotEmpty ? open!.title : fallback;
     final direct = !id.startsWith('#');
-    if (!direct)
-      return Text(title, maxLines: 1, overflow: TextOverflow.ellipsis);
+    // A room draws its own header row under the bar (avatar, the whole name,
+    // the members button), so naming it here too said it twice, the bar's
+    // copy cut short. The bar keeps the wapp's name.
+    if (!direct) return Text(fallback);
     final reachable = _peerReachable(id);
     return Row(
       mainAxisSize: MainAxisSize.min,
