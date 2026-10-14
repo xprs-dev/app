@@ -233,6 +233,7 @@ class MeshCourier {
           size: e.p['size'] ?? '',
           name: e.p['name'] ?? '',
           obfuscated: e.p.has('xr'),
+          sealed: e.p.has('x'),
           ts: xprsParseTs(e.p['ts']));
       if (!verdict.ok) continue; // still nobody: it stays unmarked
       MeshCourierCounters.redelivered++;
@@ -683,6 +684,10 @@ class MeshCourier {
     // plain — read off the wire, never from remembered state).
     final read = xprsReadBody(p, senderKeyHex: senderNpub);
     var body = read.clear ?? '';
+    // Whether the words reached a person sealed, for the lock on their bubble
+    // (9.2). Read off the packet, never remembered: an unsplit body here, a
+    // reassembled set below.
+    var wasSealed = read.privacy == XprsPrivacy.sealed && read.readable;
     // An unsplit sealed body that opened is authenticated by the unseal (9.2:
     // it only opens against the sender's announced key). The split case says
     // the same thing after reassembly, below.
@@ -781,6 +786,7 @@ class MeshCourier {
       // §9.2: a sealed body opens only against the sender's announced key, so a
       // successful unseal is a stronger proof of authorship than the signature
       // line — say so rather than reporting "unsigned".
+      wasSealed = whole.privacy == XprsPrivacy.sealed;
       if (whole.privacy == XprsPrivacy.sealed) sigState = XprsSigState.verified;
       // The set is identified by the packet the parts reassemble into, so the
       // same message completing twice (aired copy, then custody handover)
@@ -888,6 +894,7 @@ class MeshCourier {
         // bars until the reader opens it. The decoded shape has to say so --
         // the packet is right here and the wapp never sees it.
         obfuscated: p.has('xr'),
+        sealed: wasSealed,
         ts: xprsParseTs(p['ts']));
 
     // DELIVERY IS NOT A SEND (2026-09-16). This door is the one moment the
@@ -1085,7 +1092,8 @@ class MeshCourier {
         return false;
       }
     }
-    if (body.startsWith('ENC1:')) {
+    final sealedBody = body.startsWith('ENC1:');
+    if (sealedBody) {
       final clear = _open(senderNpub, body.substring(5));
       if (clear == null) {
         MeshCourierCounters.ingestDropped++;
@@ -1105,8 +1113,11 @@ class MeshCourier {
     // By CALLSIGN, straight to the wapp door — the compact frame is an XPRS
     // message like any other and needs no LXMF address to be shown. Marked
     // only once it got there, for the reason the packet lane states above.
-    final verdict =
-        WappDelivery.instance.deliverMessage(call: from, content: body, bearer: via);
+    final verdict = WappDelivery.instance.deliverMessage(
+        call: from,
+        content: body,
+        bearer: via,
+        sealed: sealedBody);
     if (!verdict.ok) {
       MeshCourierCounters.undelivered++;
       _noteUndelivered(from, verdict);

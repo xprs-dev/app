@@ -269,4 +269,51 @@ void main() {
       expect(chatDayLabel('not a date', now: now), 'not a date');
     });
   });
+
+  group('every 1:1 bubble shows its lock', () {
+    testWidgets('sealed shows a closed lock, clear text an open one',
+        (tester) async {
+      await pump(tester, [
+        {...msg('sealed words', mid: 'a1'), 'enc': true},
+        {...msg('clear words', dir: 'out', mid: 'a2'), 'plain': true},
+      ]);
+      expect(find.byIcon(Icons.lock), findsOneWidget);
+      expect(find.byIcon(Icons.lock_open), findsOneWidget);
+    });
+
+    testWidgets('a message with no statement (a group) shows no lock',
+        (tester) async {
+      await pump(tester, [msg('hello group', mid: 'g1')]);
+      expect(find.byIcon(Icons.lock), findsNothing);
+      expect(find.byIcon(Icons.lock_open), findsNothing);
+    });
+
+    testWidgets('the composer lock follows the conversation, and flips it',
+        (tester) async {
+      var taps = 0;
+      Future<void> withLock(bool on) async {
+        await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+            body: ChatViewField(
+              fieldName: 'chat',
+              label: 'Chat',
+              fill: true,
+              messages: const [],
+              onSend: sent.add,
+              privacyOn: on,
+              onTogglePrivacy: () => taps++,
+            ),
+          ),
+        ));
+        await tester.pump();
+      }
+
+      await withLock(true);
+      expect(find.byIcon(Icons.lock), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.lock));
+      expect(taps, 1);
+      await withLock(false);
+      expect(find.byIcon(Icons.lock_open), findsOneWidget);
+    });
+  });
 }

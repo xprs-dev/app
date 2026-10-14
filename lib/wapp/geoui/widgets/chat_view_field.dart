@@ -417,23 +417,26 @@ class _ChatViewFieldState extends State<ChatViewField> {
     );
   }
 
-  /// Lock badge (xprs): the message was end-to-end encrypted to/from this peer.
+  /// The lock on a 1:1 message: closed when its body travelled sealed to or
+  /// from this peer, open when it crossed as clear text. The wapp says which
+  /// (`enc` / `plain`, section 9.2: privacy is a property of each packet), and
+  /// says nothing for a group or a note, which have no lock to show. It is the
+  /// wire's verdict on THIS message, never the composer's setting now.
   Widget _encBadge(Map<String, dynamic> m) {
-    if (m['enc'] != true) return const SizedBox.shrink();
-    // A private (Reticulum-only) message is labelled "private" by _privBadge —
-    // don't also say "encrypted" (clearer, and avoids a redundant double badge).
+    final sealed = m['enc'] == true;
+    if (!sealed && m['plain'] != true) return const SizedBox.shrink();
+    // A legacy "private" message is labelled by _privBadge instead.
     if (m['private'] == true) return const SizedBox.shrink();
-    final color =
-        _isOut(m) ? Colors.white : const Color(0xFF63B0E8);
+    final color = sealed
+        ? (_isOut(m) ? Colors.white : const Color(0xFF63B0E8))
+        : const Color(0xFFE0A030);
     return Padding(
-      padding: const EdgeInsets.only(left: 8),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.lock, size: 12, color: color),
-        const SizedBox(width: 2),
-        Text('encrypted',
-            style: TextStyle(
-                color: color, fontSize: 9.5, fontWeight: FontWeight.w600)),
-      ]),
+      padding: const EdgeInsets.only(left: 6),
+      child: Tooltip(
+        message: sealed ? 'Encrypted' : 'Not encrypted: clear text',
+        child: Icon(sealed ? Icons.lock : Icons.lock_open,
+            size: 13, color: color),
+      ),
     );
   }
 
@@ -1378,8 +1381,15 @@ class _ChatViewFieldState extends State<ChatViewField> {
       color = const Color(0xFF63B0E8);
       title = 'Encrypted';
       detail =
-          'End-to-end encrypted to the recipient. It is not readable on the '
-          'public APRS network — only the recipient can decrypt it.';
+          'End-to-end encrypted to the recipient. Only the recipient can '
+          'read it, whatever path it travelled.';
+    } else if (m['plain'] == true) {
+      icon = Icons.lock_open;
+      color = const Color(0xFFE0A030);
+      title = 'Not encrypted';
+      detail =
+          'Sent as clear text, because the conversation was marked unencrypted. '
+          'Anyone in range of the radio or the network path can read it.';
     } else {
       icon = Icons.public;
       color = const Color(0xFFE0A030);
@@ -1758,8 +1768,8 @@ class _ChatViewFieldState extends State<ChatViewField> {
                           widget.privacyOn ? Icons.lock : Icons.lock_open),
                       iconSize: 20,
                       tooltip: widget.privacyOn
-                          ? 'Private — the body is encrypted (tap for plain text)'
-                          : 'Plain text — anyone in range can read it (tap for private)',
+                          ? 'Encrypted: tap to send this conversation as clear text'
+                          : 'Clear text: anyone in range can read it. Tap to encrypt',
                       color: widget.privacyOn
                           ? ChatPalette.secondary
                           : Colors.orangeAccent.withAlpha(200),

@@ -3659,10 +3659,6 @@ class _WappPageState extends State<WappPage>
     );
   }
 
-  /// Where the composer's private/plain switch currently sits. Private is the
-  /// default for a direct message (section 9.4).
-  bool _msgPrivate = true;
-
   /// Close an open `ui.screen.open` panel AND tell the wapp it went.
   ///
   /// The arrow on a panel's app bar is the host's, so a wapp used to learn
@@ -3808,10 +3804,15 @@ class _WappPageState extends State<WappPage>
       // The host holds the current position only so the icon can draw it; the
       // wapp owns the decision and stamps each bubble with the form actually
       // used, which is what the label must report.
-      privacyOn: _msgPrivate,
+      // The lock is the OPEN conversation's own state, which the wapp keeps
+      // and reports on its row (a 1:1 is sealed unless somebody marked it
+      // clear). A host-side flag drew a closed lock whatever the room said.
+      privacyOn: openId == null
+          ? true
+          : (store.items[openId]?.private ?? true),
       onTogglePrivacy: () {
-        setState(() => _msgPrivate = !_msgPrivate);
-        _sendCommand('conversations_form');
+        _fieldValues['${field}_convo'] = _roomsOpenId ?? '';
+        _sendCommand('${field}_private');
       },
       rooms: rooms,
       store: store,

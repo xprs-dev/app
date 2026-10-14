@@ -392,3 +392,20 @@ Both directions, screenshot-verified: each device listed the other under
 **Within reach (1)** with tags `LAN` + `LXMF`, the age ticking ("seen 2s ago -
 direct"), the desktop's 7 stale radio-beacon rows greyed under **Seen before**,
 and phone-side row → profile → **Mail** opening the 1:1 composer for X16JK8.
+
+## 1:1 privacy: sealed by default, a lock on every bubble
+
+A 1:1 is sealed unless a person chose clear text for that conversation
+(XPRS.md 9.2). The composer's lock shows the open conversation's own state, kept
+by the wapp (`rooms.plain` in its index; a group has no single key to seal to,
+so it has no lock). Clicking it flips only the NEXT messages of that
+conversation and nothing is negotiated with the peer: each side decides what it
+sends, and the wire says what each message was.
+
+Every 1:1 bubble carries a lock: closed when its body travelled sealed, an open
+amber one when it crossed as clear text. The lock is the wire's verdict on that
+message, never the composer's setting now. For an incoming message the core
+states it (`sealed` on the decoded delivery row, set by the courier where it
+unseals), because the decoded shape arrives after the body was opened and the
+wapp could otherwise only conclude "clear". A message sent before this default
+keeps the lock it was stored with.

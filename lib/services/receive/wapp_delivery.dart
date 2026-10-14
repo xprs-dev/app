@@ -289,6 +289,7 @@ class WappDelivery {
     String size = '',
     String name = '',
     bool obfuscated = false,
+    bool sealed = false,
   }) {
     // An XPRS wire is protocol, not correspondence: a `t:...`/`x:...` body
     // that leaked this far is a bug upstream, and it must never surface as a
@@ -337,6 +338,11 @@ class WappDelivery {
         // caller reads it off the packet; a message with no packet behind it
         // (a foreign LXMF one) has no `xr:` and defaults to false.
         'obfuscated': obfuscated,
+        // §9.2: whether this body travelled sealed. The packet-shaped row says
+        // it from `x:`; this decoded shape comes AFTER the core opened it, so
+        // the core has to say it here or the wapp can only conclude "clear
+        // text" and draw every incoming 1:1 with an open lock.
+        'sealed': sealed,
       });
     return engines > 0 ? XprsDelivery.delivered : XprsDelivery.noSubscriber;
   }

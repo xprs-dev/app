@@ -80,6 +80,23 @@ void main() {
     expect(deliver('$head scope:PT m:this country')['scope'], 'country');
   });
 
+  // §9.2: the lock on a 1:1 bubble is the wire's verdict. A decoded message
+  // arrives AFTER the core opened it, so the core has to say it was sealed: the
+  // wapp read `sealed` off this row and, finding none, drew every incoming 1:1
+  // as clear text (bench 2026-10-14, desktop to phone).
+  test('a decoded message states whether it arrived sealed (9.2)', () {
+    bus.registerEngine('chat');
+    bus.subscribe('chat', rxTopicFor('message'));
+    Map<String, dynamic> decoded({required bool sealed}) {
+      WappDelivery.instance.deliverMessage(
+          call: 'X1QZ3N', content: 'hello', bearer: 'lan', sealed: sealed);
+      return jsonDecode(bus.recv('chat')!.data) as Map<String, dynamic>;
+    }
+
+    expect(decoded(sealed: true)['sealed'], true);
+    expect(decoded(sealed: false)['sealed'], false);
+  });
+
   // §9.2.1: the row flags obfuscated content from the PRESENCE of an `xr:`
   // field (bars in the text are not the marker), and it does so whatever
   // bearer carried the packet — a redacted group/Local post travels over BLE,
