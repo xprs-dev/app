@@ -162,7 +162,14 @@ class XprsProfiles {
   bool _load(String c) {
     _loaded.add(c);
     if (_loaded.length > _maxStations) _loaded.remove(_loaded.first);
+    final sw = Stopwatch()..start();
     final rows = (identityRows ?? _archiveRows)(c);
+    final queryMs = sw.elapsedMilliseconds;
+    if (queryMs >= 100) {
+      // Says which step when a screen of avatars is slow: this runs once per
+      // station on the UI isolate, inside a widget build.
+      LogService.instance.add('perf: profile $c archive read took ${queryMs}ms');
+    }
     var changed = false;
     for (final r in rows) {
       final p = XprsPacket.parse('${r['wire'] ?? ''}');
@@ -176,9 +183,15 @@ class XprsProfiles {
     return changed;
   }
 
+  /// The station's own identity rows, by author. `only:` is the wider 12.6
+  /// question (author, addressee or a `hears:` list) and an OR over a scan:
+  /// on the C61's archive it cost 1.5 s per station, and a chat list asks for
+  /// every row's picture inside its first build, so opening Chat froze the UI
+  /// for 12 s. Every row it returned was then dropped unless its author was
+  /// `c`, which is exactly what `from:` selects on the author index.
   static List<Map<String, dynamic>> _archiveRows(String c) => [
         for (final r in XprsArchive.instance
-            .query(types: const ['identity'], only: c, limit: 8))
+            .query(types: const ['identity'], from: c, limit: 8))
           if ('${r['from'] ?? ''}'.toUpperCase() == c) r,
       ];
 

@@ -201,12 +201,27 @@ class DiskFolderManager {
   Future<void> _syncOnce(String folderId) async {
     final src = _sources[folderId];
     if (src == null) return;
+    // Where a sync spends its time, said when it is slow: this runs on the UI
+    // isolate between its awaits, and a phone that froze for 12 s at every
+    // launch had nothing in the log naming the step (performance.md section 2).
+    final sw = Stopwatch()..start();
+    void phase(String what) {
+      if (sw.elapsedMilliseconds >= 150) {
+        log?.call('perf: folder ${folderId.substring(0, 8)} $what '
+            '${sw.elapsedMilliseconds}ms');
+      }
+      sw.reset();
+    }
+
     await src.scanAsync();
+    phase('scan');
     final desired = <String, DiskFile>{for (final f in src.files) f.name: f};
     // Persist the current on-disk inventory to the durable disk index.
     indexFiles?.call(folderId, src.files);
+    phase('index');
 
     final state = await localState(folderId);
+    phase('localState');
     final published = <String, FileEntry>{}; // name -> what we published
     for (final e in state.files.values) {
       published[e.name ?? e.sha] = e;
@@ -270,6 +285,7 @@ class DiskFolderManager {
         changed++;
       }
     }
+    phase('diff+publish ($changed changed)');
     if (changed > 0) log?.call('disk folder ${folderId.substring(0, 8)}: $changed change(s) synced');
 
     // The listing: data/meta.json is what a HUMAN edits, and the signed op-log
@@ -278,6 +294,7 @@ class DiskFolderManager {
     // the op-log is what they fetch from the ntorrent link, before any bytes.
     // meta.json wins on every rescan; nothing else writes these fields.
     await _syncListing(folderId, state);
+    phase('listing');
 
     // Advertise ourselves as a provider of the folder and of each file's bytes.
     // BEST EFFORT — never awaited inline: each DHT publish does an iterative

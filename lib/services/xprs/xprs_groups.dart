@@ -345,6 +345,23 @@ class XprsGroups {
     return n;
   }
 
+  /// [hydrate] a slice at a time: each act is a signature check, so a few
+  /// hundred of them in one go froze the app at launch. The event loop gets
+  /// the isolate back between items.
+  Future<int> hydrateSliced(List<String> wires, {int sliceMs = 10}) async {
+    var n = 0;
+    final slice = Stopwatch()..start();
+    for (final w in wires) {
+      final p = XprsPacket.parse(w);
+      if (p != null && p.type == 'moderate' && offer(p)) n++;
+      if (slice.elapsedMilliseconds >= sliceMs) {
+        await Future<void>.delayed(Duration.zero);
+        slice.reset();
+      }
+    }
+    return n;
+  }
+
   /// Drop the in-memory record of one group. The caller is responsible for
   /// the archive too, or a restart replays what was just forgotten.
   void forget(String group) => _forget(group.trim().toUpperCase());

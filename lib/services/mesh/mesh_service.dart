@@ -247,10 +247,21 @@ class MeshService {
     }
     if (prefs != null && _lifeBaseSec < 0) _lifeBaseSec = prefs.meshLifetimeSec;
     if (prefs != null) {
+      final startWatch = Stopwatch()..start();
+      void stage(String what) {
+        // Said when a stage is slow: this whole block runs on the UI isolate
+        // before the app can answer a touch (performance.md section 2).
+        if (startWatch.elapsedMilliseconds >= 150) {
+          LogService.instance.add(
+              'perf: mesh start $what ${startWatch.elapsedMilliseconds}ms');
+        }
+        startWatch.reset();
+      }
       try {
         MeshStore.instance
             .init(wappsDataStorage(prefs).getAbsolutePath('mesh.sqlite3'));
         MeshStore.instance.sweep();
+        stage('custody store');
         // The heard-traffic spool (docs/XPRS.md sections 24 and 31.3) lives
         // beside the custody store and re-opens with it on profile change.
         // Its key resolver is wired by RnsService, which owns the keys.
@@ -266,13 +277,13 @@ class MeshService {
           ..onVerdict = XprsMonitor.instance.recordVerdict
           ..init(wappsDataStorage(prefs)
               .getAbsolutePath('xprs_archive.sqlite3'));
+        stage('archive open');
         // A key binding lives in memory and a `t:identity` is re-announced only
         // every thirty minutes (18.1), so a restart used to leave this station
         // unable to seal a private message (9.2) or check a signature for up to
         // half an hour -- while the archive it just opened already held the
         // announcements that say so. Replay them; they are signed, so the
         // binding is re-derived rather than trusted, and no airtime is spent.
-        XprsIngest.rebindFromArchive();
         // Closed groups keep their OWN durable store -- the group's key and its
         // t:moderate acts -- so a roster is rebuilt from the group's record and
         // not scavenged from the general archive (which never kept a cellular
@@ -284,6 +295,7 @@ class MeshService {
         // from it).
         XprsGroupKeys.instance.init(
             wappsDataStorage(prefs).getAbsolutePath('xprs_groups.sqlite3'));
+        stage('group store');
         // The passphrases a reader has used to open redacted text (9.2.1), so a
         // tap can try them before prompting. Same profile-encrypted store.
         XprsPassphrases.instance.init(
@@ -304,29 +316,18 @@ class MeshService {
         // deposits another copy and keeps its ladder running.
         XprsOutbox.instance.init(
             wappsDataStorage(prefs).getAbsolutePath('xprs_outbox.sqlite3'));
+        stage('outbox restore');
         // A group act whose signer we hold no key for is parked, not lost; ask
         // that station for its binding now rather than at its next periodic
         // announcement (18.1). That is the invitee's acceptance (26.3.1)
         // reaching an admin who had never heard the invitee's `t:identity`.
         XprsGroups.instance.onUnknownSigner =
             (c) => unawaited(XprsPublisher.instance.askIdentity(c));
-        var n = 0;
-        for (final g in XprsGroupKeys.instance.followedGroups()) {
-          n += XprsGroups.instance.hydrate(XprsGroupKeys.instance.actsFor(g));
-        }
-        // Migration + belt-and-braces: also replay any group acts the GENERAL
-        // archive still holds (from before this store existed). offer() writes
-        // each verified one through to the per-group store, so the store seeds
-        // itself once and is authoritative thereafter. Harmless dedup on a
-        // store that already has them.
-        n += XprsGroups.instance.hydrate(XprsArchive.instance
-            .query(types: const ['moderate'], limit: 512)
-            .map((r) => r['wire'])
-            .whereType<String>()
-            .toList()
-            .reversed
-            .toList());
-        if (n > 0) LogService.instance.add('XPRS: replayed $n group act(s)');
+        // The replays (identity key bindings, closed-group acts) check a
+        // signature per item. Inline they froze the app for several seconds at
+        // every launch, so they run in slices that hand the isolate back to the
+        // event loop between items. See [_restoreFromDisk].
+        unawaited(_restoreFromDisk());
         // The admission snapshot the receive funnel reads (12's three tiers).
         XprsIngest.reloadPolicy();
         XprsHistoryServer.instance.install();
@@ -794,6 +795,42 @@ class MeshService {
     } catch (_) {}
     LogService.instance.add(
         'Mesh: started as $cs (${_canAdvertise ? "relay-capable" : "scan-only leaf"})');
+  }
+
+  /// Key bindings and group rosters come back from disk after a restart.
+  ///
+  /// A `t:identity` is re-announced only every thirty minutes (18.1), so a
+  /// station that restarts has no key for anybody until then, though it
+  /// already STORED the packets that say so: replay them, they are signed, so
+  /// the binding is re-derived rather than trusted and no airtime is spent.
+  /// Closed groups keep their OWN durable store (the group's key and its
+  /// `t:moderate` acts), so a roster is rebuilt from the group's record and
+  /// not scavenged from the general archive (26.4): each group is replayed
+  /// from it, then whatever the archive still holds from before that store
+  /// existed (offer() writes each verified one through, so it seeds itself).
+  ///
+  /// Each item is a signature check, so this runs in slices: a key learned late
+  /// releases the acts parked on it ([XprsGroups.keyLearned]), the same path a
+  /// live announcement takes.
+  Future<void> _restoreFromDisk() async {
+    try {
+      await XprsIngest.rebindFromArchiveSliced();
+      var n = 0;
+      for (final g in XprsGroupKeys.instance.followedGroups()) {
+        n += await XprsGroups.instance
+            .hydrateSliced(XprsGroupKeys.instance.actsFor(g));
+      }
+      n += await XprsGroups.instance.hydrateSliced(XprsArchive.instance
+          .query(types: const ['moderate'], limit: 512)
+          .map((r) => r['wire'])
+          .whereType<String>()
+          .toList()
+          .reversed
+          .toList());
+      if (n > 0) LogService.instance.add('XPRS: replayed $n group act(s)');
+    } catch (e) {
+      LogService.instance.add('XPRS: could not replay stored groups: $e');
+    }
   }
 
   /// An XPRS frame on subtype `0x58` — a discovery beacon, or carried mail.

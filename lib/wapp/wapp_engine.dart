@@ -2625,8 +2625,10 @@ class WappEngine {
           if (slash > 0) {
             fs.directory(p.substring(0, slash)).createSync(recursive: true);
           }
+          final sw = Stopwatch()..start();
           final db = openProfileDb(p);
           db.execute('PRAGMA journal_mode=WAL;');
+          _noteSlowSql('open', p.substring(slash + 1), sw);
           final h = _nextSqliteHandle++;
           _sqlite[h] = _WappSqliteState(db);
           return h;
@@ -2643,7 +2645,10 @@ class WappEngine {
         final st = _sqlite[h];
         if (st == null || sqlLen <= 0) return -1;
         try {
-          st.db.execute(_readUtf8(sqlPtr, sqlLen), _sqliteParams(parPtr, parLen));
+          final sw = Stopwatch()..start();
+          final sql = _readUtf8(sqlPtr, sqlLen);
+          st.db.execute(sql, _sqliteParams(parPtr, parLen));
+          _noteSlowSql('exec', sql, sw);
           st.lastError = null;
           return 0;
         } catch (e) {
@@ -2660,8 +2665,10 @@ class WappEngine {
         final st = _sqlite[h];
         if (st == null || sqlLen <= 0 || outCap <= 0) return -1;
         try {
-          final rs =
-              st.db.select(_readUtf8(sqlPtr, sqlLen), _sqliteParams(parPtr, parLen));
+          final sw = Stopwatch()..start();
+          final sql = _readUtf8(sqlPtr, sqlLen);
+          final rs = st.db.select(sql, _sqliteParams(parPtr, parLen));
+          _noteSlowSql('query', sql, sw);
           final cols = rs.columnNames;
           final rows = [
             for (final row in rs) {for (final c in cols) c: row[c]}
@@ -4064,7 +4071,7 @@ class WappEngine {
       // Indexed on (type, fromc) and capped at one row: the newest identity is
       // the only one that can carry the current name.
       for (final r in XprsArchive.instance
-          .query(types: const ['identity'], only: call, limit: 1)) {
+          .query(types: const ['identity'], from: call, limit: 1)) {
         final w = r['wire'];
         if (w is! String) continue;
         final p = XprsPacket.parse(w);
@@ -4886,9 +4893,32 @@ class WappEngine {
     _loaded = true;
   }
 
-  void init() { _instance?.getFunction('module_init')?.call([]); }
+  /// Anything a wapp does on this isolate over this long is worth a line: the
+  /// UI waits for it, and the line says which wapp and which call, which the
+  /// "main isolate stalled" heartbeat cannot (performance.md section 2).
+  static const _slowMs = 150;
+
+  void _noteSlowSql(String what, String sql, Stopwatch sw) {
+    if (sw.elapsedMilliseconds < _slowMs) return;
+    LogService.instance.add(
+        'perf: wapp $_appId sqlite $what took ${sw.elapsedMilliseconds}ms: '
+        '${sql.length > 70 ? sql.substring(0, 70) : sql}');
+  }
+
+  void _timedCall(String export) {
+    final f = _instance?.getFunction(export);
+    if (f == null) return;
+    final sw = Stopwatch()..start();
+    f.call([]);
+    if (sw.elapsedMilliseconds >= _slowMs) {
+      LogService.instance
+          .add('perf: wapp $_appId $export took ${sw.elapsedMilliseconds}ms');
+    }
+  }
+
+  void init() => _timedCall('module_init');
   void tick() { _instance?.getFunction('module_tick')?.call([]); }
-  void handleEvent() { _instance?.getFunction('module_handle_event')?.call([]); }
+  void handleEvent() => _timedCall('module_handle_event');
   void destroy() { _instance?.getFunction('module_destroy')?.call([]); }
 
   /// Invoke the test runner export (present only in a `tests.wasm`

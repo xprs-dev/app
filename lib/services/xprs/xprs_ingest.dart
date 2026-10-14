@@ -617,24 +617,8 @@ class XprsIngest {
   static int rebindFromArchive({int limit = 200}) {
     var n = 0;
     try {
-      // Oldest first, so first-wins reproduces the order the packets actually
-      // arrived in rather than inverting it.
-      final rows = XprsArchive.instance
-          .query(types: const ['identity'], limit: limit)
-          .reversed;
-      for (final r in rows) {
-        final wire = r['wire'];
-        if (wire is! String) continue;
-        final p = XprsPacket.parse(wire);
-        if (p == null || p.type != 'identity') continue;
-        final from = p['f'];
-        if (from == null || from.isEmpty) continue;
-        // The rate limiter below guards the AIR, where identities arrive from
-        // strangers; this replay is our own disk and is bounded by `limit`.
-        _idChecks = 0;
-        _idWindowMs = DateTime.now().millisecondsSinceEpoch;
-        _bindIdentity(from, p);
-        n++;
+      for (final r in _identityRowsOldestFirst(limit)) {
+        if (_rebindRow(r)) n++;
       }
     } catch (e) {
       LogService.instance.add('XPRS: could not re-bind identities — $e');
@@ -645,6 +629,58 @@ class XprsIngest {
       );
     }
     return n;
+  }
+
+  /// The same replay, a slice at a time. Each re-bind checks a signature in
+  /// Dart (about 50 ms on the C61), and 78 of them in one go froze the whole
+  /// app for nearly four seconds at every launch, a touch in that window
+  /// raising "XPRS isn't responding". The work is the same; between items the
+  /// event loop gets the isolate back, so the UI answers while it runs
+  /// (architecture.md 2: nothing heavy on the UI isolate).
+  static Future<int> rebindFromArchiveSliced(
+      {int limit = 200, int sliceMs = 10}) async {
+    var n = 0;
+    try {
+      final slice = Stopwatch()..start();
+      for (final r in _identityRowsOldestFirst(limit)) {
+        if (_rebindRow(r)) n++;
+        if (slice.elapsedMilliseconds >= sliceMs) {
+          await Future<void>.delayed(Duration.zero);
+          slice.reset();
+        }
+      }
+    } catch (e) {
+      LogService.instance.add('XPRS: could not re-bind identities — $e');
+    }
+    if (n > 0) {
+      LogService.instance.add(
+        'XPRS: re-bound $n stored identity announcement(s)',
+      );
+    }
+    return n;
+  }
+
+  /// Oldest first, so first-wins reproduces the order the packets actually
+  /// arrived in rather than inverting it.
+  static List<Map<String, dynamic>> _identityRowsOldestFirst(int limit) =>
+      XprsArchive.instance
+          .query(types: const ['identity'], limit: limit)
+          .reversed
+          .toList();
+
+  static bool _rebindRow(Map<String, dynamic> r) {
+    final wire = r['wire'];
+    if (wire is! String) return false;
+    final p = XprsPacket.parse(wire);
+    if (p == null || p.type != 'identity') return false;
+    final from = p['f'];
+    if (from == null || from.isEmpty) return false;
+    // The rate limiter below guards the AIR, where identities arrive from
+    // strangers; this replay is our own disk and is bounded by `limit`.
+    _idChecks = 0;
+    _idWindowMs = DateTime.now().millisecondsSinceEpoch;
+    _bindIdentity(from, p);
+    return true;
   }
 
   // A station asking to be claimed says so every 30 s or so, with the same

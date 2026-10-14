@@ -346,7 +346,7 @@ class XprsHistoryServer {
       }
       final ids = <String>[];
       for (final s in signers) {
-        final id = archive.query(only: s, types: const ['identity'], limit: 1);
+        final id = archive.query(from: s, types: const ['identity'], limit: 1);
         if (id.isNotEmpty) {
           final w = id.first['wire'] as String;
           if (!page.contains(w)) ids.add(w);
