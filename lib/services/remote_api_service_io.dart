@@ -1890,7 +1890,11 @@ class RemoteApiService {
         // The publisher signs (our own wire, no sig: yet) and airs on every
         // bearer -- BLE for the bench, LAN for an ESP32 on this network, and
         // the reticulum hub lane for an archiver across the internet (36.0).
-        final report = await XprsPublisher.instance.publishWire(p.encode());
+        // `bearer` names one lane, to test it alone (a station heard on the
+        // LAN is otherwise always asked on the LAN).
+        final only = (data['bearer'] ?? '').toString().trim();
+        final report = await XprsPublisher.instance.publishWire(p.encode(),
+            onlyBearers: only.isEmpty ? null : {only});
         return _json(res, {
           'ok': report.values.any((v) => v == 'sent'),
           'bearers': report,

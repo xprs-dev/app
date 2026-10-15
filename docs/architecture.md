@@ -134,6 +134,7 @@ the hard way (2026-08-26), and the answer is short:
 | **GATT + MSP** | file bytes and parked mail | ~10 kB/s, offset resume, sha-verified |
 | **Reticulum** | the internet path: LXMF, folders, DHT | not a radio lane |
 | **Reticulum datagram** | one connectionless packet to one destination, no link — the packet-lane file (XPRS.md §7.7.6) and anything else sent many times and verified whole | 383 B plaintext, 250 B XPRS wire; forwarded by every transport node on the path |
+| **Reticulum station lane** | one raw XPRS wire in one packet to an ESP32 station's `xprs/wapp` destination, and its answers to ours: the only addressed form a station speaks (it has no LXMF) | 250 B wire; `RnsService.wireToStation`, counted in `/api/rns/status` `stationLane` |
 
 **BLE5 carries XPRS. Reticulum is the internet path.** Pushing a Reticulum
 resource through the advert channel does not work and cannot be made to work: a
@@ -214,6 +215,36 @@ answers a burst with hours of silence. `/api/rns/status` reports `hubRole`,
 `pathAnswers`, `selfEcho`, `lanSelfDropped`, `lanNobodyDropped` and
 `datagrams{sent,noPath,tooBig,opened}` so the role can be read off a device
 rather than asserted.
+
+### Reaching an ESP32 station over Reticulum (2026-10-15)
+
+A station has no LXMF. On Reticulum it has one destination, `xprs/wapp`, and
+reads single packets addressed to it, each a raw wire encrypted to its
+identity. Every directed wire the core sent a station went as LXMF to a
+delivery destination nothing listens on, and its answers, addressed to our
+`xprs/wapp`, were received by nothing. The publisher now sends a wire for a
+station on the station lane first, and `_onInbound` opens packets for our own
+`xprs/wapp` through the same door as every internet packet.
+
+What made it work across a public hub was not the lane but finding each
+other, because a public hub passes almost no announces between its clients:
+it rations them per destination, and a destination that announces every
+wire is muted within a minute. So nobody is learned from announces there.
+Each side says where to write to it in its beacon's `lx:`, and the other side
+asks the hub for that path; the answer carries the key. A station's `lx:` is
+its `xprs/wapp` destination; a phone's is its LXMF one, and the station
+derives the phone's `xprs/wapp` destination from the same key. That pairing
+is Reticulum's, so `RnsService` wires the beacon hooks itself: they lived in
+the BLE service, and a desktop, which has no Bluetooth, read `lx:` and did
+nothing with it.
+
+Two transport rules fell out of the same measurement, both in
+`rns_transport.dart`: between two relayed paths fewer hops win before the
+first hop's medium (a phone on the LAN answered a path request first with
+its own stale four-hop route, and the LAN rank kept it over the hub's two
+hops), and only a peer heard directly pins its identity to a medium (a
+relayed announce arriving on the LAN pinned a station behind a hub as a LAN
+host, and every later path of it became a one-hop LAN path to nowhere).
 
 ### Who is on the mesh, decided once (2026-09-09)
 

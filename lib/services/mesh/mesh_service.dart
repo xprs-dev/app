@@ -872,6 +872,26 @@ class MeshService {
     // The rest of this is beacon handling, and only a beacon is a beacon.
     if (p.type != 'observation') return;
     _xprsBeaconsHeard++;
+    // `lx:` says where to write to this station (section 10.6). Hearing it is
+    // not the same as being able to address it: that needs a Reticulum path,
+    // which carries the peer's key and comes from an announce. So when we hold
+    // no path, ask for one — ONCE, through the transport's per-destination
+    // backoff, which turns this into a single question rather than a storm. The
+    // peer answers with its announce and the next message goes direct instead of
+    // being parked for store-and-carry.
+    // The beacon states BOTH who is speaking and where to write to them, so it
+    // is the one place that pairing is free and authoritative. Pass the callsign
+    // along with the address: without it the host knows an LXMF destination it
+    // cannot name, and every UI built on the directory falls back to showing
+    // raw hex where a callsign belongs.
+    //
+    // Read on EVERY beacon, before the BLE-only part below: where to write to
+    // a station is not a fact about one radio. An ESP32 station is heard on
+    // the LAN or ESP-NOW as often as on BLE, and its `lx:` (its xprs/wapp
+    // destination) is the only way a phone learns it: the public hubs pass
+    // almost none of a station's announces (firmware xprs_bearer_rns).
+    final lx = p['lx'];
+    if (lx != null && lx.length == 32) onPeerAddress?.call(lx, from);
     // A reading without `link:` is unanswerable and discarded (section 10.6.1);
     // one about another bearer is not evidence about this radio.
     if (!xprsReadingIsScoped(p) || p['link'] != 'ble') return;
@@ -893,20 +913,6 @@ class MeshService {
     // correcting it, one dial too late).
     if ((p['via'] ?? '').trim().isEmpty) onPeerSighting?.call(from, peer);
 
-    // `lx:` says where to write to this station (section 10.6). Hearing it is
-    // not the same as being able to address it: that needs a Reticulum path,
-    // which carries the peer's key and comes from an announce. So when we hold
-    // no path, ask for one — ONCE, through the transport's per-destination
-    // backoff, which turns this into a single question rather than a storm. The
-    // peer answers with its announce and the next message goes direct instead of
-    // being parked for store-and-carry.
-    // The beacon states BOTH who is speaking and where to write to them, so it
-    // is the one place that pairing is free and authoritative. Pass the callsign
-    // along with the address: without it the host knows an LXMF destination it
-    // cannot name, and every UI built on the directory falls back to showing
-    // raw hex where a callsign belongs.
-    final lx = p['lx'];
-    if (lx != null && lx.length == 32) onPeerAddress?.call(lx, from);
   }
 
   /// A neighbour published its LXMF delivery address in a beacon and we hold no
@@ -1346,6 +1352,13 @@ class MeshService {
 
     final held = MeshStore.instance.ready ? MeshStore.instance.pendingCount() : 0;
     if (held > 0) envelope = envelope.with_('mail', '$held');
+
+    // `lx:`, where to write to us, as on the Bluetooth beacon. A station on
+    // the LAN reads it to reach us over Reticulum: our announces do not cross
+    // a public hub, so without it a station could not answer a phone in the
+    // same building that asked it something through one.
+    final lx = ourLxmfDest?.call();
+    if (lx != null && lx.length == 32) envelope = envelope.with_('lx', lx);
 
     final upSec = DateTime.now().difference(_startedAt).inSeconds;
     envelope = envelope.with_('uptime', xprsFmtDuration(upSec));

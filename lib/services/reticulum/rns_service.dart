@@ -1941,6 +1941,16 @@ class RnsService {
       'tooBig': datagramsTooBig,
       'opened': singlePacketsOpened,
     },
+    // The station lane, both ways: raw XPRS wires in single packets on the
+    // xprs/wapp destination, the only addressed form an ESP32 station speaks.
+    'stationLane': {
+      'stations': _wappStation.length,
+      'names': _wappStation.keys.take(16).toList(),
+      'sent': stationLaneSent,
+      'noPath': stationLaneNoPath,
+      'in': stationLaneIn,
+      'undecryptable': stationLaneUndecryptable,
+    },
     'interfaces': _ifaces.length + (_server != null ? 1 : 0),
     'inbox': _inbox.length,
     'announcesHeard': _rxAnnounces,
@@ -4581,6 +4591,7 @@ class RnsService {
 
       _up = true;
       _startedAt ??= DateTime.now();
+      _wireBeaconAddresses();
       await announce(announceName);
       await _announceServiceDests();
 
@@ -5149,6 +5160,186 @@ class RnsService {
   int datagramsTooBig = 0;
   int get singlePacketsOpened => _lxmf?.singlePacketsOpened ?? 0;
 
+  // The station lane.
+  //
+  // An ESP32 station has no LXMF. On Reticulum it announces one destination,
+  // xprs/wapp, with a signed wire after the "xprs" tag, and it reads only
+  // single packets addressed to that destination, each one raw XPRS wire
+  // encrypted to its identity (firmware xprs_bearer_rns). Every directed wire
+  // this core sent a station went as LXMF to a delivery destination nothing
+  // listens on, or as an announce the public hubs do not cross-forward, and a
+  // station's answers, addressed to OUR xprs/wapp, were received by nothing.
+  // Measured 2026-10-15 with a C3 under QEMU on two public hubs: a reference
+  // client using this lane got its q:policy answered both ways on each.
+
+  /// Callsign to the identity that announced xprs/wapp under it, only for
+  /// identities with no LXMF (a phone is reached by LXMF; sending it this too
+  /// would double every directed packet). The newest announce wins, bounded,
+  /// oldest dropped first.
+  ///
+  /// Trust is the same as [lxmfDestForCallsign]'s observed-name rule: the
+  /// announce is signed by the identity, the name inside it is a claim. What
+  /// rides this lane is signed XPRS, checked by the station before it acts.
+  final Map<String, RnsIdentity> _wappStation = {};
+  static const int _wappStationMax = 256;
+  Uint8List? _ownWappDest;
+  String _ownWappFor = '';
+
+  int stationLaneSent = 0;
+  int stationLaneNoPath = 0;
+  int stationLaneIn = 0;
+  int stationLaneUndecryptable = 0;
+
+  /// What a station's beacon said: `lx:` beside `f:` (MeshService), the
+  /// authoritative pairing. The key comes with the path: bound now when the
+  /// path is already held, else when the announce answering the path request
+  /// arrives (the wapp branch of [_onValidatedAnnounce]).
+  void noteStationAddress(String destHex, String callsign) {
+    final d = destHex.trim().toLowerCase();
+    final c = _bareUpper(callsign);
+    if (d.length != 32 || c.isEmpty) return;
+    _lxStation.remove(d);
+    if (_lxStation.length >= _wappStationMax) {
+      _lxStation.remove(_lxStation.keys.first);
+    }
+    _lxStation[d] = c;
+    final dh = _hexToBytes(d);
+    final e = dh == null ? null : _transport?.pathFor(dh);
+    if (e != null &&
+        RnsCrypto.constantTimeEquals(
+            dh!, RnsDestination.hash(e.identity, _app, _aspectsWapp))) {
+      _bindStation(c, e.identity);
+    }
+  }
+
+  final Map<String, String> _lxStation = {};
+
+  /// A beacon's `lx:` (where to write to its sender) and ours. These were
+  /// wired by the BLE service, so a node without Bluetooth (the desktop)
+  /// heard `lx:` on the LAN and did nothing with it: no path request, no
+  /// name for the destination, no station lane. They are Reticulum's, and
+  /// the mesh is told them here, whatever radios this node has.
+  void _wireBeaconAddresses() {
+    MeshService.instance.onPeerAddress = (destHex, callsign) {
+      // Ask for a path when we hold none, so the NEXT message goes direct;
+      // the transport's per-destination backoff makes it one question.
+      requestPathIfUnknown(destHex);
+      // The beacon named its own sender, so this destination has a callsign
+      // whether or not its announce ever carried one.
+      noteLxmfCallsign(destHex, callsign);
+      // And if it is an ESP32 station's xprs/wapp destination, that is where
+      // a directed wire to it goes ([wireToStation]).
+      noteStationAddress(destHex, callsign);
+    };
+    MeshService.instance.ourLxmfDest = () => lxmfDeliveryHex;
+  }
+
+  void _noteWappStation(RnsIdentity id, List<int> wire) {
+    final call = _wireFrom(wire);
+    // A person's phone announces xprs/wapp too, and a phone is reached by
+    // LXMF (custody, receipts); binding it here sent its mail down a lane
+    // with neither. A beacon's `lx:` ([noteStationAddress]) proves itself and
+    // binds any callsign; a bare announce binds only a station's.
+    if (call.isEmpty || xprsKindOf(call) != XprsKind.station) return;
+    _bindStation(call, id);
+  }
+
+  void _bindStation(String call, RnsIdentity id) {
+    final n = _observed[id.hexHash];
+    if (n != null && n.services.contains('lxmf')) return;
+    final had = _wappStation.remove(call);
+    if (_wappStation.length >= _wappStationMax) {
+      _wappStation.remove(_wappStation.keys.first);
+    }
+    _wappStation[call] = id;
+    if (had?.hexHash != id.hexHash) {
+      LogService.instance.add('RNS: $call is a station on the xprs/wapp lane '
+          '(identity ${id.hexHash.substring(0, 8)})');
+    }
+  }
+
+  /// The `f:` of a wire, upper case, without parsing the rest: this runs for
+  /// every xprs/wapp announce the hubs carry.
+  static String _wireFrom(List<int> w) {
+    final n = w.length < 160 ? w.length : 160;
+    for (var i = 0; i + 2 < n; i++) {
+      if (w[i] != 0x66 || w[i + 1] != 0x3a) continue; // "f:"
+      if (i > 0 && w[i - 1] != 0x20) continue;
+      var j = i + 2;
+      while (j < w.length && j - i < 22 && w[j] != 0x20) {
+        j++;
+      }
+      return _bareUpper(String.fromCharCodes(w.sublist(i + 2, j)));
+    }
+    return '';
+  }
+
+  /// True when [callsign] is a station reached on the station lane.
+  bool isWappStation(String callsign) =>
+      _wappStation.containsKey(_bareUpper(callsign));
+
+  /// One XPRS wire to [callsign]'s xprs/wapp destination, in one packet,
+  /// encrypted to the identity it announced. False when [callsign] is not a
+  /// station on this lane, or when there is no path yet: then the path is
+  /// requested and the caller's other lanes carry this one.
+  ///
+  /// One ephemeral key and one ECDH per packet, on the crypto worker. That is
+  /// fine for what goes to a station (commands, asks, answers); a stream of
+  /// chunks would want [RnsIdentity.encryptor] instead (performance.md 8.13).
+  Future<bool> wireToStation(String callsign, Uint8List wire) async {
+    final t = _transport;
+    if (!_up || _id == null || t == null) return false;
+    final call = _bareUpper(callsign);
+    final id = _wappStation[call];
+    if (id == null) return false;
+    // Its wapp announce can beat its LXMF one: a phone is not a station.
+    if (_observed[id.hexHash]?.services.contains('lxmf') ?? false) {
+      _wappStation.remove(call);
+      return false;
+    }
+    if (wire.length > kRnsEncryptedMdu) return false;
+    final dest = RnsDestination.hash(id, _app, _aspectsWapp);
+    if (t.pathFor(dest) == null) {
+      stationLaneNoPath++;
+      t.requestPath(dest);
+      return false;
+    }
+    final ct = await id.encrypt(wire);
+    t.sendDataTo(dest, ct);
+    stationLaneSent++;
+    return true;
+  }
+
+  /// Our own xprs/wapp destination, worked out once per identity: the test
+  /// below runs on every packet that is not an announce.
+  bool _isOwnWappPacket(RnsPacket p) {
+    final me = _id;
+    if (me == null ||
+        p.packetType != RnsPacketType.data ||
+        p.destType != RnsDestType.single) {
+      return false;
+    }
+    if (_ownWappDest == null || _ownWappFor != me.hexHash) {
+      _ownWappDest = RnsDestination.hash(me, _app, _aspectsWapp);
+      _ownWappFor = me.hexHash;
+    }
+    return RnsCrypto.constantTimeEquals(p.destHash, _ownWappDest!);
+  }
+
+  /// A station answering us: its wire, encrypted to our identity, through
+  /// the door every XPRS packet from the internet takes.
+  Future<void> _stationLaneIn(RnsPacket p, String via) async {
+    final Uint8List plain;
+    try {
+      plain = await _id!.decrypt(p.data);
+    } catch (_) {
+      stationLaneUndecryptable++;
+      return;
+    }
+    stationLaneIn++;
+    _deliverWappDatagram('xprs', '', plain, via: via);
+  }
+
   /// Pull store-and-forwarded wapp datagrams a peer holds for us from its
   /// propagation dest [propDestHex]. Delivered datagrams land on [_wappInbox].
   Future<int> wappPull(String propDestHex) => pullLxmf(propDestHex);
@@ -5202,6 +5393,10 @@ class RnsService {
     // Link / file-transfer packets (link requests + link-addressed data) are
     // handled by the files node, not the announce path.
     if (p.packetType != RnsPacketType.announce) {
+      if (_isOwnWappPacket(p)) {
+        await _stationLaneIn(p, via);
+        return;
+      }
       // Pass the arrival interface's HW MTU so the responder caps the link MTU
       // it confirms to what this return path can actually carry (MTU discovery).
       final arrivalMtu = _transport?.hwMtuForVia(via) ?? kRnsMtu;
@@ -5257,6 +5452,14 @@ class RnsService {
               allowMalformed: true,
             );
             final payload = a.sublist(1 + tagLen);
+            if (tag == 'xprs') {
+              final lxCall = _lxStation[_hex(ann.destHash)];
+              if (lxCall != null) {
+                _bindStation(lxCall, ann.identity);
+              } else {
+                _noteWappStation(ann.identity, payload);
+              }
+            }
             _deliverWappDatagram(tag, ann.identity.hexHash, payload, via: via);
           }
         }

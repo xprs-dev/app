@@ -233,6 +233,14 @@ class _ReticulumBearer implements XprsBearer {
       return await _sendToMembers(dest, bytes,
           named: XprsPublisher.namedInAct(p));
     }
+    // A station with no LXMF (an ESP32) is addressed on its xprs/wapp
+    // destination, the one lane it reads (RnsService.wireToStation). With no
+    // path yet the path is asked for and the broadcast below still goes.
+    if (dest.isNotEmpty &&
+        RnsService.instance.isWappStation(dest) &&
+        await RnsService.instance.wireToStation(dest, bytes)) {
+      return XprsSendResult.queued;
+    }
     if (dest.isNotEmpty) {
       final hex = RnsService.instance.lxmfDestForCallsign(dest);
       if (hex.isNotEmpty && datagram) {

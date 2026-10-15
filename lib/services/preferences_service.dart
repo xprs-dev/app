@@ -1071,13 +1071,19 @@ class PreferencesService {
   // betweentheborders is a web server; both remain excluded.
   static const List<String> _defaultRnsServers = [
     'rns.wisco.network:4242',    // 113 ms
-    'rns.birdsnet.com.br:4242',  // 225 ms
     'sydney.reticulum.au:4242',  // 287 ms
-    // use.inertia.chat is alpha software and unstable: measured on two phones
-    // its uplink went silent and reconnected repeatedly, and LXMF delivery
-    // through it kept dropping ("path ... dropped after failure: lxmf
-    // delivery"). Kept as a last-resort fallback, never a first choice.
-    'use.inertia.chat:4242',     // 285 ms, unstable — last resort
+    // Re-checked 2026-10-15 with two fresh reference clients (Python RNS
+    // 1.5.7 + LXMF) on each hub: on wisco and sydney each found the other in
+    // about a minute (two hops) and raw packets and LXMF both arrived 3 of 3.
+    // On the two below neither client ever got a path to the other, LXMF
+    // included, so they stay only as last resorts.
+    //
+    // use.inertia.chat is also alpha software and unstable: measured on two
+    // phones its uplink went silent and reconnected repeatedly, and LXMF
+    // delivery through it kept dropping ("path ... dropped after failure:
+    // lxmf delivery").
+    'rns.birdsnet.com.br:4242',  // 225 ms, no paths between clients
+    'use.inertia.chat:4242',     // 285 ms, unstable, no paths between clients
   ];
 
   /// Blossom servers (media over the internet: images in the feed come FROM
