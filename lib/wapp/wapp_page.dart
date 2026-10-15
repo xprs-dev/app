@@ -1618,6 +1618,65 @@ class _WappPageState extends State<WappPage>
     }
   }
 
+  /// Every version of one message, oldest first, back to the original
+  /// (XPRS.md 7.8.1). The wapp holds them and decides which count; a viewer who
+  /// is not a moderator is told earlier versions were removed (10.4.1).
+  void _showEditHistory(Map data) {
+    final versions = [
+      for (final v in (data['versions'] as List? ?? const []))
+        if (v is Map) v.map((k, x) => MapEntry(k.toString(), x)),
+    ];
+    final cs = Theme.of(context).colorScheme;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit history'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (var i = 0; i < versions.length; i++)
+                if ((versions[i]['note'] ?? '').toString().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text('${versions[i]['note']}',
+                        style: TextStyle(
+                            fontStyle: FontStyle.italic,
+                            color: cs.onSurfaceVariant)),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${i == 0 && versions[i]['role'] == 'author' ? 'Original' : (i == versions.length - 1 ? 'Current' : 'Edit')}'
+                          ' \u00b7 ${versions[i]['date'] ?? ''} ${versions[i]['time'] ?? ''}'
+                          ' \u00b7 ${versions[i]['by'] ?? ''}'
+                          '${versions[i]['role'] == 'author' || versions[i]['role'] == null ? '' : ' (${versions[i]['role']})'}',
+                          style: TextStyle(
+                              fontSize: 12, color: cs.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 2),
+                        Text('${versions[i]['text'] ?? ''}'),
+                      ],
+                    ),
+                  ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _addScreen(GeoUiBlock screen) {
     final name = screen.name ?? 'Screen ${_screens.length}';
     // Deduplicate
@@ -2162,6 +2221,17 @@ class _WappPageState extends State<WappPage>
           final field = data['field'] as String? ?? 'conversations';
           _convStore(field).addMessage(data);
           changed = true;
+        } else if (type == 'ui.convo.edit') {
+          // XPRS.md 7.8: a message already drawn was corrected, withdrawn or
+          // moderated; the wapp states what it shows now.
+          final field = data['field'] as String? ?? 'conversations';
+          _convStore(field).edit(data);
+          changed = true;
+        } else if (type == 'ui.convo.history') {
+          // The versions of one message, oldest first, for its Info dialog.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showEditHistory(data);
+          });
         } else if (type == 'ui.convo.reveal') {
           // Redacted text opened (docs/XPRS.md 9.2.1): show the plaintext in
           // place for THIS view only. Transient — never persisted, so the
@@ -3855,6 +3925,24 @@ class _WappPageState extends State<WappPage>
         _sendCommand('${field}_new');
       },
       onNewChat: () => _sendCommand('${field}_newchat'),
+      // XPRS.md 7.8: the author's (or a moderator's) correction and withdrawal
+      // of a message, and the list of its versions. The wapp judges each act.
+      onEdit: (m, text) {
+        _fieldValues['${field}_convo'] = _roomsOpenId ?? '';
+        _fieldValues['${field}_mid'] = '${m['mid'] ?? ''}';
+        _fieldValues['${field}_input'] = text;
+        _sendCommand('${field}_edit');
+      },
+      onUnsend: (m) {
+        _fieldValues['${field}_convo'] = _roomsOpenId ?? '';
+        _fieldValues['${field}_mid'] = '${m['mid'] ?? ''}';
+        _sendCommand('${field}_unsend');
+      },
+      onHistory: (m) {
+        _fieldValues['${field}_convo'] = _roomsOpenId ?? '';
+        _fieldValues['${field}_mid'] = '${m['mid'] ?? ''}';
+        _sendCommand('${field}_history');
+      },
       // The header's people button: the wapp pushes the first page of the
       // room's members and opens its members screen.
       onMembers: () {

@@ -78,6 +78,11 @@ class ConversationItem {
   /// indicator; the wapp owns the routing behaviour.
   bool private;
 
+  /// The wapp says this station may edit and remove OTHER people's messages
+  /// here (a moderator or the admin of a closed group, XPRS.md 10.4.1). The
+  /// host only offers the menu entries; the wapp judges each act.
+  bool mod = false;
+
   /// Host wall-clock (ms) of the last real activity (message / pin / new
   /// unread) — the primary sort key so the most recently active conversations
   /// sit on top. 0 for legacy rows that predate this field; the list sort then
@@ -344,6 +349,8 @@ class ConversationStore {
     if (d.containsKey('badge')) it.badge = (d['badge'] ?? '').toString();
     if (d.containsKey('icon')) it.icon = (d['icon'] ?? 'chat').toString();
     if (d.containsKey('private')) it.private = d['private'] == true;
+    // The row is stated whole each time, so absent means no authority.
+    it.mod = d['mod'] == true;
     if (d.containsKey('unread')) {
       final nv = (d['unread'] as num?)?.toInt() ?? it.unread;
       if (nv > it.unread) it.activityTs = _nowMs(); // new unread = activity
@@ -407,6 +414,11 @@ class ConversationStore {
       if ((d['parent'] ?? '').toString().isNotEmpty) 'parent': d['parent'].toString(),
       if ((d['auth'] ?? '').toString().isNotEmpty) 'auth': d['auth'].toString(),
       if (d['enc'] == true) 'enc': true,
+      // XPRS.md 7.8: the message has been corrected (`edited`), by a moderator
+      // (`editedBy`), or withdrawn (`deleted`, the text already gone).
+      if (d['edited'] == true) 'edited': true,
+      if ((d['by'] ?? '').toString().isNotEmpty) 'editedBy': d['by'].toString(),
+      if (d['deleted'] == true) 'deleted': true,
       // Redacted content (docs/XPRS.md 9.2.1): the wapp says the message carries
       // an `xr:` field, so its text renders as bars behind a tap. `tip` is the
       // hint shown on the locked bubble. Persisted so a reopened conversation
@@ -566,6 +578,60 @@ class ConversationStore {
         m['revealed'] = text;
         break;
       }
+    }
+  }
+
+  /// XPRS.md 7.8: a message already drawn has been corrected, withdrawn or
+  /// moderated. The wapp states what it SHOWS now (it keeps the original and
+  /// every version, and works the answer out); the host replaces the words, the
+  /// lock and the ticks, and whether it was edited and by whom.
+  void edit(Map d) {
+    final id = (d['id'] ?? '').toString();
+    final mid = (d['mid'] ?? '').toString();
+    if (id.isEmpty || mid.isEmpty) return;
+    final it = items[id];
+    if (it == null) return;
+    for (final m in it.messages) {
+      if ((m['mid'] ?? '').toString() != mid) continue;
+      final was = (m['text'] ?? '').toString();
+      m['text'] = (d['text'] ?? '').toString();
+      // The preview line of the thread was made from the words that just
+      // changed, so a withdrawn message must not live on in it.
+      if (was.isNotEmpty && it.lastLine.contains(was)) {
+        it.lastLine = d['deleted'] == true
+            ? ''
+            : it.lastLine.replaceAll(was, m['text'].toString());
+      }
+      if (was.isNotEmpty && it.subtitle.contains(was)) {
+        it.subtitle = d['deleted'] == true
+            ? ''
+            : it.subtitle.replaceAll(was, m['text'].toString());
+      }
+      void flag(String k, bool on) {
+        if (on) {
+          m[k] = true;
+        } else {
+          m.remove(k);
+        }
+      }
+
+      flag('edited', d['edited'] == true);
+      flag('deleted', d['deleted'] == true);
+      flag('enc', d['enc'] == true);
+      flag('plain', d['plain'] == true);
+      final by = (d['by'] ?? '').toString();
+      if (by.isNotEmpty) {
+        m['editedBy'] = by;
+      } else {
+        m.remove('editedBy');
+      }
+      final rid = (d['rid'] ?? '').toString();
+      if (rid.isNotEmpty) m['rid'] = rid;
+      final st = (d['status'] ?? '').toString();
+      if (st.isNotEmpty) m['status'] = st;
+      m.remove('revealed');
+      if (_wt) db!.updateMessage(dbField, it.id, m);
+      break;
     }
   }
 

@@ -44,6 +44,11 @@ class RoomsField extends StatefulWidget {
 
   /// Flip the private/plain form for the next message (docs/XPRS.md 9.2).
   final VoidCallback? onTogglePrivacy;
+
+  /// Correct, withdraw, or list the versions of a message (XPRS.md 7.8).
+  final void Function(Map<String, dynamic> m, String text)? onEdit;
+  final void Function(Map<String, dynamic> m)? onUnsend;
+  final void Function(Map<String, dynamic> m)? onHistory;
   final bool privacyOn;
 
   /// Long-press bubble actions, same contract as the conversations widget:
@@ -87,6 +92,9 @@ class RoomsField extends StatefulWidget {
   const RoomsField({
     super.key,
     this.onTogglePrivacy,
+    this.onEdit,
+    this.onUnsend,
+    this.onHistory,
     this.privacyOn = true,
     required this.rooms,
     required this.store,
@@ -1055,6 +1063,10 @@ class _RoomsFieldState extends State<RoomsField> {
                     // key to seal a group message with and the switch is not
                     // offered there.
                     onTogglePrivacy: isDirect ? widget.onTogglePrivacy : null,
+                    onEdit: widget.onEdit,
+                    onUnsend: widget.onUnsend,
+                    onHistory: widget.onHistory,
+                    canModerate: room?.mod ?? false,
                     privacyOn: widget.privacyOn,
                     onSenderTap: widget.onSenderTap,
                     onReveal: widget.onReveal,

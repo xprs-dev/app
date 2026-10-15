@@ -407,4 +407,159 @@ void main() {
       expect(focused, isTrue);
     });
   });
+
+  group('correcting and withdrawing what was said (XPRS.md 7.8)', () {
+    Future<void> pumpWith(WidgetTester tester, List<Map<String, dynamic>> messages,
+        {bool moderator = false,
+        void Function(Map<String, dynamic>, String)? onEdit,
+        void Function(Map<String, dynamic>)? onUnsend,
+        void Function(Map<String, dynamic>)? onHistory}) async {
+      tester.view.physicalSize = const Size(600, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ChatViewField(
+            fieldName: 'chat',
+            label: 'Chat',
+            fill: true,
+            messages: messages,
+            onSend: sent.add,
+            onEdit: onEdit,
+            onUnsend: onUnsend,
+            onHistory: onHistory,
+            canModerate: moderator,
+          ),
+        ),
+      ));
+      await tester.pump();
+    }
+
+    testWidgets('an edited message says edited, a moderated one says by whom',
+        (tester) async {
+      await pumpWith(tester, [
+        {...msg('new wording', mid: 'a1', dir: 'out'), 'edited': true},
+        {
+          ...msg('[removed]', mid: 'a2', from: 'X1PZ4Q'),
+          'edited': true,
+          'editedBy': 'X32DVA'
+        },
+      ]);
+      expect(find.text('edited'), findsOneWidget);
+      expect(find.text('edited by moderator X32DVA'), findsOneWidget);
+    });
+
+    testWidgets('a withdrawn message is a place that says so, with no words',
+        (tester) async {
+      await pumpWith(tester, [
+        {...msg('', mid: 'a1', dir: 'out'), 'deleted': true},
+        {...msg('', mid: 'a2', from: 'X1PZ4Q'), 'deleted': true, 'editedBy': 'X32DVA'},
+      ]);
+      expect(find.text('This message was deleted'), findsOneWidget);
+      expect(find.text('Removed by moderator X32DVA'), findsOneWidget);
+    });
+
+    testWidgets('our own message offers Edit and Delete for everyone',
+        (tester) async {
+      await pumpWith(tester, [msg('mine', mid: 'a1', dir: 'out')],
+          onEdit: (_, _) {}, onUnsend: (_) {});
+      await tester.longPress(find.text('mine'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit'), findsOneWidget);
+      expect(find.text('Delete for everyone'), findsOneWidget);
+    });
+
+    testWidgets('somebody else\'s is offered nothing, unless we are a moderator',
+        (tester) async {
+      await pumpWith(tester, [msg('theirs', mid: 'a1')],
+          onEdit: (_, _) {}, onUnsend: (_) {});
+      await tester.longPress(find.text('theirs'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit'), findsNothing);
+      expect(find.text('Delete for everyone'), findsNothing);
+      await tester.tapAt(const Offset(10, 10)); // close the menu
+      await tester.pumpAndSettle();
+      await pumpWith(tester, [msg('theirs', mid: 'a1')],
+          moderator: true, onEdit: (_, _) {}, onUnsend: (_) {});
+      await tester.longPress(find.text('theirs'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit as moderator'), findsOneWidget);
+      expect(find.text('Remove as moderator'), findsOneWidget);
+    });
+
+    testWidgets('Edit puts the words in the composer, and send corrects them',
+        (tester) async {
+      final calls = <String>[];
+      await pumpWith(tester, [msg('meet at six', mid: 'a1', dir: 'out')],
+          onEdit: (m, t) => calls.add('${m['mid']}=$t'), onUnsend: (_) {});
+      await tester.longPress(find.text('meet at six'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Editing'), findsOneWidget);
+      final field = find.byType(TextField);
+      expect(tester.widget<TextField>(field).controller!.text, 'meet at six');
+      await tester.enterText(field, 'meet at seven');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+      expect(calls, ['a1=meet at seven']);
+      expect(sent, isEmpty, reason: 'a correction is not a new message');
+      expect(find.textContaining('Editing'), findsNothing);
+    });
+
+    testWidgets('sending the words unchanged is not an edit', (tester) async {
+      final calls = <String>[];
+      await pumpWith(tester, [msg('same', mid: 'a1', dir: 'out')],
+          onEdit: (m, t) => calls.add(t), onUnsend: (_) {});
+      await tester.longPress(find.text('same'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+      expect(calls, isEmpty);
+    });
+
+    testWidgets('Delete for everyone asks first, then withdraws', (tester) async {
+      final gone = <String>[];
+      await pumpWith(tester, [msg('regret', mid: 'a1', dir: 'out')],
+          onEdit: (_, _) {}, onUnsend: (m) => gone.add('${m['mid']}'));
+      await tester.longPress(find.text('regret'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete for everyone'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('cannot be undone'), findsOneWidget);
+      expect(gone, isEmpty, reason: 'nothing until it is confirmed');
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      expect(gone, ['a1']);
+    });
+
+    testWidgets('Info offers the edit history for an edited message only',
+        (tester) async {
+      final asked = <String>[];
+      await pumpWith(
+          tester,
+          [
+            {...msg('new', mid: 'a1', dir: 'out'), 'edited': true},
+            msg('plain', mid: 'a2', dir: 'out'),
+          ],
+          onEdit: (_, _) {},
+          onUnsend: (_) {},
+          onHistory: (m) => asked.add('${m['mid']}'));
+      await tester.longPress(find.text('new'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Info'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit history'), findsOneWidget);
+      await tester.tap(find.text('Edit history'));
+      await tester.pumpAndSettle();
+      expect(asked, ['a1']);
+      await tester.longPress(find.text('plain'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Info'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit history'), findsNothing);
+    });
+  });
 }

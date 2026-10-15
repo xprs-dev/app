@@ -123,6 +123,15 @@ class ChatViewField extends StatefulWidget {
   /// block gives it (host reads its `from`). All purely local on the host.
   final void Function(Map<String, dynamic> m)? onForward;
   final void Function(Map<String, dynamic> m)? onHide;
+
+  /// XPRS.md 7.8: correct a message ([onEdit], with the new words), withdraw it
+  /// ([onUnsend]) or list its versions ([onHistory]). The menu offers the first
+  /// two on our own messages, and on other people's only where
+  /// [canModerate] says we hold authority (10.4.1); the wapp judges each act.
+  final void Function(Map<String, dynamic> m, String text)? onEdit;
+  final void Function(Map<String, dynamic> m)? onUnsend;
+  final void Function(Map<String, dynamic> m)? onHistory;
+  final bool canModerate;
   final void Function(Map<String, dynamic> m)? onBlock;
 
   /// "Message <sender> directly" on someone else's bubble: the host opens (or
@@ -154,6 +163,10 @@ class ChatViewField extends StatefulWidget {
     this.onAttach,
     this.onForward,
     this.onHide,
+    this.onEdit,
+    this.onUnsend,
+    this.onHistory,
+    this.canModerate = false,
     this.onBlock,
     this.onDirectMessage,
     this.onItemTap,
@@ -312,6 +325,17 @@ class _ChatViewFieldState extends State<ChatViewField> {
   }
 
   void _send() {
+    if (_editing != null) {
+      final target = _editing!;
+      final words = _input.text.trim();
+      if (words.isEmpty) return;
+      _cancelEdit();
+      // Unchanged is not an edit: nothing is sent and nothing is marked edited.
+      if (words != (target['text'] ?? '').toString().trim()) {
+        widget.onEdit?.call(target, words);
+      }
+      return;
+    }
     var text = _input.text.trim();
     // Append any staged attachment tokens so they travel with the message.
     if (_pending.isNotEmpty) {
@@ -342,6 +366,52 @@ class _ChatViewFieldState extends State<ChatViewField> {
       // by pressing send.
       _autoScroll();
     });
+  }
+
+  /// The message being corrected, or null. The composer carries its words, and
+  /// sending answers [ChatViewField.onEdit] instead of [ChatViewField.onSend].
+  Map<String, dynamic>? _editing;
+
+  void _startEdit(Map<String, dynamic> m) {
+    if ((m['mid'] ?? '').toString().isEmpty) return;
+    setState(() {
+      _editing = m;
+      _replyingTo = null;
+    });
+    _input.text = (m['text'] ?? '').toString();
+    _input.selection = TextSelection.collapsed(offset: _input.text.length);
+    _inputFocus.requestFocus();
+  }
+
+  void _cancelEdit() {
+    setState(() => _editing = null);
+    _input.clear();
+  }
+
+  /// "Delete for everyone" is a request every holder is asked to honour, not a
+  /// guarantee (XPRS.md 7.8.2), so the dialog says what it can and cannot do.
+  Future<void> _confirmUnsend(Map<String, dynamic> m, {required bool mine}) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(mine ? 'Delete for everyone?' : 'Remove this message?'),
+        content: Text(mine
+            ? 'Everyone who has it is asked to delete it, and its text is '
+                'destroyed here. A copy may stay with anyone who already '
+                'received it. This cannot be undone.'
+            : 'Its text is destroyed for everyone in the group who honours '
+                'it. This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(mine ? 'Delete' : 'Remove')),
+        ],
+      ),
+    );
+    if (ok == true) widget.onUnsend?.call(m);
   }
 
   void _startReply(Map<String, dynamic> m) {
@@ -414,6 +484,24 @@ class _ChatViewFieldState extends State<ChatViewField> {
             style: TextStyle(
                 color: color, fontSize: 9.5, fontWeight: FontWeight.w600)),
       ]),
+    );
+  }
+
+  /// `edited` on a message its author corrected (XPRS.md 7.8.1). A moderator's
+  /// change is attributed on a line of its own instead.
+  Widget _editedBadge(Map<String, dynamic> m) {
+    if (m['edited'] != true || (m['editedBy'] ?? '').toString().isNotEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Text(
+        'edited',
+        style: TextStyle(
+            color: _onBubbleFg(_isOut(m), 150),
+            fontSize: ChatPalette.metaSize,
+            fontStyle: FontStyle.italic),
+      ),
     );
   }
 
@@ -1030,6 +1118,33 @@ class _ChatViewFieldState extends State<ChatViewField> {
         ),
       );
     }
+    // A message that was withdrawn (XPRS.md 7.8.2) keeps its place and loses
+    // its words, which are destroyed. A moderator's removal says whose it was.
+    if (m['deleted'] == true) {
+      final by = (m['editedBy'] ?? '').toString();
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 6),
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: ChatPalette.raised,
+              borderRadius: BorderRadius.circular(ChatPalette.bubbleRadius),
+            ),
+            child: Text(
+              by.isEmpty
+                  ? 'This message was deleted'
+                  : 'Removed by moderator $by',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: ChatPalette.secondary,
+                  fontSize: 12.5,
+                  fontStyle: FontStyle.italic),
+            ),
+          ),
+        ),
+      );
+    }
     final outgoing = (m['dir']?.toString() ?? 'in') == 'out';
     final from = m['from']?.toString() ?? '';
     final text = m['text']?.toString() ?? '';
@@ -1152,6 +1267,19 @@ class _ChatViewFieldState extends State<ChatViewField> {
               ),
             ),
           ],
+          // A moderator changed these words: say who, never a bare "edited"
+          // (XPRS.md 10.4.1), so nobody's words change without attribution.
+          if (m['edited'] == true && (m['editedBy'] ?? '').toString().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                'edited by moderator ${m['editedBy']}',
+                style: TextStyle(
+                    color: _onBubbleFg(outgoing, 170),
+                    fontSize: ChatPalette.metaSize,
+                    fontStyle: FontStyle.italic),
+              ),
+            ),
           if ((m['meta']?.toString() ?? '').isNotEmpty)
             _metaLine(m, outgoing),
           Row(
@@ -1168,6 +1296,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
                         fontSize: ChatPalette.metaSize),
                   ),
                 ),
+              _editedBadge(m),
               _encBadge(m),
               _authBadge(m),
               _privBadge(m),
@@ -1281,6 +1410,15 @@ class _ChatViewFieldState extends State<ChatViewField> {
   static TextStyle get _bodyStyle =>
       TextStyle(color: ChatPalette.text, fontSize: ChatPalette.bodySize);
 
+  /// Whether this message can be corrected or withdrawn from here: ours, or
+  /// somebody else's where we hold authority. Not a note, not one that is
+  /// already gone, not one with no words to change.
+  bool _mayChange(Map<String, dynamic> m, bool outgoing) {
+    if (m['sys'] == true || m['deleted'] == true) return false;
+    if ((m['mid'] ?? '').toString().isEmpty) return false;
+    return outgoing || widget.canModerate;
+  }
+
   /// Long-press message menu: copy plus any host-provided local actions.
   void _showMessageMenu(
       Map<String, dynamic> m, String text, String from, bool outgoing) {
@@ -1293,7 +1431,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
             ListTile(
               leading: Icon((m['private'] == true || m['enc'] == true)
                   ? Icons.lock_outline
-                  : Icons.public),
+                  : (m['plain'] == true ? Icons.lock_open : Icons.public)),
               title: const Text('Info'),
               onTap: () {
                 Navigator.pop(sheet);
@@ -1315,6 +1453,27 @@ class _ChatViewFieldState extends State<ChatViewField> {
                 onTap: () {
                   Navigator.pop(sheet);
                   widget.onForward!(m);
+                },
+              ),
+            // XPRS.md 7.8: our own words can be corrected or withdrawn at any
+            // time; somebody else's only by a moderator or the admin, who are
+            // told which on the row (10.4.1).
+            if (_mayChange(m, outgoing) && widget.onEdit != null)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: Text(outgoing ? 'Edit' : 'Edit as moderator'),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  _startEdit(m);
+                },
+              ),
+            if (_mayChange(m, outgoing) && widget.onUnsend != null)
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: Text(outgoing ? 'Delete for everyone' : 'Remove as moderator'),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  _confirmUnsend(m, mine: outgoing);
                 },
               ),
             if (widget.onHide != null)
@@ -1429,6 +1588,14 @@ class _ChatViewFieldState extends State<ChatViewField> {
           ],
         ),
         actions: [
+          if (m['edited'] == true && widget.onHistory != null)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                widget.onHistory!(m);
+              },
+              child: const Text('Edit history'),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Close'),
@@ -1600,7 +1767,41 @@ class _ChatViewFieldState extends State<ChatViewField> {
     );
   }
 
+  Widget _editBanner(ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+      color: ChatPalette.windowBg,
+      child: Row(
+        children: [
+          const Icon(Icons.edit_outlined, size: 14, color: ChatPalette.accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Editing ${_snippet(_editing!)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Colors.white.withAlpha(180), fontSize: 12),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            tooltip: 'Cancel editing',
+            color: Colors.white.withAlpha(150),
+            visualDensity: VisualDensity.compact,
+            onPressed: _cancelEdit,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _composeBar(ColorScheme cs) {
+    if (_editing != null) {
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        _editBanner(cs),
+        _composeRow(cs),
+      ]);
+    }
     if (_replyingTo != null) {
       return Column(mainAxisSize: MainAxisSize.min, children: [
         _replyBanner(cs),

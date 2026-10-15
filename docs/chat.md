@@ -409,3 +409,39 @@ states it (`sealed` on the decoded delivery row, set by the courier where it
 unseals), because the decoded shape arrives after the body was opened and the
 wapp could otherwise only conclude "clear". A message sent before this default
 keeps the lock it was stored with.
+
+## Correcting and withdrawing what was said (XPRS.md 7.8, 10.4.1)
+
+A message is never overwritten. The room's `messages.body` stays the ORIGINAL
+for good, and every correction, withdrawal and moderator act on it is a row in
+that room's `versions` table, keyed on the packet that made it. What a bubble
+shows is worked out from the two each time it is drawn (`room_resolve` in
+`apps/chat/room.c`), in `ts` order, so the order packets arrived in cannot
+change the answer:
+
+- the author's edits and withdrawal count while nobody with authority has
+  acted, only from the original's own author, and only when later than it;
+- a moderator's or the admin's act counts when its signer outranks the author
+  AS THE AUTHOR WAS at that moment (`hal_xprs_group_role_at`), and from then on
+  the author cannot overrule it, only an equal or higher authority can;
+- a withdrawal that stands destroys the text of every version, here and in the
+  conversation list's preview line, and keeps only the fact it was withdrawn.
+
+Where each piece lives, by who owns the decision:
+
+| | |
+|---|---|
+| composing `edit:` / `r: remove:message` for a 1:1 | core: `XprsSend.message(editOf:)`, `XprsSend.withdraw`, `hal_xprs_edit`, `hal_xprs_withdraw` (sealed as the original was, split, signed, carried and receipted) |
+| the same for a closed group or a room by range | the wapp builds the wire and `hal_xprs_send` signs it, as it posts |
+| verifying a received one | core: `sig` on the delivery row; the courier releases a carried copy only on a VERIFIED withdrawal |
+| moderator acts | core: `XprsGroups` records the live ones in the replay (`moderationOf`, voided moderators dropped, authority judged at the act's `ts`); `hal_xprs_group_moderation` lists them, `hal_xprs_group_moderate` composes one |
+| whether an act binds the author | the wapp, against the original it holds |
+| the lock, `edited`, `edited by moderator X`, the deleted placeholder, Edit / Delete for everyone / history | host: `chat_view_field.dart`, `conversation_store.dart` (`ui.convo.edit`, `ui.convo.history`) |
+
+The host offers moderation on other people's messages only where the row says
+`mod:true`. Editing a message puts its words in the composer under an
+"Editing" banner; sending the words unchanged is not an edit.
+
+Not done: an archiver dropping the text of a packet it holds when a verified
+withdrawal arrives (XPRS.md 7.8.2), and Status and alerts using `edit:` (the
+core's compose and receive halves are generic; only Chat's UI exists).
