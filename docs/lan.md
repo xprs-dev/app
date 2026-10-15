@@ -184,3 +184,36 @@ then no route). That is a coexistence problem in the firmware's radio sharing,
 not in this bearer -- it happens with the LAN bearer removed as well -- but it
 does mean the two bearers are not yet reliably up at the same time on a
 T-Dongle-S3.
+
+## The web chat on a phone (Share)
+
+Drawer, Share. The phone serves a web chat to any browser next to it, the same
+page the ESP32 boards give a visitor on their hotspot. The page is developed in
+the sibling repo `webchat` and bundled gzipped (`assets/web_chat/`, refreshed by
+`tool/sync_web_chat.sh`, drift-checked by `test/web_chat_page_test.dart`).
+
+An Android hotspot cannot show a captive-portal page without root (the OS owns
+its DNS, DHCP and NAT, and a `VpnService` never sees tethered clients), so the
+visitor joins by the Wi-Fi QR and then scans a second QR for the chat URL.
+
+| path | |
+|---|---|
+| `/` | the web chat |
+| `/app`, `/app/xprs-<version>.apk` | the download page and the APK, only when this copy can be handed on; the chat links to it. `/xprs-<version>.apk` and `/xprs.apk` still work |
+| `/api/services`, `/api/xprs/history`, `/api/xprs/send` | the station API the page uses (`lib/services/web_chat_api.dart`) |
+
+The API is an allowlist, not the remote API (which is loopback-only and moves
+bearers). History returns undirected rows of conversation types only: no mail,
+no group traffic. Send takes a wire the visitor signed in the browser, refuses
+anything unsigned, written as this station, forged (when the key is known),
+of a type other than message, status, reaction or identity, for a closed group
+this phone is not in, or faster than a few a second and thirty a minute. What
+it accepts enters through the core's one receive door as heard on `wifi` and is
+aired verbatim, so the rest of the mesh sees the visitor's own signed packet.
+
+Sharing runs under the foreground service until Stop sharing, and the hotspot
+(a `LocalOnlyHotspot`, random SSID and password) with it.
+
+Not done: a visitor's own direct messages (needs the visitor to prove their key
+and, for sealed mail, AES in the page), and a check of how Android clients
+behave on a hotspot with no internet (some may drop it).
