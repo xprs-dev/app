@@ -472,7 +472,7 @@ wire), so each wapp does only what is its own:
 A withdrawn message whose edit history dialog is open loses its words on screen
 at once (`EditHistoryList` listens to the withdrawal).
 
-Not done: an edit of an alert is not announced again, a status picture cannot be
-changed by an edit from the card (the words only), and Alerts keeps the withdrawn
-alert's wire in its small kv ring until that slot is reused (the words are gone
-from memory and from the list at once).
+A correction of somebody else's alert is announced once (tag per correction,
+remembered across restarts), a withdrawal cuts the words out of the wires the
+Alerts ring keeps, and the Status edit box has an attach button for the picture
+(the `file:` token stays in the words: keep it to keep the picture).

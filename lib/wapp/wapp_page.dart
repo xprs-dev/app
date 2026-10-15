@@ -1641,6 +1641,19 @@ class _WappPageState extends State<WappPage>
           textCapitalization: TextCapitalization.sentences,
         ),
         actions: [
+          // A picture rides in the text as its `file:` token: keeping the token
+          // keeps the picture, deleting it removes it, attaching puts another.
+          IconButton(
+            tooltip: 'Attach a picture',
+            icon: const Icon(Icons.attach_file),
+            onPressed: () async {
+              final token = await _attachImageOrVideoToChat();
+              if (token == null || token.isEmpty) return;
+              final t = box.text.trimRight();
+              box.text = t.isEmpty ? token : '$t $token';
+              box.selection = TextSelection.collapsed(offset: box.text.length);
+            },
+          ),
           TextButton(
               onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           FilledButton(
