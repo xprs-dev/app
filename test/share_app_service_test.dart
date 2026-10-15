@@ -19,13 +19,12 @@ void main() {
   final chatGz = Uint8List.fromList(gzip.encode(utf8.encode('<html>the chat</html>')));
   final sent = <String>[];
   WebChatApi api({String? app = '/app'}) => WebChatApi(
-        publicRows: ({sinceMs, untilMs, required types, from, required limit}) =>
+        publicRows: ({sinceMs, untilMs, required types, from, visitor, required limit}) =>
             [
               {'type': 'message', 'from': 'X1ARKL', 'to': '', 'own': false, 'wire': 't:message f:X1ARKL m:hi'},
             ],
         held: (_) => 1,
         receive: sent.add,
-        air: (w) async {},
         mayAir: (_) => true,
         selfCallsign: () => 'X1SELF',
         keyOf: (_) => null,
