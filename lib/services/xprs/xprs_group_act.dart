@@ -152,6 +152,47 @@ class XprsGroupAct {
     return xprsSign(p, scalar);
   }
 
+  /// A moderator's (or the admin's) replacement of somebody's publication
+  /// (XPRS.md 10.4.1): `edit:<id> m:<text>` under `t:moderate`, so the packet
+  /// can never be taken for the author's own. [messageId] is the ORIGINAL's §5
+  /// identifier. Null when it does not fit one packet: a moderation edit
+  /// carries only words and is not split.
+  static XprsPacket? moderateEdit({
+    required String group,
+    required String messageId,
+    required String text,
+    required BigInt scalar,
+    String? signer,
+    int? nowMs,
+  }) {
+    final g = group.trim().toUpperCase();
+    final id = messageId.trim().toLowerCase();
+    if (g.isEmpty || id.isEmpty || text.trim().isEmpty) return null;
+    final p = XprsPacket.parse('t:moderate f:${(signer ?? g).trim().toUpperCase()} '
+        'd:$g ts:${xprsNowTs(nowMs)} edit:$id');
+    if (p == null) return null;
+    final signed = xprsSign(p.with_('m', text), scalar);
+    return signed.fits ? signed : null;
+  }
+
+  /// A moderator's removal (XPRS.md 10.4.1): `r:<id> remove:message`. It asks
+  /// every holder to destroy the text of every version, and nobody can undo it.
+  static XprsPacket? moderateRemove({
+    required String group,
+    required String messageId,
+    required BigInt scalar,
+    String? signer,
+    int? nowMs,
+  }) {
+    final g = group.trim().toUpperCase();
+    final id = messageId.trim().toLowerCase();
+    if (g.isEmpty || id.isEmpty) return null;
+    final p = XprsPacket.parse('t:moderate f:${(signer ?? g).trim().toUpperCase()} '
+        'd:$g ts:${xprsNowTs(nowMs)} r:$id remove:message');
+    if (p == null) return null;
+    return xprsSign(p, scalar);
+  }
+
   static XprsPacket? _act({
     required String group,
     required String signer,

@@ -290,6 +290,8 @@ class WappDelivery {
     String name = '',
     bool obfuscated = false,
     bool sealed = false,
+    String edit = '',
+    String remove = '',
   }) {
     // An XPRS wire is protocol, not correspondence: a `t:...`/`x:...` body
     // that leaked this far is a bug upstream, and it must never surface as a
@@ -343,6 +345,15 @@ class WappDelivery {
         // the core has to say it here or the wapp can only conclude "clear
         // text" and draw every incoming 1:1 with an open lock.
         'sealed': sealed,
+        // XPRS.md 7.8: the §5 identifier of the packet this one CORRECTS
+        // (`edit:`, the original, never an earlier edit), or the one it
+        // WITHDRAWS (`r:` with `remove:message`; then `content` is empty and
+        // the wapp is being told to destroy the text it holds). Empty for an
+        // ordinary message. The core has verified the signature and says so in
+        // `sig`; whether the sender is the ORIGINAL's author is the wapp's to
+        // judge, because the original is in its store and not in the core's.
+        'edit': edit,
+        'remove': remove,
       });
     return engines > 0 ? XprsDelivery.delivered : XprsDelivery.noSubscriber;
   }

@@ -574,4 +574,97 @@ void main() {
           reason: 'the group-signed grant does not stand → roster collapses');
     });
   });
+
+  // XPRS.md 10.4.1: a moderator's or the admin's edit and removal of somebody
+  // else's publication. The replay records those that are in force; whether
+  // one binds the author is the holder's judgement, against roleAt.
+  group('moderating what somebody said (10.4.1)', () {
+    // admin g, moderator X32DVA, member X1PZ4Q, all accepted.
+    void roster() {
+      final ap = _act(g, '2026-08-01_10:00:00', 'grant:X32DVA role:mod');
+      m.offer(ap, nowMs: now);
+      m.offer(
+          _accept('X32DVA', '2026-08-01_10:30:00', xprsIdentifier(ap),
+              role: 'mod'),
+          nowMs: now);
+      final gr = _act(g, '2026-08-01_11:00:00', 'grant:X1PZ4Q');
+      m.offer(gr, nowMs: now);
+      m.offer(_accept('X1PZ4Q', '2026-08-01_11:30:00', xprsIdentifier(gr)),
+          nowMs: now);
+    }
+
+    test('a moderator\'s edit and removal are recorded, with their role', () {
+      roster();
+      m.offer(
+          _act('X32DVA', '2026-08-09_10:00:00',
+              'edit:49e3cd m:[number removed by a moderator]'),
+          nowMs: now);
+      m.offer(_act('X32DVA', '2026-08-09_10:05:00', 'r:abcdef remove:message'),
+          nowMs: now);
+      final acts = m.moderationOf(g);
+      expect(acts.map((a) => a.kind), ['edit', 'remove']);
+      expect(acts[0].target, '49e3cd');
+      expect(acts[0].text, '[number removed by a moderator]');
+      expect(acts[0].signerRole, XprsRole.mod);
+      expect(acts[1].target, 'abcdef', reason: 'a removal names its target in r:');
+    });
+
+    test('the admin signs as the group, and ranks above a moderator', () {
+      roster();
+      m.offer(_act(g, '2026-08-09_10:00:00', 'r:49e3cd remove:message'),
+          nowMs: now);
+      expect(m.moderationOf(g).single.signerRole, XprsRole.admin);
+    });
+
+    test('a member or a stranger moderates nothing', () {
+      roster();
+      m.offer(_act('X1PZ4Q', '2026-08-09_10:00:00', 'edit:49e3cd m:mine now'),
+          nowMs: now);
+      m.offer(_act('X9ZZZZ', '2026-08-09_10:01:00', 'r:49e3cd remove:message'),
+          nowMs: now);
+      expect(m.moderationOf(g), isEmpty);
+    });
+
+    test('authority is judged at the moment of the act', () {
+      roster();
+      // The moderator acts, and is revoked afterwards: the act stands.
+      m.offer(_act('X32DVA', '2026-08-09_10:00:00', 'edit:49e3cd m:fixed'),
+          nowMs: now);
+      m.offer(_act(g, '2026-08-10_10:00:00', 'revoke:X32DVA'), nowMs: now);
+      expect(m.moderationOf(g), hasLength(1));
+      // Acting before being appointed counts for nothing.
+      m.offer(_act('X1PZ4Q', '2026-07-30_10:00:00', 'edit:111111 m:early'),
+          nowMs: now);
+      expect(m.moderationOf(g).map((a) => a.target), ['49e3cd']);
+    });
+
+    test('voiding a moderator takes their acts with them', () {
+      roster();
+      m.offer(_act('X32DVA', '2026-08-09_10:00:00', 'edit:49e3cd m:fixed'),
+          nowMs: now);
+      m.offer(
+          _act(g, '2026-08-10_10:00:00',
+              'revoke:X32DVA since:2026-08-05_00:00:00'),
+          nowMs: now);
+      expect(m.moderationOf(g), isEmpty,
+          reason: 'the version the edit replaced comes back into view');
+    });
+
+    test('roleAt answers for a moment, not for now', () {
+      roster();
+      int at(String when) => DateTime.parse('${when}Z').millisecondsSinceEpoch;
+      expect(m.roleAt(g, 'X32DVA', at('2026-08-01T10:15:00')),
+          isNot(XprsRole.mod), reason: 'appointed, not yet accepted');
+      expect(m.roleAt(g, 'X32DVA', at('2026-08-02T00:00:00')), XprsRole.mod);
+      expect(m.roleAt(g, 'X1PZ4Q', at('2026-08-02T00:00:00')), XprsRole.member);
+      expect(m.roleAt(g, g, at('2026-08-02T00:00:00')), XprsRole.admin);
+      expect(m.roleAt(g, 'X9ZZZZ', at('2026-08-02T00:00:00')), XprsRole.none);
+      // Demoted later: it still says what they were then.
+      m.offer(_act(g, '2026-08-10_10:00:00', 'revoke:X32DVA'), nowMs: now);
+      expect(m.roleAt(g, 'X32DVA', at('2026-08-09T00:00:00')), XprsRole.mod);
+      expect(m.roleAt(g, 'X32DVA', at('2026-08-11T00:00:00')), XprsRole.none);
+      // roleAt never disturbs the cache a normal roster read uses.
+      expect(m.rosterOf(g, nowMs: now).roles['X32DVA'], isNot(XprsRole.mod));
+    });
+  });
 }

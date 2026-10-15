@@ -171,16 +171,27 @@ class XprsSend {
   ///
   /// Returns as soon as the packet exists. Airing it is the publisher's, and
   /// happens after this returns.
-  XprsSendOutcome message(String to, String text, {required bool private}) {
+  ///
+  /// [editOf] makes it a correction (XPRS.md 7.8.1): the §5 identifier of the
+  /// ORIGINAL, never of an earlier edit. Everything else is the same send: the
+  /// edit is sealed the way the original was, split like any message, carried
+  /// and receipted as a packet of its own.
+  XprsSendOutcome message(String to, String text,
+      {required bool private, String editOf = ''}) {
     final self =
         (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim().toUpperCase();
     final dest = to.trim().toUpperCase();
-    if (self.isEmpty || dest.isEmpty || text.isEmpty) {
+    final original = editOf.trim().toLowerCase();
+    if (self.isEmpty ||
+        dest.isEmpty ||
+        text.isEmpty ||
+        (original.isNotEmpty && !_isId(original))) {
       refused++;
       return XprsSendOutcome.malformed;
     }
 
-    var head = XprsPacket.parse('t:message f:$self d:$dest ts:${_now()}');
+    var head = XprsPacket.parse('t:message f:$self d:$dest ts:${_now()}'
+        '${original.isEmpty ? '' : ' edit:$original'}');
     if (head == null) {
       refused++;
       return XprsSendOutcome.malformed;
@@ -239,6 +250,44 @@ class XprsSend {
       foreign: xprsKindOf(dest) == XprsKind.foreign,
     );
   }
+
+  /// Withdraw a message this station sent to [to] (XPRS.md 7.8.2): `r:<id>
+  /// remove:message`, a packet of its own with no body, so nothing in it is
+  /// sealed and nothing in it is readable beyond who and which.
+  ///
+  /// It travels as the original did, to the same `d:`, carried and receipted
+  /// like mail, and a carrier holding the original discards its copy on hearing
+  /// it. The words in it are nobody's to give back afterwards, which is the
+  /// wapp's side of the promise: it destroys its own copy.
+  XprsSendOutcome withdraw(String to, String id) {
+    final self =
+        (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim().toUpperCase();
+    final dest = to.trim().toUpperCase();
+    final target = id.trim().toLowerCase();
+    if (self.isEmpty || dest.isEmpty || !_isId(target)) {
+      refused++;
+      return XprsSendOutcome.malformed;
+    }
+    final head = XprsPacket.parse(
+        't:message f:$self d:$dest ts:${_now()} r:$target remove:message');
+    if (head == null) {
+      refused++;
+      return XprsSendOutcome.malformed;
+    }
+    final built = xprsBuildDirect(head: head, text: '', private: false);
+    if (!built.ok) {
+      refused++;
+      return XprsSendOutcome(
+          form: '', id: '', parts: 0, refusal: built.refusal);
+    }
+    final wid = xprsIdentifier(built.packets.first);
+    unawaited(airDirect(built.packets, dest: dest, id: wid));
+    sent++;
+    return XprsSendOutcome(form: 'm', id: wid, parts: 1);
+  }
+
+  /// A §5 identifier: six lowercase hex characters.
+  static bool _isId(String s) => RegExp(r'^[0-9a-f]{6}$').hasMatch(s);
 
   /// Say [text] to everybody in reach, as an undirected `t:message`.
   ///

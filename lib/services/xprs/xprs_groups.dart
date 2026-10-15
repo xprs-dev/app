@@ -60,7 +60,8 @@ enum XprsRole {
 /// voids part of the record.
 class _Act {
   _Act(this.id, this.signer, this.ts, this.grant, this.revoke, this.role,
-      this.until, this.since, this.hideRef, this.hide, this.accept, this.leave);
+      this.until, this.since, this.hideRef, this.hide, this.accept, this.leave,
+      {this.edit = '', this.remove = '', this.text = ''});
 
   /// Section 5 identifier -- breaks a tie when two acts share a `ts:` (26.4).
   final String id;
@@ -87,11 +88,55 @@ class _Act {
 
   /// `leave:group` -- the member going, signed by them.
   final String leave;
+
+  /// `edit:<id>` -- a moderator's replacement of somebody's publication, the
+  /// §5 identifier of the ORIGINAL (XPRS.md 10.4.1, 7.8.1). The replacement
+  /// text is [text].
+  final String edit;
+
+  /// `remove:message` with `r:` (kept in [hideRef]) naming the target -- a
+  /// moderator's removal, which destroys the text (10.4.1, 7.8.2).
+  final String remove;
+
+  /// The replacement words of an [edit], from `m:`.
+  final String text;
+}
+
+/// A moderator's or the admin's edit or removal of somebody else's publication
+/// (XPRS.md 10.4.1), as the replay found it: signed, in force at its own `ts:`,
+/// not voided. Whether it BINDS the publication's author is a question about
+/// the author's role at that moment, which only the holder of the original can
+/// ask ([XprsGroups.roleAt]).
+class XprsModeration {
+  const XprsModeration(this.id, this.kind, this.target, this.signer,
+      this.signerRole, this.tsMs, this.text);
+
+  /// Section 5 identifier of the act itself.
+  final String id;
+
+  /// `edit` or `remove`.
+  final String kind;
+
+  /// The §5 identifier of the publication it acts on: the original, always.
+  final String target;
+  final String signer;
+
+  /// What the signer was at that moment: [XprsRole.mod] or [XprsRole.admin].
+  final XprsRole signerRole;
+  final int tsMs;
+
+  /// The replacement words, for an `edit`.
+  final String text;
 }
 
 /// The answer for one group at one moment.
 class XprsRoster {
-  XprsRoster(this.roles, this.hidden, this.verified, [this.offers = const {}]);
+  XprsRoster(this.roles, this.hidden, this.verified,
+      [this.offers = const {}, this.moderation = const []]);
+
+  /// The edits and removals of other people's publications that are in force,
+  /// oldest first (XPRS.md 10.4.1).
+  final List<XprsModeration> moderation;
 
   final Map<String, XprsRole> roles;
 
@@ -215,6 +260,9 @@ class XprsGroups {
       (p['hide'] ?? '').trim().toLowerCase(),
       (p['accept'] ?? '').trim().toLowerCase(),
       (p['leave'] ?? '').trim().toLowerCase(),
+      edit: (p['edit'] ?? '').trim().toLowerCase(),
+      remove: (p['remove'] ?? '').trim().toLowerCase(),
+      text: p['m'] ?? '',
     );
 
     final list = _acts.putIfAbsent(group, () {
@@ -408,9 +456,27 @@ class XprsGroups {
         role == XprsRole.admin;
   }
 
+  /// What [callsign] was in [group] at [tsMs] (XPRS.md 10.4: authority is
+  /// judged at the moment of the act, and 10.4.1 compares two roles at the
+  /// moment of a moderator's act). Replays the record as it stood then, so it
+  /// is a walk over the acts, asked when a wapp judges a moderation act and
+  /// never per packet. [XprsRole.none] for somebody the record does not know.
+  XprsRole roleAt(String group, String callsign, int tsMs) {
+    final g = group.trim().toUpperCase();
+    final c = callsign.trim().toUpperCase();
+    if (g.isEmpty || c.isEmpty) return XprsRole.none;
+    if (c == g) return XprsRole.admin;
+    final r = _replay(g, tsMs, true, upTo: tsMs);
+    return r.roles[c] ?? XprsRole.none;
+  }
+
+  /// The edits and removals in force for [group], oldest first.
+  List<XprsModeration> moderationOf(String group, {bool haveKey = true}) =>
+      rosterOf(group, haveKey: haveKey).moderation;
+
   /// Replay the record. Three passes, and they exist so that two
   /// implementations reach the same answer from the same packets (26.4).
-  XprsRoster _replay(String group, int now, bool haveKey) {
+  XprsRoster _replay(String group, int now, bool haveKey, {int? upTo}) {
     final acts = _acts[group] ?? const <_Act>[];
     if (acts.isEmpty) return XprsRoster({}, {}, haveKey);
 
@@ -435,6 +501,9 @@ class XprsGroups {
     for (final a in acts) {
       final from = voids[a.signer];
       if (from != null && a.ts >= from) continue;
+      // The record as it stood at a moment: what an act's authority is judged
+      // against (10.4), and what [roleAt] asks for.
+      if (upTo != null && a.ts > upTo) continue;
       live.add(a);
     }
     live.sort((x, y) {
@@ -459,6 +528,7 @@ class XprsGroups {
     // whatever their status now.
     final roles = <String, XprsRole>{};
     final hidden = <String>{};
+    final moderation = <XprsModeration>[];
     final suspended = <String, int>{}; // callsign -> until
     // Offers awaiting an acceptance: callsign -> the grant that made them.
     final offered = <String, ({String id, XprsRole role, int ts})>{};
@@ -529,19 +599,32 @@ class XprsGroups {
         }
       }
       if (a.hide.isNotEmpty && a.hideRef.isNotEmpty) hidden.add(a.hideRef);
+      // 10.4.1: an edit or a removal of somebody's publication. The authority
+      // gate above already dropped anyone who was neither the admin nor a
+      // moderator AT THIS MOMENT, and the void in PASS A dropped a moderator
+      // the admin withdrew from this moment on.
+      if (a.edit.isNotEmpty && a.text.isNotEmpty) {
+        moderation.add(XprsModeration(a.id, 'edit', a.edit, a.signer,
+            isAdmin ? XprsRole.admin : XprsRole.mod, a.ts, a.text));
+      } else if (a.remove == 'message' && a.hideRef.isNotEmpty) {
+        moderation.add(XprsModeration(a.id, 'remove', a.hideRef, a.signer,
+            isAdmin ? XprsRole.admin : XprsRole.mod, a.ts, ''));
+      }
     }
     for (final c in suspended.keys) {
       roles[c] = XprsRole.none;
     }
     roles[group] = XprsRole.admin;
 
-    if (nextChange != 0) {
-      _nextChange[group] = nextChange;
-    } else {
-      _nextChange.remove(group);
+    if (upTo == null) {
+      if (nextChange != 0) {
+        _nextChange[group] = nextChange;
+      } else {
+        _nextChange.remove(group);
+      }
     }
     return XprsRoster(roles, hidden, haveKey,
-        {for (final e in offered.entries) e.key: e.value.id});
+        {for (final e in offered.entries) e.key: e.value.id}, moderation);
   }
 
   /// The tree the `role:sub` listings make (26.2): each listed group mapped

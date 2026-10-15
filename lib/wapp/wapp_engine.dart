@@ -3915,6 +3915,45 @@ class WappEngine {
       results: [ValueTy.i32],
     );
 
+    // hal_xprs_edit: correct a message this station sent to somebody (XPRS.md
+    // 7.8.1). Exactly hal_xprs_message, plus the identifier of the ORIGINAL it
+    // corrects: the core builds `edit:<id>`, seals it as the original was,
+    // splits and signs it, and airs it as a packet of its own. Same return
+    // codes as hal_xprs_message, and the written id is the EDIT's, which is the
+    // one a receipt will name.
+    final halXprsEdit = WasmFunction(
+      (int toPtr, int toLen, int origPtr, int origLen, int txtPtr, int txtLen,
+          int want, int idOut, int idCap) {
+        final to = _readStr(toPtr, toLen);
+        final orig = _readStr(origPtr, origLen);
+        final text = _readStr(txtPtr, txtLen);
+        if (to.isEmpty || orig.isEmpty || text.isEmpty) return 0;
+        final r = XprsSend.instance
+            .message(to, text, private: want != 0, editOf: orig);
+        if (r.ok && idCap > 0) {
+          _writeBytes(idOut, idCap, Uint8List.fromList(utf8.encode(r.id)));
+        }
+        return r.code;
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32,
+        ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+
+    // hal_xprs_withdraw: withdraw a message this station sent to somebody
+    // (XPRS.md 7.8.2). 0 = aired, -1 = not a valid request. A group or an open
+    // room is withdrawn from by a wire through hal_xprs_send, as it posts.
+    final halXprsWithdraw = WasmFunction(
+      (int toPtr, int toLen, int origPtr, int origLen) {
+        final to = _readStr(toPtr, toLen);
+        final orig = _readStr(origPtr, origLen);
+        if (to.isEmpty || orig.isEmpty) return -1;
+        return XprsSend.instance.withdraw(to, orig).ok ? 0 : -1;
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+
     // hal_xprs_broadcast: say something to EVERYBODY IN REACH.
     //
     // The undirected half of hal_xprs_message, and the last place a wapp was
@@ -4241,6 +4280,93 @@ class WappEngine {
         }
       },
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_moderation(group, out, cap): the edits and removals of
+    // other people's publications that are in force in ONE closed group
+    // (XPRS.md 10.4.1), as a JSON array
+    // `[{"id","kind":"edit"|"remove","target","signer","srole":"mod"|"admin",
+    // "ts":<epoch s>,"text"}]`, oldest first. The core has verified each
+    // signature and judged the signer's authority at the act's own `ts:`, and
+    // left out what the admin voided. Whether an act BINDS the publication's
+    // author is for the holder of the original to judge, with
+    // hal_xprs_group_role_at. Bytes written, negated size if `out` is small.
+    final halXprsGroupModeration = WasmFunction(
+      (int gPtr, int gLen, int outPtr, int outCap) {
+        if (outCap <= 0) return 0;
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        if (g.isEmpty) return 0;
+        final acts = XprsGroups.instance.moderationOf(g);
+        final out = <Map<String, Object>>[
+          for (final a in acts)
+            {
+              'id': a.id,
+              'kind': a.kind,
+              'target': a.target,
+              'signer': a.signer,
+              'srole': a.signerRole == XprsRole.admin ? 'admin' : 'mod',
+              'ts': a.tsMs ~/ 1000,
+              'text': a.text,
+            },
+        ];
+        final bytes = utf8.encode(jsonEncode(out));
+        if (bytes.length > outCap) return -bytes.length;
+        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_role_at(group, call, ts): what a callsign was in a closed
+    // group at a moment (epoch seconds), by replaying the record as it stood
+    // (XPRS.md 10.4). 0 none, 1 invited, 2 member, 3 moderator, 4 admin. The
+    // wapp asks it to compare the author's role with the moderator's when it
+    // judges a moderation act on a publication it holds.
+    final halXprsGroupRoleAt = WasmFunction(
+      (int gPtr, int gLen, int cPtr, int cLen, int ts) {
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        final c = _readStr(cPtr, cLen).trim().toUpperCase();
+        if (g.isEmpty || c.isEmpty) return 0;
+        return switch (XprsGroups.instance.roleAt(g, c, ts * 1000)) {
+          XprsRole.invited => 1,
+          XprsRole.member => 2,
+          XprsRole.mod => 3,
+          XprsRole.admin => 4,
+          _ => 0,
+        };
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_moderate(group, target, text, kind): a moderator's or the
+    // admin's act on somebody else's publication (XPRS.md 10.4.1). kind 1
+    // replaces its text with `text`, kind 2 removes it (the text is ignored).
+    // The core signs as the group when this station is its admin, as itself
+    // when it is a moderator, and refuses anybody else. 0 = aired, -1 = not a
+    // valid request or it did not fit one packet, -2 = not a moderator or the
+    // admin of that group.
+    final halXprsGroupModerate = WasmFunction(
+      (int gPtr, int gLen, int tPtr, int tLen, int xPtr, int xLen, int kind) {
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        final target = _readStr(tPtr, tLen).trim().toLowerCase();
+        final text = xLen > 0 ? _readStr(xPtr, xLen) : '';
+        if (g.isEmpty || target.isEmpty || (kind != 1 && kind != 2)) return -1;
+        if (kind == 1 && text.trim().isEmpty) return -1;
+        try {
+          final r = XprsGroupOps.moderate(g, target,
+              edit: kind == 1 ? text : null);
+          if (r.ok) return 0;
+          return (r.error ?? '').startsWith('only a moderator') ? -2 : -1;
+        } catch (e) {
+          LogService.instance
+              .add('xprs: group moderate failed (${e.runtimeType})');
+          return -1;
+        }
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32,
+        ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
     // hal_xprs_group_folder(parent, nick, out, cap): a folder inside a
@@ -4786,6 +4912,9 @@ class WappEngine {
       WasmImport('hal', 'xprs_group_roster', halXprsGroupRoster),
       WasmImport('hal', 'xprs_group_create', halXprsGroupCreate),
       WasmImport('hal', 'xprs_group_invite', halXprsGroupInvite),
+      WasmImport('hal', 'xprs_group_moderation', halXprsGroupModeration),
+      WasmImport('hal', 'xprs_group_role_at', halXprsGroupRoleAt),
+      WasmImport('hal', 'xprs_group_moderate', halXprsGroupModerate),
       WasmImport('hal', 'xprs_group_accept', halXprsGroupAccept),
       WasmImport('hal', 'xprs_group_folder', halXprsGroupFolder),
       WasmImport('hal', 'xprs_group_picture', halXprsGroupPicture),
@@ -4794,6 +4923,8 @@ class WappEngine {
       WasmImport('hal', 'xprs_redact', halXprsRedact),
       WasmImport('hal', 'xprs_read', halXprsRead),
       WasmImport('hal', 'xprs_message', halXprsMessage),
+      WasmImport('hal', 'xprs_edit', halXprsEdit),
+      WasmImport('hal', 'xprs_withdraw', halXprsWithdraw),
       WasmImport('hal', 'xprs_broadcast', halXprsBroadcast),
       WasmImport('hal', 'xprs_set_pref', halXprsSetPref),
       WasmImport('hal', 'xprs_archive', halXprsArchive),

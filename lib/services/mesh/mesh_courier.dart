@@ -234,6 +234,10 @@ class MeshCourier {
           name: e.p['name'] ?? '',
           obfuscated: e.p.has('xr'),
           sealed: e.p.has('x'),
+          edit: (e.p['edit'] ?? '').trim().toLowerCase(),
+          remove: (e.p['remove'] ?? '').trim().toLowerCase() == 'message'
+              ? (e.p['r'] ?? '').trim().toLowerCase()
+              : '',
           ts: xprsParseTs(e.p['ts']));
       if (!verdict.ok) continue; // still nobody: it stays unmarked
       MeshCourierCounters.redelivered++;
@@ -680,6 +684,13 @@ class MeshCourier {
       }
     }
 
+    // A WITHDRAWAL (XPRS.md 7.8.2) has no body: `r:<id> remove:message`. It is
+    // handled before the body is read, because everything below is about
+    // somebody's words and this packet carries none.
+    if ((p['remove'] ?? '').trim().toLowerCase() == 'message') {
+      return _deliverWithdrawal(f, p, via: via, sigState: sigState);
+    }
+
     // The body, in whichever form it arrived (section 9.2: `x:` sealed, `m:`
     // plain — read off the wire, never from remembered state).
     final read = xprsReadBody(p, senderKeyHex: senderNpub);
@@ -895,6 +906,9 @@ class MeshCourier {
         // the packet is right here and the wapp never sees it.
         obfuscated: p.has('xr'),
         sealed: wasSealed,
+        // 7.8.1: a correction names its ORIGINAL; the wapp decides whether its
+        // sender may correct that one (it holds the original, we do not).
+        edit: (p['edit'] ?? '').trim().toLowerCase(),
         ts: xprsParseTs(p['ts']));
 
     // DELIVERY IS NOT A SEND (2026-09-16). This door is the one moment the
@@ -952,6 +966,47 @@ class MeshCourier {
     // `delivered 0` after a day of delivering. The session lane counts itself
     // (mesh_custody `msgReceived`), so only the air path is counted here.
     if (via != 'custody') MeshCustodyCounters.delivered++;
+    return true;
+  }
+
+  /// Hand a verified withdrawal to the wapp, and let go of any copy we hold.
+  ///
+  /// XPRS.md 7.8.2: a carrier holding the original for delivery discards it on
+  /// hearing a verified withdrawal, as it does on a verified receipt (9.7.1), so
+  /// a message that has not been delivered is really unsent. Only a VERIFIED
+  /// one releases anything: an unsigned withdrawal is a way to delete other
+  /// people's mail, which is exactly what section 9.7.1 says about receipts.
+  /// The wapp is still told either way, with the verdict in `sig`, and judges
+  /// whether the sender wrote the original.
+  bool _deliverWithdrawal(MeshFrame f, XprsPacket p,
+      {required String via, required XprsSigState sigState}) {
+    final target = (p['r'] ?? '').trim().toLowerCase();
+    if (!RegExp(r'^[0-9a-f]{6}$').hasMatch(target)) return false;
+    if (sigState == XprsSigState.verified) {
+      final dropped = MeshStore.instance.purgeAm(target);
+      if (dropped > 0) {
+        LogService.instance.add('Courier: withdrawal from ${f.from} released '
+            '$dropped held copy of $target');
+      }
+    }
+    final verdict = WappDelivery.instance.deliverMessage(
+        call: f.from,
+        content: '',
+        bearer: via,
+        id: xprsIdentifier(p),
+        sig: sigState.name,
+        remove: target,
+        ts: xprsParseTs(p['ts']));
+    if (!verdict.ok) {
+      MeshCourierCounters.undelivered++;
+      if (verdict == XprsDelivery.noSubscriber) _queueUndelivered(p, via);
+      _noteUndelivered(f.from, verdict);
+      return false;
+    }
+    _noteDelivered(f.id);
+    _noteDelivered(xprsIdentifier(p));
+    MeshCourierCounters.ingested++;
+    _acknowledge(p, via);
     return true;
   }
 

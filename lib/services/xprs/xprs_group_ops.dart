@@ -200,6 +200,45 @@ class XprsGroupOps {
               until: until,
               since: since));
 
+  /// A moderator's or the admin's act on somebody else's publication (XPRS.md
+  /// 10.4.1): [edit] replaces its text, [remove] destroys it.
+  ///
+  /// Signed with the group key when this station holds it (the admin), else by
+  /// this station itself when its own role in the group is moderator. Anybody
+  /// else is refused here as every receiver would refuse it. Whether the act
+  /// BINDS the publication's author is the receivers' judgement, made against
+  /// the author's role at the act's `ts:`.
+  static XprsGroupOpResult moderate(String group, String messageId,
+      {String? edit}) {
+    final g = group.trim().replaceFirst('#', '').toUpperCase();
+    final groupScalar = XprsGroupKeys.instance.scalarFor(g);
+    BigInt? scalar;
+    String? signer;
+    if (groupScalar != null) {
+      scalar = groupScalar; // the admin: the group signs as itself
+    } else {
+      final me = XprsArchive.instance.selfCallsign.trim().toUpperCase();
+      final role = XprsGroups.instance.rosterOf(g).roles[me];
+      if (role != XprsRole.mod) {
+        return XprsGroupOpResult.failed(
+            'only a moderator or the admin of $g can do that');
+      }
+      scalar = xprsProfileScalar();
+      signer = me;
+      if (scalar == null) return const XprsGroupOpResult.failed('no profile open');
+    }
+    final p = edit == null
+        ? XprsGroupAct.moderateRemove(
+            group: g, messageId: messageId, scalar: scalar, signer: signer)
+        : XprsGroupAct.moderateEdit(
+            group: g,
+            messageId: messageId,
+            text: edit,
+            scalar: scalar,
+            signer: signer);
+    return _finish(p);
+  }
+
   /// The member's own half (26.3.1), signed with the PROFILE key — the person
   /// speaking for themselves, not the group speaking about them.
   ///
