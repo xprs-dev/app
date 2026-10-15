@@ -742,6 +742,11 @@ class PreferencesService {
     // no page) and it subscribes to nothing at all until a thing is watched,
     // so the cost of it for somebody who watches nothing is its memory.
     'things',
+    // A warning about the place you just walked into (XPRS.md 25.3) is given
+    // once, by the station there, while the phone is in a pocket. Clockless
+    // (`module_tick_interval_ms()` is 0) and it wakes only on `xprs.warning`
+    // and `xprs.info`, which carry safety traffic and notices, not chatter.
+    'alerts',
   };
   bool getWappAutostart(String wappId) =>
       _prefs.getBool('wapp.autostart.$wappId') ??

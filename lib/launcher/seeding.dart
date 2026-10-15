@@ -329,7 +329,7 @@ Future<int> _seedDefaultsFromFilesystem() async {
 /// the upgrade pass only touches already-installed wapps. So backfill each of
 /// these exactly ONCE per profile, recorded in `.seeded.json['offered']` so a
 /// wapp the user later uninstalls is never resurrected.
-const _kBackfillDefaults = {'mp4player', 'mesh', 'firmwares'};
+const _kBackfillDefaults = {'mp4player', 'mesh', 'firmwares', 'alerts'};
 
 /// Install any [_kBackfillDefaults] not yet offered to this profile. Runs every
 /// launch (cheap: a marker read + a set check). Returns the count installed.
