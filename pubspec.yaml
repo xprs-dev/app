@@ -118,6 +118,9 @@ flutter:
     # be seeded on devices where the in-repo ../apps library isn't present
     # (Android/iOS, packaged desktop). See lib/launcher/seeding.dart.
     - assets/wapps/
+    # The web chat a visitor gets from the share server (built in ../webchat,
+    # refreshed by tool/sync_web_chat.sh).
+    - assets/web_chat/
     # Built-in wapp editor, installed to storage on boot (see
     # lib/editor/editor_install.dart). Each subdir is listed explicitly —
     # Flutter does not recurse into nested asset folders.

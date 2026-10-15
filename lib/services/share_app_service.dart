@@ -1,5 +1,5 @@
 /*
- * Share app: hand this installed APK to a nearby Android phone.
+ * Share: the web chat and this installed APK, for a nearby phone.
  *
  * The sending phone serves its own APK over plain HTTP on the local network
  * (an offline LocalOnlyHotspot when the two phones share no Wi-Fi), and the

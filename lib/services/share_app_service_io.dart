@@ -11,19 +11,29 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'log_service.dart';
+import 'mesh/mesh_service.dart';
+import 'receive/packet_gateway.dart';
 import 'share_app_types.dart';
+import 'web_chat_api.dart';
+import '../wapp/android_foreground_service.dart';
+import 'xprs/xprs_archive.dart';
+import 'xprs/xprs_publisher.dart';
 
 export 'share_app_types.dart';
 
 class ShareAppService {
   ShareAppService._() {
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'hotspotStopped') hotspotUp.value = false;
+      if (call.method == 'hotspotStopped') {
+        hotspotUp.value = false;
+        hotspot = null;
+      }
     });
   }
   static final ShareAppService instance = ShareAppService._();
@@ -37,12 +47,28 @@ class ShareAppService {
   final ValueNotifier<int> downloads = ValueNotifier<int>(0);
   final ValueNotifier<bool> hotspotUp = ValueNotifier<bool>(false);
 
+  /// The hotspot this service started, while it is up, so the page can show
+  /// its QR again after the person left it and came back.
+  ShareHotspot? hotspot;
+
+  /// The web chat page, built in the `webchat` repo and bundled gzipped.
+  static const String chatAsset = 'assets/web_chat/chat_page.html.gz';
+
   HttpServer? _server;
+  WebChatApi? _api;
+  Uint8List? _chatGz;
   String _apkPath = '';
   String _version = '';
   String _abi = '';
 
   bool get running => _server != null;
+
+  /// Whether this copy can be handed on as one file.
+  bool get apkShareable => _apkPath.isNotEmpty;
+
+  /// Visitors that have reached the web chat since it started.
+  int get visitors => _api?.visitors.length ?? 0;
+  final ValueNotifier<int> visitorCount = ValueNotifier<int>(0);
   int get port => _server?.port ?? 0;
   String get apkName => 'xprs-$_version.apk';
 
@@ -64,7 +90,7 @@ class ShareAppService {
       final ssid = m?['ssid'] as String? ?? '';
       if (ssid.isEmpty) throw const ShareAppException('generic');
       hotspotUp.value = true;
-      return ShareHotspot(
+      return hotspot = ShareHotspot(
         ssid: ssid,
         psk: m?['psk'] as String? ?? '',
         security: m?['security'] as String? ?? 'WPA',
@@ -78,23 +104,34 @@ class ShareAppService {
 
   Future<void> stopHotspot() async {
     hotspotUp.value = false;
+    hotspot = null;
     try {
       await _channel.invokeMethod<void>('stopHotspot');
     } catch (_) {}
   }
 
-  /// Start serving [apkPath]. Returns the port. [port] is for tests; the page
-  /// leaves it null and gets [preferredPort] when it is free.
+  /// Start serving: the web chat at `/`, its API under `/api/`, and, when
+  /// [apkPath] names one, this app's APK under `/app`. Returns the port.
+  /// [port], [api] and [chatPageGz] are for tests; the page leaves them null
+  /// and gets [preferredPort] when it is free, the live API and the bundled
+  /// page.
   Future<int> start({
-    required String apkPath,
-    required String version,
+    String apkPath = '',
+    String version = '',
     String abi = '',
     int? port,
+    WebChatApi? api,
+    Uint8List? chatPageGz,
   }) async {
     _apkPath = apkPath;
     _version = version;
     _abi = abi;
     if (_server != null) return _server!.port;
+    _api = api ?? _liveApi();
+    visitorCount.value = 0;
+    _api!.onVisitors = (n) => visitorCount.value = n;
+    _chatGz = chatPageGz ??
+        (await rootBundle.load(chatAsset)).buffer.asUint8List();
     HttpServer server;
     try {
       server = await HttpServer.bind(
@@ -108,13 +145,43 @@ class ShareAppService {
     _server = server;
     downloads.value = 0;
     server.listen(_handle, onError: (_) {});
+    // Sharing outlives the page: a visitor chats with the screen off. The
+    // foreground service holds the process until [stop] releases it.
+    unawaited(AndroidForegroundService.instance.hold(_holder));
     LogService.instance.add('share-app: serving on port ${server.port}');
     return server.port;
+  }
+
+  /// The API a visitor's browser gets, wired to the core: what it posts goes
+  /// through the one receive door (as heard on the hotspot, `wifi`) and is
+  /// aired verbatim; what it reads is the archive's undirected rows.
+  WebChatApi _liveApi() => WebChatApi(
+        publicRows: archivePublicRows,
+        held: (t) => XprsArchive.instance.countOf(types: t, undirected: true),
+        receive: (w) => PacketGateway.instance.receive(
+            Uint8List.fromList(utf8.encode(w)),
+            bearer: 'wifi', lane: RxLane.datagram),
+        air: (w) async {
+          await XprsPublisher.instance.publishWire(w, verbatim: true);
+        },
+        mayAir: XprsPublisher.instance.mayAir,
+        selfCallsign: () => MeshService.instance.tableCallsign,
+        keyOf: (c) => XprsArchive.instance.keyResolver?.call(c),
+        appPath: () => apkShareable ? '/app' : null,
+      );
+
+  static const String _holder = 'share';
+
+  /// Stop serving, release the process and take the hotspot down.
+  Future<void> stopSharing() async {
+    await stop();
+    await stopHotspot();
   }
 
   Future<void> stop() async {
     final s = _server;
     _server = null;
+    unawaited(AndroidForegroundService.instance.release(_holder));
     if (s != null) {
       await s.close(force: true);
       LogService.instance.add('share-app: stopped');
@@ -155,12 +222,22 @@ class ShareAppService {
     final res = req.response;
     try {
       final path = req.uri.path;
-      final isApk = path == '/$apkName' || path == '/xprs.apk';
-      if ((req.method == 'GET' || req.method == 'HEAD') && path == '/') {
+      final read = req.method == 'GET' || req.method == 'HEAD';
+      final isApk = apkShareable &&
+          (path == '/app/$apkName' ||
+              path == '/$apkName' ||
+              path == '/xprs.apk');
+      if (read && path == '/') {
+        await _serveChat(req);
+        return;
+      } else if (read && apkShareable && (path == '/app' || path == '/app/')) {
         res.headers.contentType = ContentType.html;
         res.write(_page());
-      } else if ((req.method == 'GET' || req.method == 'HEAD') && isApk) {
+      } else if (read && isApk) {
         await _serveApk(req);
+        return;
+      } else if (path.startsWith('/api/') && _api != null) {
+        await _serveApi(req);
         return;
       } else {
         res.statusCode = HttpStatus.notFound;
@@ -171,6 +248,50 @@ class ShareAppService {
         await res.close();
       } catch (_) {}
     }
+  }
+
+  /// The web chat page, gzipped as bundled, or inflated for a client that
+  /// does not say it takes gzip.
+  Future<void> _serveChat(HttpRequest req) async {
+    final res = req.response;
+    final gz = _chatGz!;
+    final takesGzip = (req.headers.value(HttpHeaders.acceptEncodingHeader) ?? '')
+        .toLowerCase()
+        .contains('gzip');
+    final body = takesGzip ? gz : Uint8List.fromList(gzip.decode(gz));
+    res.headers
+      ..contentType = ContentType('text', 'html', charset: 'utf-8')
+      ..contentLength = body.length
+      ..set(HttpHeaders.cacheControlHeader, 'no-cache');
+    if (takesGzip) res.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
+    if (req.method != 'HEAD') res.add(body);
+    await res.close();
+  }
+
+  /// `/api/*` for the web chat: a small body at most, answered as JSON.
+  Future<void> _serveApi(HttpRequest req) async {
+    final res = req.response;
+    var body = '';
+    if (req.method == 'POST') {
+      if (req.contentLength > 8192) {
+        res.statusCode = HttpStatus.requestEntityTooLarge;
+        await res.close();
+        return;
+      }
+      body = await utf8.decoder.bind(req).join();
+    }
+    final reply = await _api!.handle(req.method, req.uri.path,
+        req.uri.queryParameters, body,
+        peer: req.connectionInfo?.remoteAddress.address ?? '');
+    final bytes = utf8.encode(jsonEncode(reply.json));
+    res
+      ..statusCode = reply.status
+      ..headers.contentType = ContentType.json
+      ..headers.set('Access-Control-Allow-Origin', '*')
+      ..headers.set(HttpHeaders.connectionHeader, 'close')
+      ..contentLength = bytes.length
+      ..add(bytes);
+    await res.close();
   }
 
   Future<void> _serveApk(HttpRequest req) async {
@@ -238,7 +359,7 @@ ol{text-align:left;max-width:420px;margin:0 auto;line-height:1.5}
 </style></head><body>
 <h1>XPRS</h1>
 <p>Version $v</p>
-<a class="b" href="/$name">Download</a>
+<a class="b" href="/app/$name">Download</a>
 $abi
 <ol>
 <li>Tap Download and wait for it to finish.</li>

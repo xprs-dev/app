@@ -9,13 +9,14 @@ import '../services/android_permissions_service.dart';
 import '../services/share_app_service.dart';
 import '../version.dart';
 
-/// Drawer -> Share app: give this app to a nearby Android phone.
+/// Drawer -> Share: let a nearby phone chat with this one, and give it the app.
 ///
-/// The phone serves its own installed APK over HTTP on the local network
-/// (ShareAppService) for as long as this page is open. The other phone joins
-/// the same network, by scanning the hotspot QR when there is no Wi-Fi the two
-/// have in common, then scans the download QR and installs from its browser.
-/// No internet, store or cable involved.
+/// The phone serves, over HTTP on the local network (ShareAppService), the web
+/// chat at `/` (any browser, nothing to install) and, when this copy can be
+/// handed on, its own APK under `/app` (the chat links to it). The other phone
+/// joins the same network, by scanning the hotspot QR when there is no Wi-Fi
+/// the two have in common, then scans the chat QR. No internet, store or cable
+/// involved.
 class ShareAppPage extends StatefulWidget {
   const ShareAppPage({super.key});
 
@@ -49,8 +50,8 @@ class _ShareAppPageState extends State<ShareAppPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _svc.hotspotUp.removeListener(_onHotspotChanged);
-    unawaited(_svc.stop());
-    unawaited(_svc.stopHotspot());
+    // Sharing keeps running after the page closes (the person put the phone
+    // down and the other one is chatting); "Stop sharing" ends it.
     super.dispose();
   }
 
@@ -71,22 +72,23 @@ class _ShareAppPageState extends State<ShareAppPage>
   Future<void> _boot() async {
     try {
       final apk = await _svc.apkInfo();
-      if (apk == null || !apk.shareable) {
+      if (apk == null) {
         setState(() {
-          _apk = apk;
           _loading = false;
-          _fatal = apk == null
-              ? 'Sharing the app works on Android only.'
-              : 'This copy was installed from an app store as several '
-                  'pieces, so it cannot be handed on as one file. Install '
-                  'XPRS from F-Droid or the XPRS website to share it.';
+          _fatal = 'Sharing works on Android only.';
         });
         return;
       }
-      await _svc.start(apkPath: apk.path, version: kAppVersion, abi: apk.abi);
+      // The chat does not need the APK: a copy installed from a store in
+      // pieces cannot be handed on, and can still host the chat.
+      await _svc.start(
+          apkPath: apk.shareable ? apk.path : '',
+          version: kAppVersion,
+          abi: apk.abi);
       final addrs = await _svc.localAddresses();
       if (!mounted) return;
       setState(() {
+        _hotspot = _svc.hotspot;
         _apk = apk;
         _addrs = addrs;
         _loading = false;
@@ -176,8 +178,17 @@ class _ShareAppPageState extends State<ShareAppPage>
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Share app'),
+        title: const Text('Share'),
         actions: [
+          if (_fatal == null && !_loading)
+            IconButton(
+              tooltip: 'Stop sharing',
+              icon: const Icon(Icons.stop_circle_outlined),
+              onPressed: () async {
+                await _svc.stopSharing();
+                if (mounted) Navigator.of(context).maybePop();
+              },
+            ),
           if (_fatal == null && !_loading)
             IconButton(
               tooltip: 'Refresh',
@@ -194,20 +205,23 @@ class _ShareAppPageState extends State<ShareAppPage>
                   ? [_card(cs, _text(cs, _fatal!))]
                   : [
                       Text(
-                        'Give XPRS to an Android phone next to you. This '
-                        'phone hands out its own copy while this page is '
-                        'open; no internet is needed.',
+                        'Let a phone next to you chat with this one from its '
+                        'browser, and give it the app. This phone keeps '
+                        'serving both until you stop sharing; no internet is '
+                        'needed.',
                         style: TextStyle(color: cs.onSurfaceVariant),
                       ),
                       const SizedBox(height: 20),
                       _header(context, '1. Same network'),
                       _card(cs, _networkStep(cs)),
                       const SizedBox(height: 20),
-                      _header(context, '2. Download'),
-                      _card(cs, _downloadStep(cs)),
-                      const SizedBox(height: 20),
-                      _header(context, '3. Install'),
-                      _card(cs, _installStep(cs)),
+                      _header(context, '2. Web chat'),
+                      _card(cs, _chatStep(cs)),
+                      if (_svc.apkShareable) ...[
+                        const SizedBox(height: 20),
+                        _header(context, '3. The app'),
+                        _card(cs, _appStep(cs)),
+                      ],
                     ],
             ),
     );
@@ -267,7 +281,7 @@ class _ShareAppPageState extends State<ShareAppPage>
     );
   }
 
-  Widget _downloadStep(ColorScheme cs) {
+  Widget _chatStep(ColorScheme cs) {
     if (_addrs.isEmpty) {
       return _text(cs,
           'This phone is not on any Wi-Fi or hotspot yet. Finish step 1, '
@@ -292,6 +306,39 @@ class _ShareAppPageState extends State<ShareAppPage>
             '${_addrs.skip(1).map((a) => 'http://$a:${_svc.port}/').join('  ')}',
             small: true),
       ValueListenableBuilder<int>(
+        valueListenable: _svc.visitorCount,
+        builder: (_, n, _) => _text(
+            cs,
+            n == 0
+                ? 'Waiting for a visitor'
+                : n == 1
+                    ? 'One visitor'
+                    : '$n visitors',
+            small: true),
+      ),
+    ]);
+  }
+
+  Widget _appStep(ColorScheme cs) {
+    final apk = _apk;
+    final mb = apk == null ? '' : ' (${(apk.size / 1e6).toStringAsFixed(0)} MB)';
+    if (_addrs.isEmpty) {
+      return _text(cs, 'Finish step 1 first.');
+    }
+    final url = 'http://${_addrs.first}:${_svc.port}/app';
+    return Column(children: [
+      _text(cs,
+          'The chat page links to it. To skip the chat, scan this and tap '
+          'Download$mb, then open the file; if Android asks, allow the '
+          'browser to install apps and tap Install.'),
+      _qr(url),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+        child: SelectableText(url,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 16)),
+      ),
+      ValueListenableBuilder<int>(
         valueListenable: _svc.downloads,
         builder: (_, n, _) => _text(
             cs,
@@ -302,26 +349,13 @@ class _ShareAppPageState extends State<ShareAppPage>
                     : 'Downloaded $n times',
             small: true),
       ),
+      if (apk != null && apk.abi.isNotEmpty)
+        _text(
+            cs,
+            'This copy is built for ${apk.abi} phones; a much older phone '
+            'may refuse it.',
+            small: true),
     ]);
-  }
-
-  Widget _installStep(ColorScheme cs) {
-    final apk = _apk;
-    final mb = apk == null ? '' : ' (${(apk.size / 1e6).toStringAsFixed(0)} MB)';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _text(cs,
-            'Tap Download on the page that opens$mb, then open the file. If '
-            'Android asks, allow the browser to install apps and tap Install.'),
-        if (apk != null && apk.abi.isNotEmpty)
-          _text(
-              cs,
-              'This copy is built for ${apk.abi} phones; a much older phone '
-              'may refuse it.',
-              small: true),
-      ],
-    );
   }
 
   Widget _qr(String data) => Padding(

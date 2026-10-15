@@ -27,11 +27,18 @@ class ShareAppService {
   Future<ShareHotspot> startHotspot() async =>
       throw const ShareAppException('unsupported');
   Future<void> stopHotspot() async {}
+  ShareHotspot? hotspot;
+  Future<void> stopSharing() async {}
+  bool get apkShareable => false;
+  int get visitors => 0;
+  final ValueNotifier<int> visitorCount = ValueNotifier<int>(0);
   Future<int> start(
-          {required String apkPath,
-          required String version,
+          {String apkPath = '',
+          String version = '',
           String abi = '',
-          int? port}) async =>
+          int? port,
+          Object? api,
+          Object? chatPageGz}) async =>
       throw const ShareAppException('unsupported');
   Future<void> stop() async {}
   Future<List<String>> localAddresses() async => const [];

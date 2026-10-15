@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xprs/services/share_app_service.dart';
+import 'package:xprs/services/web_chat_api.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +16,21 @@ void main() {
   late File apk;
   final svc = ShareAppService.instance;
   final bytes = List<int>.generate(100000, (i) => i % 251);
+  final chatGz = Uint8List.fromList(gzip.encode(utf8.encode('<html>the chat</html>')));
+  final sent = <String>[];
+  WebChatApi api({String? app = '/app'}) => WebChatApi(
+        publicRows: ({sinceMs, untilMs, required types, from, required limit}) =>
+            [
+              {'type': 'message', 'from': 'X1ARKL', 'to': '', 'own': false, 'wire': 't:message f:X1ARKL m:hi'},
+            ],
+        held: (_) => 1,
+        receive: sent.add,
+        air: (w) async {},
+        mayAir: (_) => true,
+        selfCallsign: () => 'X1SELF',
+        keyOf: (_) => null,
+        appPath: () => app,
+      );
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('share_app_test');
@@ -38,14 +56,19 @@ void main() {
 
   test('serves the page, the apk, a resumed range, and nothing else', () async {
     final port = await svc.start(
-        apkPath: apk.path, version: '9.9.9', abi: 'arm64-v8a', port: 0);
+        apkPath: apk.path,
+        version: '9.9.9',
+        abi: 'arm64-v8a',
+        port: 0,
+        api: api(),
+        chatPageGz: chatGz);
 
-    final page = await get(port, '/');
+    final page = await get(port, '/app');
     expect(page.statusCode, 200);
     final html = String.fromCharCodes(await body(page));
-    expect(html, contains('href="/xprs-9.9.9.apk"'));
+    expect(html, contains('href="/app/xprs-9.9.9.apk"'));
 
-    final full = await get(port, '/xprs-9.9.9.apk');
+    final full = await get(port, '/app/xprs-9.9.9.apk');
     expect(full.statusCode, 200);
     expect(full.headers.contentType?.mimeType,
         'application/vnd.android.package-archive');
@@ -58,13 +81,18 @@ void main() {
     }
     expect(svc.downloads.value, 1);
 
-    final part = await get(port, '/xprs-9.9.9.apk',
+    // The addresses already handed out keep working.
+    final legacy = await get(port, '/xprs-9.9.9.apk');
+    expect(legacy.statusCode, 200);
+    expect(await body(legacy), bytes);
+
+    final part = await get(port, '/app/xprs-9.9.9.apk',
         headers: {'range': 'bytes=99000-'});
     expect(part.statusCode, 206);
     expect(part.headers.value('content-range'), 'bytes 99000-99999/100000');
     expect(await body(part), bytes.sublist(99000));
 
-    final bad = await get(port, '/xprs-9.9.9.apk',
+    final bad = await get(port, '/app/xprs-9.9.9.apk',
         headers: {'range': 'bytes=200000-'});
     expect(bad.statusCode, 416);
     await body(bad);
@@ -72,6 +100,49 @@ void main() {
     final other = await get(port, '/etc/passwd');
     expect(other.statusCode, 404);
     await body(other);
+  });
+
+  test('the root is the web chat, gzipped or not as the client asks', () async {
+    final port = await svc.start(port: 0, api: api(app: null), chatPageGz: chatGz);
+    final raw = HttpClient()..autoUncompress = false;
+    final rq = await raw.get('127.0.0.1', port, '/');
+    rq.headers.set('accept-encoding', 'gzip');
+    final z = await rq.close();
+    expect(z.statusCode, 200);
+    expect(z.headers.value('content-encoding'), 'gzip');
+    expect(utf8.decode(gzip.decode(await body(z))), '<html>the chat</html>');
+    final pq = await raw.get('127.0.0.1', port, '/');
+    pq.headers.set('accept-encoding', 'identity');
+    final plain = await pq.close();
+    expect(plain.headers.value('content-encoding'), isNull);
+    expect(utf8.decode(await body(plain)), '<html>the chat</html>');
+  });
+
+  test('a copy that cannot be handed on still hosts the chat, with no /app',
+      () async {
+    final port = await svc.start(port: 0, api: api(app: null), chatPageGz: chatGz);
+    expect(svc.apkShareable, isFalse);
+    final r = await get(port, '/app');
+    expect(r.statusCode, 404);
+    await body(r);
+    final s = await get(port, '/api/services');
+    final j = jsonDecode(utf8.decode(await body(s))) as Map;
+    expect((j['page'] as Map).containsKey('app'), isFalse);
+  });
+
+  test('the api answers under /api and nothing else leaks', () async {
+    final port = await svc.start(
+        apkPath: apk.path, version: '1', port: 0, api: api(), chatPageGz: chatGz);
+    final s = await get(port, '/api/services');
+    final j = jsonDecode(utf8.decode(await body(s))) as Map;
+    expect((j['page'] as Map)['app'], '/app');
+    final h = await get(port, '/api/xprs/history?kind=message');
+    final hj = jsonDecode(utf8.decode(await body(h))) as Map;
+    expect((hj['rows'] as List).single['from'], 'X1ARKL');
+    final nope = await get(port, '/api/xprs/bearers');
+    expect(nope.statusCode, 404, reason: 'the remote api is not mounted here');
+    await body(nope);
+    expect(svc.visitors, 1);
   });
 
   test('wifi QR escapes special characters', () {

@@ -933,15 +933,21 @@ class XprsArchive {
   /// out-of-memory on a busy archiver looks like from the inside
   /// (docs/performance.md 4.2: the drains are cheap calls in hot loops, not
   /// expensive algorithms).
-  int countOf({List<String>? types}) {
+  ///
+  /// [undirected] counts only what carries no `d:` (publications), which is
+  /// all a stranger on a hotspot may be told the size of.
+  int countOf({List<String>? types, bool undirected = false}) {
     final db = _db;
     if (db == null) return 0;
+    final open = undirected ? " AND toc = ''" : '';
     if (types == null || types.isEmpty) {
-      return db.select('SELECT COUNT(*) c FROM packets').first['c'] as int;
+      return db
+          .select('SELECT COUNT(*) c FROM packets WHERE 1=1$open')
+          .first['c'] as int;
     }
     final marks = List.filled(types.length, '?').join(',');
     return db.select(
-        'SELECT COUNT(*) c FROM packets WHERE type IN ($marks)',
+        'SELECT COUNT(*) c FROM packets WHERE type IN ($marks)$open',
         types).first['c'] as int;
   }
 
