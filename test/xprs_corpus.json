@@ -160,6 +160,11 @@
 "id": "399227"
 },
 {
+"wire": "t:message f:X1QZ3N d:LISBOA ts:2026-08-08_14:26:40 sig:QPxg^#t7^xDBU$s1pg.d.u^UZ$B0qYj%c.(I[)FY?%WouV6?)^xS[jf,ftorZ=$fRs>JwXM_GfY&bYO@ m:net starts in ten minutes",
+"bytes": 163,
+"id": "399227"
+},
+{
 "wire": "t:message f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 x:pQ4m9xT2vB8kR sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 131,
 "id": "2ed212"

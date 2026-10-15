@@ -24,6 +24,7 @@ import '../../util/xprs_crypto.dart';
 import '../../util/nostr_crypto.dart';
 import 'xprs_id.dart';
 import 'xprs_packet.dart';
+import 'xprs_vocab.dart' show xprsParseTs;
 
 /// How a receiver should present the authorship of a packet (section 9.1).
 enum XprsSigState {
@@ -58,6 +59,36 @@ Uint8List xprsSignedDigest(XprsPacket p) =>
 XprsPacket xprsSign(XprsPacket p, BigInt d) =>
     p.with_('sig', XprsCrypto.b85encode(XprsCrypto.sign(xprsSignedDigest(p), d)));
 
+/// The NOSTR event kind XPRS.md 6.1.3 gives to a packet signature.
+const int kXprsNostrKind = 24767;
+
+/// The id of the NOSTR event a 6.1.3 signature is over, rebuilt from the
+/// packet: `[0, "<px>", <ts as epoch seconds>, 24767, [], "<digest hex>"]`
+/// hashed with sha256. Null when the packet has no usable `ts:`, because this
+/// form needs a time and a packet without one cannot use it.
+Uint8List? xprsNostrEventId(XprsPacket p, Uint8List pubXonly) {
+  final ms = xprsParseTs(p['ts']);
+  if (ms == null) return null;
+  final event = jsonEncode([
+    0,
+    HEX.encode(pubXonly),
+    ms ~/ 1000,
+    kXprsNostrKind,
+    <Object>[],
+    HEX.encode(xprsSignedDigest(p)),
+  ]);
+  return NostrCrypto.sha256Bytes(Uint8List.fromList(utf8.encode(event)));
+}
+
+/// Sign [p] in the second form (6.1.3) with [d]: what a NOSTR signer produces
+/// for it. For tests and tools; a station that holds its key signs with
+/// [xprsSign], and a browser extension makes this one itself.
+XprsPacket xprsSignNostr(XprsPacket p, BigInt d, {Uint8List? aux}) {
+  final id = xprsNostrEventId(p, XprsCrypto.publicKeyXOnly(d));
+  if (id == null) return p;
+  return p.with_('sig', XprsCrypto.b85encode(XprsCrypto.bip340Sign(id, d, aux: aux)));
+}
+
 /// The private scalar XPRS signs with: the active profile's nsec, decoded.
 ///
 /// Null when there is no profile or the nsec does not decode — the caller
@@ -87,8 +118,13 @@ XprsSigState xprsVerify(XprsPacket p, Uint8List? pubXonly) {
   if (s == null) return XprsSigState.unsigned;
   if (pubXonly == null) return XprsSigState.unverified;
 
+  // Two forms, told apart by length (6.1.3): 60 characters, the short Schnorr
+  // of 6.1.2, and 80, a BIP-340 signature over a NOSTR event. Any other length
+  // is not a signature.
   final sig = XprsCrypto.b85decode(s);
-  if (sig == null || sig.length != 48) return XprsSigState.forged;
+  if (sig == null || (sig.length != 48 && sig.length != 64)) {
+    return XprsSigState.forged;
+  }
 
   // One packet is checked by the archive, by the ingest and by the delivery
   // to wapps, and again for every copy that arrives over another bearer or
@@ -102,9 +138,14 @@ XprsSigState xprsVerify(XprsPacket p, Uint8List? pubXonly) {
     _verdicts[memo] = known;
     return known;
   }
-  final state = XprsCrypto.verify(digest, sig, pubXonly)
-      ? XprsSigState.verified
-      : XprsSigState.forged;
+  final bool good;
+  if (sig.length == 48) {
+    good = XprsCrypto.verify(digest, sig, pubXonly);
+  } else {
+    final id = xprsNostrEventId(p, pubXonly);
+    good = id != null && XprsCrypto.bip340Verify(id, sig, pubXonly);
+  }
+  final state = good ? XprsSigState.verified : XprsSigState.forged;
   if (_verdicts.length >= 512) _verdicts.remove(_verdicts.keys.first);
   _verdicts[memo] = state;
   return state;

@@ -231,5 +231,13 @@ Carrying a visitor's packet on to the other bearers is the bridge's and the
 digipeater's job under the owner's policy and the hop budget, as for any packet
 heard on a bearer (here `wifi`); the host does not air it a second time.
 
+A visitor may also use a NOSTR extension (NIP-07) as the account, so the callsign is
+the same on every station. Packets are then signed in the second form of
+XPRS.md 6.1.3 (80 characters, BIP-340 over a NOSTR event the verifier rebuilds);
+`xprsVerify` (`lib/services/xprs/xprs_sig.dart`) checks both forms by the length
+of `sig:`, and the session proof, the identity and every packet from such a
+visitor are accepted the same way. The default for a key the app holds is still
+the 60-character form.
+
 Not checked: how Android clients behave on a hotspot with no internet (some may
 drop it); that needs a second Android phone.
