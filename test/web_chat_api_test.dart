@@ -23,15 +23,14 @@ String _signed(String wire, {BigInt? key}) =>
 
 void main() {
   late List<String> received;
-  late List<String> aired;
   late List<Map<String, dynamic>> asked;
   late DateTime clock;
   Uint8List? known;
   var allow = true;
 
   WebChatApi make() => WebChatApi(
-        publicRows: ({sinceMs, untilMs, required types, from, required limit}) {
-          asked.add({'types': types, 'from': from, 'limit': limit, 'since': sinceMs});
+        publicRows: ({sinceMs, untilMs, required types, from, visitor, required limit}) {
+          asked.add({'types': types, 'from': from, 'limit': limit, 'since': sinceMs, 'visitor': visitor});
           return [
             {'type': 'message', 'from': 'X1AAA', 'to': '', 'own': false, 'wire': 'a'},
             {'type': 'message', 'from': 'X1SELF', 'to': '', 'own': true, 'wire': 'b'},
@@ -39,7 +38,6 @@ void main() {
         },
         held: (t) => 7,
         receive: received.add,
-        air: (w) async => aired.add(w),
         mayAir: (_) => allow,
         selfCallsign: () => 'X1SELF',
         keyOf: (c) => known,
@@ -49,7 +47,6 @@ void main() {
 
   setUp(() {
     received = [];
-    aired = [];
     asked = [];
     known = null;
     allow = true;
@@ -98,6 +95,7 @@ void main() {
       final page = r.json['page'] as Map;
       expect(page['tabs'], ['chat', 'traffic']);
       expect(page['config'], false);
+      expect(page['session'], true);
       expect(page['app'], '/app');
     });
 
@@ -110,8 +108,76 @@ void main() {
     });
   });
 
+  group('a visitor proves a callsign before reading its mail', () {
+    Future<String> nonce(WebChatApi a, {String peer = 'p1'}) async =>
+        (await a.handle('GET', '/api/session', {}, '', peer: peer)).json['nonce'] as String;
+
+    String proof(String n, {String call = 'X3ABCD', BigInt? key}) =>
+        _signed('t:session f:$call ts:2026-10-15_12:00:00 m:$n', key: key);
+
+    test('the right key gets a session, and history then names the visitor',
+        () async {
+      final a = make();
+      known = _pubOf(_d);
+      final n = await nonce(a);
+      final r = await a.handle('POST', '/api/session', {}, proof(n), peer: 'p1');
+      expect(r.status, 200);
+      final token = r.json['session'] as String;
+      expect(a.sessionCall(token), 'X3ABCD');
+      await a.handle('GET', '/api/xprs/history', {'session': token}, '');
+      expect(asked.last['visitor'], 'X3ABCD');
+      await a.handle('GET', '/api/xprs/history', {}, '');
+      expect(asked.last['visitor'], isNull, reason: 'no session, no mail');
+      await a.handle('GET', '/api/xprs/history', {'session': 'not-a-token'}, '');
+      expect(asked.last['visitor'], isNull);
+    });
+
+    test('a callsign written by somebody who does not hold its key gets nothing',
+        () async {
+      final a = make();
+      known = _pubOf(_d);
+      final other = BigInt.parse('abcdefabcdefabcdefabcdefabcdefab', radix: 16);
+      final n = await nonce(a);
+      final r = await a.handle('POST', '/api/session', {}, proof(n, key: other), peer: 'p1');
+      expect(r.status, 403);
+      expect(r.json.containsKey('session'), isFalse);
+    });
+
+    test('with no key heard yet the answer is to send the identity first',
+        () async {
+      final a = make();
+      final n = await nonce(a);
+      final r = await a.handle('POST', '/api/session', {}, proof(n), peer: 'p1');
+      expect(r.status, 409);
+      // The challenge survives the identity arriving, then works once.
+      known = _pubOf(_d);
+      expect((await a.handle('POST', '/api/session', {}, proof(n), peer: 'p1')).status, 200);
+      expect((await a.handle('POST', '/api/session', {}, proof(n), peer: 'p1')).status, 403,
+          reason: 'a nonce is good once');
+    });
+
+    test('a nonce and a session both run out', () async {
+      final a = make();
+      known = _pubOf(_d);
+      final n = await nonce(a);
+      clock = clock.add(WebChatApi.nonceLife + const Duration(seconds: 1));
+      expect((await a.handle('POST', '/api/session', {}, proof(n), peer: 'p1')).status, 403);
+      final n2 = await nonce(a);
+      final token = (await a.handle('POST', '/api/session', {}, proof(n2), peer: 'p1'))
+          .json['session'] as String;
+      clock = clock.add(WebChatApi.sessionLife + const Duration(seconds: 1));
+      expect(a.sessionCall(token), isNull);
+    });
+
+    test('a made-up challenge is refused', () async {
+      final a = make();
+      known = _pubOf(_d);
+      expect((await a.handle('POST', '/api/session', {}, proof('deadbeef'), peer: 'p1')).status, 403);
+    });
+  });
+
   group('what a visitor sends', () {
-    test('a signed wire goes to the receive door and the air, verbatim', () async {
+    test('a signed wire goes to the receive door, and only there', () async {
       final a = make();
       final wire = _signed(msg);
       final r = await send(a, wire);
@@ -119,7 +185,6 @@ void main() {
       expect(r.json['ok'], true);
       expect((r.json['id'] as String), hasLength(6));
       expect(received, [wire]);
-      expect(aired, [wire]);
     });
 
     test('JSON, form and GET carry the same wire', () async {
@@ -140,14 +205,12 @@ void main() {
       final sub = await send(a, _signed(msg.replaceFirst('X3ABCD', 'X1SELF-2')));
       expect(sub.status, 403, reason: "the owner's other device is the owner too");
       expect(received, isEmpty);
-      expect(aired, isEmpty);
     });
 
     test('unsigned is refused, so the phone never signs for a visitor', () async {
       final r = await send(make(), msg);
       expect(r.status, 400);
       expect(r.json['error'], 'unsigned');
-      expect(aired, isEmpty);
     });
 
     test('a forged signature is refused once the key is known', () async {
@@ -181,7 +244,6 @@ void main() {
       allow = false;
       final r = await send(make(), _signed(msg.replaceFirst('f:X3ABCD', 'f:X3ABCD d:X5A3F2')));
       expect(r.status, 403);
-      expect(aired, isEmpty);
     });
 
     test('a visitor cannot flood: a burst, then a pace, then a minute cap',

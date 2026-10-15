@@ -153,17 +153,15 @@ class ShareAppService {
   }
 
   /// The API a visitor's browser gets, wired to the core: what it posts goes
-  /// through the one receive door (as heard on the hotspot, `wifi`) and is
-  /// aired verbatim; what it reads is the archive's undirected rows.
+  /// through the one receive door (as heard on the hotspot, `wifi`), which the
+  /// bridge and digipeater carry on under the owner's policy; what it reads is
+  /// the archive's undirected rows.
   WebChatApi _liveApi() => WebChatApi(
         publicRows: archivePublicRows,
         held: (t) => XprsArchive.instance.countOf(types: t, undirected: true),
         receive: (w) => PacketGateway.instance.receive(
             Uint8List.fromList(utf8.encode(w)),
             bearer: 'wifi', lane: RxLane.datagram),
-        air: (w) async {
-          await XprsPublisher.instance.publishWire(w, verbatim: true);
-        },
         mayAir: XprsPublisher.instance.mayAir,
         selfCallsign: () => MeshService.instance.tableCallsign,
         keyOf: (c) => XprsArchive.instance.keyResolver?.call(c),

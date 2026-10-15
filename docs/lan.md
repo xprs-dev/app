@@ -208,12 +208,28 @@ no group traffic. Send takes a wire the visitor signed in the browser, refuses
 anything unsigned, written as this station, forged (when the key is known),
 of a type other than message, status, reaction or identity, for a closed group
 this phone is not in, or faster than a few a second and thirty a minute. What
-it accepts enters through the core's one receive door as heard on `wifi` and is
-aired verbatim, so the rest of the mesh sees the visitor's own signed packet.
+it accepts enters through the core's one receive door as heard on `wifi`, and the
+rest of the mesh sees the visitor's own signed packet.
 
 Sharing runs under the foreground service until Stop sharing, and the hotspot
 (a `LocalOnlyHotspot`, random SSID and password) with it.
 
-Not done: a visitor's own direct messages (needs the visitor to prove their key
-and, for sealed mail, AES in the page), and a check of how Android clients
-behave on a hotspot with no internet (some may drop it).
+A visitor can also have direct messages. The host gives a one-time nonce
+(`GET /api/session`), the page signs it with its key, and `POST /api/session`
+checks the signature against the key it has heard for that callsign (the page
+sends its identity first, and a 409 means "not heard yet, ask again"). The
+session, good for a day and naming one callsign, makes `/api/xprs/history`
+add that callsign's own mail, both ways, and nobody else's
+(`archivePublicRows`). Anyone can write any callsign; only the key signs.
+
+A direct message is sealed to the peer's key in the page (XPRS.md 6.2, AES-256-CBC
+under the ECDH secret, plain JS in `webchat/page/xprs_seal.js`, tested against
+the Dart implementation) when a verified identity gives it, and otherwise sent
+in the clear and marked. Identity is a readable type for that lookup.
+
+Carrying a visitor's packet on to the other bearers is the bridge's and the
+digipeater's job under the owner's policy and the hop budget, as for any packet
+heard on a bearer (here `wifi`); the host does not air it a second time.
+
+Not checked: how Android clients behave on a hotspot with no internet (some may
+drop it); that needs a second Android phone.

@@ -16,12 +16,13 @@
  * never signs for the visitor. A wire is refused unless it is signed, is not
  * written as this station, is one of the few types a visitor may post, and
  * fits the packet. What it accepts goes through the core's one receive door
- * (the callbacks below) and is aired verbatim, so the rest of the mesh sees
+ * (the callback below); the bridge carries it on, so the rest of the mesh sees
  * the visitor's own packet, with the visitor's own signature.
  *
  * Pure over its callbacks (no sockets, no singletons) so every rule is tested
  * without a phone; ShareAppService is the socket half.
  */
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'xprs/xprs_archive.dart' show XprsArchive;
@@ -44,16 +45,17 @@ class WebChatApi {
       int? untilMs,
       required List<String> types,
       String? from,
+      String? visitor,
       required int limit}) publicRows;
 
   /// How many public rows the archive holds (the page's "N packets held").
   final int Function(List<String> types) held;
 
   /// A visitor's wire, to the core's receive door as heard on the hotspot.
+  /// That is all: carrying it on to the other bearers is the bridge's and the
+  /// digipeater's job, under the owner's policy and the hop budget, the same
+  /// as for a packet heard on any other bearer.
   final void Function(String wire) receive;
-
-  /// The same wire, aired verbatim on the other bearers.
-  final Future<void> Function(String wire) air;
 
   /// Whether the core would air this packet (a closed group this station
   /// does not belong to is not ours to post into).
@@ -75,7 +77,6 @@ class WebChatApi {
     required this.publicRows,
     required this.held,
     required this.receive,
-    required this.air,
     required this.mayAir,
     required this.selfCallsign,
     required this.keyOf,
@@ -83,9 +84,12 @@ class WebChatApi {
     DateTime Function()? now,
   }) : now = now ?? DateTime.now;
 
-  /// What a visitor may read: conversation, not machinery.
+  /// What a visitor may read: conversation, not machinery. An identity is a
+  /// public broadcast and is how a browser finds the key a callsign is bound
+  /// to, to seal to it or to open what it sealed.
   static const Set<String> readable = {
     'message', 'reaction', 'status', 'info', 'warning', 'event', 'blog', 'sos',
+    'identity',
   };
 
   /// What a visitor may post. An identity so others can verify their
@@ -103,6 +107,35 @@ class WebChatApi {
   static const int perMinute = 30;
   final Map<String, List<int>> _sent = {};
 
+  /// A visitor proves they hold the key behind a callsign before this host
+  /// shows them mail addressed to it: anybody on the hotspot can WRITE any
+  /// callsign. The host gives a one-time nonce, the browser signs it, and the
+  /// host checks the signature against the key it has heard for that
+  /// callsign. A session is that proof, kept for a day, and names one callsign.
+  static const Duration nonceLife = Duration(minutes: 5);
+  static const Duration sessionLife = Duration(hours: 24);
+  static const int maxSessions = 64;
+  final Map<String, DateTime> _nonces = {};
+  final Map<String, ({String call, DateTime until})> _sessions = {};
+  final Random _rng = Random.secure();
+
+  String _token(int bytes) => [
+        for (var i = 0; i < bytes; i++)
+          _rng.nextInt(256).toRadixString(16).padLeft(2, '0')
+      ].join();
+
+  /// The callsign a session proves, or null (unknown, expired).
+  String? sessionCall(String? token) {
+    if (token == null || token.isEmpty) return null;
+    final s = _sessions[token];
+    if (s == null) return null;
+    if (now().isAfter(s.until)) {
+      _sessions.remove(token);
+      return null;
+    }
+    return s.call;
+  }
+
   /// Distinct visitors that have talked to this host since it started, and
   /// who to tell when another arrives (the Share screen's count).
   final Set<String> visitors = {};
@@ -114,6 +147,10 @@ class WebChatApi {
     if (peer.isNotEmpty && visitors.add(peer)) onVisitors?.call(visitors.length);
     if (method == 'GET' && path == '/api/services') return _services();
     if (method == 'GET' && path == '/api/xprs/history') return _history(query);
+    if (path == '/api/session') {
+      if (method == 'GET') return _challenge(peer);
+      if (method == 'POST') return _prove(_wireOf(body), peer);
+    }
     if (path == '/api/xprs/send' && (method == 'POST' || method == 'GET')) {
       // GET with ?wire= is the fallback the page uses when a captive WebView
       // refuses a POST (spec/API-HTTP.md); it is the same send.
@@ -132,6 +169,8 @@ class WebChatApi {
       'page': {
         'tabs': ['chat', 'traffic'],
         'config': false,
+        // This host gives a visitor who proves their key their own mail.
+        'session': true,
         if (app != null) 'app': app,
       },
     });
@@ -143,6 +182,45 @@ class WebChatApi {
     final secs = int.tryParse(v);
     if (secs != null) return secs * 1000;
     return xprsParseTs(v);
+  }
+
+  WebChatReply _challenge(String peer) {
+    if (!_allowed(peer)) return const WebChatReply(429, {'ok': false, 'error': 'slow down'});
+    final t = now();
+    _nonces.removeWhere((_, until) => t.isAfter(until));
+    if (_nonces.length > 256) _nonces.clear();
+    final nonce = _token(8);
+    _nonces[nonce] = t.add(nonceLife);
+    return WebChatReply(200, {'ok': true, 'nonce': nonce});
+  }
+
+  /// `t:session f:<call> ts:<stamp> sig:<..> m:<nonce>`: never aired, never
+  /// filed; it exists only to be checked here.
+  WebChatReply _prove(String wire, String peer) {
+    WebChatReply no(int status, String why) =>
+        WebChatReply(status, {'ok': false, 'error': why});
+    final p = XprsPacket.parse(wire.trim());
+    if (p == null || p.type != 'session') return no(400, 'malformed');
+    final from = (p['f'] ?? '').trim().toUpperCase();
+    final nonce = (p['m'] ?? '').trim();
+    final until = _nonces[nonce];
+    if (from.isEmpty || until == null || now().isAfter(until)) {
+      return no(403, 'no such challenge');
+    }
+    final key = keyOf(from.split('-').first);
+    // Without the key this host cannot tell who signed. The page sends its
+    // identity first and asks again; the challenge stays good meanwhile.
+    if (key == null) return no(409, 'identity unknown');
+    if (xprsVerify(p, key) != XprsSigState.verified) return no(403, 'not signed by that key');
+    _nonces.remove(nonce);
+    final t = now();
+    _sessions.removeWhere((_, s) => t.isAfter(s.until));
+    while (_sessions.length >= maxSessions) {
+      _sessions.remove(_sessions.keys.first);
+    }
+    final token = _token(16);
+    _sessions[token] = (call: from.split('-').first, until: t.add(sessionLife));
+    return WebChatReply(200, {'ok': true, 'session': token, 'call': from});
   }
 
   WebChatReply _history(Map<String, String> q) {
@@ -159,6 +237,7 @@ class WebChatApi {
       untilMs: _when(q['until']),
       types: types,
       from: (q['call'] ?? '').trim().isEmpty ? null : q['call']!.trim(),
+      visitor: sessionCall(q['session']),
       limit: limit,
     );
     final dir = q['dir'];
@@ -226,7 +305,6 @@ class WebChatApi {
     if (!_allowed(peer)) return no(429, 'slow down');
     final w = p.encode();
     receive(w);
-    await air(w);
     return WebChatReply(200, {'ok': true, 'id': _idOf(p), 'wire': w});
   }
 
@@ -236,13 +314,18 @@ class WebChatApi {
 /// The archive-backed [WebChatApi.publicRows]: undirected rows of [types]
 /// only. A mailbox, a group's traffic and a direct message all carry a `d:`,
 /// so `to: ['']` (the undirected shelf) leaves them out by construction.
+///
+/// For a [visitor] who proved a callsign it adds that callsign's own mail,
+/// both ways (what was sent to it and what it sent), and nobody else's.
 List<Map<String, dynamic>> archivePublicRows(
     {int? sinceMs,
     int? untilMs,
     required List<String> types,
     String? from,
+    String? visitor,
     required int limit}) {
-  return XprsArchive.instance.query(
+  final a = XprsArchive.instance;
+  final open = a.query(
     sinceMs: sinceMs,
     untilMs: untilMs,
     types: types,
@@ -250,4 +333,26 @@ List<Map<String, dynamic>> archivePublicRows(
     from: from,
     limit: limit,
   );
+  if (visitor == null || visitor.isEmpty) return open;
+  final mine = <Map<String, dynamic>>[
+    ...a.query(
+        sinceMs: sinceMs,
+        untilMs: untilMs,
+        types: types,
+        to: [visitor],
+        from: from,
+        limit: limit),
+    ...a.query(
+        sinceMs: sinceMs,
+        untilMs: untilMs,
+        types: types,
+        from: visitor,
+        limit: limit),
+  ];
+  final byId = <Object?, Map<String, dynamic>>{
+    for (final r in [...open, ...mine]) r['id']: r,
+  };
+  final rows = byId.values.toList()
+    ..sort((x, y) => (y['ts'] as int).compareTo(x['ts'] as int));
+  return rows.length > limit ? rows.sublist(0, limit) : rows;
 }
