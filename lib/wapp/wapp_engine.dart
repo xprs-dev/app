@@ -3809,6 +3809,31 @@ class WappEngine {
       results: [ValueTy.i32],
     );
 
+    // hal_xprs_status_edit: correct a status this station posted (XPRS.md
+    // 7.8.1). Exactly hal_xprs_status, plus the identifier of the ORIGINAL it
+    // corrects: the core builds `edit:<id>`, splits and signs it, and airs it as
+    // a packet of its own. The written id is the EDIT's.
+    final halXprsStatusEdit = WasmFunction(
+      (int textPtr, int textLen, int origPtr, int origLen, int rPtr, int rLen,
+          int idOut, int idCap) {
+        final text = _readStr(textPtr, textLen);
+        final orig = _readStr(origPtr, origLen);
+        if (text.trim().isEmpty || orig.isEmpty) return -1;
+        // An edit repeats the whole packet (7.8.1), so a reply stays a reply.
+        final built = XprsPublisher.instance.composeStatus(text,
+            editOf: orig, replyTo: rLen > 0 ? _readStr(rPtr, rLen) : null);
+        if (built.wires.isEmpty) return -1;
+        if (idCap > 0) {
+          _writeBytes(idOut, idCap, Uint8List.fromList(utf8.encode(built.id)));
+        }
+        unawaited(XprsPublisher.instance.airStatus(built.wires));
+        return 0;
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32,
+        ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+
     // hal_xprs_send: air one caller-composed XPRS wire (validated, signed
     // when it speaks as this station, scope rules applied). 0 = queued,
     // -1 = did not parse. Fire-and-forget like hal_xprs_status.
@@ -4924,6 +4949,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_read', halXprsRead),
       WasmImport('hal', 'xprs_message', halXprsMessage),
       WasmImport('hal', 'xprs_edit', halXprsEdit),
+      WasmImport('hal', 'xprs_status_edit', halXprsStatusEdit),
       WasmImport('hal', 'xprs_withdraw', halXprsWithdraw),
       WasmImport('hal', 'xprs_broadcast', halXprsBroadcast),
       WasmImport('hal', 'xprs_set_pref', halXprsSetPref),

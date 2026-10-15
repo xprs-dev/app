@@ -621,4 +621,91 @@ void main() {
     expect(a.query(types: const ['message']).length, 5,
         reason: 'without an asker nothing is filtered');
   });
+
+  group('withdrawal (XPRS.md 7.8.2)', () {
+    final orig = _p('t:message f:X1AAA d:X1SELF ts:2026-10-15_09:00:00 m:secret');
+    late String oid;
+    late XprsPacket edit;
+    XprsPacket withdrawal(String from, String target, {String kind = 'message'}) =>
+        xprsSign(
+            _p('t:message f:$from d:X1SELF ts:2026-10-15_09:40:00 r:$target '
+                'remove:$kind'),
+            _d);
+
+    setUp(() {
+      a.keyResolver = (c) => c == 'X1AAA' ? _pubOf(_d) : null;
+      oid = xprsIdentifier(orig);
+      edit = _p('t:message f:X1AAA d:X1SELF ts:2026-10-15_09:10:00 '
+          'edit:$oid m:secret 2');
+    });
+
+    test('a verified withdrawal drops the original and its edits', () {
+      a.admit(orig, bearer: 'ble', nowMs: 1000);
+      a.admit(edit, bearer: 'ble', nowMs: 1000);
+      a.flush(nowMs: 1000);
+      expect(a.query(types: const ['message']), hasLength(2));
+      a.admit(withdrawal('X1AAA', oid), bearer: 'ble', nowMs: 2000);
+      a.flush(nowMs: 2000);
+      final rows = a.query(types: const ['message']);
+      expect(rows, hasLength(1), reason: 'only the withdrawal stays');
+      expect(rows.single['wire'], contains('remove:message'));
+      expect(rows.single['wire'], isNot(contains('secret')));
+    });
+
+    test('a replayed original or edit does not bring the text back', () {
+      a.admit(withdrawal('X1AAA', oid), bearer: 'ble', nowMs: 1000);
+      a.admit(orig, bearer: 'ble', nowMs: 1000);
+      a.admit(edit, bearer: 'ble', nowMs: 1000);
+      a.flush(nowMs: 1000);
+      a.admit(orig, bearer: 'ble', nowMs: 2000);
+      a.flush(nowMs: 2000);
+      final rows = a.query(types: const ['message']);
+      expect(rows, hasLength(1));
+      expect(rows.single['wire'], contains('remove:message'));
+    });
+
+    test('an unsigned or foreign withdrawal destroys nothing', () {
+      a.admit(orig, bearer: 'ble', nowMs: 1000);
+      a.admit(_p('t:message f:X1AAA d:X1SELF ts:2026-10-15_09:40:00 r:$oid '
+              'remove:message'),
+          bearer: 'ble', nowMs: 1000);
+      a.keyResolver = (c) => _pubOf(_d);
+      a.admit(withdrawal('X1BBB', oid), bearer: 'ble', nowMs: 1000);
+      a.flush(nowMs: 1000);
+      expect(
+          a.query(types: const ['message']).where(
+              (r) => (r['wire'] as String).contains('m:secret')),
+          hasLength(1));
+    });
+  });
+
+  test('a moderator removal drops the group message and its edit', () {
+    final g = XprsGroups.instance;
+    final prior = g.keyResolver;
+    g.keyResolver = (c) => c == 'X5A3F2' ? _pubOf(_d) : null;
+    try {
+      final msg = _p('t:message f:X1AAA d:X5A3F2 ts:2026-10-15_09:00:00 m:abuse');
+      final id = xprsIdentifier(msg);
+      final edit = _p('t:message f:X1AAA d:X5A3F2 ts:2026-10-15_09:05:00 '
+          'edit:$id m:abuse 2');
+      a.admit(msg, bearer: 'ble', nowMs: 1000);
+      a.admit(edit, bearer: 'ble', nowMs: 1000);
+      a.flush(nowMs: 1000);
+      expect(a.query(types: const ['message']), hasLength(2));
+      final act = xprsSign(
+          _p('t:moderate f:X5A3F2 d:X5A3F2 ts:2026-10-15_10:00:00 r:$id '
+              'remove:message'),
+          _d);
+      expect(g.offer(act, nowMs: DateTime.utc(2026, 10, 16).millisecondsSinceEpoch),
+          isTrue);
+      expect(a.query(types: const ['message']), isEmpty);
+      a.admit(msg, bearer: 'ble', nowMs: 2000);
+      a.flush(nowMs: 2000);
+      expect(a.query(types: const ['message']), isEmpty,
+          reason: 'a replay does not bring it back');
+    } finally {
+      g.keyResolver = prior;
+      g.forget('X5A3F2');
+    }
+  });
 }

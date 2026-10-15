@@ -77,7 +77,11 @@ class XprsStatusHeroSource implements HeroSource {
       final from = (r['from'] as String? ?? '').trim();
       if (from.isEmpty) continue;
       if (follows.isNotEmpty && !follows.contains(from.toUpperCase())) continue;
-      final text = messageOf(r['wire'] as String? ?? '');
+      final wire = r['wire'] as String? ?? '';
+      // A correction (7.8.1) is a version of a post already considered, not a
+      // second post.
+      if (_field(wire, 'edit').isNotEmpty) continue;
+      final text = messageOf(wire);
       if (text.isEmpty) continue;
       final rowId = (r['id'] ?? '').toString();
       out.add(HeroItem(

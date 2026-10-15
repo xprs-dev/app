@@ -845,7 +845,7 @@ class XprsPublisher {
   /// `wires` is empty when there is nothing to publish (no profile callsign,
   /// empty text); `id` is then empty too.
   ({List<String> wires, String id}) composeStatus(String text,
-      {String? mood, String? scope, String? replyTo}) {
+      {String? mood, String? scope, String? replyTo, String? editOf}) {
     final body = text.trim();
     final call =
         (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
@@ -862,7 +862,7 @@ class XprsPublisher {
         '${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
 
     final built = _statusFor(call.toUpperCase(), ts, body,
-        mood: mood, scope: scope, replyTo: replyTo);
+        mood: mood, scope: scope, replyTo: replyTo, editOf: editOf);
     if (built.wires.isEmpty) {
       refused++;
       return (wires: const [], id: '');
@@ -886,7 +886,11 @@ class XprsPublisher {
   /// so a status cannot drift from a message.
   ({List<String> wires, String id, XprsFileLift lift}) _statusFor(
       String call, String ts, String body,
-      {String? mood, String? scope, String? replyTo, BigInt? signingKey}) {
+      {String? mood,
+      String? scope,
+      String? replyTo,
+      String? editOf,
+      BigInt? signingKey}) {
     final lift = xprsLiftFile(body);
     var head = 't:status f:$call ts:$ts';
     if (lift.found) {
@@ -902,6 +906,10 @@ class XprsPublisher {
     // A reply names its parent (section 27, the same `r:` a reaction uses).
     final parent = (replyTo ?? '').trim().toLowerCase();
     if (parent.isNotEmpty) head += ' r:$parent';
+    // A correction names the ORIGINAL it corrects, never an earlier edit
+    // (XPRS.md 7.8.1); its twelve bytes count against the limit like any field.
+    final original = (editOf ?? '').trim().toLowerCase();
+    if (RegExp(r'^[0-9a-f]{6}$').hasMatch(original)) head += ' edit:$original';
 
     final built =
         _compose(head, lift.found ? lift.text : body, signingKey: signingKey);
@@ -914,8 +922,12 @@ class XprsPublisher {
   /// Test seam: the wires [composeStatus] would air for [text] from [call].
   @visibleForTesting
   List<String> debugStatusWires(String call, String text,
-          {String ts = '2026-10-06_12:00:00', BigInt? signingKey}) =>
-      _statusFor(call, ts, text.trim(), signingKey: signingKey).wires;
+          {String ts = '2026-10-06_12:00:00',
+          BigInt? signingKey,
+          String? editOf}) =>
+      _statusFor(call, ts, text.trim(),
+              signingKey: signingKey, editOf: editOf)
+          .wires;
 
   /// Publish a `t:status` (section 27). Returns per-bearer outcomes:
   /// 'sent' | 'refused' | 'inactive' | 'scope' — empty map when nothing

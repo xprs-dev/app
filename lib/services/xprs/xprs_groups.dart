@@ -24,6 +24,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'xprs_archive.dart';
+import 'xprs_archive.dart';
 import 'xprs_id.dart';
 import '../receive/core_state.dart';
 import 'xprs_packet.dart';
@@ -300,6 +302,15 @@ class XprsGroups {
     // the change to a wapp. Group membership is a core feature every wapp can
     // use, so it gets a core topic.
     CoreState.instance.changed(CoreState.groups);
+    // 10.4.1: a removal that passed the role check at its moment destroys the
+    // text for the people who honour it, the archive included (7.8.2).
+    if (act.remove == 'message' && act.hideRef.isNotEmpty) {
+      for (final m in rosterOf(group).moderation) {
+        if (m.id == act.id && m.kind == 'remove') {
+          XprsArchive.instance.purgeModerated(group, m.target);
+        }
+      }
+    }
     return true;
   }
 

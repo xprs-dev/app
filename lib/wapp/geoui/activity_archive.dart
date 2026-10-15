@@ -171,6 +171,37 @@ class ActivityArchive {
     }
   }
 
+  /// The `kind` a row is kept under: XPRS.md 7.8's state of a post rides in it,
+  /// so a corrected or withdrawn post comes back as one after a restart.
+  static String _kindOf(Map raw) {
+    if (raw['deleted'] == true) return 'msg:deleted';
+    if (raw['edited'] == true) return 'msg:edited';
+    return (raw['kind'] ?? 'msg').toString();
+  }
+
+  /// A post already held was corrected or withdrawn (XPRS.md 7.8): replace its
+  /// words and state. The row stays, so replies keep their parent.
+  void revise(String mid, String text,
+      {bool edited = false, bool deleted = false, String by = ''}) {
+    final db = _ensureDb();
+    if (db == null || mid.isEmpty) return;
+    try {
+      db.execute(
+        'UPDATE activity SET text = ?, kind = ? WHERE mid = ? '
+        "AND (? = '' OR upper(from_call) = ?)",
+        [
+          deleted ? '' : text,
+          deleted ? 'msg:deleted' : (edited ? 'msg:edited' : 'msg'),
+          mid,
+          by,
+          by,
+        ],
+      );
+    } catch (e) {
+      debugPrint('ActivityArchive: revise failed: $e');
+    }
+  }
+
   /// Archive one activity message map (as sent in ui.chat.append on "activity").
   void add(Map raw) {
     final text = (raw['text'] ?? '').toString();
@@ -231,7 +262,7 @@ class ActivityArchive {
           (raw['author'] ?? '').toString().toLowerCase(),
           text,
           (raw['convo'] ?? '').toString(),
-          (raw['kind'] ?? 'msg').toString(),
+          _kindOf(raw),
           (raw['via'] ?? '').toString(),
           (raw['meta'] ?? '').toString(),
           (raw['lat'] as num?)?.toDouble(),

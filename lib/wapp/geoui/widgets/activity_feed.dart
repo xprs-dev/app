@@ -117,6 +117,12 @@ class ActivityFeed extends StatefulWidget {
   final void Function(String from)? onBlock;
   final void Function(String from)? onMute;
 
+  /// XPRS.md 7.8: correct, withdraw or list the versions of one of OUR posts.
+  /// The host asks for the words and the confirmation; the wapp does the rest.
+  final void Function(Map<String, dynamic> post)? onEdit;
+  final void Function(Map<String, dynamic> post)? onUnsend;
+  final void Function(Map<String, dynamic> post)? onHistory;
+
   /// Follow / unfollow an author from a post's ⋯ menu.
   final void Function(String from, bool follow)? onFollow;
 
@@ -172,6 +178,9 @@ class ActivityFeed extends StatefulWidget {
     this.hiddenCalls = const {},
     this.onBlock,
     this.onMute,
+    this.onEdit,
+    this.onUnsend,
+    this.onHistory,
     this.onFollow,
     this.mentionResolver,
     this.onMentionTap,
@@ -584,6 +593,9 @@ class _ActivityFeedState extends State<ActivityFeed> {
                             replyCount: widget.replyCount,
                             onBlock: widget.onBlock,
                             onMute: widget.onMute,
+                            onEdit: widget.onEdit,
+                            onUnsend: widget.onUnsend,
+                            onHistory: widget.onHistory,
                             onFollow: widget.onFollow,
                             isFollowing: _isFollowed,
                             onTap: () => widget.onOpenThread?.call(posts[i]),
@@ -1052,6 +1064,14 @@ Widget _activityViaChip(String via) {
 /// A single publication / reply rendered as a Twitter-style card: avatar, name,
 /// time, body, media, and a Like / Reply (with counter) / Save action row.
 /// Reused by the feed AND the forum thread (with [indent] for nesting).
+/// XPRS.md 7.8: a post its author corrected, or withdrew. The wapp sends these
+/// as `edited` / `deleted` on the row; the archive keeps them in `kind`
+/// (`msg:edited`, `msg:deleted`), so a restart brings them back.
+bool activityEdited(Map<String, dynamic> p) =>
+    p['edited'] == true || p['kind'] == 'msg:edited';
+bool activityDeleted(Map<String, dynamic> p) =>
+    p['deleted'] == true || p['kind'] == 'msg:deleted';
+
 class ActivityPostCard extends StatelessWidget {
   final Map<String, dynamic> post;
   final ({String? name, ImageProvider? avatar}) Function(String callsign)?
@@ -1081,6 +1101,11 @@ class ActivityPostCard extends StatelessWidget {
   /// Block / mute the post's author (from a "…" menu). Null hides the menu.
   final void Function(String from)? onBlock;
   final void Function(String from)? onMute;
+
+  /// Our own post: correct it, withdraw it. Anyone's edited post: list versions.
+  final void Function(Map<String, dynamic> post)? onEdit;
+  final void Function(Map<String, dynamic> post)? onUnsend;
+  final void Function(Map<String, dynamic> post)? onHistory;
 
   /// Follow / unfollow the author from this post's ⋯ menu.
   final void Function(String from, bool follow)? onFollow;
@@ -1113,6 +1138,9 @@ class ActivityPostCard extends StatelessWidget {
     this.onRepost,
     this.onBlock,
     this.onMute,
+    this.onEdit,
+    this.onUnsend,
+    this.onHistory,
     this.onFollow,
     this.isFollowing,
     this.onTap,
@@ -1123,12 +1151,32 @@ class ActivityPostCard extends StatelessWidget {
     this.onMentionTap,
   });
 
-  /// Per-post "…" menu: mute or block the author (only for others' posts).
+  bool get _own => (post['dir'] ?? '') == 'out';
+
+  /// Whether the "…" menu has anything to offer on this post.
+  bool get _hasMenu {
+    final deleted = activityDeleted(post);
+    if (_own) {
+      return !deleted &&
+          (onEdit != null ||
+              onUnsend != null ||
+              (activityEdited(post) && onHistory != null));
+    }
+    return onBlock != null ||
+        onMute != null ||
+        (!deleted && activityEdited(post) && onHistory != null);
+  }
+
+  /// Per-post "…" menu: mute or block the author (only for others' posts), and
+  /// correct, withdraw or list the versions of one's own (XPRS.md 7.8).
   Widget _menu(String from) => PopupMenuButton<String>(
     icon: const Icon(Icons.more_horiz, size: 18, color: Colors.white54),
     tooltip: 'Options',
     padding: EdgeInsets.zero,
     onSelected: (v) {
+      if (v == 'edit') onEdit?.call(post);
+      if (v == 'unsend') onUnsend?.call(post);
+      if (v == 'history') onHistory?.call(post);
       if (v == 'mute') onMute?.call(from);
       if (v == 'block') onBlock?.call(from);
       if (v == 'follow') {
@@ -1136,7 +1184,34 @@ class ActivityPostCard extends StatelessWidget {
       }
     },
     itemBuilder: (_) => [
-      if (onFollow != null)
+      if (_own && post['deleted'] != true && onEdit != null)
+        const PopupMenuItem(
+          value: 'edit',
+          child: Row(children: [
+            Icon(Icons.edit_outlined, size: 18),
+            SizedBox(width: 10),
+            Flexible(child: Text('Edit')),
+          ]),
+        ),
+      if (_own && post['deleted'] != true && onUnsend != null)
+        const PopupMenuItem(
+          value: 'unsend',
+          child: Row(children: [
+            Icon(Icons.delete_outline, size: 18, color: Colors.red),
+            SizedBox(width: 10),
+            Flexible(child: Text('Delete for everyone')),
+          ]),
+        ),
+      if (activityEdited(post) && post['deleted'] != true && onHistory != null)
+        const PopupMenuItem(
+          value: 'history',
+          child: Row(children: [
+            Icon(Icons.history, size: 18),
+            SizedBox(width: 10),
+            Flexible(child: Text('Edit history')),
+          ]),
+        ),
+      if (!_own && onFollow != null)
         PopupMenuItem(
           value: 'follow',
           child: Row(
@@ -1156,7 +1231,7 @@ class ActivityPostCard extends StatelessWidget {
             ],
           ),
         ),
-      if (onMute != null)
+      if (!_own && onMute != null)
         PopupMenuItem(
           value: 'mute',
           child: Row(
@@ -1167,7 +1242,7 @@ class ActivityPostCard extends StatelessWidget {
             ],
           ),
         ),
-      if (onBlock != null)
+      if (!_own && onBlock != null)
         PopupMenuItem(
           value: 'block',
           child: Row(
@@ -1282,6 +1357,17 @@ class ActivityPostCard extends StatelessWidget {
                                 ),
                               ),
                             ],
+                            if (activityEdited(p) && p['deleted'] != true) ...[
+                              const SizedBox(width: 6),
+                              Text(
+                                'edited',
+                                style: TextStyle(
+                                  color: Colors.white.withAlpha(120),
+                                  fontSize: 12,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
                             if (via.isNotEmpty) ...[
                               const SizedBox(width: 6),
                               _activityViaChip(via),
@@ -1289,13 +1375,22 @@ class ActivityPostCard extends StatelessWidget {
                           ],
                         ),
                       ),
-                      if (from.isNotEmpty &&
-                          (p['dir'] ?? '') != 'out' &&
-                          (onBlock != null || onMute != null))
+                      if (from.isNotEmpty && _hasMenu)
                         SizedBox(height: 22, width: 28, child: _menu(from)),
                     ],
                   ),
-                  if (textBody.isNotEmpty)
+                  if (activityDeleted(p))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(
+                        'This post was deleted.',
+                        style: TextStyle(
+                          color: Colors.white.withAlpha(140),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    )
+                  else if (textBody.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 3),
                       // Long notes (some are thousands of chars) are clamped with
@@ -1309,7 +1404,7 @@ class ActivityPostCard extends StatelessWidget {
                         onMentionTap: onMentionTap,
                       ),
                     ),
-                  if (refs.isNotEmpty)
+                  if (refs.isNotEmpty && p['deleted'] != true)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Wrap(
@@ -1337,7 +1432,7 @@ class ActivityPostCard extends StatelessWidget {
                   // Plain http(s) image/video links in the text (NOSTR posts,
                   // etc.) are fetched + shown inline (≤10 MB) or offered as a
                   // tap-to-download card.
-                  for (final url in mediaUrls)
+                  for (final url in (activityDeleted(p) ? const <String>[] : mediaUrls))
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: _RemoteMedia(

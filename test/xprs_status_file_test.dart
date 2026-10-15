@@ -61,4 +61,16 @@ void main() {
     expect(p.has('file'), isFalse);
     expect(p['m'], 'good morning');
   });
+
+  test('a correction names its original, and a reply stays a reply (7.8.1)', () {
+    final edited = one(XprsPublisher.instance
+        .debugStatusWires('X16JK8', 'meet at seven', editOf: '3F8923'));
+    expect(edited.type, 'status');
+    expect(edited['edit'], '3f8923', reason: 'identifiers are lower case');
+    expect(edited['m'], 'meet at seven');
+    expect(edited.fits, isTrue);
+    final plain = one(XprsPublisher.instance
+        .debugStatusWires('X16JK8', 'meet at seven', editOf: 'not-an-id'));
+    expect(plain.has('edit'), isFalse, reason: 'a bad identifier is not sent');
+  });
 }

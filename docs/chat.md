@@ -442,6 +442,37 @@ The host offers moderation on other people's messages only where the row says
 `mod:true`. Editing a message puts its words in the composer under an
 "Editing" banner; sending the words unchanged is not an edit.
 
-Not done: an archiver dropping the text of a packet it holds when a verified
-withdrawal arrives (XPRS.md 7.8.2), and Status and alerts using `edit:` (the
-core's compose and receive halves are generic; only Chat's UI exists).
+### The same on Status, Alerts and the archive
+
+Chat is not the only place. The core's compose and receive halves are generic
+(`composeStatus(editOf:)` behind `hal_xprs_status_edit`, `hal_xprs_send` for a
+wire), so each wapp does only what is its own:
+
+- **Status** (`apps/social`): the post card's menu offers Edit and Delete for
+  everyone on one's own posts and Edit history on an edited one. A correction or
+  withdrawal is never a post: it is collected from the spool first (it is met
+  before its original, newest first) and applied as the original is drawn, only
+  when it VERIFIED and is the original author's. The feed shows the original
+  again with the newest words and `edited`, or with `deleted` and no words; the
+  host replaces them in place in the buffer and in the activity archive
+  (`ActivityArchive.revise`, state kept in `kind`), checking that the post is
+  the author's. The history is read from the spool when asked.
+- **Alerts** (`apps/alerts`): Edit on an alert of one's own reopens the wizard
+  filled in, at the review; Save sends the same alert with `edit:` (twelve
+  bytes of the 250). Versions are kept in a table (`g_ver`) and the row shows
+  the newest valid one; Edit history lists them. A restart replays them from the
+  wapp's own ring.
+- **Archivers** (`XprsArchive`): a verified withdrawal of an editable type
+  deletes the original and every edit of it from the author's rows, keeps the
+  withdrawal, and records the identifiers in a `withdrawn` table so a replay
+  cannot bring the text back. A moderator's removal in a closed group does the
+  same for that group's message once the roster has judged it
+  (`XprsGroups.offer` calls `purgeModerated`). Tombstones age out after a year.
+
+A withdrawn message whose edit history dialog is open loses its words on screen
+at once (`EditHistoryList` listens to the withdrawal).
+
+Not done: an edit of an alert is not announced again, a status picture cannot be
+changed by an edit from the card (the words only), and Alerts keeps the withdrawn
+alert's wire in its small kv ring until that slot is reused (the words are gone
+from memory and from the list at once).

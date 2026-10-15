@@ -205,6 +205,16 @@ class XprsArchive {
         )''');
       db.execute(
           'CREATE INDEX IF NOT EXISTS idx_decl_from ON mailbox_decl(fromc)');
+      // XPRS.md 7.8.2: what a verified withdrawal destroyed. Identifiers only,
+      // no text, so a replayed original or edit is refused instead of bringing
+      // the words back.
+      db.execute('''
+        CREATE TABLE IF NOT EXISTS withdrawn(
+          id    TEXT NOT NULL,
+          fromc TEXT NOT NULL,
+          ts    INTEGER NOT NULL,
+          PRIMARY KEY(id, fromc)
+        )''');
       _db = db;
       _prunedThisSession = false;
       _flushTimer?.cancel();
@@ -308,6 +318,8 @@ class XprsArchive {
           -- station's packet must never demote the row we already keep.
           tier  = MIN(tier, excluded.tier),
           viac  = MIN(viac, excluded.viac)''');
+      final tomb = db.prepare(
+          'INSERT OR IGNORE INTO withdrawn(id,fromc,ts) VALUES(?,?,?)');
       try {
         for (final e in batch) {
           final p = e.p;
@@ -333,6 +345,13 @@ class XprsArchive {
           }
           final fromc = _base(p['f'] ?? '');
           final toc = _base(p['d'] ?? '');
+          // A verified withdrawal destroys the text it names (7.8.2); the
+          // withdrawal itself is stored like any packet below.
+          if (sig == XprsSigState.verified) {
+            _purgeWithdrawn(db, tomb, p, fromc, e.nowMs);
+          }
+          // The words of something already withdrawn do not come back.
+          if (_isWithdrawn(db, p, fromc)) continue;
           stored.add(MapEntry(fromc, xprsParseTs(p['ts'])));
           ins.execute([
             xprsIdentifier(p),
@@ -361,6 +380,7 @@ class XprsArchive {
         }
       } finally {
         ins.dispose();
+        tomb.dispose();
       }
       for (final c in identities) {
         _collapseIdentities(db, c);
@@ -392,6 +412,91 @@ class XprsArchive {
         }
       }
     }
+  }
+
+  /// The types 7.8.1 lets an author correct and 7.8.2 lets an author withdraw.
+  static const Set<String> _withdrawable = {
+    'message', 'status', 'info', 'warning', 'offer', 'need', 'event', 'place',
+    'passage', 'blog',
+  };
+
+  static final RegExp _idRe = RegExp(r'^[0-9a-f]{6}$');
+
+  /// Drop the original and every edit of it that [p] (a verified withdrawal)
+  /// names, and remember the identifiers. Only the author's own rows: the
+  /// delete is keyed on the signer's `fromc`, so a withdrawal can never reach
+  /// somebody else's packet.
+  void _purgeWithdrawn(CommonDatabase db, CommonPreparedStatement tomb, XprsPacket p,
+      String fromc, int nowMs) {
+    final kind = (p['remove'] ?? '').trim().toLowerCase();
+    if (kind.isEmpty || !_withdrawable.contains(kind)) return;
+    final target = (p['r'] ?? '').trim().toLowerCase();
+    if (!_idRe.hasMatch(target) || fromc.isEmpty) return;
+    tomb.execute([target, fromc, nowMs]);
+    final edits = db.select(
+        'SELECT id FROM packets WHERE fromc = ? '
+        "AND (wire LIKE '% edit:' || ? || ' %' OR wire LIKE '% edit:' || ?)",
+        [fromc, target, target]);
+    for (final r in edits) {
+      tomb.execute([r['id'] as String, fromc, nowMs]);
+    }
+    db.execute('DELETE FROM packets WHERE fromc = ? AND id = ?',
+        [fromc, target]);
+    for (final r in edits) {
+      db.execute('DELETE FROM packets WHERE fromc = ? AND id = ?',
+          [fromc, r['id']]);
+    }
+  }
+
+  /// A moderator's removal of [target] in [group] (10.4.1), already checked
+  /// against the roster at its moment: drop the message and its edits, which
+  /// were sent to the group, whoever wrote them. Remembered under the group's
+  /// own name so a replay is refused the same way.
+  void purgeModerated(String group, String target) {
+    final db = _db;
+    final g = _base(group);
+    if (db == null || g.isEmpty || !_idRe.hasMatch(target)) return;
+    try {
+      // A restart replays every act: the first time did the work, so later
+      // ones are one primary-key lookup instead of a walk of the group's rows.
+      if (db.select('SELECT 1 FROM withdrawn WHERE id = ? AND fromc = ? LIMIT 1',
+              [target, '*$g']).isNotEmpty) {
+        return;
+      }
+      final ids = [
+        target,
+        for (final r in db.select(
+            'SELECT id FROM packets WHERE toc = ? '
+            "AND (wire LIKE '% edit:' || ? || ' %' OR wire LIKE '% edit:' || ?)",
+            [g, target, target]))
+          r['id'] as String,
+      ];
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (final id in ids) {
+        db.execute('DELETE FROM packets WHERE toc = ? AND id = ?', [g, id]);
+        db.execute('INSERT OR IGNORE INTO withdrawn(id,fromc,ts) VALUES(?,?,?)',
+            [id, '*$g', now]);
+      }
+    } catch (e) {
+      LogService.instance.add('XPRS archive: moderated purge failed: $e');
+    }
+  }
+
+  /// True when [p] is an original or an edit that a verified withdrawal of
+  /// the same author already destroyed. A withdrawal itself is never refused.
+  bool _isWithdrawn(CommonDatabase db, XprsPacket p, String fromc) {
+    if (p.has('remove') || !_withdrawable.contains(p.type)) return false;
+    final root = (p['edit'] ?? '').trim().toLowerCase();
+    final ids = [xprsIdentifier(p), if (_idRe.hasMatch(root)) root];
+    final to = _base(p['d'] ?? '');
+    for (final id in ids) {
+      final r = db.select(
+          'SELECT 1 FROM withdrawn WHERE id = ? AND (fromc = ? OR fromc = ?) '
+          'LIMIT 1',
+          [id, fromc, '*$to']);
+      if (r.isNotEmpty) return true;
+    }
+    return false;
   }
 
   /// How many presence rows a station followed by callsign keeps on the
@@ -557,6 +662,9 @@ class XprsArchive {
         db.execute(
             'DELETE FROM mailbox_decl WHERE until IS NOT NULL AND until < ?',
             [now]);
+        // A year is far longer than any copy is held or replayed.
+        db.execute('DELETE FROM withdrawn WHERE ts < ?',
+            [now - 365 * 86400000]);
       } catch (e) {
         LogService.instance.add('XPRS archive: age prune failed: $e');
       }

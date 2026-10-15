@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:xprs/profile/profile_storage_fs.dart';
 import 'package:xprs/wapp/geoui/activity_archive.dart';
+import 'package:xprs/wapp/geoui/widgets/activity_feed.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 
@@ -171,5 +172,37 @@ void main() {
 
     final page = all.olderBefore(baseTime + 5000, limit: 2);
     expect(page.map((p) => p['t']), [baseTime + 3000, baseTime + 4000]);
+  });
+
+  test('a corrected or withdrawn post comes back as one after a restart (7.8)',
+      () {
+    final dir = Directory.systemTemp.createTempSync('activity_revise');
+    dirs.add(dir);
+    var a = archive(dir, 'a.sqlite3');
+    a.add({
+      'mid': 'aa1111',
+      'from': 'X1FRND',
+      'text': 'meet at six',
+      'source': 'xprs',
+      't': baseTime,
+    });
+    a.add({
+      'mid': 'bb2222',
+      'from': 'X1FRND',
+      'text': 'my phone number',
+      'source': 'xprs',
+      't': baseTime + 1,
+    });
+    // Somebody else's correction does nothing; the author's does.
+    a.revise('aa1111', 'meet at seven', edited: true, by: 'X3EVIL');
+    expect(a.byMid('aa1111')!['text'], 'meet at six');
+    a.revise('aa1111', 'meet at seven', edited: true, by: 'X1FRND');
+    a.revise('bb2222', '', deleted: true, by: 'X1FRND');
+    final rows = {for (final r in a.recent()) r['mid'] as String: r};
+    expect(rows['aa1111']!['text'], 'meet at seven');
+    expect(activityEdited(rows['aa1111']!), isTrue);
+    expect(rows['bb2222']!['text'], '', reason: 'the words are gone');
+    expect(activityDeleted(rows['bb2222']!), isTrue);
+    expect(activityEdited(rows['bb2222']!), isFalse);
   });
 }

@@ -46,6 +46,7 @@ import '../services/media/media_fetch.dart';
 import '../services/media/media_preview.dart' show kPreviewSourceMax;
 import '../services/social/nomadnet_poller.dart';
 import 'geoui/widgets/activity_feed.dart';
+import 'geoui/widgets/edit_history_list.dart';
 import 'geoui/widgets/micron_view.dart';
 import 'geoui/widgets/profile_route.dart';
 import 'geoui/widgets/media_view.dart' show sharedMediaArchive;
@@ -1621,52 +1622,92 @@ class _WappPageState extends State<WappPage>
   /// Every version of one message, oldest first, back to the original
   /// (XPRS.md 7.8.1). The wapp holds them and decides which count; a viewer who
   /// is not a moderator is told earlier versions were removed (10.4.1).
+  /// Correct one of our own Status posts: the words in a box, then the wapp
+  /// sends the correction (XPRS.md 7.8.1). Unchanged words send nothing.
+  Future<void> _editActivityPost(Map<String, dynamic> post) async {
+    final mid = (post['mid'] ?? '').toString();
+    if (mid.isEmpty) return;
+    final was = (post['text'] ?? '').toString();
+    final box = TextEditingController(text: was);
+    final words = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit post'),
+        content: TextField(
+          controller: box,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 8,
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, box.text.trim()),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    box.dispose();
+    if (words == null || words.isEmpty || words == was.trim()) return;
+    _fieldValues['activity_mid'] = mid;
+    _fieldValues['activity_input'] = words;
+    _sendCommand('activity_edit');
+  }
+
+  /// "Delete for everyone" is a request every holder is asked to honour, not a
+  /// guarantee: say so before sending it (XPRS.md 7.8.2).
+  Future<void> _unsendActivityPost(Map<String, dynamic> post) async {
+    final mid = (post['mid'] ?? '').toString();
+    if (mid.isEmpty) return;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete for everyone?'),
+        content: const Text(
+            'Everyone who holds this post is asked to delete it. Those who '
+            'honour the request lose the words for good, and so do you.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    _fieldValues['activity_mid'] = mid;
+    _sendCommand('activity_unsend');
+  }
+
+  void _activityHistory(Map<String, dynamic> post) {
+    final mid = (post['mid'] ?? '').toString();
+    if (mid.isEmpty) return;
+    _fieldValues['activity_mid'] = mid;
+    _sendCommand('activity_history');
+  }
+
+  // The history dialog currently open: which message it shows, and the
+  // versions it draws. A withdrawal arriving meanwhile replaces them, so the
+  // words that were just destroyed do not stay on screen until it is closed.
+  String? _historyOf;
+  ValueNotifier<List<Map<String, dynamic>>>? _historyVersions;
+
   void _showEditHistory(Map data) {
-    final versions = [
+    final shown = ValueNotifier<List<Map<String, dynamic>>>([
       for (final v in (data['versions'] as List? ?? const []))
         if (v is Map) v.map((k, x) => MapEntry(k.toString(), x)),
-    ];
-    final cs = Theme.of(context).colorScheme;
+    ]);
+    _historyOf = '${data['id'] ?? ''}|${data['mid'] ?? ''}';
+    _historyVersions = shown;
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Edit history'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              for (var i = 0; i < versions.length; i++)
-                if ((versions[i]['note'] ?? '').toString().isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text('${versions[i]['note']}',
-                        style: TextStyle(
-                            fontStyle: FontStyle.italic,
-                            color: cs.onSurfaceVariant)),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${i == 0 && versions[i]['role'] == 'author' ? 'Original' : (i == versions.length - 1 ? 'Current' : 'Edit')}'
-                          ' \u00b7 ${versions[i]['date'] ?? ''} ${versions[i]['time'] ?? ''}'
-                          ' \u00b7 ${versions[i]['by'] ?? ''}'
-                          '${versions[i]['role'] == 'author' || versions[i]['role'] == null ? '' : ' (${versions[i]['role']})'}',
-                          style: TextStyle(
-                              fontSize: 12, color: cs.onSurfaceVariant),
-                        ),
-                        const SizedBox(height: 2),
-                        Text('${versions[i]['text'] ?? ''}'),
-                      ],
-                    ),
-                  ),
-            ],
-          ),
-        ),
+        content: EditHistoryList(versions: shown),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -1674,7 +1715,21 @@ class _WappPageState extends State<WappPage>
           ),
         ],
       ),
-    );
+    ).whenComplete(() {
+      if (identical(_historyVersions, shown)) {
+        _historyOf = null;
+        _historyVersions = null;
+      }
+      shown.dispose();
+    });
+  }
+
+  /// A message was withdrawn (XPRS.md 7.8.2) while its history is open.
+  void _historyWithdrawn(Map d) {
+    if (_historyOf != '${d['id'] ?? ''}|${d['mid'] ?? ''}') return;
+    _historyVersions?.value = [
+      {'note': 'This message was deleted.'},
+    ];
   }
 
   void _addScreen(GeoUiBlock screen) {
@@ -2027,6 +2082,48 @@ class _WappPageState extends State<WappPage>
                       (e['from'] ?? '').toString() == from,
                 );
               }
+              // XPRS.md 7.8: the same post again, now corrected or withdrawn.
+              // A post never held is not drawn as a deleted one (there was no
+              // place for it); one held has its words replaced and says so.
+              if (fieldName == 'activity' && mid.isNotEmpty) {
+                final deleted = row['deleted'] == true;
+                final edited = row['edited'] == true;
+                if (deleted && !dup) {
+                  _feedIds[fieldName]?.remove(mid);
+                  changed = true;
+                  continue;
+                }
+                if (dup && (deleted || edited)) {
+                  final words = (row['text'] ?? '').toString();
+                  final by = (row['from'] ?? '').toString().toUpperCase();
+                  var theirs = false;
+                  for (final existing in buf) {
+                    if ((existing['mid'] ?? '').toString() != mid) continue;
+                    // Only the author's own correction counts (7.8.1).
+                    if ((existing['from'] ?? '').toString().toUpperCase() != by) {
+                      break;
+                    }
+                    theirs = true;
+                    existing['text'] = deleted ? '' : words;
+                    existing['edited'] = edited && !deleted;
+                    existing['deleted'] = deleted;
+                    existing['kind'] = deleted
+                        ? 'msg:deleted'
+                        : (edited ? 'msg:edited' : 'msg');
+                    break;
+                  }
+                  if (theirs) {
+                    _activityArchive?.revise(mid, words,
+                        edited: edited, deleted: deleted, by: by);
+                    if (deleted) {
+                      _historyWithdrawn({'id': fieldName, 'mid': mid});
+                    }
+                    _activityRev.value++;
+                  }
+                  changed = true;
+                  continue;
+                }
+              }
               // Persist before UI deduplication. The same event may arrive from
               // both the curated and direct-follow subscriptions; each archive
               // must make its own idempotent routing decision.
@@ -2226,6 +2323,7 @@ class _WappPageState extends State<WappPage>
           // moderated; the wapp states what it shows now.
           final field = data['field'] as String? ?? 'conversations';
           _convStore(field).edit(data);
+          if (data['deleted'] == true) _historyWithdrawn(data);
           changed = true;
         } else if (type == 'ui.convo.history') {
           // The versions of one message, oldest first, for its Info dialog.
@@ -7458,6 +7556,11 @@ class _WappPageState extends State<WappPage>
           ..._activityHidden,
           ...RnsService.instance.mutedCallsigns,
         },
+        // XPRS.md 7.8: Status posts can be corrected and withdrawn by their
+        // author, and an edited one lists its versions. The wapp judges each.
+        onEdit: _wappName == 'social' ? _editActivityPost : null,
+        onUnsend: _wappName == 'social' ? _unsendActivityPost : null,
+        onHistory: _wappName == 'social' ? _activityHistory : null,
         onBlock: (from) {
           if (from.isEmpty) return;
           _fieldValues['activity_call'] = from;
