@@ -77,10 +77,6 @@ class _AppDrawer extends StatelessWidget {
               title: const Text('Settings'),
               onTap: onSettings,
             ),
-            const ListTile(
-              leading: Icon(Icons.info_outline),
-              title: Text('XPRS $kAppVersion+$kBuildNumber'),
-            ),
           ],
         ),
       ),
