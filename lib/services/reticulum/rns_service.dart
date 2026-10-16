@@ -1955,6 +1955,9 @@ class RnsService {
     'inbox': _inbox.length,
     'announcesHeard': _rxAnnounces,
     'announcesRebroadcast': _transport?.announcesRebroadcast ?? 0,
+    // Announces a shared hub was spared: what we relay, one per destination
+    // per hour on each hub (XPRS.md 12.12.1), and our xprs/wapp wires.
+    'uplinkAnnouncesHeld': _transport?.uplinkAnnouncesHeld ?? 0,
     'wappLxmfIn': _wappLxmfIn,
     'provided': _files?.providedCount ?? 0,
     'dhtStored': _files?.dhtStoredKeys ?? 0,
@@ -4805,7 +4808,7 @@ class RnsService {
       _aspects,
       appData: appData,
     );
-    _transport!.sendOnAll(pkt.pack());
+    _transport!.sendAnnounce(pkt.pack(), pkt.destHash);
     LogService.instance.add('RNS: announced "$text"');
   }
 
@@ -4827,8 +4830,18 @@ class RnsService {
         aspects,
         appData: Uint8List(0),
       );
-      _transport!.sendOnAll(pkt.pack());
+      _transport!.sendAnnounce(pkt.pack(), pkt.destHash);
     }
+    // xprs/wapp itself, tag only. Wires no longer ride announces onto the
+    // hubs ([wappBroadcast]), and a station answering us addresses this
+    // destination through its hub, which needs a path to it.
+    final wapp = await RnsAnnounceBuilder.build(
+      _id!,
+      _app,
+      _aspectsWapp,
+      appData: Uint8List.fromList([4, ...utf8.encode('xprs')]),
+    );
+    _transport!.sendAnnounce(wapp.pack(), wapp.destHash);
     await _announceLxmfDests();
     // Announce our relay role + interest set so peers can find/rank us.
     await _announceRelayDest();
@@ -4849,13 +4862,13 @@ class RnsService {
       kLxmfDeliveryAspects,
       appData: Uint8List.fromList(utf8.encode(_announceText)),
     );
-    _transport!.sendOnAll(lx.pack());
+    _transport!.sendAnnounce(lx.pack(), lx.destHash);
     final lp = await RnsAnnounceBuilder.build(
       _id!,
       kLxmfApp,
       kLxmfPropagationAspects,
     );
-    _transport!.sendOnAll(lp.pack());
+    _transport!.sendAnnounce(lp.pack(), lp.destHash);
   }
 
   /// The LXMF destinations, aired on ONE interface instead of every one.
@@ -4925,7 +4938,7 @@ class RnsService {
       kRelayAspects,
       appData: _relayRole!.announcementAppData(),
     );
-    _transport!.sendOnAll(pkt.pack());
+    _transport!.sendAnnounce(pkt.pack(), pkt.destHash);
   }
 
   static const List<String> _aspectsFiles = kFilesAspects;
@@ -5050,7 +5063,11 @@ class RnsService {
       );
       return false;
     }
-    _transport!.sendOnAll(raw);
+    // Never onto a shared hub. Every wire was an announce of our xprs/wapp
+    // destination, and a hub mutes a destination that announces that often
+    // (RnsTransport.sendAnnounce); public traffic crosses the internet in
+    // addressed copies to archivers instead (XPRS.md 12.12.2).
+    _transport!.sendAnnounce(raw, pkt.destHash, uplinks: false);
     return true;
   }
 
@@ -5185,6 +5202,8 @@ class RnsService {
   Uint8List? _ownWappDest;
   String _ownWappFor = '';
 
+  static const int _stationPathStaleMs = 2 * 60 * 1000;
+
   int stationLaneSent = 0;
   int stationLaneNoPath = 0;
   int stationLaneIn = 0;
@@ -5299,10 +5318,21 @@ class RnsService {
     }
     if (wire.length > kRnsEncryptedMdu) return false;
     final dest = RnsDestination.hash(id, _app, _aspectsWapp);
-    if (t.pathFor(dest) == null) {
+    final path = t.pathFor(dest);
+    if (path == null) {
       stationLaneNoPath++;
       t.requestPath(dest);
       return false;
+    }
+    // A route learned a while ago may lead nowhere now: a station that
+    // rebooted is a new connection at its hub, and the path answer that came
+    // first may have been a neighbour's stale one (measured: four hops
+    // through a hub the station had left, kept because nothing asked again).
+    // Ask again, as the firmware does before it uses an old route; this
+    // packet goes on the route we have.
+    if (DateTime.now().millisecondsSinceEpoch - path.updatedMs >
+        _stationPathStaleMs) {
+      t.requestPath(dest, force: true);
     }
     final ct = await id.encrypt(wire);
     t.sendDataTo(dest, ct);
@@ -6791,7 +6821,7 @@ class RnsService {
       final pkt = await RnsAnnounceBuilder.build(id, 'circles', const [
         'rv',
       ], appData: appData);
-      t.sendOnAll(pkt.pack());
+      t.sendAnnounce(pkt.pack(), pkt.destHash);
     }());
   }
 
