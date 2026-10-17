@@ -58,13 +58,25 @@ The in-app updater stays in every build, F-Droid's included, with its
 `REQUEST_INSTALL_PACKAGES` permission. XPRS is multiplatform: the updater is
 how Windows, Linux and non-F-Droid Android installs get new versions, and how a
 phone updates from a nearby station or an always-on archiver over Reticulum
-with no internet at all. What F-Droid installs is told apart at run time
-instead: **"Updates only from F-Droid"** (Settings, Updates) is on by default
-when an F-Droid client installed the app. With it on, XPRS never downloads
-itself; it asks F-Droid's index which version it publishes and, when that is
-newer, opens the F-Droid client on XPRS to install it. For geogram, F-Droid's
-only objection to the updater was downloading binaries from github.com; the
-update feed's files are on xprs.dev/downloads.
+with no internet at all. What F-Droid installs is told apart at run time:
+**"Updates only from F-Droid"** (Settings, Updates) is on by default when an
+F-Droid client installed the app. With it on, XPRS never downloads itself; it
+asks F-Droid's index which version it publishes and, when that is newer, opens
+the F-Droid client on XPRS to install it. For geogram, F-Droid's only objection
+to the updater was downloading binaries from github.com; the update feed's
+files are on xprs.dev/downloads.
+
+**The automatic check at start-up is compiled out of every store build**, with
+its "Update available" notice: the recipe template passes
+`--dart-define=AUTO_UPDATE_CHECK=false` (`UpdateService.autoCheckEnabled`).
+`linsui` asked for it on 2026-10-15 after a community reviewer, who had
+installed the F-Droid-built APK with adb rather than an F-Droid client, saw
+the notice for a newer release: an APK a store ships must not announce
+versions from anywhere else, whoever installed it. Since F-Droid ships the APK
+the release pipeline builds from the same template, every Android release
+carries the define; the desktop builds keep the start-up check. The Updates
+panel stays in all of them, because a check from there is the user's own
+request. The same define is the rule for any other store later.
 
 ## 2. Current state
 
@@ -104,7 +116,20 @@ update feed's files are on xprs.dev/downloads.
   codes are now N x 10 plus the ABI digit, and N carries a base of 400,000 to
   stay above what v1.2.17 shipped. **v1.2.18** (build 400395, codes 4003951,
   4003952 and 4003953) is the first release under it, and its recipe went to
-  the merge request branch.
+  the merge request branch. The same day `linsui` called the merge request
+  "mostly ready", waiting for an on-device test behind some 200 others.
+* **2026-10-03 to 2026-10-13:** `mezinster` found a security issue while
+  reviewing and reported it through GitHub private vulnerability reporting
+  (enabled for that purpose). Both findings are fixed in **v1.2.26** (the
+  remote-control API off by default and loopback-only; the identity backup in
+  shared storage always encrypted), and the merge request points at it.
+* **2026-10-15:** a community reviewer tested v1.2.26 on a phone (reproducible
+  build verified for all three ABIs, permissions coherent, "Ready") and saw
+  the in-app notice for v1.2.27. `linsui`: "Please disable this." The
+  start-up check is now compiled out of the store build (section 1, section
+  7), from the next release on; the merge request has to move to that
+  release. Non-blocking nit from the same review: `MANAGE_EXTERNAL_STORAGE`
+  is broad, and SAF could cover the identity backup.
 
 ## 3. Following the review
 
@@ -446,6 +471,10 @@ What each part is for, and what taught it:
   defaults to "Updates only from F-Droid" (section 1). The first submission
   compiled it out with `--dart-define=SELF_UPDATE=false` and deleted the
   permission with `sed`; the define still exists for anyone repackaging XPRS.
+* **The start-up check is compiled out** with
+  `--dart-define=AUTO_UPDATE_CHECK=false` on the `flutter build` line, since
+  2026-10-15 (section 1). The define must stay on every store build, and it
+  reaches the release pipeline through the same template.
 * **reticulum-dart is copied next to the app**, because `pubspec.yaml`
   depends on it by path. `$$srclib$$` expands to an absolute path.
 * **The scanner refuses any WebAssembly file** in the source tree, and it runs
@@ -596,7 +625,7 @@ profile is created; before that the app opens no sockets at all):
 | Host | Purpose |
 |---|---|
 | `rns.wisco.network`, `rns.birdsnet.com.br`, `sydney.reticulum.au`, `use.inertia.chat` (all `:4242`) | Community Reticulum TCP hubs, tried in order until one answers. Editable in Settings; `rns.autoStart` turns the node off. |
-| `xprs.dev` (`/updates/*.json`, then `/downloads/...`) | The update check at start-up, except on an install from F-Droid: the update feed, and an update's files when no station holds them. xprs.dev is our site, served by GitHub Pages; the app never contacts github.com. |
+| `xprs.dev` (`/updates/*.json`, then `/downloads/...`) | The update feed, and an update's files when no station holds them, when the user opens Updates. The desktop builds also check it at start-up; the Android (store) builds do not (`AUTO_UPDATE_CHECK=false`, section 1). xprs.dev is our site, served by GitHub Pages; the app never contacts github.com. |
 
 Watched for 100 seconds after creating a profile, the desktop build opened only
 a UDP listener on port 4242 (the LAN transport) besides the update feed. NOSTR

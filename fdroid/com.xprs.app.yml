@@ -5,6 +5,9 @@
 # a release's version, versionCode and commit. F-Droid rebuilds each APK and
 # ships it only if it matches ours byte for byte (reproducible build), so a
 # change to the build steps here must reach fdroiddata in the same release.
+# AUTO_UPDATE_CHECK=false turns off the start-up update check and its notice:
+# an APK a store ships must not announce versions from anywhere else
+# (fdroiddata !48456, 2026-10-15). Keep it on every store build.
 # See docs/f-droid.md.
 Categories:
   - Connectivity
@@ -66,6 +69,7 @@ Builds:
       - rustup target add @RUST_TARGET@
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform=@FLUTTER_PLATFORM@
+        --dart-define=AUTO_UPDATE_CHECK=false
     ndk: r28c
 
 AllowedAPKSigningKeys: 2a4b4625895e700839415a81c091d949699167abe03c22794376d18f2f7ec2d2

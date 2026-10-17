@@ -302,5 +302,11 @@ come off the web. The rest of the surface:
   version opens the F-Droid client. `--dart-define=SELF_UPDATE=false` still
   compiles the whole path out (and the mirror with it), for anyone who
   repackages XPRS behind an updater of their own.
+- **No start-up update check in a store build.** The recipe template passes
+  `--dart-define=AUTO_UPDATE_CHECK=false`, so every Android release (F-Droid's
+  copy included) neither checks at start-up nor shows the "Update available"
+  notice; the Updates panel still checks when opened. F-Droid asked for this
+  (fdroiddata !48456, 2026-10-15), and it is the rule for any store. Desktop
+  builds keep the start-up check.
 - **Runtime is configurable.** Both the feed base and the wapp store source can
   be repointed at runtime, which is how a staging feed is tested.

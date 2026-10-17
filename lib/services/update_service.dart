@@ -179,7 +179,24 @@ class UpdateService {
   bool _autoCheck = true;
   bool _fdroidOnly = false;
   bool get betaEnabled => _betaEnabled;
-  bool get autoCheck => _autoCheck;
+
+  /// Whether the start-up check runs: the compile-time switch below, then the
+  /// user's own setting (on unless turned off through the remote API).
+  bool get autoCheck => autoCheckEnabled && _autoCheck;
+
+  /// Compile-time switch for the automatic check at start-up and its "Update
+  /// available" notice. Off in every store build:
+  ///
+  ///     flutter build apk --dart-define=AUTO_UPDATE_CHECK=false
+  ///
+  /// F-Droid asked for it on fdroiddata !48456: an APK a store ships must not
+  /// announce versions from anywhere else, whoever installed it. The recipe
+  /// template (fdroid/com.xprs.app.yml) passes it, and since F-Droid ships the
+  /// very APK the release pipeline builds from that template, every Android
+  /// release carries it. Desktop builds keep the start-up check. The Updates
+  /// panel stays either way: a check from there is the user's own request.
+  static const bool autoCheckEnabled =
+      bool.fromEnvironment('AUTO_UPDATE_CHECK', defaultValue: true);
 
   /// "Updates only from F-Droid" (Android). XPRS then never downloads itself:
   /// it asks F-Droid which version it publishes, and hands an update to the
@@ -212,8 +229,9 @@ class UpdateService {
   ///
   /// makes this report unsupported, so every check, download and install path
   /// short-circuits and the Updates panel hides itself. Official builds keep it
-  /// on, F-Droid's included (it rebuilds the release byte for byte); an F-Droid
-  /// install defaults to [fdroidOnly] instead.
+  /// on, F-Droid's included (it rebuilds the release byte for byte); store
+  /// builds turn off the start-up check instead ([autoCheckEnabled]), and an
+  /// F-Droid install defaults to [fdroidOnly].
   static const bool selfUpdateEnabled =
       bool.fromEnvironment('SELF_UPDATE', defaultValue: true);
 
@@ -421,8 +439,9 @@ class UpdateService {
     // when auto-check is off — the user already asked for that download.
     await resumeActiveDownload();
     // The F-Droid client tells its users about updates itself; asking F-Droid
-    // again at every start would only be a request nobody made.
-    if (!_autoCheck || fdroidOnly) return;
+    // again at every start would only be a request nobody made. Store builds
+    // compile the start-up check out altogether (autoCheckEnabled).
+    if (!autoCheck || fdroidOnly) return;
     await checkForUpdates();
     final sel = selectedRelease;
     if (!isNewer(sel)) return;
