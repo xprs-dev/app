@@ -38,7 +38,7 @@ class ShareAppService {
           String abi = '',
           int? port,
           Object? api,
-          Object? chatPageGz}) async =>
+          Object? chatPage}) async =>
       throw const ShareAppException('unsupported');
   Future<void> stop() async {}
   Future<List<String>> localAddresses() async => const [];

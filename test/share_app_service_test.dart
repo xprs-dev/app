@@ -16,7 +16,7 @@ void main() {
   late File apk;
   final svc = ShareAppService.instance;
   final bytes = List<int>.generate(100000, (i) => i % 251);
-  final chatGz = Uint8List.fromList(gzip.encode(utf8.encode('<html>the chat</html>')));
+  final chatHtml = Uint8List.fromList(utf8.encode('<html>the chat</html>'));
   final sent = <String>[];
   WebChatApi api({String? app = '/app'}) => WebChatApi(
         publicRows: ({sinceMs, untilMs, required types, from, visitor, required limit}) =>
@@ -60,7 +60,7 @@ void main() {
         abi: 'arm64-v8a',
         port: 0,
         api: api(),
-        chatPageGz: chatGz);
+        chatPage: chatHtml);
 
     final page = await get(port, '/app');
     expect(page.statusCode, 200);
@@ -102,7 +102,7 @@ void main() {
   });
 
   test('the root is the web chat, gzipped or not as the client asks', () async {
-    final port = await svc.start(port: 0, api: api(app: null), chatPageGz: chatGz);
+    final port = await svc.start(port: 0, api: api(app: null), chatPage: chatHtml);
     final raw = HttpClient()..autoUncompress = false;
     final rq = await raw.get('127.0.0.1', port, '/');
     rq.headers.set('accept-encoding', 'gzip');
@@ -119,7 +119,7 @@ void main() {
 
   test('a copy that cannot be handed on still hosts the chat, with no /app',
       () async {
-    final port = await svc.start(port: 0, api: api(app: null), chatPageGz: chatGz);
+    final port = await svc.start(port: 0, api: api(app: null), chatPage: chatHtml);
     expect(svc.apkShareable, isFalse);
     final r = await get(port, '/app');
     expect(r.statusCode, 404);
@@ -131,7 +131,7 @@ void main() {
 
   test('the api answers under /api and nothing else leaks', () async {
     final port = await svc.start(
-        apkPath: apk.path, version: '1', port: 0, api: api(), chatPageGz: chatGz);
+        apkPath: apk.path, version: '1', port: 0, api: api(), chatPage: chatHtml);
     final s = await get(port, '/api/services');
     final j = jsonDecode(utf8.decode(await body(s))) as Map;
     expect((j['page'] as Map)['app'], '/app');

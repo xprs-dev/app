@@ -1,5 +1,0 @@
-* Updates: this build no longer checks for updates at start-up. An install from F-Droid updates through F-Droid; Settings, Updates still checks when you open it.
-* Chat: opening Chat no longer freezes the screen, and every 1:1 bubble shows a lock when the message arrived sealed.
-* Status and Alerts: edit or withdraw what you posted; Status can attach a picture.
-* Share: the web chat runs on the phone's own server.
-* Stations: ESP32 stations are reached over Reticulum too.

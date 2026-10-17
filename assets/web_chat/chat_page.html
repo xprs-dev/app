@@ -1,0 +1,1632 @@
+<!doctype html>
+<!-- The hotspot chat page. SOURCE OF TRUTH: edit this file, then regenerate
+     chat_page.c with tool/embed_page.py. Theme and logo font are the old
+     the XPRS chat (xprs_http/chat_page.c), bubbles lean Telegram.
+     Identity is created silently on first visit; the menu lets a user show
+     the npub, export the nsec, import another, or start fresh. The crypto
+     is the XPRS 9.1.2 short-Schnorr, validated against the spec's worked
+     example. Everything inline: captive WebViews have no internet, no
+     secure context, often no localStorage. -->
+<html><head><meta charset="utf-8">
+<!-- resizes-content: the keyboard shrinks the page instead of scrolling it,
+     so the header and the room chips stay on screen while typing. -->
+<meta name="viewport"
+      content="width=device-width,initial-scale=1,interactive-widget=resizes-content">
+<title>XPRS</title>
+<style>
+@font-face{font-family:'Wartext';src:url('data:font/woff2;base64,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') format('woff2');font-display:swap}
+:root{--accent:#ffa86a;--bg:#101010;--text:#f0f0f0;
+      --border:rgba(255,240,224,.125);--muted:#888}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+     background:var(--bg);color:var(--text);font-size:14px;
+     display:flex;flex-direction:column}
+.header{border-bottom:1px solid var(--border);height:40px;
+        padding:0 12px;margin-top:5px;
+        display:flex;align-items:center;gap:12px;position:relative}
+.header .logo{font-family:'Wartext',sans-serif;font-size:38px;
+        color:var(--accent);letter-spacing:5px;margin-top:-12px;
+        transform:scaleY(.72);transform-origin:center}
+.menu{margin-left:auto;position:relative}
+.my-callsign{color:var(--accent);font-size:12px;font-weight:bold;
+        margin-right:8px}
+.menu-btn{background:transparent;border:1px solid var(--border);
+        color:var(--text);padding:6px 8px;border-radius:4px;cursor:pointer;
+        font-size:16px;line-height:1}
+.menu-panel{position:absolute;right:0;top:38px;background:#151515;
+        border:1px solid var(--border);border-radius:6px;min-width:200px;
+        display:none;z-index:2;box-shadow:0 8px 20px rgba(0,0,0,.35)}
+.menu-panel.open{display:block}
+.menu-panel button{width:100%;background:transparent;border:0;
+        color:var(--text);padding:10px 12px;text-align:left;cursor:pointer;
+        font-size:13px}
+.menu-panel button:hover{background:rgba(255,255,255,.06)}
+#content{flex:1;display:flex;min-height:0}
+#side{width:150px;border-right:1px solid var(--border);overflow-y:auto;
+      padding:8px 0;flex-shrink:0}
+#side .room{padding:8px 12px;cursor:pointer;font-size:13px;color:var(--muted);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#side .room.on{color:var(--accent);border-left:2px solid var(--accent);
+      background:rgba(255,168,106,.06)}
+#side .roomhead{padding:8px 12px 2px;font-size:10px;color:#555;
+      text-transform:uppercase;letter-spacing:1px}
+#chatcol{flex:1;display:flex;flex-direction:column;min-width:0}
+/* Width alone. With the viewport resizing for the keyboard, a phone held
+   upright is briefly wider than tall, and an orientation test flipped the
+   page into the desktop rail mid-sentence. */
+@media (max-width:640px){
+  /* #chatwrap is the row that holds the rail and the chat column, so it is
+   * the one that has to stack. Turning only #content into a column left the
+   * room chips beside the conversation, squeezing the composer to a sliver. */
+  #content,#chatwrap{flex-direction:column}
+  /* Stacked, the chat column is a column-flex CHILD, and min-height:auto
+   * lets it grow to its messages: a long conversation pushed the composer
+   * off the bottom of the screen. Zero lets .messages scroll instead. */
+  #chatwrap,#chatcol{min-height:0}
+  #side{width:auto;border-right:0;border-bottom:1px solid var(--border);
+        display:flex;overflow-x:auto;overflow-y:hidden;padding:4px 8px;
+        gap:4px;align-items:center}
+  #side .roomhead{display:none}
+  #side .room{padding:5px 10px;border:1px solid var(--border);
+        border-radius:12px;flex-shrink:0}
+  #side .room.on{border-color:var(--accent);border-left-width:1px}
+}
+.messages{flex:1;overflow-y:auto;padding:12px;display:flex;
+        flex-direction:column;gap:8px}
+/* A short conversation sits above the composer, where the eye already is,
+   not at the top of an empty screen. margin-top:auto rather than
+   justify-content:flex-end, which stops a column from scrolling. */
+.messages>:first-child{margin-top:auto}
+.msg{max-width:85%}
+.msg .meta{font-size:11px;margin-bottom:2px}
+.msg .meta.under{margin-bottom:0;margin-top:2px}
+.msg .dots{background:transparent;border:0;color:var(--muted);
+        cursor:pointer;font-size:13px;padding:0 5px}
+.msg .likes{color:#e0708a;font-size:11px;margin-left:6px}
+#msgmenu{position:fixed;background:#151515;border:1px solid var(--border);
+        border-radius:6px;z-index:20;display:none;min-width:170px;
+        box-shadow:0 8px 20px rgba(0,0,0,.35)}
+#msgmenu button{width:100%;background:transparent;border:0;color:var(--text);
+        padding:10px 12px;text-align:left;cursor:pointer;font-size:13px}
+#msgmenu button:hover{background:rgba(255,255,255,.06)}
+.msg .quote{font-size:11px;color:var(--muted);border-left:2px solid
+        var(--accent);padding:2px 6px;margin-bottom:3px;text-align:left}
+#replybar{display:none;border-top:1px solid var(--border);padding:4px 12px;
+        font-size:11px;color:var(--muted);background:#161310;
+        align-items:center;gap:8px}
+#replybar.on{display:flex}
+#replybar .x{margin-left:auto;background:transparent;border:0;
+        color:var(--muted);cursor:pointer;font-size:14px}
+.msg .author{color:var(--accent);font-weight:bold}
+.msg .time{color:var(--muted);margin-left:6px}
+.msg .bubble{display:inline-block;background:#1b1b1b;
+        border:1px solid var(--border);border-radius:12px;
+        padding:8px 12px;word-wrap:break-word;text-align:left;
+        max-width:100%}
+.msg.local{align-self:flex-end;text-align:right}
+.msg.local .bubble{background:#2a1c10;border-color:rgba(255,168,106,.35);
+        border-bottom-right-radius:4px}
+.msg.remote{align-self:flex-start;text-align:left}
+.msg.remote .bubble{border-bottom-left-radius:4px}
+.badge{display:inline-block;font-size:9px;font-weight:bold;
+        padding:1px 5px;border-radius:3px;margin-left:6px}
+.badge.ok{background:#1b5e20;color:#81c784}
+.badge.bad{background:#b71c1c;color:#ef9a9a}
+.msg.failed .bubble{opacity:.55;border-style:dashed}
+.msg .why{font-size:11px;color:#ef9a9a;margin-top:2px}
+.mood{font-size:10px;font-style:italic;color:var(--accent);margin-left:4px}
+.input-area{border-top:1px solid var(--border);padding:8px;display:flex;
+        gap:6px;align-items:center}
+.input-area input{flex:1;min-width:0;background:transparent;
+        border:1px solid var(--border);border-radius:4px;padding:8px;
+        color:var(--text);font-size:16px;outline:none}
+.input-area input:focus{border-color:var(--accent)}
+.input-area button{flex-shrink:0;font-family:'Wartext',sans-serif;
+        font-size:18px;font-weight:bold;background:var(--accent);
+        color:var(--bg);border:none;border-radius:4px;padding:4px 12px;
+        cursor:pointer}
+.status-bar{padding:4px 12px;font-size:10px;color:var(--muted);
+        display:flex;justify-content:space-between}
+.status-bar a{color:var(--muted)}
+#getapp.hide{display:none}
+.snackbar{visibility:hidden;min-width:250px;background:#333;color:#fff;
+        text-align:center;border-radius:4px;padding:12px;position:fixed;
+        z-index:10;left:50%;bottom:60px;transform:translateX(-50%);
+        font-size:14px}
+.snackbar.show{visibility:visible;animation:fadein .3s,fadeout .3s 2.7s}
+/* Tabs. The station shows seven panels on its own screen; the phone on the
+   hotspot gets the same material in five, chat first because that is what
+   somebody who just joined an open AP came for. */
+.tabs{display:flex;border-bottom:1px solid var(--border);overflow-x:auto}
+.tabs button{flex:1 0 auto;background:none;border:0;color:var(--muted);
+  font:inherit;font-size:12px;padding:7px 12px;cursor:pointer;
+  border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+.view{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 12px;
+  font-size:13px;overflow-wrap:break-word;-webkit-overflow-scrolling:touch}
+.view.hide,#chatwrap.hide{display:none}
+#chatwrap{flex:1;display:flex;min-height:0}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;color:#555;font-weight:normal;font-size:10px;
+  text-transform:uppercase;padding:3px 8px 3px 0;border-bottom:1px solid var(--border)}
+.tbl td{padding:4px 8px 4px 0;border-bottom:1px solid #1c1c1c;
+  vertical-align:top;word-break:break-word}
+.tbl td.n{white-space:nowrap;color:var(--muted)}
+.kv{width:100%;border-collapse:collapse;font-size:13px}
+.kv td{padding:3px 8px 3px 0;border-bottom:1px solid #1c1c1c}
+.kv td:first-child{color:var(--muted);white-space:nowrap;width:42%}
+.wform{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.wform input{flex:1 1 140px;min-width:0;background:transparent;color:var(--text);
+  border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:14px}
+.wform button{background:none;border:1px solid var(--border);color:var(--text);
+  border-radius:4px;padding:6px 12px}
+.kv tr.net{cursor:pointer}
+h3{font-size:11px;color:#555;text-transform:uppercase;font-weight:normal;
+  margin:14px 0 5px}
+h3:first-child{margin-top:0}
+.bar{height:9px;background:var(--accent);min-width:1px}
+.bars{display:flex;align-items:flex-end;gap:1px;height:52px;margin:3px 0 2px}
+.bars div{flex:1 1 0;background:var(--accent);min-height:1px}
+.dim{color:var(--muted)}
+.sig-verified{color:#3a3}.sig-unverified{color:#a83}.sig-none{color:#555}
+.wire{font-family:monospace;font-size:10px;color:#666;
+  overflow-wrap:anywhere;margin-top:2px}
+.pkt{border-bottom:1px solid #1c1c1c;padding:6px 0}
+.pkt .l1{display:flex;align-items:baseline;gap:4px;font-size:13px}
+.pkt .l1 .when{margin-left:auto;color:var(--muted);font-size:11px;
+  white-space:nowrap;padding-left:6px}
+.pkt .l2{font-size:11px;color:var(--muted)}
+.viewbtns button{background:none;border:1px solid var(--border);color:var(--muted);
+  font:inherit;font-size:11px;padding:2px 7px;margin-right:4px;cursor:pointer}
+.viewbtns button.on{color:var(--accent);border-color:var(--accent)}
+img.shot{max-width:100%;image-rendering:pixelated;border:1px solid var(--border)}
+@keyframes fadein{from{bottom:0;opacity:0}to{bottom:60px;opacity:1}}
+@keyframes fadeout{from{bottom:60px;opacity:1}to{bottom:0;opacity:0}}
+</style></head><body>
+<div class="header">
+  <span class="logo">XPRS</span>
+  <div class="menu">
+    <span class="my-callsign" id="call"></span>
+    <button class="menu-btn" onclick="toggleMenu()">&#9776;</button>
+    <div class="menu-panel" id="menu">
+      <button data-view="stats" onclick="openView('stats')">Stats</button>
+      <button data-view="station" onclick="openView('station')">Station</button>
+      <button data-view="settings" onclick="openView('settings')">Settings</button>
+      <button onclick="clearChat()">Clear chat view</button>
+      <button id="extbtn" style="display:none" onclick="toggleExtension()">Use my NOSTR extension</button>
+      <button onclick="showNpub()">Show my npub</button>
+      <button onclick="exportNsec()">Export nsec</button>
+      <button onclick="importNsec()">Import another nsec</button>
+      <button onclick="newIdentity()">New identity</button>
+      <button onclick="toggleSound()" id="sndbtn">Sound: on</button>
+    </div>
+  </div>
+</div>
+<div class="tabs" id="tabs">
+  <button data-tab="chat" class="on" onclick="showTab('chat')">Chat</button>
+  <button data-tab="traffic" onclick="showTab('traffic')">Traffic</button>
+  <button data-tab="devices" onclick="showTab('devices')">Devices</button>
+</div>
+<div id="content">
+  <div id="chatwrap">
+  <div id="side"></div>
+  <div id="chatcol">
+    <div class="messages" id="msgs"></div>
+    <div class="status-bar">
+      <span id="stat">connecting</span>
+      <span id="stlink">XPRS station &middot; <a href="/config">settings</a></span>
+      <a id="getapp" class="hide" href="/app">Get the app</a>
+    </div>
+    <div id="replybar"><span id="replyinfo"></span>
+      <button class="x" onclick="cancelReply()">&#10005;</button></div>
+    <div class="input-area">
+      <input id="txt" maxlength="180" placeholder="Message"
+             onkeydown="if(event.key==='Enter')sendMsg()">
+      <button onclick="sendMsg()">&gt;</button>
+    </div>
+  </div>
+  </div>
+  <div class="view hide" id="v-traffic">loading&hellip;</div>
+  <div class="view hide" id="v-devices">loading&hellip;</div>
+  <div class="view hide" id="v-stats">loading&hellip;</div>
+  <div class="view hide" id="v-station">loading&hellip;</div>
+  <div class="view hide" id="v-settings"></div>
+</div>
+<div class="snackbar" id="snack"></div>
+<div id="msgmenu"></div>
+<script>
+"use strict";
+// XPRS crypto for the hotspot chat page: sha256, secp256k1 (native BigInt),
+// the section 9.1.2 short-Schnorr, base85 and bech32. No dependencies -- a
+// captive-portal WebView has no secure context and no WebCrypto.subtle.
+
+// ---- sha256 (bytes in, bytes out) ----
+function sha256(data){
+  var K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  var H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  var l=data.length, buf=new Uint8Array(((l+9+63)>>6)<<6);
+  buf.set(data); buf[l]=0x80;
+  var bl=l*8;
+  buf[buf.length-4]=(bl>>>24)&255; buf[buf.length-3]=(bl>>>16)&255;
+  buf[buf.length-2]=(bl>>>8)&255; buf[buf.length-1]=bl&255;
+  var w=new Array(64);
+  for(var off=0;off<buf.length;off+=64){
+    for(var i=0;i<16;i++) w[i]=(buf[off+4*i]<<24)|(buf[off+4*i+1]<<16)|(buf[off+4*i+2]<<8)|buf[off+4*i+3];
+    for(i=16;i<64;i++){
+      var a1=w[i-15], b1=w[i-2];
+      var s0=((a1>>>7)|(a1<<25))^((a1>>>18)|(a1<<14))^(a1>>>3);
+      var s1=((b1>>>17)|(b1<<15))^((b1>>>19)|(b1<<13))^(b1>>>10);
+      w[i]=(w[i-16]+s0+w[i-7]+s1)|0;
+    }
+    var a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+    for(i=0;i<64;i++){
+      var S1=((e>>>6)|(e<<26))^((e>>>11)|(e<<21))^((e>>>25)|(e<<7));
+      var ch=(e&f)^(~e&g);
+      var t1=(h+S1+ch+K[i]+w[i])|0;
+      var S0=((a>>>2)|(a<<30))^((a>>>13)|(a<<19))^((a>>>22)|(a<<10));
+      var mj=(a&b)^(a&c)^(b&c);
+      var t2=(S0+mj)|0;
+      h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;
+    }
+    H[0]=(H[0]+a)|0;H[1]=(H[1]+b)|0;H[2]=(H[2]+c)|0;H[3]=(H[3]+d)|0;
+    H[4]=(H[4]+e)|0;H[5]=(H[5]+f)|0;H[6]=(H[6]+g)|0;H[7]=(H[7]+h)|0;
+  }
+  var out=new Uint8Array(32);
+  for(i=0;i<8;i++){out[4*i]=(H[i]>>>24)&255;out[4*i+1]=(H[i]>>>16)&255;out[4*i+2]=(H[i]>>>8)&255;out[4*i+3]=H[i]&255;}
+  return out;
+}
+
+// ---- byte/bigint helpers ----
+function b2n(b){var v=0n;for(var i=0;i<b.length;i++)v=(v<<8n)|BigInt(b[i]);return v;}
+function n2b(v,len){var out=new Uint8Array(len);for(var i=len-1;i>=0;i--){out[i]=Number(v&255n);v>>=8n;}return out;}
+function cat(){var n=0,i,a=arguments;for(i=0;i<a.length;i++)n+=a[i].length;
+  var out=new Uint8Array(n),o=0;for(i=0;i<a.length;i++){out.set(a[i],o);o+=a[i].length;}return out;}
+function s2b(s){var out=new Uint8Array(s.length);for(var i=0;i<s.length;i++)out[i]=s.charCodeAt(i)&255;return out;}
+function hex(b){var s='';for(var i=0;i<b.length;i++)s+=('0'+b[i].toString(16)).slice(-2);return s;}
+
+// ---- secp256k1 (Jacobian double-and-add; one-shot signing, speed is fine) ----
+var P=2n**256n-2n**32n-977n;
+var N=0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n;
+var GX=0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798n;
+var GY=0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8n;
+function mod(a,m){var r=a%m;return r<0n?r+m:r;}
+function powmod(b,e,m){var r=1n;b=mod(b,m);while(e>0n){if(e&1n)r=r*b%m;b=b*b%m;e>>=1n;}return r;}
+function inv(a,m){return powmod(mod(a,m),m-2n,m);}
+// Jacobian points [X,Y,Z]; infinity Z=0
+function jdbl(p){var X=p[0],Y=p[1],Z=p[2];if(Z===0n)return p;
+  var A=X*X%P,B=Y*Y%P,C=B*B%P;
+  var D=mod(2n*((X+B)*(X+B)%P-A-C),P);
+  var E=3n*A%P,F=E*E%P;
+  var X3=mod(F-2n*D,P);
+  return [X3,mod(E*(D-X3)-8n*C,P),mod(2n*Y*Z,P)];}
+function jadd(p,q){if(p[2]===0n)return q;if(q[2]===0n)return p;
+  var Z1Z1=p[2]*p[2]%P,Z2Z2=q[2]*q[2]%P;
+  var U1=p[0]*Z2Z2%P,U2=q[0]*Z1Z1%P;
+  var S1=p[1]*Z2Z2%P*q[2]%P,S2=q[1]*Z1Z1%P*p[2]%P;
+  if(U1===U2)return S1===S2?jdbl(p):[0n,1n,0n];
+  var H=mod(U2-U1,P),I=4n*H*H%P,J=H*I%P,r=mod(2n*(S2-S1),P),V=U1*I%P;
+  var X3=mod(r*r-J-2n*V,P);
+  return [X3,mod(r*(V-X3)-2n*S1*J,P),mod(2n*H*p[2]%P*q[2],P)];}
+function jmul(k,px,py){var r=[0n,1n,0n],q=[px,py,1n];
+  while(k>0n){if(k&1n)r=jadd(r,q);q=jdbl(q);k>>=1n;}return r;}
+function jaff(p){if(p[2]===0n)return null;var zi=inv(p[2],P),zi2=zi*zi%P;
+  return [p[0]*zi2%P,p[1]*zi2%P*zi%P];}
+function mulG(k){return jaff(jmul(mod(k,N),GX,GY));}
+
+// ---- tagged hash: sha256(sha256(tag)||sha256(tag)||msg) ----
+function tagged(tag,msg){var th=sha256(s2b(tag));return sha256(cat(th,th,msg));}
+
+// ---- XPRS short-Schnorr (9.1.2) ----
+/* The packet's bytes are UTF-8 (section 4), not the low byte of each UTF-16
+ * unit: s2b is for the ASCII it was written for (tags, hex), and signing "e
+ * with an accent" through it hashed different bytes than every verifier does. */
+function u8(s){
+  if(typeof TextEncoder!=='undefined')return new TextEncoder().encode(s);
+  var u=unescape(encodeURIComponent(s)),b=new Uint8Array(u.length);
+  for(var i=0;i<u.length;i++)b[i]=u.charCodeAt(i);return b;}
+function xprsSign(canonicalStr,dPriv,aux){
+  var digest=sha256(u8(canonicalStr));
+  var d=mod(dPriv,N); if(d===0n) throw 'bad key';
+  var Pt=mulG(d);
+  if(Pt[1]&1n){d=N-d;Pt=mulG(d);}
+  var px=n2b(Pt[0],32);
+  var k=b2n(tagged('XPRS/nonce',cat(n2b(d,32),digest,aux)));
+  k=mod(k,N); if(k===0n)k=1n;
+  var R=mulG(k);
+  var rx=n2b(R[0],32);
+  var e32=tagged('XPRS/challenge',cat(rx,px,digest));
+  var e=b2n(e32.slice(0,16));
+  var s=mod(k+e*d,N);
+  return cat(e32.slice(0,16),n2b(s,32));
+}
+
+// ---- base85, the spec alphabet ----
+var B85='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-+=^!/*?&<>()[]%$#@,;_';
+function b85enc(bytes){var out='';
+  for(var i=0;i<bytes.length;i+=4){
+    var v=(bytes[i]*16777216)+(bytes[i+1]*65536)+(bytes[i+2]*256)+bytes[i+3];
+    var d=['','','','',''];
+    for(var j=4;j>=0;j--){d[j]=B85[v%85];v=Math.floor(v/85);}
+    out+=d.join('');}
+  return out;}
+
+// ---- bech32 (npub/nsec) ----
+var BC='qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+function bcPolymod(vals){var GEN=[0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3];
+  var chk=1;for(var i=0;i<vals.length;i++){var top=chk>>25;chk=((chk&0x1ffffff)<<5)^vals[i];
+  for(var j=0;j<5;j++)if((top>>j)&1)chk^=GEN[j];}return chk;}
+function bcHrpExpand(hrp){var out=[];var i;for(i=0;i<hrp.length;i++)out.push(hrp.charCodeAt(i)>>5);
+  out.push(0);for(i=0;i<hrp.length;i++)out.push(hrp.charCodeAt(i)&31);return out;}
+function bech32Encode(hrp,data5){var vals=bcHrpExpand(hrp).concat(data5);
+  var pm=bcPolymod(vals.concat([0,0,0,0,0,0]))^1;var chk='';
+  for(var i=0;i<6;i++)chk+=BC[(pm>>(5*(5-i)))&31];
+  var s=hrp+'1';for(i=0;i<data5.length;i++)s+=BC[data5[i]];return s+chk;}
+function bech32Decode(str){str=str.toLowerCase();var pos=str.lastIndexOf('1');
+  if(pos<1||pos+7>str.length)return null;
+  var hrp=str.slice(0,pos),data=[];
+  for(var i=pos+1;i<str.length;i++){var d=BC.indexOf(str[i]);if(d<0)return null;data.push(d);}
+  if(bcPolymod(bcHrpExpand(hrp).concat(data))!==1)return null;
+  return {hrp:hrp,data:data.slice(0,-6)};}
+function to5(bytes){var out=[],acc=0,bits=0;
+  for(var i=0;i<bytes.length;i++){acc=(acc<<8)|bytes[i];bits+=8;
+    while(bits>=5){bits-=5;out.push((acc>>bits)&31);}}
+  if(bits>0)out.push((acc<<(5-bits))&31);return out;}
+function to8(data5){var out=[],acc=0,bits=0;
+  for(var i=0;i<data5.length;i++){acc=(acc<<5)|data5[i];bits+=5;
+    while(bits>=8){bits-=8;out.push((acc>>bits)&255);}}
+  return new Uint8Array(out);}
+function npubEncode(pubx){return bech32Encode('npub',to5(pubx));}
+function nsecEncode(priv){return bech32Encode('nsec',to5(priv));}
+function nsecDecode(str){var d=bech32Decode(str);
+  if(!d||d.hrp!=='nsec')return null;var b=to8(d.data);
+  return b.length===32?b:null;}
+
+// ---- identity helpers ----
+// X1: a person (XPRS.md section 3). X3 is a fixed station, which is what
+// the board serving this page is, not the person typing into it.
+function callsignFromNpub(npub){var s='X1';
+  for(var i=5;i<9;i++)s+=npub[i].toUpperCase();return s;}
+function pubkeyX(privBytes){var Pt=mulG(b2n(privBytes));return n2b(Pt[0],32);}
+
+
+// Sealed bodies for the web chat (XPRS.md 6.2): AES-256-CBC with PKCS#7
+// padding under the X coordinate of (our scalar x their public point), the
+// vector first, base64url without padding. Pure JS because a page served over
+// plain HTTP has no WebCrypto.subtle. Uses the curve helpers of xprs_crypto.js
+// (P, powmod, jmul, jaff, b2n, n2b, cat), which come before it in the build.
+
+// ---- AES-256 (FIPS 197), one block at a time ----
+var AES_SBOX=null,AES_INV=null,AES_RCON=[1,2,4,8,16,32,64,128,27,54];
+function aesTables(){
+  if(AES_SBOX)return;
+  AES_SBOX=new Uint8Array(256);AES_INV=new Uint8Array(256);
+  var p=1,q=1,x;
+  do{
+    p=p^((p<<1)&255)^(p&128?27:0);               /* p *= 3 */
+    q^=q<<1;q^=q<<2;q^=q<<4;q&=255;if(q&128)q^=9; /* q /= 3 */
+    x=q^((q<<1|q>>7)&255)^((q<<2|q>>6)&255)^((q<<3|q>>5)&255)^((q<<4|q>>4)&255);
+    AES_SBOX[p]=(x^99)&255;AES_INV[(x^99)&255]=p;
+  }while(p!==1);
+  AES_SBOX[0]=99;AES_INV[99]=0;
+}
+function xt(a){return((a<<1)^(a&128?27:0))&255;}
+function gmul(a,b){var r=0;while(b){if(b&1)r^=a;a=xt(a);b>>=1;}return r;}
+function aesExpand(key){
+  aesTables();
+  var w=new Uint8Array(240),i,t0,t1,t2,t3,k;
+  w.set(key);
+  for(i=8;i<60;i++){
+    t0=w[4*i-4];t1=w[4*i-3];t2=w[4*i-2];t3=w[4*i-1];
+    if(i%8===0){k=t0;t0=AES_SBOX[t1]^AES_RCON[i/8-1];t1=AES_SBOX[t2];t2=AES_SBOX[t3];t3=AES_SBOX[k];}
+    else if(i%8===4){t0=AES_SBOX[t0];t1=AES_SBOX[t1];t2=AES_SBOX[t2];t3=AES_SBOX[t3];}
+    w[4*i]=w[4*i-32]^t0;w[4*i+1]=w[4*i-31]^t1;w[4*i+2]=w[4*i-30]^t2;w[4*i+3]=w[4*i-29]^t3;
+  }
+  return w;
+}
+function aesBlock(w,s,enc){
+  var r,i,a,b,c,d,t=new Uint8Array(16);
+  function addKey(round){for(var j=0;j<16;j++)s[j]^=w[round*16+j];}
+  if(enc){
+    addKey(0);
+    for(r=1;r<=14;r++){
+      for(i=0;i<16;i++)s[i]=AES_SBOX[s[i]];
+      /* ShiftRows */
+      t.set(s);
+      s[1]=t[5];s[5]=t[9];s[9]=t[13];s[13]=t[1];
+      s[2]=t[10];s[6]=t[14];s[10]=t[2];s[14]=t[6];
+      s[3]=t[15];s[7]=t[3];s[11]=t[7];s[15]=t[11];
+      if(r<14)for(i=0;i<16;i+=4){
+        a=s[i];b=s[i+1];c=s[i+2];d=s[i+3];
+        s[i]=xt(a)^xt(b)^b^c^d;s[i+1]=a^xt(b)^xt(c)^c^d;
+        s[i+2]=a^b^xt(c)^xt(d)^d;s[i+3]=xt(a)^a^b^c^xt(d);
+      }
+      addKey(r);
+    }
+  }else{
+    addKey(14);
+    for(r=13;r>=0;r--){
+      /* InvShiftRows */
+      t.set(s);
+      s[1]=t[13];s[5]=t[1];s[9]=t[5];s[13]=t[9];
+      s[2]=t[10];s[6]=t[14];s[10]=t[2];s[14]=t[6];
+      s[3]=t[7];s[7]=t[11];s[11]=t[15];s[15]=t[3];
+      for(i=0;i<16;i++)s[i]=AES_INV[s[i]];
+      addKey(r);
+      if(r>0)for(i=0;i<16;i+=4){
+        a=s[i];b=s[i+1];c=s[i+2];d=s[i+3];
+        s[i]=gmul(a,14)^gmul(b,11)^gmul(c,13)^gmul(d,9);
+        s[i+1]=gmul(a,9)^gmul(b,14)^gmul(c,11)^gmul(d,13);
+        s[i+2]=gmul(a,13)^gmul(b,9)^gmul(c,14)^gmul(d,11);
+        s[i+3]=gmul(a,11)^gmul(b,13)^gmul(c,9)^gmul(d,14);
+      }
+    }
+  }
+  return s;
+}
+function cbcEncrypt(key,iv,data){
+  var w=aesExpand(key),pad=16-data.length%16,n=data.length+pad,out=new Uint8Array(n),
+      prev=iv,blk,i,j;
+  for(i=0;i<n;i+=16){
+    blk=new Uint8Array(16);
+    for(j=0;j<16;j++)blk[j]=(i+j<data.length?data[i+j]:pad)^prev[j];
+    aesBlock(w,blk,true);out.set(blk,i);prev=blk;
+  }
+  return out;
+}
+function cbcDecrypt(key,iv,data){
+  if(data.length===0||data.length%16!==0)return null;
+  var w=aesExpand(key),out=new Uint8Array(data.length),prev=iv,blk,i,j;
+  for(i=0;i<data.length;i+=16){
+    blk=data.slice(i,i+16);
+    aesBlock(w,blk,false);
+    for(j=0;j<16;j++)out[i+j]=blk[j]^prev[j];
+    prev=data.slice(i,i+16);
+  }
+  var pad=out[out.length-1];
+  if(pad<1||pad>16||pad>out.length)return null;
+  for(i=out.length-pad;i<out.length;i++)if(out[i]!==pad)return null;
+  return out.slice(0,out.length-pad);
+}
+
+// ---- ECDH: the X coordinate of d x P, where P is the x-only public key lifted
+// to the point with an even y (the parity does not change the X of the product).
+function ecdhX(privBytes,pubX){
+  var x=b2n(pubX);
+  if(x<=0n||x>=P)return null;
+  var y2=(powmod(x,3n,P)+7n)%P,y=powmod(y2,(P+1n)/4n,P);
+  if(y*y%P!==y2)return null;
+  var r=jaff(jmul(b2n(privBytes),x,y));
+  return r?n2b(r[0],32):null;
+}
+
+// ---- base64url without padding, and UTF-8 ----
+var B64U='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+function b64uEnc(b){var s='',i,n;
+  for(i=0;i<b.length;i+=3){
+    n=(b[i]<<16)|((i+1<b.length?b[i+1]:0)<<8)|(i+2<b.length?b[i+2]:0);
+    s+=B64U[n>>18&63]+B64U[n>>12&63];
+    if(i+1<b.length)s+=B64U[n>>6&63];
+    if(i+2<b.length)s+=B64U[n&63];
+  }
+  return s;}
+function b64uDec(s){
+  var out=[],acc=0,bits=0,i,v;
+  for(i=0;i<s.length;i++){
+    v=B64U.indexOf(s[i]);if(v<0)return null;
+    acc=(acc<<6)|v;bits+=6;
+    if(bits>=8){bits-=8;out.push((acc>>bits)&255);}
+  }
+  return new Uint8Array(out);}
+function utf8Enc(s){
+  if(typeof TextEncoder!=='undefined')return new TextEncoder().encode(s);
+  var u=unescape(encodeURIComponent(s)),b=new Uint8Array(u.length);
+  for(var i=0;i<u.length;i++)b[i]=u.charCodeAt(i);return b;}
+function utf8Dec(b){
+  if(typeof TextDecoder!=='undefined')return new TextDecoder('utf-8').decode(b);
+  var s='';for(var i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);
+  try{return decodeURIComponent(escape(s));}catch(e){return s;}}
+
+// ---- the seal itself ----
+/* `x:` value for [text], from our private key to the peer's x-only public key.
+ * [iv] is for the tests; the page lets it be random. */
+function sealBody(privBytes,peerX,text,iv){
+  var key=ecdhX(privBytes,peerX);
+  if(!key)return null;
+  if(!iv){iv=new Uint8Array(16);
+    if(window.crypto&&crypto.getRandomValues)crypto.getRandomValues(iv);
+    else for(var i=0;i<16;i++)iv[i]=Math.floor(Math.random()*256);}
+  return b64uEnc(cat(iv,cbcEncrypt(key,iv,utf8Enc(text))));
+}
+/* The text of an `x:` value from the peer, or null when it does not open. */
+function openBody(privBytes,peerX,x){
+  var key=ecdhX(privBytes,peerX),blob=b64uDec(x);
+  if(!key||!blob||blob.length<32)return null;
+  var pt=cbcDecrypt(key,blob.slice(0,16),blob.slice(16));
+  return pt?utf8Dec(pt):null;
+}
+
+// Using a NOSTR signer (NIP-07, `window.nostr`: nos2x, Alby and the like) for
+// the account behind a callsign. The extension never gives the page its key and
+// signs only NOSTR events, so a packet is signed in the second form of XPRS.md
+// 6.1.3: the extension signs a kind 24767 event whose content is the packet
+// digest, and the 64-byte BIP-340 signature goes in `sig:` as 80 characters.
+// Sealed bodies use its nip04, the same cipher as `x:` in another wrapping
+// (6.2). Builds on xprs_crypto.js and xprs_seal.js, which come before it.
+
+function nostrAvailable(){return !!(window.nostr&&window.nostr.getPublicKey);}
+
+/* "YYYY-MM-DD_hh:mm:ss" (UTC) -> epoch seconds, or 0. */
+function tsEpoch(ts){
+  var m=/^(\d{4})-(\d\d)-(\d\d)_(\d\d):(\d\d):(\d\d)$/.exec(ts||'');
+  return m?Math.floor(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6])/1000):0;}
+
+/* The event the extension is asked to sign for [canonical] (the packet without
+ * sig: and via:), and the id the verifier will compute for it. */
+function nostrEventFor(pubHex,canonical){
+  var m=canonical.match(/ ts:(\S+)/),created=tsEpoch(m&&m[1]);
+  if(!created)return null;
+  var content=hex(sha256(u8(canonical)));
+  var ser='[0,"'+pubHex+'",'+created+',24767,[],"'+content+'"]';
+  return {event:{kind:24767,created_at:created,tags:[],content:content},
+          id:hex(sha256(u8(ser)))};}
+
+/* Sign [canonical] through the extension: cb(wire) with sig: placed before m:
+ * as the other form does, or cb(null,why). */
+function nostrSignWire(canonical,pubHex,cb){
+  var ev=nostrEventFor(pubHex,canonical);
+  if(!ev){cb(null,'this packet has no time to sign');return;}
+  var done=function(signed){
+    /* Trust the signature only for the event we asked for: an extension that
+     * changed the time or the content signed something else. */
+    if(!signed||typeof signed.sig!=='string'||signed.sig.length!==128||
+       (signed.id&&signed.id!==ev.id)||
+       (signed.pubkey&&signed.pubkey!==pubHex)){cb(null,'the signer returned something else');return;}
+    var sig=b85enc(unhexBytes(signed.sig));
+    var i=canonical.indexOf(' m:');
+    cb(i>=0?canonical.slice(0,i)+' sig:'+sig+canonical.slice(i):canonical+' sig:'+sig);};
+  try{
+    var r=window.nostr.signEvent(ev.event);
+    if(r&&r.then)r.then(done,function(e){cb(null,(e&&e.message)||'the signer refused');});
+    else done(r);
+  }catch(e){cb(null,(e&&e.message)||'the signer refused');}
+}
+function unhexBytes(h){var b=new Uint8Array(h.length/2);
+  for(var i=0;i<b.length;i++)b[i]=parseInt(h.substr(2*i,2),16);return b;}
+
+/* NIP-04's content is base64(ciphertext)?iv=base64(iv); `x:` is base64url, no
+ * padding, of the vector followed by the ciphertext (6.2). Same bytes. */
+var B64S='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function b64sEnc(b){var s='',i,n;
+  for(i=0;i<b.length;i+=3){
+    n=(b[i]<<16)|((i+1<b.length?b[i+1]:0)<<8)|(i+2<b.length?b[i+2]:0);
+    s+=B64S[n>>18&63]+B64S[n>>12&63]+(i+1<b.length?B64S[n>>6&63]:'=')+(i+2<b.length?B64S[n&63]:'=');}
+  return s;}
+function b64sDec(s){var out=[],acc=0,bits=0,i,v;
+  s=s.replace(/=+$/,'');
+  for(i=0;i<s.length;i++){v=B64S.indexOf(s[i]);if(v<0)return null;
+    acc=(acc<<6)|v;bits+=6;if(bits>=8){bits-=8;out.push((acc>>bits)&255);}}
+  return new Uint8Array(out);}
+function nip04ToX(content){
+  var p=String(content).split('?iv='),ct=p[0]&&b64sDec(p[0]),iv=p[1]&&b64sDec(p[1]);
+  return ct&&iv&&iv.length===16?b64uEnc(cat(iv,ct)):null;}
+function xToNip04(x){
+  var b=b64uDec(x);
+  return b&&b.length>=32?b64sEnc(b.slice(16))+'?iv='+b64sEnc(b.slice(0,16)):null;}
+
+/* Seal [text] to [peerHex] with the extension: cb(x) or cb(null). */
+function nostrSeal(peerHex,text,cb){
+  var n=window.nostr&&window.nostr.nip04;
+  if(!n||!n.encrypt){cb(null);return;}
+  try{
+    var r=n.encrypt(peerHex,text),f=function(c){cb(nip04ToX(c));};
+    if(r&&r.then)r.then(f,function(){cb(null);});else f(r);
+  }catch(e){cb(null);}}
+/* Open an `x:` value from [peerHex] with the extension: cb(text) or cb(null). */
+function nostrOpen(peerHex,x,cb){
+  var n=window.nostr&&window.nostr.nip04,c=xToNip04(x);
+  if(!n||!n.decrypt||!c){cb(null);return;}
+  try{
+    var r=n.decrypt(peerHex,c),f=function(t){cb(typeof t==='string'?t:null);};
+    if(r&&r.then)r.then(f,function(){cb(null);});else f(r);
+  }catch(e){cb(null);}}
+
+
+// ---- storage: localStorage -> cookie -> memory (captive WebViews) ----
+var mem={};
+function stGet(k){
+  try{var v=localStorage.getItem(k);if(v!==null)return v;}catch(e){}
+  var m=document.cookie.match(new RegExp('(?:^|; )'+k+'=([^;]*)'));
+  if(m)return decodeURIComponent(m[1]);
+  return mem[k]!==undefined?mem[k]:null;}
+function stSet(k,v){
+  try{localStorage.setItem(k,v);}catch(e){}
+  try{document.cookie=k+'='+encodeURIComponent(v)+'; max-age=31536000; path=/';}catch(e){}
+  mem[k]=v;}
+
+function snack(t){
+  var s=document.getElementById('snack');
+  s.textContent=t;s.className='snackbar show';
+  setTimeout(function(){s.className='snackbar';},3000);}
+function toggleMenu(){
+  var m=document.getElementById('menu');
+  m.className=m.className.indexOf('open')>=0?'menu-panel':'menu-panel open';}
+
+// ---- identity: made silently on first visit; the menu changes it ----
+var priv=null,npub='',mycall='';
+function useKey(bytes){
+  priv=bytes;extMode=false;extPub='';
+  npub=npubEncode(pubkeyX(priv));
+  mycall=callsignFromNpub(npub);
+  /* A new key is a new callsign: the old session proves nothing for it. */
+  sess='';identSent=0;
+  if(canSession)setTimeout(function(){ensureSession(0);},0);
+  stSet('xprs_nsec',nsecEncode(priv));
+  document.getElementById('call').textContent=mycall;
+}
+function randKey(){
+  var b=new Uint8Array(32);
+  if(window.crypto&&crypto.getRandomValues)crypto.getRandomValues(b);
+  else for(var i=0;i<32;i++)b[i]=Math.floor(Math.random()*256);
+  return (b2n(b)===0n||b2n(b)>=N)?randKey():b;}
+function showNpub(){toggleMenu();prompt('Your public key (share freely):',npub);}
+function exportNsec(){toggleMenu();
+  if(extMode){snack('Your key is in your extension');return;}
+  prompt('Your SECRET key. Anyone holding it IS '+mycall+':',nsecEncode(priv));}
+function importNsec(){toggleMenu();
+  var v=prompt('Paste an nsec to become that identity:');
+  if(!v)return;
+  var b=nsecDecode(v.trim());
+  if(!b||b2n(b)===0n||b2n(b)>=N){snack('That is not a valid nsec');return;}
+  useKey(b);identSent=0;seen={};
+  document.getElementById('msgs').innerHTML='';
+  snack('Now chatting as '+mycall);load();}
+function newIdentity(){toggleMenu();
+  useKey(randKey());identSent=0;seen={};
+  document.getElementById('msgs').innerHTML='';
+  snack('New identity: '+mycall);load();}
+
+// ---- XPRS wires ----
+function tsNow(){
+  var d=new Date(),p=function(n){return (n<10?'0':'')+n;};
+  return d.getUTCFullYear()+'-'+p(d.getUTCMonth()+1)+'-'+p(d.getUTCDate())+
+    '_'+p(d.getUTCHours())+':'+p(d.getUTCMinutes())+':'+p(d.getUTCSeconds());}
+function aux32(){var b=new Uint8Array(32);
+  if(window.crypto&&crypto.getRandomValues)crypto.getRandomValues(b);
+  else for(var i=0;i<32;i++)b[i]=Math.floor(Math.random()*256);return b;}
+function signWire(canonical){
+  var sig=' sig:'+b85enc(xprsSign(canonical,b2n(priv),aux32()));
+  var i=canonical.indexOf(' m:');
+  if(i>=0)return canonical.slice(0,i)+sig+canonical.slice(i);
+  return canonical+sig;}
+
+// ---- the account in a NOSTR extension ---------------------------------------
+//
+// With an extension (NIP-07) the account is the same on every station: the
+// callsign comes from its public key, packets are signed by it in the second
+// form of XPRS.md 6.1.3 (the extension may ask each time), and direct messages
+// are sealed and opened by its nip04. Its key never reaches this page.
+var extMode=false,extPub='';
+function canSign(){return extMode||!!priv;}
+/* Sign [canonical] with whatever holds the key: cb(wire) or cb(null,why). */
+function signAny(canonical,cb){
+  if(extMode)nostrSignWire(canonical,extPub,cb);
+  else cb(signWire(canonical));
+}
+function showExtButton(){
+  var b=el('extbtn');
+  if(!b)return;
+  b.style.display=(nostrAvailable()||extMode)?'':'none';
+  b.textContent=extMode?'Use the key in this page':'Use my NOSTR extension';
+}
+function toggleExtension(){
+  toggleMenu();
+  if(extMode){
+    extMode=false;extPub='';stSet('xprs_ext','');
+    var saved=stGet('xprs_nsec'),b=saved?nsecDecode(saved):null;
+    useKey(b||randKey());showExtButton();rerenderAll();
+    snack('Now chatting as '+mycall);
+    return;
+  }
+  useExtension(false);
+}
+function useExtension(quiet){
+  if(!nostrAvailable()){if(!quiet)snack('No NOSTR extension found');return;}
+  var fin=function(h){
+    var pub=typeof h==='string'&&h.length===64?unhexBytes(h):null;
+    if(!pub){if(!quiet)snack('The extension gave no usable key');return;}
+    extMode=true;extPub=h;priv=null;
+    npub=npubEncode(pub);mycall=callsignFromNpub(npub);
+    stSet('xprs_ext','1');
+    sess='';identSent=0;
+    el('call').textContent=mycall;
+    showExtButton();rerenderAll();
+    if(canSession)ensureSession(0);
+    if(!quiet)snack('Now chatting as '+mycall+' through your extension');
+  };
+  try{
+    var r=window.nostr.getPublicKey();
+    if(r&&r.then)r.then(fin,function(){if(!quiet)snack('The extension refused');});
+    else fin(r);
+  }catch(e){if(!quiet)snack('The extension refused');}
+}
+/* The room again from what was heard, under the key now in use. */
+function rerenderAll(){plainCache={};switchRoom(curRoom);load();}
+var plainCache={};            /* wire id -> opened text, or false */
+
+// ---- who we may talk to privately ----------------------------------------
+//
+// A direct message is sealed to the peer's key (XPRS.md 6.2) when the station
+// has one for them, and sent in the clear, and marked so, when it has not.
+// A key is believed only from an identity the station VERIFIED: anyone can
+// write an identity for somebody else's callsign.
+var keys={};                 /* base callsign -> x-only public key, found ones only */
+var keyMiss={};              /* base callsign -> when a lookup last found nothing */
+var keyWait={};              /* base callsign -> callbacks waiting for it */
+function npubDecode(str){var d=bech32Decode(str);
+  if(!d||d.hrp!=='npub')return null;var b=to8(d.data);
+  return b.length===32?b:null;}
+function fetchKey(call,cb){
+  var c=baseCall(call);
+  if(keys[c]){cb(keys[c]);return;}
+  if(keyWait[c]){keyWait[c].push(cb);return;}
+  keyWait[c]=[cb];
+  getJSON('/api/xprs/history?kind=identity&call='+encodeURIComponent(c)+'&limit=3',
+    function(d){
+      var k=null,rows=(d&&d.rows)||[],i,m;
+      for(i=0;i<rows.length&&!k;i++){
+        if(rows[i].sig!=='verified')continue;
+        m=(rows[i].wire||'').match(/ k:(npub1[0-9a-z]+)/);
+        if(m)k=npubDecode(m[1]);
+      }
+      /* Not found is not remembered as a fact: the identity may arrive next. */
+      if(k)keys[c]=k;else keyMiss[c]=Date.now();
+      var w=keyWait[c];delete keyWait[c];
+      for(i=0;i<w.length;i++)w[i](k);
+    });
+}
+
+// ---- a session: proof of the key behind our callsign -----------------------
+//
+// A station that offers mail to visitors (page.session in /api/services) gives
+// a one-time nonce; we sign it, and it then shows us the direct messages
+// addressed to this callsign and no one else's. Anyone can write any callsign;
+// only the key signs.
+var sess='',canSession=false;
+function ensureSession(tries){
+  if(!canSession||sess||!canSign())return;
+  sendIdentity();
+  getJSON('/api/session',function(d){
+    if(!d||!d.nonce)return;
+    signAny('t:session f:'+mycall+' ts:'+tsNow()+' m:'+d.nonce,function(w){
+      if(!w)return;
+      var x=new XMLHttpRequest();
+      x.open('POST','/api/session',true);
+      x.timeout=6000;
+      x.onload=function(){
+        var j=null;try{j=JSON.parse(x.responseText);}catch(e){}
+        if(x.status===200&&j&&j.session){sess=j.session;chatLoaded=false;load();}
+        else if(x.status===409&&(tries||0)<4)
+          /* The station has not heard our identity yet. */
+          setTimeout(function(){ensureSession((tries||0)+1);},1500);
+      };
+      x.send(JSON.stringify({wire:w}));
+    });
+  });
+}
+
+// ---- sending: POST -> GET -> Image() (hostile WebViews) ----
+function postWire(wire,cb){
+  var done=false;
+  function fin(ok,why){if(!done){done=true;if(cb)cb(ok,why);}}
+  try{
+    var x=new XMLHttpRequest();
+    x.open('POST','/api/xprs/send',true);
+    x.timeout=4000;
+    x.onload=function(){fin(x.status===200,x.status===200?'':replyWhy(x));};
+    x.onerror=x.ontimeout=function(){getFallback(wire,fin);};
+    x.send(JSON.stringify({wire:wire}));
+  }catch(e){getFallback(wire,fin);}
+}
+/* The station's own words for a refusal: {"ok":false,"error":"..."}. */
+function replyWhy(x){
+  try{return JSON.parse(x.responseText).error||('HTTP '+x.status);}
+  catch(e){return 'HTTP '+x.status;}}
+function getFallback(wire,fin){
+  try{
+    var x=new XMLHttpRequest();
+    x.open('GET','/api/xprs/send?wire='+encodeURIComponent(wire),true);
+    x.timeout=4000;
+    x.onload=function(){fin(x.status===200,x.status===200?'':replyWhy(x));};
+    x.onerror=x.ontimeout=function(){
+      try{new Image().src='/api/xprs/send?wire='+encodeURIComponent(wire);}catch(e){}
+      fin(true);};
+    x.send();
+  }catch(e){fin(false);}
+}
+
+var identSent=0;
+function sendIdentity(){
+  var now=Date.now();
+  if(now-identSent<86400000)return;
+  identSent=now;
+  signAny('t:identity f:'+mycall+' ts:'+tsNow()+' k:'+npub,function(w){
+    if(w)postWire(w,null);});
+}
+function sendMsg(){
+  var t=document.getElementById('txt');
+  var text=t.value.trim();
+  if(!text||!canSign())return;
+  text=text.replace(/[\x00-\x1f]/g,' ');
+  sendIdentity();
+  var thread='';
+  if(replyTo){
+    if(replyTo.root)thread=' root:'+replyTo.root;
+    thread+=' r:'+replyTo.id;
+  }
+  var where='';
+  if(curRoom==='local')where=' scope:local';
+  else if(curRoom==='regional')where=' scope:regional';
+  else if(curRoom.slice(0,3)==='dm:')where=' d:'+curRoom.slice(3);
+  /* The Social feed publishes a status (27): kept and read later, not a
+   * conversation. A reply to a status is itself a status carrying r:. */
+  var typ=curRoom==='social'?'t:status':'t:message';
+  var peer=curRoom.slice(0,3)==='dm:'?curRoom.slice(3):'';
+  t.value='';
+  cancelReply();
+  /* A direct message is sealed to the peer's key when we can find it. */
+  if(peer)fetchKey(peer,function(k){dispatch(k);});else dispatch(null);
+  function dispatch(k){
+    if(!k){finish(null);return;}
+    if(extMode)nostrSeal(hex(k),text,finish);
+    else finish(sealBody(priv,k,text));
+  }
+  function finish(sealedBody){
+    var head=typ+' f:'+mycall+' ts:'+tsNow()+where+thread;
+    signAny(sealedBody?head+' x:'+sealedBody:head+' m:'+text,function(wire,why){
+      if(!wire){snack('Not sent: '+(why||'not signed'));t.value=text;return;}
+      if(u8(wire).length>250){snack('Message too long');t.value=text;return;}
+      if(peer&&!sealedBody)snack('Sent in the clear: no way to seal to '+peer);
+      sendOut(wire,text,!!sealedBody,peer);
+    });
+  }
+}
+function sendOut(wire,text,sealed,peer){
+  /* On the screen immediately -- the archive round trip (index writer +
+   * the next poll) takes seconds, and a sender should not wait on it.
+   * The wire is archived verbatim, so marking it seen dedups the echo. */
+  var mine=render({from:mycall,ts:Math.floor(Date.now()/1000),sig:'verified',
+          to:peer||'',wire:wire,plain:text,sealed:sealed});
+  postWire(wire,function(ok,why){
+    if(ok)return;
+    /* Said on the bubble, where it stays, and not only in a snackbar that
+     * is gone in three seconds: a bubble that still reads "signed" after the
+     * station refused it looks delivered. The station names its reason, e.g.
+     * "refused: use:listed" (XPRS 11.9: it carries only for listed people). */
+    var text=/^refused: use:/.test(why||'')?
+      'Not sent: this station only carries messages for people its owner listed':
+      'Not sent'+(why?' ('+why+')':'');
+    if(mine){
+      mine.className+=' failed';
+      var b=mine.querySelector('.badge');
+      if(b){b.className='badge bad';b.textContent='not sent';}
+      var w=document.createElement('div');
+      w.className='why';w.textContent=text;
+      mine.appendChild(w);
+    }
+    snack(text);});
+}
+
+// ---- receiving ----
+var seen={};
+// Section 5 identifier: sha256 over the wire with sig: and via: removed,
+// first six hex characters. What r: and root: point at.
+function wireId(w){
+  var canon=w.replace(/ sig:[!-~]{60}/,'').replace(/ via:[A-Za-z0-9,\-]+/,'');
+  return hex(sha256(s2b(canon))).slice(0,6);}
+
+// Replying (XPRS 6.4): r: names the parent; below the first level root:
+// names the thread. idmap lets the quote show who said what.
+var idmap={};
+var replyTo=null;   /* {id, root, from, snip} */
+function startReply(id){
+  var p=idmap[id];
+  replyTo={id:id,
+           root:(p&&p.root)||(p&&p.r)||'',
+           from:p?p.from:id, snip:p?p.text.slice(0,40):''};
+  document.getElementById('replyinfo').textContent=
+    'Replying to '+replyTo.from+': '+replyTo.snip;
+  document.getElementById('replybar').className='on';
+  document.getElementById('txt').focus();}
+function cancelReply(){
+  replyTo=null;
+  document.getElementById('replybar').className='';}
+
+/* New-message notice: a short beep (WebAudio -- no secure context needed,
+ * but it must be unlocked by a user gesture), a title counter cleared on
+ * focus, and a vibration where the device has one. */
+var sndOn=stGet('xprs_sound')!=='0';
+var audioCtx=null,unread=0,baseTitle=document.title;
+function unlockAudio(){
+  if(!audioCtx){
+    try{audioCtx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+  if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();}
+document.addEventListener('click',unlockAudio);
+document.addEventListener('keydown',unlockAudio);
+function beep(){
+  if(!sndOn||!audioCtx)return;
+  try{
+    var o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.frequency.value=880;o.type='sine';
+    g.gain.setValueAtTime(.15,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.15);
+    o.connect(g);g.connect(audioCtx.destination);
+    o.start();o.stop(audioCtx.currentTime+.15);
+  }catch(e){}}
+function notice(){
+  beep();
+  if(navigator.vibrate)try{navigator.vibrate(80);}catch(e){}
+  if(document.hidden||!document.hasFocus()){
+    unread++;document.title='('+unread+') '+baseTitle;}}
+window.addEventListener('focus',function(){
+  unread=0;document.title=baseTitle;});
+function toggleSound(){
+  sndOn=!sndOn;stSet('xprs_sound',sndOn?'1':'0');
+  document.getElementById('sndbtn').textContent='Sound: '+(sndOn?'on':'off');
+  toggleMenu();}
+
+/* ---- likes (XPRS 6.5): add:like / remove:like on a message's id ---- */
+var likes={};        /* msgId -> {callsign:1} */
+var domById={};      /* msgId -> bubble meta element to refresh */
+var myLikes={};      /* msgId -> 1 (mine, for toggling) */
+function likeCount(id){var n=0;for(var k in likes[id]||{})n++;return n;}
+function refreshLikes(id){
+  var el=domById[id];if(!el)return;
+  var n=likeCount(id);
+  el.textContent=n?('\u2665 '+n):'';}
+function applyReaction(row){
+  var w=row.wire||'';
+  var rm=w.match(/ r:([0-9a-f]{6})/);
+  if(!rm)return;
+  var id=rm[1],from=baseCall(row.from||'');
+  if(!likes[id])likes[id]={};
+  if(/ add:like/.test(w)){likes[id][from]=1;}
+  else if(/ remove:like/.test(w)){delete likes[id][from];}
+  if(from===baseCall(mycall))myLikes[id]=/ add:like/.test(w)?1:0;
+  refreshLikes(id);}
+function sendLike(id){
+  var verb=myLikes[id]?'remove':'add';
+  myLikes[id]=verb==='add'?1:0;
+  if(!likes[id])likes[id]={};
+  if(verb==='add')likes[id][baseCall(mycall)]=1;
+  else delete likes[id][baseCall(mycall)];
+  refreshLikes(id);
+  var par=idmap[id];
+  var sc=par&&par.scope&&par.scope!=='global'?' scope:'+par.scope:'';
+  signAny('t:reaction f:'+mycall+' ts:'+tsNow()+sc+' '+verb+':like r:'+id,function(wire){
+    if(wire)postWire(wire,null);});}
+
+/* ---- the per-message menu ---- */
+function showMsgMenu(ev,id,from,own){
+  var m=document.getElementById('msgmenu');
+  var items='<button onclick="menuAct(\'reply\',\''+id+'\',\''+from+'\')">Reply</button>'+
+    '<button onclick="menuAct(\'like\',\''+id+'\',\''+from+'\')">'+
+      (myLikes[id]?'Unlike':'Like \u2665')+'</button>';
+  if(!own)items+='<button onclick="menuAct(\'dm\',\''+id+'\',\''+from+'\')">Message '+from+'</button>';
+  m.innerHTML=items;
+  m.style.display='block';
+  var x=Math.min(ev.clientX,window.innerWidth-180);
+  var y=Math.min(ev.clientY,window.innerHeight-140);
+  m.style.left=x+'px';m.style.top=y+'px';
+  ev.stopPropagation();}
+document.addEventListener('click',function(){
+  document.getElementById('msgmenu').style.display='none';});
+function menuAct(act,id,from){
+  document.getElementById('msgmenu').style.display='none';
+  if(act==='reply')startReply(id);
+  else if(act==='like')sendLike(id);
+  else if(act==='dm')openDm(from);}
+
+var clearedBefore=parseInt(stGet('xprs_cleared')||'0',10)||0;
+
+/* Rooms (XPRS.md 9.11): Local is the scope:local conversation, kept to
+ * Bluetooth, ESP-NOW and the LAN; Regional is scope:regional, which adds
+ * LoRa and radio and never reaches the internet; Global is the default
+ * scope, which goes anywhere. A room is the scope its author wrote, never
+ * the bearer that delivered it, and a packet the station heard out of range
+ * (row.out) is in none of them. A packet with d: naming a person is a 1:1
+ * and gets its own room. */
+var curRoom=stGet('xprs_room')||'local';
+var allRows=[];              /* every row heard, for room switches */
+var dmPeers={};              /* callsign -> true */
+function baseCall(c){var i=c.indexOf('-');return i<0?c:c.slice(0,i);}
+/* The scope word before m:, as the room it files into. An unknown lowercase
+ * word is in no room: a station does not pass it on (9.11). */
+function scopeRoom(w){
+  var m=w.split(' m:')[0].match(/ scope:(\S+)/);
+  if(!m||m[1]==='global')return 'global';
+  if(m[1]==='local'||m[1]==='regional')return m[1];
+  return /[a-z]/.test(m[1])?null:'global';      /* PT,ES: a country */
+}
+function roomOf(row){
+  var w=row.wire||'';
+  var to=row.to||'';
+  if(row.out)return null;
+  /* A status (27) is a feed post, not a conversation: its own timeline. */
+  if((row.type||'')==='status'||w.indexOf('t:status ')===0)return 'social';
+  if(to&&to[0]!=='#'){
+    if(baseCall(to)===baseCall(mycall))return 'dm:'+baseCall(row.from);
+    if(baseCall(row.from)===baseCall(mycall))return 'dm:'+baseCall(to);
+    return null;             /* somebody else's 1:1: not our room */
+  }
+  return scopeRoom(w);
+}
+function roomLabel(r){
+  return r==='local'?'Local':r==='regional'?'Regional':r==='global'?'Global':
+         r==='social'?'Social':r.slice(3);}
+function renderSide(){
+  var el=document.getElementById('side');
+  var htmlp='<div class="roomhead">Rooms</div>';
+  var rooms=['local','regional','global'];
+  var peers=Object.keys(dmPeers).sort();
+  var extra=peers.length?'<div class="roomhead">People</div>':'';
+  el.innerHTML=htmlp+
+    rooms.map(function(r){return '<div class="room'+(curRoom===r?' on':'')+
+      '" data-r="'+r+'">'+roomLabel(r)+'</div>';}).join('')+
+    '<div class="roomhead">Feed</div>'+
+    '<div class="room'+(curRoom==='social'?' on':'')+
+      '" data-r="social">Social</div>'+
+    extra+
+    peers.map(function(p){var r='dm:'+p;
+      return '<div class="room'+(curRoom===r?' on':'')+
+      '" data-r="'+r+'">'+p+'</div>';}).join('');
+  var items=el.getElementsByClassName('room');
+  for(var i=0;i<items.length;i++)
+    items[i].onclick=(function(r){return function(){switchRoom(r);};})(
+      items[i].getAttribute('data-r'));
+}
+function switchRoom(r){
+  curRoom=r;stSet('xprs_room',r);
+  cancelReply();
+  seen={};
+  document.getElementById('msgs').innerHTML='';
+  renderSide();
+  for(var i=0;i<allRows.length;i++)render(allRows[i]);
+  document.getElementById('txt').placeholder=
+    r==='local'?'Message (stays local)':
+    r==='regional'?'Message (stays regional)':
+    r==='global'?'Message (goes everywhere)':
+    r==='social'?'Status update (published to everyone)':
+    'Message to '+r.slice(3);
+}
+/* Draw the room again from what was heard (a key arrived, so what was held
+ * back can now be opened). */
+function rerender(){
+  seen={};
+  document.getElementById('msgs').innerHTML='';
+  for(var i=0;i<allRows.length;i++)render(allRows[i]);
+}
+function openDm(call){
+  var p=baseCall(call);
+  if(p===baseCall(mycall))return;
+  dmPeers[p]=true;
+  switchRoom('dm:'+p);
+}
+function render(row){
+  var w=row.wire||'';
+  if((row.type||'')==='reaction'||w.indexOf('t:reaction ')===0){
+    var rk=wireId(w);
+    if(!seen[rk]){seen[rk]=1;applyReaction(row);}
+    return;
+  }
+  var room=roomOf(row);
+  if(room===null)return;
+  if(room.slice(0,3)==='dm:')dmPeers[room.slice(3)]=true;
+  if(allRows.indexOf(row)<0)allRows.push(row);
+  if(room!==curRoom){renderSide();return;}
+  /* One bubble per message (XPRS.md 5): copies that came round by other
+   * relays differ only in via:, which the identifier leaves out. */
+  var sk=wireId(w);
+  if(seen[sk])return;
+  var mi=w.indexOf(' m:');
+  var text=mi>=0?w.slice(mi+3):'';
+  var sealed=false;
+  if(row.plain!=null){text=row.plain;sealed=!!row.sealed;}
+  else if(mi<0){
+    /* x: is a body sealed to one key (6.2): open it with the peer's. */
+    var xm=w.match(/ x:(\S+)/);
+    if(xm&&canSign()){
+      var other=baseCall(row.from===mycall?(row.to||''):row.from);
+      var k=keys[other];
+      if(!k){
+        /* Ask again only after a while if the last lookup found nothing. */
+        if(other&&!(keyMiss[other]&&Date.now()-keyMiss[other]<10000))
+          fetchKey(other,function(kk){if(kk)rerender();});
+        return;               /* drawn again when the key arrives */
+      }
+      if(extMode){
+        /* The extension opens it, asynchronously: drawn when it has. */
+        var pc=plainCache[sk];
+        if(pc===undefined){
+          plainCache[sk]=null;
+          nostrOpen(hex(k),xm[1],function(t2){plainCache[sk]=t2===null?false:t2;rerender();});
+          return;
+        }
+        if(pc===null)return;
+        text=pc===false?null:pc;
+      }else text=openBody(priv,k,xm[1]);
+      if(text===null)text='(a sealed message that could not be opened)';
+      sealed=true;
+    }
+  }
+  seen[sk]=1;
+  if(!text)return;
+  if(clearedBefore&&(row.ts||0)<clearedBefore)return;   /* user hit Clear */
+  var own=row.from===mycall;
+  var id=wireId(w);
+  var rm=w.match(/ r:([0-9a-f]{6})/);
+  var rootm=w.match(/ root:([0-9a-f]{6})/);
+  idmap[id]={from:row.from,text:text,r:rm?rm[1]:'',
+             root:rootm?rootm[1]:'',
+             scope:scopeRoom(w)||'global'};
+  var d=document.createElement('div');
+  d.className='msg '+(own?'local':'remote');
+  var when=row.ts?new Date(row.ts*1000).toLocaleTimeString():'';
+  var badge=row.sig==='verified'?'<span class="badge ok">signed</span>'
+           :(row.sig==='none'?'<span class="badge bad">unsigned</span>':'');
+  if(sealed)badge+='<span class="badge ok">sealed</span>';
+  /* mood: (27.1) is decoration: one italic word beside the post. */
+  var mm=w.match(/ mood:([a-z]+) /);
+  if(mm)badge+='<span class="mood">'+mm[1]+'</span>';
+  var extras='<span class="likes"></span>'+
+    '<button class="dots" title="Message options">&#8942;</button>';
+  if(own){
+    d.innerHTML='<div class="bubble"></div>'+
+      '<div class="meta under"><span class="time">'+when+'</span>'+badge+extras+'</div>';
+  }else{
+    d.innerHTML='<div class="meta"><span class="author"></span>'+
+      '<span class="time">'+when+'</span>'+badge+extras+'</div>'+
+      '<div class="bubble"></div>';
+    var au=d.querySelector('.author');
+    au.textContent=row.from;
+    au.style.cursor='pointer';
+    au.title='Message '+row.from+' directly';
+    au.onclick=function(){openDm(row.from);};
+    notice();   /* somebody else spoke: beep, vibrate, count in the title */
+  }
+  domById[id]=d.querySelector('.likes');
+  refreshLikes(id);
+  d.querySelector('.dots').onclick=function(ev){
+    showMsgMenu(ev,id,row.from,own);};
+  var bub=d.querySelector('.bubble');
+  if(rm){
+    /* A receiver that never heard the parent still shows the reply,
+     * marked as answering a message it does not hold (6.4). */
+    var par=idmap[rm[1]];
+    var q=document.createElement('div');
+    q.className='quote';
+    q.textContent=par?(par.from+': '+par.text.slice(0,60))
+                     :('replying to '+rm[1]);
+    bub.appendChild(q);
+  }
+  bub.appendChild(document.createTextNode(text));
+  /* In the order things were SAID. The archive files a packet when it is
+   * heard, and the mesh replays: a catch-up brings an hour-old message in
+   * after this morning's, and appending put 14:05 below 13:28. A row with
+   * no time goes last, like a message being sent right now. */
+  var box=document.getElementById('msgs');
+  var t=row.ts||0;
+  d.setAttribute('data-ts',t||9e9);
+  var at=null,kids=box.children;
+  if(t)for(var j=kids.length-1;j>=0;j--){
+    if(+kids[j].getAttribute('data-ts')<=t){at=kids[j].nextSibling;break;}
+    at=kids[j];}
+  var stick=box.scrollTop+box.clientHeight>=box.scrollHeight-40;
+  box.insertBefore(d,at);
+  if(stick||own)box.scrollTop=box.scrollHeight;
+  return d;
+}
+function clearChat(){
+  toggleMenu();
+  clearedBefore=Math.floor(Date.now()/1000);
+  stSet('xprs_cleared',''+clearedBefore);
+  seen={};
+  document.getElementById('msgs').innerHTML='';
+  snack('Chat view cleared');
+}
+var chatLoaded=false;
+function load(){
+  try{
+    var x=new XMLHttpRequest();
+    // The whole conversation once, then only the newest: this runs every three
+    // seconds, and every read holds the archive against its writer.
+    x.open('GET','/api/xprs/history?kind=message,reaction,status&limit='+
+           (chatLoaded?40:200)+(sess?'&session='+sess:''),true);
+    x.timeout=4000;
+    x.onload=function(){
+      try{
+        var d=JSON.parse(x.responseText);
+        chatLoaded=true;
+        var rows=(d.rows||[]).slice().reverse();
+        for(var i=0;i<rows.length;i++){
+          var t=rows[i].type||'';
+          if(t==='message'||t==='reaction'||t==='status')render(rows[i]);
+        }
+        document.getElementById('stat').textContent=
+          (d.held!==undefined?d.held+' packets held':'ok');
+      }catch(e){}
+    };
+    x.send();
+  }catch(e){}
+}
+
+// ---- the other four tabs -------------------------------------------------
+//
+// Everything here is read-only and comes from the endpoints the station
+// already answers, so the phone on the hotspot sees what the board's own
+// screen shows: who is in reach (the Reachable panel), what went past
+// (Traffic), the three series (Stats), and the device itself.
+//
+// Only the visible tab polls, and each at the rate its data actually
+// changes. The station has one HTTP worker and one 2 KB buffer for every
+// reply; four phones polling five endpoints each would be the whole budget
+// spent on nobody looking.
+var tab='chat', tabTimer=null;
+var TAB_MS={chat:3000,traffic:5000,devices:5000,stats:60000,station:10000,settings:5000};
+
+function el(id){return document.getElementById(id);}
+function esc(t){return String(t==null?'':t)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function ago(sec){
+  sec=Math.max(0,Math.round(sec));
+  if(sec<60)return sec+'s';
+  if(sec<3600)return Math.round(sec/60)+'m';
+  if(sec<86400)return Math.round(sec/3600)+'h';
+  return Math.round(sec/86400)+'d';
+}
+// Words, not a stopwatch: the two largest non-zero units. "168h" is not an
+// uptime anybody reads, and this row has the width for "1 day, 3 hours".
+function plur(n,w){return n+' '+w+(n==1?'':'s');}
+function hms(sec){
+  var d=Math.floor(sec/86400),h=Math.floor(sec%86400/3600),
+      m=Math.floor(sec%3600/60),s=Math.floor(sec%60);
+  if(d)return h?plur(d,'day')+', '+plur(h,'hour'):plur(d,'day');
+  if(h)return m?plur(h,'hour')+', '+m+' min':plur(h,'hour');
+  if(m)return m+' min, '+s+' s';
+  return s+' s';
+}
+// The same shape for "how much battery is left", which is a duration too.
+function left(sec){
+  var h=Math.floor(sec/3600),m=Math.floor(sec%3600/60);
+  return h?h+'h '+(m<10?'0':'')+m+'m':m+'m';
+}
+function kb(n){
+  if(n==null)return '-';
+  return n>=1048576?(n/1048576).toFixed(1)+' MB':Math.round(n/1024)+' KB';
+}
+function getJSON(url,cb){
+  try{
+    var x=new XMLHttpRequest();
+    x.open('GET',url,true);
+    x.timeout=6000;
+    x.onload=function(){try{cb(JSON.parse(x.responseText));}catch(e){cb(null);}};
+    x.onerror=x.ontimeout=function(){cb(null);};
+    x.send();
+  }catch(e){cb(null);}
+}
+function fail(id,what){
+  el(id).innerHTML='<p class="dim">'+esc(what)+' unavailable on this station.</p>';
+}
+
+function showTab(t){
+  tab=t;
+  var bs=el('tabs').getElementsByTagName('button');
+  for(var i=0;i<bs.length;i++)
+    bs[i].className=bs[i].getAttribute('data-tab')===t?'on':'';
+  el('chatwrap').className=t==='chat'?'':'hide';
+  var views=['traffic','devices','stats','station','settings'];
+  for(var j=0;j<views.length;j++)
+    el('v-'+views[j]).className='view'+(views[j]===t?'':' hide');
+  if(tabTimer)clearInterval(tabTimer);
+  tick();
+  tabTimer=setInterval(tick,TAB_MS[t]||10000);
+}
+function tick(){
+  if(tab==='chat')load();
+  else if(tab==='traffic')loadTraffic();
+  else if(tab==='devices')loadDevices();
+  else if(tab==='stats')loadStats();
+  else if(tab==='station')loadStation();
+  else if(tab==='settings')loadSettings();
+}
+// Stats, Station and Settings live behind the menu, not in the tab row.
+function openView(t){toggleMenu();showTab(t);}
+
+// Traffic: every packet the station filed, not only the ones chat shows.
+//
+// Stacked rows rather than a table: six columns and a raw wire do not fit
+// 390 px, and a page that scrolls sideways on a phone is the wrong answer.
+function loadTraffic(){
+  getJSON('/api/xprs/history?limit=60',function(d){
+    if(!d||!d.rows)return fail('v-traffic','History');
+    var h='',now=Math.floor(Date.now()/1000);
+    for(var i=0;i<d.rows.length;i++){
+      var r=d.rows[i];
+      h+='<div class="pkt"><div class="l1">'+
+         '<b>'+esc(r.from||'?')+'</b>'+
+         (r.own?' <span class="dim">(us)</span>':'')+
+         ' <span class="dim">&rarr;</span> '+esc(r.to||'all')+
+         '<span class="when">'+(r.ts?esc(ago(now-r.ts)):'-')+'</span></div>'+
+         '<div class="l2">'+esc(r.type||'')+
+         ' &middot; '+esc(r.bearer||'')+
+         (r.rssi?' '+esc(r.rssi)+' dBm':'')+
+         ' &middot; <span class="sig-'+esc(r.sig||'none')+'">'+
+         esc(r.sig||'none')+'</span></div>'+
+         '<div class="wire">'+esc(r.wire||'')+'</div></div>';
+    }
+    el('v-traffic').innerHTML=(d.held!==undefined?
+      '<p class="dim">'+d.held+' packets held on this station</p>':'')+h;
+  });
+}
+
+// Devices: the Reachable panel, same list, same five-minute window.
+function loadDevices(){
+  getJSON('/api/xprs/devices',function(d){
+    if(!d||!d.devices)return fail('v-devices','The heard-station list');
+    if(!d.devices.length){
+      el('v-devices').innerHTML='<p class="dim">Nobody in range. '+
+        'Heard '+(d.heard||0)+' packets since boot.</p>';
+      return;
+    }
+    var h='<table class="tbl"><tr><th>Call</th><th>Link</th><th>Signal</th>'+
+          '<th>Distance</th><th>Heard</th></tr>';
+    for(var i=0;i<d.devices.length;i++){
+      var v=d.devices[i];
+      h+='<tr><td>'+esc(v.call)+(v.hops?' <span class="dim">+'+v.hops+
+         ' hop'+(v.hops>1?'s':'')+'</span>':'')+'</td>'+
+         '<td class="n">'+esc(v.bearer)+'</td>'+
+         '<td class="n">'+(v.rssi?esc(v.rssi)+' dBm':'-')+'</td>'+
+         '<td class="n">'+(v.dist_m>=0?'~'+esc(v.dist_m)+' m':'-')+'</td>'+
+         '<td class="n">'+esc(ago(v.age_s))+' ago</td></tr>';
+    }
+    h+='</table><p class="dim">Distance is estimated from signal strength '+
+       'and is only as good as the room. '+(d.heard||0)+' packets heard '+
+       'since boot.</p>';
+    el('v-devices').innerHTML=h;
+  });
+}
+
+// Stats: the same three series the Stats panel charts.
+var statsView=0;
+function setStatsView(v){statsView=v;loadStats();}
+function bars(vals){
+  var max=1;
+  for(var i=0;i<vals.length;i++)if(vals[i]>max)max=vals[i];
+  var h='<div class="bars">';
+  for(var j=0;j<vals.length;j++)
+    h+='<div style="height:'+Math.max(1,Math.round(vals[j]/max*100))+'%" '+
+       'title="'+vals[j]+'"></div>';
+  return h+'</div><p class="dim">peak '+max+'</p>';
+}
+function loadStats(){
+  getJSON('/api/stats?view='+statsView,function(d){
+    if(!d||!d.devices)return fail('v-stats','Statistics');
+    var names=['10 minutes','hour','day'];
+    var h='<div class="viewbtns">';
+    for(var i=0;i<3;i++)
+      h+='<button class="'+(i===statsView?'on':'')+'" '+
+         'onclick="setStatsView('+i+')">per '+names[i]+'</button>';
+    h+='</div>';
+    if(!d.points){
+      h+='<p class="dim">Nothing banked yet &mdash; the station buckets by '+
+         'wall clock and has no time yet.</p>';
+    }else{
+      h+='<h3>Devices heard</h3>'+bars(d.devices)+
+         '<h3>Packets received</h3>'+bars(d.rx)+
+         '<h3>Packets sent</h3>'+bars(d.tx)+
+         '<p class="dim">'+d.points+' buckets of '+
+         (d.bucket_s>=86400?'a day':d.bucket_s>=3600?'an hour':'ten minutes')+
+         ', oldest first.</p>';
+    }
+    el('v-stats').innerHTML=h;
+  });
+}
+
+// Station: what the This-device and Settings panels say, plus the screen.
+function row(k,v){return '<tr><td>'+esc(k)+'</td><td>'+v+'</td></tr>';}
+function loadStation(){
+  getJSON('/api/status',function(d){
+    if(!d)return fail('v-station','Station status');
+    var h='<h3>Station</h3><table class="kv">'+
+      row('Callsign',esc(d.callsign||''))+
+      row('Board',esc(d.board||''))+
+      row('Uptime',esc(hms(d.uptime_s||0)))+
+      row('Free memory',esc(kb(d.heap_free)))+
+      row('Clock',d.time&&d.time.synced?
+          esc(new Date(d.time.epoch*1000).toISOString().slice(0,19)
+              .replace('T',' '))+' UTC':'<span class="dim">not synced</span>');
+    if(d.battery&&d.battery.mv>0){
+      // esc() on everything from the wire, exactly as this row did before
+      // it grew fields: the surrounding string is raw HTML by design (see
+      // the 'Address' row) and that only stays safe while the values are
+      // escaped.
+      var b=d.battery,t=(b.pct>=0?esc(b.pct)+'%':'')+
+            (b.secs_left>0?' \u00b7 about '+esc(left(b.secs_left))+' left':'')+
+            ' \u00b7 '+esc(b.mv)+' mV \u00b7 '+esc(b.state);
+      // What the gauge has NOT learned is worth a line: a percentage with no
+      // discharge behind it is a curve's opinion, and saying so is the
+      // difference between a gauge and a decoration.
+      if(!b.cycles) t+=' <span class="dim">(voltage only)</span>';
+      else if(b.confidence<100)
+        t+=' <span class="dim">('+esc(b.cycles)+' cycle'+(b.cycles==1?'':'s')+
+           ' learned)</span>';
+      if(b.saving) t+=' <span class="dim">\u00b7 saving power</span>';
+      h+=row('Battery',t);
+    }
+    if(d.net)
+      h+=row('Address',d.net.ip?esc(d.net.ip):'<span class="dim">hotspot only</span>')+
+         row('Internet',d.net.internet==null?'<span class="dim">unknown</span>':
+             (d.net.internet?'reachable':'no'));
+    if(d.heard!==undefined)
+      h+=row('Heard',esc(d.heard)+' packets, '+esc(d.in_reach||0)+' in reach now');
+    if(d.indexer)
+      h+=row('Archive',esc(d.indexer.count)+' packets held');
+    h+='</table>';
+    if(d.lora){
+      h+='<h3>LoRa</h3><table class="kv">'+
+        row('Region',esc(d.lora.region||''))+
+        row('Frequency',(d.lora.freq_hz/1e6).toFixed(3)+' MHz')+
+        row('Airtime left',Math.round(d.lora.free_ms/1000)+' s of '+
+            Math.round(d.lora.duty_ms/1000)+' s this hour')+
+        row('Waiting',esc(d.lora.held)+' packets')+'</table>';
+    }
+    el('v-station').innerHTML=h+'<div id="st-more"></div>';
+    getJSON('/api/services',function(sv){
+      if(!sv||!sv.features)return;
+      var f=sv.features,k,h2='<h3>Roles</h3><table class="kv">';
+      for(k in f)h2+=row(k,f[k]?'on':'<span class="dim">off</span>');
+      h2+='</table>';
+      if(sv.serve&&sv.serve.length)
+        h2+='<p class="dim">Announced to others: '+esc(sv.serve.join(', '))+'</p>';
+      h2+='<h3>Screen</h3><img class="shot" alt="the station screen" '+
+          'src="/api/screen?t='+Date.now()+'" '+
+          'onerror="this.parentNode.removeChild(this)">';
+      var m=el('st-more'); if(m)m.innerHTML=h2;
+    });
+  });
+}
+
+// ---- settings: the internet WiFi. Any visitor may add a network; none can
+// be removed (docs/esp32.md). Built once and only updated after, so a
+// refresh never closes a phone's keyboard or moves a field being typed in.
+function loadSettings(){
+  var v=el('v-settings');
+  if(!el('wf-st')){
+    v.innerHTML='<h3>Internet WiFi</h3><table class="kv" id="wf-st"></table>'+
+      '<h3>Join a network</h3><div class="wform">'+
+      '<button onclick="wifiScan()" id="wf-scan">Search</button></div>'+
+      '<table class="kv" id="wf-nets"></table>'+
+      '<div class="wform"><input id="wf-ssid" maxlength="32" placeholder="Network name"'+
+      ' autocomplete="off" autocapitalize="off"><input id="wf-pass" type="password"'+
+      ' maxlength="63" placeholder="Password" autocomplete="off">'+
+      '<button onclick="wifiJoin()">Join</button></div><p class="dim" id="wf-msg"></p>';
+  }
+  wifiShow();
+}
+function wifiShow(){
+  getJSON('/api/wifi',function(w){
+    var t=el('wf-st');
+    if(!w||!t)return;
+    var k=w.known||[],names=[];
+    for(var i=0;i<k.length;i++)
+      names.push(esc(k[i].ssid)+(k[i].internet?'':' <span class="dim">(no internet)</span>'));
+    t.innerHTML=row('Network',w.ssid?esc(w.ssid):'<span class="dim">none</span>')+
+      row('Connected',w.up?(w.internet?'yes, with internet':w.internet===false?
+          'yes, no internet':'yes'):'no')+
+      row('Remembered',names.length?names.join(', '):'<span class="dim">none yet</span>');
+    var m=el('wf-msg');
+    if(w.join==='joining')m.textContent='Joining…';
+    else if(w.join==='failed')m.textContent='Could not join'+(w.why?': '+w.why:'')+'.';
+    else if(w.join==='joined')m.textContent='Joined.';
+  });
+}
+var scanTries=0;
+function wifiScan(){
+  el('wf-scan').disabled=true;
+  el('wf-nets').innerHTML=row('','Searching…');
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/wifi/scan');
+  x.onload=function(){scanTries=0;setTimeout(scanPoll,2500);};
+  x.onerror=function(){el('wf-scan').disabled=false;
+    el('wf-nets').innerHTML=row('','No answer. Try again.');};
+  x.send('');
+}
+function scanPoll(){
+  getJSON('/api/wifi/scan',function(r){
+    if(r&&r.state==='scanning'&&++scanTries<10){setTimeout(scanPoll,1000);return;}
+    el('wf-scan').disabled=false;
+    var t=el('wf-nets');
+    if(!r||r.state!=='done'){
+      t.innerHTML=row('','The search did not finish'+(r&&r.why?': '+esc(r.why):'')+'.');
+      return;
+    }
+    var n=r.nets||[],h='';
+    if(!n.length)h=row('','No networks in range.');
+    for(var i=0;i<n.length;i++){
+      var bars=n[i].rssi>-60?'strong':n[i].rssi>-75?'good':'weak';
+      h+='<tr class="net" data-i="'+i+'"><td>'+esc(n[i].ssid)+'</td><td>'+bars+
+         (n[i].open?', open':'')+(n[i].known?', remembered':'')+'</td></tr>';
+    }
+    t.innerHTML=h;
+    var rows=t.getElementsByTagName('tr');
+    for(var j=0;j<rows.length;j++)rows[j].onclick=(function(net){return function(){
+      el('wf-ssid').value=net.ssid;
+      el('wf-pass').value='';
+      if(net.open)el('wf-msg').textContent='Open network: press Join.';
+      else el('wf-pass').focus();
+    };})(n[+rows[j].getAttribute('data-i')]);
+  });
+}
+function wifiJoin(){
+  var s=el('wf-ssid').value,p=el('wf-pass').value,m=el('wf-msg');
+  if(!s)return;
+  m.textContent='Sending…';
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/wifi');
+  x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+  x.onload=function(){
+    var j=null;
+    try{j=JSON.parse(x.responseText);}catch(e){}
+    if(j&&j.ok){el('wf-pass').value='';m.textContent='Joining…';}
+    else m.textContent='Not taken'+(j&&j.error?': '+j.error:'')+'.';
+  };
+  // A join can take the hotspot off its channel for a moment.
+  x.onerror=function(){m.textContent='No answer. Reload in a minute.';};
+  x.send('ssid='+encodeURIComponent(s)+'&pass='+encodeURIComponent(p));
+}
+
+// ---- what this station offers --------------------------------------------
+//
+// One page serves every kind of station. A station that lists `page` in
+// /api/services says which panels it can fill and whether it hands out the
+// app (`app`: the path of its download page); one that does not (the boards,
+// today) shows everything, as it always has.
+function applyServices(sv){
+  var p=sv&&sv.page;
+  if(!p)return;
+  if(p.session){canSession=true;ensureSession(0);}
+  var tabs=p.tabs||['chat'];
+  var bs=document.querySelectorAll('[data-tab],[data-view]'),i,n;
+  for(i=0;i<bs.length;i++){
+    n=bs[i].getAttribute('data-tab')||bs[i].getAttribute('data-view');
+    if(tabs.indexOf(n)<0)bs[i].style.display='none';
+  }
+  if(p.config===false)el('stlink').style.display='none';
+  if(p.app){el('getapp').href=p.app;el('getapp').className='';}
+}
+
+// ---- boot: an identity exists before the first keystroke ----
+(function(){
+  var saved=stGet('xprs_nsec');
+  var b=saved?nsecDecode(saved):null;
+  useKey(b||randKey());
+  renderSide();
+  switchRoom(curRoom);
+  load();
+  tabTimer=setInterval(tick,TAB_MS.chat);
+  getJSON('/api/services',applyServices);
+  /* An extension injects `window.nostr` a moment after the page starts. */
+  var tries=0,tm=setInterval(function(){
+    showExtButton();
+    if(nostrAvailable()&&stGet('xprs_ext')==='1'&&!extMode){clearInterval(tm);useExtension(true);}
+    else if(++tries>12||(nostrAvailable()&&stGet('xprs_ext')!=='1'))clearInterval(tm);
+  },250);
+})();
+</script></body></html>

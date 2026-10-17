@@ -129,7 +129,12 @@ request. The same define is the rule for any other store later.
   start-up check is now compiled out of the store build (section 1, section
   7), from the next release on; the merge request has to move to that
   release. Non-blocking nit from the same review: `MANAGE_EXTERNAL_STORAGE`
-  is broad, and SAF could cover the identity backup.
+  is broad, and SAF could cover the identity backup. Answered on the thread on
+  2026-10-17.
+* **2026-10-17:** v1.2.28 cut with the start-up check compiled out. Its first
+  release build failed F-Droid's scanner on the gzipped web chat page (section
+  7); the page is bundled plain since, and the tag was moved to the fixed
+  commit before anything had been published for it.
 
 ## 3. Following the review
 
@@ -483,6 +488,11 @@ What each part is for, and what taught it:
   by `tool/build_bundled_wapps.py` with Debian's clang and wasi-libc. The
   modules inside `.wapp` packages (zip files) are not flagged, and the same
   step replaces them.
+* **The scanner refuses any archive**, a `.gz` included. The first v1.2.28
+  release build failed on `assets/web_chat/chat_page.html.gz` ("Found gzip
+  file archive"), so the web chat page is bundled as plain HTML and the share
+  server gzips it when it starts. Check anything new under `assets/` with
+  `file` before a release: text only, apart from the `.wapp` packages.
 * **`gcc` and `libc-dev`** are needed because cargo compiles its build scripts
   for the host.
 * **Rust** comes from Debian's `rustup` package, pinned to 1.89.0 (the

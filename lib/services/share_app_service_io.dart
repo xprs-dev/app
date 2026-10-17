@@ -16,6 +16,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'background_service.dart';
 import 'log_service.dart';
 import 'mesh/mesh_service.dart';
 import 'receive/packet_gateway.dart';
@@ -51,11 +52,15 @@ class ShareAppService {
   /// its QR again after the person left it and came back.
   ShareHotspot? hotspot;
 
-  /// The web chat page, built in the `webchat` repo and bundled gzipped.
-  static const String chatAsset = 'assets/web_chat/chat_page.html.gz';
+  /// The web chat page, built in the `webchat` repo and bundled as plain
+  /// HTML: F-Droid's scanner refuses any archive in the source tree, a gzip
+  /// included (it failed the v1.2.28 release build). It is gzipped once, when
+  /// the server starts, for clients that take gzip.
+  static const String chatAsset = 'assets/web_chat/chat_page.html';
 
   HttpServer? _server;
   WebChatApi? _api;
+  Uint8List? _chatHtml;
   Uint8List? _chatGz;
   String _apkPath = '';
   String _version = '';
@@ -112,7 +117,7 @@ class ShareAppService {
 
   /// Start serving: the web chat at `/`, its API under `/api/`, and, when
   /// [apkPath] names one, this app's APK under `/app`. Returns the port.
-  /// [port], [api] and [chatPageGz] are for tests; the page leaves them null
+  /// [port], [api] and [chatPage] are for tests; the page leaves them null
   /// and gets [preferredPort] when it is free, the live API and the bundled
   /// page.
   Future<int> start({
@@ -121,7 +126,7 @@ class ShareAppService {
     String abi = '',
     int? port,
     WebChatApi? api,
-    Uint8List? chatPageGz,
+    Uint8List? chatPage,
   }) async {
     _apkPath = apkPath;
     _version = version;
@@ -130,8 +135,12 @@ class ShareAppService {
     _api = api ?? _liveApi();
     visitorCount.value = 0;
     _api!.onVisitors = (n) => visitorCount.value = n;
-    _chatGz = chatPageGz ??
+    final html = _chatHtml = chatPage ??
         (await rootBundle.load(chatAsset)).buffer.asUint8List();
+    // 80 KB deflated once per start, off the UI isolate (performance.md:
+    // compression is worker work).
+    _chatGz = await BackgroundService.runOffThread(
+        () async => Uint8List.fromList(gzip.encode(html)));
     HttpServer server;
     try {
       server = await HttpServer.bind(
@@ -248,15 +257,14 @@ class ShareAppService {
     }
   }
 
-  /// The web chat page, gzipped as bundled, or inflated for a client that
-  /// does not say it takes gzip.
+  /// The web chat page, gzipped for a client that says it takes gzip, plain
+  /// otherwise.
   Future<void> _serveChat(HttpRequest req) async {
     final res = req.response;
-    final gz = _chatGz!;
     final takesGzip = (req.headers.value(HttpHeaders.acceptEncodingHeader) ?? '')
         .toLowerCase()
         .contains('gzip');
-    final body = takesGzip ? gz : Uint8List.fromList(gzip.decode(gz));
+    final body = takesGzip ? _chatGz! : _chatHtml!;
     res.headers
       ..contentType = ContentType('text', 'html', charset: 'utf-8')
       ..contentLength = body.length
