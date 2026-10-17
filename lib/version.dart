@@ -5,4 +5,4 @@
 // against GitHub releases; kBuildNumber is the +N build (Android versionCode).
 
 const String kAppVersion = '1.2.28';
-const int kBuildNumber = 400496;
+const int kBuildNumber = 400498;
