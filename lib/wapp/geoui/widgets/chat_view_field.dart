@@ -939,6 +939,10 @@ class _ChatViewFieldState extends State<ChatViewField> {
                     const SizedBox(width: 6),
                     _viaChip(via),
                   ],
+                  if ((op['net'] ?? '').toString().isNotEmpty) ...[
+                    const SizedBox(width: 4),
+                    _viaChip((op['net'] ?? '').toString()),
+                  ],
                   if (time.isNotEmpty) ...[
                     const SizedBox(width: 8),
                     Text(time,
@@ -1179,6 +1183,9 @@ class _ChatViewFieldState extends State<ChatViewField> {
     final tight = mediaRefs.isEmpty;
     final time = m['time']?.toString() ?? '';
     final via = m['via']?.toString() ?? '';
+    // The sender's network when bridged in (Meshtastic/MeshCore), shown as a
+    // tag beside the bearer so a reader knows an MT callsign is not one of ours.
+    final net = (m['net'] ?? '').toString();
     final parent = (m['parent'] ?? '').toString();
     final threadable = (m['mid'] ?? '').toString().isNotEmpty;
     final mid = (m['mid'] ?? '').toString();
@@ -1237,6 +1244,10 @@ class _ChatViewFieldState extends State<ChatViewField> {
                   if (via.isNotEmpty) ...[
                     if (from.isNotEmpty) const SizedBox(width: 6),
                     _viaChip(via),
+                  ],
+                  if (net.isNotEmpty) ...[
+                    const SizedBox(width: 4),
+                    _viaChip(net),
                   ],
                 ],
               ),
@@ -1520,6 +1531,10 @@ class _ChatViewFieldState extends State<ChatViewField> {
     final private = m['private'] == true;
     final enc = m['enc'] == true;
     final via = (m['via'] ?? '').toString();
+    final net = (m['net'] ?? '').toString();
+    // The §13 relay chain (who carried it here). For a bridged message this
+    // names the station(s) it came through — "how it arrived and from where".
+    final path = (m['path'] ?? '').toString();
     final auth = (m['auth'] ?? '').toString();
     final from = (m['from'] ?? '').toString();
     final time = (m['time'] ?? '').toString();
@@ -1581,8 +1596,12 @@ class _ChatViewFieldState extends State<ChatViewField> {
           children: [
             Text(detail),
             const SizedBox(height: 12),
-            if (via.isNotEmpty) _infoRow('Transport', via.toUpperCase()),
             if (from.isNotEmpty) _infoRow('From', from),
+            if (net.isNotEmpty) _infoRow('Network', net),
+            if (via.isNotEmpty) _infoRow('Transport', via.toUpperCase()),
+            // How it reached this device: the relay path on the wire. For a
+            // Meshtastic message this is the bridge (often your own station).
+            if (path.isNotEmpty) _infoRow('Relayed via', path),
             if (time.isNotEmpty) _infoRow('Time', time),
             if (sig != null) _infoRow('Signature', sig),
           ],

@@ -408,6 +408,11 @@ class ConversationStore {
       'meta': (d['meta'] ?? '').toString(),
       'key': (d['key'] ?? '').toString(),
       if ((d['via'] ?? '').toString().isNotEmpty) 'via': d['via'].toString(),
+      // The sender's network ("Meshtastic"/"MeshCore") when it is bridged in
+      // from another mesh, so the bubble can wear a tag beside the bearer.
+      if ((d['net'] ?? '').toString().isNotEmpty) 'net': d['net'].toString(),
+      // The §13 relay chain (who carried it here); shown in the info dialog.
+      if ((d['path'] ?? '').toString().isNotEmpty) 'path': d['path'].toString(),
       // Opaque threading ids set by the wapp (groups only): this message's id
       // and the id it replies to. The host just stores + renders the relation.
       if ((d['mid'] ?? '').toString().isNotEmpty) 'mid': d['mid'].toString(),
