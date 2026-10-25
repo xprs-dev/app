@@ -9,6 +9,8 @@ import 'dart:io';
 
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_history_server.dart';
+import 'package:xprs/services/xprs/xprs_folder.dart';
+import 'package:xprs/services/xprs/xprs_files.dart';
 import 'package:xprs/services/xprs/xprs_id.dart';
 import 'package:xprs/services/xprs/xprs_ingest.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
@@ -282,6 +284,32 @@ void main() {
                 'cmd:history'),
             selfBase: 'X1SELF'),
         isEmpty);
+  });
+
+  test('a freely served digest (the firmware mirror) is answered past the budget',
+      () {
+    const sha =
+        '5bf7bf3bb2f6a3d6a4b7ba7f1ad4a6a6a0d1d2d3d4d5d6d7d8d9dadbdcdddedf';
+    XprsFileServer.instance.resolver = (h) => h == sha
+        ? XprsHeldFile(
+            path: '/tmp/tdeck.bin', shaHex: sha, size: 5000, name: 'tdeck.bin',
+            ext: 'bin')
+        : null;
+    XprsHistoryServer.instance.freelyServed = (h) => h == sha;
+    addTearDown(() {
+      XprsFileServer.instance.resolver = null;
+      XprsHistoryServer.instance.freelyServed = null;
+    });
+    fakeAsync((async) {
+      for (var i = 0; i < 5; i++) {
+        ask('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:0$i:00 cmd:file '
+            'file:${xprsFileRefOf(sha, 'bin')}');
+        async.elapse(const Duration(seconds: 30));
+      }
+      final codes = [for (final r in results()) r['code']];
+      expect(codes, hasLength(5));
+      expect(codes.where((c) => c == '429'), isEmpty, reason: 'a stranger updating its firmware is not metered');
+    });
   });
 
   test('one replay in flight: a second requester gets 429, self unmetered',

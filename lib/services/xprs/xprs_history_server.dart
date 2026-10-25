@@ -29,6 +29,7 @@ import '../location_service.dart';
 import '../preferences_service.dart';
 import 'xprs_archive.dart';
 import 'xprs_files.dart';
+import 'xprs_folder.dart' show xprsFileShaOf;
 import '../social/archiver_service.dart';
 import 'xprs_gossip.dart';
 import '../reticulum/rns_service.dart';
@@ -52,6 +53,10 @@ class XprsHistoryServer {
 
   /// Budgets (section 31.2): replays per hour. "Known" = an author that
   /// declared us as mailbox, or whose key we hold.
+  /// Digests served to anyone regardless of budget (the firmware mirror's
+  /// images). Set by the host; null means no exemptions.
+  bool Function(String shaHex)? freelyServed;
+
   static const int knownPerHour = 6;
   static const int strangerPerHour = 2;
   static const int globalPerHour = 12;
@@ -219,7 +224,14 @@ class XprsHistoryServer {
     if (cmd == 'history') archive.flush(nowMs: now);
 
     final selfIsAsking = from == selfBase;
-    if (!selfIsAsking && !_budgetAllows(from, now)) {
+    // A file this station holds FOR everyone -- a firmware image its mirror
+    // keeps (docs/plan-firmware-folders.md) -- is served to a stranger past
+    // the 31.2 budget: the answer is one 202 and the bytes go over a link,
+    // and a fleet of stations updating from one phone would otherwise be
+    // refused after the second. The host says which digests those are.
+    final freely = cmd == 'file' &&
+        (freelyServed?.call(xprsFileShaOf(p['file'] ?? '') ?? '') ?? false);
+    if (!selfIsAsking && !freely && !_budgetAllows(from, now)) {
       refused429++;
       refusedBudget++;
       LogService.instance

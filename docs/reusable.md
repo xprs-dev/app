@@ -955,3 +955,8 @@ rewrite:
   The next mirrored set (wapps, maps tiles) should reuse it rather than copy
   `UpdateMirrorService`.
 
+- **`XprsHistoryServer.freelyServed`** -- a host-supplied predicate over a
+  digest that lifts the 31.2 stranger budget for `cmd:file` on files held for
+  everyone (the firmware mirror sets it in `main.dart`). Reuse it for any
+  other public, content-addressed set a device offers on purpose, instead of
+  a second budget or a special-cased command.

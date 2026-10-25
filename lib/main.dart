@@ -18,6 +18,7 @@ import 'services/power_governor.dart';
 import 'services/i2p/i2p_background_service.dart';
 import 'services/update_mirror_service.dart';
 import 'services/firmware_mirror_service.dart';
+import 'services/xprs/xprs_history_server.dart';
 import 'services/update_service.dart';
 import 'services/announced_tags_store.dart';
 import 'services/i18n/core_i18n.dart';
@@ -444,6 +445,9 @@ Future<void> _boot() async {
   // Firmware mirror (every device, on by default): the released station
   // images, kept and offered on the mesh, so a station nearby updates itself
   // without the internet (firmware/docs/plan-firmware-folders.md).
+  // What the mirror holds is served to any station past the history budget.
+  XprsHistoryServer.instance.freelyServed =
+      (sha) => FirmwareMirrorService.instance.held.values.contains(sha);
   if (FirmwareMirrorService.instance.enabled) {
     unawaited(FirmwareMirrorService.instance.start());
   }
