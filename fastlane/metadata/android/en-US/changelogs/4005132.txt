@@ -1,0 +1,1 @@
+* Stations: every phone now keeps the released ESP32 firmware and offers it on the mesh, so a station nearby can update itself without the internet.
