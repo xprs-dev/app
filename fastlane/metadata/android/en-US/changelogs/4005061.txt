@@ -1,0 +1,5 @@
+* Languages: the app and its wapps in English, Portuguese, Spanish, German and French.
+* Callsigns: up to four callsigns under one X1 base; each conversation keeps the one it started with.
+* Reach anywhere: a station heard on Bluetooth by any phone is reachable from the internet, and its archived messages are fetched when you open it.
+* Bluetooth 5: works when Bluetooth is switched on after the app.
+* Bridges: Meshtastic and MeshCore messages keep their time.
