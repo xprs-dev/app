@@ -1,0 +1,3 @@
+* Chat: Local, Regional and Global now keep what was said while you were away and fill in from a nearby station each time you come back.
+* Chat: a busy room no longer hides a quiet one when the rooms refill.
+* Web chat: older room messages show on open, Traffic merges the copies of one packet with a tag per radio, and the dead settings link is gone.
