@@ -107,6 +107,20 @@ fi
 # import that had not changed in a release.
 dart tool/check_tracked_imports.dart HEAD
 
+# The lock file must be the one F-Droid's pinned Flutter resolved. A local
+# `flutter test` or `flutter build` with another Flutter rewrites it, the
+# build then fails `pub get --enforce-lockfile` in the buildserver, and the
+# release has to be cut again (v1.3.0 and v1.3.4 both died this way). A lock
+# change is legitimate only when pubspec.yaml changed too.
+if last_tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null); then
+  if ! git diff --quiet "$last_tag" HEAD -- pubspec.lock && \
+     git diff --quiet "$last_tag" HEAD -- pubspec.yaml; then
+    echo "error: pubspec.lock changed since $last_tag with no change to pubspec.yaml;" >&2
+    echo "       restore it (git show $last_tag:pubspec.lock > pubspec.lock) before releasing" >&2
+    exit 1
+  fi
+fi
+
 sed -i "s/^version:.*/version: ${VERSION}+${CODE}/" pubspec.yaml
 dart run tool/update_version.dart
 
