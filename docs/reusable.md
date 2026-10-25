@@ -924,3 +924,12 @@ rewrite:
   `hal_xprs_history {"scope": ...}`. Ask a room at a time; never ask for the
   newest N of everything and sieve.
 
+## Drawing in the order things were said
+
+- **`_placeOf(messages, row)` in `conversation_store.dart`** -- where a bubble
+  that states its `ts` goes: after the last row said no later than it, never
+  past a row that states no time. The web chat's `render()` does the same with
+  `data-ts`, and the Chat wapp opens a room `ORDER BY ts, seq`. Any list that
+  can receive rows out of order (an archive replays newest first) should place
+  by the sender's time this way rather than append.
+

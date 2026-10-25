@@ -395,8 +395,13 @@ class ConversationStore {
       if (dup) return;
     }
     final it = _ensure(id);
-    it.messages.add({
+    final row = <String, dynamic>{
       'dir': dir,
+      // The sender's epoch, when the wapp states it: what places a bubble that
+      // arrives out of order. An archive replays newest first (XPRS.md
+      // 11.2.1), so a room catching up on a week drew it upside down when
+      // every arrival went to the bottom.
+      if (d['ts'] is num && (d['ts'] as num) > 0) 'ts': (d['ts'] as num).toInt(),
       'from': (d['from'] ?? '').toString(),
       'text': (d['text'] ?? '').toString(),
       'time': (d['time'] ?? '').toString(),
@@ -449,7 +454,8 @@ class ConversationStore {
       if ((d['status'] ?? '').toString().isNotEmpty) 'status': d['status'].toString(),
       if (d['lat'] != null) 'lat': d['lat'],
       if (d['lon'] != null) 'lon': d['lon'],
-    });
+    };
+    it.messages.insert(_placeOf(it.messages, row), row);
     if (it.messages.length > 500) {
       it.messages.removeRange(0, it.messages.length - 500);
     }
@@ -969,3 +975,22 @@ class ConversationStore {
     }
   }
 }
+
+/// Where a new bubble goes: after the last message said no later than it.
+///
+/// Only a row that states its time can be placed, and only among rows that
+/// state theirs: a message with no `ts` (sent now, or stored before the field
+/// existed) is appended, and the walk back stops at the first row without
+/// one, so an old thread keeps its order and a live message still lands last.
+int _placeOf(List<Map<String, dynamic>> messages, Map<String, dynamic> row) {
+  final ts = row['ts'];
+  if (ts is! int) return messages.length;
+  var i = messages.length;
+  while (i > 0) {
+    final prev = messages[i - 1]['ts'];
+    if (prev is! int || prev <= ts) break;
+    i--;
+  }
+  return i;
+}
+
