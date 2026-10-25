@@ -1,0 +1,1 @@
+* Chat: messages fetched from an archive are shown in the order they were said, oldest at the top.
