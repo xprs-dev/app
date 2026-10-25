@@ -185,7 +185,7 @@ class FirmwareMirrorService extends BackgroundService {
       PreferencesService.instanceSync?.firmwareMirrorEnabled ?? true;
 
   // ── state, for /api/firmware/mirror ────────────────────────────────────
-  int ticks = 0, downloaded = 0, verifiedOk = 0, refused = 0, aired = 0;
+  int ticks = 0, downloaded = 0, verifiedOk = 0, refused = 0, aired = 0, failed = 0;
   String? lastError;
   DateTime? lastTick;
   final Map<String, String> held = {}; // name -> sha
@@ -249,6 +249,7 @@ class FirmwareMirrorService extends BackgroundService {
       final tmp = '$path.part';
       final ok = await (download ?? _download)(m.url, tmp);
       if (!ok) {
+        failed++;
         lastError = 'download failed: ${m.name}';
         try {
           await fs.file(tmp).delete();
@@ -296,7 +297,12 @@ class FirmwareMirrorService extends BackgroundService {
       aired++;
     }
     (deposit ?? _deposit)(wires);
-    lastError = null;
+    // A download that failed this tick stays visible until a tick in which
+    // nothing failed: the next tick tries it again.
+    if (lastError != null && !lastError!.startsWith('download failed') &&
+        !lastError!.startsWith('digest mismatch')) {
+      lastError = null;
+    }
   }
 
   Map<String, dynamic> statusJson() => {
@@ -309,6 +315,7 @@ class FirmwareMirrorService extends BackgroundService {
         'verified': verifiedOk,
         'refused': refused,
         'aired': aired,
+        'failed': failed,
         'error': lastError,
       };
 
