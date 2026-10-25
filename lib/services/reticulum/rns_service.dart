@@ -291,6 +291,11 @@ class RnsService {
   // needs no source. Inbound link/file packets are routed here from _onInbound.
   FileTransferNode? _files;
   FileSource? fileServeSource;
+
+  /// Serve another source over the `xprs/files` lane as well: a directory of
+  /// files a person publishes (XPRS.md 7.7.3, the firmware folder). Added to
+  /// the live composite, so it takes effect without restarting the node.
+  void addFileSource(FileSource s) => _composite?.add(s);
   // LXMF messaging (interop with Sideband/NomadNet/MeshChat).
   LxmfRouter? _lxmf;
   NomadNode? _nomad; // NomadNet page fetcher

@@ -933,3 +933,25 @@ rewrite:
   can receive rows out of order (an archive replays newest first) should place
   by the sender's time this way rather than append.
 
+## Folders the format can find (XPRS.md 7.7.2, 7.7.3)
+
+- **`lib/services/xprs/xprs_folder.dart`** -- `xprsListingBuild/Parse` (the
+  XFL1 listing, deterministic), `xprsDescribeMember` and `xprsDescribeFolder`
+  (the signed `t:file` packets), `xprsFileRefOf`/`xprsFileShaOf` (both forms
+  of a reference), `xprsBytesOf` (a byte `qty`), and `XprsFolderPublisher`,
+  which stores, holds, airs and deposits with every effect injected. Anything
+  that publishes a set of files for others to find by a person's key goes
+  through it; the firmware folder is the first user
+  (`POST /api/xprs/folder/publish`).
+- **`xprsFmtTs`** in `xprs_vocab.dart`: the inverse of `xprsParseTs`.
+  `XprsCatchup._ts` and `XprsFetch` predate it and could use it.
+- **`RnsService.addFileSource`** -- serve a `DiskFolderSource` (or any
+  `FileSource`) over the `xprs/files` link lane without restarting the node.
+- **`FirmwareMirrorService`** (`lib/services/firmware_mirror_service.dart`)
+  -- the shape for "keep a published set of files and offer them":
+  `FirmwareFeed.parse` believes a document only through signatures, the
+  service's fetch, download, hash, hold, air and deposit are seams, and the
+  images are served through `RnsService.addFileSource(DiskFolderSource)`.
+  The next mirrored set (wapps, maps tiles) should reuse it rather than copy
+  `UpdateMirrorService`.
+

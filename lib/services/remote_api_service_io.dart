@@ -64,6 +64,9 @@ import 'log_service.dart';
 import 'media/media_fetch.dart';
 import 'reticulum/rns_service.dart';
 import 'folders/folder_event.dart' show FolderShareType;
+import 'folders/disk_folder.dart' show DiskFolderSource;
+import 'xprs/xprs_folder.dart';
+import 'xprs/xprs_sig.dart' show xprsProfileScalar;
 import 'preferences_service.dart';
 import 'hero/hero_feed_service.dart';
 import 'wapp_unread_service.dart';
@@ -72,6 +75,7 @@ import 'hero/launcher_visibility.dart';
 import 'torrent_service.dart';
 import '../version.dart';
 import 'update_mirror_service.dart';
+import 'firmware_mirror_service.dart';
 import 'xprs/xprs_files.dart';
 import 'media/media_preview.dart';
 import 'xprs/xprs_file_lift.dart';
@@ -1098,6 +1102,73 @@ class RemoteApiService {
           'spool': MeshBulkSpool.instance.statusJson(),
         });
       }
+      if (req.method == 'POST' && path == '/api/xprs/folder/publish') {
+        // {"name":"XPRS firmware stable","tag":"stable","dir":"/abs/dir"}
+        // Publish a directory as a folder the format can find (XPRS.md 7.7.3):
+        // the files are served by digest over Reticulum and Bluetooth, the
+        // XFL1 listing is stored and held, and the signed folder and member
+        // descriptions go on the air and to this station's archivers. A
+        // station with the publisher's key pinned finds a newer firmware image
+        // for its board this way (firmware/docs/plan-firmware-folders.md).
+        final data = await _body(req);
+        final dir = '${data['dir'] ?? ''}'.trim();
+        final name = '${data['name'] ?? ''}'.trim();
+        final tag = '${data['tag'] ?? ''}'.trim();
+        if (dir.isEmpty || name.isEmpty || !Directory(dir).existsSync()) {
+          return _json(res, {'ok': false, 'error': 'name and an existing dir required'},
+              status: HttpStatus.badRequest);
+        }
+        final key = xprsProfileScalar();
+        if (key == null) {
+          return _json(res, {'ok': false, 'error': 'no profile key to sign with'},
+              status: HttpStatus.conflict);
+        }
+        final arch = _mediaArchive();
+        if (arch == null) {
+          return _json(res, {'ok': false, 'error': 'no media archive'},
+              status: HttpStatus.conflict);
+        }
+        // Hashed off the UI isolate; the same source the Reticulum file node
+        // serves owner folders from, so every member is fetchable by sha.
+        final src = DiskFolderSource(dir);
+        final files = await src.scanAsync();
+        RnsService.instance.addFileSource(src);
+        final entries = <XprsFolderEntry>[];
+        for (final f in files) {
+          if (f.name.contains('/') || f.name.startsWith('.')) continue;
+          entries.add(XprsFolderEntry(shaHex: f.sha, size: f.size, name: f.name));
+          XprsFileServer.instance.hold(XprsHeldFile(
+              path: f.path, shaHex: f.sha, size: f.size, name: f.name, ext: f.ext));
+        }
+        // Signed as the callsign the key DERIVES (X1 and four npub characters),
+        // not an issued one: a station finds the publisher by that name from
+        // the key it pins and nothing else (firmware xfw_publisher_call).
+        final profile = ProfileService.instance.activeProfile;
+        final pubr = XprsFolderPublisher(
+          self: profile?.callsign ?? MeshService.instance.tableCallsign,
+          key: key,
+          store: (bytes, ext, fname) {
+            final token = arch.putBytes(bytes, ext, name: fname);
+            final sha = xprsFileShaOf(token.substring(5)) ?? '';
+            XprsFileServer.instance.hold(XprsHeldFile(
+                path: '', archiveToken: token, shaHex: sha, size: bytes.length,
+                name: fname, ext: ext));
+            return sha;
+          },
+          air: (w) => XprsPublisher.instance.publishWire(w, verbatim: true),
+          deposit: (ws) => XprsPublisher.instance.depositArchivers(ws, what: 'folder'),
+        );
+        final sha = await pubr.publish(name, entries, tag: tag.isEmpty ? null : tag);
+        return _json(res, {
+          'ok': sha != null,
+          'listing': sha,
+          'count': entries.length,
+          'members': [for (final e in entries) {'name': e.name, 'sha256': e.shaHex, 'size': e.size}],
+          'self': pubr.self,
+          'key': profile == null ? null : NostrCrypto.decodeNpub(profile.npub),
+          'wires': pubr.wires,
+        });
+      }
       if (req.method == 'POST' && path == '/api/xprs/hold') {
         // {"path":"/abs/file","sha256":"<hex>","name":"x.bin"} — offer one file
         // to anyone who asks for that digest. The digest is supplied, never
@@ -1266,6 +1337,13 @@ class RemoteApiService {
           'mirror': UpdateMirrorService.instance.pathForSha(sha),
           'providers': n,
         });
+      }
+      if (req.method == 'GET' && path == '/api/firmware/mirror') {
+        return _json(res, FirmwareMirrorService.instance.statusJson());
+      }
+      if (req.method == 'POST' && path == '/api/firmware/mirror/tick') {
+        await FirmwareMirrorService.instance.tick();
+        return _json(res, FirmwareMirrorService.instance.statusJson());
       }
       if (req.method == 'GET' && path == '/api/update/mirror') {
         return _json(res, UpdateMirrorService.instance.statusJson());

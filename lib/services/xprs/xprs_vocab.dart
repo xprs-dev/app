@@ -592,6 +592,15 @@ String xprsNowTs([int? epochMs]) {
       '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
 }
 
+/// A packet timestamp (section 4.3) for an instant: `YYYY-MM-DD_hh:mm:ss`,
+/// UTC. The inverse of [xprsParseTs].
+String xprsFmtTs(DateTime t) {
+  final u = t.toUtc();
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${u.year.toString().padLeft(4, '0')}-${two(u.month)}-${two(u.day)}_'
+      '${two(u.hour)}:${two(u.minute)}:${two(u.second)}';
+}
+
 int? xprsParseTs(String? v) {
   if (v == null || v.length != 19 || v[10] != '_') return null;
   final t = DateTime.tryParse('${v.substring(0, 10)}T${v.substring(11)}Z');

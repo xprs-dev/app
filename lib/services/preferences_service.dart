@@ -403,6 +403,12 @@ class PreferencesService {
   bool get updateMirrorEnabled => _prefs.getBool('update.mirror') ?? false;
   set updateMirrorEnabled(bool v) => _prefs.setBool('update.mirror', v);
 
+  /// Keep the released station firmware and offer it over Reticulum and
+  /// Bluetooth (FirmwareMirrorService). On by default: a few megabytes once
+  /// per release is what lets a station near this device update itself.
+  bool get firmwareMirrorEnabled => _prefs.getBool('firmware.mirror') ?? true;
+  set firmwareMirrorEnabled(bool v) => _prefs.setBool('firmware.mirror', v);
+
   /// Callsigns of the archivers this station may lean on (12.9.4): asked on a
   /// gossip miss, and used as the custody deposit hop when no gateway
   /// resolves. Reached over the directed LXMF lane -- the one the public

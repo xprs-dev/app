@@ -17,6 +17,7 @@ import 'wapp/native/wasm_video_session.dart';
 import 'services/power_governor.dart';
 import 'services/i2p/i2p_background_service.dart';
 import 'services/update_mirror_service.dart';
+import 'services/firmware_mirror_service.dart';
 import 'services/update_service.dart';
 import 'services/announced_tags_store.dart';
 import 'services/i18n/core_i18n.dart';
@@ -438,6 +439,13 @@ Future<void> _boot() async {
   // meant the second reason never started it.
   if (UpdateMirrorService.instance.enabled) {
     unawaited(UpdateMirrorService.instance.start());
+  }
+
+  // Firmware mirror (every device, on by default): the released station
+  // images, kept and offered on the mesh, so a station nearby updates itself
+  // without the internet (firmware/docs/plan-firmware-folders.md).
+  if (FirmwareMirrorService.instance.enabled) {
+    unawaited(FirmwareMirrorService.instance.start());
   }
 
   // Background wapp services the user enabled (autostart) — keep e.g. Chat
