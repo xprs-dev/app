@@ -353,6 +353,31 @@ void _funnel() {
           reason: 'an observation is aired, not couriered');
     });
 
+    // 12.8.3 step 2: mail is any packet addressed to one station that is
+    // worth having later, and the radio lane used to carry one type of it.
+    test('a receipt for somebody else is mail, and is carried', () {
+      // The sender is asleep three networks away; the station that hears
+      // this on Bluetooth is the one placed to carry it (12.8.3 step 6).
+      hear('t:receipt f:X1BOA3 d:X1QZ3N r:b47210 ts:$_ts s:ack', 'ble');
+      expect(carried, hasLength(1));
+      expect(carried.single, startsWith('X1QZ3N|'));
+    });
+
+    test('a file description for somebody else is carried', () {
+      hear('t:file f:X1QZ3N d:X1RD89 ts:$_ts r:abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG size:3kB',
+          'ble');
+      expect(carried, hasLength(1));
+    });
+
+    test('a command is never carried, except the two asks worth asking late',
+        () {
+      hear('t:command f:X1QZ3N d:X1RD89 ts:$_ts cmd:set nick:x', 'ble');
+      expect(carried, isEmpty, reason: '11.4: commands are not carried');
+      hear('t:command f:X1QZ3N d:X1RD89 ts:$_ts cmd:history since:2026-08-04_00:00:00',
+          'ble');
+      expect(carried, hasLength(1));
+    });
+
     test('our own echo is neither carried nor delivered', () {
       hear('t:message f:X1SELF d:X1RD89 ts:$_ts m:mine', 'ble');
       expect(carried, isEmpty);

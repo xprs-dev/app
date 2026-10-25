@@ -4,6 +4,7 @@ import '../conversation_store.dart';
 import '../../../services/xprs/xprs_monitor.dart';
 import '../../../services/reticulum/rns_service.dart';
 import '../../../profile/station_avatar.dart';
+import '../../../services/i18n/core_i18n.dart';
 import 'chat_palette.dart';
 import 'chat_view_field.dart';
 
@@ -329,7 +330,7 @@ class _RoomsFieldState extends State<RoomsField> {
         ? lastMsg
         : (item?.subtitle.isNotEmpty ?? false ? item!.subtitle : '');
     if (sub.isEmpty && people > 0) {
-      sub = people == 1 ? '1 person seen' : '$people people seen';
+      sub = trn('geoui.rooms.people_seen', people);
     }
     if (sub.startsWith(': ')) sub = sub.substring(2);
 
@@ -492,7 +493,7 @@ class _RoomsFieldState extends State<RoomsField> {
                 SizedBox(
                   width: 28,
                   child: PopupMenuButton<String>(
-                    tooltip: 'More',
+                    tooltip: tr('common.more'),
                     padding: EdgeInsets.zero,
                     icon: const Icon(Icons.more_vert,
                         size: 20, color: ChatPalette.secondary),
@@ -555,7 +556,7 @@ class _RoomsFieldState extends State<RoomsField> {
                   color: ChatPalette.text,
                   fontSize: ChatPalette.rowSubtitleSize),
               decoration: InputDecoration(
-                hintText: 'Post a status',
+                hintText: tr('geoui.rooms.post_status'),
                 hintStyle: TextStyle(
                     color: ChatPalette.secondary,
                     fontSize: ChatPalette.rowSubtitleSize),
@@ -565,7 +566,7 @@ class _RoomsFieldState extends State<RoomsField> {
             ),
           ),
           IconButton(
-            tooltip: 'Post',
+            tooltip: tr('geoui.rooms.post'),
             icon: const Icon(Icons.send, size: 20, color: ChatPalette.accent),
             onPressed: _postStatus,
           ),
@@ -600,7 +601,7 @@ class _RoomsFieldState extends State<RoomsField> {
             ),
             const SizedBox(height: 4),
             Text(
-              mine ? 'You' : call,
+              mine ? tr('geoui.rooms.you') : call,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -685,7 +686,7 @@ class _RoomsFieldState extends State<RoomsField> {
                   leading: _avatar(cs, '${st['call']}', '${st['call']}',
                       false, 40),
                   title: Text(
-                      st['mine'] == true ? 'You' : '${st['call']}',
+                      st['mine'] == true ? tr('geoui.rooms.you') : '${st['call']}',
                       style: const TextStyle(color: ChatPalette.text)),
                   subtitle: Text('${st['text'] ?? ''}',
                       maxLines: 1,
@@ -729,7 +730,7 @@ class _RoomsFieldState extends State<RoomsField> {
                   _avatar(cs, call, call, false, 40),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(mine ? 'Your status' : call,
+                    child: Text(mine ? tr('geoui.rooms.your_status') : call,
                         style: TextStyle(
                             color: ChatPalette.text,
                             fontSize: ChatPalette.rowTitleSize,
@@ -757,7 +758,7 @@ class _RoomsFieldState extends State<RoomsField> {
                       foregroundColor: ChatPalette.onAccent,
                     ),
                     icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                    label: const Text('Message'),
+                    label: Text(tr('geoui.rooms.message')),
                     onPressed: () {
                       Navigator.pop(sheet);
                       widget.onDirectMessage!(call);
@@ -795,7 +796,7 @@ class _RoomsFieldState extends State<RoomsField> {
               const SizedBox(width: 13),
               Expanded(
                 child: Text(
-                  'Archived',
+                  tr('geoui.rooms.archived'),
                   style: TextStyle(
                     color: ChatPalette.text,
                     fontSize: ChatPalette.rowTitleSize,
@@ -824,21 +825,21 @@ class _RoomsFieldState extends State<RoomsField> {
 
   List<PopupMenuEntry<String>> _menuItems() => [
     if (widget.onArchive != null)
-      const PopupMenuItem(
+      PopupMenuItem(
         value: 'archive',
         child: Row(children: [
-          Icon(Icons.archive_outlined, size: 20, color: ChatPalette.secondary),
-          SizedBox(width: 12),
-          Text('Archive chat', style: TextStyle(color: ChatPalette.text)),
+          const Icon(Icons.archive_outlined, size: 20, color: ChatPalette.secondary),
+          const SizedBox(width: 12),
+          Text(tr('geoui.rooms.archive'), style: const TextStyle(color: ChatPalette.text)),
         ]),
       ),
     if (widget.onDelete != null)
-      const PopupMenuItem(
+      PopupMenuItem(
         value: 'delete',
         child: Row(children: [
-          Icon(Icons.delete_outline, size: 20, color: Color(0xFFF15C6D)),
-          SizedBox(width: 12),
-          Text('Delete chat', style: TextStyle(color: Color(0xFFF15C6D))),
+          const Icon(Icons.delete_outline, size: 20, color: Color(0xFFF15C6D)),
+          const SizedBox(width: 12),
+          Text(tr('geoui.rooms.delete'), style: const TextStyle(color: Color(0xFFF15C6D))),
         ]),
       ),
   ];
@@ -864,22 +865,22 @@ class _RoomsFieldState extends State<RoomsField> {
       context: context,
       builder: (d) => AlertDialog(
         backgroundColor: ChatPalette.raised,
-        title: Text('Delete $name?',
+        title: Text(tr('geoui.rooms.delete.title', {'name': name}),
             style: const TextStyle(color: ChatPalette.text)),
-        content: const Text(
-          'Its messages are removed from this device. This cannot be undone.',
-          style: TextStyle(color: ChatPalette.secondary),
+        content: Text(
+          tr('geoui.rooms.delete.body'),
+          style: const TextStyle(color: ChatPalette.secondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(d, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: ChatPalette.accent)),
+            child: Text(tr('common.cancel'),
+                style: const TextStyle(color: ChatPalette.accent)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(d, true),
-            child: const Text('Delete chat',
-                style: TextStyle(color: Color(0xFFF15C6D))),
+            child: Text(tr('geoui.rooms.delete'),
+                style: const TextStyle(color: Color(0xFFF15C6D))),
           ),
         ],
       ),
@@ -1024,7 +1025,7 @@ class _RoomsFieldState extends State<RoomsField> {
                 ),
               ),
               IconButton(
-                tooltip: 'Members',
+                tooltip: tr('geoui.rooms.members'),
                 color: ChatPalette.secondary,
                 icon: const Icon(Icons.group_outlined),
                 onPressed: widget.onMembers,
@@ -1034,12 +1035,12 @@ class _RoomsFieldState extends State<RoomsField> {
         ),
         Expanded(
           child: open == null
-              ? const ColoredBox(
+              ? ColoredBox(
                   color: ChatPalette.chatBg,
                   child: Center(
                     child: Text(
-                      'Pick a room',
-                      style: TextStyle(color: ChatPalette.secondary),
+                      tr('geoui.rooms.pick'),
+                      style: const TextStyle(color: ChatPalette.secondary),
                     ),
                   ),
                 )
@@ -1048,7 +1049,7 @@ class _RoomsFieldState extends State<RoomsField> {
                     key: ValueKey('room-$open'),
                     fieldName: 'rooms_chat',
                     label: '',
-                    hint: 'Message',
+                    hint: tr('geoui.rooms.message'),
                     fill: true,
                     safeBottom: true,
                     // The OPEN room, so this is where its tail is read from

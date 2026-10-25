@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'i18n_english.dart';
+
 // flutter test renders text as boxes unless real fonts are loaded; load the
 // Roboto + MaterialIcons that ship with the Flutter SDK so the goldens read.
 Future<void> _loadFonts() async {
@@ -31,6 +33,7 @@ Future<void> _loadFonts() async {
 }
 
 void main() {
+  installEnglishForTest();
   setUpAll(_loadFonts);
 
   Future<void> pump(WidgetTester t, List<Map<String, dynamic>> m,

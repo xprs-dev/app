@@ -160,9 +160,9 @@ class _AllAppsButton extends StatelessWidget {
             child: Icon(Icons.apps, size: 28, color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Apps',
-            style: TextStyle(fontSize: 12),
+          Text(
+            tr('launcher.dock.apps'),
+            style: const TextStyle(fontSize: 12),
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
           ),

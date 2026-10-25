@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/i18n/core_i18n.dart';
+
 /// The first thing a new person sees after creating their station: what the
 /// three wapps on the home screen are for. Status, Chat and Mesh are the ones
 /// held on the home bars (LaunchCountStore.kDefaultModuleWapps), so each page
@@ -16,54 +18,26 @@ class AppsIntroPage extends StatefulWidget {
   State<AppsIntroPage> createState() => _AppsIntroPageState();
 }
 
+/// One card. [key] is the translation namespace: `onboarding.apps.<key>`
+/// holds `.title`, `.lead` and `.point1` … `.point3`.
 class _IntroCard {
   final IconData icon;
   final Color color;
-  final String title;
-  final String lead;
-  final List<String> points;
+  final String key;
 
-  const _IntroCard(this.icon, this.color, this.title, this.lead, this.points);
+  const _IntroCard(this.icon, this.color, this.key);
+
+  String get title => tr('onboarding.apps.$key.title');
+  String get lead => tr('onboarding.apps.$key.lead');
+  List<String> get points => [
+        for (var i = 1; i <= 3; i++) tr('onboarding.apps.$key.point$i'),
+      ];
 }
 
 const _cards = [
-  _IntroCard(
-    Icons.campaign_outlined,
-    Color(0xFF16A34A),
-    'Status',
-    'Say what you are up to, to everyone around you.',
-    [
-      'Write a short status and it goes out on every radio this device has, '
-          'no internet needed.',
-      'Read the statuses of the people nearby, and follow the ones you want '
-          'to hear from first.',
-      'The people you chat with show their newest status at the top of Chat.',
-    ],
-  ),
-  _IntroCard(
-    Icons.chat_bubble_outline,
-    Color(0xFFB71C1C),
-    'Chat',
-    'Talk to the people around you, in groups or one to one.',
-    [
-      'Local chat is everyone within radio range. It is always there.',
-      'Start a private chat with a station by its callsign. It is sealed once '
-          'both keys are known.',
-      'Groups are named rooms. Closed groups are for their members only.',
-    ],
-  ),
-  _IntroCard(
-    Icons.hub_outlined,
-    Color(0xFFC0392B),
-    'Mesh',
-    'See who is within reach, and how.',
-    [
-      'A live map of the stations and devices this one can hear.',
-      'Shows whether someone is reached over Bluetooth, the local network '
-          'or the internet.',
-      'Manage the hubs your station connects through.',
-    ],
-  ),
+  _IntroCard(Icons.campaign_outlined, Color(0xFF16A34A), 'status'),
+  _IntroCard(Icons.chat_bubble_outline, Color(0xFFB71C1C), 'chat'),
+  _IntroCard(Icons.hub_outlined, Color(0xFFC0392B), 'mesh'),
 ];
 
 class _AppsIntroPageState extends State<AppsIntroPage> {
@@ -104,7 +78,7 @@ class _AppsIntroPageState extends State<AppsIntroPage> {
                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
                 child: TextButton(
                   onPressed: widget.onDone,
-                  child: const Text('Skip'),
+                  child: Text(tr('common.skip')),
                 ),
               ),
             ),
@@ -145,7 +119,9 @@ class _AppsIntroPageState extends State<AppsIntroPage> {
                     foregroundColor: Colors.white,
                   ),
                   onPressed: _next,
-                  child: Text(_last ? 'Get started' : 'Next'),
+                  child: Text(_last
+                      ? tr('onboarding.apps.get_started')
+                      : tr('common.next')),
                 ),
               ),
             ),
@@ -207,7 +183,7 @@ class _AppsIntroPageState extends State<AppsIntroPage> {
                 ),
               const SizedBox(height: 4),
               Text(
-                'You will find ${c.title} on your home screen.',
+                tr('onboarding.apps.on_home', {'name': c.title}),
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),

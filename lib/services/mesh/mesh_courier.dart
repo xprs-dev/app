@@ -43,6 +43,7 @@
  * because the chat wapp and the ESP32 dongle still speak it and custody sees
  * every advert on the air. That half goes away when they are ported.
  */
+import '../xprs/xprs_self.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -394,7 +395,9 @@ class MeshCourier {
     // (docs/XPRS.md section 9.2 -- `x:` sealed, `m:` plain; the wire form is
     // the whole statement and nothing is negotiated).
     final built = xprsBuildDirect(
-      head: XprsPacket.parse('t:message f:$self d:$call ts:${_nowIso()}')!,
+      // The conversation's callsign, as every other 1:1 (XprsSelf).
+      head: XprsPacket.parse(
+          't:message f:${XprsSelf.instance.forPeer(call)} d:$call ts:${_nowIso()}')!,
       text: a.text,
       private: a.private,
       recipientKeyHex: npub,

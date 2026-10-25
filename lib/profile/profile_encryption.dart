@@ -33,6 +33,7 @@ import 'profile_storage_encrypted.dart';
 import '../services/log_service.dart';
 import '../platform/fs.dart';
 import '../platform/platform.dart' as platform;
+import '../services/i18n/core_i18n.dart';
 
 class ProfileEncryption {
   ProfileEncryption._();
@@ -113,7 +114,7 @@ class ProfileEncryption {
     final profile = _byId(id);
     if (profile == null) throw StateError('Unknown profile: $id');
     if (profile.nsec.isEmpty) {
-      throw StateError('Profile has no nsec — cannot enable encryption');
+      throw StateError(tr('profile.encryption.no_nsec'));
     }
     if (isEncrypted(id)) return;
     if (platform.isWeb) {

@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "language": "English",
+    "reviewed": true
+  },
+  "coin.paste_descriptor": "Paste a coin descriptor first.",
+  "coin.invalid_descriptor": "Invalid coin descriptor.",
+  "coin.no_such_coin": "No such coin.",
+  "coin.paste_token": "Paste a token to receive.",
+  "coin.invalid_token": "Not a valid coin token.",
+  "coin.unknown_add_provider": "Unknown coin — add the provider first.",
+  "coin.nothing_accepted": "Nothing accepted (already held or invalid).",
+  "coin.pick_held": "Pick a coin you hold (paste its Coin ID).",
+  "coin.amount_positive": "Enter an amount greater than zero.",
+  "coin.recipient_npub": "Enter a recipient npub.",
+  "coin.no_profile_key": "No active profile key to sign with.",
+  "coin.invalid_recipient": "Invalid recipient npub.",
+  "coin.unknown": "Unknown coin",
+  "coin.atm.no_profile": "No active profile to operate as ATM.",
+  "coin.atm.name_coin": "Name the coin (singular, plural and/or short code).",
+  "coin.atm.pick_yours": "Pick one of your coins.",
+  "coin.atm.no_operator_key": "No operator key to sign blocks.",
+  "coin.atm.ledger_closed": "Could not open the coin ledger.",
+  "coin.atm.rejected": "Distribution was rejected by the ledger.",
+  "coin.atm.invalid_npub": "Invalid npub.",
+  "coin.atm.enter_npub": "Enter an npub to trust.",
+  "coin.atm.trusted": "Designated as a trusted ATM for {coin}.",
+  "coin.atm.already_trusted": "Already trusted.",
+  "coin.atm.descriptor_ready": "Descriptor ready to share.",
+  "coin.atm.your_coins": "Your coins"
+}

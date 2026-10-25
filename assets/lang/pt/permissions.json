@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "language": "Português (Portugal)",
+    "reviewed": false
+  },
+  "permissions.welcome": "Bem-vindo ao XPRS",
+  "permissions.tagline": "Mensagens fora da rede, por Bluetooth e pela internet.",
+  "permissions.title": "Permissões",
+  "permissions.all_granted": "Todas concedidas",
+  "permissions.tap_to_grant": "Toque para conceder",
+  "permissions.intro": "Conceda estas permissões antes de continuar. Nada funciona sem elas, e pedir agora evita pedidos inesperados mais tarde.",
+  "permissions.grant_all": "Conceder todas",
+  "permissions.grant": "Conceder",
+  "permissions.grant_to_continue": "Conceda as permissões para continuar",
+  "permissions.privacy": "Os seus dados ficam no seu dispositivo. Estas permissões servem apenas para mensagens e ligações locais.",
+  "permissions.bluetooth.title": "Bluetooth",
+  "permissions.bluetooth.desc": "Descobrir dispositivos próximos e trocar mensagens pela malha",
+  "permissions.nearby_wifi.title": "Dispositivos Wi-Fi próximos",
+  "permissions.nearby_wifi.desc": "Mover ficheiros grandes entre dispositivos próximos por uma ligação Wi-Fi direta (muito mais rápida do que Bluetooth)",
+  "permissions.notifications.title": "Notificações",
+  "permissions.notifications.desc": "Avisá-lo quando chega uma mensagem com a aplicação em segundo plano",
+  "permissions.storage.title": "Armazenamento",
+  "permissions.storage.desc": "Guardar uma cópia de segurança cifrada da sua identidade, que sobrevive a uma reinstalação, e partilhar ficheiros",
+  "permissions.storage_legacy.title": "Armazenamento",
+  "permissions.storage_legacy.desc": "Guardar uma cópia de segurança cifrada da sua identidade, que sobrevive a uma reinstalação, e partilhar ficheiros",
+  "permissions.location.title": "Localização",
+  "permissions.location.desc": "Exigida pelo Android para encontrar dispositivos próximos por Bluetooth — com a localização desligada o sistema não devolve nenhum resultado e a aplicação fica surda sem aviso. Também coloca a sua posição no mapa.",
+  "permissions.battery.title": "Funcionar em segundo plano",
+  "permissions.battery.desc": "Deixar a aplicação continuar a receber mensagens com o ecrã desligado — caso contrário o Android adormece-a",
+  "permissions.internet.title": "Internet",
+  "permissions.internet.desc": "Ligar aos relés da internet e à loja de wapps (automático)"
+}

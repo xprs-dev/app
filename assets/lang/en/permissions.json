@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "language": "English",
+    "reviewed": true
+  },
+  "permissions.welcome": "Welcome to XPRS",
+  "permissions.tagline": "Off-grid messaging over Bluetooth and the internet.",
+  "permissions.title": "Permissions",
+  "permissions.all_granted": "All granted",
+  "permissions.tap_to_grant": "Tap to grant",
+  "permissions.intro": "Grant these before continuing. Nothing works without them, and asking now means no surprise prompts later.",
+  "permissions.grant_all": "Grant all",
+  "permissions.grant": "Grant",
+  "permissions.grant_to_continue": "Grant permissions to continue",
+  "permissions.privacy": "Your data stays on your device. These permissions are only used for local messaging and connectivity.",
+  "permissions.bluetooth.title": "Bluetooth",
+  "permissions.bluetooth.desc": "Discover nearby devices and exchange messages over the mesh",
+  "permissions.nearby_wifi.title": "Nearby WiFi devices",
+  "permissions.nearby_wifi.desc": "Move large files between nearby devices over a direct WiFi link (much faster than Bluetooth)",
+  "permissions.notifications.title": "Notifications",
+  "permissions.notifications.desc": "Alert you when a message arrives while the app is in the background",
+  "permissions.storage.title": "Storage",
+  "permissions.storage.desc": "Keep an encrypted backup of your identity so it survives a reinstall, and share files",
+  "permissions.storage_legacy.title": "Storage",
+  "permissions.storage_legacy.desc": "Keep an encrypted backup of your identity so it survives a reinstall, and share files",
+  "permissions.location.title": "Location",
+  "permissions.location.desc": "Required by Android to find nearby devices over Bluetooth — with location switched off the system returns no scan results at all, so the app goes silently deaf. Also puts your position on the map.",
+  "permissions.battery.title": "Run in the background",
+  "permissions.battery.desc": "Let the app keep receiving messages when the screen is off — Android otherwise puts it to sleep",
+  "permissions.internet.title": "Internet",
+  "permissions.internet.desc": "Connect to the internet relays and the wapp store (automatic)"
+}

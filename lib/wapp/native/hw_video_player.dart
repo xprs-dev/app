@@ -20,6 +20,7 @@ import '../../services/log_service.dart';
 import 'video_keys.dart';
 import 'video_time_bar.dart';
 import '../../platform/fs.dart';
+import '../../services/i18n/core_i18n.dart';
 
 void _log(String line) => LogService.instance.add('[wvp] $line');
 
@@ -280,11 +281,11 @@ class _HwVideoPlayerState extends State<HwVideoPlayer> {
               ),
             ),
           if (!_prepared)
-            const Center(
+            Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
+                  const SizedBox(
                     width: 22,
                     height: 22,
                     child: CircularProgressIndicator(
@@ -292,10 +293,10 @@ class _HwVideoPlayerState extends State<HwVideoPlayer> {
                       color: Colors.white70,
                     ),
                   ),
-                  SizedBox(height: 10),
+                  const SizedBox(height: 10),
                   Text(
-                    'Starting…',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                    tr('geoui.video.starting'),
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ],
               ),

@@ -35,6 +35,7 @@ import 'update_platform.dart';
 import 'update_native.dart';
 import '../util/nostr_crypto.dart';
 import 'log_service.dart';
+import 'i18n/core_i18n.dart';
 import 'mesh/mesh_service.dart';
 import 'update_mirror_service.dart';
 import 'xprs/xprs_catchup.dart';
@@ -450,9 +451,8 @@ class UpdateService {
     await p.setString(_kNotified, sel.version);
     NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
-      title: 'Update available',
-      body: 'XPRS ${sel.version} is available. Open Settings → '
-          'Updates to install.',
+      title: tr('notifications.update.available'),
+      body: tr('notifications.update.body', {'version': sel.version}),
       source: 'host:updates',
       scope: NotificationScope.both,
     ));

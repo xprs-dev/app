@@ -9,6 +9,8 @@ import 'package:xprs/wapp/geoui/widgets/chat_view_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'i18n_english.dart';
+
 Map<String, dynamic> msg(
   String text, {
   String dir = 'in',
@@ -30,6 +32,7 @@ Map<String, dynamic> msg(
     };
 
 void main() {
+  installEnglishForTest();
   late List<String> sent;
 
   Future<void> pump(WidgetTester tester, List<Map<String, dynamic>> messages,

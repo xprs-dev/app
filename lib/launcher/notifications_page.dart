@@ -49,11 +49,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notifications'),
+        title: Text(tr('notifications.title')),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            tooltip: 'Clear',
+            tooltip: tr('notifications.clear'),
             onPressed: () => NotificationStore.instance.clear(),
           ),
         ],
@@ -73,18 +73,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   ),
                   scrollDirection: Axis.horizontal,
                   children: [
-                    _chip('all', 'All'),
-                    _chip('wapp', 'Wapps'),
-                    _chip('host', 'Host'),
+                    _chip('all', tr('common.all')),
+                    _chip('wapp', tr('notifications.filter.wapps')),
+                    _chip('host', tr('notifications.filter.host')),
                     for (final level in NotificationLevel.values)
                       _chip(level.name,
-                          '${level.name[0].toUpperCase()}${level.name.substring(1)}'),
+                          tr('notifications.level.${level.name}')),
                   ],
                 ),
               ),
               Expanded(
                 child: filtered.isEmpty
-                    ? const Center(child: Text('No notifications'))
+                    ? Center(child: Text(tr('notifications.empty')))
                     : ListView(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                         children: _grouped(filtered),
@@ -146,8 +146,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final today = DateTime(now.year, now.month, now.day);
     final day = DateTime(dt.year, dt.month, dt.day);
     final diff = today.difference(day).inDays;
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
+    if (diff == 0) return tr('notifications.today');
+    if (diff == 1) return tr('notifications.yesterday');
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 }
@@ -249,9 +249,13 @@ class _NotificationRow extends StatelessWidget {
 
   String _relativeTime(DateTime dt) {
     final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m';
-    if (diff.inDays < 1) return '${diff.inHours}h';
-    return '${diff.inDays}d';
+    if (diff.inMinutes < 1) return tr('notifications.time.now');
+    if (diff.inHours < 1) {
+      return tr('notifications.time.minutes', {'n': diff.inMinutes});
+    }
+    if (diff.inDays < 1) {
+      return tr('notifications.time.hours', {'n': diff.inHours});
+    }
+    return tr('notifications.time.days', {'n': diff.inDays});
   }
 }

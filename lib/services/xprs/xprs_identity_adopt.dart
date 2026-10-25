@@ -53,6 +53,23 @@ void xprsBindWireCallsign() {
   if (_bound) return;
   _bound = true;
   ProfileService.instance.wireCallsignNotifier.addListener(_adopt);
+  // A callsign added or removed without changing the one on the air: the
+  // same two steps -- the alias set is rebuilt and every binding re-aired.
+  ProfileService.instance.callsignsNotifier.addListener(_adoptSet);
+}
+
+String _lastSet = '';
+
+void _adoptSet() {
+  final all = ProfileService.instance.callsignsNotifier.value;
+  if (all.isEmpty || all == _lastSet) return;
+  final first = _lastSet.isEmpty;
+  _lastSet = all;
+  if (first) return;          // the initial load; _adopt covers it
+  LogService.instance.add('XPRS: answering to $all');
+  unawaited(MeshService.instance
+      .start(canAdvertise: MeshService.instance.canAdvertise));
+  unawaited(XprsPublisher.instance.publishIdentity());
 }
 
 void _adopt() {

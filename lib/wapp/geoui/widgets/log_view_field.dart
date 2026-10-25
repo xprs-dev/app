@@ -12,6 +12,7 @@
  */
 
 import 'package:flutter/material.dart';
+import '../../../services/i18n/core_i18n.dart';
 
 class LogViewField extends StatefulWidget {
   /// GeoUI field name — used as the key when appending lines from
@@ -97,7 +98,7 @@ class _LogViewFieldState extends State<LogViewField> {
           child: lines.isEmpty
               ? Center(
                   child: Text(
-                    '(no output)',
+                    tr('geoui.log.empty'),
                     style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 12,

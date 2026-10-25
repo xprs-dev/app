@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/reticulum/rns_service.dart';
+import '../services/i18n/core_i18n.dart';
 
 /// Settings → Muted accounts.
 ///
@@ -33,15 +34,13 @@ class _MutedPageState extends State<MutedPage> {
     final muted = RnsService.instance.mutedCallsigns.toList()..sort();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Muted accounts')),
+      appBar: AppBar(title: Text(tr('groups.muted.title'))),
       body: muted.isEmpty
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(32),
                 child: Text(
-                  'Nobody is muted.\n\n'
-                  'Mute an account from the ⋯ menu on any of its posts. '
-                  'Its posts stop being shown — and stop being stored.',
+                  tr('groups.muted.empty'),
                   textAlign: TextAlign.center,
                   style: TextStyle(color: cs.onSurfaceVariant, height: 1.5),
                 ),
@@ -55,9 +54,7 @@ class _MutedPageState extends State<MutedPage> {
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                     child: Text(
-                      '${muted.length} muted. Each key is muted on its own — a '
-                      'name and an avatar are free to copy, an account key is '
-                      'not.',
+                      tr('groups.muted.count', {'n': muted.length}),
                       style: TextStyle(
                           color: cs.onSurfaceVariant, fontSize: 13, height: 1.4),
                     ),
@@ -86,10 +83,10 @@ class _MutedPageState extends State<MutedPage> {
                       RnsService.instance.setMutedCallsign(key, false);
                       setState(() {});
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Unmuted $key')),
+                        SnackBar(content: Text(tr('groups.muted.unmuted', {'key': key}))),
                       );
                     },
-                    child: const Text('Unmute'),
+                    child: Text(tr('groups.muted.unmute')),
                   ),
                 );
               },

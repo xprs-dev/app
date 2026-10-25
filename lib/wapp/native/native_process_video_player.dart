@@ -26,6 +26,7 @@ import '../../platform/native_abi.dart';
 
 export '../../platform/native_abi.dart' show nativeBinaryKey;
 import '../../services/log_service.dart';
+import '../../services/i18n/core_i18n.dart';
 import 'video_keys.dart';
 import 'video_time_bar.dart';
 import 'wasm_audio_output.dart';
@@ -469,11 +470,11 @@ class _NativeProcessVideoPlayerState extends State<NativeProcessVideoPlayer> {
         children: [
           if (s != null) s.buildSurface(widget.fit),
           if (!_gotFrame)
-            const Center(
+            Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
+                  const SizedBox(
                     width: 22,
                     height: 22,
                     child: CircularProgressIndicator(
@@ -481,10 +482,10 @@ class _NativeProcessVideoPlayerState extends State<NativeProcessVideoPlayer> {
                       color: Colors.white70,
                     ),
                   ),
-                  SizedBox(height: 10),
+                  const SizedBox(height: 10),
                   Text(
-                    'Starting…',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                    tr('geoui.video.starting'),
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ],
               ),

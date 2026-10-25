@@ -25,7 +25,7 @@ class _HomeHeader extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       leading: IconButton(
         icon: const Icon(Icons.menu),
-        tooltip: 'Menu',
+        tooltip: tr('launcher.header.menu'),
         onPressed: onMenu,
       ),
       titleSpacing: 0,
@@ -42,7 +42,7 @@ class _HomeHeader extends StatelessWidget implements PreferredSizeWidget {
           valueListenable: NotificationStore.instance.unreadCount,
           builder: (context, count, _) => _BadgedActionIcon(
             icon: Icons.notifications_none,
-            tooltip: 'Notifications',
+            tooltip: tr('launcher.header.notifications'),
             count: count,
             onPressed: onNotifications,
           ),
@@ -50,7 +50,7 @@ class _HomeHeader extends StatelessWidget implements PreferredSizeWidget {
         if (mailWapp != null && onMail != null)
           _IntentBadgeIcon(
             icon: Icons.mail_outline,
-            tooltip: 'Mail',
+            tooltip: tr('launcher.header.mail'),
             wappId: BackgroundWappManager.folderName(mailWapp!.dirPath),
             intent: 'mail',
             onPressed: onMail!,
@@ -58,7 +58,7 @@ class _HomeHeader extends StatelessWidget implements PreferredSizeWidget {
         if (chatWapp != null && onChat != null)
           _IntentBadgeIcon(
             icon: Icons.forum_outlined,
-            tooltip: 'Chat',
+            tooltip: tr('launcher.header.chat'),
             wappId: BackgroundWappManager.folderName(chatWapp!.dirPath),
             intent: 'chat',
             onPressed: onChat!,

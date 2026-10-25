@@ -29,6 +29,7 @@ import 'xprs/xprs_groups.dart';
 import 'xprs/xprs_graph.dart';
 import 'mesh/mesh_courier.dart';
 import 'mesh/mesh_custody.dart';
+import 'xprs/xprs_fetch.dart';
 import 'xprs/xprs_forwarder.dart';
 import 'xprs/xprs_airtime.dart';
 import 'xprs/xprs_body.dart';
@@ -1901,6 +1902,20 @@ class RemoteApiService {
           'wire': p.encode(),
         });
       }
+      // Fetch a station's archived messages from wherever they are (12.6,
+      // XprsFetch): {"call":"X1BOA3"}. What the chat wapp triggers by
+      // opening a conversation, drivable over adb for the bench.
+      if (req.method == 'POST' && path == '/api/xprs/fetch') {
+        final data = await _body(req);
+        final call = (data['call'] ?? '').toString().trim().toUpperCase();
+        if (call.isEmpty) {
+          return _json(res, {'ok': false, 'error': 'need call'},
+              status: HttpStatus.badRequest);
+        }
+        final opened = XprsFetch.instance.requestStation(call, reason: 'api');
+        return _json(res, {'ok': true, 'opened': opened,
+            ...XprsFetch.instance.json});
+      }
       // Declare this station's favorite indexers (XPRS 13.12): persists the
       // hold list and airs the signed t:mailbox on every bearer now.
       if (req.method == 'POST' && path == '/api/xprs/mailbox') {
@@ -2150,6 +2165,13 @@ class RemoteApiService {
         // on, and what went to the operator's archivers. Without it a bridge
         // that never fires and one that fires look identical from outside.
         'bridge': XprsBridge.instance.json,
+        // 12.8.1: held mail handed toward the gateways that report the
+        // recipient, and the two reasons it stays put (we can deliver it
+        // ourselves; nobody has reported them).
+        'forwarder': XprsForwarder.instance.json,
+        'fetch': XprsFetch.instance.json,
+        // 12.1: how often this station told its archivers who it hears.
+        'hearsReports': MeshService.instance.hearsReports,
         'courier': {
           'aired': MeshCourierCounters.aired,
           'ingested': MeshCourierCounters.ingested,

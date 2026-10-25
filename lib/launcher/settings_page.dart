@@ -74,11 +74,11 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(tr('common.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Save'),
+            child: Text(tr('common.save')),
           ),
         ],
       ),
@@ -86,15 +86,16 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
   }
 
   String _folderSubtitle(String v) =>
-      v.trim().isEmpty ? 'Not set (uses the built-in default)' : v.trim();
+      v.trim().isEmpty ? tr('settings.folders.unset') : v.trim();
 
   Future<void> _editUpdateFolder({required bool beta}) async {
     final r = await _editTextPref(
-      title: beta ? 'Update folder (beta)' : 'Update folder (stable)',
-      help: 'Reticulum address (npub… or hex folder id) of the signed folder '
-          'the app pulls ${beta ? 'beta' : 'stable'} releases from. Binaries '
-          'are fetched peer-to-peer and verified by sha256. Leave blank to '
-          'reset to the built-in default.',
+      title: tr(beta ? 'settings.folders.beta' : 'settings.folders.stable'),
+      help: tr('settings.folders.edit_help', {
+        'channel': tr(beta
+            ? 'settings.folders.channel.beta'
+            : 'settings.folders.channel.stable')
+      }),
       hint: 'npub1…',
       initial: beta ? _upd.betaFolder : _upd.stableFolder,
     );
@@ -145,10 +146,33 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
     final p = _prefs;
     if (p == null) return '';
     final explicit = p.localePreference;
-    final effective = p.activeLocale();
-    if (explicit == null || explicit.isEmpty) return 'Auto — $effective';
-    return effective;
+    if (explicit == null || explicit.isEmpty) {
+      return tr('common.language.auto',
+          {'locale': _languageName(CoreI18n.instance.resolved)});
+    }
+    return _languageName(explicit);
   }
+
+  /// The dropdown's value must be one of its items: a stored tag with no
+  /// folder in this build (an old `pt_PT`, a removed language) reads as Auto
+  /// rather than crashing the dropdown.
+  String _localeValue() {
+    final v = _prefs?.localePreference ?? '';
+    return CoreI18n.instance.languages.contains(v) ? v : '';
+  }
+
+  /// A language names itself (the one string a person must be able to read
+  /// whatever is selected), so these are not in any lang file.
+  static String _languageName(String code) => switch (code) {
+        'en' => 'English',
+        'pt' || 'pt_PT' => 'Português',
+        'pt_BR' => 'Português (Brasil)',
+        'es' => 'Español',
+        'de' => 'Deutsch',
+        'fr' => 'Français',
+        'it' => 'Italiano',
+        _ => code,
+      };
 
   /// Persist the new locale preference and fire [LocaleChangedEvent]
   /// so every open [WappPage] reloads its translations. The empty
@@ -196,14 +220,13 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Wapp Data Directory'),
+        title: Text(tr('settings.storage.dir')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Each wapp stores its settings and files in a subfolder here, '
-              'named after the wapp ID.',
+              tr('settings.storage.dir.help'),
               style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                     color: Theme.of(ctx).colorScheme.onSurfaceVariant,
                   ),
@@ -212,13 +235,13 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
             TextField(
               controller: controller,
               decoration: InputDecoration(
-                labelText: 'Directory path',
+                labelText: tr('settings.storage.dir.path'),
                 filled: true,
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12)),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.folder_open),
-                  tooltip: 'Reset to default',
+                  tooltip: tr('settings.storage.dir.reset'),
                   onPressed: () => controller.text = defaultPath,
                 ),
               ),
@@ -229,11 +252,11 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(tr('common.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Save'),
+            child: Text(tr('common.save')),
           ),
         ],
       ),
@@ -260,18 +283,14 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
     await platform.openInFileManager(dataDir);
   }
 
-  String _humanSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-  }
+  String _humanSize(int bytes) => trBytes(bytes);
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(tr('common.settings'))),
       body: _prefs == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -291,14 +310,13 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                   color: cs.surfaceContainerLow,
                   child: ListTile(
                     leading: const Icon(Icons.volume_off),
-                    title: const Text('Muted accounts'),
+                    title: Text(tr('settings.muted.title')),
                     subtitle: Text(
                       () {
                         final n = RnsService.instance.mutedCallsigns.length;
                         return n == 0
-                            ? 'Nobody is muted'
-                            : '$n account${n == 1 ? '' : 's'} — their posts are '
-                                'not shown, and not stored';
+                            ? tr('settings.muted.none')
+                            : trn('settings.muted.count', n);
                       }(),
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),
@@ -314,15 +332,14 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 const SizedBox(height: 24),
 
                 // ── Language ──
-                Text('Language',
+                Text(tr('common.language'),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           color: cs.primary,
                           fontWeight: FontWeight.w600,
                         )),
                 const SizedBox(height: 4),
                 Text(
-                  'Controls how wapps resolve their @key translation '
-                  'sentinels. "Auto" follows the operating system.',
+                  tr('common.language.desc'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: cs.onSurfaceVariant,
                       ),
@@ -337,26 +354,23 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                   color: cs.surfaceContainerLow,
                   child: ListTile(
                     leading: const Icon(Icons.language),
-                    title: const Text('Language'),
+                    title: Text(tr('common.language')),
                     subtitle: Text(
                       _localeSubtitle(),
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),
+                    // The choices are the folders this build ships under
+                    // assets/lang/, so adding a language never touches this
+                    // screen. Each is named in itself, never translated.
                     trailing: DropdownButton<String>(
-                      value: _prefs?.localePreference ?? '',
+                      value: _localeValue(),
                       underline: const SizedBox.shrink(),
-                      items: const [
-                        DropdownMenuItem(value: '', child: Text('Auto')),
+                      items: [
                         DropdownMenuItem(
-                            value: 'en', child: Text('English')),
-                        DropdownMenuItem(
-                            value: 'pt', child: Text('Português')),
-                        DropdownMenuItem(
-                            value: 'de', child: Text('Deutsch')),
-                        DropdownMenuItem(
-                            value: 'fr', child: Text('Français')),
-                        DropdownMenuItem(
-                            value: 'es', child: Text('Español')),
+                            value: '', child: Text(tr('common.auto'))),
+                        for (final code in CoreI18n.instance.languages)
+                          DropdownMenuItem(
+                              value: code, child: Text(_languageName(code))),
                       ],
                       onChanged: _onLocaleChanged,
                     ),
@@ -365,16 +379,15 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 const SizedBox(height: 24),
 
                 // ── Remote control API ──
-                Text('Remote control',
+                Text(tr('settings.remote.title'),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           color: cs.primary,
                           fontWeight: FontWeight.w600,
                         )),
                 const SizedBox(height: 4),
                 Text(
-                  'Exposes a JSON HTTP API (status, logs, launch a wapp) on '
-                  'port ${_prefs?.remoteApiPort ?? 3456}, for development. '
-                  'Reachable only from this device, or a computer over adb.',
+                  tr('settings.remote.help',
+                      {'port': _prefs?.remoteApiPort ?? 3456}),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: cs.onSurfaceVariant,
                       ),
@@ -389,11 +402,12 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                   color: cs.surfaceContainerLow,
                   child: SwitchListTile(
                     secondary: const Icon(Icons.cable),
-                    title: const Text('Remote control API'),
+                    title: Text(tr('settings.remote.api')),
                     subtitle: Text(
                       RemoteApiService.instance.running
-                          ? 'Listening on 127.0.0.1:${_prefs?.remoteApiPort ?? 3456}'
-                          : 'Off',
+                          ? tr('settings.remote.listening',
+                              {'port': _prefs?.remoteApiPort ?? 3456})
+                          : tr('common.off'),
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),
                     value: _prefs?.remoteApiEnabled ?? false,
@@ -410,9 +424,9 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                   color: cs.surfaceContainerLow,
                   child: SwitchListTile(
                     secondary: const Icon(Icons.bug_report),
-                    title: const Text('BLE debug logging'),
+                    title: Text(tr('settings.ble_debug.title')),
                     subtitle: Text(
-                      'Log BLE advertise/scan/broadcast activity to the app log',
+                      tr('settings.ble_debug.help'),
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),
                     value: _prefs?.bleDebug ?? false,
@@ -422,15 +436,14 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 const SizedBox(height: 24),
 
                 // ── Reticulum ──
-                Text('Reticulum',
+                Text(tr('settings.reticulum.title'),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           color: cs.primary,
                           fontWeight: FontWeight.w600,
                         )),
                 const SizedBox(height: 4),
                 Text(
-                  'Bootstrap hubs the node connects to. It tries each in order '
-                  'until one answers with real Reticulum traffic.',
+                  tr('settings.reticulum.help'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: cs.onSurfaceVariant,
                       ),
@@ -445,14 +458,14 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                   color: cs.surfaceContainerLow,
                   child: ListTile(
                     leading: const Icon(Icons.dns),
-                    title: const Text('Bootstrap servers'),
+                    title: Text(tr('settings.reticulum.servers')),
                     subtitle: Text(
                       () {
                         final list = _prefs?.rnsBootstrapServers ?? const [];
-                        if (list.isEmpty) return 'None set';
+                        if (list.isEmpty) return tr('settings.reticulum.servers.none');
                         final n = list.length;
-                        return '$n server${n == 1 ? '' : 's'} — ${list.first}'
-                            '${n > 1 ? ' …' : ''}';
+                        return trn('settings.reticulum.servers.count', n,
+                            {'first': list.first, 'more': n > 1 ? ' …' : ''});
                       }(),
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),
@@ -463,17 +476,14 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 const SizedBox(height: 24),
 
                 // ── Hosting: its own heading, or its text reads as Reticulum's ──
-                Text('Hosting',
+                Text(tr('settings.hosting.title'),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           color: cs.primary,
                           fontWeight: FontWeight.w600,
                         )),
                 const SizedBox(height: 4),
                 Text(
-                  'Host for the mesh: act as a NOSTR relay + file host so peers '
-                  'have a free place to store notes and files. Tiered fair-use '
-                  'quotas apply — your own and people you follow are kept; '
-                  'strangers are capped.',
+                  tr('settings.hosting.help'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: cs.onSurfaceVariant,
                       ),
@@ -490,9 +500,9 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                     children: [
                       SwitchListTile(
                         secondary: const Icon(Icons.cloud_upload_outlined),
-                        title: const Text('Host for the mesh'),
+                        title: Text(tr('settings.hosting.enable')),
                         subtitle: Text(
-                          'Store notes + files for other nodes (relay + Blossom)',
+                          tr('settings.hosting.enable.help'),
                           style: TextStyle(color: cs.onSurfaceVariant),
                         ),
                         value: _prefs?.hostEnabled ?? true,
@@ -505,10 +515,9 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                       const Divider(height: 1),
                       SwitchListTile(
                         secondary: const Icon(Icons.battery_charging_full),
-                        title: const Text('Only when charging on Wi-Fi'),
+                        title: Text(tr('settings.hosting.charging')),
                         subtitle: Text(
-                          'Host only while charging on Wi-Fi/Ethernet (off = host '
-                          'on any connection)',
+                          tr('settings.hosting.charging.help'),
                           style: TextStyle(color: cs.onSurfaceVariant),
                         ),
                         value: _prefs?.hostCapacityGated ?? true,
@@ -528,17 +537,14 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 const SizedBox(height: 24),
 
                 // ── Sharing folders (Reticulum) ──
-                Text('Sharing folders',
+                Text(tr('settings.folders.title'),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           color: cs.primary,
                           fontWeight: FontWeight.w600,
                         )),
                 const SizedBox(height: 4),
                 Text(
-                  'Signed Reticulum folders the app pulls from, peer-to-peer '
-                  'and verified by sha256. Each is an npub… (or hex folder id). '
-                  'Change these to follow a different publisher; leave blank '
-                  'for the built-in defaults.',
+                  tr('settings.folders.help'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: cs.onSurfaceVariant,
                       ),
@@ -555,7 +561,7 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                     children: [
                       ListTile(
                         leading: const Icon(Icons.system_update_alt),
-                        title: const Text('Update folder (stable)'),
+                        title: Text(tr('settings.folders.stable')),
                         subtitle: Text(
                           _folderSubtitle(_upd.stableFolder),
                           maxLines: 1,
@@ -568,7 +574,7 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                       const Divider(height: 1),
                       ListTile(
                         leading: const Icon(Icons.science_outlined),
-                        title: const Text('Update folder (beta)'),
+                        title: Text(tr('settings.folders.beta')),
                         subtitle: Text(
                           _folderSubtitle(_upd.betaFolder),
                           maxLines: 1,
@@ -584,14 +590,14 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 const SizedBox(height: 24),
 
                 // ── Data Directory ──
-                Text('Storage',
+                Text(tr('settings.storage.title'),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           color: cs.primary,
                           fontWeight: FontWeight.w600,
                         )),
                 const SizedBox(height: 4),
                 Text(
-                  'Where wapp settings, downloads, and user files are stored.',
+                  tr('settings.storage.help'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: cs.onSurfaceVariant,
                       ),
@@ -606,9 +612,9 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                   color: cs.surfaceContainerLow,
                   child: ListTile(
                     leading: const Icon(Icons.folder),
-                    title: const Text('Wapp Data Directory'),
+                    title: Text(tr('settings.storage.dir')),
                     subtitle: Text(
-                      _dataDir ?? 'Not set',
+                      _dataDir ?? tr('settings.storage.dir.unset'),
                       style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 12,
@@ -620,7 +626,7 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.open_in_new),
-                          tooltip: 'Open in file explorer',
+                          tooltip: tr('settings.storage.dir.open'),
                           onPressed: _openDataDir,
                         ),
                         const Icon(Icons.edit),
@@ -632,14 +638,14 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 const SizedBox(height: 24),
 
                 // ── Per-wapp data ──
-                Text('Wapp Data',
+                Text(tr('settings.wappdata.title'),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           color: cs.primary,
                           fontWeight: FontWeight.w600,
                         )),
                 const SizedBox(height: 4),
                 Text(
-                  'Each subfolder contains settings and files for one wapp.',
+                  tr('settings.wappdata.help'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: cs.onSurfaceVariant,
                       ),
@@ -662,10 +668,10 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
             side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
           ),
           color: cs.surfaceContainerLow,
-          child: const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('No wapp data yet'),
-            subtitle: Text('Data folders are created when a wapp first runs.'),
+          child: ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: Text(tr('settings.wappdata.none')),
+            subtitle: Text(tr('settings.wappdata.none.help')),
           ),
         ),
       ];
@@ -692,7 +698,7 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 ),
                 trailing: IconButton(
                   icon: Icon(Icons.delete_outline, color: cs.error),
-                  tooltip: 'Delete wapp data',
+                  tooltip: tr('settings.wappdata.delete'),
                   onPressed: () => _confirmDelete(entries[i]),
                 ),
               ),
@@ -712,21 +718,20 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete ${entry.name}?'),
-        content: Text(
-            'This will permanently delete all settings and files for '
-            '"${entry.name}" (${_humanSize(entry.size)}).'),
+        title: Text(tr('settings.wappdata.delete.title', {'name': entry.name})),
+        content: Text(tr('settings.wappdata.delete.body',
+            {'name': entry.name, 'size': _humanSize(entry.size)})),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(tr('common.cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(ctx).colorScheme.error,
               foregroundColor: Theme.of(ctx).colorScheme.onError,
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(tr('common.delete')),
           ),
         ],
       ),
@@ -749,7 +754,7 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to delete: $e')),
+            SnackBar(content: Text(tr('settings.wappdata.delete.failed', {'error': e}))),
           );
         }
       }
@@ -777,7 +782,7 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
             children: [
               const Icon(Icons.sd_storage_outlined, size: 20),
               const SizedBox(width: 12),
-              const Expanded(child: Text('Storage for media')),
+              Expanded(child: Text(tr('settings.hosting.media'))),
               Text('$gb GB',
                   style: TextStyle(
                       color: cs.primary, fontWeight: FontWeight.w700)),
@@ -798,14 +803,14 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
             children: [
               Expanded(
                 child: Text(
-                  '${usedGb.toStringAsFixed(1)} GB used — pictures from the '
-                  'people you follow. Their notes are never deleted.',
+                  tr('settings.hosting.media.used',
+                      {'gb': usedGb.toStringAsFixed(1)}),
                   style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
                 ),
               ),
               TextButton(
                 onPressed: _hostedBytes == 0 ? null : _clearHostedMedia,
-                child: const Text('Clear'),
+                child: Text(tr('settings.hosting.media.clear')),
               ),
             ],
           ),
@@ -898,7 +903,7 @@ class _RnsServersPageState extends State<RnsServersPage> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(index == null ? 'Add server' : 'Edit server'),
+          title: Text(tr(index == null ? 'settings.servers.add' : 'settings.servers.edit')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -907,20 +912,20 @@ class _RnsServersPageState extends State<RnsServersPage> {
                 autofocus: true,
                 keyboardType: TextInputType.url,
                 autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Host',
+                decoration: InputDecoration(
+                  labelText: tr('settings.servers.host'),
                   hintText: 'rns.example.net',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: portCtl,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Port',
+                decoration: InputDecoration(
+                  labelText: tr('settings.servers.port'),
                   hintText: '4242',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
                 ),
               ),
             ],
@@ -928,7 +933,7 @@ class _RnsServersPageState extends State<RnsServersPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: Text(tr('common.cancel')),
             ),
             FilledButton(
               onPressed: () {
@@ -940,7 +945,7 @@ class _RnsServersPageState extends State<RnsServersPage> {
                 final port = int.tryParse(portCtl.text.trim()) ?? 4242;
                 Navigator.pop(ctx, '$host:$port');
               },
-              child: const Text('Save'),
+              child: Text(tr('common.save')),
             ),
           ],
         );
@@ -974,11 +979,11 @@ class _RnsServersPageState extends State<RnsServersPage> {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Reticulum servers'),
+        title: Text(tr('settings.servers.title')),
         actions: [
           IconButton(
             icon: const Icon(Icons.restore),
-            tooltip: 'Reset to defaults',
+            tooltip: tr('settings.servers.reset'),
             onPressed: _resetDefaults,
           ),
         ],
@@ -986,16 +991,14 @@ class _RnsServersPageState extends State<RnsServersPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _addOrEdit(),
         icon: const Icon(Icons.add),
-        label: const Text('Add server'),
+        label: Text(tr('settings.servers.add')),
       ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Text(
-              'Bootstrap hubs the node connects to, in priority order. It tries '
-              'each from the top until one answers with real Reticulum traffic. '
-              'Drag to reorder.',
+              tr('settings.servers.help'),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: cs.onSurfaceVariant,
                   ),
@@ -1004,7 +1007,7 @@ class _RnsServersPageState extends State<RnsServersPage> {
           Expanded(
             child: _servers.isEmpty
                 ? Center(
-                    child: Text('No servers — tap "Add server".',
+                    child: Text(tr('settings.servers.empty'),
                         style: TextStyle(color: cs.onSurfaceVariant)),
                   )
                 : ReorderableListView.builder(
@@ -1042,19 +1045,19 @@ class _RnsServersPageState extends State<RnsServersPage> {
                           ),
                           title: Text(hp.$1,
                               maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text('port ${hp.$2}',
+                          subtitle: Text(tr('settings.servers.port_n', {'port': hp.$2}),
                               style: TextStyle(color: cs.onSurfaceVariant)),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
                                 icon: const Icon(Icons.edit),
-                                tooltip: 'Edit',
+                                tooltip: tr('common.edit'),
                                 onPressed: () => _addOrEdit(index: i),
                               ),
                               IconButton(
                                 icon: const Icon(Icons.delete_outline),
-                                tooltip: 'Remove',
+                                tooltip: tr('common.remove'),
                                 onPressed: () => _remove(i),
                               ),
                               ReorderableDragStartListener(

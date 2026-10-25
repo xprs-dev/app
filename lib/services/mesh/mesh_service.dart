@@ -12,6 +12,8 @@
  * (no extended advertising, e.g. C61) run everything except the transmit —
  * they are leaves: they see the street but the street can't route via them.
  */
+import '../../profile/iwi_profile.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'dart:async';
 import 'dart:convert';
 import 'package:file/file.dart';
@@ -48,6 +50,7 @@ import 'package:reticulum/src/services/social/retention_tier.dart';
 import '../xprs/xprs_history_server.dart';
 import '../xprs/xprs_ingest.dart';
 import '../xprs/xprs_gossip.dart';
+import '../xprs/xprs_observation.dart';
 import '../xprs/xprs_group_keys.dart';
 import '../xprs/xprs_passphrases.dart';
 import '../xprs/xprs_publisher.dart';
@@ -59,6 +62,7 @@ import '../xprs/xprs_outbox.dart';
 import '../xprs/xprs_receipt.dart';
 import '../xprs/xprs_bridge.dart';
 import '../xprs/xprs_digipeat.dart';
+import '../xprs/xprs_fetch.dart';
 import '../xprs/xprs_forwarder.dart';
 import '../../util/nostr_crypto.dart';
 import 'mesh_transfer_scheduler.dart';
@@ -188,11 +192,28 @@ class MeshService {
   /// reach them. Empty for every profile without a licence, which means this
   /// changes nothing at all until one is set.
   Set<String> get tableAliases => _aliases;
+
+  /// Every name this station answers to besides the one on the air [cs]: the
+  /// derived X1 once a licence is active (peers that met this operator hold a
+  /// binding for it, and 1:1s already under way are addressed to it), and
+  /// every other issued callsign the operator holds -- one per jurisdiction,
+  /// any of which a conversation may be using (XprsSelf).
+  static Set<String> _aliasesFor(IwiProfile? profile, String cs) {
+    if (profile == null) return const {};
+    final onAir = NostrCrypto.bareCallsign(cs).toUpperCase();
+    final out = <String>{};
+    for (final c in profile.allCallsigns) {
+      final b = NostrCrypto.bareCallsign(c).toUpperCase();
+      if (b.isNotEmpty && b != onAir) out.add(b);
+    }
+    return out.isEmpty ? const {} : out;
+  }
   Set<String> _aliases = const {};
 
   /// Start the mesh node. Idempotent; safe to call again when the profile
   /// (callsign) changes — the table is rebuilt for the new identity.
   Timer? _startRetry;
+  bool _wishAdvertise = false;
 
   Future<void> start({required bool canAdvertise}) async {
     final profile = ProfileService.instance.activeProfile;
@@ -200,14 +221,36 @@ class MeshService {
     if (cs.isEmpty) {
       // BLE can come up before the profile finishes loading on slow devices —
       // a silent no-op here would leave the mesh dead for the whole session.
+      //
+      // Keep the BEST wish while waiting, not the latest argument. On a fresh
+      // device this is called from the permissions intro before any profile
+      // exists, and the radio may learn it can transmit only later (the BLE5
+      // probe answers once Bluetooth is on). A timer that captured its own
+      // argument, or the callsign listener passing `canAdvertise` back as it
+      // stood, started the node as a scan-only leaf on a phone able to beacon.
+      if (canAdvertise) _wishAdvertise = true;
       _startRetry ??= Timer(const Duration(seconds: 10), () {
         _startRetry = null;
         // ignore: discarded_futures
-        start(canAdvertise: canAdvertise);
+        start(canAdvertise: _wishAdvertise);
       });
       return;
     }
+    // Consumed here, once: the wish exists only for the wait above, so a later
+    // refusal by the controller (setCanAdvertise(false)) is never overridden.
+    if (_wishAdvertise) {
+      canAdvertise = true;
+      _wishAdvertise = false;
+    }
     if (_running && _table?.selfCallsign == cs) {
+      // Same name on the air, but the set of names may have changed: a
+      // callsign added for another jurisdiction without switching to it must
+      // still be answered to at once.
+      final aliases = _aliasesFor(profile, cs);
+      if (!setEquals(aliases, _aliases)) {
+        _aliases = aliases;
+        XprsArchive.instance.selfAlsoKnownAs = _aliases;
+      }
       // Only ever RAISE this on a repeat start: a later caller that knows less
       // (the BLE5 probe had not answered when it ran) must not mute a node that
       // is already transmitting.
@@ -219,12 +262,7 @@ class MeshService {
     // going out: every peer that has met this operator holds a binding for it,
     // and a 1:1 already on its way is addressed to it. Empty when there is no
     // licence, so this is inert for everyone else.
-    final derived =
-        NostrCrypto.bareCallsign(profile?.callsign ?? '').toUpperCase();
-    _aliases = (derived.isEmpty ||
-            derived == NostrCrypto.bareCallsign(cs).toUpperCase())
-        ? const {}
-        : {derived};
+    _aliases = _aliasesFor(profile, cs);
     // The Reticulum receive lane tests "addressed to us" against
     // XprsArchive.selfCallsign (xprs_ingest.dart reticulum()). Set it HERE, the
     // instant the callsign is known — NOT only in the prefs/try block below.
@@ -400,12 +438,21 @@ class MeshService {
           XprsCatchup.instance.onResult(p);
           XprsFileFetch.instance.onResult(p);
           XprsCommandCourier.instance.onResult(p);
+          XprsFetch.instance.onResult(p);
         };
+        // A station's archived conversation, fetched on demand (12.6): the
+        // rows it brings are counted at the door and kept because they were
+        // asked for; the poller and the fetch wait for each other's asks.
+        XprsIngest.askedFor = XprsFetch.instance.askedFor;
+        XprsCatchup.instance.externalBusy = () => XprsFetch.instance.askOut;
         // A history page is counted at the receive door, every packet of it
         // whoever wrote it and whether or not this station keeps it: the
         // cursor of a 206 continuation is the oldest packet received
         // (XPRS.md 11.2.1).
-        XprsIngest.onHeardAny = XprsCatchup.instance.noteHeard;
+        XprsIngest.onHeardAny = (p) {
+          XprsCatchup.instance.noteHeard(p);
+          XprsFetch.instance.noteHeard(p);
+        };
         // A message addressed to us, heard on ANY bearer, goes to the courier
         // for verification, unsealing and delivery to the inbox. Before this
         // the only route ran through the BLE 0x41 custody tap, so anything a
@@ -658,6 +705,17 @@ class MeshService {
                 .publishWire(wire, verbatim: true, slot: 'deposit:$call');
             return r.values.any((v) => v == 'sent');
           });
+        // 12.8.1, the report that arrives AFTER the mail did: a station we
+        // hold mail for is reported heard somewhere new, so the forwarder
+        // runs again and that reporter gets its copy. Our own hearing is not
+        // a report -- release-on-hearing above delivers it ourselves.
+        XprsForwarder.instance.heldFor =
+            (call) => MeshStore.instance.heldWiresFor(call);
+        XprsGossip.instance.onSighting = (call, gateway) {
+          final me = NostrCrypto.bareCallsign(tableCallsign);
+          if (me.isEmpty || gateway == me) return;
+          unawaited(XprsForwarder.instance.retry(call, selfBase: me));
+        };
         XprsFileServer.instance.depositAlternates = () => [
               for (final c
                   in PreferencesService.instanceSync?.xprsNamedArchivers ??
@@ -762,6 +820,8 @@ class MeshService {
       // its recipients speak, it simply gains a path to them, and without this
       // minute it would hold their mail for ever while they sat online.
       unawaited(XprsMailbox.instance.sweepHeld());
+      // Who we hear, repeated to our archivers on its period (12.1).
+      _reportHeard();
       // Who we lean on, reconsidered every minute (12.3). Cheap — a scan of a
       // station table that is bounded at a few hundred entries — and the first
       // minutes are exactly when it matters: a phone that has just met the
@@ -1347,44 +1407,11 @@ class MeshService {
     final self = (_table?.selfCallsign ?? '').trim();
     if (self.isEmpty) return;
 
-    var envelope = XprsPacket.parse('t:observation f:$self link:lan');
-    if (envelope == null) return;
-
-    final held = MeshStore.instance.ready ? MeshStore.instance.pendingCount() : 0;
-    if (held > 0) envelope = envelope.with_('mail', '$held');
-
-    // `lx:`, where to write to us, as on the Bluetooth beacon. A station on
-    // the LAN reads it to reach us over Reticulum: our announces do not cross
-    // a public hub, so without it a station could not answer a phone in the
-    // same building that asked it something through one.
-    final lx = ourLxmfDest?.call();
-    if (lx != null && lx.length == 32) envelope = envelope.with_('lx', lx);
-
-    final upSec = DateTime.now().difference(_startedAt).inSeconds;
-    envelope = envelope.with_('uptime', xprsFmtDuration(upSec));
-    if (_lifeBaseSec >= 0) {
-      envelope =
-          envelope.with_('lifetime', xprsFmtDuration(_lifeBaseSec + upSec));
-    }
-    final claim = xprsServeClaim(
-      public: PreferencesService.instanceSync?.xprsPublicArchiver ?? false,
-      spoolReady: XprsArchive.instance.ready,
-      files: (PreferencesService.instanceSync?.archiveQuotaGb ?? 0) > 0,
-    );
-    if (claim != null) {
-      envelope = envelope.with_('serve', claim);
-    }
-
-    // Leave room for the signature the fit cannot know about: ` sig:` plus 60
-    // base85 characters is 65 bytes, and a `hears:` list sized against the full
-    // 250 would push the signed packet over it.
-    final d = xprsProfileScalar();
-    final budget = XprsPacket.maxBytes - (d != null ? 65 : 0);
-    final fit = xprsNeighbourFit(
-        XprsMonitor.instance.directlyHeard(), envelope, budget);
-    var p = envelope.with_('peers', '${fit.peers}');
-    if (fit.hears.isNotEmpty) p = p.with_('hears', fit.hears.join(','));
-    if (d != null) p = xprsSign(p, d);
+    // The one composer (xprs_observation.dart): the same packet the deposit
+    // to our archivers carries, built against the format's own 250 here.
+    final p = _observation(self, 'lan',
+        XprsMonitor.instance.directlyHeard(), XprsPacket.maxBytes);
+    if (p == null) return;
 
     // Through the one lane door, so the beacon is charged and gated exactly
     // like a repeat or a bridge. Deliberately ONE lane and not the fan-out:
@@ -1397,6 +1424,82 @@ class MeshService {
     } else {
       _xprsLanBeaconsFailed++;
     }
+  }
+
+  /// This station's observation about one radio: who it hears there, plus
+  /// the fields every beacon of ours carries (`mail:`, `lx:`, uptime,
+  /// `serve:`), signed. Shared by the LAN beacon and the archiver deposit.
+  XprsPacket? _observation(
+      String self, String link, List<String> heard, int budget,
+      {bool stamped = false}) {
+    final held = MeshStore.instance.ready ? MeshStore.instance.pendingCount() : 0;
+    final upSec = DateTime.now().difference(_startedAt).inSeconds;
+    return xprsComposeObservation(
+      self: self,
+      link: link,
+      heard: heard,
+      budget: budget,
+      mail: held,
+      lx: ourLxmfDest?.call(),
+      uptimeS: upSec,
+      lifetimeS: _lifeBaseSec >= 0 ? _lifeBaseSec + upSec : null,
+      serve: xprsServeClaim(
+        public: PreferencesService.instanceSync?.xprsPublicArchiver ?? false,
+        spoolReady: XprsArchive.instance.ready,
+        files: (PreferencesService.instanceSync?.archiveQuotaGb ?? 0) > 0,
+      ),
+      signingKey: xprsProfileScalar(),
+      ts: stamped ? xprsNowTs() : null,
+    );
+  }
+
+  // ── Who we hear, told to our archivers (12.1) ─────────────────────────────
+  //
+  // The radio beacons say it to whoever is in earshot. This is the copy that
+  // TRAVELS: an addressed deposit per chosen archiver, over Reticulum, so a
+  // holder of a neighbour's mail anywhere on the internet learns that the
+  // neighbour is at our ear and hands the mail to us (12.8.1). The firmware
+  // station has done this since its archiver work; a phone as the gateway
+  // did not, and a BLE-only station beside one was unreachable from the
+  // internet unless the phone happened to share a LAN with the archiver.
+  final XprsHearsReporter _hearsReporter = XprsHearsReporter();
+  int _identityDepositMs = 0;
+
+  /// Reports sent, for /api/status.
+  int hearsReports = 0;
+
+  void _reportHeard() {
+    final self = (_table?.selfCallsign ?? '').trim();
+    if (self.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final heard = XprsMonitor.instance.directlyHeard(nowMs: now);
+    final why = _hearsReporter.due(heard, now);
+    if (why == null) return;
+    if ((PreferencesService.instanceSync?.xprsArchivers ?? const []).isEmpty) {
+      return; // nobody to tell; the radio beacons still say it
+    }
+    _hearsReporter.noteReported(heard, now);
+    // One claim per radio (15.6.1): `link:` names the radio the hearing is
+    // about, and a station heard on both is in both.
+    final wires = <String>[];
+    for (final link in const ['ble', 'lan']) {
+      final onLink = XprsMonitor.instance.directlyHeardOn(link, nowMs: now);
+      if (onLink.isEmpty) continue;
+      final p = _observation(self, link, onLink, XprsPacket.maxBytes,
+          stamped: true);
+      if (p != null) wires.add(p.encode());
+    }
+    if (wires.isEmpty) return;
+    // The key goes first, every half hour (29.1's cadence): to an archiver
+    // that cannot verify our signature the claim feeds nothing (12.9.4).
+    if (now - _identityDepositMs >= 1800000) {
+      _identityDepositMs = now;
+      unawaited(XprsPublisher.instance.depositIdentity());
+    }
+    XprsPublisher.instance.depositArchivers(wires, what: 'observation');
+    hearsReports++;
+    LogService.instance.add('XPRS: told the archivers who we hear ($why, '
+        '${heard.length} station(s), ${wires.length} radio(s)) — 12.1');
   }
 
   int _xprsLanBeaconsSent = 0;
@@ -1642,6 +1745,14 @@ class MeshService {
     _releaseTriedMs[callsign] = now;
     if (_releaseTriedMs.length > 256) {
       _releaseTriedMs.remove(_releaseTriedMs.keys.first);
+    }
+    // A station the last report did not name has just appeared at our ear:
+    // that is the event a holder of its mail is waiting for, so the report
+    // goes now rather than on the minute. One set lookup on the hot path;
+    // the reporter's own gap keeps a crowd arriving one by one to a report a
+    // minute.
+    if (!_hearsReporter.reported.contains(callsign.split('-').first)) {
+      _reportHeard();
     }
     final pending = MeshStore.instance.releasableFor(callsign,
         selfCallsign: tableCallsign, alsoSelf: _aliases);

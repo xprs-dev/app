@@ -134,13 +134,13 @@ Future<void> _showHomePinMenu(BuildContext context, _LauncherEntry entry) async 
     position: RelativeRect.fromRect(origin & const Size(1, 1), Offset.zero & box.size),
     items: [
       if (badged)
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'markread',
           child: Row(
             children: [
-              Icon(Icons.mark_email_read_outlined, size: 18),
-              SizedBox(width: 10),
-              Text('Mark all read'),
+              const Icon(Icons.mark_email_read_outlined, size: 18),
+              const SizedBox(width: 10),
+              Text(tr('launcher.menu.mark_all_read')),
             ],
           ),
         ),
@@ -167,7 +167,7 @@ List<PopupMenuEntry<String>> _homePinMenuItems(
         children: [
           Icon(onBars ? Icons.push_pin : Icons.push_pin_outlined, size: 18),
           const SizedBox(width: 10),
-          Text(onBars ? 'Unpin from home bars' : 'Pin to home bars'),
+          Text(tr(onBars ? 'launcher.menu.unpin_bars' : 'launcher.menu.pin_bars')),
         ],
       ),
     ),
@@ -177,7 +177,7 @@ List<PopupMenuEntry<String>> _homePinMenuItems(
         children: [
           Icon(onDock ? Icons.star : Icons.star_outline, size: 18),
           const SizedBox(width: 10),
-          Text(onDock ? 'Unpin from dock' : 'Pin to dock'),
+          Text(tr(onDock ? 'launcher.menu.unpin_dock' : 'launcher.menu.pin_dock')),
         ],
       ),
     ),

@@ -725,3 +725,187 @@ string values can be re-embedded verbatim into outgoing JSON
 messages without un-escaping — host-side `jsonDecode` handles the
 unescape on the other end. See `apps/app-creator/main.c`
 for the reference implementation of a field extractor.
+
+## Radio
+
+### A three-valued capability probe — `Ble5Bus.supported()` / `supportKnown`
+
+`reticulum-dart/lib/src/connections/bluetooth/ble5_bus.dart`,
+`android/.../Ble5.kt` (`isSupportedOrUnknown`), re-asked by
+`BleService._supportWatchdog` (`lib/connections/bluetooth/ble_service_io.dart`).
+
+A permanent question ("does this chip do extended advertising?") asked of a
+subsystem that is switched off gets a wrong answer, not no answer: Android
+returns `false` to every LE capability call while the adapter is not ON. The
+pattern is: native answers `true` / `false` / `null`, the Dart side caches only
+a non-null answer and exposes `supportKnown`, and one existing heartbeat
+re-asks while it is unknown, paced (a platform-channel round trip, 10 s) and
+logged once. The same shape fits any plugin-backed capability that depends on
+a radio or service being up at the moment it is asked: WiFi-Direct support,
+the USB host, location providers. Do not add a timer for it — hang it on the
+tick that already exists (`_onServiceTick` / `_dartTick`), as the scan and
+GATT watchdogs do.
+
+### Keep the best wish while waiting — `MeshService.start` / `_wishAdvertise`
+
+`lib/services/mesh/mesh_service.dart`. A start that has to wait (here: for a
+callsign) and is called several times meanwhile must remember the strongest
+request, not the latest argument, and consume it once when it finally runs.
+Capturing the argument in the retry timer, or a listener passing the current
+state back in, both started the node weaker than the radio could do. Reuse the
+shape anywhere a retry timer captures a boolean that another path may raise
+before the timer fires.
+
+### Once per off episode — `RadioEnvironment`
+
+`lib/connections/bluetooth/radio_environment.dart`, driven by
+`BleService._environmentWatchdog`. A system switch the app cannot flip
+(Location Services, the Bluetooth adapter) is probed on a paced heartbeat and
+the person is told once when it goes off, nothing while it stays off, and
+again only after it has been seen on; an unanswered probe (null) changes
+nothing, so a timeout mid-episode is not read as good news. Pure, no platform
+code, three tests. Reuse it for any "tell them once" on a boolean the app
+polls: a lost uplink, a full disk, a revoked permission. The message itself
+goes through `NotificationService` with a `tag` per switch, scope `both`, so a
+headless phone shows it in the tray.
+
+## Languages
+
+### `tr()` / `trn()` and `CoreI18n` — the core's translations in the wapps' shape
+
+`lib/services/i18n/core_i18n.dart`, resolver `lib/services/i18n/i18n_context.dart`
+(moved from `lib/wapp/`; a shim keeps the old import working), files under
+`assets/lang/<code>/<area>.json`, checked by `tool/i18n_check.dart`, guarded by
+`arch_guard`'s `no-raw-ui-string`. Plan and conventions: `docs/plan-i18n-core.md`.
+
+- A screen reads `tr('area.subject')`; placeholders are `{name}` passed as a
+  map; plurals are `trn('area.subject', n)` over a `.one`/`.other` pair.
+- The language is the Settings choice, else the OS locale; the tables load
+  once at boot and reload on `LocaleChangedEvent`; the root widget rebuilds
+  once per change via `CoreI18n.instance.revision`.
+- Adding a language is a folder under `assets/lang/` plus one line in
+  `pubspec.yaml`; Settings lists the folders it finds. A language names
+  itself (`settings_page.dart` `_languageName`), never translated.
+- Converting a screen: every person-facing literal to a key whose first
+  segment is the area file; English verbatim into `en/<area>.json`; the four
+  translations with `_meta.reviewed: false` until a person reads them; then
+  add the file to the `no-raw-ui-string` rule's `appliesTo` so it cannot
+  regress. Rows named by a runtime key (`tr('permissions.${item.key}.title')`)
+  are listed by the checker as dynamic, so keep their prefix stable.
+- Logs stay English (diagnostics); notifications, dialogs, SnackBars and
+  labels are translated at the call site.
+
+### `trBytes()` / `trDecimal()` — one byte formatter, in the person's language
+
+`lib/services/i18n/format.dart`. Replaced four private copies (settings, the
+GeoUI gallery, the media view, the node-role API); those keep their names as
+one-line delegates so callers did not change. Unit names (`Ko`, `Mo` in
+French) and the decimal mark are `common.unit.*` and `common.decimal` keys.
+Never for the wire: XPRS.md 4 fixes `.` on the air. Write any new size or
+decimal shown to a person through these, not with `toStringAsFixed`.
+
+### `trSchedule()` — wording a library's structured value in the app
+
+`lib/services/i18n/schedule_text.dart`. reticulum-dart's `describeSchedule()`
+builds English and stays (it is the library's, and it feeds logs); the app
+words the same public `DutyTerm`/`WindowTerm` values from `hardware.json`
+keys. The pattern for any library that returns a sentence: read its
+structured value, keep the library free of the app's languages.
+
+## Identity
+
+### `XprsSelf` — which of the operator's names a packet goes out under
+
+`lib/services/xprs/xprs_self.dart`. An operator holds the X1 their key
+derives (the profile's base and folder, never changes) plus up to four issued
+callsigns, one per jurisdiction (`IwiProfile.licenceCallsigns`), one of which
+is active (`licenceCallsign`, kept as the name for "the one on the air").
+Ask `XprsSelf`, never compare against `wireCallsign` by hand:
+
+- `isMine(call)` — one of our names (signing, receipts, "addressed to us").
+- `forPeer(peer)` — the `f:` for a 1:1: the callsign that conversation keeps,
+  else the active one. A conversation keeps an issued callsign it began
+  under; one addressed to the X1 follows the active.
+- `noteInbound` / `noteOutbound` — called at ingest delivery and at send.
+
+Storage is per profile (`PreferencesService.xprsConversationCallsigns`),
+bounded at 256 peers, least recently used first; the rule is tested with an
+injected profile (`test/xprs_self_test.dart`). Wapps never see any of this.
+
+### `CallsignInputFormatter` — a callsign field an Android keyboard can type into
+
+`lib/profile/callsign_input.dart`. Never rewrite text the keyboard is still
+composing, and never change case in a formatter: that made the profile's
+callsign field untypeable on Android. Pair it with
+`keyboardType: TextInputType.visiblePassword`, `autocorrect: false`,
+`enableSuggestions: false`, `textCapitalization: characters`, and normalise
+with `xprsNormaliseCallsign` when the value is used.
+`test/callsign_input_test.dart` drives a field with composing updates.
+
+## Routing
+
+### Injected sends — `XprsMailbox`, `XprsForwarder` (and the simulation that runs them)
+
+A core routine that decides WHERE a packet goes must not reach for
+`RnsService` or a bearer itself: it takes its sends and its evidence as
+function fields with device defaults, so the whole decision runs in
+`test/support/mail_relay_sim.dart` against a virtual air.
+
+```dart
+class XprsForwarder {
+  Future<bool> Function(String call, String wire)? sendTo;  // the lane
+  bool Function(String call)? canDeliver;                   // the evidence
+  List<String> Function(String call)? holdersOf;
+  List<GossipSighting> Function(String call)? sightingsOf;
+  Future<bool> _send(String g, String w) => (sendTo ?? _deviceLane)(g, w);
+  void debugReset();                       // forgets state AND the seams
+}
+```
+
+`XprsMailbox` (`sendTo`, `reachable`, `held`, `holdersOf`, `publish`) is the
+original; `XprsForwarder` (`lib/services/xprs/xprs_forwarder.dart`) follows
+it, and `mesh_service.dart` is the one place both are wired to the device.
+Reuse this shape for anything whose failure only shows between machines (a
+fetch that follows `m:try`, a deposit, a release): test it on the bench first,
+and keep `debugReset()` clearing the seams so one test's lane never leaks into
+the next.
+
+### `GossipSighting.live` — the two layers, told apart on the read
+
+`XprsGossip.whereIs(call)` returns L3 rows (`live: true`, inside the 24 h TTL,
+applied on the read) before L2 visits (`live: false`). A router sends to EVERY
+live gateway and to only the freshest visit, and only when nothing is live;
+anything else that routes by gossip should read the flag rather than re-derive
+it from timestamps.
+
+### `xprsComposeObservation` + `XprsHearsReporter` — one reachability claim, and when to say it
+
+`lib/services/xprs/xprs_observation.dart`. The composer builds this station's
+`t:observation` for one radio (`link:`, `hears:` cut to a budget with `peers:`
+the true count, `mail:`, `lx:`, uptime, `serve:`, signed, signature room
+reserved before the fit). `MeshService._observation` wraps it with the
+device's values; the LAN beacon and the archiver deposit are the same packet
+against different budgets. The BLE beacon still has its own builder because
+its placeholders are sized to the advert ceiling — fold it in when touching
+it. The reporter is a pure "is a report due" (new station at our ear → now;
+else on a period; never under a minute), reusable for any claim that should
+go out on change-or-period without a timer per station.
+
+### `XprsFetch` — ask the archivers for one station's words, following the answers
+
+`lib/services/xprs/xprs_fetch.dart`. `requestStation(call)` opens one fetch
+per callsign (ten-minute throttle, skipped in earshot), asks the archiver that
+answered last time, then the chosen ones, follows a `404 m:try` one hop,
+continues a `206` a few pages, and closes. Three things to reuse rather than
+rewrite:
+
+- **"what you asked for, you keep"**: `XprsIngest.askedFor` is a predicate the
+  funnel consults at admission; a row it claims goes on the followed shelf.
+  Any other on-demand ask (a device's readings, a group's log) can plug the
+  same predicate instead of inventing a shelf.
+- **the poller/fetch handshake**: `XprsCatchup.busyWith(archiver)` and
+  `externalBusy` keep two askers on one station from superseding each other's
+  replay at the responder.
+- **one-shot wakes, never a poll** (`_wake`): a fetch schedules one Timer per
+  ask (its grace) and nothing while nothing is open — the shape the
+  `no-sub-minute-poll` guard rule wants for any user-triggered exchange.

@@ -25,6 +25,7 @@ import '../reticulum/rns_service.dart';
 import '../xprs/xprs_airtime.dart';
 import '../xprs/xprs_packet.dart';
 import '../xprs/xprs_parts.dart';
+import '../xprs/xprs_mailbox.dart';
 import '../xprs/xprs_vocab.dart';
 import 'mesh_beacon.dart';
 import 'mesh_bulk_spool.dart';
@@ -538,7 +539,11 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
       // _pointToPointTarget below and keeps the broadcast unchanged, with no
       // special-casing per board.
       if (!xprsAddressesStation(to)) return false;
-      final mail = f.packet!.type == 'message';
+      // Mail by shape, not by the one type chat uses (12.7, 12.8.3 step 2):
+      // the same test the funnel's carry hook and the mailbox apply, so a
+      // receipt or a file description parks here exactly as a message does.
+      final mail =
+          xprsIsMail(f.packet!) && XprsMailbox.worthKeeping(f.packet!);
       if (!mail && !(outbound && _pointToPointTarget(to))) return false;
     } else {
       // Overheard end-to-end receipt: `?ACK <am> d|r` — the target has it.

@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "language": "Deutsch",
+    "reviewed": false
+  },
+  "notifications.title": "Benachrichtigungen",
+  "notifications.clear": "Leeren",
+  "notifications.filter.wapps": "Wapps",
+  "notifications.filter.host": "System",
+  "notifications.level.info": "Info",
+  "notifications.level.success": "Erfolg",
+  "notifications.level.warning": "Warnung",
+  "notifications.level.error": "Fehler",
+  "notifications.empty": "Keine Benachrichtigungen",
+  "notifications.today": "Heute",
+  "notifications.yesterday": "Gestern",
+  "notifications.time.now": "jetzt",
+  "notifications.time.minutes": "{n} Min.",
+  "notifications.time.hours": "{n} Std.",
+  "notifications.time.days": "{n} T.",
+  "notifications.cleanup.nothing": "Nichts freizugeben",
+  "notifications.cleanup.nothing.body": "Dieses Gerät bewahrt nichts für andere auf.",
+  "notifications.cleanup.freed": "{size} freigegeben",
+  "notifications.cleanup.deleted.one": "{n} für andere aufbewahrte Datei wurde gelöscht. Deine eigenen Dateien blieben unberührt.",
+  "notifications.cleanup.deleted.other": "{n} für andere aufbewahrte Dateien wurden gelöscht. Deine eigenen Dateien blieben unberührt.",
+  "notifications.update.available": "Update verfügbar",
+  "notifications.update.body": "XPRS {version} ist verfügbar. Öffne Einstellungen → Updates, um es zu installieren.",
+  "notifications.liked": "{from} gefällt deine Nachricht"
+}

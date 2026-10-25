@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "language": "English",
+    "reviewed": true
+  },
+  "radio.location.off": "Location is off: the Bluetooth mesh is deaf",
+  "radio.location.off.body": "Android hides every nearby device from the app while Location Services are switched off. Turn Location on to see and be seen over Bluetooth.",
+  "radio.bluetooth.off": "Bluetooth is off",
+  "radio.bluetooth.off.body": "Nobody nearby can see this phone until Bluetooth is switched on. The mesh resumes on its own once it is."
+}

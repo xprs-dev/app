@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "language": "Português (Portugal)",
+    "reviewed": false
+  },
+  "notifications.title": "Notificações",
+  "notifications.clear": "Limpar",
+  "notifications.filter.wapps": "Wapps",
+  "notifications.filter.host": "Sistema",
+  "notifications.level.info": "Informação",
+  "notifications.level.success": "Sucesso",
+  "notifications.level.warning": "Aviso",
+  "notifications.level.error": "Erro",
+  "notifications.empty": "Sem notificações",
+  "notifications.today": "Hoje",
+  "notifications.yesterday": "Ontem",
+  "notifications.time.now": "agora",
+  "notifications.time.minutes": "{n} min",
+  "notifications.time.hours": "{n} h",
+  "notifications.time.days": "{n} d",
+  "notifications.cleanup.nothing": "Nada para libertar",
+  "notifications.cleanup.nothing.body": "Este dispositivo não guarda nada de outras pessoas.",
+  "notifications.cleanup.freed": "Libertados {size}",
+  "notifications.cleanup.deleted.one": "Foi apagado {n} ficheiro guardado para outras pessoas. Os seus ficheiros não foram tocados.",
+  "notifications.cleanup.deleted.other": "Foram apagados {n} ficheiros guardados para outras pessoas. Os seus ficheiros não foram tocados.",
+  "notifications.update.available": "Atualização disponível",
+  "notifications.update.body": "O XPRS {version} está disponível. Abra Definições → Atualizações para instalar.",
+  "notifications.liked": "{from} gostou da sua mensagem"
+}

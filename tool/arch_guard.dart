@@ -264,6 +264,38 @@ const rules = <Rule>[
     pattern: r'\.select\(\s*[\x27"]\s*SELECT\b(?:(?!LIMIT)[^\x27"])*[\x27"]',
     message: 'Bound it: LIMIT, a COUNT, or a keyed lookup behind the owner.',
   ),
+  // ── languages ─────────────────────────────────────────────────────────────
+  Rule(
+    id: 'no-raw-ui-string',
+    why: 'The core reads its words from assets/lang/<code>/<area>.json '
+        'through tr() (docs/plan-i18n-core.md). An English sentence typed '
+        'straight into a Text(), a label or a tooltip in a converted screen '
+        'is a word four languages never see, and nothing else notices. '
+        'Directories join this list as their phase lands; a screen not yet '
+        'converted is not here, so the rule never fails on old text.',
+    appliesTo: [
+      'lib/launcher/**',
+      'lib/profile/welcome_page.dart',
+      'lib/profile/unlock_page.dart',
+      'lib/profile/vanity_callsign_page.dart',
+      'lib/profile/profile_edit_page.dart',
+      'lib/editor/wapp_editor.dart',
+      'lib/wapp/wapp_page.dart',
+      'lib/wapp/wapp_maps.dart',
+      'lib/wapp/file_folder_picker.dart',
+      'lib/wapp/wapp_graph.dart',
+      'lib/wapp/geoui/**',
+      'lib/wapp/native/**',
+      'lib/wapp/coin/**',
+    ],
+    // A capitalised word followed by a space inside a quoted Text() or one
+    // of the common text slots: a sentence, not an identifier or a callsign.
+    // Single words (Text('OK')) and anything built from a variable pass.
+    pattern: r'''(?:\bText\(\s*|\b(?:labelText|hintText|helperText|tooltip|title|label|semanticsLabel)\s*:\s*(?:const\s+)?(?:Text\(\s*)?)['"][A-Z][a-z]+[ ,.!?:;][^'"]*['"]''',
+    message: 'Move the sentence to assets/lang/en/<area>.json and read it '
+        'with tr(\'<area>.<subject>\'); dart tool/i18n_check.dart verifies '
+        'the key.',
+  ),
   webBuildRule,
 ];
 

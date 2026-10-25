@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -111,6 +113,14 @@ flutter:
 
   assets:
     - assets/terminal_settings.ui.json
+    # The core's own translations, one folder per language, one file per
+    # area (docs/plan-i18n-core.md). Flutter does not recurse, so every
+    # language folder is listed; adding a language is adding a line here.
+    - assets/lang/en/
+    - assets/lang/pt/
+    - assets/lang/es/
+    - assets/lang/de/
+    - assets/lang/fr/
     # Launch-screen triad (star + mountains + waves), light + dark ink.
     - assets/splash/xprs-triad.svg
     - assets/splash/xprs-triad-dark.svg

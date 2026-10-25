@@ -484,6 +484,43 @@ partsHeld, partsJoined}`.
 (the verdict, the part ids, the set release, the key shape, the part receipt)
 and the whole is a bench check.
 
+## 5.4 Reaching a callsign from anywhere, with no server in it (2026-10-25)
+
+XPRS.md 12.12 in one sentence: a message handed to any archiver reaches the
+callsign it names, wherever that callsign last touched a radio. The APRS-IS
+shape — a station is heard on a radio, somebody reports it, mail finds it —
+with gossip among archivers in place of the central servers. Validated on the
+three-station bench (`test/xprs_reach_anywhere_sim_test.dart`); the device
+wiring is `mesh_service.dart`. Where each step lives:
+
+| Step | Where |
+|---|---|
+| A beacons on Bluetooth; B hears it | the beacon; `XprsIngest.onDirectHeard` → `XprsGossip.noteDirect` |
+| B tells its archivers "A is at my ear, on ble" (12.1) | `XprsHearsReporter` + `MeshService._reportHeard`: one signed observation per radio, deposited as an addressed copy per archiver, at once for a station the last report did not name, else every 5 min; `depositIdentity` every 30 min so it verifies |
+| the archiver believes it | `XprsIngest.reticulum` → `XprsGossip.noteHears` (verified only, per-signer quota, L2 radio-truth only) |
+| C writes to A; the copy lands with an archiver | `XprsMailbox.armDeposit` (5.1) |
+| the archiver forwards to EVERY gateway that reported A (12.8.1) | `XprsForwarder.maybeForward`: declared mailboxes, then every live sighting, else the freshest visit; once per (packet, gateway); nothing when it can reach A itself |
+| a report that arrives after the mail did | `XprsGossip.onSighting` (new pair only) → `XprsForwarder.retry` (30 s throttle) over `MeshStore.heldWiresFor` |
+| B holds it and hands it over when it hears A | release-on-hearing (5.1) |
+| A's receipt releases B and the archiver | `XprsReceipt.release` on every holder that hears it; the radio lane now parks ANY mail, the receipt included, so B carries it toward C (`xprsIsMail` + `XprsMailbox.worthKeeping` at both radio carry gates) |
+| C asks for what A said while C was away (12.6) | `XprsFetch`: triggered by a wapp reading a station's messages (`hal_xprs_history`), asks the archiver that answered last, then the chosen ones, follows `404 m:try` one hop and `206` a few pages; rows it asked for are kept (`XprsIngest.askedFor`) |
+
+Three things learned on the bench, each of which looked fine from inside:
+
+- **A gateway must not forward what it can deliver.** B, handed a copy over
+  the internet, used to ask an always-on archiver where A was while A was
+  beaconing at it. `XprsForwarder.canDeliver` (the mailbox's `reachable`) is
+  the gate.
+- **The forwarder's memory is per gateway, not per packet.** Per packet, a
+  second reporter never got a copy and a late reporter never got one at all.
+- **A closed gossip table must forget its meters.** `XprsGossip.close()` kept
+  the debounce and quota windows in RAM, so the next profile's table (or the
+  bench's next station) inherited them and dropped its first claims.
+
+What is still a limitation: `m:try` names who HEARD a station (12.9's
+directory is not built), so a fetch following it reaches a hearer that may
+keep nothing; and the ESP32 archiver still picks one gateway rather than all.
+
 ## 6. Releasing carried copies
 
 The recipient's `?ACK <am>` purges carriers still holding a copy. The have-bloom

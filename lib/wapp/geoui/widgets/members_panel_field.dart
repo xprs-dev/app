@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../services/i18n/core_i18n.dart';
 
 /// `$type:"members"`: a full-size panel to look through and manage the people
 /// of one thing (a group, a channel, a project), reusable by any wapp.
@@ -188,7 +189,7 @@ class _MembersPanelFieldState extends State<MembersPanelField> {
             onChanged: _typed,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search',
+              hintText: tr('common.search'),
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _search.text.isEmpty
                   ? null
@@ -247,8 +248,8 @@ class _MembersPanelFieldState extends State<MembersPanelField> {
                     padding: const EdgeInsets.all(24),
                     child: Text(
                       widget.query.isEmpty
-                          ? (widget.emptyText ?? 'Nobody yet.')
-                          : 'Nobody matches "${widget.query}".',
+                          ? (widget.emptyText ?? tr('geoui.members.empty'))
+                          : tr('geoui.members.no_match', {'query': widget.query}),
                       textAlign: TextAlign.center,
                       style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                     ),

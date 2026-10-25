@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "language": "Deutsch",
+    "reviewed": false
+  },
+  "functionalities.hal.log": "Protokollierung",
+  "functionalities.hal.time": "Zeitfunktionen",
+  "functionalities.hal.yield": "Kooperatives Multitasking",
+  "functionalities.hal.platform": "Plattformerkennung",
+  "functionalities.hal.heap": "Speicherstatus",
+  "functionalities.hal.kv": "Schlüssel-Wert-Speicher (pro Modul)",
+  "functionalities.hal.i18n": "Internationalisierung",
+  "functionalities.hal.file": "Datei-E/A (pro Modul)",
+  "functionalities.hal.socket": "Rohe TCP-Sockets (asynchron, Host-Netzwerk)",
+  "functionalities.hal.sqlite": "SQLite-Datenbanken (pro Modul)",
+  "functionalities.hal.node": "Die Verzeichnisrolle: wofür dieses Gerät antwortet, und auf wessen Einladung",
+  "functionalities.hal.archive": "Die Archivar-Rolle: für andere bereitgestellter Speicher, und was darauf liegt",
+  "functionalities.hal.xprs": "Was dieses Gerät über Funk gehört hat: XPRS-Stationen und -Pakete",
+  "functionalities.hal.flash": "Ein per USB angeschlossenes Board mit einer veröffentlichten Firmware flashen",
+  "functionalities.hal.relay": "Store-and-Forward-Sicherung von Direktnachrichten über NOSTR-Relay (kind-4 über Reticulum)",
+  "functionalities.hal.nostr": "Transportunabhängiger NOSTR-Client (wss:// Internet + rns:// Reticulum + lokales Gerät)",
+  "functionalities.hal.lib": "Bibliotheksaufrufe zwischen Modulen",
+  "functionalities.hal.display": "Bildschirmausgabe",
+  "functionalities.hal.gpio": "GPIO-Pins (nur ESP32)"
+}

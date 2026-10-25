@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "language": "Français",
+    "reviewed": false
+  },
+  "permissions.welcome": "Bienvenue dans XPRS",
+  "permissions.tagline": "Messagerie hors réseau, par Bluetooth et par internet.",
+  "permissions.title": "Autorisations",
+  "permissions.all_granted": "Toutes accordées",
+  "permissions.tap_to_grant": "Touchez pour accorder",
+  "permissions.intro": "Accordez ces autorisations avant de continuer. Rien ne fonctionne sans elles, et les demander maintenant évite les demandes surprises plus tard.",
+  "permissions.grant_all": "Tout accorder",
+  "permissions.grant": "Accorder",
+  "permissions.grant_to_continue": "Accordez les autorisations pour continuer",
+  "permissions.privacy": "Vos données restent sur votre appareil. Ces autorisations ne servent qu'à la messagerie et à la connectivité locales.",
+  "permissions.bluetooth.title": "Bluetooth",
+  "permissions.bluetooth.desc": "Découvrir les appareils à proximité et échanger des messages sur le maillage",
+  "permissions.nearby_wifi.title": "Appareils Wi-Fi à proximité",
+  "permissions.nearby_wifi.desc": "Transférer de gros fichiers entre appareils proches par une liaison Wi-Fi directe (bien plus rapide que le Bluetooth)",
+  "permissions.notifications.title": "Notifications",
+  "permissions.notifications.desc": "Vous prévenir quand un message arrive alors que l'application est en arrière-plan",
+  "permissions.storage.title": "Stockage",
+  "permissions.storage.desc": "Conserver une sauvegarde chiffrée de votre identité, qui survit à une réinstallation, et partager des fichiers",
+  "permissions.storage_legacy.title": "Stockage",
+  "permissions.storage_legacy.desc": "Conserver une sauvegarde chiffrée de votre identité, qui survit à une réinstallation, et partager des fichiers",
+  "permissions.location.title": "Localisation",
+  "permissions.location.desc": "Exigée par Android pour trouver les appareils proches en Bluetooth — localisation éteinte, le système ne renvoie aucun résultat et l'application devient sourde sans prévenir. Place aussi votre position sur la carte.",
+  "permissions.battery.title": "Fonctionner en arrière-plan",
+  "permissions.battery.desc": "Laisser l'application continuer à recevoir des messages écran éteint — sinon Android l'endort",
+  "permissions.internet.title": "Internet",
+  "permissions.internet.desc": "Se connecter aux relais internet et à la boutique de wapps (automatique)"
+}

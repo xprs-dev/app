@@ -15,6 +15,7 @@
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/services.dart';
 
+import '../services/i18n/core_i18n.dart';
 import '../services/power_state.dart';
 import 'background_wapp_manager.dart';
 import '../platform/platform.dart' as platform;
@@ -91,7 +92,11 @@ class AndroidForegroundService {
   /// what the app is for, and it named wapps the user may not have thought
   /// about since installing them. Android requires a foreground service to say
   /// something; this says what XPRS does.
-  String _composeLabel() => 'Internet without internet';
+  // The first start can precede the translation tables (a headless boot);
+  // the English tagline then stands until the next sync, which rewrites it.
+  String _composeLabel() => CoreI18n.instance.ready
+      ? tr('wapp_host.service.label')
+      : 'Internet without internet';
 
   Future<void> _sync() async {
     if (!_supported) return;

@@ -137,7 +137,7 @@ class BgService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val text = intent?.getStringExtra("text") ?: "Running in background"
+        val text = intent?.getStringExtra("text") ?: getString(R.string.bg_running)
         startAsForeground(text)
 
         // There may be no Activity (boot/system restart), so make sure a cached
@@ -236,7 +236,7 @@ class BgService : Service() {
                 nm.createNotificationChannel(
                     NotificationChannel(
                         CHANNEL_ID,
-                        "Background services",
+                        getString(R.string.bg_channel),
                         NotificationManager.IMPORTANCE_LOW,
                     ).apply {
                         // Status, not news: the ongoing keep-alive must never
@@ -299,7 +299,7 @@ class BgService : Service() {
         fun startFromBoot(context: Context) {
             val i = Intent(context, BgService::class.java).apply {
                 action = ACTION_START_FROM_BOOT
-                putExtra("text", "Internet without internet")
+                putExtra("text", context.getString(R.string.bg_tagline))
             }
             ContextCompat.startForegroundService(context, i)
         }

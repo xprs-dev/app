@@ -209,16 +209,18 @@ class _NetStats {
   /// different population (every LXMF peer heard on the hubs). The two looked
   /// like they contradicted each other while both just said "devices".
   String get headline {
-    if (!up) return 'Reticulum is off';
+    if (!up) return tr('launcher.status.reticulum_off');
     final parts = <String>[];
     if (devices > 0) {
-      parts.add('$devices XPRS ${devices == 1 ? 'device' : 'devices'}');
+      parts.add(trn('launcher.status.devices', devices));
     }
-    if (bleNeighbours > 0) parts.add('$bleNeighbours over Bluetooth');
+    if (bleNeighbours > 0) {
+      parts.add(tr('launcher.status.over_bluetooth', {'n': bleNeighbours}));
+    }
     if (parts.isEmpty) {
       return hubs > 0
-          ? 'On the network, no XPRS devices yet'
-          : 'Looking for a way out';
+          ? tr('launcher.status.no_devices_yet')
+          : tr('launcher.status.looking');
     }
     return parts.join(' · ');
   }
@@ -227,21 +229,21 @@ class _NetStats {
   String get detail {
     final bits = <String>[];
     if (newPosts > 0) {
-      bits.add('${_n(newPosts)} new ${newPosts == 1 ? 'post' : 'posts'}');
+      bits.add(trn('launcher.status.new_posts', newPosts, {'n': _n(newPosts)}));
     }
-    if (hubs > 0) bits.add('$hubs ${hubs == 1 ? 'hub' : 'hubs'}');
+    if (hubs > 0) bits.add(trn('launcher.status.hubs', hubs));
     // NOT "N other peers". That counted every LXMF and NomadNet destination
     // the hubs have ever replayed at us — 67 of them on a network of six —
     // and put a stranger's number on this device's front page as though it
     // were something the operator had. What belongs here is how many of THEIR
     // devices they can talk to right now.
     if (devices > 0 && reachable < devices) {
-      bits.add('$reachable reachable');
+      bits.add(tr('launcher.status.reachable', {'n': reachable}));
     }
     if (bits.isEmpty) {
       return follows == 0
-          ? 'Follow someone to see their posts here'
-          : 'All quiet';
+          ? tr('launcher.status.follow_someone')
+          : tr('launcher.status.all_quiet');
     }
     return bits.join(' · ');
   }

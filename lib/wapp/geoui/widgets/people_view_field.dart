@@ -21,6 +21,7 @@ import '../../shared_media_fetch.dart' show resolveSharedMedia;
 import '../geoui_renderer.dart' show geoUiResolveIcon;
 import '../avatar_image.dart' show bannerImage;
 import '../../../profile/station_avatar.dart';
+import '../../../services/i18n/core_i18n.dart';
 import 'generated_avatar.dart';
 import 'media_view.dart' show sharedMediaArchive;
 
@@ -255,7 +256,7 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
       child: Text(
         (widget.emptyText?.isNotEmpty ?? false)
             ? widget.emptyText!
-            : 'Nobody here yet.',
+            : tr('geoui.people.empty'),
         textAlign: TextAlign.center,
         style: TextStyle(color: cs.onSurfaceVariant),
       ),
@@ -517,7 +518,7 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
               if (menu.isNotEmpty)
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert),
-                  tooltip: 'More',
+                  tooltip: tr('common.more'),
                   onSelected: (v) => widget.onAction(v, id),
                   itemBuilder: (_) => [
                     for (final m in menu)

@@ -433,6 +433,30 @@ class XprsMonitor {
     return fresh.map((s) => s.callsign).toList();
   }
 
+  /// The callsigns heard DIRECTLY on one radio within [within], most recent
+  /// first: one `hears:` list per `link:` (15.6.1: a reading about one radio
+  /// is not evidence about another). `ble5` and `ble` are one lane.
+  List<String> directlyHeardOn(String bearer,
+      {Duration within = staleAfter, int? nowMs}) {
+    final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    final want = _lane(bearer);
+    final w = within.inMilliseconds;
+    final fresh = <XprsStation>[];
+    for (final s in _stations.values) {
+      if (s.lastDirectMs <= 0 || now - s.lastDirectMs > w) continue;
+      final onIt = s.bearers.entries
+          .any((e) => _lane(e.key) == want && now - e.value <= w);
+      if (onIt) fresh.add(s);
+    }
+    fresh.sort((a, b) => b.lastDirectMs.compareTo(a.lastDirectMs));
+    return [for (final s in fresh) s.callsign];
+  }
+
+  static String _lane(String bearer) {
+    final b = bearer.trim().toLowerCase();
+    return b == 'ble5' ? 'ble' : b;
+  }
+
   /// Is [call] a station we have heard on ANY bearer within [within]?
   ///
   /// The chat's presence dot: "are we getting this callsign's packets right

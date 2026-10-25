@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:reticulum/src/services/social/listening_schedule.dart';
 import 'package:reticulum/src/services/social/node_profile.dart';
 
+import '../services/i18n/schedule_text.dart';
+
 import '../services/location_service.dart';
 import '../services/preferences_service.dart';
 import '../services/social/node_profile_service.dart';
 import '../util/geohash.dart';
+import '../services/i18n/core_i18n.dart';
 
 /// Settings → Hardware: what this device is made of (docs/NOSTR.md).
 ///
@@ -73,10 +76,8 @@ class _HardwarePageState extends State<HardwarePage> {
     final at = await _position();
     if (!mounted) return;
     if (at == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'No position fix yet, so there is nothing to publish. Turn '
-            'Coverage on again once the device knows where it is.'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(tr('hardware.no_fix')),
       ));
       _save(() => p.nodeGeohash = '');
       return;
@@ -95,19 +96,17 @@ class _HardwarePageState extends State<HardwarePage> {
     final profile = _svc.build();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Hardware')),
+      appBar: AppBar(title: Text(tr('hardware.title'))),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           Text(
-            'What this device is made of. Other nodes use it to decide who to '
-            'ask for what — and on the day the grid goes down, a machine that '
-            'is still running matters more than a fast one that is not.',
+            tr('hardware.intro'),
             style: TextStyle(color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 20),
 
-          _header(context, 'Power'),
+          _header(context, tr('hardware.power')),
           _card(
             cs,
             Column(children: [
@@ -117,13 +116,13 @@ class _HardwarePageState extends State<HardwarePage> {
               _field(
                 cs,
                 icon: Icons.bolt,
-                label: 'Power source',
+                label: tr('hardware.power.source'),
                 child: DropdownButton<int>(
                   value: p.nodePower,
                   isExpanded: true,
                   underline: const SizedBox.shrink(),
                   items: [
-                    const DropdownMenuItem(value: -1, child: Text('Not stated')),
+                    DropdownMenuItem(value: -1, child: Text(tr('hardware.power.not_stated'))),
                     for (var i = 0; i < PowerSource.values.length - 1; i++)
                       DropdownMenuItem(
                         value: i,
@@ -136,10 +135,10 @@ class _HardwarePageState extends State<HardwarePage> {
               _field(
                 cs,
                 icon: Icons.battery_charging_full,
-                label: 'Autonomy without grid or sun',
+                label: tr('hardware.autonomy'),
                 value: p.nodeAutonomyHours == 0
-                    ? 'Unknown'
-                    : '${p.nodeAutonomyHours} hours on the battery bank',
+                    ? tr('common.unknown')
+                    : tr('hardware.autonomy.hours', {'n': p.nodeAutonomyHours}),
                 child: Slider(
                   value: p.nodeAutonomyHours.clamp(0, 168).toDouble(),
                   max: 168,
@@ -149,34 +148,31 @@ class _HardwarePageState extends State<HardwarePage> {
               ),
               _measured(
                 cs,
-                'Powered ${profile.poweredPct}% of the last week',
+                tr('hardware.powered.pct', {'pct': profile.poweredPct}),
                 profile.poweredPct == 0
-                    ? 'Not watched long enough to say — and an honest "I don\'t '
-                        'know" beats a guess another node would rank us on.'
-                    : 'Measured here, one sample an hour. This is what other '
-                        'nodes are told; they weigh what they have seen of us '
-                        'above anything we claim.',
+                    ? tr('hardware.powered.unwatched')
+                    : tr('hardware.powered.measured'),
               ),
             ]),
           ),
           const SizedBox(height: 20),
 
-          _header(context, 'Uplink'),
+          _header(context, tr('hardware.uplink')),
           _card(
             cs,
             Column(children: [
               _field(
                 cs,
                 icon: Icons.public,
-                label: 'How this device reaches the world',
-                value: 'Now: ${_uplinkLabel(profile.uplink)}',
+                label: tr('hardware.uplink.label'),
+                value: tr('hardware.uplink.now', {'uplink': _uplinkLabel(profile.uplink)}),
                 child: DropdownButton<int>(
                   value: p.nodeUplink,
                   isExpanded: true,
                   underline: const SizedBox.shrink(),
                   items: [
-                    const DropdownMenuItem(
-                        value: -1, child: Text('Detect automatically')),
+                    DropdownMenuItem(
+                        value: -1, child: Text(tr('hardware.uplink.detect'))),
                     for (var i = 0; i < UplinkKind.values.length - 1; i++)
                       DropdownMenuItem(
                         value: i,
@@ -189,26 +185,27 @@ class _HardwarePageState extends State<HardwarePage> {
               _measured(
                 cs,
                 profile.bwClass == 0
-                    ? 'Speed not measured yet'
-                    : 'Observed about ${_bw(profile.bwClass)}',
-                'Satellite looks exactly like ordinary Wi-Fi from in here, and '
-                'that difference is the whole point of the field — so if this '
-                'runs on Starlink, say so.',
+                    ? tr('hardware.speed.unmeasured')
+                    : tr('hardware.speed.observed', {'bw': _bw(profile.bwClass)}),
+                tr('hardware.speed.why'),
               ),
             ]),
           ),
           const SizedBox(height: 20),
 
-          _header(context, 'Coverage'),
+          _header(context, tr('hardware.coverage')),
           _card(
             cs,
             Column(children: [
               SwitchListTile(
                 secondary: const Icon(Icons.place_outlined),
-                title: const Text('Say where this device serves'),
+                title: Text(tr('hardware.coverage.title')),
                 subtitle: Text(p.nodeGeohash.isEmpty
-                    ? 'Off — it says nothing about where it is'
-                    : 'Region ${p.nodeGeohash} · ${_precisionKm(p.nodeGeohash)}'),
+                    ? tr('hardware.coverage.off')
+                    : tr('hardware.coverage.region', {
+                        'geohash': p.nodeGeohash,
+                        'precision': _precisionKm(p.nodeGeohash)
+                      })),
                 value: p.nodeGeohash.isNotEmpty,
                 onChanged: (on) {
                   if (!on) {
@@ -225,9 +222,7 @@ class _HardwarePageState extends State<HardwarePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Precision — this is what the network is told, and '
-                        'nothing finer. The fine digits are never stored, so '
-                        'they cannot leak later.',
+                        tr('hardware.coverage.precision'),
                         style: TextStyle(
                             color: cs.onSurfaceVariant, fontSize: 12),
                       ),
@@ -240,10 +235,7 @@ class _HardwarePageState extends State<HardwarePage> {
                         onChanged: (v) => unawaited(_setCoverage(v.round())),
                       ),
                       Text(
-                        'A phone should leave this off: a device in your pocket '
-                        'has no business advertising where it sleeps. Turn it on '
-                        'for a gateway on a hill or a box in a village hall — '
-                        'being found is the whole reason it is up there.',
+                        tr('hardware.coverage.phone'),
                         style: TextStyle(
                             color: cs.onSurfaceVariant, fontSize: 12),
                       ),
@@ -254,12 +246,9 @@ class _HardwarePageState extends State<HardwarePage> {
           ),
           const SizedBox(height: 20),
 
-          _header(context, 'Radios'),
+          _header(context, tr('hardware.radios')),
           Text(
-            'One row per antenna. A machine with a LoRa hat and a VHF rig has '
-            'two very different footprints, and one number would lie about '
-            'both. The frequency is what makes the range usable: a range says a '
-            'station could hear you, a frequency says where to call.',
+            tr('hardware.radios.intro'),
             style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
           ),
           const SizedBox(height: 8),
@@ -273,7 +262,7 @@ class _HardwarePageState extends State<HardwarePage> {
                   subtitle: Text([
                     if (r.freqKhz > 0) _freq(r.freqKhz),
                     if (r.mode.isNotEmpty) r.mode,
-                    describeSchedule(r.schedule),
+                    trSchedule(r.schedule),
                   ].join(' · ')),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline),
@@ -285,7 +274,7 @@ class _HardwarePageState extends State<HardwarePage> {
                 ),
               ListTile(
                 leading: const Icon(Icons.add),
-                title: const Text('Add a radio'),
+                title: Text(tr('hardware.radio.add')),
                 onTap: _addRadio,
               ),
             ]),
@@ -299,7 +288,7 @@ class _HardwarePageState extends State<HardwarePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('What this means',
+                  Text(tr('hardware.meaning'),
                       style: TextStyle(
                           color: cs.primary, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
@@ -319,33 +308,24 @@ class _HardwarePageState extends State<HardwarePage> {
   /// whether to keep it running.
   String _verdict(NodeProfile p) {
     final normal = p.uplink == UplinkKind.fibre || p.uplink == UplinkKind.wifi
-        ? 'On a normal day this is a useful, fast node.'
+        ? tr('hardware.verdict.normal.fast')
         : p.uplink == UplinkKind.cellular
-            ? 'On a normal day this is an ordinary phone: it reads and posts, '
-                'and it serves strangers nothing on a metered plan.'
-            : 'On a normal day this is an ordinary node.';
+            ? tr('hardware.verdict.normal.phone')
+            : tr('hardware.verdict.normal.plain');
 
+    final String outage;
     if (p.gridIndependent && p.uplinkIndependent && p.reachableOffgrid) {
-      return '$normal\n\nIf the grid goes down it becomes one of the most '
-          'valuable nodes your network has: still powered, a path out that no '
-          'local infrastructure can take away, and reachable over the air by '
-          'people with no signal at all. Keep it running.';
+      outage = tr('hardware.verdict.best');
+    } else if (p.gridIndependent && p.reachableOffgrid) {
+      outage = tr('hardware.verdict.offgrid');
+    } else if (p.gridIndependent) {
+      outage = tr('hardware.verdict.power');
+    } else if (p.reachableOffgrid) {
+      outage = tr('hardware.verdict.reach');
+    } else {
+      outage = tr('hardware.verdict.depends');
     }
-    if (p.gridIndependent && p.reachableOffgrid) {
-      return '$normal\n\nIf the grid goes down it keeps working and stays '
-          'reachable over the air — which is exactly when a neighbourhood needs '
-          'a node like this one.';
-    }
-    if (p.gridIndependent) {
-      return '$normal\n\nIt survives a power cut. Adding a LoRa antenna would '
-          'make it reachable when the internet goes too.';
-    }
-    if (p.reachableOffgrid) {
-      return '$normal\n\nIt can be reached without the internet, but it dies '
-          'with the grid. A battery or a panel would change that.';
-    }
-    return '$normal\n\nIt depends on the grid and on somebody else\'s network. '
-        'That is fine — most devices do, and the mesh is built out of them.';
+    return '$normal\n\n$outage';
   }
 
   Future<void> _addRadio() async {
@@ -359,61 +339,62 @@ class _HardwarePageState extends State<HardwarePage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Add a radio'),
+          title: Text(tr('hardware.radio.add')),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<int>(
                   initialValue: link,
-                  decoration: const InputDecoration(labelText: 'Link'),
-                  items: const [
-                    DropdownMenuItem(value: LinkFlag.lora, child: Text('LoRa')),
+                  decoration: InputDecoration(labelText: tr('hardware.radio.link')),
+                  items: [
+                    const DropdownMenuItem(
+                        value: LinkFlag.lora, child: Text('LoRa')),
                     DropdownMenuItem(
                         value: LinkFlag.packetRadio,
-                        child: Text('Packet radio / AX.25')),
+                        child: Text(tr('hardware.link.packet_ax25'))),
                     DropdownMenuItem(
-                        value: LinkFlag.bluetooth, child: Text('Bluetooth')),
+                        value: LinkFlag.bluetooth,
+                        child: Text(tr('hardware.link.bluetooth'))),
                     DropdownMenuItem(
-                        value: LinkFlag.wifiDirect, child: Text('Wi-Fi Direct')),
+                        value: LinkFlag.wifiDirect,
+                        child: Text(tr('hardware.link.wifi_direct'))),
                   ],
                   onChanged: (v) => setLocal(() => link = v ?? LinkFlag.lora),
                 ),
                 TextFormField(
                   initialValue: '$range',
-                  decoration: const InputDecoration(
-                      labelText: 'Range (km)',
-                      helperText: 'How far it really reaches. You know; no API '
-                          'does.'),
+                  decoration: InputDecoration(
+                      labelText: tr('hardware.radio.range'),
+                      helperText: tr('hardware.radio.range.help')),
                   keyboardType: TextInputType.number,
                   onChanged: (v) => range = int.tryParse(v) ?? range,
                 ),
                 TextFormField(
                   initialValue: '$freq',
-                  decoration: const InputDecoration(
-                    labelText: 'Listening frequency (kHz)',
-                    helperText: '868200, 433775, 144800… 0 if not applicable.',
+                  decoration: InputDecoration(
+                    labelText: tr('hardware.radio.freq'),
+                    helperText: tr('hardware.radio.freq.help'),
                   ),
                   keyboardType: TextInputType.number,
                   onChanged: (v) => freq = int.tryParse(v) ?? freq,
                 ),
                 TextFormField(
                   initialValue: mode,
-                  decoration: const InputDecoration(labelText: 'Mode'),
+                  decoration: InputDecoration(labelText: tr('hardware.radio.mode')),
                   onChanged: (v) => mode = v,
                 ),
                 TextFormField(
                   initialValue: schedule,
-                  decoration: const InputDecoration(
-                    labelText: 'When it listens',
-                    helperText: 'always · every 30m for 3m · 06:00-18:00 · '
-                        'dawn-dusk',
+                  decoration: InputDecoration(
+                    labelText: tr('hardware.radio.schedule'),
+                    helperText: tr('hardware.radio.schedule.help'),
                   ),
                   onChanged: (v) => schedule = v,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  describeSchedule(ListeningSchedule.parse(schedule)),
+                  trSchedule(ListeningSchedule.parse(schedule)),
                   style: const TextStyle(fontSize: 12),
                 ),
               ],
@@ -422,10 +403,10 @@ class _HardwarePageState extends State<HardwarePage> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
+                child: Text(tr('common.cancel'))),
             FilledButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Add')),
+                child: Text(tr('common.add'))),
           ],
         ),
       ),
@@ -527,32 +508,32 @@ class _HardwarePageState extends State<HardwarePage> {
       );
 
   static String _powerLabel(PowerSource p) => switch (p) {
-        PowerSource.solarBattery => 'Solar + battery',
-        PowerSource.windHydro => 'Wind / hydro',
-        PowerSource.solar => 'Solar (daylight only)',
-        PowerSource.gridUps => 'Grid + UPS',
-        PowerSource.grid => 'Grid',
-        PowerSource.vehicle => 'Vehicle',
-        PowerSource.batteryOnly => 'Battery only',
-        PowerSource.unknown => 'Not stated',
+        PowerSource.solarBattery => tr('hardware.power.solar_battery'),
+        PowerSource.windHydro => tr('hardware.power.wind_hydro'),
+        PowerSource.solar => tr('hardware.power.solar'),
+        PowerSource.gridUps => tr('hardware.power.grid_ups'),
+        PowerSource.grid => tr('hardware.power.grid'),
+        PowerSource.vehicle => tr('hardware.power.vehicle'),
+        PowerSource.batteryOnly => tr('hardware.power.battery'),
+        PowerSource.unknown => tr('hardware.power.not_stated'),
       };
 
   static String _uplinkLabel(UplinkKind u) => switch (u) {
-        UplinkKind.satellite => 'Satellite (Starlink…)',
-        UplinkKind.fibre => 'Wired / fibre',
-        UplinkKind.wifi => 'Wi-Fi',
-        UplinkKind.cellular => 'Cellular',
-        UplinkKind.none => 'None — offgrid, mesh only',
-        UplinkKind.unknown => 'Unknown',
+        UplinkKind.satellite => tr('hardware.uplink.satellite'),
+        UplinkKind.fibre => tr('hardware.uplink.fibre'),
+        UplinkKind.wifi => tr('hardware.uplink.wifi'),
+        UplinkKind.cellular => tr('hardware.uplink.cellular'),
+        UplinkKind.none => tr('hardware.uplink.none'),
+        UplinkKind.unknown => tr('common.unknown'),
       };
 
   static String _linkLabel(int l) => switch (l) {
         LinkFlag.lora => 'LoRa',
-        LinkFlag.packetRadio => 'Packet radio',
-        LinkFlag.bluetooth => 'Bluetooth',
-        LinkFlag.wifiDirect => 'Wi-Fi Direct',
-        LinkFlag.serial => 'Serial',
-        _ => 'Radio',
+        LinkFlag.packetRadio => tr('hardware.link.packet'),
+        LinkFlag.bluetooth => tr('hardware.link.bluetooth'),
+        LinkFlag.wifiDirect => tr('hardware.link.wifi_direct'),
+        LinkFlag.serial => tr('hardware.link.serial'),
+        _ => tr('hardware.link.radio'),
       };
 
   static IconData _linkIcon(int l) => switch (l) {
@@ -576,10 +557,10 @@ class _HardwarePageState extends State<HardwarePage> {
 
   /// What a geohash of this length actually promises.
   static String _precisionKm(String g) => switch (g.length) {
-        <= 2 => 'a country, ±630 km',
-        3 => 'a region, ±78 km',
-        4 => 'a district, ±20 km',
-        5 => 'a town, ±2.4 km',
-        _ => 'a neighbourhood, ±0.6 km',
+        <= 2 => tr('hardware.precision.country'),
+        3 => tr('hardware.precision.region'),
+        4 => tr('hardware.precision.district'),
+        5 => tr('hardware.precision.town'),
+        _ => tr('hardware.precision.neighbourhood'),
       };
 }

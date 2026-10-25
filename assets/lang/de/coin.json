@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "language": "Deutsch",
+    "reviewed": false
+  },
+  "coin.paste_descriptor": "Füge zuerst einen Münz-Deskriptor ein.",
+  "coin.invalid_descriptor": "Ungültiger Münz-Deskriptor.",
+  "coin.no_such_coin": "Diese Münze gibt es nicht.",
+  "coin.paste_token": "Füge ein Token zum Empfangen ein.",
+  "coin.invalid_token": "Kein gültiges Münz-Token.",
+  "coin.unknown_add_provider": "Unbekannte Münze — füge zuerst den Herausgeber hinzu.",
+  "coin.nothing_accepted": "Nichts angenommen (bereits vorhanden oder ungültig).",
+  "coin.pick_held": "Wähle eine Münze, die du besitzt (füge ihre Coin-ID ein).",
+  "coin.amount_positive": "Gib einen Betrag größer als null ein.",
+  "coin.recipient_npub": "Gib den npub des Empfängers ein.",
+  "coin.no_profile_key": "Kein aktiver Profilschlüssel zum Signieren.",
+  "coin.invalid_recipient": "Ungültiger Empfänger-npub.",
+  "coin.unknown": "Unbekannte Münze",
+  "coin.atm.no_profile": "Kein aktives Profil, um als Automat zu arbeiten.",
+  "coin.atm.name_coin": "Benenne die Münze (Einzahl, Mehrzahl und/oder Kurzcode).",
+  "coin.atm.pick_yours": "Wähle eine deiner Münzen.",
+  "coin.atm.no_operator_key": "Kein Betreiberschlüssel zum Signieren von Blöcken.",
+  "coin.atm.ledger_closed": "Das Münzbuch ließ sich nicht öffnen.",
+  "coin.atm.rejected": "Das Münzbuch hat die Ausgabe abgelehnt.",
+  "coin.atm.invalid_npub": "Ungültiger npub.",
+  "coin.atm.enter_npub": "Gib einen npub ein, dem vertraut werden soll.",
+  "coin.atm.trusted": "Als vertrauenswürdiger Automat für {coin} eingetragen.",
+  "coin.atm.already_trusted": "Bereits vertrauenswürdig.",
+  "coin.atm.descriptor_ready": "Deskriptor bereit zum Teilen.",
+  "coin.atm.your_coins": "Deine Münzen"
+}

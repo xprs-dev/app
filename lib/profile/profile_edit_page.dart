@@ -14,6 +14,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'callsign_input.dart';
 import 'iwi_profile.dart';
 import 'identity_backup.dart';
 import 'profile_avatar.dart';
@@ -22,8 +23,10 @@ import 'profile_encryption.dart';
 import 'profile_service.dart';
 import '../services/android_permissions_service.dart';
 import '../services/preferences_service.dart';
+import '../services/xprs/xprs_self.dart';
 import '../services/xprs/xprs_callsign.dart';
 import '../services/xprs/xprs_profiles.dart';
+import '../services/i18n/core_i18n.dart';
 
 class ProfileEditPage extends StatefulWidget {
   final IwiProfile profile;
@@ -38,13 +41,21 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   late final TextEditingController _nickname;
   late final TextEditingController _description;
 
-  /// The callsign a radio authority issued this operator (XPRS.md 6.4.1).
-  /// Empty for everyone who has not been issued one, which is most people.
+  /// The field a new issued callsign is typed into (XPRS.md 6.4.1). It is
+  /// not the list: a callsign joins [_licences] when Add accepts it.
   late final TextEditingController _licence;
 
-  /// Why the typed callsign cannot be saved, or null. From
-  /// [xprsIssuedCallsignRefusal], the one grammar.
+  /// Why the typed callsign cannot be added, or null. From
+  /// [xprsIssuedCallsignRefusal], the one grammar. Only shown once something
+  /// is typed.
   String? _licenceError;
+
+  /// Every issued callsign this operator holds, one per jurisdiction, in the
+  /// order added. The derived X1 is never in it: it is the base.
+  late List<String> _licences;
+
+  /// Which one is on the air by default; '' = the derived X1.
+  late String _active;
   bool _revealKey = false;
   bool _saving = false;
 
@@ -60,7 +71,9 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     _p = widget.profile;
     _nickname = TextEditingController(text: _p.nickname);
     _description = TextEditingController(text: _p.description);
-    _licence = TextEditingController(text: _p.licenceCallsign);
+    _licence = TextEditingController();
+    _licences = List<String>.of(_p.heldLicences);
+    _active = _p.licenceCallsign.trim().toUpperCase();
     _refreshBackupStatus();
     _refreshEncStatus();
   }
@@ -96,8 +109,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       if (!ok) {
         if (mounted) {
           setState(() => _backupBusy = false);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Storage access is needed to save the backup.')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(tr('profile.backup.need_storage'))));
         }
         return;
       }
@@ -110,7 +123,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     if (!mounted) return;
     setState(() => _backupBusy = false);
     ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Identity backed up')));
+        SnackBar(content: Text(tr('profile.backup.done'))));
   }
 
   /// Set/clear the backup passphrase, then re-write the backup. An empty
@@ -122,20 +135,15 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     final result = await showDialog<String?>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Backup passphrase'),
+        title: Text(tr('profile.backup.passphrase.title')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              IdentityBackup.instance.requiresPassphrase
-                  ? 'The backup is kept in shared storage, so it is always '
-                      'encrypted. Leave blank to keep no backup. If you '
-                      'forget the passphrase, the backup cannot be restored: '
-                      'there is no recovery.'
-                  : 'Encrypt the backup with a passphrase. Leave blank for a '
-                      'plaintext backup. If you forget it, the backup cannot be '
-                      'restored — there is no recovery.',
+              tr(IdentityBackup.instance.requiresPassphrase
+                  ? 'profile.backup.passphrase.shared'
+                  : 'profile.backup.passphrase.optional'),
               style: const TextStyle(fontSize: 12),
             ),
             const SizedBox(height: 12),
@@ -143,9 +151,9 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
               controller: controller,
               autofocus: true,
               obscureText: true,
-              decoration: const InputDecoration(
-                hintText: 'Passphrase (blank = none)',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                hintText: tr('profile.backup.passphrase.hint'),
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
@@ -153,11 +161,11 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(tr('common.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Save'),
+            child: Text(tr('common.save')),
           ),
         ],
       ),
@@ -190,8 +198,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     final token = await XprsProfiles.instance.pictureTokenFor(bytes);
     if (!mounted) return;
     if (token == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('That picture could not be read. Try a JPEG or PNG.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(tr('profile.avatar.unreadable'))));
       return;
     }
     setState(() => _p = _p.copyWith(avatar: token));
@@ -203,61 +211,84 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   /// where it was typed rather than when Save is pressed.
   void _checkLicence(String v) {
     final t = v.trim();
-    setState(() => _licenceError = t.isEmpty ? null : xprsIssuedCallsignRefusal(t));
+    setState(() => _licenceError = t.isEmpty ? null : _refusal(t));
   }
 
-  /// Go back to the callsign this profile's key derives.
-  Future<void> _useDerived() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Use your derived callsign?'),
-        content: Text(
-          'You will transmit as ${_p.callsign} again. Peers reach you under '
-          'both names, but mail a neighbour was already carrying for '
-          '${_p.licenceCallsign} may not arrive, and apps you have open keep '
-          'the old name until you reopen them.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Use derived'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    _licence.clear();
-    setState(() => _licenceError = null);
+  /// The grammar's refusal, plus the two this list adds.
+  String? _refusal(String typed) {
+    final c = xprsNormaliseCallsign(typed);
+    final r = xprsIssuedCallsignRefusal(c);
+    if (r != null) return r;
+    if (_licences.contains(c)) return tr('profile.callsigns.already', {'callsign': c});
+    if (_licences.length >= IwiProfile.maxLicences) {
+      return tr('profile.callsigns.full', {'max': IwiProfile.maxLicences});
+    }
+    return null;
+  }
+
+  void _addLicence() {
+    final c = xprsNormaliseCallsign(_licence.text);
+    final why = c.isEmpty ? null : _refusal(c);
+    if (c.isEmpty || why != null) {
+      setState(() => _licenceError = why);
+      return;
+    }
+    setState(() {
+      _licences.add(c);
+      // The first callsign a person adds is the one they mean to use.
+      if (_active.isEmpty && _licences.length == 1) _active = c;
+      _licence.clear();
+      _licenceError = null;
+    });
+  }
+
+  /// Conversations that keep a callsign other than the one chosen here.
+  int _pinnedCount() {
+    if (ProfileService.instance.activeProfile?.id != _p.id) return 0;
+    final act = _active.isEmpty ? _p.callsign.toUpperCase() : _active;
+    return XprsSelf.instance
+        .pinned()
+        .values
+        .where((c) => c != act && _licences.contains(c))
+        .length;
+  }
+
+  void _removeLicence(String c) {
+    setState(() {
+      _licences.remove(c);
+      if (_active == c) _active = _licences.isEmpty ? '' : _licences.first;
+    });
   }
 
   Future<void> _save() async {
     // A refused callsign is never written: the Save button is disabled while
     // one is showing, and this is the second door in case it is not.
-    if (_licenceError != null) return;
+    // A callsign typed but not yet added is added now: pressing Save with it
+    // in the field means "keep this", and losing it silently is worse.
+    if (_licence.text.trim().isNotEmpty) {
+      _addLicence();
+      if (_licenceError != null) return;
+    }
     setState(() => _saving = true);
     final edited = _p.copyWith(
       nickname: _nickname.text.trim(),
       description: _description.text.trim(),
-      licenceCallsign: xprsNormaliseCallsign(_licence.text),
+      licenceCallsigns: List<String>.of(_licences),
+      licenceCallsign: _licences.contains(_active) ? _active : '',
     );
     await ProfileService.instance.update(edited);
     if (!mounted) return;
     setState(() => _saving = false);
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Profile saved')));
+        .showSnackBar(SnackBar(content: Text(tr('profile.saved'))));
     Navigator.of(context).pop(true);
   }
 
 
   void _copy(String label, String value) {
     Clipboard.setData(ClipboardData(text: value));
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('$label copied')));
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr('profile.copied', {'what': label}))));
   }
 
   // ── profile encryption ────────────────────────────────────────────────
@@ -288,22 +319,18 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Encrypt this profile'),
-        content: const Text(
-          'All existing data of this profile on this device will be DELETED '
-          '(messages, chat history, media). The profile starts fresh, fully '
-          'encrypted.\n\n'
-          'It unlocks with your fingerprint (or the phone\'s screen lock). '
-          'You can add a password afterwards.',
-          style: TextStyle(fontSize: 13),
+        title: Text(tr('profile.encryption.enable.title')),
+        content: Text(
+          tr('profile.encryption.enable.body'),
+          style: const TextStyle(fontSize: 13),
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(tr('common.cancel'))),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Delete data & encrypt')),
+              child: Text(tr('profile.encryption.enable.button'))),
         ],
       ),
     );
@@ -311,9 +338,9 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     setState(() => _encBusy = true);
     try {
       await ProfileEncryption.enableWithDeviceKey(_p.id);
-      _snack('Profile encrypted. Restart XPRS to complete.');
+      _snack(tr('profile.encryption.enabled'));
     } catch (e) {
-      _snack('Enable failed: $e');
+      _snack(tr('profile.encryption.enable.failed', {'error': e}));
     }
     if (mounted) setState(() => _encBusy = false);
     await _refreshEncStatus();
@@ -324,21 +351,19 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   Future<void> _addPassword() async {
     final pw = await showDialog<String?>(
       context: context,
-      builder: (ctx) => const _PasswordSetupDialog(
-        title: 'Add a password',
-        warning: 'Your data stays intact. From now on the profile needs this '
-            'password (emoji welcome) — the device key is dropped, and there '
-            'is NO recovery if you forget it.',
-        confirmLabel: 'Set password',
+      builder: (ctx) => _PasswordSetupDialog(
+        title: tr('profile.password.add.title'),
+        warning: tr('profile.password.add.warning'),
+        confirmLabel: tr('profile.password.add.button'),
       ),
     );
     if (pw == null) return;
     setState(() => _encBusy = true);
     try {
       await ProfileEncryption.addPassword(_p.id, pw);
-      _snack('Password set');
+      _snack(tr('profile.password.set'));
     } catch (e) {
-      _snack('Could not set password: $e');
+      _snack(tr('profile.password.set.failed', {'error': e}));
     }
     if (mounted) setState(() => _encBusy = false);
     await _refreshEncStatus();
@@ -346,19 +371,18 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
 
   /// Drop the password and go back to fingerprint-only unlocking.
   Future<void> _removePassword() async {
-    final pw = await _askPassword('Remove password',
-        'Enter the current password. The profile stays encrypted, but it '
-        'will unlock with your fingerprint alone.',
-        confirmLabel: 'Remove password');
+    final pw = await _askPassword(tr('profile.password.remove.title'),
+        tr('profile.password.remove.body'),
+        confirmLabel: tr('profile.password.remove.title'));
     if (pw == null) return;
     setState(() => _encBusy = true);
     try {
       await ProfileEncryption.removePassword(_p.id, pw);
-      _snack('Password removed — fingerprint unlock');
+      _snack(tr('profile.password.removed'));
     } on WrongProfilePassword {
-      _snack('Wrong password');
+      _snack(tr('profile.password.wrong'));
     } catch (e) {
-      _snack('Could not remove password: $e');
+      _snack(tr('profile.password.remove.failed', {'error': e}));
     }
     if (mounted) setState(() => _encBusy = false);
     await _refreshEncStatus();
@@ -370,68 +394,65 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Remove encryption'),
-          content: const Text(
-            'The encrypted data on this device will be DELETED and the '
-            'profile returns to unencrypted storage, fresh. Anything written '
-            'from then on sits on the disk in the clear.',
-            style: TextStyle(fontSize: 13),
+          title: Text(tr('profile.encryption.remove.title')),
+          content: Text(
+            tr('profile.encryption.remove.body_device'),
+            style: const TextStyle(fontSize: 13),
           ),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
+                child: Text(tr('common.cancel'))),
             FilledButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Delete data & decrypt')),
+                child: Text(tr('profile.encryption.remove.button'))),
           ],
         ),
       );
       if (ok != true) return;
     } else {
       pw = await _askPassword(
-        'Remove encryption',
-        'Enter the profile password. The encrypted data on this device will '
-        'be DELETED; the profile returns to unencrypted storage, fresh.',
-        confirmLabel: 'Delete data & decrypt',
+        tr('profile.encryption.remove.title'),
+        tr('profile.encryption.remove.body_password'),
+        confirmLabel: tr('profile.encryption.remove.button'),
       );
       if (pw == null) return;
     }
     setState(() => _encBusy = true);
     try {
       await ProfileEncryption.disable(_p.id, password: pw);
-      _snack('Encryption removed. Restart XPRS to complete.');
+      _snack(tr('profile.encryption.removed'));
     } on WrongProfilePassword {
-      _snack('Wrong password');
+      _snack(tr('profile.password.wrong'));
     } catch (e) {
-      _snack('Disable failed: $e');
+      _snack(tr('profile.encryption.remove.failed', {'error': e}));
     }
     if (mounted) setState(() => _encBusy = false);
     await _refreshEncStatus();
   }
 
   Future<void> _changeEncryptionPassword() async {
-    final old = await _askPassword('Change password', 'Current password');
+    final old = await _askPassword(
+        tr('profile.password.change.title'), tr('profile.password.current'));
     if (old == null) return;
     if (!mounted) return;
     final fresh = await showDialog<String?>(
       context: context,
-      builder: (ctx) => const _PasswordSetupDialog(
-        title: 'New password',
-        warning: 'Your data stays intact — only the password changes. '
-            'No recovery if you forget it.',
-        confirmLabel: 'Change password',
+      builder: (ctx) => _PasswordSetupDialog(
+        title: tr('profile.password.new.title'),
+        warning: tr('profile.password.new.warning'),
+        confirmLabel: tr('profile.password.change.title'),
       ),
     );
     if (fresh == null) return;
     setState(() => _encBusy = true);
     try {
       await ProfileEncryption.changePassword(_p.id, old, fresh);
-      _snack('Password changed');
+      _snack(tr('profile.password.changed'));
     } on WrongProfilePassword {
-      _snack('Wrong current password');
+      _snack(tr('profile.password.wrong_current'));
     } catch (e) {
-      _snack('Change failed: $e');
+      _snack(tr('profile.password.change.failed', {'error': e}));
     }
     if (mounted) setState(() => _encBusy = false);
   }
@@ -440,17 +461,15 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Lock profile'),
-        content: const Text(
-            'XPRS will close to lock the profile. Background message '
-            'reception stops until you unlock it again.'),
+        title: Text(tr('profile.lock.title')),
+        content: Text(tr('profile.lock.body')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(tr('common.cancel'))),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Lock & close')),
+              child: Text(tr('profile.lock.button'))),
         ],
       ),
     );
@@ -460,7 +479,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   }
 
   Future<String?> _askPassword(String title, String message,
-      {String confirmLabel = 'OK'}) {
+      {String? confirmLabel}) {
     final controller = TextEditingController();
     return showDialog<String?>(
       context: context,
@@ -476,9 +495,9 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
               controller: controller,
               autofocus: true,
               obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: tr('profile.password.label'),
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
@@ -486,10 +505,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
+              child: Text(tr('common.cancel'))),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, controller.text),
-              child: Text(confirmLabel)),
+              child: Text(confirmLabel ?? tr('common.ok'))),
         ],
       ),
     );
@@ -500,10 +519,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit profile'),
+        title: Text(tr('profile.edit.title')),
         actions: [
           IconButton(
-            tooltip: 'Save',
+            tooltip: tr('common.save'),
             icon: _saving
                 ? const SizedBox(
                     width: 18,
@@ -531,13 +550,13 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                   children: [
                     TextButton.icon(
                       icon: const Icon(Icons.photo_camera_outlined, size: 18),
-                      label: const Text('Change photo'),
+                      label: Text(tr('profile.avatar.change')),
                       onPressed: _pickAvatar,
                     ),
                     if (_p.avatar.isNotEmpty)
                       TextButton.icon(
                         icon: const Icon(Icons.close, size: 18),
-                        label: const Text('Remove'),
+                        label: Text(tr('common.remove')),
                         onPressed: _removeAvatar,
                       ),
                   ],
@@ -550,10 +569,9 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
             controller: _nickname,
             textCapitalization: TextCapitalization.words,
             decoration: InputDecoration(
-              labelText: 'Nickname',
+              labelText: tr('profile.nickname'),
               hintText: _p.callsign,
-              helperText: 'Shown instead of your callsign. Leave blank to use '
-                  'the callsign.',
+              helperText: tr('profile.nickname.help'),
               border: const OutlineInputBorder(),
             ),
           ),
@@ -562,14 +580,15 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
             controller: _description,
             maxLines: 3,
             maxLength: 200,
-            decoration: const InputDecoration(
-              labelText: 'About',
-              hintText: 'A short bio or status (optional)',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: tr('profile.about'),
+              hintText: tr('profile.about.hint'),
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 8),
-          Text('Avatar colour', style: Theme.of(context).textTheme.labelLarge),
+          Text(tr('profile.avatar.colour'),
+              style: Theme.of(context).textTheme.labelLarge),
           const SizedBox(height: 8),
           Wrap(
             spacing: 10,
@@ -584,7 +603,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
               _ColorDot(
                 color: profileColor(_p.copyWith(color: '')),
                 selected: _p.color.isEmpty,
-                label: 'auto',
+                label: tr('profile.avatar.colour.auto'),
                 onTap: () => setState(() => _p = _p.copyWith(color: '')),
               ),
             ],
@@ -594,54 +613,106 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
           // function of the key (XPRS.md 3), and it is also this profile's
           // folder on disk, so it cannot move.
           _IdentityRow(
-            label: 'Callsign (from your key)',
+            label: tr('profile.callsign.derived'),
             value: _p.callsign,
             mono: true,
-            onCopy: () => _copy('Callsign', _p.callsign),
+            onCopy: () => _copy(tr('profile.callsign'), _p.callsign),
           ),
-          // Only while the typed callsign is one we would actually save:
-          // previewing a refused value says "transmitting as X1ABCD" under a
-          // field that is refusing X1ABCD.
-          if (_licence.text.trim().isNotEmpty && _licenceError == null)
-            _IdentityRow(
-              label: 'Transmitting as',
-              value: xprsNormaliseCallsign(_licence.text),
-              mono: true,
-              onCopy: () =>
-                  _copy('Callsign', xprsNormaliseCallsign(_licence.text)),
-            ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _licence,
-            textCapitalization: TextCapitalization.characters,
-            inputFormatters: [_CallsignInputFormatter()],
-            maxLength: kXprsMaxCallsignChars,
-            onChanged: _checkLicence,
-            decoration: InputDecoration(
-              labelText: 'Licensed callsign (optional)',
-              hintText: 'CT1ABC',
-              errorText: _licenceError,
-              helperText: _licenceError == null &&
-                      _licence.text.trim().isNotEmpty &&
-                      !xprsLooksIssued(_licence.text)
-                  ? 'That is an unusual shape for an issued callsign. Saved '
-                      'as typed.'
-                  : 'Leave blank unless a radio authority issued you one.',
-              helperMaxLines: 3,
-              border: const OutlineInputBorder(),
-            ),
+          // Which name goes on the air by default. The X1 is always a choice:
+          // it is the base, and the one an unlicensed operator uses.
+          Text(tr('profile.callsigns.title'),
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text(tr('profile.callsigns.help'),
+              style: Theme.of(context).textTheme.bodySmall),
+          RadioListTile<String>(
+            value: '',
+            groupValue: _active,
+            onChanged: (v) => setState(() => _active = v ?? ''),
+            contentPadding: EdgeInsets.zero,
+            title: Text(_p.callsign,
+                style: const TextStyle(fontFamily: 'monospace')),
+            subtitle: Text(tr('profile.callsigns.base')),
           ),
-          if (_p.licenceCallsign.isNotEmpty)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: _useDerived,
-                child: Text('Use ${_p.callsign} instead'),
+          for (final c in _licences)
+            RadioListTile<String>(
+              value: c,
+              groupValue: _active,
+              onChanged: (v) => setState(() => _active = v ?? ''),
+              contentPadding: EdgeInsets.zero,
+              title: Text(c, style: const TextStyle(fontFamily: 'monospace')),
+              subtitle: _active == c
+                  ? Text(tr('profile.callsign.transmitting_as'))
+                  : null,
+              secondary: IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: tr('profile.callsigns.remove', {'callsign': c}),
+                onPressed: () => _removeLicence(c),
               ),
             ),
-          _LicenceNote(derived: _p.callsign, typed: _licence.text.trim()),
+          if (_pinnedCount() > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 4),
+              child: Text(
+                  trn('profile.callsigns.pinned', _pinnedCount()),
+                  style: Theme.of(context).textTheme.bodySmall),
+            ),
+          const SizedBox(height: 8),
+          if (_licences.length < IwiProfile.maxLicences)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _licence,
+                    // What makes this field typeable on an Android phone. The
+                    // keyboard composes each word (it holds the letters it may
+                    // still change), and the formatter this field had rewrote
+                    // the text on every keystroke -- uppercasing it under the
+                    // keyboard -- so the keyboard re-sent its own copy and the
+                    // field doubled, lost or reordered letters. Now: a
+                    // keyboard type that does not compose, no suggestions, no
+                    // autocorrect, capitals requested rather than imposed,
+                    // and a formatter that never touches composing text. The
+                    // callsign is uppercased when it is added.
+                    keyboardType: TextInputType.visiblePassword,
+                    textCapitalization: TextCapitalization.characters,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    inputFormatters: [CallsignInputFormatter()],
+                    maxLength: kXprsMaxCallsignChars,
+                    onChanged: _checkLicence,
+                    onSubmitted: (_) => _addLicence(),
+                    decoration: InputDecoration(
+                      labelText: tr('profile.callsign.licensed'),
+                      hintText: 'CT1ABC',
+                      errorText: _licenceError,
+                      helperText: tr(_licenceError == null &&
+                              _licence.text.trim().isNotEmpty &&
+                              !xprsLooksIssued(_licence.text)
+                          ? 'profile.callsign.licensed.unusual'
+                          : 'profile.callsign.licensed.help'),
+                      helperMaxLines: 3,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: FilledButton.tonal(
+                    onPressed: _addLicence,
+                    child: Text(tr('common.add')),
+                  ),
+                ),
+              ],
+            ),
+          _LicenceNote(
+              derived: _p.callsign,
+              typed: _active.isNotEmpty ? _active : _licence.text.trim()),
           _IdentityRow(
-            label: 'Public key (npub)',
+            label: tr('profile.npub'),
             value: _p.npub,
             mono: true,
             onCopy: () => _copy('npub', _p.npub),
@@ -659,14 +730,17 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                     children: [
                       const Icon(Icons.key, size: 18),
                       const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text('Secret key (nsec)',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
+                      Expanded(
+                        child: Text(tr('profile.nsec'),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
                       ),
                       TextButton(
                         onPressed: () =>
                             setState(() => _revealKey = !_revealKey),
-                        child: Text(_revealKey ? 'Hide' : 'Reveal'),
+                        child: Text(tr(_revealKey
+                            ? 'profile.nsec.hide'
+                            : 'profile.nsec.reveal')),
                       ),
                     ],
                   ),
@@ -681,16 +755,16 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                       children: [
                         TextButton.icon(
                           icon: const Icon(Icons.copy, size: 16),
-                          label: const Text('Copy secret key'),
-                          onPressed: () => _copy('Secret key', _p.nsec),
+                          label: Text(tr('profile.nsec.copy')),
+                          onPressed: () =>
+                              _copy(tr('profile.nsec.short'), _p.nsec),
                         ),
                       ],
                     ),
                   ],
-                  const Text(
-                    'Anyone with this key controls this identity. Back it up '
-                    'somewhere safe and never share it.',
-                    style: TextStyle(fontSize: 11),
+                  Text(
+                    tr('profile.nsec.warning'),
+                    style: const TextStyle(fontSize: 11),
                   ),
                 ],
               ),
@@ -715,16 +789,17 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                         size: 18,
                       ),
                       const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text('Profile encryption',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
+                      Expanded(
+                        child: Text(tr('profile.encryption'),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
                       ),
                       Text(
-                        !ProfileEncryption.isEncrypted(_p.id)
-                            ? 'Off'
+                        tr(!ProfileEncryption.isEncrypted(_p.id)
+                            ? 'common.off'
                             : _usesDeviceKey
-                                ? 'Device key'
-                                : 'Password',
+                                ? 'profile.encryption.mode.device'
+                                : 'profile.encryption.mode.password'),
                         style: TextStyle(
                             fontSize: 11, color: cs.onSurfaceVariant),
                       ),
@@ -732,18 +807,11 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    !ProfileEncryption.isEncrypted(_p.id)
-                        ? 'Encrypt everything this profile stores on this '
-                            'device. Enabling deletes the profile\'s current '
-                            'data and starts fresh.'
+                    tr(!ProfileEncryption.isEncrypted(_p.id)
+                        ? 'profile.encryption.desc.off'
                         : _usesDeviceKey
-                            ? 'Everything this profile stores on this device '
-                                'is encrypted, and unlocks automatically on '
-                                'this device. Add a password to protect it '
-                                'even from someone holding the unlocked phone.'
-                            : 'Everything this profile stores on this device '
-                                'is encrypted. Unlocked by your password '
-                                'mixed with the secret key.',
+                            ? 'profile.encryption.desc.device'
+                            : 'profile.encryption.desc.password'),
                     style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                   ),
                   const SizedBox(height: 8),
@@ -764,7 +832,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                                 onPressed: _enableEncryption,
                                 icon: const Icon(Icons.enhanced_encryption,
                                     size: 16),
-                                label: const Text('Encrypt profile'),
+                                label: Text(tr('profile.encryption.enable.button_short')),
                               )
                             else ...[
                               // "Lock now" on a device-key profile is a lie:
@@ -774,24 +842,24 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                                 OutlinedButton.icon(
                                   onPressed: _lockNow,
                                   icon: const Icon(Icons.lock, size: 16),
-                                  label: const Text('Lock now'),
+                                  label: Text(tr('profile.lock.now')),
                                 ),
                               if (_usesDeviceKey)
                                 OutlinedButton.icon(
                                   onPressed: _addPassword,
                                   icon: const Icon(Icons.password, size: 16),
-                                  label: const Text('Add password'),
+                                  label: Text(tr('profile.password.add.short')),
                                 )
                               else ...[
                                 OutlinedButton.icon(
                                   onPressed: _changeEncryptionPassword,
                                   icon: const Icon(Icons.password, size: 16),
-                                  label: const Text('Change password'),
+                                  label: Text(tr('profile.password.change.title')),
                                 ),
                                 OutlinedButton.icon(
                                   onPressed: _removePassword,
                                   icon: const Icon(Icons.key, size: 16),
-                                  label: const Text('Use device key'),
+                                  label: Text(tr('profile.password.use_device_key')),
                                 ),
                               ],
                               if (_hasCachedKeys && !_usesDeviceKey)
@@ -800,15 +868,15 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                                     await ProfileEncryption
                                         .clearCachedKeys(_p.id);
                                     await _refreshEncStatus();
-                                    _snack('Device key cache cleared');
+                                    _snack(tr('profile.encryption.cache_cleared'));
                                   },
                                   icon: const Icon(Icons.key_off, size: 16),
-                                  label: const Text('Forget device key'),
+                                  label: Text(tr('profile.encryption.forget_device_key')),
                                 ),
                               TextButton.icon(
                                 onPressed: _disableEncryption,
                                 icon: const Icon(Icons.no_encryption, size: 16),
-                                label: const Text('Remove encryption'),
+                                label: Text(tr('profile.encryption.remove.title')),
                               ),
                             ],
                           ],
@@ -830,14 +898,17 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                     children: [
                       const Icon(Icons.backup_outlined, size: 18),
                       const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text('Identity backup',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
+                      Expanded(
+                        child: Text(tr('profile.backup'),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
                       ),
                       Text(
-                        _backupExists
-                            ? (_backupEncrypted ? 'Encrypted' : 'Plaintext')
-                            : 'Not yet saved',
+                        tr(_backupExists
+                            ? (_backupEncrypted
+                                ? 'profile.backup.state.encrypted'
+                                : 'profile.backup.state.plaintext')
+                            : 'profile.backup.state.none'),
                         style: TextStyle(
                           fontSize: 11,
                           color: cs.onSurfaceVariant,
@@ -848,9 +919,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                   const SizedBox(height: 6),
                   Text(
                     _backupPath == null
-                        ? 'Grant storage access to keep a copy that survives '
-                            'uninstalling the app.'
-                        : 'Saved to:\n$_backupPath',
+                        ? tr('profile.backup.grant_storage')
+                        : tr('profile.backup.saved_to', {'path': _backupPath}),
                     style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                   ),
                   const SizedBox(height: 8),
@@ -866,25 +936,22 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                                 child:
                                     CircularProgressIndicator(strokeWidth: 2))
                             : const Icon(Icons.save_alt, size: 16),
-                        label: const Text('Back up now'),
+                        label: Text(tr('profile.backup.now')),
                       ),
                       OutlinedButton.icon(
                         onPressed: _backupBusy ? null : _changePassphrase,
                         icon: const Icon(Icons.lock_outline, size: 16),
-                        label: Text(_backupEncrypted
-                            ? 'Change passphrase'
-                            : 'Add passphrase'),
+                        label: Text(tr(_backupEncrypted
+                            ? 'profile.backup.passphrase.change'
+                            : 'profile.backup.passphrase.add')),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    IdentityBackup.instance.requiresPassphrase
-                        ? 'The backup is encrypted with your passphrase. '
-                            'Without one, no backup is kept.'
-                        : 'A plaintext backup holds your secret key in the clear — '
-                            'anyone with access to this phone\'s storage can read it. '
-                            'Add a passphrase to encrypt it.',
+                    tr(IdentityBackup.instance.requiresPassphrase
+                        ? 'profile.backup.note.shared'
+                        : 'profile.backup.note.plaintext'),
                     style: const TextStyle(fontSize: 11),
                   ),
                 ],
@@ -943,8 +1010,8 @@ class _PasswordSetupDialogState extends State<_PasswordSetupDialog> {
             obscureText: _obscure,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
-              labelText: 'Password',
-              helperText: 'Emoji welcome 🔑',
+              labelText: tr('profile.password.label'),
+              helperText: tr('profile.password.emoji'),
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
                 icon:
@@ -959,9 +1026,9 @@ class _PasswordSetupDialogState extends State<_PasswordSetupDialog> {
             obscureText: _obscure,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
-              labelText: 'Repeat password',
+              labelText: tr('profile.password.repeat'),
               errorText: _b.text.isNotEmpty && _a.text != _b.text
-                  ? 'Passwords differ'
+                  ? tr('profile.password.differ')
                   : null,
               border: const OutlineInputBorder(),
             ),
@@ -971,7 +1038,7 @@ class _PasswordSetupDialogState extends State<_PasswordSetupDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel')),
+            child: Text(tr('common.cancel'))),
         FilledButton(
           onPressed: _valid ? () => Navigator.pop(context, _a.text) : null,
           child: Text(widget.confirmLabel),
@@ -1028,21 +1095,6 @@ class _ColorDot extends StatelessWidget {
 /// Filtering here rather than only validating means a lowercase callsign is
 /// never WRONG, it is just typed, which is what an operator entering their own
 /// callsign in a hurry expects.
-class _CallsignInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-      TextEditingValue old, TextEditingValue next) {
-    final cleaned = next.text.toUpperCase().replaceAll(RegExp('[^A-Z0-9/-]'), '');
-    if (cleaned == next.text) return next;
-    final at = next.selection.baseOffset - (next.text.length - cleaned.length);
-    return TextEditingValue(
-      text: cleaned,
-      selection:
-          TextSelection.collapsed(offset: at.clamp(0, cleaned.length)),
-    );
-  }
-}
-
 /// What setting a licensed callsign does, and, at greater length, what it does
 /// NOT do.
 ///
@@ -1086,37 +1138,17 @@ class _LicenceNote extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            para('What this does',
-                'Everything this device sends will go out as $name instead of '
-                '$derived, and a signed identity announcement will bind $name '
-                'to the key you already have. Your key does not change, and '
-                'neither does $derived.'),
-            para('What it proves, and what it does not',
-                'The announcement proves that whoever holds this key wrote '
-                'these packets. It proves nothing about your entitlement to '
-                'the callsign: an $derived name is checked against its key by '
-                'arithmetic, an issued callsign has no arithmetic '
-                'relationship to any key, and XPRS has no register and issues '
-                'no credentials. Another station can announce the same '
-                'callsign with a different key and both announcements will '
-                'verify. Anyone who wants certainty checks your '
-                "administration's own licence register, out of band, once. "
-                'This app never transmits an opinion about whether a callsign '
-                'is licensed.'),
-            para('Others will see you as a station',
-                'A callsign is read as a person only when it begins X1. A '
-                'licensed callsign says nothing about whether its holder is a '
-                'person or a mast, and guessing would be worse than saying '
-                'station, so you will appear in the Stations list rather than '
-                'in People.'),
-            para('Mail already on its way',
-                'Peers keep reaching you under both names. But mail a '
-                'neighbour was already carrying for your old callsign may not '
-                'be handed over; ask the sender to resend. Apps you already '
-                'have open keep the old name until you reopen them.'),
+            para(tr('profile.licence.does.title'),
+                tr('profile.licence.does.body',
+                    {'name': name, 'derived': derived})),
+            para(tr('profile.licence.proves.title'),
+                tr('profile.licence.proves.body', {'derived': derived})),
+            para(tr('profile.licence.station.title'),
+                tr('profile.licence.station.body')),
+            para(tr('profile.licence.mail.title'),
+                tr('profile.licence.mail.body')),
             Text(
-              'On amateur bands a licensed callsign is the only one that may '
-              'be transmitted at all, and encryption is not permitted there.',
+              tr('profile.licence.amateur'),
               style: small,
             ),
           ],
@@ -1164,7 +1196,7 @@ class _IdentityRow extends StatelessWidget {
           ),
           IconButton(
             icon: const Icon(Icons.copy, size: 16),
-            tooltip: 'Copy',
+            tooltip: tr('common.copy'),
             onPressed: onCopy,
           ),
         ],

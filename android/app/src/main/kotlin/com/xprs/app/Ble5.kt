@@ -335,7 +335,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         }
         MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
-                "supported" -> result.success(isSupported())
+                "supported" -> result.success(isSupportedOrUnknown())
                 // Live adapter state, deliberately NOT cached. `supported` is a
                 // controller CAPABILITY and is cached forever; callers that used
                 // it to mean "the radio is usable right now" composed frames and
@@ -448,6 +448,26 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     private fun isSupported(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         val a = adapter ?: return false
+        return a.isLeExtendedAdvertisingSupported
+    }
+
+    /**
+     * The answer to `supported`: true, false, or null for "cannot tell yet".
+     *
+     * The framework answers false to EVERY LE capability question while the
+     * adapter is not ON (BluetoothAdapter.getLeAccess), so a probe made with
+     * Bluetooth switched off says nothing about the chip -- and the Dart side
+     * caches this answer for the life of the process. A phone whose owner
+     * turned Bluetooth on a few seconds after the app ran its whole session as
+     * a scan-only leaf: it heard everybody and nobody ever heard it
+     * (docs/ble5.md section 5). Null tells Dart to ask again; [isSupported]
+     * keeps the boolean reading for the per-frame admission check, where "not
+     * now" and "never" cost the same -- the frame does not go out.
+     */
+    private fun isSupportedOrUnknown(): Boolean? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val a = adapter ?: return false
+        if (a.state != BluetoothAdapter.STATE_ON) return null
         return a.isLeExtendedAdvertisingSupported
     }
 

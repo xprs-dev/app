@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "language": "Español",
+    "reviewed": false
+  },
+  "radio.location.off": "La ubicación está desactivada: la malla Bluetooth está sorda",
+  "radio.location.off.body": "Android oculta a la aplicación todos los dispositivos cercanos mientras los servicios de ubicación estén desactivados. Activa la ubicación para ver y ser visto por Bluetooth.",
+  "radio.bluetooth.off": "El Bluetooth está desactivado",
+  "radio.bluetooth.off.body": "Nadie cerca puede ver este teléfono hasta que se active el Bluetooth. La malla se reanuda sola en cuanto lo esté."
+}

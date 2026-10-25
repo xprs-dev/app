@@ -25,6 +25,7 @@ import 'package:reticulum/reticulum.dart';
 
 import '../../profile/profile_service.dart';
 import '../../profile/profile_storage.dart';
+import '../../services/i18n/core_i18n.dart';
 
 /// Display metadata for a coin (a denomination, like Euro / Euros / EUR / €).
 class CoinMeta {
@@ -197,9 +198,9 @@ class CoinHostBridge {
   // ── operations ──────────────────────────────────────────────────────────────
 
   Map<String, Object?> _add(String descriptor) {
-    if (descriptor.isEmpty) return _withStatus('Paste a coin descriptor first.');
+    if (descriptor.isEmpty) return _withStatus(tr('coin.paste_descriptor'));
     final reg = _decodeDescriptor(descriptor);
-    if (reg == null) return _withStatus('Invalid coin descriptor.');
+    if (reg == null) return _withStatus(tr('coin.invalid_descriptor'));
     _coins[reg.coinId] = reg;
     _persist();
     return _withStatus('Added ${reg.meta.displayName}.');
@@ -210,16 +211,16 @@ class CoinHostBridge {
       _persist();
       return _withStatus('Removed.');
     }
-    return _withStatus('No such coin.');
+    return _withStatus(tr('coin.no_such_coin'));
   }
 
   Map<String, Object?> _receive(String tokenStr) {
-    if (tokenStr.isEmpty) return _withStatus('Paste a token to receive.');
+    if (tokenStr.isEmpty) return _withStatus(tr('coin.paste_token'));
     final token = BearerToken.decode(tokenStr.trim());
-    if (token == null) return _withStatus('Not a valid coin token.');
+    if (token == null) return _withStatus(tr('coin.invalid_token'));
     final reg = _coins[token.coinId];
     if (reg == null) {
-      return _withStatus('Unknown coin — add the provider first.');
+      return _withStatus(tr('coin.unknown_add_provider'));
     }
     var received = 0;
     for (final p in token.proofs) {
@@ -229,7 +230,7 @@ class CoinHostBridge {
       if (_w().add(token.coinId, p)) received += p.amount;
     }
     if (received == 0) {
-      return _withStatus('Nothing accepted (already held or invalid).');
+      return _withStatus(tr('coin.nothing_accepted'));
     }
     return _withStatus('Received ${reg.meta.amount(received)}.');
   }
@@ -237,19 +238,19 @@ class CoinHostBridge {
   Map<String, Object?> _send(String coinId, String to, Object? amountRaw) {
     if (coinId.isEmpty && _coins.length == 1) coinId = _coins.keys.first;
     final reg = _coins[coinId];
-    if (reg == null) return _withStatus('Pick a coin you hold (paste its Coin ID).');
+    if (reg == null) return _withStatus(tr('coin.pick_held'));
     final amount = amountRaw is int
         ? amountRaw
         : int.tryParse((amountRaw ?? '').toString().trim()) ?? 0;
-    if (amount <= 0) return _withStatus('Enter an amount greater than zero.');
-    if (to.trim().isEmpty) return _withStatus('Enter a recipient npub.');
+    if (amount <= 0) return _withStatus(tr('coin.amount_positive'));
+    if (to.trim().isEmpty) return _withStatus(tr('coin.recipient_npub'));
     final priv = _myPriv;
-    if (priv == null) return _withStatus('No active profile key to sign with.');
+    if (priv == null) return _withStatus(tr('coin.no_profile_key'));
     String toHex;
     try {
       toHex = to.startsWith('npub') ? NostrCrypto.decodeNpub(to.trim()) : to.trim();
     } catch (_) {
-      return _withStatus('Invalid recipient npub.');
+      return _withStatus(tr('coin.invalid_recipient'));
     }
     final service = CoinService(
         coinId: coinId, myPriv: priv, keyset: reg.keyset, wallet: _w());
@@ -266,7 +267,7 @@ class CoinHostBridge {
 
   Map<String, Object?> _detail(String coinId) {
     final reg = _coins[coinId];
-    if (reg == null) return {'detail_name': 'Unknown coin'};
+    if (reg == null) return {'detail_name': tr('coin.unknown')};
     final bal = _w().balance(coinId);
     final m = reg.meta;
     return {

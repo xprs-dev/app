@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "language": "Português (Portugal)",
+    "reviewed": false
+  },
+  "coin.paste_descriptor": "Cole primeiro um descritor de moeda.",
+  "coin.invalid_descriptor": "Descritor de moeda inválido.",
+  "coin.no_such_coin": "Essa moeda não existe.",
+  "coin.paste_token": "Cole um token para receber.",
+  "coin.invalid_token": "Token de moeda inválido.",
+  "coin.unknown_add_provider": "Moeda desconhecida — adicione primeiro o emissor.",
+  "coin.nothing_accepted": "Nada aceite (já em sua posse ou inválido).",
+  "coin.pick_held": "Escolha uma moeda que possua (cole o seu Coin ID).",
+  "coin.amount_positive": "Indique um montante maior do que zero.",
+  "coin.recipient_npub": "Indique o npub do destinatário.",
+  "coin.no_profile_key": "Não há chave de perfil ativa para assinar.",
+  "coin.invalid_recipient": "npub do destinatário inválido.",
+  "coin.unknown": "Moeda desconhecida",
+  "coin.atm.no_profile": "Não há perfil ativo para operar como ATM.",
+  "coin.atm.name_coin": "Dê um nome à moeda (singular, plural e/ou código curto).",
+  "coin.atm.pick_yours": "Escolha uma das suas moedas.",
+  "coin.atm.no_operator_key": "Não há chave de operador para assinar blocos.",
+  "coin.atm.ledger_closed": "Não foi possível abrir o livro-razão da moeda.",
+  "coin.atm.rejected": "A distribuição foi rejeitada pelo livro-razão.",
+  "coin.atm.invalid_npub": "npub inválido.",
+  "coin.atm.enter_npub": "Indique um npub em quem confiar.",
+  "coin.atm.trusted": "Designado como ATM de confiança para {coin}.",
+  "coin.atm.already_trusted": "Já é de confiança.",
+  "coin.atm.descriptor_ready": "Descritor pronto a partilhar.",
+  "coin.atm.your_coins": "As suas moedas"
+}

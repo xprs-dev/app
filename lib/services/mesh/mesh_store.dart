@@ -518,6 +518,25 @@ class MeshStore {
     return out;
   }
 
+  /// Every XPRS wire still held for [target], newest first, with no backoff
+  /// and no byte budget: the forwarder's question when somebody new reports
+  /// hearing [target] (12.8.1). The release ladder paces RE-AIRING on a
+  /// radio; a copy to a gateway that has never had one is not a re-air, and
+  /// the forwarder keeps its own once-per-gateway memory.
+  List<String> heldWiresFor(String target, {int max = 64}) {
+    final db = _db;
+    if (db == null) return const [];
+    final t = target.trim().toUpperCase();
+    if (t.isEmpty) return const [];
+    return [
+      for (final r in db.select(
+          'SELECT wire FROM mesh_store WHERE state = 0 AND UPPER(target) = ? '
+          'ORDER BY ts DESC LIMIT ?',
+          [t, max]))
+        utf8.decode(r['wire'] as List<int>, allowMalformed: true),
+    ].where((w) => w.startsWith('t:')).toList();
+  }
+
   /// Every callsign this station is holding mail for, the one with the oldest
   /// waiting packet first.
   ///

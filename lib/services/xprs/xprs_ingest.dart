@@ -20,6 +20,7 @@
  * whole mesh's chatter and fill its disk with strangers (section 36.3: a
  * station pushes to the indexers its operator CHOSE).
  */
+import 'xprs_self.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -48,6 +49,7 @@ import 'xprs_file_acl.dart';
 import 'xprs_inline_file.dart';
 import 'xprs_sig.dart';
 import 'xprs_profiles.dart';
+import 'xprs_mailbox.dart';
 import 'xprs_vocab.dart';
 import '../../util/xprs_crypto.dart';
 import '../background_service.dart';
@@ -270,6 +272,22 @@ class XprsIngest {
         : Tier.stranger;
   }
 
+  /// Is this a row the station ASKED an archiver for (XprsFetch)? A
+  /// stranger's public words are dropped on a pocket phone (12: silence is
+  /// not consent), and a fetched conversation is the one case where the
+  /// operator did consent: they opened it. Such a row is shelved as followed.
+  /// One predicate call per packet, and it is a map check unless a fetch is
+  /// open (performance.md 4.2).
+  static bool Function(XprsPacket p)? askedFor;
+
+  static Tier _shelfFor(String fromBase, bool forUs, XprsPacket p) {
+    final t = _tierOf(fromBase, forUs);
+    if (t == Tier.stranger && (askedFor?.call(p) ?? false)) {
+      return Tier.followed;
+    }
+    return t;
+  }
+
   /// Followed by callsign rather than by key (a device): one set lookup, the
   /// set pushed by RnsService like [XprsArchive.followed].
   static bool _followedStation(String fromBase) =>
@@ -436,7 +454,7 @@ class XprsIngest {
             // and the station forgets every group it is in on restart.
             XprsGroups.instance.concernsUs(p, _base(selfCallsign));
     final shelf = xprsAdmitTier(
-      tier: _tierOf(_base(from), forUs),
+      tier: _shelfFor(_base(from), forUs, p),
       type: p.type,
       publication: _isPublication(p),
       declared: false, // the declaration rule is the internet lane's
@@ -520,6 +538,9 @@ class XprsIngest {
     // `xprsRendersToPerson` asks the whole question: a message, addressed to a
     // person.
     if (forUs && onDeliver != null && xprsRendersToPerson(p)) {
+      // Which of our names this person wrote to: the reply goes back under
+      // it (XprsSelf), however the active callsign changes meanwhile.
+      XprsSelf.instance.noteInbound(from, p['d']);
       try {
         onDeliver!(p, _archiveBearer(bearer));
       } catch (e) {
@@ -541,7 +562,18 @@ class XprsIngest {
     //
     // Only a 1:1 to a station is custody material — a group is an address
     // several stations read (6.3) and is aired, not couriered.
-    if (!forUs && p.type == 'message' && onCarry != null) {
+    //
+    // ANY mail, by the rule the Reticulum lane and the mailbox already apply
+    // (12.8.3 step 2): the receipt that ends a sleeping sender's retry ladder,
+    // the `t:file` describing a picture, a group act. This lane carried only
+    // `t:message`, so a receipt heard on Bluetooth from a station whose sender
+    // is three networks away was dropped by the one station placed to carry
+    // it. `worthKeeping` is the mailbox's own carve-out: no command but the
+    // two asks still worth asking late (11.4), no live transfer negotiation.
+    if (!forUs &&
+        onCarry != null &&
+        xprsIsMail(p) &&
+        XprsMailbox.worthKeeping(p)) {
       final target = (p['d'] ?? '').trim();
       if (xprsAddressesStation(target)) {
         try {
@@ -1089,7 +1121,7 @@ class XprsIngest {
     // original packets, so a station that discarded them answers every such
     // ask with a 404 by construction.
     final shelf = xprsAdmitTier(
-      tier: _tierOf(fromC, false),
+      tier: _shelfFor(fromC, false, p),
       type: p.type,
       publication: _isPublication(p),
       declared: XprsArchive.instance.hasActiveDecl(fromC) ||

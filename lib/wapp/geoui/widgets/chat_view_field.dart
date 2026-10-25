@@ -21,6 +21,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../../util/media_ref.dart';
 import '../../shared_media_fetch.dart';
+import '../../../services/i18n/core_i18n.dart';
 import '../conversation_store.dart';
 import 'chat_palette.dart';
 import 'media_view.dart';
@@ -39,21 +40,16 @@ String chatDayLabel(String ymd, {DateTime? now}) {
   final today = DateTime(n.year, n.month, n.day);
   final that = DateTime(d.year, d.month, d.day);
   final days = today.difference(that).inDays;
-  if (days == 0) return 'Today';
-  if (days == 1) return 'Yesterday';
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
-  const weekdays = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday',
-    'Friday', 'Saturday', 'Sunday',
-  ];
+  if (days == 0) return tr('geoui.day.today');
+  if (days == 1) return tr('geoui.day.yesterday');
   // Inside the last week a weekday is the clearest thing to read.
-  if (days > 1 && days < 7) return weekdays[that.weekday - 1];
-  final month = months[that.month - 1];
-  if (that.year == today.year) return '${that.day} $month';
-  return '${that.day} $month ${that.year}';
+  if (days > 1 && days < 7) return tr('geoui.weekday.${that.weekday}');
+  final month = tr('geoui.month.${that.month}');
+  if (that.year == today.year) {
+    return tr('geoui.day.month', {'day': that.day, 'month': month});
+  }
+  return tr('geoui.day.full',
+      {'day': that.day, 'month': month, 'year': that.year});
 }
 
 /// Stable colour for a transport/channel label ("NET", "BLE", "LORA", …),
@@ -394,20 +390,19 @@ class _ChatViewFieldState extends State<ChatViewField> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(mine ? 'Delete for everyone?' : 'Remove this message?'),
-        content: Text(mine
-            ? 'Everyone who has it is asked to delete it, and its text is '
-                'destroyed here. A copy may stay with anyone who already '
-                'received it. This cannot be undone.'
-            : 'Its text is destroyed for everyone in the group who honours '
-                'it. This cannot be undone.'),
+        title: Text(tr(mine
+            ? 'geoui.chat.unsend.title.mine'
+            : 'geoui.chat.unsend.title.other')),
+        content: Text(tr(mine
+            ? 'geoui.chat.unsend.body.mine'
+            : 'geoui.chat.unsend.body.other')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(tr('common.cancel'))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text(mine ? 'Delete' : 'Remove')),
+              child: Text(tr(mine ? 'common.delete' : 'common.remove'))),
         ],
       ),
     );
@@ -496,7 +491,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
     return Padding(
       padding: const EdgeInsets.only(left: 6),
       child: Text(
-        'edited',
+        tr('geoui.chat.edited'),
         style: TextStyle(
             color: _onBubbleFg(_isOut(m), 150),
             fontSize: ChatPalette.metaSize,
@@ -521,7 +516,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
     return Padding(
       padding: const EdgeInsets.only(left: 6),
       child: Tooltip(
-        message: sealed ? 'Encrypted' : 'Not encrypted: clear text',
+        message: tr(sealed ? 'geoui.chat.encrypted' : 'geoui.chat.clear_text'),
         child: Icon(sealed ? Icons.lock : Icons.lock_open,
             size: 13, color: color),
       ),
@@ -538,7 +533,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.lock, size: 12, color: color),
         const SizedBox(width: 2),
-        Text('private',
+        Text(tr('geoui.chat.private'),
             style: TextStyle(
                 color: color, fontSize: 9.5, fontWeight: FontWeight.w600)),
       ]),
@@ -812,9 +807,9 @@ class _ChatViewFieldState extends State<ChatViewField> {
     }
 
     if (messages.isEmpty) {
-      return const Center(
-        child: Text('No messages yet',
-            style: TextStyle(color: ChatPalette.secondary, fontSize: 14)),
+      return Center(
+        child: Text(tr('geoui.chat.empty'),
+            style: const TextStyle(color: ChatPalette.secondary, fontSize: 14)),
       );
     }
     return ListView.builder(
@@ -907,13 +902,13 @@ class _ChatViewFieldState extends State<ChatViewField> {
         children: [
           InkWell(
             onTap: () => setState(() => _threadRootMid = null),
-            child: const Padding(
-              padding: EdgeInsets.fromLTRB(8, 8, 12, 2),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 12, 2),
               child: Row(children: [
-                Icon(Icons.arrow_back, size: 18, color: ChatPalette.accent),
-                SizedBox(width: 6),
-                Text('Back to chat',
-                    style: TextStyle(
+                const Icon(Icons.arrow_back, size: 18, color: ChatPalette.accent),
+                const SizedBox(width: 6),
+                Text(tr('geoui.chat.back'),
+                    style: const TextStyle(
                         color: ChatPalette.accent,
                         fontSize: 12,
                         fontWeight: FontWeight.w600)),
@@ -963,7 +958,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
                   Icon(Icons.forum_outlined,
                       size: 14, color: Colors.white.withAlpha(160)),
                   const SizedBox(width: 5),
-                  Text('$count message${count == 1 ? '' : 's'}',
+                  Text(trn('geoui.chat.messages', count),
                       style: TextStyle(
                           color: Colors.white.withAlpha(180),
                           fontSize: 12.5,
@@ -991,6 +986,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
 
   /// Header shown above a focused thread, with a back arrow to the full chat.
   Widget _threadHeader(ColorScheme cs, int count) {
+    final countText = trn('geoui.chat.messages', count);
     return InkWell(
       onTap: () => setState(() => _threadRootMid = null),
       child: Container(
@@ -1005,11 +1001,11 @@ class _ChatViewFieldState extends State<ChatViewField> {
             const SizedBox(width: 8),
             const Icon(Icons.forum_outlined, size: 15, color: ChatPalette.accent),
             const SizedBox(width: 6),
-            Text('Thread · $count message${count == 1 ? '' : 's'}',
+            Text(tr('geoui.chat.thread', {'messages': countText}),
                 style: const TextStyle(
                     color: ChatPalette.accent, fontSize: 13, fontWeight: FontWeight.w600)),
             const Spacer(),
-            Text('Back to chat',
+            Text(tr('geoui.chat.back'),
                 style: TextStyle(color: Colors.white.withAlpha(120), fontSize: 11)),
           ],
         ),
@@ -1137,8 +1133,8 @@ class _ChatViewFieldState extends State<ChatViewField> {
             ),
             child: Text(
               by.isEmpty
-                  ? 'This message was deleted'
-                  : 'Removed by moderator $by',
+                  ? tr('geoui.chat.deleted')
+                  : tr('geoui.chat.removed_by', {'by': by}),
               textAlign: TextAlign.center,
               style: const TextStyle(
                   color: ChatPalette.secondary,
@@ -1160,7 +1156,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
     final locked = obf && (revealed == null || revealed.isEmpty);
     final revealTip = (m['tip']?.toString() ?? '').isNotEmpty
         ? m['tip'].toString()
-        : 'Tap to reveal hidden text';
+        : tr('geoui.chat.reveal');
     final revealMid = m['mid']?.toString() ?? '';
     // The answer landed (or the conversation re-locked): the reveal we were
     // waiting on is over, so drop the mark. No setState -- this frame is
@@ -1284,7 +1280,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(
-                'edited by moderator ${m['editedBy']}',
+                tr('geoui.chat.edited_by', {'by': m['editedBy']}),
                 style: TextStyle(
                     color: _onBubbleFg(outgoing, 170),
                     fontSize: ChatPalette.metaSize,
@@ -1323,7 +1319,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
                       Icon(Icons.reply,
                           size: 12, color: _onBubbleFg(outgoing, 140)),
                       const SizedBox(width: 2),
-                      Text('Reply',
+                      Text(tr('geoui.chat.reply'),
                           style: TextStyle(
                               color: _onBubbleFg(outgoing, 140), fontSize: 10)),
                     ]),
@@ -1342,7 +1338,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
                       Icon(Icons.forum_outlined,
                           size: 12, color: _onBubbleAccent(outgoing)),
                       const SizedBox(width: 3),
-                      Text('$replies ${replies == 1 ? 'reply' : 'replies'}',
+                      Text(trn('geoui.chat.replies', replies),
                           style: TextStyle(
                               color: _onBubbleAccent(outgoing),
                               fontSize: 10,
@@ -1443,7 +1439,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
               leading: Icon((m['private'] == true || m['enc'] == true)
                   ? Icons.lock_outline
                   : (m['plain'] == true ? Icons.lock_open : Icons.public)),
-              title: const Text('Info'),
+              title: Text(tr('geoui.chat.menu.info')),
               onTap: () {
                 Navigator.pop(sheet);
                 _showInfo(m);
@@ -1451,7 +1447,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
             ),
             ListTile(
               leading: const Icon(Icons.copy),
-              title: const Text('Copy'),
+              title: Text(tr('common.copy')),
               onTap: () {
                 Navigator.pop(sheet);
                 _copyText(text);
@@ -1460,7 +1456,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
             if (widget.onForward != null)
               ListTile(
                 leading: const Icon(Icons.forward),
-                title: const Text('Forward'),
+                title: Text(tr('geoui.chat.menu.forward')),
                 onTap: () {
                   Navigator.pop(sheet);
                   widget.onForward!(m);
@@ -1472,7 +1468,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
             if (_mayChange(m, outgoing) && widget.onEdit != null)
               ListTile(
                 leading: const Icon(Icons.edit_outlined),
-                title: Text(outgoing ? 'Edit' : 'Edit as moderator'),
+                title: Text(tr(outgoing ? 'common.edit' : 'geoui.chat.menu.edit_mod')),
                 onTap: () {
                   Navigator.pop(sheet);
                   _startEdit(m);
@@ -1481,7 +1477,9 @@ class _ChatViewFieldState extends State<ChatViewField> {
             if (_mayChange(m, outgoing) && widget.onUnsend != null)
               ListTile(
                 leading: const Icon(Icons.delete_outline),
-                title: Text(outgoing ? 'Delete for everyone' : 'Remove as moderator'),
+                title: Text(tr(outgoing
+                    ? 'geoui.chat.menu.delete'
+                    : 'geoui.chat.menu.remove_mod')),
                 onTap: () {
                   Navigator.pop(sheet);
                   _confirmUnsend(m, mine: outgoing);
@@ -1490,7 +1488,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
             if (widget.onHide != null)
               ListTile(
                 leading: const Icon(Icons.visibility_off_outlined),
-                title: const Text('Hide this message'),
+                title: Text(tr('geoui.chat.menu.hide')),
                 onTap: () {
                   Navigator.pop(sheet);
                   widget.onHide!(m);
@@ -1500,7 +1498,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
             if (widget.onDirectMessage != null && !outgoing && from.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.alternate_email),
-                title: Text('Message $from directly'),
+                title: Text(tr('geoui.chat.menu.dm', {'from': from})),
                 onTap: () {
                   Navigator.pop(sheet);
                   widget.onDirectMessage!(from);
@@ -1510,7 +1508,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
             if (widget.onBlock != null && !outgoing && from.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.block, color: Colors.red),
-                title: Text('Block $from',
+                title: Text(tr('geoui.chat.menu.block', {'from': from}),
                     style: const TextStyle(color: Colors.red)),
                 onTap: () {
                   Navigator.pop(sheet);
@@ -1546,38 +1544,30 @@ class _ChatViewFieldState extends State<ChatViewField> {
     if (private) {
       icon = Icons.lock;
       color = ChatPalette.accent;
-      title = 'Private';
-      detail =
-          'Kept encrypted and sent only over Reticulum. It was never broadcast '
-          'as clear text on the APRS network — only the recipient can read it.';
+      title = tr('geoui.chat.info.private');
+      detail = tr('geoui.chat.info.private.detail');
     } else if (enc) {
       icon = Icons.lock;
       color = const Color(0xFF63B0E8);
-      title = 'Encrypted';
-      detail =
-          'End-to-end encrypted to the recipient. Only the recipient can '
-          'read it, whatever path it travelled.';
+      title = tr('geoui.chat.encrypted');
+      detail = tr('geoui.chat.info.encrypted.detail');
     } else if (m['plain'] == true) {
       icon = Icons.lock_open;
       color = const Color(0xFFE0A030);
-      title = 'Not encrypted';
-      detail =
-          'Sent as clear text, because the conversation was marked unencrypted. '
-          'Anyone in range of the radio or the network path can read it.';
+      title = tr('geoui.chat.info.plain');
+      detail = tr('geoui.chat.info.plain.detail');
     } else {
       icon = Icons.public;
       color = const Color(0xFFE0A030);
-      title = 'Public';
-      detail =
-          'Sent as clear text over the APRS network. Anyone on the network — '
-          'on radio or over the internet — can read it.';
+      title = tr('geoui.chat.info.public');
+      detail = tr('geoui.chat.info.public.detail');
     }
 
     final String? sig = switch (auth) {
-      'verified' => 'Signed — author verified',
-      'bad' => 'Signature invalid (forged)',
+      'verified' => tr('geoui.chat.info.sig.verified'),
+      'bad' => tr('geoui.chat.info.sig.bad'),
       '' => null,
-      _ => 'Signed — author key unknown',
+      _ => tr('geoui.chat.info.sig.unknown'),
     };
 
     showDialog<void>(
@@ -1596,14 +1586,15 @@ class _ChatViewFieldState extends State<ChatViewField> {
           children: [
             Text(detail),
             const SizedBox(height: 12),
-            if (from.isNotEmpty) _infoRow('From', from),
-            if (net.isNotEmpty) _infoRow('Network', net),
-            if (via.isNotEmpty) _infoRow('Transport', via.toUpperCase()),
+            if (from.isNotEmpty) _infoRow(tr('geoui.chat.info.from'), from),
+            if (net.isNotEmpty) _infoRow(tr('geoui.chat.info.network'), net),
+            if (via.isNotEmpty)
+              _infoRow(tr('geoui.chat.info.transport'), via.toUpperCase()),
             // How it reached this device: the relay path on the wire. For a
             // Meshtastic message this is the bridge (often your own station).
-            if (path.isNotEmpty) _infoRow('Relayed via', path),
-            if (time.isNotEmpty) _infoRow('Time', time),
-            if (sig != null) _infoRow('Signature', sig),
+            if (path.isNotEmpty) _infoRow(tr('geoui.chat.info.relayed'), path),
+            if (time.isNotEmpty) _infoRow(tr('geoui.chat.info.time'), time),
+            if (sig != null) _infoRow(tr('geoui.chat.info.signature'), sig),
           ],
         ),
         actions: [
@@ -1613,11 +1604,11 @@ class _ChatViewFieldState extends State<ChatViewField> {
                 Navigator.pop(ctx);
                 widget.onHistory!(m);
               },
-              child: const Text('Edit history'),
+              child: Text(tr('geoui.chat.info.history')),
             ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
+            child: Text(tr('common.close')),
           ),
         ],
       ),
@@ -1651,8 +1642,9 @@ class _ChatViewFieldState extends State<ChatViewField> {
     Clipboard.setData(ClipboardData(text: out));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Message copied'), duration: Duration(seconds: 1)),
+        SnackBar(
+            content: Text(tr('geoui.chat.copied')),
+            duration: const Duration(seconds: 1)),
       );
     }
   }
@@ -1769,7 +1761,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Replying to ${_snippet(m)}',
+              tr('geoui.chat.replying', {'snippet': _snippet(m)}),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: Colors.white.withAlpha(180), fontSize: 12),
@@ -1796,7 +1788,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Editing ${_snippet(_editing!)}',
+              tr('geoui.chat.editing', {'snippet': _snippet(_editing!)}),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: Colors.white.withAlpha(180), fontSize: 12),
@@ -1804,7 +1796,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
           ),
           IconButton(
             icon: const Icon(Icons.close, size: 16),
-            tooltip: 'Cancel editing',
+            tooltip: tr('geoui.chat.cancel_edit'),
             color: Colors.white.withAlpha(150),
             visualDensity: VisualDensity.compact,
             onPressed: _cancelEdit,
@@ -1911,7 +1903,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
               constraints: const BoxConstraints(),
               iconSize: 18,
               icon: const Icon(Icons.cancel, color: Colors.white),
-              tooltip: 'Remove',
+              tooltip: tr('common.remove'),
               onPressed: () => setState(() => _pending.removeAt(index)),
             ),
           ),
@@ -1953,7 +1945,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
         if (widget.onAttach != null)
           IconButton(
             icon: const Icon(Icons.attach_file),
-            tooltip: 'Attach a file',
+            tooltip: tr('geoui.chat.attach'),
             color: ChatPalette.secondary,
             onPressed: _attach,
           ),
@@ -1966,9 +1958,9 @@ class _ChatViewFieldState extends State<ChatViewField> {
           IconButton(
             icon: Icon(widget.privacyOn ? Icons.lock : Icons.lock_open),
             iconSize: 20,
-            tooltip: widget.privacyOn
-                ? 'Encrypted: tap to send this conversation as clear text'
-                : 'Clear text: anyone in range can read it. Tap to encrypt',
+            tooltip: tr(widget.privacyOn
+                ? 'geoui.chat.privacy.on'
+                : 'geoui.chat.privacy.off'),
             color: widget.privacyOn
                 ? ChatPalette.secondary
                 : Colors.orangeAccent.withAlpha(200),
@@ -1986,7 +1978,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
           child: IconButton(
             icon: const Icon(Icons.send, size: 22),
             color: ChatPalette.onAccent,
-            tooltip: 'Send',
+            tooltip: tr('common.send'),
             onPressed: _send,
           ),
         ),

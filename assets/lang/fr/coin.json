@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "language": "Français",
+    "reviewed": false
+  },
+  "coin.paste_descriptor": "Collez d'abord un descripteur de monnaie.",
+  "coin.invalid_descriptor": "Descripteur de monnaie invalide.",
+  "coin.no_such_coin": "Cette monnaie n'existe pas.",
+  "coin.paste_token": "Collez un jeton à recevoir.",
+  "coin.invalid_token": "Jeton de monnaie invalide.",
+  "coin.unknown_add_provider": "Monnaie inconnue — ajoutez d'abord l'émetteur.",
+  "coin.nothing_accepted": "Rien d'accepté (déjà détenu ou invalide).",
+  "coin.pick_held": "Choisissez une monnaie que vous détenez (collez son Coin ID).",
+  "coin.amount_positive": "Saisissez un montant supérieur à zéro.",
+  "coin.recipient_npub": "Saisissez le npub du destinataire.",
+  "coin.no_profile_key": "Aucune clé de profil active pour signer.",
+  "coin.invalid_recipient": "npub du destinataire invalide.",
+  "coin.unknown": "Monnaie inconnue",
+  "coin.atm.no_profile": "Aucun profil actif pour faire office de distributeur.",
+  "coin.atm.name_coin": "Nommez la monnaie (singulier, pluriel et/ou code court).",
+  "coin.atm.pick_yours": "Choisissez l'une de vos monnaies.",
+  "coin.atm.no_operator_key": "Aucune clé d'opérateur pour signer les blocs.",
+  "coin.atm.ledger_closed": "Impossible d'ouvrir le registre de la monnaie.",
+  "coin.atm.rejected": "Le registre a refusé la distribution.",
+  "coin.atm.invalid_npub": "npub invalide.",
+  "coin.atm.enter_npub": "Saisissez un npub à qui faire confiance.",
+  "coin.atm.trusted": "Désigné comme distributeur de confiance pour {coin}.",
+  "coin.atm.already_trusted": "Déjà de confiance.",
+  "coin.atm.descriptor_ready": "Descripteur prêt à partager.",
+  "coin.atm.your_coins": "Vos monnaies"
+}

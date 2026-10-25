@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "language": "Deutsch",
+    "reviewed": false
+  },
+  "radio.location.off": "Standort ist aus: das Bluetooth-Mesh ist taub",
+  "radio.location.off.body": "Android verbirgt der App jedes Gerät in der Nähe, solange die Standortdienste ausgeschaltet sind. Schalte den Standort ein, um über Bluetooth zu sehen und gesehen zu werden.",
+  "radio.bluetooth.off": "Bluetooth ist aus",
+  "radio.bluetooth.off.body": "Niemand in der Nähe kann dieses Telefon sehen, bis Bluetooth eingeschaltet ist. Das Mesh läuft dann von selbst weiter."
+}

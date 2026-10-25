@@ -31,6 +31,8 @@ import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserve
 import '../../profile/profile_service.dart';
 import '../../services/android_permissions_service.dart';
 import '../../services/log_service.dart';
+import '../../services/i18n/core_i18n.dart';
+import '../../services/notification_service.dart';
 import '../../services/mesh/mesh_custody.dart';
 import '../../services/power_state.dart';
 import '../../services/mesh/mesh_transfer_scheduler.dart';
@@ -48,6 +50,7 @@ import 'ble_gatt_server.dart';
 import 'ble_parcel.dart';
 import 'ble_queue_service.dart';
 import 'ble_reassembler.dart';
+import 'radio_environment.dart';
 
 /// APRS-over-BLE manufacturer id carried in advertisement manufacturer data.
 /// Must match peer firmware (e.g. ESP32). 0xFFFF is the reserved test id.
@@ -577,12 +580,41 @@ class BleService {
   Future<void> _initBle5() async {
     if (_ble5Checked) return;
     _ble5Checked = true;
+    await _probeBle5();
+    if (!_ble5Probe.isCompleted) _ble5Probe.complete();
+    // Street-mesh node (docs/mesh.md): rides the same BLE5 bus on its own
+    // subtype. Non-BLE5 devices still start it as a scan-only leaf so the
+    // Bluetooth wapp has a live (if empty) registry + self status.
+    //
+    // WAIT FOR THE PROBE FIRST. `_ble5` is answered asynchronously by
+    // `_initBle5`, and starting before it lands passes `canAdvertise: false` —
+    // which made the mesh a scan-only leaf for the WHOLE session, on a device
+    // whose radio was perfectly able to transmit. Seen on C61 after a boot:
+    // `advertising False, xprsSent 1`, no beacon for anyone to hear, while the
+    // native layer was creating advertising sets and RNS traffic flowed over
+    // the same bus. Nothing raised it afterwards, so the device stayed mute
+    // until it was restarted and won the race by luck.
+    unawaited(_ble5Probe.future
+        .timeout(const Duration(seconds: 10), onTimeout: () {})
+        .whenComplete(
+            () => MeshService.instance.start(canAdvertise: _ble5)));
+    // WiFi-Direct coordinator: negotiates a fast P2P data plane over this same
+    // BLE bus (subtype 0x57) when a bulk transfer wants a BLE-adjacent peer.
+    // Android-only + self-gating (no-op where WiFi Direct is unsupported).
+    unawaited(WifiDirectCoordinator.instance.start());
+    RnsService.instance.onWantFastPath =
+        (dest) => WifiDirectCoordinator.instance.ensureFastPath(dest);
+  }
+
+  /// Ask the controller whether it does extended advertising and, the first
+  /// time it says yes, wire the bus. Runs once from [_initBle5]; runs again
+  /// from [_supportWatchdog] while the answer is still unknown.
+  Future<void> _probeBle5() async {
     try {
       _ble5 = await Ble5Bus.instance.supported();
     } catch (_) {
       _ble5 = false;
     }
-    if (!_ble5Probe.isCompleted) _ble5Probe.complete();
     if (_ble5 && !_ble5Wired) {
       _ble5Wired = true;
       // Surface scan self-healing events in the app log (the bus watchdog
@@ -608,28 +640,75 @@ class BleService {
       _dbg('BLE5 broadcast + native GATT enabled');
       _armGattEndpoint();
     }
-    // Street-mesh node (docs/mesh.md): rides the same BLE5 bus on its own
-    // subtype. Non-BLE5 devices still start it as a scan-only leaf so the
-    // Bluetooth wapp has a live (if empty) registry + self status.
-    //
-    // WAIT FOR THE PROBE FIRST. `_ble5` is answered asynchronously by
-    // `_initBle5`, and starting before it lands passes `canAdvertise: false` —
-    // which made the mesh a scan-only leaf for the WHOLE session, on a device
-    // whose radio was perfectly able to transmit. Seen on C61 after a boot:
-    // `advertising False, xprsSent 1`, no beacon for anyone to hear, while the
-    // native layer was creating advertising sets and RNS traffic flowed over
-    // the same bus. Nothing raised it afterwards, so the device stayed mute
-    // until it was restarted and won the race by luck.
-    unawaited(_ble5Probe.future
-        .timeout(const Duration(seconds: 10), onTimeout: () {})
-        .whenComplete(
-            () => MeshService.instance.start(canAdvertise: _ble5)));
-    // WiFi-Direct coordinator: negotiates a fast P2P data plane over this same
-    // BLE bus (subtype 0x57) when a bulk transfer wants a BLE-adjacent peer.
-    // Android-only + self-gating (no-op where WiFi Direct is unsupported).
-    unawaited(WifiDirectCoordinator.instance.start());
-    RnsService.instance.onWantFastPath =
-        (dest) => WifiDirectCoordinator.instance.ensureFastPath(dest);
+  }
+
+  final RadioEnvironment _env = RadioEnvironment();
+  int _lastEnvProbeMs = 0;
+  bool _envProbing = false;
+
+  /// The two switches outside the app that make this phone deaf or mute, read
+  /// every 30 s off the heartbeat (two platform-channel round trips, so not
+  /// every tick) and said to the person ONCE when one goes off. The intro
+  /// checks both only on the way in; a Location switch turned off afterwards,
+  /// or Bluetooth switched on after the app started, left a phone that heard
+  /// and said nothing while every screen called it healthy -- which is what a
+  /// first-run user next to a working phone saw (2026-10-24). The app cannot
+  /// flip either switch; it can stop being silent about them.
+  void _environmentWatchdog() {
+    if (!Platform.isAndroid || !_ble5Checked || _envProbing) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastEnvProbeMs < 30000) return;
+    _lastEnvProbeMs = now;
+    _envProbing = true;
+    unawaited(_probeEnvironment().whenComplete(() => _envProbing = false));
+  }
+
+  Future<void> _probeEnvironment() async {
+    final location =
+        await AndroidPermissionsService.instance.locationServicesState();
+    final bluetooth = await Ble5Bus.instance.adapterOn();
+    for (final off in _env.note(location: location, bluetooth: bluetooth)) {
+      // Logged in English (a diagnostic), shown in the person's language.
+      LogService.instance.add('BLE5: $off is off — telling the person once');
+      final title = tr('radio.$off.off');
+      final body = tr('radio.$off.off.body');
+      NotificationService.instance.show(XprsNotification(
+        level: NotificationLevel.warning,
+        title: title,
+        body: body,
+        source: 'host:ble',
+        tag: 'radio:$off',
+        scope: NotificationScope.both,
+      ));
+    }
+  }
+
+  int _lastSupportProbeMs = 0;
+
+  /// The probe ran while Bluetooth was off, so it could not answer: Android
+  /// says "no" to every LE capability question in that state, and the old code
+  /// took that "no" as the chip's verdict for the life of the process. The
+  /// permissions intro never asks for Bluetooth to be ON, so a first-run user
+  /// who switched it on after the app had started got exactly that: a phone
+  /// that heard everyone and was heard by nobody, with `/api/status` calling
+  /// it a scan-only leaf and nothing saying why. Ask again every 10 s off the
+  /// heartbeat (a platform-channel round trip, so not every tick) and, the
+  /// moment it answers yes, bring up what the first probe would have.
+  void _supportWatchdog() {
+    if (_ble5 || !_ble5Checked || Ble5Bus.instance.supportKnown) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastSupportProbeMs < 10000) return;
+    _lastSupportProbeMs = now;
+    unawaited(_probeBle5().then((_) {
+      if (!_ble5) return;
+      LogService.instance.add(
+          'BLE5: Bluetooth is on and the controller does extended advertising '
+          '— leaving scan-only mode');
+      unawaited(Ble5Bus.instance.startScan());
+      // Raises a node already running under its callsign; one still waiting
+      // for a callsign remembers the wish (MeshService.start).
+      unawaited(MeshService.instance.start(canAdvertise: true));
+    }));
   }
 
   // ── Is this radio actually transmitting and hearing? ──────────────────────
@@ -1003,6 +1082,8 @@ class BleService {
   void _onServiceTick() {
     _lastServiceTickMs = DateTime.now().millisecondsSinceEpoch;
     _bcastTick();
+    _supportWatchdog();
+    _environmentWatchdog();
     _scanWatchdog();
     _gattEndpointWatchdog();
     _refreshRadioSnapshot();
@@ -1035,6 +1116,8 @@ class BleService {
     final age = DateTime.now().millisecondsSinceEpoch - _lastServiceTickMs;
     if (_lastServiceTickMs != 0 && age < 6000) return;
     _bcastTick();
+    _supportWatchdog();
+    _environmentWatchdog();
     _scanWatchdog();
     _gattEndpointWatchdog();
     _refreshRadioSnapshot();
@@ -1435,6 +1518,16 @@ class BleService {
   Map<String, dynamic> gattStatus() => {
         'autoPair': PreferencesService.instanceSync?.bleAutoPair ?? true,
         'ble5': _ble5,
+        // `ble5: false` has two readings and they call for different fixes:
+        // a chip without extended advertising (nothing to do) and a probe made
+        // with Bluetooth off (switch it on; the watchdog picks it up).
+        'ble5Support': Ble5Bus.instance.supportKnown
+            ? (_ble5 ? 'yes' : 'no')
+            : 'unknown (Bluetooth was off when asked)',
+        // The two switches outside the app, as last read by the environment
+        // watchdog (null until it has run). Either one off is a deaf phone.
+        'locationServicesOn': _env.locationOn,
+        'adapterOn': _env.bluetoothOn,
         'native': _ble5,
         'clientLinkUp': _ngClientUp || (_gatt?.isConnected ?? false),
         'clientPeer': _ngClientPeer ?? _gatt?.peerId,

@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "language": "English",
+    "reviewed": true
+  },
+  "functionalities.hal.log": "Logging",
+  "functionalities.hal.time": "Time functions",
+  "functionalities.hal.yield": "Cooperative multitasking",
+  "functionalities.hal.platform": "Platform identification",
+  "functionalities.hal.heap": "Heap status",
+  "functionalities.hal.kv": "Key-value storage (scoped per module)",
+  "functionalities.hal.i18n": "Internationalization",
+  "functionalities.hal.file": "File I/O (scoped per module)",
+  "functionalities.hal.socket": "Raw TCP sockets (async, host network)",
+  "functionalities.hal.sqlite": "SQLite databases (scoped per module)",
+  "functionalities.hal.node": "The directory role: what this device answers for, and at whose invitation",
+  "functionalities.hal.archive": "The Archiver role: storage volunteered for other people, and what is on it",
+  "functionalities.hal.xprs": "What this device has heard on the air: XPRS stations and packets",
+  "functionalities.hal.flash": "Flash a board plugged in over USB with a published firmware",
+  "functionalities.hal.relay": "NOSTR-relay store-and-forward DM backup (kind-4 over Reticulum)",
+  "functionalities.hal.nostr": "Transport-abstract NOSTR client (wss:// internet + rns:// Reticulum + local device)",
+  "functionalities.hal.lib": "Cross-module library calls",
+  "functionalities.hal.display": "Display/screen output",
+  "functionalities.hal.gpio": "GPIO pins (ESP32 only)"
+}

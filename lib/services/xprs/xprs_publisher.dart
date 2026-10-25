@@ -17,6 +17,7 @@
 /// transmit unsigned, which the spec permits and the log states.
 library;
 
+import 'xprs_self.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -1061,10 +1062,48 @@ class XprsPublisher {
     // station whose every other packet said CT1ABC, so no peer could check a
     // single signature of ours and the licensed callsign was bound to
     // nothing.
-    final call = (profile?.wireCallsign ?? '').trim().toUpperCase();
+    //
+    // And EVERY issued callsign the operator holds, not only the active one:
+    // a conversation may keep another (XprsSelf), and a peer can check its
+    // signatures only against a binding it has heard. One packet per name,
+    // each in its own rotation slot -- one shared slot would leave only the
+    // last of them on the air.
+    final active = (profile?.wireCallsign ?? '').trim().toUpperCase();
     final npub = (profile?.npub ?? '').trim();
-    if (call.isEmpty || !npub.startsWith('npub1')) return const {};
+    if (active.isEmpty || !npub.startsWith('npub1')) return const {};
+    final names = <String>[
+      active,
+      for (final c in profile!.heldLicences)
+        if (c != active) c,
+    ];
+    final report = <String, String>{};
+    for (final call in names) {
+      report.addAll(await _publishIdentityAs(call, npub,
+          slot: call == active ? 'identity' : 'identity:$call'));
+    }
+    return report;
+  }
 
+  /// Leave this station's signed key binding with its archivers (12.12.1:
+  /// an identity announcement is one of the two lanes a shared transport is
+  /// sure to carry, and the deposit is the addressed form of it). Without it
+  /// an archiver that never shared a radio with us holds our `hears:` claim
+  /// as a signature it cannot check, which 12.9.4 says feeds nothing.
+  Future<void> depositIdentity() async {
+    final profile = ProfileService.instance.activeProfile;
+    final call = (profile?.wireCallsign ?? '').trim();
+    final npub = (profile?.npub ?? '').trim();
+    final d = xprsProfileScalar();
+    if (call.isEmpty || npub.isEmpty || d == null) return;
+    var p = XprsPacket.parse('t:identity f:$call ts:${xprsNowTs()} k:$npub');
+    if (p == null) return;
+    p = xprsSign(p, d);
+    if (!p.fits) return;
+    depositArchivers([p.encode()], what: 'identity');
+  }
+
+  Future<Map<String, String>> _publishIdentityAs(String call, String npub,
+      {required String slot}) async {
     final now = DateTime.now().toUtc();
     String two(int n) => n.toString().padLeft(2, '0');
     final ts = '${now.year}-${two(now.month)}-${two(now.day)}_'
@@ -1083,7 +1122,7 @@ class XprsPublisher {
     if (!p.fits) return const {};
     final wire = p.encode();
 
-    final air = await _fanOut([wire], slot: 'identity');
+    final air = await _fanOut([wire], slot: slot);
     final report = air.report;
     final carriedBy = air.carriedBy;
     // 'none' rather than skipping: a period where the identity reached nobody
@@ -1311,7 +1350,10 @@ class XprsPublisher {
     if (!verbatim &&
         !datagram &&
         call.isNotEmpty &&
-        from.split('-').first == call.toUpperCase().split('-').first &&
+        // Any of our names, not only the active one: a conversation keeps the
+        // issued callsign it began under (XprsSelf), and a 1:1 from a name
+        // that is not the active one went out unsigned and failed at the peer.
+        XprsSelf.instance.isMine(from) &&
         !p.has('sig')) {
       final d = xprsProfileScalar();
       if (d != null) p = xprsSign(p, d);

@@ -19,6 +19,8 @@ enum _UiDragKind { palette, move }
 /// left side of the WYSIWYG editor. The template map is deep-cloned
 /// at drop time so every insertion gets its own copy.
 class _UiPaletteEntry {
+  /// Translation keys (editor.palette.*), resolved where the tile is drawn
+  /// so the catalogue stays const.
   final String label;
   final String? subLabel;
   final IconData icon;
@@ -135,8 +137,8 @@ extension _WappEditor on _WappPageState {
       _logLine('compile failed: ${result.error}');
       NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
-        title: 'Compile failed',
-        body: result.error ?? 'see log view for details',
+        title: tr('editor.compile.failed'),
+        body: result.error ?? tr('editor.see_log'),
         source: 'host:app-creator',
       ));
       return;
@@ -150,9 +152,12 @@ extension _WappEditor on _WappPageState {
         'compile ok: ${bytes.length} bytes in ${result.durationMs}ms');
     NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.success,
-      title: 'Compile succeeded',
-      body:
-          '${bytes.length} bytes, ${result.durationMs}ms via ${WappCompilerService.instance.backend.name}',
+      title: tr('editor.compile.ok'),
+      body: tr('editor.compile.ok.body', {
+        'bytes': bytes.length,
+        'ms': result.durationMs,
+        'backend': WappCompilerService.instance.backend.name
+      }),
       source: 'host:app-creator',
     ));
   }
@@ -262,8 +267,8 @@ extension _WappEditor on _WappPageState {
       _logLine('install failed: ${result.error}');
       NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
-        title: 'Install failed',
-        body: result.error ?? 'see log view',
+        title: tr('editor.install.failed'),
+        body: result.error ?? tr('editor.see_log'),
         source: 'host:app-creator',
       ));
       return;
@@ -282,9 +287,9 @@ extension _WappEditor on _WappPageState {
     _logLine('install ok: $id');
     NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.success,
-      title: 'Installed',
-      body: (title.isNotEmpty ? title : folderName) +
-          ' — back to the launcher to see it on the grid.',
+      title: tr('editor.install.ok'),
+      body: tr('editor.install.ok.body',
+          {'name': title.isNotEmpty ? title : folderName}),
       source: 'host:app-creator',
     ));
     // Refresh the Projects tab so a freshly installed wapp shows up
@@ -317,8 +322,8 @@ extension _WappEditor on _WappPageState {
       _logLine('(load) missing or invalid manifest.json at ${entry.dirPath}');
       NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
-        title: 'Load failed',
-        body: 'manifest.json not found at ${entry.dirPath}',
+        title: tr('editor.load.failed'),
+        body: tr('editor.manifest_missing', {'path': entry.dirPath}),
         source: 'host:app-creator',
       ));
       return;
@@ -423,10 +428,10 @@ extension _WappEditor on _WappPageState {
     }
     NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.success,
-      title: 'Loaded ${entry.folder}',
+      title: tr('editor.load.ok', {'folder': entry.folder}),
       body: entry.isBuiltIn
-          ? 'Built-in wapp — installing will create a user fork at apps/${entry.folder}.'
-          : (title.isNotEmpty ? title : '(no title in manifest)'),
+          ? tr('editor.load.builtin', {'folder': entry.folder})
+          : (title.isNotEmpty ? title : tr('editor.load.no_title')),
       source: 'host:app-creator',
     ));
     if (mounted) setState(() {});
@@ -467,8 +472,8 @@ extension _WappEditor on _WappPageState {
     _logLine('── new project — fields reset to defaults ──');
     NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
-      title: 'New wapp',
-      body: 'Fields reset. Edit Settings, then Compile + Install.',
+      title: tr('editor.new.title'),
+      body: tr('editor.new.body'),
       source: 'host:app-creator',
     ));
     if (mounted) setState(() {});
@@ -596,8 +601,8 @@ extension _WappEditor on _WappPageState {
     if (manifest == null) {
       NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
-        title: 'Edit failed',
-        body: 'manifest.json not found at $dir',
+        title: tr('editor.edit.failed'),
+        body: tr('editor.manifest_missing', {'path': dir}),
         source: 'host:app-creator',
       ));
       return;
@@ -627,8 +632,8 @@ extension _WappEditor on _WappPageState {
     if (!await wappPackageStorage(appCreatorDir).exists('manifest.json')) {
       NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
-        title: 'Editor not available',
-        body: 'The built-in wapp editor failed to install. Restart XPRS.',
+        title: tr('editor.unavailable'),
+        body: tr('editor.unavailable.body'),
         source: 'host:launcher',
       ));
       return;
@@ -638,6 +643,7 @@ extension _WappEditor on _WappPageState {
       MaterialPageRoute(
         builder: (_) => WappPage(
           wappDir: appCreatorDir,
+          // arch-ignore: no-raw-ui-string the wapp's proper name, not a sentence
           title: 'App Creator',
           editWappDir: widget.wappDir,
         ),
@@ -701,7 +707,7 @@ extension _WappEditor on _WappPageState {
                   _enterEditorMode();
                 },
                 icon: const Icon(Icons.add, size: 18),
-                label: const Text('Create new wapp'),
+                label: Text(tr('editor.projects.create')),
               ),
               const Spacer(),
               IconButton(
@@ -713,7 +719,7 @@ extension _WappEditor on _WappPageState {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.refresh),
-                tooltip: 'Refresh',
+                tooltip: tr('common.refresh'),
               ),
             ],
           ),
@@ -724,10 +730,9 @@ extension _WappEditor on _WappPageState {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      _projectsLoading
-                          ? 'Scanning installed wapps…'
-                          : 'No user-installed wapps yet.\n'
-                              'Click "Create new wapp" to start one.',
+                      tr(_projectsLoading
+                          ? 'editor.projects.scanning'
+                          : 'editor.projects.empty'),
                       textAlign: TextAlign.center,
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),
@@ -897,7 +902,7 @@ extension _WappEditor on _WappPageState {
                       _enterEditorMode();
                     },
                     icon: const Icon(Icons.edit, size: 16),
-                    label: const Text('Edit'),
+                    label: Text(tr('common.edit')),
                     style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact),
                   ),
@@ -906,7 +911,7 @@ extension _WappEditor on _WappPageState {
                       onPressed: () => _deleteProject(entry),
                       icon: Icon(Icons.delete_outline,
                           size: 16, color: cs.error),
-                      label: Text('Delete',
+                      label: Text(tr('common.delete'),
                           style: TextStyle(color: cs.error)),
                       style: TextButton.styleFrom(
                           visualDensity: VisualDensity.compact),
@@ -965,7 +970,7 @@ extension _WappEditor on _WappPageState {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-            child: Text('FILES',
+            child: Text(tr('editor.files').toUpperCase(),
                 style: TextStyle(
                     fontSize: 11,
                     letterSpacing: 1.2,
@@ -1007,13 +1012,13 @@ extension _WappEditor on _WappPageState {
                     onPressed: () => _handleCompile(
                         {'source': (_fieldValues['source'] as String?) ?? ''}),
                     icon: const Icon(Icons.build, size: 18),
-                    label: const Text('Compile'),
+                    label: Text(tr('editor.compile')),
                   ),
                 const SizedBox(width: 8),
                 FilledButton.icon(
                   onPressed: _settingsSaveToDisk,
                   icon: const Icon(Icons.save, size: 18),
-                  label: const Text('Save'),
+                  label: Text(tr('common.save')),
                 ),
               ],
             ),
@@ -1039,7 +1044,7 @@ extension _WappEditor on _WappPageState {
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: LogViewField(
                 fieldName: 'output',
-                label: 'Output',
+                label: tr('editor.output'),
                 lines: _resolveLogBuffer('output'),
               ),
             ),
@@ -1069,8 +1074,8 @@ extension _WappEditor on _WappPageState {
       if (name.isNotEmpty) dir = installedAppsStorage().getAbsolutePath(name);
     }
     if (dir == null || dir.isEmpty) {
-      return const Center(
-        child: Text('Open or pick a project to see its tests.'),
+      return Center(
+        child: Text(tr('editor.tests.no_project')),
       );
     }
     return _TestsPanel(key: ValueKey('tests-$dir'), wappDir: dir);
@@ -1110,9 +1115,11 @@ extension _WappEditor on _WappPageState {
     // Single-wapp edit (per-wapp "Edit" menu) has no Projects panel to
     // return to, so the back arrow leaves the page ("Done") and the
     // title reads "Edit — <wapp>" instead of "App Creator — <wapp>".
-    final title =
-        _singleTargetEdit ? 'Edit$titleSuffix' : '${widget.title}$titleSuffix';
-    final backTooltip = _singleTargetEdit ? 'Done' : 'Back to projects';
+    final title = _singleTargetEdit
+        ? '${tr('common.edit')}$titleSuffix'
+        : '${widget.title}$titleSuffix';
+    final backTooltip =
+        tr(_singleTargetEdit ? 'common.done' : 'editor.back_to_projects');
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -1172,16 +1179,16 @@ extension _WappEditor on _WappPageState {
       child: Row(
         children: [
           SegmentedButton<_UiEditorMode>(
-            segments: const [
+            segments: [
               ButtonSegment(
                 value: _UiEditorMode.visual,
-                icon: Icon(Icons.account_tree, size: 18),
-                label: Text('Visual'),
+                icon: const Icon(Icons.account_tree, size: 18),
+                label: Text(tr('editor.ui.visual')),
               ),
               ButtonSegment(
                 value: _UiEditorMode.code,
-                icon: Icon(Icons.code, size: 18),
-                label: Text('Code'),
+                icon: const Icon(Icons.code, size: 18),
+                label: Text(tr('editor.ui.code')),
               ),
             ],
             selected: {_uiEditorMode},
@@ -1194,7 +1201,7 @@ extension _WappEditor on _WappPageState {
             FilledButton.tonalIcon(
               onPressed: _uiNewScreen,
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('New screen'),
+              label: Text(tr('editor.ui.new_screen')),
             ),
         ],
       ),
@@ -1284,13 +1291,12 @@ extension _WappEditor on _WappPageState {
                 size: 56, color: cs.primary),
             const SizedBox(height: 12),
             Text(
-              'No screens yet',
+              tr('editor.ui.no_screens'),
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 6),
             Text(
-              'Click "New screen" above to add a blank screen and '
-              'start building the UI.',
+              tr('editor.ui.no_screens.help'),
               textAlign: TextAlign.center,
               style: TextStyle(color: cs.onSurfaceVariant),
             ),
@@ -1385,7 +1391,7 @@ extension _WappEditor on _WappPageState {
           ),
           const SizedBox(height: 6),
           Text(
-            'Drag onto the canvas',
+            tr('editor.ui.drag_hint'),
             style: TextStyle(
               fontSize: 11,
               color: cs.onSurfaceVariant,
@@ -1420,7 +1426,7 @@ extension _WappEditor on _WappPageState {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  entry.label,
+                  tr(entry.label),
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -1429,7 +1435,7 @@ extension _WappEditor on _WappPageState {
                 if (entry.subLabel != null) ...[
                   const SizedBox(height: 1),
                   Text(
-                    entry.subLabel!,
+                    tr(entry.subLabel!),
                     style: TextStyle(
                       fontSize: 10,
                       color: cs.onSurfaceVariant,
@@ -1702,7 +1708,7 @@ extension _WappEditor on _WappPageState {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
-                'Drop blocks from the palette here',
+                tr('editor.ui.drop_blocks'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 11,
@@ -1747,7 +1753,7 @@ extension _WappEditor on _WappPageState {
           alignment: Alignment.center,
           child: active
               ? Text(
-                  'Drop here',
+                  tr('editor.ui.drop_here'),
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -1909,7 +1915,7 @@ extension _WappEditor on _WappPageState {
                 Border.all(color: cs.outlineVariant.withAlpha(100)),
           ),
           child: Text(
-            label.isEmpty ? 'Log output' : label,
+            label.isEmpty ? tr('editor.ui.log_output') : label,
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
@@ -2052,7 +2058,7 @@ extension _WappEditor on _WappPageState {
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Text(
-              'Click a block on the canvas to edit its properties.',
+              tr('editor.ui.inspector.hint'),
               textAlign: TextAlign.center,
               style: TextStyle(color: cs.onSurfaceVariant),
             ),
@@ -2067,7 +2073,7 @@ extension _WappEditor on _WappPageState {
         color: cs.surfaceContainerLow,
         child: Center(
           child: Text(
-            'Selection is stale — pick another block.',
+            tr('editor.ui.inspector.stale'),
             style: TextStyle(color: cs.onSurfaceVariant),
           ),
         ),
@@ -2101,7 +2107,7 @@ extension _WappEditor on _WappPageState {
                 IconButton(
                   onPressed: _uiDeleteSelected,
                   icon: Icon(Icons.delete_outline, color: cs.error),
-                  tooltip: 'Delete',
+                  tooltip: tr('common.delete'),
                   visualDensity: VisualDensity.compact,
                 ),
             ],
@@ -2119,7 +2125,7 @@ extension _WappEditor on _WappPageState {
                 OutlinedButton.icon(
                   onPressed: () => _uiMoveSelected(-1),
                   icon: const Icon(Icons.arrow_upward, size: 14),
-                  label: const Text('Up'),
+                  label: Text(tr('editor.ui.up')),
                   style: OutlinedButton.styleFrom(
                       visualDensity: VisualDensity.compact),
                 ),
@@ -2127,7 +2133,7 @@ extension _WappEditor on _WappPageState {
                 OutlinedButton.icon(
                   onPressed: () => _uiMoveSelected(1),
                   icon: const Icon(Icons.arrow_downward, size: 14),
-                  label: const Text('Down'),
+                  label: Text(tr('editor.ui.down')),
                   style: OutlinedButton.styleFrom(
                       visualDensity: VisualDensity.compact),
                 ),
@@ -2270,10 +2276,7 @@ extension _WappEditor on _WappPageState {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Edits are kept in memory while you type. '
-                  'Click Save to write every lang/<locale>.json '
-                  'sidecar to disk (same as clicking Install '
-                  'on the Code tab).',
+                  tr('editor.translations.note'),
                   style: TextStyle(
                     fontSize: 12,
                     color: cs.onPrimaryContainer,
@@ -2285,7 +2288,7 @@ extension _WappEditor on _WappPageState {
               FilledButton.icon(
                 onPressed: _translationsSaveToDisk,
                 icon: const Icon(Icons.save, size: 16),
-                label: const Text('Save'),
+                label: Text(tr('common.save')),
               ),
             ],
           ),
@@ -2299,7 +2302,7 @@ extension _WappEditor on _WappPageState {
               child: DropdownButtonFormField<String>(
                 initialValue: activeLocale,
                 decoration: InputDecoration(
-                  labelText: 'Locale',
+                  labelText: tr('editor.translations.locale'),
                   isDense: true,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -2310,10 +2313,7 @@ extension _WappEditor on _WappPageState {
                     DropdownMenuItem(
                       value: code,
                       child: Text(
-                        '$code  (${currentMap.length} key'
-                        '${currentMap.length == 1 ? '' : 's'})'
-                        .replaceAll(
-                            '${currentMap.length}', '${translations[code]?.length ?? 0}'),
+                        '$code  (${trn('editor.translations.keys', translations[code]?.length ?? 0)})',
                       ),
                     ),
                 ],
@@ -2327,7 +2327,7 @@ extension _WappEditor on _WappPageState {
             OutlinedButton.icon(
               onPressed: _translationsAddLocale,
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add locale'),
+              label: Text(tr('editor.translations.add_locale')),
             ),
             const SizedBox(width: 6),
             OutlinedButton.icon(
@@ -2336,7 +2336,7 @@ extension _WappEditor on _WappPageState {
                   : () => _translationsRemoveLocale(activeLocale),
               icon: Icon(Icons.delete_outline,
                   size: 16, color: cs.error),
-              label: Text('Remove',
+              label: Text(tr('common.remove'),
                   style: TextStyle(color: cs.error)),
             ),
           ],
@@ -2349,13 +2349,13 @@ extension _WappEditor on _WappPageState {
             FilledButton.tonalIcon(
               onPressed: () => _translationsExtractKeys(activeLocale),
               icon: const Icon(Icons.auto_fix_high, size: 16),
-              label: const Text('Extract @keys from UI'),
+              label: Text(tr('editor.translations.extract')),
             ),
             const SizedBox(width: 8),
             OutlinedButton.icon(
               onPressed: () => _translationsAddKey(activeLocale),
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add key'),
+              label: Text(tr('editor.translations.add_key')),
             ),
           ],
         ),
@@ -2376,9 +2376,7 @@ extension _WappEditor on _WappPageState {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'No keys yet. Click "Extract @keys from UI" to '
-                    'scan the UI tab for references, or "Add key" '
-                    'to create one manually.',
+                    tr('editor.translations.empty'),
                     style: TextStyle(color: cs.onSurfaceVariant),
                   ),
                 ),
@@ -2427,7 +2425,7 @@ extension _WappEditor on _WappPageState {
                 IconButton(
                   onPressed: () => _translationsRemoveKey(locale, key),
                   icon: Icon(Icons.close, size: 16, color: cs.error),
-                  tooltip: 'Remove key',
+                  tooltip: tr('editor.translations.remove_key'),
                   visualDensity: VisualDensity.compact,
                 ),
               ],
@@ -2652,8 +2650,7 @@ extension _WappEditor on _WappPageState {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Changes are kept in memory while you edit. '
-                  'Click Save to write them to disk.',
+                  tr('editor.settings.note'),
                   style: TextStyle(
                     fontSize: 12,
                     color: cs.onPrimaryContainer,
@@ -2665,7 +2662,7 @@ extension _WappEditor on _WappPageState {
               FilledButton.icon(
                 onPressed: _settingsSaveToDisk,
                 icon: const Icon(Icons.save, size: 16),
-                label: const Text('Save'),
+                label: Text(tr('common.save')),
               ),
             ],
           ),
@@ -2703,7 +2700,7 @@ extension _WappEditor on _WappPageState {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: Text(
-                  'Where this wapp appears on the launcher.',
+                  tr('editor.settings.kind.help'),
                   style: TextStyle(
                     fontSize: 12,
                     color: cs.onSurfaceVariant,
@@ -2717,9 +2714,9 @@ extension _WappEditor on _WappPageState {
                   spacing: 6,
                   runSpacing: 4,
                   children: {
-                    'app': 'App (main grid)',
-                    'system': 'System',
-                    'addon': 'Addon',
+                    'app': tr('editor.settings.kind.app'),
+                    'system': tr('editor.settings.kind.system'),
+                    'addon': tr('editor.settings.kind.addon'),
                   }.entries.map((e) {
                     final selected =
                         (_fieldValues['wapp_kind'] ?? 'app') == e.key;
@@ -2743,9 +2740,8 @@ extension _WappEditor on _WappPageState {
                 child: TextField(
                   controller: _tickIntervalController,
                   decoration: InputDecoration(
-                    labelText: 'Tick interval (ms)',
-                    helperText:
-                        'How often module_tick() runs. 0 to disable.',
+                    labelText: tr('editor.settings.tick'),
+                    helperText: tr('editor.settings.tick.help'),
                     isDense: true,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -2762,7 +2758,7 @@ extension _WappEditor on _WappPageState {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                 child: Text(
-                  'HAL dependencies',
+                  tr('editor.settings.hal'),
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -2771,8 +2767,7 @@ extension _WappEditor on _WappPageState {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: Text(
-                  'Select which HAL capabilities this wapp needs. '
-                  'The launcher checks these at load time.',
+                  tr('editor.settings.hal.help'),
                   style: TextStyle(
                     fontSize: 12,
                     color: cs.onSurfaceVariant,
@@ -2813,7 +2808,7 @@ extension _WappEditor on _WappPageState {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                 child: Text(
-                  'Provides functionalities',
+                  tr('editor.settings.provides'),
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -2822,7 +2817,7 @@ extension _WappEditor on _WappPageState {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: Text(
-                  'Functionalities this wapp provides for other wapps to use.',
+                  tr('editor.settings.provides.help'),
                   style: TextStyle(
                     fontSize: 12,
                     color: cs.onSurfaceVariant,
@@ -2848,7 +2843,7 @@ extension _WappEditor on _WappPageState {
                       ),
                     ActionChip(
                       avatar: const Icon(Icons.add, size: 16),
-                      label: const Text('Add'),
+                      label: Text(tr('common.add')),
                       onPressed: () => _addProvidesFunctionality(provides),
                     ),
                   ],
@@ -2879,7 +2874,7 @@ extension _WappEditor on _WappPageState {
               Icon(Icons.verified_user, color: cs.primary, size: 18),
               const SizedBox(width: 8),
               Text(
-                'Signing identity',
+                tr('editor.signing'),
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -2891,14 +2886,14 @@ extension _WappEditor on _WappPageState {
               if (npub.isNotEmpty)
                 IconButton(
                   icon: const Icon(Icons.copy, size: 16),
-                  tooltip: 'Copy npub',
+                  tooltip: tr('editor.signing.copy_npub'),
                   visualDensity: VisualDensity.compact,
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: npub));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('npub copied'),
-                        duration: Duration(seconds: 2),
+                      SnackBar(
+                        content: Text(tr('editor.signing.npub_copied')),
+                        duration: const Duration(seconds: 2),
                       ),
                     );
                   },
@@ -2913,7 +2908,7 @@ extension _WappEditor on _WappPageState {
               isDense: true,
               isExpanded: true,
               decoration: InputDecoration(
-                labelText: 'Active profile',
+                labelText: tr('editor.signing.active_profile'),
                 isDense: true,
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -2950,7 +2945,7 @@ extension _WappEditor on _WappPageState {
             )
           else
             Text(
-              'No profile — wapps will not be signed',
+              tr('editor.signing.no_profile'),
               style: TextStyle(fontSize: 12, color: cs.error),
             ),
           const SizedBox(height: 6),
@@ -2959,7 +2954,7 @@ extension _WappEditor on _WappPageState {
             children: [
               TextButton.icon(
                 icon: const Icon(Icons.add, size: 16),
-                label: const Text('New identity'),
+                label: Text(tr('editor.signing.new_identity')),
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   textStyle: const TextStyle(fontSize: 12),
@@ -2970,8 +2965,8 @@ extension _WappEditor on _WappPageState {
                   if (!mounted) return;
                   setState(() {});
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(
-                        'New identity created: ${preview.callsign}'),
+                    content: Text(tr('editor.signing.created',
+                        {'callsign': preview.callsign})),
                     duration: const Duration(seconds: 3),
                   ));
                 },
@@ -2979,7 +2974,7 @@ extension _WappEditor on _WappPageState {
               const SizedBox(width: 8),
               TextButton.icon(
                 icon: const Icon(Icons.key, size: 16),
-                label: const Text('Import nsec'),
+                label: Text(tr('editor.signing.import_nsec')),
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   textStyle: const TextStyle(fontSize: 12),
@@ -3002,8 +2997,8 @@ extension _WappEditor on _WappPageState {
     if (id.isEmpty) {
       NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
-        title: 'Cannot save',
-        body: 'Open or create a project first (ID is empty).',
+        title: tr('editor.save.no_project'),
+        body: tr('editor.save.no_project.body'),
         source: 'host:app-creator',
       ));
       return;
@@ -3026,23 +3021,19 @@ extension _WappEditor on _WappPageState {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete ${entry.folder}?'),
-        content: Text(
-          'This will permanently delete apps/${entry.folder}/ and '
-          'everything inside it (manifest, wasm, screens). This '
-          'cannot be undone.',
-        ),
+        title: Text(tr('editor.delete.title', {'folder': entry.folder})),
+        content: Text(tr('editor.delete.body', {'folder': entry.folder})),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(tr('common.cancel')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(ctx).colorScheme.error,
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(tr('common.delete')),
           ),
         ],
       ),
@@ -3055,7 +3046,7 @@ extension _WappEditor on _WappPageState {
     } catch (e) {
       NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
-        title: 'Delete failed',
+        title: tr('editor.delete.failed'),
         body: e.toString(),
         source: 'host:app-creator',
       ));
@@ -3063,7 +3054,7 @@ extension _WappEditor on _WappPageState {
     }
     NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
-      title: 'Deleted ${entry.folder}',
+      title: tr('editor.delete.done', {'folder': entry.folder}),
       source: 'host:app-creator',
     ));
     // WappLoadedEvent doubles as "launcher, please rescan" — reuse it.
@@ -3089,8 +3080,8 @@ extension _WappEditor on _WappPageState {
   List<_UiPaletteEntry> _uiPaletteEntries() {
     return [
       const _UiPaletteEntry(
-        label: 'Screen',
-        subLabel: 'Top-level tab',
+        label: 'editor.palette.screen',
+        subLabel: 'editor.palette.screen.sub',
         icon: Icons.web,
         template: {
           r'$': 'screen',
@@ -3100,8 +3091,8 @@ extension _WappEditor on _WappPageState {
         },
       ),
       const _UiPaletteEntry(
-        label: 'Group',
-        subLabel: 'Card container',
+        label: 'editor.palette.group',
+        subLabel: 'editor.palette.group.sub',
         icon: Icons.folder_special,
         template: {
           r'$': 'group',
@@ -3111,14 +3102,14 @@ extension _WappEditor on _WappPageState {
         },
       ),
       const _UiPaletteEntry(
-        label: 'Label',
-        subLabel: 'Plain text',
+        label: 'editor.palette.label',
+        subLabel: 'editor.palette.label.sub',
         icon: Icons.label,
         template: {r'$': 'label', 'text': 'Hello world'},
       ),
       const _UiPaletteEntry(
-        label: 'Action button',
-        subLabel: 'Sends action to wapp',
+        label: 'editor.palette.action',
+        subLabel: 'editor.palette.action.sub',
         icon: Icons.smart_button,
         template: {
           r'$': 'action',
@@ -3128,8 +3119,8 @@ extension _WappEditor on _WappPageState {
         },
       ),
       const _UiPaletteEntry(
-        label: 'Text field',
-        subLabel: 'Single-line input',
+        label: 'editor.palette.text',
+        subLabel: 'editor.palette.text.sub',
         icon: Icons.text_fields,
         template: {
           r'$': 'field',
@@ -3140,8 +3131,8 @@ extension _WappEditor on _WappPageState {
         },
       ),
       const _UiPaletteEntry(
-        label: 'Multi-line field',
-        subLabel: 'Text area',
+        label: 'editor.palette.multiline',
+        subLabel: 'editor.palette.multiline.sub',
         icon: Icons.subject,
         template: {
           r'$': 'field',
@@ -3154,8 +3145,8 @@ extension _WappEditor on _WappPageState {
         },
       ),
       const _UiPaletteEntry(
-        label: 'Toggle',
-        subLabel: 'On / off switch',
+        label: 'editor.palette.toggle',
+        subLabel: 'editor.palette.toggle.sub',
         icon: Icons.toggle_on,
         template: {
           r'$': 'field',
@@ -3166,8 +3157,8 @@ extension _WappEditor on _WappPageState {
         },
       ),
       const _UiPaletteEntry(
-        label: 'Number',
-        subLabel: 'Integer input',
+        label: 'editor.palette.number',
+        subLabel: 'editor.palette.number.sub',
         icon: Icons.numbers,
         template: {
           r'$': 'field',
@@ -3178,8 +3169,8 @@ extension _WappEditor on _WappPageState {
         },
       ),
       const _UiPaletteEntry(
-        label: 'Code editor',
-        subLabel: 'Syntax highlighted',
+        label: 'editor.palette.code',
+        subLabel: 'editor.palette.code.sub',
         icon: Icons.code,
         template: {
           r'$': 'field',
@@ -3191,8 +3182,8 @@ extension _WappEditor on _WappPageState {
         },
       ),
       const _UiPaletteEntry(
-        label: 'Log view',
-        subLabel: 'Append-only list',
+        label: 'editor.palette.log',
+        subLabel: 'editor.palette.log.sub',
         icon: Icons.description,
         template: {
           r'$': 'field',
@@ -3202,8 +3193,8 @@ extension _WappEditor on _WappPageState {
         },
       ),
       const _UiPaletteEntry(
-        label: 'Icon picker',
-        subLabel: 'Emoji or SVG',
+        label: 'editor.palette.icon',
+        subLabel: 'editor.palette.icon.sub',
         icon: Icons.image,
         template: {
           r'$': 'field',
@@ -3244,8 +3235,8 @@ extension _WappEditor on _WappPageState {
     if (id.isEmpty) {
       NotificationService.instance.show(XprsNotification(
         level: NotificationLevel.error,
-        title: 'Cannot save translations',
-        body: 'Open or create a project first (ID is empty).',
+        title: tr('editor.translations.cannot_save'),
+        body: tr('editor.save.no_project.body'),
         source: 'host:app-creator',
       ));
       return;
@@ -3292,19 +3283,19 @@ extension _WappEditor on _WappPageState {
     final locale = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add locale'),
+        title: Text(tr('editor.translations.add_locale')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Short tag, e.g. en, pt, de, fr, pt_BR.'),
+            Text(tr('editor.translations.add_locale.help')),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
               autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Locale code',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: tr('editor.translations.locale_code'),
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
@@ -3312,12 +3303,12 @@ extension _WappEditor on _WappPageState {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(tr('common.cancel')),
           ),
           FilledButton(
             onPressed: () =>
                 Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Add'),
+            child: Text(tr('common.add')),
           ),
         ],
       ),
@@ -3347,22 +3338,19 @@ extension _WappEditor on _WappPageState {
     final key = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add translation key'),
+        title: Text(tr('editor.translations.add_key.title')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Dot-separated name like `settings.title_label`. '
-              'The UI refers to it as `@settings.title_label`.',
-            ),
+            Text(tr('editor.translations.add_key.help')),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
               autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Key',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: tr('editor.translations.key'),
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
@@ -3370,12 +3358,12 @@ extension _WappEditor on _WappPageState {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(tr('common.cancel')),
           ),
           FilledButton(
             onPressed: () =>
                 Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Add'),
+            child: Text(tr('common.add')),
           ),
         ],
       ),
@@ -3729,7 +3717,7 @@ class _TestsPanelState extends State<_TestsPanel> {
               children: [
                 Icon(Icons.terminal, size: 15, color: cs.onSurfaceVariant),
                 const SizedBox(width: 6),
-                Text('TEST LOG',
+                Text(tr('editor.tests.log').toUpperCase(),
                     style: TextStyle(
                         fontSize: 11,
                         letterSpacing: 1.1,
@@ -3739,7 +3727,7 @@ class _TestsPanelState extends State<_TestsPanel> {
                 if (_log.isNotEmpty)
                   IconButton(
                     icon: const Icon(Icons.clear_all, size: 16),
-                    tooltip: 'Clear log',
+                    tooltip: tr('editor.tests.clear_log'),
                     visualDensity: VisualDensity.compact,
                     onPressed: () => setState(() => _log.clear()),
                   ),
@@ -3750,7 +3738,7 @@ class _TestsPanelState extends State<_TestsPanel> {
             child: _log.isEmpty
                 ? Center(
                     child: Text(
-                        'Run a test to see messages and results here.',
+                        tr('editor.tests.empty'),
                         style: TextStyle(
                             color: cs.onSurfaceVariant.withAlpha(150),
                             fontSize: 12)),
@@ -3802,14 +3790,14 @@ class _TestsPanelState extends State<_TestsPanel> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.play_arrow, size: 18),
-                label: const Text('Run tests'),
+                label: Text(tr('editor.tests.run')),
               ),
               if (_cases.any((c) => c.name.startsWith('live_'))) ...[
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
                   onPressed: _running ? null : () => _run(liveOnly: true),
                   icon: const Icon(Icons.public, size: 18),
-                  label: const Text('Run live'),
+                  label: Text(tr('editor.tests.run_live')),
                 ),
               ],
             ],
@@ -3922,13 +3910,13 @@ class _TestsPanelState extends State<_TestsPanel> {
               Icon(Icons.science_outlined, size: 16, color: cs.primary),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(_selectedFile ?? 'No file',
+                child: Text(_selectedFile ?? tr('editor.tests.no_file'),
                     style: const TextStyle(fontWeight: FontWeight.w600)),
               ),
               FilledButton.icon(
                 onPressed: _selectedFile == null ? null : _saveFile,
                 icon: const Icon(Icons.save, size: 18),
-                label: const Text('Save'),
+                label: Text(tr('common.save')),
               ),
             ],
           ),
@@ -3937,7 +3925,7 @@ class _TestsPanelState extends State<_TestsPanel> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
             child: _selectedFile == null
-                ? const Center(child: Text('Select a test file'))
+                ? Center(child: Text(tr('editor.tests.select_file')))
                 : CodeEditorField(
                     key: ValueKey('testfile-$_selectedFile'),
                     fieldName: 'testfile',

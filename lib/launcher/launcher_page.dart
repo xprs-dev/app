@@ -394,6 +394,7 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
       MaterialPageRoute(
         builder: (_) => WappPage(
           wappDir: editorWappDirPath(),
+          // arch-ignore: no-raw-ui-string the wapp's proper name, not a sentence
           title: 'App Creator',
           editWappDir: wapp.dirPath,
         ),
@@ -436,29 +437,25 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
     return showDialog<_DepAction>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('${manifest.title} needs more'),
+        title: Text(tr('launcher.deps.title', {'wapp': manifest.title})),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'This wapp depends on capabilities that no installed wapp '
-              'provides. You can open it anyway - the missing pieces may '
-              'simply go unused.',
-            ),
-            section('Functionalities', unmet.functionalities),
-            section('Libraries', unmet.libraries),
-            section('Runtime (HAL)', unmet.hal),
+            Text(tr('launcher.deps.body')),
+            section(tr('launcher.deps.functionalities'), unmet.functionalities),
+            section(tr('launcher.deps.libraries'), unmet.libraries),
+            section(tr('launcher.deps.runtime'), unmet.hal),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, _DepAction.cancel),
-            child: const Text('Cancel'),
+            child: Text(tr('common.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, _DepAction.openAnyway),
-            child: const Text('Open anyway'),
+            child: Text(tr('launcher.deps.open_anyway')),
           ),
         ],
       ),
@@ -501,8 +498,9 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
     final entries = _launcherEntries();
 
     if (entries.isEmpty) {
-      return const Center(
-        child: Text('No wapps found', style: TextStyle(color: Colors.grey)),
+      return Center(
+        child: Text(tr('launcher.empty'),
+            style: const TextStyle(color: Colors.grey)),
       );
     }
 
@@ -552,17 +550,17 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
         ),
       if (systemWapps.isNotEmpty)
         _LauncherEntry(
-          name: 'System',
+          name: tr('launcher.folder.system'),
           icon: Icons.settings_applications,
           color: const Color(0xFF37474F),
-          onTap: () => _openFolder('System', systemWapps),
+          onTap: () => _openFolder(tr('launcher.folder.system'), systemWapps),
         ),
       if (addonWapps.isNotEmpty)
         _LauncherEntry(
-          name: 'Addons',
+          name: tr('launcher.folder.addons'),
           icon: Icons.extension,
           color: const Color(0xFF4E342E),
-          onTap: () => _openFolder('Addons', addonWapps),
+          onTap: () => _openFolder(tr('launcher.folder.addons'), addonWapps),
         ),
     ];
   }
@@ -755,14 +753,14 @@ class _ProfileSwitcherState extends State<_ProfileSwitcher> {
     // callsign — never "CALLSIGN (CALLSIGN)" (displayName falls back to the
     // callsign when there's no nickname).
     final label = active == null
-        ? 'No profile'
+        ? tr('launcher.profile.none')
         : (active.nickname.trim().isNotEmpty
               ? '${active.nickname.trim()} (${active.wireCallsign})'
               : active.wireCallsign);
     final cs = Theme.of(context).colorScheme;
 
     return PopupMenuButton<String>(
-      tooltip: 'Switch profile',
+      tooltip: tr('launcher.profile.switch'),
       offset: const Offset(0, 40),
       onSelected: (value) async {
         if (value == '__add__') {
@@ -822,23 +820,23 @@ class _ProfileSwitcherState extends State<_ProfileSwitcher> {
           ),
         const PopupMenuDivider(),
         if (active != null)
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: '__edit__',
             child: Row(
               children: [
-                Icon(Icons.edit, size: 18),
-                SizedBox(width: 8),
-                Text('Edit profile…'),
+                const Icon(Icons.edit, size: 18),
+                const SizedBox(width: 8),
+                Text(tr('launcher.profile.edit')),
               ],
             ),
           ),
-        const PopupMenuItem<String>(
+        PopupMenuItem<String>(
           value: '__add__',
           child: Row(
             children: [
-              Icon(Icons.person_add, size: 18),
-              SizedBox(width: 8),
-              Text('Add profile…'),
+              const Icon(Icons.person_add, size: 18),
+              const SizedBox(width: 8),
+              Text(tr('launcher.profile.add')),
             ],
           ),
         ),
@@ -908,26 +906,26 @@ class _AppIcon extends StatelessWidget {
         Offset.zero & overlay.size,
       ),
       items: [
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'open',
           child: Row(
             children: [
-              Icon(Icons.open_in_new, size: 18),
-              SizedBox(width: 10),
-              Text('Open'),
+              const Icon(Icons.open_in_new, size: 18),
+              const SizedBox(width: 10),
+              Text(tr('common.open')),
             ],
           ),
         ),
         if (onEdit != null)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'edit',
             child: Row(
               children: [
-                Icon(Icons.edit, size: 18),
-                SizedBox(width: 10),
+                const Icon(Icons.edit, size: 18),
+                const SizedBox(width: 10),
                 // Same action as the wapp page's overflow menu, so the same
                 // words: this opens the wapp's SOURCE, not anything inside it.
-                Text('Edit wapp'),
+                Text(tr('launcher.menu.edit_wapp')),
               ],
             ),
           ),
@@ -936,13 +934,13 @@ class _AppIcon extends StatelessWidget {
         // simply decided they are done with still needs a way out.
         if (wappId != null &&
             WappUnreadService.instance.totalFor(wappId!) > 0)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'markread',
             child: Row(
               children: [
-                Icon(Icons.mark_email_read_outlined, size: 18),
-                SizedBox(width: 10),
-                Text('Mark all read'),
+                const Icon(Icons.mark_email_read_outlined, size: 18),
+                const SizedBox(width: 10),
+                Text(tr('launcher.menu.mark_all_read')),
               ],
             ),
           ),
@@ -957,7 +955,7 @@ class _AppIcon extends StatelessWidget {
                   size: 18,
                 ),
                 const SizedBox(width: 10),
-                const Text('Run in background'),
+                Text(tr('launcher.menu.run_background')),
               ],
             ),
           ),
@@ -1116,9 +1114,9 @@ class _AppIcon extends StatelessWidget {
                               width: 1.5,
                             ),
                           ),
-                          child: const Text(
-                            'NEW',
-                            style: TextStyle(
+                          child: Text(
+                            tr('launcher.badge.new'),
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 8,
                               fontWeight: FontWeight.bold,

@@ -36,6 +36,7 @@ if ! command -v dart >/dev/null 2>&1; then
 fi
 cd "$root"
 dart tool/arch_guard.dart
+dart tool/i18n_check.dart --quiet
 EOF
 chmod +x "$hook"
 

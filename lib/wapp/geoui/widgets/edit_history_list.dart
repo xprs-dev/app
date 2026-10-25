@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../../services/i18n/core_i18n.dart';
 
 /// The versions of one message or post, oldest first, back to the original
 /// (XPRS.md 7.8.1). Rebuilds when [versions] changes, so a withdrawal that
@@ -39,7 +40,7 @@ class EditHistoryList extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${i == 0 && list[i]['role'] == 'author' ? 'Original' : (i == list.length - 1 ? 'Current' : 'Edit')}'
+                        '${i == 0 && list[i]['role'] == 'author' ? tr('geoui.history.original') : (i == list.length - 1 ? tr('geoui.history.current') : tr('geoui.history.edit'))}'
                         ' \u00b7 ${list[i]['date'] ?? ''} ${list[i]['time'] ?? ''}'
                         ' \u00b7 ${list[i]['by'] ?? ''}'
                         '${list[i]['role'] == 'author' || list[i]['role'] == null ? '' : ' (${list[i]['role']})'}',

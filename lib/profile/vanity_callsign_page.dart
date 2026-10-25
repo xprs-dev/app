@@ -26,6 +26,7 @@ import 'package:reticulum/reticulum.dart' show NostrCrypto;
 
 import 'iwi_profile.dart';
 import '../util/nostr_key_generator.dart';
+import '../services/i18n/core_i18n.dart';
 
 /// The only characters a callsign can ever contain.
 ///
@@ -72,10 +73,10 @@ class CallsignLengthFacts {
 
   /// How long grinding a matching key takes, in words rather than keypairs.
   String get forgeEffort => switch (length) {
-        2 => 'in under a second',
-        3 => 'in a few seconds',
-        4 => 'in a few minutes',
-        _ => 'in hours',
+        2 => tr('onboarding.vanity.forge.seconds_under'),
+        3 => tr('onboarding.vanity.forge.seconds_few'),
+        4 => tr('onboarding.vanity.forge.minutes_few'),
+        _ => tr('onboarding.vanity.forge.hours'),
       };
 
   bool get isWeak => length < kDefaultCallsignLength;
@@ -271,7 +272,7 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Callsign length',
+        Text(tr('onboarding.vanity.length'),
             style: theme.textTheme.labelLarge
                 ?.copyWith(color: cs.onSurfaceVariant)),
         const SizedBox(height: 8),
@@ -290,8 +291,11 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
         ),
         const SizedBox(height: 10),
         Text(
-          '${CallsignLengthFacts.grouped(facts.space)} callsigns of this length exist.'
-          '${_length == kDefaultCallsignLength ? ' This is the default.' : ''}',
+          tr('onboarding.vanity.length_exist',
+                  {'count': CallsignLengthFacts.grouped(facts.space)}) +
+              (_length == kDefaultCallsignLength
+                  ? ' ${tr('onboarding.vanity.length_default')}'
+                  : ''),
           style:
               theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
         ),
@@ -307,10 +311,10 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                'About ${CallsignLengthFacts.grouped(facts.collideAfter)} users before two people '
-                'share one, and someone can grind a key that wears yours '
-                '${facts.forgeEffort}. A callsign is a label, not proof of who '
-                'you are — messages are signed with your key either way.',
+                tr('onboarding.vanity.length_risk', {
+                  'users': CallsignLengthFacts.grouped(facts.collideAfter),
+                  'effort': facts.forgeEffort,
+                }),
                 style: theme.textTheme.bodySmall?.copyWith(
                     color: facts.isWeak ? cs.error : cs.onSurfaceVariant),
               ),
@@ -329,7 +333,7 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Custom callsign'),
+        title: Text(tr('onboarding.vanity.title')),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () {
@@ -345,24 +349,19 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Type a few letters you want in your callsign — your initials, '
-                'a word, anything. Random identities are generated until one '
-                'contains them.',
+                tr('onboarding.vanity.intro'),
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 6),
               Text(
-                'Every extra character makes it far rarer: 1–2 letters land in '
-                'seconds, 4 can take many minutes.',
+                tr('onboarding.vanity.rarity'),
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 6),
               Text(
-                'Callsigns cannot contain B, I, O or 1 — those characters do '
-                'not exist in the alphabet a callsign is built from, so they '
-                'are not accepted here.',
+                tr('onboarding.vanity.alphabet'),
                 style: theme.textTheme.bodySmall?.copyWith(color: cs.tertiary),
               ),
               const SizedBox(height: 20),
@@ -376,6 +375,11 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                       enabled: !_running,
                       autofocus: true,
                       textCapitalization: TextCapitalization.characters,
+                      // A keyboard that does not compose, no suggestions: see
+                      // _UpperCaseFormatter for what composing did here.
+                      keyboardType: TextInputType.visiblePassword,
+                      autocorrect: false,
+                      enableSuggestions: false,
                       maxLength: _length,
                       // Only characters a callsign can actually contain — a
                       // pattern with a B in it would never, ever match.
@@ -389,8 +393,9 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                       style: const TextStyle(
                           fontFamily: 'monospace', fontSize: 20),
                       decoration: InputDecoration(
-                        labelText: 'Pattern (1–$_length characters)',
-                        hintText: 'e.g. CAT',
+                        labelText: tr('onboarding.vanity.pattern',
+                            {'max': _length}),
+                        hintText: tr('onboarding.vanity.pattern_hint'),
                         border: const OutlineInputBorder(),
                         counterText: '',
                       ),
@@ -408,7 +413,9 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                           ? _stop
                           : (canSearch ? _start : null),
                       icon: Icon(_running ? Icons.stop : Icons.search),
-                      label: Text(_running ? 'Stop' : 'Search'),
+                      label: Text(_running
+                          ? tr('onboarding.vanity.stop')
+                          : tr('common.search')),
                     ),
                   ),
                 ],
@@ -426,8 +433,11 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                       const SizedBox(width: 10),
                     ],
                     Text(
-                      'Tried $_tried keys · ${_fmt(_elapsed)}'
-                      '${_matches.isEmpty && _running ? ' · still looking…' : ''}',
+                      tr('onboarding.vanity.tried',
+                              {'count': _tried, 'time': _fmt(_elapsed)}) +
+                          (_matches.isEmpty && _running
+                              ? ' · ${tr('onboarding.vanity.still_looking')}'
+                              : ''),
                       style: theme.textTheme.bodySmall
                           ?.copyWith(color: cs.onSurfaceVariant),
                     ),
@@ -440,9 +450,9 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                     ? Center(
                         child: Text(
                           _running
-                              ? 'Searching…'
-                              : 'Matches will appear here.\nYour callsign stays '
-                                  '${widget.currentCallsign} until you pick one.',
+                              ? tr('onboarding.vanity.searching')
+                              : tr('onboarding.vanity.empty',
+                                  {'callsign': widget.currentCallsign}),
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyMedium
                               ?.copyWith(color: cs.onSurfaceVariant),
@@ -474,7 +484,7 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                             ),
                             trailing: FilledButton(
                               onPressed: () => _use(m),
-                              child: const Text('Use'),
+                              child: Text(tr('onboarding.vanity.use')),
                             ),
                             onTap: () => _use(m),
                           );
@@ -491,10 +501,20 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
 
 /// Uppercase as the user types, so the pattern always matches the callsign's own
 /// casing (callsigns are uppercase; the npub they come from is not).
+///
+/// Never while the keyboard is composing: rewriting text an Android keyboard
+/// still holds as a word in progress makes it re-send its own copy, and the
+/// field doubles or drops letters (the profile screen's callsign field had
+/// exactly this, 2026-10-24). The field also asks for a keyboard that does
+/// not compose, so this almost never has to wait.
 class _UpperCaseFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
       TextEditingValue oldValue, TextEditingValue newValue) {
-    return newValue.copyWith(text: newValue.text.toUpperCase());
+    if (newValue.composing.isValid && !newValue.composing.isCollapsed) {
+      return newValue;
+    }
+    final up = newValue.text.toUpperCase();
+    return up == newValue.text ? newValue : newValue.copyWith(text: up);
   }
 }

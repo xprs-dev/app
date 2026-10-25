@@ -30,6 +30,7 @@ import '../launcher/launcher.dart' show rootNavigatorKey;
 import '../wapp/wapp_open.dart';
 import 'announced_tags_store.dart';
 import 'event_bus.dart';
+import 'i18n/core_i18n.dart';
 import 'log_service.dart';
 
 enum NotificationLevel { info, success, warning, error }
@@ -290,7 +291,7 @@ class NotificationService with WidgetsBindingObserver {
     _errorSub = EventBus().on<ErrorEvent>((e) {
       show(XprsNotification(
         level: NotificationLevel.error,
-        title: 'Error',
+        title: tr('common.error'),
         body: e.message,
         source: e.source,
         scope: NotificationScope.app,
@@ -643,7 +644,7 @@ XprsNotification likeNotification({
   if (text.length > 80) text = '${text.substring(0, 80)}…';
   return XprsNotification(
     level: NotificationLevel.info,
-    title: '$from liked your message',
+    title: tr('notifications.liked', {'from': from}),
     body: text.isEmpty ? null : text,
     source: 'wapp:$wappName',
     tag: 'like:$convo:${message['mid'] ?? ''}:$from',

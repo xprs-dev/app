@@ -9,6 +9,8 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../i18n_context.dart';
+import '../../services/i18n/core_i18n.dart';
+import '../../services/i18n/format.dart';
 import 'geoui_ast.dart';
 import '../../editor/code_editor_field.dart';
 import 'widgets/icon_field.dart';
@@ -514,12 +516,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
   /// inline playback for a .webm, a fetch-progress chip while the bytes are
   /// still coming, and a fullscreen viewer on tap. None of that is re-invented
   /// here — this is layout over the widget chat already uses.
-  static String _fmtGalleryBytes(int n) {
-    if (n < 1024) return '$n B';
-    if (n < 1024 * 1024) return '${(n / 1024).toStringAsFixed(1)} KB';
-    if (n < 1024 * 1024 * 1024) return '${(n / 1048576).toStringAsFixed(1)} MB';
-    return '${(n / 1073741824).toStringAsFixed(2)} GB';
-  }
+  static String _fmtGalleryBytes(int n) => trBytes(n, gbDigits: 2);
 
   Widget _renderGalleryField(
       String name, String label, String? tip, GeoUiBlock field) {
@@ -572,6 +569,10 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
         banner != null || cover != null || trailer != null || gallery.isNotEmpty;
     final fileCount = (g['fileCount'] as num?)?.toInt() ?? 0;
     final totalBytes = (g['totalBytes'] as num?)?.toInt() ?? 0;
+    // Hoisted so the checker sees one key per call (no tr() nested in trn()).
+    final totalText = totalBytes > 0
+        ? tr('geoui.torrent.total', {'size': _fmtGalleryBytes(totalBytes)})
+        : '';
     // Seeders known to the Indexers (cached; -1 when the field is absent).
     final seeders = (g['seeders'] as num?)?.toInt() ?? -1;
 
@@ -675,19 +676,17 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
           Row(children: [
             Icon(Icons.upload_rounded, size: 16, color: cs.primary),
             const SizedBox(width: 6),
-            Text('$seeders seeder${seeders == 1 ? '' : 's'}',
+            Text(trn('geoui.seeders', seeders),
                 style: tt.bodyMedium?.copyWith(
                     color: cs.onSurface, fontWeight: FontWeight.w600)),
-            Text('  ·  others holding this now',
+            Text(tr('geoui.seeders.others'),
                 style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
           ]),
         ],
         if (!hasPreview && fileCount > 0) ...[
           const SizedBox(height: 14),
           Text(
-            'No preview was provided for this torrent. '
-            'It holds $fileCount file${fileCount == 1 ? '' : 's'}'
-            '${totalBytes > 0 ? ', ${_fmtGalleryBytes(totalBytes)} in total' : ''}.',
+            trn('geoui.torrent.no_preview', fileCount, {'total': totalText}),
             style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
@@ -752,7 +751,9 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
         // "Files (1.2 GB)" — the whole-torrent total, so the size is visible
         // without opening the browser. (Browse now lives in the ☰ menu.)
         Text(
-          totalBytes > 0 ? 'Files (${_fmtGalleryBytes(totalBytes)})' : 'Files',
+          totalBytes > 0
+              ? tr('geoui.files.size', {'size': _fmtGalleryBytes(totalBytes)})
+              : tr('geoui.files'),
           style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant),
         ),
         Divider(height: 1, color: cs.outlineVariant.withAlpha(60)),
@@ -804,7 +805,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
             child: Text(heading, style: Theme.of(context).textTheme.titleSmall),
           ),
         if (data.isEmpty)
-          Text('Nothing to share yet',
+          Text(tr('geoui.share.empty'),
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
@@ -938,7 +939,9 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
               padding: const EdgeInsets.only(top: 8),
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.image_outlined, size: 18),
-                label: Text(value.isEmpty ? 'Choose picture' : 'Change picture'),
+                label: Text(tr(value.isEmpty
+                    ? 'geoui.picture.choose'
+                    : 'geoui.picture.change')),
                 onPressed: () => widget.onAction?.call('${name}__pickimage'),
               ),
             ),
@@ -984,7 +987,9 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
           Center(
             child: OutlinedButton.icon(
               icon: const Icon(Icons.image_outlined, size: 18),
-              label: Text(value.isEmpty ? 'Choose picture' : 'Change picture'),
+              label: Text(tr(value.isEmpty
+                  ? 'geoui.picture.choose'
+                  : 'geoui.picture.change')),
               onPressed: () => widget.onAction?.call('${name}__pickimage'),
             ),
           ),
@@ -1042,7 +1047,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
     final wantSearch = field.getBool('search') ?? false;
     final hint = field.getString('search-hint') ??
         field.getString('hint') ??
-        'Search a callsign';
+        tr('geoui.search.callsign');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -1105,8 +1110,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
       fieldName: name,
       label: label,
       tip: readOnly
-          ? '${tip ?? ''}\n(read-only — no source shipped with this wapp; '
-              'click "Create new wapp" to start fresh)'
+          ? '${tip ?? ''}\n${tr('geoui.code.readonly')}'
           : tip,
       languageId: languageId,
       initialValue: current,
@@ -1455,12 +1459,12 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
         suffixIcon: canCopy
             ? IconButton(
                 icon: const Icon(Icons.copy, size: 18),
-                tooltip: 'Copy',
+                tooltip: tr('common.copy'),
                 onPressed: () {
                   final v = widget.bindings.getValue(name)?.toString() ?? '';
                   Clipboard.setData(ClipboardData(text: v));
                   ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                    const SnackBar(content: Text('Copied')),
+                    SnackBar(content: Text(tr('common.copied'))),
                   );
                 },
               )
@@ -1569,7 +1573,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel')),
+                  child: Text(tr('common.cancel'))),
               FilledButton(
                 onPressed: () {
                   Navigator.pop(ctx);
@@ -1685,7 +1689,7 @@ Future<void> showGeoUiDialog({
                 children: [
                   Expanded(
                     child: Text(
-                      screen.name ?? 'Settings',
+                      screen.name ?? tr('common.settings'),
                       style: Theme.of(ctx).textTheme.headlineSmall,
                     ),
                   ),

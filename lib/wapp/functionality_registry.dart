@@ -13,6 +13,7 @@
  */
 
 import '../launcher/launcher.dart' show WappManifest;
+import '../services/i18n/core_i18n.dart';
 import '../connections/hal/connection_functionalities.dart';
 
 // The API definition data classes (ParamDef/ReturnDef/EndpointDef/
@@ -74,7 +75,23 @@ class FunctionalityRegistry {
     return List.unmodifiable(_providers[functionalityId] ?? const []);
   }
 
-  FunctionalityDef? defFor(String functionalityId) => _defs[functionalityId];
+  /// The definition, with its one-line title in the person's language.
+  ///
+  /// The table below is the API contract: endpoint, parameter and return
+  /// documentation that mirrors the C header and is exported as JSON for
+  /// wapp authors, so it stays English like the header. Only the
+  /// functionality's TITLE is read by a person browsing the registry, and
+  /// that is resolved here, at read time, so a language switch applies and
+  /// a scan that ran before the tables loaded does not freeze the key into
+  /// the table. A wapp's own definition carries whatever its manifest said.
+  FunctionalityDef? defFor(String functionalityId) {
+    final def = _defs[functionalityId];
+    if (def == null) return null;
+    final key = 'functionalities.$functionalityId';
+    final title = tr(key);
+    if (title == key) return def; // not one of ours, or no table yet
+    return FunctionalityDef(def.id, title, def.endpoints);
+  }
 
   Set<String> get allFunctionalityIds => _providers.keys.toSet();
 

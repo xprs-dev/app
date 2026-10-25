@@ -30,6 +30,7 @@ import '../../profile/profile_service.dart';
 import '../../profile/profile_storage.dart';
 import '../../services/log_service.dart';
 import 'coin_host_bridge.dart' show CoinHostBridge, CoinMeta;
+import '../../services/i18n/core_i18n.dart';
 
 /// A coin this device operates an ATM for.
 class _AtmCoin {
@@ -174,7 +175,7 @@ class AtmHostBridge {
 
   Map<String, Object?> _create(Map<String, dynamic> data) {
     final opPub = _operatorPub;
-    if (opPub == null) return _status('No active profile to operate as ATM.');
+    if (opPub == null) return _status(tr('coin.atm.no_profile'));
     final meta = CoinMeta(
       singular: (data['singular'] ?? '').toString().trim(),
       plural: (data['plural'] ?? '').toString().trim(),
@@ -184,7 +185,7 @@ class AtmHostBridge {
       picture: (data['picture'] ?? '').toString().trim(),
     );
     if (meta.singular.isEmpty && meta.plural.isEmpty && meta.code.isEmpty) {
-      return _status('Name the coin (singular, plural and/or short code).');
+      return _status(tr('coin.atm.name_coin'));
     }
     final exp = _int(data['exp'], 10).clamp(0, 20);
     final master = NostrCrypto.generateKeyPair();
@@ -216,25 +217,25 @@ class AtmHostBridge {
   Map<String, Object?> _faucet(String coinId, String to, Object? amountRaw) {
     final coin = _coins[
         coinId.isEmpty && _coins.length == 1 ? _coins.keys.first : coinId];
-    if (coin == null) return _status('Pick one of your coins.');
+    if (coin == null) return _status(tr('coin.atm.pick_yours'));
     final opPriv = _operatorPriv;
-    if (opPriv == null) return _status('No operator key to sign blocks.');
+    if (opPriv == null) return _status(tr('coin.atm.no_operator_key'));
     final amount = _int(amountRaw, 0);
-    if (amount <= 0) return _status('Enter an amount greater than zero.');
-    if (to.trim().isEmpty) return _status('Enter a recipient npub.');
+    if (amount <= 0) return _status(tr('coin.amount_positive'));
+    if (to.trim().isEmpty) return _status(tr('coin.recipient_npub'));
     String toHex;
     try {
       toHex =
           to.startsWith('npub') ? NostrCrypto.decodeNpub(to.trim()) : to.trim();
     } catch (_) {
-      return _status('Invalid recipient npub.');
+      return _status(tr('coin.invalid_recipient'));
     }
     final chain = _chainFor(coin);
-    if (chain == null) return _status('Could not open the coin ledger.');
+    if (chain == null) return _status(tr('coin.atm.ledger_closed'));
     final nonce = 'g:${chain.blocks.length}:$amount';
     final grant = buildGrantTx(coin.coinId, coin.masterPriv, toHex, amount, nonce);
     final block = chain.produceBlock(opPriv, [grant]);
-    if (block == null) return _status('Distribution was rejected by the ledger.');
+    if (block == null) return _status(tr('coin.atm.rejected'));
     coin.issued += amount;
     _persistChain(coin, chain);
     _persistRegistry();
@@ -246,31 +247,31 @@ class AtmHostBridge {
 
   Map<String, Object?> _addAtm(String coinId, String npub) {
     final coin = _coins[coinId];
-    if (coin == null) return _status('Pick one of your coins.');
+    if (coin == null) return _status(tr('coin.atm.pick_yours'));
     String hex;
     try {
       hex = npub.startsWith('npub')
           ? NostrCrypto.decodeNpub(npub.trim())
           : npub.trim();
     } catch (_) {
-      return _status('Invalid npub.');
+      return _status(tr('coin.atm.invalid_npub'));
     }
-    if (hex.isEmpty) return _status('Enter an npub to trust.');
+    if (hex.isEmpty) return _status(tr('coin.atm.enter_npub'));
     if (!coin.atms.contains(hex)) {
       coin.atms.add(hex);
       _persistRegistry();
-      return _status('Designated as a trusted ATM for ${coin.meta.displayName}.');
+      return _status(tr('coin.atm.trusted', {'coin': coin.meta.displayName}));
     }
-    return _status('Already trusted.');
+    return _status(tr('coin.atm.already_trusted'));
   }
 
   Map<String, Object?> _descriptor(String coinId) {
     final coin = _coins[
         coinId.isEmpty && _coins.length == 1 ? _coins.keys.first : coinId];
-    if (coin == null) return _status('Pick one of your coins.');
+    if (coin == null) return _status(tr('coin.atm.pick_yours'));
     return {
       'atm_descriptor': _descriptorOf(coin),
-      'atm_status': 'Descriptor ready to share.'
+      'atm_status': tr('coin.atm.descriptor_ready')
     };
   }
 
@@ -314,7 +315,7 @@ class AtmHostBridge {
       });
     }
     return [
-      {'title': 'Your coins', 'items': items}
+      {'title': tr('coin.atm.your_coins'), 'items': items}
     ];
   }
 

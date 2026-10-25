@@ -113,12 +113,12 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Welcome to XPRS',
+                          Text(tr('permissions.welcome'),
                               style: theme.textTheme.titleLarge
                                   ?.copyWith(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
                           Text(
-                            'Off-grid messaging over Bluetooth and the internet.',
+                            tr('permissions.tagline'),
                             style: theme.textTheme.bodyMedium
                                 ?.copyWith(color: cs.onSurfaceVariant),
                           ),
@@ -130,12 +130,12 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                 const SizedBox(height: 28),
                 Row(
                   children: [
-                    Text('Permissions',
+                    Text(tr('permissions.title'),
                         style: theme.textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.bold)),
                     const Spacer(),
                     Text(
-                      _allGranted ? 'All granted' : 'Tap to grant',
+                      tr(_allGranted ? 'permissions.all_granted' : 'permissions.tap_to_grant'),
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: _allGranted ? Colors.green : cs.onSurfaceVariant,
                       ),
@@ -144,8 +144,7 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Grant these before continuing. Nothing works without them, '
-                  'and asking now means no surprise prompts later.',
+                  tr('permissions.intro'),
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: cs.onSurfaceVariant),
                 ),
@@ -158,7 +157,7 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                     child: FilledButton.icon(
                       onPressed: _busy ? null : _grantAll,
                       icon: const Icon(Icons.done_all, size: 18),
-                      label: const Text('Grant all'),
+                      label: Text(tr('permissions.grant_all')),
                     ),
                   ),
                 if (!_allGranted) const SizedBox(height: 16),
@@ -178,8 +177,7 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Your data stays on your device. These permissions are '
-                          'only used for local messaging and connectivity.',
+                          tr('permissions.privacy'),
                           style: theme.textTheme.bodySmall
                               ?.copyWith(color: cs.onSecondaryContainer),
                         ),
@@ -200,9 +198,9 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : Text(_allGranted
-                            ? 'Continue'
-                            : 'Grant permissions to continue'),
+                        : Text(tr(_allGranted
+                            ? 'common.continue'
+                            : 'permissions.grant_to_continue')),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -254,10 +252,12 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.title,
+                // Rows are named by key: the service keeps the English for
+                // logs and other callers; this screen reads the person's language.
+                Text(tr('permissions.${item.key}.title'),
                     style: theme.textTheme.titleSmall
                         ?.copyWith(fontWeight: FontWeight.w600)),
-                Text(item.desc,
+                Text(tr('permissions.${item.key}.desc'),
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: cs.onSurfaceVariant)),
               ],
@@ -278,7 +278,7 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 minimumSize: Size.zero,
               ),
-              child: const Text('Grant'),
+              child: Text(tr('permissions.grant')),
             ),
         ],
       ),

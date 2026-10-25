@@ -70,6 +70,7 @@ import '../profile/iwi_profile.dart';
 import '../models/monitored_task.dart';
 import '../services/media_disk_cache.dart';
 import '../services/event_bus.dart';
+import '../services/i18n/core_i18n.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
 import '../services/location_service.dart';
@@ -1632,7 +1633,7 @@ class _WappPageState extends State<WappPage>
     final words = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit post'),
+        title: Text(tr('wapp_host.post.edit')),
         content: TextField(
           controller: box,
           autofocus: true,
@@ -1644,7 +1645,7 @@ class _WappPageState extends State<WappPage>
           // A picture rides in the text as its `file:` token: keeping the token
           // keeps the picture, deleting it removes it, attaching puts another.
           IconButton(
-            tooltip: 'Attach a picture',
+            tooltip: tr('wapp_host.post.attach'),
             icon: const Icon(Icons.attach_file),
             onPressed: () async {
               final token = await _attachImageOrVideoToChat();
@@ -1655,10 +1656,10 @@ class _WappPageState extends State<WappPage>
             },
           ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(ctx), child: Text(tr('common.cancel'))),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, box.text.trim()),
-              child: const Text('Save')),
+              child: Text(tr('common.save'))),
         ],
       ),
     );
@@ -1677,17 +1678,15 @@ class _WappPageState extends State<WappPage>
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete for everyone?'),
-        content: const Text(
-            'Everyone who holds this post is asked to delete it. Those who '
-            'honour the request lose the words for good, and so do you.'),
+        title: Text(tr('wapp_host.post.delete_all.title')),
+        content: Text(tr('wapp_host.post.delete_all.body')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(tr('common.cancel'))),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Delete')),
+              child: Text(tr('common.delete'))),
         ],
       ),
     );
@@ -1719,12 +1718,12 @@ class _WappPageState extends State<WappPage>
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit history'),
+        title: Text(tr('wapp_host.post.history')),
         content: EditHistoryList(versions: shown),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
+            child: Text(tr('common.close')),
           ),
         ],
       ),
@@ -1741,7 +1740,7 @@ class _WappPageState extends State<WappPage>
   void _historyWithdrawn(Map d) {
     if (_historyOf != '${d['id'] ?? ''}|${d['mid'] ?? ''}') return;
     _historyVersions?.value = [
-      {'note': 'This message was deleted.'},
+      {'note': tr('wapp_host.post.deleted')},
     ];
   }
 
@@ -3542,7 +3541,7 @@ class _WappPageState extends State<WappPage>
         ?.map((e) => e.toString().toLowerCase())
         .where((e) => e.isNotEmpty)
         .toList();
-    final title = (data['title'] as String?) ?? 'Pick a file';
+    final title = (data['title'] as String?) ?? tr('wapp_host.file.pick');
     final mode = (data['mode'] as String?) ?? 'view';
     try {
       final typeGroup = XTypeGroup(
@@ -3576,21 +3575,20 @@ class _WappPageState extends State<WappPage>
   /// can fetch it, and return its `file:<sha>.<ext>` token to insert.
   Future<String?> _attachFileToChat() async {
     try {
-      const images = XTypeGroup(
-        label: 'Images',
+      final images = XTypeGroup(
+        label: tr('wapp_host.file.images'),
         extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic'],
       );
-      const any = XTypeGroup(label: 'All files');
-      final file = await openFile(acceptedTypeGroups: const [images, any]);
+      final any = XTypeGroup(label: tr('wapp_host.file.all'));
+      final file = await openFile(acceptedTypeGroups: [images, any]);
       if (file == null) return null;
       // Same ceiling as the wapp verb: a conversation carries files a phone
       // can hold once; anything bigger is shared from a folder.
       if (await file.length() > kMediaPutMaxBytes) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(
-                  '${file.name} is larger than ${kMediaPutMaxBytes >> 20} MB. '
-                  'Share it from a folder instead.')));
+              content: Text(tr('wapp_host.file.too_large',
+                  {'name': file.name, 'mb': kMediaPutMaxBytes >> 20}))));
         }
         return null;
       }
@@ -3621,21 +3619,21 @@ class _WappPageState extends State<WappPage>
     }
 
     try {
-      const images = XTypeGroup(
-        label: 'Images',
+      final images = XTypeGroup(
+        label: tr('wapp_host.file.images'),
         extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'],
       );
-      final file = await openFile(acceptedTypeGroups: const [images]);
+      final file = await openFile(acceptedTypeGroups: [images]);
       if (file == null) return;
       if (await file.length() > kPreviewSourceMax) {
-        say('${file.name} is too large for a picture.');
+        say(tr('wapp_host.picture.too_large', {'name': file.name}));
         return;
       }
       // arch-ignore: no-whole-file-read a picked picture is decoded whole to make an 8 KiB thumbnail, refused above kPreviewSourceMax
       final source = await file.readAsBytes();
       final token = await XprsProfiles.instance.pictureTokenFor(source);
       if (token == null) {
-        say('That picture could not be read. Try a JPEG or PNG.');
+        say(tr('wapp_host.picture.unreadable'));
         return;
       }
       _fieldValues['picture_id'] = id;
@@ -3767,20 +3765,20 @@ class _WappPageState extends State<WappPage>
     } else if (!MediaCapabilities.backendAvailable) {
       body = _videoPlaceholder(
         Icons.videocam_off_outlined,
-        'Video not supported on this platform.',
-        'No media backend is available here.',
+        tr('wapp_host.video.unsupported'),
+        tr('wapp_host.video.unsupported.help'),
       );
     } else if (MediaCapabilities.active == null) {
       body = _videoPlaceholder(
         Icons.extension_outlined,
-        'Media support not installed.',
-        'Install the Mediapack wapp from the Wapp Store to play video.',
+        tr('wapp_host.video.no_mediapack'),
+        tr('wapp_host.video.no_mediapack.help'),
       );
     } else {
       body = _videoPlaceholder(
         Icons.movie_outlined,
-        'No video loaded.',
-        'Use the menu (top-right) to pick a video.',
+        tr('wapp_host.video.none'),
+        tr('wapp_host.video.none.help'),
       );
     }
 
@@ -4256,7 +4254,7 @@ class _WappPageState extends State<WappPage>
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Forwarded to $id'),
+                content: Text(tr('wapp_host.forwarded', {'id': id})),
                 duration: const Duration(seconds: 1),
               ),
             );
@@ -4439,13 +4437,13 @@ class _WappPageState extends State<WappPage>
               padding: const EdgeInsets.only(bottom: 8),
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.copy, size: 16),
-                label: const Text('Copy'),
+                label: Text(tr('common.copy')),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: copyText));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Copied to clipboard'),
-                      duration: Duration(seconds: 1),
+                    SnackBar(
+                      content: Text(tr('wapp_host.copied')),
+                      duration: const Duration(seconds: 1),
                     ),
                   );
                 },
@@ -4487,7 +4485,7 @@ class _WappPageState extends State<WappPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Previously used',
+                    Text(tr('wapp_host.passphrases.previous'),
                         style:
                             TextStyle(color: cs.onSurfaceVariant, fontSize: 11)),
                     const SizedBox(height: 6),
@@ -4598,7 +4596,7 @@ class _WappPageState extends State<WappPage>
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
+                child: Text(tr('common.cancel')),
               ),
               if (confirmLabel.isNotEmpty)
                 FilledButton(
@@ -4727,9 +4725,9 @@ class _WappPageState extends State<WappPage>
       mainAxisSize: MainAxisSize.min,
       children: [
         Tooltip(
-          message: reachable
-              ? 'Reachable now'
-              : 'Not reachable — the message waits for them',
+          message: tr(reachable
+              ? 'wapp_host.reach.now'
+              : 'wapp_host.reach.waiting'),
           child: Container(
             width: 9,
             height: 9,
@@ -4797,8 +4795,8 @@ class _WappPageState extends State<WappPage>
       // firing its first firehose poll; a spinner + "Getting fresh posts" beats a
       // silent two-second freeze. Other wapps show their status line.
       final loadingLabel = _wappName == 'social'
-          ? 'Getting fresh posts…'
-          : (_status.isEmpty ? 'Loading…' : _status);
+          ? tr('wapp_host.loading.posts')
+          : (_status.isEmpty ? tr('common.loading') : _status);
       return Scaffold(
         appBar: AppBar(title: Text(widget.title)),
         body: Center(
@@ -4854,7 +4852,7 @@ class _WappPageState extends State<WappPage>
           appBar: AppBar(
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              tooltip: 'Back',
+              tooltip: tr('common.back'),
               onPressed: _closePanelScreen,
             ),
             title: Text(_panelTitle ?? _panelName),
@@ -4862,7 +4860,7 @@ class _WappPageState extends State<WappPage>
               if (panelActions.isNotEmpty)
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.settings_outlined),
-                  tooltip: 'Settings',
+                  tooltip: tr('common.settings'),
                   onSelected: _sendCommand,
                   itemBuilder: (_) => [
                     for (final a in panelActions)
@@ -4967,13 +4965,13 @@ class _WappPageState extends State<WappPage>
               // arrow closes it (no second in-panel arrow).
               ? IconButton(
                   icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back',
+                  tooltip: tr('common.back'),
                   onPressed: _graphPanelBack,
                 )
               : thread != null
               ? IconButton(
                   icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back',
+                  tooltip: tr('common.back'),
                   onPressed: () => setState(() => _convOpenId = null),
                 )
               : roomsOpen
@@ -4983,13 +4981,13 @@ class _WappPageState extends State<WappPage>
               // arrows with different meanings is how a user gets lost.
               ? IconButton(
                   icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back',
+                  tooltip: tr('common.back'),
                   onPressed: () => setState(() => _roomsOpenId = null),
                 )
               : navBack
               ? IconButton(
                   icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Up',
+                  tooltip: tr('wapp_host.nav.up'),
                   onPressed: () => _sendCommand('nav_back'),
                 )
               : null, // default "←" pops back to the launcher
@@ -5383,7 +5381,7 @@ class _WappPageState extends State<WappPage>
     const dense = BoxConstraints.tightFor(width: 36, height: 36);
     return [
       IconButton(
-        tooltip: _convSearching ? 'Close search' : 'Find a user',
+        tooltip: tr(_convSearching ? 'wapp_host.search.close' : 'wapp_host.search.find_user'),
         icon: Icon(_convSearching ? Icons.close : Icons.search),
         padding: EdgeInsets.zero,
         constraints: dense,
@@ -5480,22 +5478,18 @@ class _WappPageState extends State<WappPage>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Block $title?'),
-        content: const Text(
-          'Their messages are dropped as they arrive and this conversation is '
-          'removed. Nothing is sent — they are not told. You can undo this '
-          'from the wapp\'s Blocked list.',
-        ),
+        title: Text(tr('wapp_host.block.title', {'name': title})),
+        content: Text(tr('wapp_host.block.body')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(tr('common.cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Block',
-              style: TextStyle(color: Color(0xFFda3633)),
+            child: Text(
+              tr('wapp_host.block.button'),
+              style: const TextStyle(color: Color(0xFFda3633)),
             ),
           ),
         ],
@@ -5547,7 +5541,7 @@ class _WappPageState extends State<WappPage>
         : (convActionsId ?? '');
     return PopupMenuButton<String>(
       icon: const Icon(Icons.menu),
-      tooltip: 'Options',
+      tooltip: tr('wapp_host.menu.options'),
       padding: _kAppBarIconPad,
       onSelected: (value) {
         if (value == 'edit') {
@@ -5629,17 +5623,17 @@ class _WappPageState extends State<WappPage>
                     : Icons.notifications_none,
               ),
               title: Text(
-                (convItem?.muted ?? false) ? 'Unmute' : 'Mute notifications',
+                tr((convItem?.muted ?? false) ? 'wapp_host.conv.unmute' : 'wapp_host.conv.mute'),
               ),
               contentPadding: EdgeInsets.zero,
               dense: true,
             ),
           ),
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'conv:close',
             child: ListTile(
-              leading: Icon(Icons.close),
-              title: Text('Close conversation'),
+              leading: const Icon(Icons.close),
+              title: Text(tr('wapp_host.conv.close')),
               contentPadding: EdgeInsets.zero,
               dense: true,
             ),
@@ -5709,14 +5703,14 @@ class _WappPageState extends State<WappPage>
             ),
           ),
         if (_menuScreens.isNotEmpty) const PopupMenuDivider(),
-        const PopupMenuItem<String>(
+        PopupMenuItem<String>(
           value: 'edit',
           child: ListTile(
-            leading: Icon(Icons.edit),
+            leading: const Icon(Icons.edit),
             // "Edit" alone reads as "edit something in this wapp" — the note,
             // the message, whatever is on screen. It opens the wapp's SOURCE in
             // the editor, which is a very different thing to click by accident.
-            title: Text('Edit wapp'),
+            title: Text(tr('wapp_host.menu.edit_wapp')),
             contentPadding: EdgeInsets.zero,
             dense: true,
           ),
@@ -5989,13 +5983,13 @@ class _WappPageState extends State<WappPage>
                     );
                   },
                   decoration: InputDecoration(
-                    hintText: 'Search posts and people',
+                    hintText: tr('wapp_host.nostr.search_hint'),
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _nostrSearchCtl.text.isEmpty
                         ? null
                         : IconButton(
                             icon: const Icon(Icons.close, size: 18),
-                            tooltip: 'Clear',
+                            tooltip: tr('wapp_host.search.clear'),
                             onPressed: () {
                               _nostrSearchCtl.clear();
                               run();
@@ -6095,7 +6089,7 @@ class _WappPageState extends State<WappPage>
             ),
           ),
           const SizedBox(width: 8),
-          FilledButton(onPressed: onAdd, child: const Text('Add')),
+          FilledButton(onPressed: onAdd, child: Text(tr('common.add'))),
         ],
       ),
     );
@@ -6103,9 +6097,8 @@ class _WappPageState extends State<WappPage>
     return ListView(
       children: [
         sectionTitle(
-          'Relays',
-          'Where posts come from and go to. wss:// over the internet, '
-              'rns:// over Reticulum, or this device.',
+          tr('wapp_host.nostr.relays'),
+          tr('wapp_host.nostr.relays.help'),
         ),
         for (final r in relays)
           SwitchListTile(
@@ -6136,7 +6129,7 @@ class _WappPageState extends State<WappPage>
             ),
             secondary: IconButton(
               icon: const Icon(Icons.delete_outline, size: 20),
-              tooltip: 'Remove',
+              tooltip: tr('common.remove'),
               onPressed: () {
                 rns.nostrRelayRemove('${r['uri']}');
                 setState(() {});
@@ -6156,9 +6149,8 @@ class _WappPageState extends State<WappPage>
         ),
         const SizedBox(height: 8),
         sectionTitle(
-          'Blossom media servers',
-          'Images in the feed are fetched from these by their sha256, and '
-              'anything you share is uploaded to them. Tried in order.',
+          tr('wapp_host.nostr.blossom'),
+          tr('wapp_host.nostr.blossom.help'),
         ),
         for (final b in blossom)
           ListTile(
@@ -6172,7 +6164,7 @@ class _WappPageState extends State<WappPage>
             ),
             trailing: IconButton(
               icon: const Icon(Icons.delete_outline, size: 20),
-              tooltip: 'Remove',
+              tooltip: tr('common.remove'),
               onPressed: () {
                 rns.blossomRemove(b);
                 setState(() {});
@@ -6183,8 +6175,7 @@ class _WappPageState extends State<WappPage>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              'None — shared media will not reach anyone over the internet, '
-              'and images posted by others will not load.',
+              tr('wapp_host.nostr.blossom.none'),
               style: TextStyle(fontSize: 11, color: cs.error),
             ),
           ),
@@ -6235,10 +6226,10 @@ class _WappPageState extends State<WappPage>
               color: cs.onSurfaceVariant,
             ),
             const SizedBox(height: 12),
-            Text('Nothing yet.', style: TextStyle(color: cs.onSurfaceVariant)),
+            Text(tr('wapp_host.activity.none'), style: TextStyle(color: cs.onSurfaceVariant)),
             const SizedBox(height: 4),
             Text(
-              'Likes, replies and reposts of your posts land here.',
+              tr('wapp_host.activity.none.help'),
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
             ),
@@ -6373,7 +6364,7 @@ class _WappPageState extends State<WappPage>
     // open it as soon as it lands rather than leaving the tap looking broken.
     ScaffoldMessenger.maybeOf(
       context,
-    )?.showSnackBar(const SnackBar(content: Text('Fetching the post…')));
+    )?.showSnackBar(SnackBar(content: Text(tr('wapp_host.nostr.fetching'))));
     var tries = 0;
     Timer.periodic(const Duration(milliseconds: 400), (t) {
       tries++;
@@ -6771,7 +6762,11 @@ class _WappPageState extends State<WappPage>
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(
-                label: Text(l),
+                // Shown translated, matched raw: the wapp compares the tab it
+                // is sent byte for byte against its own `tabs` list, so only
+                // the label changes. A wapp names a translation `tab.<label
+                // in lower case>`; without one the raw label shows.
+                label: Text(l == 'All' ? tr('common.all') : _tabLabel(l)),
                 selected: l == 'All' ? current.isEmpty : l == current,
                 onSelected: (_) =>
                     setState(() => _peopleTab[field] = l == 'All' ? '' : l),
@@ -6780,6 +6775,11 @@ class _WappPageState extends State<WappPage>
         ],
       ),
     );
+  }
+
+  String _tabLabel(String raw) {
+    final key = 'tab.${raw.toLowerCase()}';
+    return _i18n.primary[key] ?? _i18n.fallback[key] ?? raw;
   }
 
   // Per-field search controllers + a debounce so live typing doesn't fire a
@@ -6805,13 +6805,13 @@ class _WappPageState extends State<WappPage>
         decoration: InputDecoration(
           isDense: true,
           filled: true,
-          hintText: 'Search',
+          hintText: tr('common.search'),
           prefixIcon: const Icon(Icons.search, size: 20),
           suffixIcon: ctl.text.isEmpty
               ? null
               : IconButton(
                   icon: const Icon(Icons.close, size: 18),
-                  tooltip: 'Clear',
+                  tooltip: tr('wapp_host.search.clear'),
                   onPressed: () {
                     ctl.clear();
                     _runSearch(field, '');
@@ -6850,7 +6850,7 @@ class _WappPageState extends State<WappPage>
     String fv(String k) => _fieldValues[k]?.toString() ?? '';
     bool fb(String k) => fv(k) == 'true' || fv(k) == '1';
     final rawTitle = fv('np_title');
-    final title = rawTitle.isEmpty ? 'Nothing playing' : rawTitle;
+    final title = rawTitle.isEmpty ? tr('wapp_host.player.nothing') : rawTitle;
     final time = fv('np_time');
     final playing = fb('np_playing');
     final shuffle = fb('np_shuffle');
@@ -6964,7 +6964,7 @@ class _WappPageState extends State<WappPage>
       if (!active) {
         detail = Center(
           child: Text(
-            'Select a folder',
+            tr('wapp_host.folders.select'),
             style: TextStyle(color: cs.onSurfaceVariant),
           ),
         );
@@ -7770,11 +7770,11 @@ class _WappPageState extends State<WappPage>
   /// `file:<sha>.<ext>` token.
   Future<String?> _attachImageOnly() async {
     try {
-      const images = XTypeGroup(
-        label: 'Images',
+      final images = XTypeGroup(
+        label: tr('wapp_host.file.images'),
         extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic'],
       );
-      final file = await openFile(acceptedTypeGroups: const [images]);
+      final file = await openFile(acceptedTypeGroups: [images]);
       if (file == null) return null;
       final bytes = await file.readAsBytes();
       if (bytes.isEmpty) return null;
@@ -7790,15 +7790,15 @@ class _WappPageState extends State<WappPage>
   /// Reticulum, return the `file:<sha>.<ext>` token to insert.
   Future<String?> _attachImageOrVideoToChat() async {
     try {
-      const images = XTypeGroup(
-        label: 'Images',
+      final images = XTypeGroup(
+        label: tr('wapp_host.file.images'),
         extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic'],
       );
-      const videos = XTypeGroup(
-        label: 'Videos',
+      final videos = XTypeGroup(
+        label: tr('wapp_host.file.videos'),
         extensions: ['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v', '3gp'],
       );
-      final file = await openFile(acceptedTypeGroups: const [images, videos]);
+      final file = await openFile(acceptedTypeGroups: [images, videos]);
       if (file == null) return null;
       final bytes = await file.readAsBytes();
       if (bytes.isEmpty) return null;
@@ -8265,10 +8265,7 @@ class _WappPageState extends State<WappPage>
     if (id == null) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(
-          content: Text(
-            'No messaging address known for $target yet — '
-            'they need to be heard on the network first.',
-          ),
+          content: Text(tr('wapp_host.chat.no_address', {'target': target})),
         ),
       );
       return;
@@ -8752,7 +8749,7 @@ class _WappPageState extends State<WappPage>
               TextButton.icon(
                 onPressed: () => _sendCommand('pause-all'),
                 icon: const Icon(Icons.pause_circle, size: 18),
-                label: const Text('Pause all'),
+                label: Text(tr('wapp_host.tasks.pause_all')),
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                 ),
@@ -8760,7 +8757,7 @@ class _WappPageState extends State<WappPage>
               TextButton.icon(
                 onPressed: () => _sendCommand('resume-all'),
                 icon: const Icon(Icons.play_circle, size: 18),
-                label: const Text('Resume all'),
+                label: Text(tr('wapp_host.tasks.resume_all')),
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                 ),
@@ -8770,10 +8767,10 @@ class _WappPageState extends State<WappPage>
         ),
         Expanded(
           child: tasks.isEmpty
-              ? const Center(
+              ? Center(
                   child: Text(
-                    'No tasks registered yet.',
-                    style: TextStyle(color: Colors.grey),
+                    tr('wapp_host.tasks.none'),
+                    style: const TextStyle(color: Colors.grey),
                   ),
                 )
               : ListView.builder(
@@ -8901,7 +8898,7 @@ class _WappPageState extends State<WappPage>
                   TextButton.icon(
                     onPressed: () => _sendCommand('pause ${task.id}'),
                     icon: const Icon(Icons.pause, size: 16),
-                    label: const Text('Pause'),
+                    label: Text(tr('wapp_host.tasks.pause')),
                     style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                     ),
@@ -8910,7 +8907,7 @@ class _WappPageState extends State<WappPage>
                   TextButton.icon(
                     onPressed: () => _sendCommand('resume ${task.id}'),
                     icon: const Icon(Icons.play_arrow, size: 16),
-                    label: const Text('Resume'),
+                    label: Text(tr('wapp_host.tasks.resume')),
                     style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                     ),
@@ -8995,10 +8992,7 @@ class _WappPageState extends State<WappPage>
         ),
         const SizedBox(height: 4),
         Text(
-          'The store reads its catalog from every repository listed '
-          'here; https://xprs.dev/apps is the one it starts with. A new '
-          'entry is checked first: it has to answer with a catalog.json '
-          'or an index.json.',
+          tr('wapp_host.store.sources.help'),
           style: TextStyle(color: cs.onSurfaceVariant, height: 1.35),
         ),
         const SizedBox(height: 20),
@@ -9023,8 +9017,7 @@ class _WappPageState extends State<WappPage>
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'No repositories yet. Add one below to see wapps '
-                    'in the Store tab.',
+                    tr('wapp_host.store.sources.none'),
                     style: TextStyle(color: cs.onSurfaceVariant),
                   ),
                 ),
@@ -9039,7 +9032,7 @@ class _WappPageState extends State<WappPage>
 
         // Add new.
         Text(
-          'Add a repository',
+          tr('wapp_host.store.sources.add'),
           style: Theme.of(
             context,
           ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
@@ -9087,7 +9080,7 @@ class _WappPageState extends State<WappPage>
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.add, size: 18),
-                    label: const Text('Add'),
+                    label: Text(tr('common.add')),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 18,
@@ -9114,9 +9107,7 @@ class _WappPageState extends State<WappPage>
               ],
               const SizedBox(height: 8),
               Text(
-                'The store will try <url>/wapps/index.json first, then '
-                '<url>/index.json. For local paths, pass the directory '
-                'that contains the index.',
+                tr('wapp_host.store.sources.url_help'),
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               ),
             ],
@@ -9176,7 +9167,7 @@ class _WappPageState extends State<WappPage>
           IconButton(
             onPressed: _sourcesBusy ? null : () => _removeSource(index),
             icon: Icon(Icons.delete_outline, color: cs.error),
-            tooltip: 'Remove',
+            tooltip: tr('common.remove'),
           ),
         ],
       ),
@@ -9205,7 +9196,7 @@ class _WappPageState extends State<WappPage>
     final raw = _sourcesInputController.text.trim();
     if (raw.isEmpty) return;
     if (_storeSources.contains(raw)) {
-      setState(() => _sourcesError = 'This repository is already in the list.');
+      setState(() => _sourcesError = tr('wapp_host.store.sources.dup'));
       return;
     }
     setState(() {
@@ -9218,9 +9209,7 @@ class _WappPageState extends State<WappPage>
         if (mounted) {
           setState(() {
             _sourcesBusy = false;
-            _sourcesError =
-                'Could not find a valid index.json at this URL. '
-                'Check the address and try again.';
+            _sourcesError = tr('wapp_host.store.sources.invalid');
           });
         }
         return;
@@ -9230,7 +9219,7 @@ class _WappPageState extends State<WappPage>
           setState(() {
             _sourcesBusy = false;
             _sourcesError =
-                'This repository is already in the list (as $resolved).';
+                tr('wapp_host.store.sources.dup_as', {'url': resolved});
           });
         }
         return;
@@ -9248,7 +9237,7 @@ class _WappPageState extends State<WappPage>
       if (mounted) {
         setState(() {
           _sourcesBusy = false;
-          _sourcesError = 'Validation failed: $e';
+          _sourcesError = tr('wapp_host.store.sources.failed', {'error': e});
         });
       }
     }
@@ -9389,7 +9378,7 @@ class _WappPageState extends State<WappPage>
 
     final tip = _i18n.resolve(screen.getString('tip') ?? '');
     final empty = _i18n.resolve(
-      cardsGroup.getString('empty') ?? 'No wapps found yet.',
+      cardsGroup.getString('empty') ?? tr('wapp_host.store.empty'),
     );
     final query = _storeSearch.trim().toLowerCase();
     final shown = query.isEmpty
@@ -9433,7 +9422,7 @@ class _WappPageState extends State<WappPage>
               if (menuItems.isNotEmpty)
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert),
-                  tooltip: 'Options',
+                  tooltip: tr('wapp_host.menu.options'),
                   onSelected: dispatch,
                   itemBuilder: (_) => [
                     for (final a in menuItems)
@@ -9495,7 +9484,7 @@ class _WappPageState extends State<WappPage>
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.upgrade, size: 16),
-                      label: Text(_updatingAll ? 'Updating...' : 'Update all'),
+                      label: Text(tr(_updatingAll ? 'wapp_host.store.updating' : 'wapp_host.store.update_all')),
                       style: FilledButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                       ),
@@ -9518,7 +9507,7 @@ class _WappPageState extends State<WappPage>
                 textInputAction: TextInputAction.search,
                 onChanged: (v) => setState(() => _storeSearch = v),
                 decoration: InputDecoration(
-                  hintText: 'Search apps',
+                  hintText: tr('wapp_host.store.search_apps'),
                   prefixIcon: Icon(Icons.search, color: cs.onSurfaceVariant),
                   suffixIcon: _storeSearch.isEmpty
                       ? null
@@ -9538,7 +9527,7 @@ class _WappPageState extends State<WappPage>
                   child: Padding(
                     padding: const EdgeInsets.all(32),
                     child: Text(
-                      query.isEmpty ? empty : 'No apps match "$_storeSearch"',
+                      query.isEmpty ? empty : tr('wapp_host.store.no_match', {'query': _storeSearch}),
                       textAlign: TextAlign.center,
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),
@@ -9672,7 +9661,7 @@ class _WappPageState extends State<WappPage>
         btn,
         IconButton(
           icon: const Icon(Icons.delete_outline, size: 20),
-          tooltip: 'Uninstall',
+          tooltip: tr('common.uninstall'),
           visualDensity: VisualDensity.compact,
           color: cs.error,
           onPressed: () => _confirmUninstallFromStore(slug, title),
@@ -9691,15 +9680,12 @@ class _WappPageState extends State<WappPage>
       builder: (ctx) {
         final dcs = Theme.of(ctx).colorScheme;
         return AlertDialog(
-          title: Text('Uninstall $name?'),
-          content: const Text(
-            'This removes the wapp from this device. You can reinstall it '
-            'anytime from the store.',
-          ),
+          title: Text(tr('wapp_host.store.uninstall.title', {'name': name})),
+          content: Text(tr('wapp_host.store.uninstall.body')),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text(tr('common.cancel')),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
@@ -9707,7 +9693,7 @@ class _WappPageState extends State<WappPage>
                 foregroundColor: dcs.onError,
               ),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Uninstall'),
+              child: Text(tr('common.uninstall')),
             ),
           ],
         );
@@ -9767,14 +9753,14 @@ class _WappPageState extends State<WappPage>
         return OutlinedButton.icon(
           onPressed: null,
           icon: const Icon(Icons.check, size: 16),
-          label: const Text('Installed'),
+          label: Text(tr('wapp_host.store.installed')),
           style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
         );
       case 'update':
         return FilledButton.icon(
           onPressed: () => dispatch(name),
           icon: const Icon(Icons.upgrade, size: 16),
-          label: const Text('Update'),
+          label: Text(tr('common.update')),
           style: FilledButton.styleFrom(
             visualDensity: VisualDensity.compact,
             backgroundColor: cs.tertiary,
@@ -9785,7 +9771,7 @@ class _WappPageState extends State<WappPage>
         return FilledButton.icon(
           onPressed: () => dispatch(name),
           icon: const Icon(Icons.download, size: 16),
-          label: const Text('Install'),
+          label: Text(tr('common.install')),
           style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
         );
     }
@@ -9915,7 +9901,7 @@ class _WappPageState extends State<WappPage>
                         Icon(Icons.error_outline, size: 18, color: cs.error),
                         const SizedBox(width: 8),
                         Text(
-                          'Something went wrong',
+                          tr('wapp_host.store.error'),
                           style: TextStyle(
                             color: cs.onErrorContainer,
                             fontWeight: FontWeight.w600,
@@ -9949,7 +9935,7 @@ class _WappPageState extends State<WappPage>
               child: Row(
                 children: [
                   Text(
-                    query.isEmpty ? 'All apps' : 'Results',
+                    tr(query.isEmpty ? 'wapp_host.store.all' : 'wapp_host.store.results'),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -9990,7 +9976,7 @@ class _WappPageState extends State<WappPage>
               padding: const EdgeInsets.all(24),
               child: Center(
                 child: Text(
-                  'No wapps match "$_storeSearch"',
+                  tr('wapp_host.store.no_match', {'query': _storeSearch}),
                   style: TextStyle(color: cs.onSurfaceVariant),
                 ),
               ),
@@ -10033,7 +10019,7 @@ class _WappPageState extends State<WappPage>
                 textInputAction: TextInputAction.search,
                 onChanged: (v) => setState(() => _storeSearch = v),
                 decoration: InputDecoration(
-                  hintText: 'Search wapps',
+                  hintText: tr('wapp_host.store.search_wapps'),
                   prefixIcon: Icon(Icons.search, color: cs.onSurfaceVariant),
                   suffixIcon: _storeSearch.isEmpty
                       ? null
@@ -10088,19 +10074,16 @@ class _WappPageState extends State<WappPage>
           ),
           const SizedBox(height: 20),
           Text(
-            hasSource ? 'Loading catalog…' : 'No repository configured',
+            tr(hasSource ? 'wapp_host.store.loading' : 'wapp_host.store.no_repo'),
             style: Theme.of(
               context,
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           Text(
-            hasSource
-                ? 'Fetching index.json from your repository. Use '
-                      'Refresh above if the list stays empty.'
-                : 'Set a repository URL or local path in the Settings tab, '
-                      'then pull to refresh to see the wapps available for '
-                      'install.',
+            tr(hasSource
+                ? 'wapp_host.store.loading.help'
+                : 'wapp_host.store.no_repo.help'),
             textAlign: TextAlign.center,
             style: TextStyle(color: cs.onSurfaceVariant, height: 1.4),
           ),
@@ -10111,7 +10094,7 @@ class _WappPageState extends State<WappPage>
                 if (_tabController != null) _tabController!.animateTo(1);
               },
               icon: const Icon(Icons.settings, size: 18),
-              label: const Text('Open settings'),
+              label: Text(tr('wapp_host.store.open_settings')),
             ),
           ],
         ],
@@ -10560,7 +10543,7 @@ class _WappPageState extends State<WappPage>
                       child: currentComments.isEmpty
                           ? Center(
                               child: Text(
-                                'No comments yet',
+                                tr('wapp_host.store.comments.none'),
                                 style: TextStyle(color: cs.onSurfaceVariant),
                               ),
                             )
@@ -10647,7 +10630,7 @@ class _WappPageState extends State<WappPage>
                                 controller: commentController,
                                 style: const TextStyle(fontSize: 13),
                                 decoration: InputDecoration(
-                                  hintText: 'Add a comment...',
+                                  hintText: tr('wapp_host.store.comments.hint'),
                                   isDense: true,
                                   contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 12,
@@ -10744,7 +10727,7 @@ class _WappPageState extends State<WappPage>
       return OutlinedButton.icon(
         onPressed: () => _uninstallWapp(wapp.name),
         icon: const Icon(Icons.check, size: 16),
-        label: const Text('Installed'),
+        label: Text(tr('wapp_host.store.installed')),
         style: OutlinedButton.styleFrom(
           foregroundColor: dark ? Colors.white : cs.primary,
           side: BorderSide(
@@ -11096,6 +11079,7 @@ class _WappPageState extends State<WappPage>
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
+                    // arch-ignore: no-raw-ui-string functionality tester, a developer surface kept in English with its HAL contract text
                     hintText: 'Type a command...',
                   ),
                   onSubmitted: (v) {
@@ -11273,6 +11257,7 @@ class _WappPageState extends State<WappPage>
               child: OutlinedButton.icon(
                 onPressed: () => _showFunctionalitySpec(funcId, def, providers),
                 icon: const Icon(Icons.data_object, size: 14),
+                // arch-ignore: no-raw-ui-string functionality tester, a developer surface kept in English with its HAL contract text
                 label: const Text('View JSON spec'),
                 style: OutlinedButton.styleFrom(
                   textStyle: const TextStyle(fontSize: 11),
@@ -11917,6 +11902,7 @@ class _WappPageState extends State<WappPage>
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
+        // arch-ignore: no-raw-ui-string functionality tester, a developer surface kept in English with its HAL contract text
         title: const Text('Add functionality'),
         content: TextField(
           controller: controller,
@@ -11927,11 +11913,11 @@ class _WappPageState extends State<WappPage>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(tr('common.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Add'),
+            child: Text(tr('common.add')),
           ),
         ],
       ),
@@ -11949,15 +11935,12 @@ class _WappPageState extends State<WappPage>
     final nsec = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Import signing key'),
+        title: Text(tr('wapp_host.key.import.title')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Paste your nsec1… private key. This will create a new '
-              'profile and set it as the active signing identity.',
-            ),
+            Text(tr('wapp_host.key.import.body')),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
@@ -11974,11 +11957,11 @@ class _WappPageState extends State<WappPage>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(tr('common.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Import'),
+            child: Text(tr('wapp_host.key.import.button')),
           ),
         ],
       ),
@@ -11991,7 +11974,7 @@ class _WappPageState extends State<WappPage>
         setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Imported: ${profile.wireCallsign}'),
+            content: Text(tr('wapp_host.key.imported', {'callsign': profile.wireCallsign})),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -12000,7 +11983,7 @@ class _WappPageState extends State<WappPage>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Invalid nsec: $e'),
+            content: Text(tr('wapp_host.key.invalid', {'error': e})),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -12036,7 +12019,7 @@ class _ApiJsonExportPage extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.copy),
-            tooltip: 'Copy to clipboard',
+            tooltip: tr('wapp_host.copy_clipboard'),
             onPressed: () {
               Clipboard.setData(ClipboardData(text: json));
               ScaffoldMessenger.of(context).showSnackBar(
@@ -12281,7 +12264,7 @@ class _ForwardPanelState extends State<_ForwardPanel> {
                     const Icon(Icons.forward, size: 20),
                     const SizedBox(width: 8),
                     Text(
-                      'Forward to',
+                      tr('wapp_host.forward.title'),
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ],
@@ -12293,11 +12276,11 @@ class _ForwardPanelState extends State<_ForwardPanel> {
                   controller: _search,
                   autofocus: true,
                   textCapitalization: TextCapitalization.characters,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                    hintText: 'Search contacts, or type a callsign / #group',
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search),
+                    hintText: tr('wapp_host.forward.hint'),
                     isDense: true,
-                    border: OutlineInputBorder(),
+                    border: const OutlineInputBorder(),
                   ),
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (v) {
@@ -12315,8 +12298,8 @@ class _ForwardPanelState extends State<_ForwardPanel> {
                           backgroundColor: cs.primaryContainer,
                           child: const Icon(Icons.send, size: 18),
                         ),
-                        title: Text('Send to "$typed"'),
-                        subtitle: const Text('new callsign or #group'),
+                        title: Text(tr('wapp_host.forward.send_to', {'typed': typed})),
+                        subtitle: Text(tr('wapp_host.forward.new')),
                         onTap: () => widget.onPick(typed),
                       ),
                     for (final c in matches)

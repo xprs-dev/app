@@ -512,6 +512,28 @@ class PreferencesService {
   set xprsCatchupMarks(Map<String, int> v) =>
       _prefs.setString('xprs.catchupMarks', jsonEncode(v));
 
+  /// Per profile, which of the operator's issued callsigns each conversation
+  /// keeps (peer base callsign -> our callsign). XprsSelf owns the rule and
+  /// the bound; this only stores it. Keyed by profile id, because two
+  /// profiles on one phone are two people's conversations.
+  Map<String, String> xprsConversationCallsigns(String profileId) {
+    final raw = _prefs.getString('xprs.convoCall.$profileId');
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final m = jsonDecode(raw);
+      if (m is! Map) return {};
+      return {
+        for (final e in m.entries)
+          if (e.value is String) e.key.toString(): e.value as String,
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  void setXprsConversationCallsigns(String profileId, Map<String, String> m) =>
+      _prefs.setString('xprs.convoCall.$profileId', jsonEncode(m));
+
   /// Per archiver, the poll interval it has earned (ms), and when it last had
   /// something new to give us.
   ///

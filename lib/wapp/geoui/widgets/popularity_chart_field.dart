@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../services/i18n/core_i18n.dart';
 
 /// `$type:"popularity"` — a native monthly bar chart of how many peers held
 /// (seeders) and downloaded from (unique leechers) a folder, one grouped pair of
@@ -43,7 +44,7 @@ class PopularityChartField extends StatelessWidget {
         height: 160,
         alignment: Alignment.center,
         child: Text(
-          'No popularity yet — it fills in as this torrent is shared.',
+          tr('geoui.popularity.empty'),
           textAlign: TextAlign.center,
           style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
         ),
@@ -66,14 +67,14 @@ class PopularityChartField extends StatelessWidget {
         Row(children: [
           _legendDot(seedersColor),
           const SizedBox(width: 6),
-          Text('Seeders', style: tt.bodySmall?.copyWith(color: cs.onSurface)),
-          Text('  peak $peakSeed',
+          Text(tr('geoui.popularity.seeders'), style: tt.bodySmall?.copyWith(color: cs.onSurface)),
+          Text(tr('geoui.popularity.peak', {'n': peakSeed}),
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
           const SizedBox(width: 18),
           _legendDot(leechersColor),
           const SizedBox(width: 6),
-          Text('Leechers', style: tt.bodySmall?.copyWith(color: cs.onSurface)),
-          Text('  peak $peakLeech',
+          Text(tr('geoui.popularity.leechers'), style: tt.bodySmall?.copyWith(color: cs.onSurface)),
+          Text(tr('geoui.popularity.peak', {'n': peakLeech}),
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
         ]),
         const SizedBox(height: 12),

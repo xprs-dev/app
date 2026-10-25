@@ -19,6 +19,7 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import '../../../services/i18n/core_i18n.dart';
 
 const String svgPrefix = 'svg:';
 
@@ -162,9 +163,9 @@ class _IconFieldState extends State<IconField> {
                       enabled: !_isSvg,
                       maxLength: 8,
                       decoration: InputDecoration(
-                        hintText: _isSvg
-                            ? 'SVG selected — clear to type an emoji'
-                            : 'Type an emoji or single character',
+                        hintText: tr(_isSvg
+                            ? 'geoui.icon.hint_svg'
+                            : 'geoui.icon.hint'),
                         border: const OutlineInputBorder(),
                         isDense: true,
                         counterText: '',
@@ -178,7 +179,7 @@ class _IconFieldState extends State<IconField> {
                         OutlinedButton.icon(
                           onPressed: _pickSvg,
                           icon: const Icon(Icons.image, size: 16),
-                          label: const Text('Choose SVG…'),
+                          label: Text(tr('geoui.icon.choose_svg')),
                           style: OutlinedButton.styleFrom(
                             visualDensity: VisualDensity.compact,
                           ),
@@ -187,7 +188,7 @@ class _IconFieldState extends State<IconField> {
                           TextButton.icon(
                             onPressed: _clear,
                             icon: const Icon(Icons.clear, size: 16),
-                            label: const Text('Clear'),
+                            label: Text(tr('geoui.icon.clear')),
                             style: TextButton.styleFrom(
                               visualDensity: VisualDensity.compact,
                             ),

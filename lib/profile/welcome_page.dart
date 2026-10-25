@@ -23,6 +23,7 @@ import 'identity_backup.dart';
 import 'vanity_callsign_page.dart';
 import 'profile_service.dart';
 import '../services/android_permissions_service.dart';
+import '../services/i18n/core_i18n.dart';
 import '../services/preferences_service.dart';
 
 class WelcomePage extends StatefulWidget {
@@ -97,7 +98,9 @@ class _WelcomePageState extends State<WelcomePage> {
       // at all.
       final profile = ProfileService.instance
           .buildFromNsec(id.nsec, nickname: id.nickname)
-          .copyWith(licenceCallsign: id.licenceCallsign);
+          .copyWith(
+              licenceCallsign: id.licenceCallsign,
+              licenceCallsigns: id.licenceCallsigns);
       await ProfileService.instance.saveAndActivate(profile);
       await _ensureBackupAccess();
       if (!mounted) return;
@@ -122,15 +125,14 @@ class _WelcomePageState extends State<WelcomePage> {
       if (!ok) {
         if (mounted) {
           setState(
-            () => _error =
-                'Storage access is needed to read the backup on this phone.',
+            () => _error = tr('onboarding.restore.need_storage'),
           );
         }
         return;
       }
     }
     if (!await IdentityBackup.instance.backupExists()) {
-      if (mounted) setState(() => _error = 'No backup found on this device.');
+      if (mounted) setState(() => _error = tr('onboarding.restore.none'));
       return;
     }
     var passphrase = '';
@@ -150,7 +152,7 @@ class _WelcomePageState extends State<WelcomePage> {
       return;
     }
     if (list.isEmpty) {
-      if (mounted) setState(() => _error = 'Backup held no identities.');
+      if (mounted) setState(() => _error = tr('onboarding.restore.empty'));
       return;
     }
     // Keep encrypting future auto-backups with the same passphrase.
@@ -165,7 +167,7 @@ class _WelcomePageState extends State<WelcomePage> {
     final chosen = await showDialog<RestorableIdentity>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('Restore which identity?'),
+        title: Text(tr('onboarding.restore.which')),
         children: [
           for (final id in list)
             SimpleDialogOption(
@@ -185,24 +187,24 @@ class _WelcomePageState extends State<WelcomePage> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Unlock backup'),
+        title: Text(tr('onboarding.restore.unlock_title')),
         content: TextField(
           controller: controller,
           autofocus: true,
           obscureText: true,
-          decoration: const InputDecoration(
-            hintText: 'Backup passphrase',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            hintText: tr('onboarding.restore.passphrase_hint'),
+            border: const OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(tr('common.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Unlock'),
+            child: Text(tr('onboarding.unlock.button')),
           ),
         ],
       ),
@@ -227,7 +229,7 @@ class _WelcomePageState extends State<WelcomePage> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Restore your previous identity',
+                  tr('onboarding.restore.title'),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: cs.onSecondaryContainer,
@@ -238,7 +240,7 @@ class _WelcomePageState extends State<WelcomePage> {
           ),
           const SizedBox(height: 4),
           Text(
-            'A backup from a previous install was found on this phone.',
+            tr('onboarding.restore.found'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: cs.onSecondaryContainer,
             ),
@@ -251,8 +253,8 @@ class _WelcomePageState extends State<WelcomePage> {
                 onPressed: _isFinalizing ? null : () => _restore(id),
                 icon: const Icon(Icons.badge),
                 label: Text(
-                  'Restore ${id.callsign}'
-                  '${id.nickname.isNotEmpty ? '  (${id.nickname})' : ''}',
+                  tr('onboarding.restore.button', {'callsign': id.callsign}) +
+                      (id.nickname.isNotEmpty ? '  (${id.nickname})' : ''),
                 ),
               ),
             ),
@@ -321,7 +323,7 @@ class _WelcomePageState extends State<WelcomePage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Import existing profile'),
+          title: Text(tr('onboarding.import.title')),
           // Scrollable: with the keyboard up there is barely a third of the
           // screen left, and an AlertDialog clips its content rather than
           // shrinking -- the prefix and length rows ended up underneath the
@@ -331,10 +333,7 @@ class _WelcomePageState extends State<WelcomePage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Paste a Nostr private key (nsec1…) below. The matching '
-                  'callsign and npub will be derived automatically.',
-                ),
+                Text(tr('onboarding.import.intro')),
                 const SizedBox(height: 12),
                 TextField(
                   controller: controller,
@@ -348,24 +347,24 @@ class _WelcomePageState extends State<WelcomePage> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    const Text('This is a'),
+                    Text(tr('onboarding.import.kind')),
                     const SizedBox(width: 10),
                     DropdownButton<CallsignKind>(
                       value: kind,
                       onChanged: (v) =>
                           setLocal(() => kind = v ?? CallsignKind.person),
-                      items: const [
+                      items: [
                         DropdownMenuItem(
                           value: CallsignKind.person,
-                          child: Text('person (X1)'),
+                          child: Text(tr('onboarding.import.kind_person')),
                         ),
                         DropdownMenuItem(
                           value: CallsignKind.mobile,
-                          child: Text('movable station (X2)'),
+                          child: Text(tr('onboarding.import.kind_mobile')),
                         ),
                         DropdownMenuItem(
                           value: CallsignKind.station,
-                          child: Text('fixed station (X3)'),
+                          child: Text(tr('onboarding.import.kind_station')),
                         ),
                       ],
                     ),
@@ -373,7 +372,7 @@ class _WelcomePageState extends State<WelcomePage> {
                 ),
                 Row(
                   children: [
-                    const Text('Callsign length'),
+                    Text(tr('onboarding.vanity.length')),
                     const SizedBox(width: 10),
                     DropdownButton<int>(
                       value: length,
@@ -398,12 +397,12 @@ class _WelcomePageState extends State<WelcomePage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: Text(tr('common.cancel')),
             ),
             FilledButton(
               onPressed: () =>
                   Navigator.pop(ctx, (controller.text.trim(), kind, length)),
-              child: const Text('Import'),
+              child: Text(tr('onboarding.import.button')),
             ),
           ],
         ),
@@ -477,30 +476,25 @@ class _WelcomePageState extends State<WelcomePage> {
     final allow = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Protect your identity'),
+        title: Text(tr('onboarding.backup.title')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Allow storage access so XPRS can keep a backup of your secret '
-              'key on this phone. It lets you restore this identity if you '
-              'reinstall the app or clear its data.',
-            ),
+            Text(tr('onboarding.backup.intro')),
             if (needPass) ...[
               const SizedBox(height: 12),
-              const Text(
-                'The backup is encrypted with this passphrase. If you forget '
-                'it, the backup cannot be restored.',
-                style: TextStyle(fontSize: 12),
+              Text(
+                tr('onboarding.backup.passphrase_warning'),
+                style: const TextStyle(fontSize: 12),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: controller,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  hintText: 'Passphrase',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  hintText: tr('onboarding.backup.passphrase_hint'),
+                  border: const OutlineInputBorder(),
                 ),
               ),
             ],
@@ -509,11 +503,11 @@ class _WelcomePageState extends State<WelcomePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Not now'),
+            child: Text(tr('onboarding.backup.not_now')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Allow'),
+            child: Text(tr('onboarding.backup.allow')),
           ),
         ],
       ),
@@ -548,10 +542,10 @@ class _WelcomePageState extends State<WelcomePage> {
             ? AppBar(
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Cancel',
+                  tooltip: tr('common.cancel'),
                   onPressed: () => Navigator.of(context).maybePop(),
                 ),
-                title: const Text('Add profile'),
+                title: Text(tr('onboarding.welcome.add_profile')),
               )
             : null,
         body: SafeArea(
@@ -592,17 +586,14 @@ class _WelcomePageState extends State<WelcomePage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Welcome to XPRS',
+                                  tr('onboarding.welcome.title'),
                                   style: theme.textTheme.titleLarge?.copyWith(
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Create a profile to sign the wapps you '
-                                  'build and install. You can generate a '
-                                  'fresh Nostr identity or import an '
-                                  'existing nsec.',
+                                  tr('onboarding.welcome.intro'),
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: cs.onSurfaceVariant,
                                   ),
@@ -619,7 +610,7 @@ class _WelcomePageState extends State<WelcomePage> {
 
                       // Callsign card
                       Text(
-                        'Your callsign',
+                        tr('onboarding.welcome.your_callsign'),
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -643,7 +634,7 @@ class _WelcomePageState extends State<WelcomePage> {
                                   IconButton(
                                     onPressed: _isFinalizing ? null : _goBack,
                                     icon: const Icon(Icons.undo),
-                                    tooltip: 'Revert to previous callsign',
+                                    tooltip: tr('onboarding.welcome.revert'),
                                     color: cs.primary,
                                   )
                                 else
@@ -684,19 +675,19 @@ class _WelcomePageState extends State<WelcomePage> {
                                 OutlinedButton.icon(
                                   onPressed: _isFinalizing ? null : _regenerate,
                                   icon: const Icon(Icons.refresh, size: 18),
-                                  label: const Text('Generate new'),
+                                  label: Text(tr('onboarding.welcome.generate')),
                                 ),
                                 OutlinedButton.icon(
                                   onPressed: _isFinalizing ? null : _importNsec,
                                   icon: const Icon(Icons.key, size: 18),
-                                  label: const Text('Import nsec'),
+                                  label: Text(tr('onboarding.welcome.import_nsec')),
                                 ),
                                 OutlinedButton.icon(
                                   onPressed: _isFinalizing
                                       ? null
                                       : _restoreFromBackup,
                                   icon: const Icon(Icons.restore, size: 18),
-                                  label: const Text('Restore from backup'),
+                                  label: Text(tr('onboarding.welcome.restore')),
                                 ),
                                 FilledButton.icon(
                                   onPressed: _isFinalizing ? null : _finalize,
@@ -709,7 +700,7 @@ class _WelcomePageState extends State<WelcomePage> {
                                           ),
                                         )
                                       : const Icon(Icons.check, size: 18),
-                                  label: const Text('Continue'),
+                                  label: Text(tr('common.continue')),
                                 ),
                               ],
                             ),
@@ -724,15 +715,14 @@ class _WelcomePageState extends State<WelcomePage> {
                       // preview card and the Continue button. One button; the
                       // work happens on its own full screen.
                       Text(
-                        'Custom callsign (optional)',
+                        tr('onboarding.welcome.custom_title'),
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Want your initials in it? Search for a callsign that '
-                        'contains letters you like.',
+                        tr('onboarding.welcome.custom_desc'),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: cs.onSurfaceVariant,
                         ),
@@ -741,7 +731,7 @@ class _WelcomePageState extends State<WelcomePage> {
                       OutlinedButton.icon(
                         onPressed: _isFinalizing ? null : _openVanityPage,
                         icon: const Icon(Icons.search, size: 18),
-                        label: const Text('Choose a custom callsign'),
+                        label: Text(tr('onboarding.welcome.custom_button')),
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(48),
                         ),
@@ -749,7 +739,7 @@ class _WelcomePageState extends State<WelcomePage> {
 
                       const SizedBox(height: 20),
                       Text(
-                        'Nickname (optional)',
+                        tr('onboarding.welcome.nickname'),
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -757,9 +747,9 @@ class _WelcomePageState extends State<WelcomePage> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _nicknameController,
-                        decoration: const InputDecoration(
-                          hintText: 'Your display name',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          hintText: tr('onboarding.welcome.nickname_hint'),
+                          border: const OutlineInputBorder(),
                         ),
                       ),
 
@@ -809,11 +799,7 @@ class _WelcomePageState extends State<WelcomePage> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                'Your profile lives at '
-                                '~/.local/share/xprs/devices/<id>/. '
-                                'Back it up by copying the folder. Your '
-                                'nsec is stored inside profiles.json — keep '
-                                'it secret.',
+                                tr('onboarding.welcome.storage_note'),
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: cs.onSecondaryContainer,
                                 ),

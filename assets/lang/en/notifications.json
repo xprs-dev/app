@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "language": "English",
+    "reviewed": true
+  },
+  "notifications.title": "Notifications",
+  "notifications.clear": "Clear",
+  "notifications.filter.wapps": "Wapps",
+  "notifications.filter.host": "Host",
+  "notifications.level.info": "Info",
+  "notifications.level.success": "Success",
+  "notifications.level.warning": "Warning",
+  "notifications.level.error": "Error",
+  "notifications.empty": "No notifications",
+  "notifications.today": "Today",
+  "notifications.yesterday": "Yesterday",
+  "notifications.time.now": "now",
+  "notifications.time.minutes": "{n}m",
+  "notifications.time.hours": "{n}h",
+  "notifications.time.days": "{n}d",
+  "notifications.cleanup.nothing": "Nothing to free",
+  "notifications.cleanup.nothing.body": "This device is holding nothing for other people.",
+  "notifications.cleanup.freed": "Freed {size}",
+  "notifications.cleanup.deleted.one": "{n} file kept for other people was deleted. Your own files were not touched.",
+  "notifications.cleanup.deleted.other": "{n} files kept for other people were deleted. Your own files were not touched.",
+  "notifications.update.available": "Update available",
+  "notifications.update.body": "XPRS {version} is available. Open Settings → Updates to install.",
+  "notifications.liked": "{from} liked your message"
+}

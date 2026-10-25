@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "language": "Español",
+    "reviewed": false
+  },
+  "notifications.title": "Notificaciones",
+  "notifications.clear": "Borrar",
+  "notifications.filter.wapps": "Wapps",
+  "notifications.filter.host": "Sistema",
+  "notifications.level.info": "Información",
+  "notifications.level.success": "Éxito",
+  "notifications.level.warning": "Aviso",
+  "notifications.level.error": "Error",
+  "notifications.empty": "Sin notificaciones",
+  "notifications.today": "Hoy",
+  "notifications.yesterday": "Ayer",
+  "notifications.time.now": "ahora",
+  "notifications.time.minutes": "{n} min",
+  "notifications.time.hours": "{n} h",
+  "notifications.time.days": "{n} d",
+  "notifications.cleanup.nothing": "Nada que liberar",
+  "notifications.cleanup.nothing.body": "Este dispositivo no guarda nada de otras personas.",
+  "notifications.cleanup.freed": "Liberados {size}",
+  "notifications.cleanup.deleted.one": "Se eliminó {n} archivo guardado para otras personas. Tus archivos no se tocaron.",
+  "notifications.cleanup.deleted.other": "Se eliminaron {n} archivos guardados para otras personas. Tus archivos no se tocaron.",
+  "notifications.update.available": "Actualización disponible",
+  "notifications.update.body": "XPRS {version} está disponible. Abre Ajustes → Actualizaciones para instalar.",
+  "notifications.liked": "A {from} le gustó tu mensaje"
+}

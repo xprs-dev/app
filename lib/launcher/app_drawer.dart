@@ -51,30 +51,30 @@ class _AppDrawer extends StatelessWidget {
             if (UpdateService.selfUpdateEnabled)
               ListTile(
                 leading: const Icon(Icons.system_update),
-                title: const Text('Updates'),
-                subtitle: const Text('Version $kAppVersion'),
+                title: Text(tr('launcher.drawer.updates')),
+                subtitle: Text(tr('launcher.drawer.version', {'version': kAppVersion})),
                 onTap: () => _open(context, const UpdatePage()),
               ),
             ListTile(
               leading: const Icon(Icons.memory),
-              title: const Text('Hardware'),
+              title: Text(tr('launcher.drawer.hardware')),
               onTap: () => _open(context, const HardwarePage()),
             ),
             ListTile(
               leading: const Icon(Icons.groups),
-              title: const Text('Groups'),
+              title: Text(tr('launcher.drawer.groups')),
               onTap: () => _open(context, const GroupsPage()),
             ),
             if (platform.platformName() == 'android')
               ListTile(
                 leading: const Icon(Icons.share),
-                title: const Text('Share'),
+                title: Text(tr('common.share')),
                 onTap: () => _open(context, const ShareAppPage()),
               ),
             const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.settings),
-              title: const Text('Settings'),
+              title: Text(tr('common.settings')),
               onTap: onSettings,
             ),
           ],

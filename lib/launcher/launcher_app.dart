@@ -23,6 +23,9 @@ class _IwiAppState extends State<IwiApp> {
     // (b) profile switches re-route storage paths and trigger a
     //     launcher rescan on the fresh apps/ folder.
     ProfileService.instance.activeProfileNotifier.addListener(_onProfileChanged);
+    // The language changed (Settings row, or the tables finished loading):
+    // one rebuild from the root is how every tr() in a build method sees it.
+    CoreI18n.instance.revision.addListener(_onProfileChanged);
     // UI-stall telemetry: log frames that took >100ms (a felt touch hiccup),
     // rate-limited to one line per 5s so a bad stretch can't flood the log.
     // Per-task attribution lives in TaskMonitorService; this catches the total.
@@ -65,6 +68,7 @@ class _IwiAppState extends State<IwiApp> {
   void dispose() {
     ProfileService.instance.activeProfileNotifier
         .removeListener(_onProfileChanged);
+    CoreI18n.instance.revision.removeListener(_onProfileChanged);
     super.dispose();
   }
 
@@ -78,6 +82,15 @@ class _IwiAppState extends State<IwiApp> {
         ProfileService.instance.activeProfile != null;
     return MaterialApp(
       title: 'XPRS',
+      // Flutter's own widgets (dialog buttons, pickers, the text-selection
+      // menu) follow the same language the core's tables loaded for.
+      locale: CoreI18n.instance.flutterLocale,
+      supportedLocales: CoreI18n.instance.supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       // Root navigator key — lets context-free services (the remote-control
       // API) push routes, e.g. open a wapp on /api/launch.
       navigatorKey: rootNavigatorKey,

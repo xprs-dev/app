@@ -42,6 +42,7 @@ import '../services/android_permissions_service.dart';
 import '../services/log_service.dart';
 import 'iwi_profile.dart';
 import '../platform/fs.dart';
+import '../services/i18n/core_i18n.dart';
 
 /// One identity restorable from a backup file.
 class RestorableIdentity {
@@ -55,6 +56,11 @@ class RestorableIdentity {
   /// any key (XPRS.md 6.4.2). Without it, restoring a backup would silently
   /// put a licensed operator back on the air under an `X1`.
   final String licenceCallsign;
+
+  /// Every issued callsign the identity held (one per jurisdiction), the
+  /// active one among them. Empty in a backup written before a profile could
+  /// hold several; [licenceCallsign] alone is then the list.
+  final List<String> licenceCallsigns;
   final String npub;
   final String nsec;
   final String nickname;
@@ -66,11 +72,16 @@ class RestorableIdentity {
     required this.nickname,
     required this.createdAt,
     this.licenceCallsign = '',
+    this.licenceCallsigns = const [],
   });
 
   factory RestorableIdentity.fromJson(Map<String, dynamic> j) => RestorableIdentity(
         callsign: (j['callsign'] as String?) ?? '',
         licenceCallsign: (j['licenceCallsign'] as String?) ?? '',
+        licenceCallsigns: [
+          for (final c in (j['licenceCallsigns'] as List?) ?? const [])
+            if (c is String && c.trim().isNotEmpty) c.trim().toUpperCase(),
+        ],
         npub: (j['npub'] as String?) ?? '',
         nsec: (j['nsec'] as String?) ?? '',
         nickname: (j['nickname'] as String?) ?? '',
@@ -190,6 +201,8 @@ class IdentityBackup {
                 'callsign': p.callsign,
                 if (p.licenceCallsign.isNotEmpty)
                   'licenceCallsign': p.licenceCallsign,
+                if (p.heldLicences.isNotEmpty)
+                  'licenceCallsigns': p.heldLicences,
                 'npub': p.npub,
                 'nsec': p.nsec,
                 'nickname': p.nickname,
@@ -206,6 +219,8 @@ class IdentityBackup {
                 'callsign': r.callsign,
                 if (r.licenceCallsign.isNotEmpty)
                   'licenceCallsign': r.licenceCallsign,
+                if (r.licenceCallsigns.isNotEmpty)
+                  'licenceCallsigns': r.licenceCallsigns,
                 'npub': r.npub,
                 'nsec': r.nsec,
                 'nickname': r.nickname,
@@ -256,14 +271,14 @@ class IdentityBackup {
     try {
       decoded = jsonDecode(await f.readAsString());
     } catch (_) {
-      throw const BadPassphrase('Backup file is corrupt');
+      throw BadPassphrase(tr('profile.backup.restore.corrupt'));
     }
     if (decoded is! Map) return const [];
     final raw = decoded.cast<String, dynamic>();
     List<dynamic> identities;
     if (raw['encrypted'] == true) {
       if (passphrase.isEmpty) {
-        throw const BadPassphrase('This backup is passphrase-protected');
+        throw BadPassphrase(tr('profile.backup.restore.protected'));
       }
       final inner = await _decrypt(raw, passphrase);
       final innerMap = jsonDecode(inner);
@@ -289,7 +304,7 @@ class IdentityBackup {
     try {
       return await compute(_decryptJob, [Map<String, dynamic>.of(raw), passphrase]);
     } catch (_) {
-      throw const BadPassphrase('Wrong passphrase or corrupt backup');
+      throw BadPassphrase(tr('profile.backup.restore.wrong'));
     }
   }
 

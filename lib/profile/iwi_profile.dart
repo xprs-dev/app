@@ -32,6 +32,13 @@ class IwiProfile {
   /// on disk. What goes on the air is [wireCallsign].
   final String callsign;
 
+  /// The issued callsign ON THE AIR NOW, or empty when the operator's own
+  /// derived [callsign] is. One of [licenceCallsigns] whenever it is set.
+  ///
+  /// The name is kept from the days when a profile held one licence, so every
+  /// reader -- and every profiles.json an older build reads -- still means
+  /// "the callsign this station transmits under".
+  ///
   /// The callsign a radio authority issued this operator, or empty.
   ///
   /// A licensed amateur transmits under the callsign on their licence and
@@ -52,6 +59,18 @@ class IwiProfile {
   /// not issued: an `X1` to `X5` name, a foreign node number, and anything
   /// that is not callsign-shaped.
   final String licenceCallsign;
+
+  /// Every callsign authorities issued this operator, in the order they were
+  /// added: one per jurisdiction they operate in (CT1ABC at home, EA/CT1ABC
+  /// across the border). [licenceCallsign] picks which one is the default on
+  /// the air; a conversation may keep another (XprsSelf). The derived
+  /// [callsign] is never in this list -- it is the profile's base and its
+  /// folder, and stays one whatever is added here.
+  final List<String> licenceCallsigns;
+
+  /// At most this many, so the identity bindings this station re-airs every
+  /// 30 minutes (one per callsign, XPRS.md 6.4.2) stay a small cost.
+  static const int maxLicences = 4;
 
   /// Bech32-encoded Nostr public key (`npub1...`). Shown to users,
   /// safe to share, used as the publisher identity when signing wapps.
@@ -96,8 +115,27 @@ class IwiProfile {
     this.color = '',
     this.avatar = '',
     this.licenceCallsign = '',
+    this.licenceCallsigns = const [],
     this.nsecEnvelope,
   });
+
+  /// Every issued callsign this operator holds, the active one included even
+  /// if a caller set it without listing it. Uppercase, no duplicates.
+  List<String> get heldLicences {
+    final out = <String>[];
+    void add(String c) {
+      final u = c.trim().toUpperCase();
+      if (u.isNotEmpty && !out.contains(u)) out.add(u);
+    }
+    licenceCallsigns.forEach(add);
+    add(licenceCallsign);
+    return out;
+  }
+
+  /// Every name this station answers to: the derived base first, then each
+  /// issued callsign.
+  List<String> get allCallsigns =>
+      [callsign.toUpperCase(), ...heldLicences.where((c) => c != callsign.toUpperCase())];
 
   /// What this station calls itself ON THE AIR: the licensed callsign when the
   /// operator has one, else the one their key derives (XPRS.md 6.4.1).
@@ -121,6 +159,7 @@ class IwiProfile {
     String? color,
     String? avatar,
     String? licenceCallsign,
+    List<String>? licenceCallsigns,
     Map<String, dynamic>? nsecEnvelope,
     bool clearNsecEnvelope = false,
   }) {
@@ -138,6 +177,7 @@ class IwiProfile {
       // unlike nsecEnvelope this field is not nullable, and an empty string
       // already means "no licence".
       licenceCallsign: licenceCallsign ?? this.licenceCallsign,
+      licenceCallsigns: licenceCallsigns ?? this.licenceCallsigns,
       nsecEnvelope:
           clearNsecEnvelope ? null : (nsecEnvelope ?? this.nsecEnvelope),
     );
@@ -159,6 +199,9 @@ class IwiProfile {
         // Only when set: every existing profiles.json stays byte-identical,
         // and an older build reading a newer file ignores the key.
         if (licenceCallsign.isNotEmpty) 'licenceCallsign': licenceCallsign,
+        // The whole list beside it. An older build ignores this key and keeps
+        // transmitting under the active one, which is the right fallback.
+        if (heldLicences.isNotEmpty) 'licenceCallsigns': heldLicences,
       };
 
   factory IwiProfile.fromJson(Map<String, dynamic> json) {
@@ -177,6 +220,12 @@ class IwiProfile {
       // Absent means "no licence", which is every profile written before this
       // existed. That is the whole migration.
       licenceCallsign: (json['licenceCallsign'] as String?) ?? '',
+      // Absent before a profile could hold several: the one licence, if any,
+      // is the list ([heldLicences] adds the active one either way).
+      licenceCallsigns: [
+        for (final c in (json['licenceCallsigns'] as List?) ?? const [])
+          if (c is String && c.trim().isNotEmpty) c.trim().toUpperCase(),
+      ],
       nsecEnvelope: envelope is Map ? envelope.cast<String, dynamic>() : null,
     );
   }

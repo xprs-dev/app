@@ -29,6 +29,7 @@
  * whose signer we cannot check — marks nothing, releases nothing, stops
  * nothing. "Unverifiable is not probably fine."
  */
+import 'xprs_self.dart';
 import 'dart:typed_data';
 
 import '../../util/nostr_crypto.dart';
@@ -178,9 +179,13 @@ class XprsReceipt {
       String? forId}) {
     if (p.type != 'message') return null;
 
-    final self = _base(selfCallsign);
+    var self = _base(selfCallsign);
     final to = _base(p['d'] ?? '');
     final from = (p['f'] ?? '').trim().toUpperCase();
+    // Answer under the name the message was addressed to. An operator holds
+    // several callsigns (XprsSelf), and a 1:1 to one that is not the active
+    // one got no receipt at all, so its sender kept re-sending it.
+    if (to.isNotEmpty && to != self && XprsSelf.instance.isMine(to)) self = to;
     if (self.isEmpty || from.isEmpty) return null;
 
     // §13.7.1's exclusion table, in order. Each of these would put an

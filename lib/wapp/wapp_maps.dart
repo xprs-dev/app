@@ -369,8 +369,8 @@ class _SlippyMapState extends State<_SlippyMap>
                 const Icon(Icons.chat_bubble_outline,
                     size: 16, color: Colors.white70),
                 const SizedBox(width: 8),
-                const Text('Geo Chat',
-                    style: TextStyle(
+                Text(tr('wapp_host.geochat.title'),
+                    style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                         fontSize: 14)),
@@ -379,7 +379,7 @@ class _SlippyMapState extends State<_SlippyMap>
                 IconButton(
                   icon: const Icon(Icons.delete_sweep,
                       size: 18, color: Colors.white60),
-                  tooltip: 'Clear ${_geoTab == 0 ? "Live" : "Beacons"}',
+                  tooltip: tr(_geoTab == 0 ? 'wapp_host.geochat.clear_live' : 'wapp_host.geochat.clear_beacons'),
                   visualDensity: VisualDensity.compact,
                   onPressed: showing.isEmpty
                       ? null
@@ -411,7 +411,7 @@ class _SlippyMapState extends State<_SlippyMap>
               key: ValueKey('geochat-$_geoTab'),
               fieldName: 'geochat',
               label: '',
-              hint: _geoTab == 0 ? 'Message…' : 'Repeated beacons',
+              hint: tr(_geoTab == 0 ? 'wapp_host.geochat.hint' : 'wapp_host.geochat.beacons_hint'),
               fill: true,
               messages: showing,
               onLocate: widget.onLocate,
@@ -736,9 +736,9 @@ class _SlippyMapState extends State<_SlippyMap>
                       onTap: () {
                         Clipboard.setData(ClipboardData(text: coords));
                         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                          const SnackBar(
-                            content: Text('Coordinates copied'),
-                            duration: Duration(seconds: 1),
+                          SnackBar(
+                            content: Text(tr('wapp_host.maps.coords_copied')),
+                            duration: const Duration(seconds: 1),
                             behavior: SnackBarBehavior.floating,
                           ),
                         );
@@ -753,7 +753,7 @@ class _SlippyMapState extends State<_SlippyMap>
                 ),
               ),
               if (heard != null)
-                _popupRow(Icons.schedule, 'Last heard ${_relativeTime(heard)}'),
+                _popupRow(Icons.schedule, tr('wapp_host.maps.last_heard', {'time': _relativeTime(heard)})),
               if (detail.isNotEmpty) _popupRow(Icons.message, detail),
             ],
           ),
@@ -1235,9 +1235,9 @@ class _SlippyMapState extends State<_SlippyMap>
                     icon: widget.isFullscreen
                         ? Icons.fullscreen_exit
                         : Icons.fullscreen,
-                    tooltip: widget.isFullscreen
-                        ? 'Exit full screen'
-                        : 'Full screen',
+                    tooltip: tr(widget.isFullscreen
+                        ? 'wapp_host.maps.exit_fullscreen'
+                        : 'wapp_host.maps.fullscreen'),
                     onTap: widget.onExpand!,
                   ),
                 ),
@@ -1265,11 +1265,11 @@ class _SlippyMapState extends State<_SlippyMap>
                               controller: _searchController,
                               focusNode: _searchFocus,
                               style: const TextStyle(fontSize: 13, color: Color(0xFFe6edf3)),
-                              decoration: const InputDecoration(
-                                hintText: 'Search address or coordinates...',
-                                hintStyle: TextStyle(color: Color(0xFF8b949e), fontSize: 13),
+                              decoration: InputDecoration(
+                                hintText: tr('wapp_host.maps.search_hint'),
+                                hintStyle: const TextStyle(color: Color(0xFF8b949e), fontSize: 13),
                                 border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                                 isDense: true,
                               ),
                               onChanged: (v) {
@@ -1346,7 +1346,7 @@ class _SlippyMapState extends State<_SlippyMap>
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: const Color(0xFF30363d)),
                         ),
-                        child: const Text('No results found', style: TextStyle(fontSize: 12, color: Color(0xFF8b949e))),
+                        child: Text(tr('wapp_host.maps.no_results'), style: const TextStyle(fontSize: 12, color: Color(0xFF8b949e))),
                       ),
                   ],
                 ),
@@ -1475,9 +1475,9 @@ class _SlippyMapState extends State<_SlippyMap>
     }
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not get your location (check GPS + permission)'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(tr('wapp_host.maps.no_location')),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -1918,7 +1918,7 @@ class _GeoChatPanelState extends State<_GeoChatPanel> {
               const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(Icons.delete_sweep, size: 20),
-                tooltip: 'Clear ${_tab == 0 ? "Live" : "Beacons"}',
+                tooltip: tr(_tab == 0 ? 'wapp_host.geochat.clear_live' : 'wapp_host.geochat.clear_beacons'),
                 visualDensity: VisualDensity.compact,
                 onPressed:
                     showing.isEmpty ? null : () => widget.onClearChat(_tab),
@@ -1940,7 +1940,7 @@ class _GeoChatPanelState extends State<_GeoChatPanel> {
             key: ValueKey('geochat-tab-$_tab'),
             fieldName: 'geochat',
             label: '',
-            hint: _tab == 0 ? 'Message…' : 'Repeated beacons',
+            hint: tr(_tab == 0 ? 'wapp_host.geochat.hint' : 'wapp_host.geochat.beacons_hint'),
             fill: true,
             messages: showing,
             onLocate: widget.onLocate,

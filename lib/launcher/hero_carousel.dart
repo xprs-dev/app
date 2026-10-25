@@ -150,19 +150,19 @@ class _HeroEmpty extends StatelessWidget {
     final (IconData icon, String title, String body) = !up
         ? (
             Icons.hub_outlined,
-            'The mesh is asleep',
-            'Start Reticulum and the news people are posting will land here.',
+            tr('launcher.hero.asleep.title'),
+            tr('launcher.hero.asleep.body'),
           )
         : hasFollows
             ? (
                 Icons.podcasts,
-                'Listening',
-                'Nothing new from the people you follow just yet.',
+                tr('launcher.hero.listening.title'),
+                tr('launcher.hero.listening.body'),
               )
             : (
                 Icons.auto_awesome,
-                'Finding what people are reading',
-                'Follow someone in Status and their posts land here first.',
+                tr('launcher.hero.finding.title'),
+                tr('launcher.hero.finding.body'),
               );
 
     return Container(

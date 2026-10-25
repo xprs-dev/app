@@ -41,6 +41,7 @@ import '../../profile/profile_service.dart';
 import '../log_service.dart';
 import '../mesh/mesh_custody.dart';
 import '../reticulum/rns_service.dart';
+import 'xprs_self.dart';
 import 'xprs_airtime.dart';
 import 'xprs_body.dart';
 import 'xprs_file_lift.dart';
@@ -178,9 +179,11 @@ class XprsSend {
   /// and receipted as a packet of its own.
   XprsSendOutcome message(String to, String text,
       {required bool private, String editOf = ''}) {
-    final self =
-        (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim().toUpperCase();
     final dest = to.trim().toUpperCase();
+    // Not simply the active callsign: a conversation keeps the callsign it
+    // began under (XprsSelf), so somebody who wrote to EA/CT1ABC is answered
+    // as EA/CT1ABC after the operator has made CT1ABC active again.
+    final self = XprsSelf.instance.forPeer(dest);
     final original = editOf.trim().toLowerCase();
     if (self.isEmpty ||
         dest.isEmpty ||
@@ -196,6 +199,7 @@ class XprsSend {
       refused++;
       return XprsSendOutcome.malformed;
     }
+    XprsSelf.instance.noteOutbound(dest, self);
 
     // A shared file's reference goes in the envelope, not in the sentence
     // (§7.7). It has to happen HERE, before the body is built: a sealed 1:1
@@ -260,9 +264,10 @@ class XprsSend {
   /// it. The words in it are nobody's to give back afterwards, which is the
   /// wapp's side of the promise: it destroys its own copy.
   XprsSendOutcome withdraw(String to, String id) {
-    final self =
-        (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim().toUpperCase();
     final dest = to.trim().toUpperCase();
+    // The same name the conversation uses, or a withdrawal would come from a
+    // different callsign than the message it withdraws (XPRS.md 7.8).
+    final self = XprsSelf.instance.forPeer(dest);
     final target = id.trim().toLowerCase();
     if (self.isEmpty || dest.isEmpty || !_isId(target)) {
       refused++;

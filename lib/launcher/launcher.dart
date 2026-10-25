@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding, FrameTiming;
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../platform/platform.dart' as platform;
@@ -31,6 +32,8 @@ import '../platform/platform.dart' as platform;
 import '../wapp/wapp_file_handler.dart';
 import '../profile/welcome_page.dart';
 import '../services/event_bus.dart';
+import '../services/i18n/core_i18n.dart';
+import '../services/i18n/format.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
 import '../services/notification_store.dart';

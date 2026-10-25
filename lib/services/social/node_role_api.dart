@@ -8,6 +8,8 @@ import 'package:reticulum/src/services/social/relay_role.dart';
 
 import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 import '../log_service.dart';
+import '../i18n/core_i18n.dart';
+import '../i18n/format.dart';
 import '../notification_service.dart';
 import '../preferences_service.dart';
 import '../reticulum/rns_service.dart';
@@ -557,12 +559,11 @@ class NodeRoleApi {
     NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
       title: r.items == 0
-          ? 'Nothing to free'
-          : 'Freed ${_size(r.bytes)}',
+          ? tr('notifications.cleanup.nothing')
+          : tr('notifications.cleanup.freed', {'size': _size(r.bytes)}),
       body: r.items == 0
-          ? 'This device is holding nothing for other people.'
-          : '${r.items} file${r.items == 1 ? '' : 's'} kept for other people '
-              'were deleted. Your own files were not touched.',
+          ? tr('notifications.cleanup.nothing.body')
+          : trn('notifications.cleanup.deleted', r.items),
       source: 'wapp:archiver',
       scope: NotificationScope.app,
     ));
@@ -624,12 +625,7 @@ class NodeRoleApi {
     }
   }
 
-  static String _size(int b) {
-    if (b >= 1 << 30) return '${(b / (1 << 30)).toStringAsFixed(1)} GB';
-    if (b >= 1 << 20) return '${(b / (1 << 20)).toStringAsFixed(1)} MB';
-    if (b >= 1024) return '${(b / 1024).round()} kB';
-    return '$b B';
-  }
+  static String _size(int b) => trBytes(b, digits: 0);
 
   static String _ago(int ms) {
     final s = ms ~/ 1000;

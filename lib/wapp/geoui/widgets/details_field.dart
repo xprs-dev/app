@@ -26,6 +26,7 @@
  * the characters matters and proportional text makes them harder to compare.
  */
 import 'package:flutter/material.dart';
+import '../../../services/i18n/core_i18n.dart';
 
 class DetailsField extends StatelessWidget {
   const DetailsField({super.key, required this.sections, this.emptyText});
@@ -44,7 +45,7 @@ class DetailsField extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            emptyText?.isNotEmpty == true ? emptyText! : 'Nothing to show.',
+            emptyText?.isNotEmpty == true ? emptyText! : tr('geoui.details.empty'),
             textAlign: TextAlign.center,
             style: TextStyle(color: cs.onSurfaceVariant),
           ),

@@ -8,6 +8,7 @@
  * wasm-clang as a browser-side WASM module. Out of scope for now.
  */
 
+import '../services/i18n/core_i18n.dart';
 import '../profile/profile_storage.dart';
 import 'wapp_compiler_service.dart';
 
@@ -40,9 +41,6 @@ class _WebStubBackend implements CompilerBackend {
     required List<String> testSources,
     required ProfileStorage workStorage,
   }) async {
-    return CompileResult.failure(
-      'Running tests needs the desktop build (the wasi-sdk toolchain '
-      'is not available in the browser).',
-    );
+    return CompileResult.failure(tr('editor.tests.desktop_only'));
   }
 }

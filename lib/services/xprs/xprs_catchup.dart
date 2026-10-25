@@ -135,8 +135,22 @@ class XprsCatchup {
   /// Injected so the tests are deterministic; 0..1.
   double Function() rand = math.Random().nextDouble;
 
+  /// Another asker on this station with an ask out (XprsFetch): the poller
+  /// waits for it, as it would for its own. Two asks from one requester to
+  /// one archiver are not two replays: the second SUPERSEDES the first
+  /// (XprsHistoryServer), which would cancel a page mid-air.
+  bool Function()? externalBusy;
+
+  /// Is an ask of ours out to [archiver] right now? The fetch asks before
+  /// sending its own, for the reason above.
+  bool busyWith(String archiver, {int? nowMs}) {
+    final now = nowMs ?? this.nowMs();
+    return _busy(now) && _flight?.archiver == _base(archiver);
+  }
+
   /// Is an ask out? Forgets one that outlived its grace.
   bool _busy(int now) {
+    if (externalBusy?.call() ?? false) return true;
     final f = _flight;
     if (f == null) return false;
     if (now - f.atMs > _inFlightGrace.inMilliseconds) {

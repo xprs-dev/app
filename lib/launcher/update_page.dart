@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../services/update_models.dart';
 import '../services/update_service.dart';
 import '../version.dart';
+import '../services/i18n/core_i18n.dart';
 
 class UpdatePage extends StatefulWidget {
   const UpdatePage({super.key});
@@ -58,11 +59,7 @@ class _UpdatePageState extends State<UpdatePage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-                'Reticulum address of the signed update folder for this '
-                'channel (npub… or hex folder id). Only the folder owner can '
-                'publish binaries; every download is verified by sha256. Leave '
-                'blank to reset to the built-in default.'),
+            Text(tr('updates.folder.help')),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
@@ -77,10 +74,10 @@ class _UpdatePageState extends State<UpdatePage> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(ctx), child: Text(tr('common.cancel'))),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, controller.text),
-              child: const Text('Save')),
+              child: Text(tr('common.save'))),
         ],
       ),
     );
@@ -90,13 +87,13 @@ class _UpdatePageState extends State<UpdatePage> {
     _svc.checkForUpdates();
   }
 
-  String _folderLabel(String v) => v.isEmpty ? 'Not configured' : v;
+  String _folderLabel(String v) => v.isEmpty ? tr('updates.folder.unset') : v;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Updates')),
+      appBar: AppBar(title: Text(tr('updates.title'))),
       body: !_svc.supported
           ? const _WebNotice()
           : ListView(
@@ -109,8 +106,8 @@ class _UpdatePageState extends State<UpdatePage> {
                   child: ListTile(
                     leading: const Icon(Icons.verified),
                     title: const Text('XPRS'),
-                    subtitle: Text('Installed version $kAppVersion'
-                        ' (build $kBuildNumber)'),
+                    subtitle: Text(tr('updates.installed',
+                        {'version': kAppVersion, 'build': kBuildNumber})),
                     trailing: ValueListenableBuilder<UpdateStatus>(
                       valueListenable: _svc.status,
                       builder: (context, st, _) => st == UpdateStatus.checking
@@ -120,7 +117,7 @@ class _UpdatePageState extends State<UpdatePage> {
                               child: CircularProgressIndicator(strokeWidth: 2))
                           : IconButton(
                               icon: const Icon(Icons.refresh),
-                              tooltip: 'Check for updates',
+                              tooltip: tr('updates.check'),
                               onPressed: _svc.checkForUpdates,
                             ),
                     ),
@@ -128,7 +125,7 @@ class _UpdatePageState extends State<UpdatePage> {
                 ),
                 const SizedBox(height: 16),
                 // ── Releases first: this is what the user came here to act on ──
-                Text('Releases',
+                Text(tr('updates.releases'),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         color: cs.primary, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
@@ -148,7 +145,7 @@ class _UpdatePageState extends State<UpdatePage> {
                   ValueListenableBuilder<ReleaseInfo?>(
                     valueListenable: _svc.stable,
                     builder: (context, rel, _) => _ReleaseCard(
-                      channel: 'Stable',
+                      channel: tr('updates.channel.stable'),
                       icon: Icons.check_circle_outline,
                       release: rel,
                       active: !_svc.betaEnabled,
@@ -158,7 +155,7 @@ class _UpdatePageState extends State<UpdatePage> {
                   ValueListenableBuilder<ReleaseInfo?>(
                     valueListenable: _svc.beta,
                     builder: (context, rel, _) => _ReleaseCard(
-                      channel: 'Beta',
+                      channel: tr('updates.channel.beta'),
                       icon: Icons.science_outlined,
                       release: rel,
                       active: _svc.betaEnabled,
@@ -180,7 +177,7 @@ class _UpdatePageState extends State<UpdatePage> {
                 ),
                 const SizedBox(height: 24),
                 // ── Settings last: source + channel knobs the user rarely touches ──
-                Text('Settings',
+                Text(tr('common.settings'),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         color: cs.onSurfaceVariant,
                         fontWeight: FontWeight.w600)),
@@ -193,10 +190,8 @@ class _UpdatePageState extends State<UpdatePage> {
                     color: cs.surfaceContainerLow,
                     child: SwitchListTile(
                       secondary: const Icon(Icons.storefront_outlined),
-                      title: const Text('Updates only from F-Droid'),
-                      subtitle: const Text(
-                          'XPRS never downloads itself. When F-Droid has a '
-                          'newer version, it opens F-Droid to install it.'),
+                      title: Text(tr('updates.fdroid_only.title')),
+                      subtitle: Text(tr('updates.fdroid_only.desc')),
                       value: _svc.fdroidOnly,
                       onChanged: (v) async {
                         await _svc.setFdroidOnly(v);
@@ -221,9 +216,8 @@ class _UpdatePageState extends State<UpdatePage> {
                   color: cs.surfaceContainerLow,
                   child: SwitchListTile(
                     secondary: const Icon(Icons.science_outlined),
-                    title: const Text('Include beta releases'),
-                    subtitle: const Text(
-                        'Get pre-release builds earlier (may be unstable).'),
+                    title: Text(tr('updates.beta.title')),
+                    subtitle: Text(tr('updates.beta.desc')),
                     value: _svc.betaEnabled,
                     onChanged: (v) async {
                       await _svc.setBetaEnabled(v);
@@ -240,14 +234,14 @@ class _UpdatePageState extends State<UpdatePage> {
                   color: cs.surfaceContainerLow,
                   child: ListTile(
                     leading: const Icon(Icons.folder_shared_outlined),
-                    title: const Text('Stable folder'),
+                    title: Text(tr('updates.folder.stable')),
                     subtitle: Text(_folderLabel(_svc.stableFolder),
                         maxLines: 1, overflow: TextOverflow.ellipsis),
                     trailing: IconButton(
                       icon: const Icon(Icons.edit_outlined),
-                      tooltip: 'Change stable folder',
+                      tooltip: tr('updates.folder.stable.change'),
                       onPressed: () => _editFolder(
-                        title: 'Stable folder',
+                        title: tr('updates.folder.stable'),
                         current: _svc.stableFolder,
                         save: _svc.setStableFolder,
                       ),
@@ -259,14 +253,14 @@ class _UpdatePageState extends State<UpdatePage> {
                   color: cs.surfaceContainerLow,
                   child: ListTile(
                     leading: const Icon(Icons.folder_shared_outlined),
-                    title: const Text('Beta folder'),
+                    title: Text(tr('updates.folder.beta')),
                     subtitle: Text(_folderLabel(_svc.betaFolder),
                         maxLines: 1, overflow: TextOverflow.ellipsis),
                     trailing: IconButton(
                       icon: const Icon(Icons.edit_outlined),
-                      tooltip: 'Change beta folder',
+                      tooltip: tr('updates.folder.beta.change'),
                       onPressed: () => _editFolder(
-                        title: 'Beta folder',
+                        title: tr('updates.folder.beta'),
                         current: _svc.betaFolder,
                         save: _svc.setBetaFolder,
                       ),
@@ -345,13 +339,13 @@ class _ReleaseCardState extends State<_ReleaseCard> {
             if (r == null) ...[
               Text(
                   widget.fdroid
-                      ? 'F-Droid could not be reached, or does not list XPRS yet.'
-                      : 'No release found',
+                      ? tr('updates.fdroid.unreachable')
+                      : tr('updates.none'),
                   style: TextStyle(color: cs.onSurfaceVariant)),
               if (widget.fdroid)
                 TextButton(
                     onPressed: svc.openFdroid,
-                    child: const Text('Open F-Droid')),
+                    child: Text(tr('updates.fdroid.open'))),
             ] else ...[
               Row(
                 children: [
@@ -370,7 +364,7 @@ class _ReleaseCardState extends State<_ReleaseCard> {
                   onTap: () => setState(() => _expanded = !_expanded),
                   child: Row(
                     children: [
-                      Text(_expanded ? 'Hide notes' : 'Release notes',
+                      Text(_expanded ? tr('updates.notes.hide') : tr('updates.notes.show'),
                           style: TextStyle(
                               fontSize: 12, color: cs.primary)),
                       Icon(_expanded ? Icons.expand_less : Icons.expand_more,
@@ -403,10 +397,10 @@ class _ReleaseCardState extends State<_ReleaseCard> {
     final svc = UpdateService.instance;
     final cs = Theme.of(context).colorScheme;
     final (label, color) = svc.isNewer(r)
-        ? ('New', cs.primary)
+        ? (tr('updates.status.new'), cs.primary)
         : (r.version == svc.currentVersion
-            ? ('Installed', cs.tertiary)
-            : ('Older', cs.onSurfaceVariant));
+            ? (tr('updates.status.installed'), cs.tertiary)
+            : (tr('updates.status.older'), cs.onSurfaceVariant));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -419,14 +413,14 @@ class _ReleaseCardState extends State<_ReleaseCard> {
 
   Widget _action(BuildContext context, UpdateService svc, ReleaseInfo r) {
     if (!svc.isNewer(r)) {
-      return Text('You are up to date.',
+      return Text(tr('updates.up_to_date'),
           style: TextStyle(
               fontSize: 12, color: Theme.of(context).colorScheme.tertiary));
     }
     if (widget.fdroid) {
       return FilledButton.icon(
         icon: const Icon(Icons.storefront_outlined, size: 18),
-        label: Text('Update to ${r.version} in F-Droid'),
+        label: Text(tr('updates.fdroid.update', {'version': r.version})),
         onPressed: svc.openFdroid,
       );
     }
@@ -445,8 +439,9 @@ class _ReleaseCardState extends State<_ReleaseCard> {
                   valueListenable: svc.phase,
                   builder: (context, ph, _) => Text(
                       ph.isEmpty
-                          ? 'Downloading ${(p * 100).round()}%'
-                          : '$ph — ${(p * 100).round()}%',
+                          ? tr('updates.downloading', {'pct': (p * 100).round()})
+                          : tr('updates.downloading.phase',
+                              {'phase': ph, 'pct': (p * 100).round()}),
                       style: const TextStyle(fontSize: 12)),
                 ),
               ],
@@ -456,13 +451,13 @@ class _ReleaseCardState extends State<_ReleaseCard> {
         if (st == UpdateStatus.downloaded) {
           return FilledButton.icon(
             icon: const Icon(Icons.system_update_alt, size: 18),
-            label: Text('Install ${r.version}'),
+            label: Text(tr('updates.install', {'version': r.version})),
             onPressed: () => svc.install(r),
           );
         }
         return FilledButton.icon(
           icon: const Icon(Icons.download, size: 18),
-          label: Text('Download ${r.version}'),
+          label: Text(tr('updates.download', {'version': r.version})),
           onPressed: () => svc.download(r),
         );
       },
@@ -477,8 +472,7 @@ class _WebNotice extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Text(
-            'In-app updates are available on the Android, Linux and Windows '
-            'builds. On the web, reload to get the latest version.',
+            tr('updates.web_notice'),
             textAlign: TextAlign.center,
             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),

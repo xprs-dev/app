@@ -8,6 +8,7 @@ import '../platform/platform.dart' as platform;
 import '../services/android_permissions_service.dart';
 import '../services/share_app_service.dart';
 import '../version.dart';
+import '../services/i18n/core_i18n.dart';
 
 /// Drawer -> Share: let a nearby phone chat with this one, and give it the app.
 ///
@@ -75,7 +76,7 @@ class _ShareAppPageState extends State<ShareAppPage>
       if (apk == null) {
         setState(() {
           _loading = false;
-          _fatal = 'Sharing works on Android only.';
+          _fatal = tr('share.android_only');
         });
         return;
       }
@@ -97,7 +98,7 @@ class _ShareAppPageState extends State<ShareAppPage>
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _fatal = 'Could not start sharing: $e';
+        _fatal = tr('share.start_failed', {'error': e});
       });
     }
   }
@@ -157,19 +158,15 @@ class _ShareAppPageState extends State<ShareAppPage>
   String _hotspotMessage(String code) {
     switch (code) {
       case 'unsupported':
-        return 'This phone cannot create a hotspot for an app (it needs '
-            'Android 8 or newer).';
+        return tr('share.hotspot.unsupported');
       case 'incompatible_mode':
-        return 'Your phone\'s own hotspot is on, so the app cannot start '
-            'one. Use that instead: have the other phone join it.';
+        return tr('share.hotspot.incompatible');
       case 'tethering_disallowed':
-        return 'Hotspots are switched off on this phone by its owner or '
-            'carrier.';
+        return tr('share.hotspot.disallowed');
       case 'permission':
-        return 'The app needs the Nearby devices (or Location) permission '
-            'to create a hotspot.';
+        return tr('share.hotspot.permission');
       default:
-        return 'The hotspot did not start.';
+        return tr('share.hotspot.failed');
     }
   }
 
@@ -178,11 +175,11 @@ class _ShareAppPageState extends State<ShareAppPage>
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Share'),
+        title: Text(tr('share.title')),
         actions: [
           if (_fatal == null && !_loading)
             IconButton(
-              tooltip: 'Stop sharing',
+              tooltip: tr('share.stop'),
               icon: const Icon(Icons.stop_circle_outlined),
               onPressed: () async {
                 await _svc.stopSharing();
@@ -191,7 +188,7 @@ class _ShareAppPageState extends State<ShareAppPage>
             ),
           if (_fatal == null && !_loading)
             IconButton(
-              tooltip: 'Refresh',
+              tooltip: tr('common.refresh'),
               icon: const Icon(Icons.refresh),
               onPressed: _refreshAddresses,
             ),
@@ -205,21 +202,18 @@ class _ShareAppPageState extends State<ShareAppPage>
                   ? [_card(cs, _text(cs, _fatal!))]
                   : [
                       Text(
-                        'Let a phone next to you chat with this one from its '
-                        'browser, and give it the app. This phone keeps '
-                        'serving both until you stop sharing; no internet is '
-                        'needed.',
+                        tr('share.intro'),
                         style: TextStyle(color: cs.onSurfaceVariant),
                       ),
                       const SizedBox(height: 20),
-                      _header(context, '1. Same network'),
+                      _header(context, tr('share.step.network')),
                       _card(cs, _networkStep(cs)),
                       const SizedBox(height: 20),
-                      _header(context, '2. Web chat'),
+                      _header(context, tr('share.step.chat')),
                       _card(cs, _chatStep(cs)),
                       if (_svc.apkShareable) ...[
                         const SizedBox(height: 20),
-                        _header(context, '3. The app'),
+                        _header(context, tr('share.step.app')),
                         _card(cs, _appStep(cs)),
                       ],
                     ],
@@ -231,15 +225,13 @@ class _ShareAppPageState extends State<ShareAppPage>
     final h = _hotspot;
     if (h != null) {
       return Column(children: [
-        _text(cs,
-            'On the other phone, scan this with the camera to join the '
-            'hotspot, or join it by hand:'),
+        _text(cs, tr('share.hotspot.scan')),
         _qr(wifiQr(h)),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: SelectableText(
-            'Network: ${h.ssid}\n'
-            '${h.security == 'nopass' ? 'No password' : 'Password: ${h.psk}'}',
+            '${tr('share.hotspot.network', {'ssid': h.ssid})}\n'
+            '${h.security == 'nopass' ? tr('share.hotspot.nopass') : tr('share.hotspot.password', {'psk': h.psk})}',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 16),
           ),
@@ -247,7 +239,7 @@ class _ShareAppPageState extends State<ShareAppPage>
         TextButton.icon(
           onPressed: _stopHotspot,
           icon: const Icon(Icons.wifi_off),
-          label: const Text('Stop hotspot'),
+          label: Text(tr('share.hotspot.stop')),
         ),
         const SizedBox(height: 8),
       ]);
@@ -255,9 +247,7 @@ class _ShareAppPageState extends State<ShareAppPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _text(cs,
-            'Both phones on the same Wi-Fi already? Go to step 2. Otherwise '
-            'this phone can make a private hotspot for the other to join.'),
+        _text(cs, tr('share.hotspot.offer')),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: FilledButton.icon(
@@ -268,14 +258,12 @@ class _ShareAppPageState extends State<ShareAppPage>
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.wifi_tethering),
-            label: const Text('Create hotspot'),
+            label: Text(tr('share.hotspot.create')),
           ),
         ),
         if (_hotspotError != null) ...[
           _text(cs, _hotspotError!, color: cs.error),
-          _text(cs,
-              'You can also switch on the hotspot in this phone\'s system '
-              'settings, have the other phone join it, and come back here.'),
+          _text(cs, tr('share.hotspot.manual')),
         ],
       ],
     );
@@ -283,15 +271,11 @@ class _ShareAppPageState extends State<ShareAppPage>
 
   Widget _chatStep(ColorScheme cs) {
     if (_addrs.isEmpty) {
-      return _text(cs,
-          'This phone is not on any Wi-Fi or hotspot yet. Finish step 1, '
-          'then tap Refresh.');
+      return _text(cs, tr('share.chat.no_network'));
     }
     final url = 'http://${_addrs.first}:${_svc.port}/';
     return Column(children: [
-      _text(cs,
-          'On the other phone, scan this with the camera and open the link '
-          '(or type it into the browser):'),
+      _text(cs, tr('share.chat.scan')),
       _qr(url),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
@@ -302,18 +286,15 @@ class _ShareAppPageState extends State<ShareAppPage>
       if (_addrs.length > 1)
         _text(
             cs,
-            'Not loading? Try: '
-            '${_addrs.skip(1).map((a) => 'http://$a:${_svc.port}/').join('  ')}',
+            tr('share.chat.alternatives', {
+              'urls': _addrs.skip(1).map((a) => 'http://$a:${_svc.port}/').join('  ')
+            }),
             small: true),
       ValueListenableBuilder<int>(
         valueListenable: _svc.visitorCount,
         builder: (_, n, _) => _text(
             cs,
-            n == 0
-                ? 'Waiting for a visitor'
-                : n == 1
-                    ? 'One visitor'
-                    : '$n visitors',
+            n == 0 ? tr('share.visitors.none') : trn('share.visitors', n),
             small: true),
       ),
     ]);
@@ -323,14 +304,11 @@ class _ShareAppPageState extends State<ShareAppPage>
     final apk = _apk;
     final mb = apk == null ? '' : ' (${(apk.size / 1e6).toStringAsFixed(0)} MB)';
     if (_addrs.isEmpty) {
-      return _text(cs, 'Finish step 1 first.');
+      return _text(cs, tr('share.app.finish_first'));
     }
     final url = 'http://${_addrs.first}:${_svc.port}/app';
     return Column(children: [
-      _text(cs,
-          'The chat page links to it. To skip the chat, scan this and tap '
-          'Download$mb, then open the file; if Android asks, allow the '
-          'browser to install apps and tap Install.'),
+      _text(cs, tr('share.app.how', {'mb': mb})),
       _qr(url),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
@@ -342,18 +320,13 @@ class _ShareAppPageState extends State<ShareAppPage>
         valueListenable: _svc.downloads,
         builder: (_, n, _) => _text(
             cs,
-            n == 0
-                ? 'Waiting for a download'
-                : n == 1
-                    ? 'Downloaded once'
-                    : 'Downloaded $n times',
+            n == 0 ? tr('share.downloads.none') : trn('share.downloads', n),
             small: true),
       ),
       if (apk != null && apk.abi.isNotEmpty)
         _text(
             cs,
-            'This copy is built for ${apk.abi} phones; a much older phone '
-            'may refuse it.',
+            tr('share.app.abi', {'abi': apk.abi}),
             small: true),
     ]);
   }

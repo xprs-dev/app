@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "language": "Português (Portugal)",
+    "reviewed": false
+  },
+  "radio.location.off": "A localização está desligada: a malha Bluetooth está surda",
+  "radio.location.off.body": "O Android esconde da aplicação todos os dispositivos próximos enquanto os serviços de localização estiverem desligados. Ligue a localização para ver e ser visto por Bluetooth.",
+  "radio.bluetooth.off": "O Bluetooth está desligado",
+  "radio.bluetooth.off.body": "Ninguém por perto consegue ver este telemóvel até o Bluetooth ser ligado. A malha retoma sozinha assim que estiver."
+}

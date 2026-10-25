@@ -23,6 +23,7 @@ import 'package:graph3d/graph3d.dart';
 import 'package:vector_math/vector_math_64.dart' show Quaternion, Vector3;
 
 import '../services/reticulum/rns_iface_kind.dart';
+import '../services/i18n/core_i18n.dart';
 
 /// The network a device is reached over, grouped the way a person thinks
 /// about them: LAN and WiFi are one local network, TCP and UDP are both just
@@ -670,7 +671,8 @@ NodeSprite spriteOfRnsNode(
         coreColor: const Color(0xFFA7FFF6),
         haloScale: 3.0,
         ringColor: const Color(0xFFE0FFFF),
-        label: n.label.isNotEmpty ? n.label : 'this node',
+        // Built when the scene is rebuilt (a data change), not per frame.
+        label: n.label.isNotEmpty ? n.label : tr('graph.kind.self_short'),
         labelMinPx: kRnsLabelFloorPx,
         labelPriority: 3, // you are always worth naming
       );

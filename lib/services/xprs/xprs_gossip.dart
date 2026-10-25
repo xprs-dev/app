@@ -72,12 +72,19 @@ class GossipEdge {
 }
 
 /// One place a callsign was seen, for routing.
+///
+/// [live] tells the two layers apart for a reader that routes: an L3 row is a
+/// claim inside its TTL ("deliver NOW" in 36.9.4's words) and every such
+/// gateway is worth a copy; an L2 row is where the callsign TENDS to surface,
+/// and only the freshest of those is worth one, and only with no live claim.
 class GossipSighting {
   final String callsign;
   final String gateway;
   final String bearer;
   final int tsMs;
-  const GossipSighting(this.callsign, this.gateway, this.bearer, this.tsMs);
+  final bool live;
+  const GossipSighting(this.callsign, this.gateway, this.bearer, this.tsMs,
+      {this.live = true});
 }
 
 class XprsGossip {
@@ -151,6 +158,13 @@ class XprsGossip {
   void close() {
     _db?.dispose();
     _db = null;
+    // The meters belong to the table: a closed one forgets them, so a table
+    // opened next (another profile's, or the bench's next station) starts
+    // with nobody debounced or inside a quota window.
+    _signerLastMs.clear();
+    _directLastMs.clear();
+    _askedAlwaysOnMs.clear();
+    _lastSweepMs = 0;
   }
 
   /// This station heard [callsign] itself, with no `via:`. The one feed that
@@ -233,6 +247,14 @@ class XprsGossip {
     _maybeSweep(db, now);
   }
 
+  /// A (callsign, gateway) pair the live layer did not have a moment ago --
+  /// a station just reported hearing somebody for the first time, or again
+  /// after the TTL. The one event a holder of that somebody's mail is waiting
+  /// for (12.8.1: Part 3 of the return leg): the forwarder re-runs on it.
+  /// Not fired for a refresh of a pair already held, which is nearly every
+  /// beacon, so the callback is rare by construction.
+  void Function(String callsign, String gateway)? onSighting;
+
   void _noteLive(
     CommonDatabase db,
     String call,
@@ -241,6 +263,12 @@ class XprsGossip {
     int now,
     String by,
   ) {
+    // One indexed point lookup on the primary key, before the upsert makes
+    // the question unanswerable.
+    final fresh = db.select(
+      'SELECT 1 FROM gossip_live WHERE callsign=? AND gateway=? LIMIT 1',
+      [call, gw],
+    ).isEmpty;
     db.execute(
       'INSERT INTO gossip_live(callsign,gateway,bearer,ts,signer) '
       'VALUES(?,?,?,?,?) ON CONFLICT(callsign,gateway) DO UPDATE SET '
@@ -254,6 +282,13 @@ class XprsGossip {
       'ORDER BY ts DESC LIMIT ?)',
       [call, call, liveCapG],
     );
+    if (fresh && onSighting != null) {
+      try {
+        onSighting!(call, gw);
+      } catch (e) {
+        LogService.instance.add('XPRS: gossip sighting hook failed: $e');
+      }
+    }
   }
 
   void _noteVisit(CommonDatabase db, String call, String gw, String bearer, int now) {
@@ -299,16 +334,20 @@ class XprsGossip {
   /// The routing answer, freshest first: L3 sightings, then L2 visits.
   /// (L1 — the recipient's own declaration — outranks both and is read from
   /// XprsArchive.holdersFor, by the callers that route.)
-  List<GossipSighting> whereIs(String callsign, {int max = 8}) {
+  List<GossipSighting> whereIs(String callsign, {int max = 8, int? nowMs}) {
     final db = _db;
     if (db == null) return const [];
     final call = callsign.trim().toUpperCase();
+    final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
     final out = <GossipSighting>[];
     final seen = <String>{};
+    // The TTL is applied on the read as well as in the sweep: the sweep rides
+    // inserts, and a quiet table is exactly where a stale "deliver NOW" would
+    // otherwise survive.
     for (final r in db.select(
-      'SELECT gateway,bearer,ts FROM gossip_live WHERE callsign=? '
+      'SELECT gateway,bearer,ts FROM gossip_live WHERE callsign=? AND ts>=? '
       'ORDER BY ts DESC LIMIT ?',
-      [call, max],
+      [call, now - liveTtl.inMilliseconds, max],
     )) {
       out.add(
         GossipSighting(
@@ -333,6 +372,7 @@ class XprsGossip {
           r['gateway'],
           r['bearer'],
           (r['last_ts'] as num).toInt(),
+          live: false,
         ),
       );
     }
@@ -475,6 +515,7 @@ class XprsGossip {
     _signerLastMs.clear();
     _directLastMs.clear();
     _lastSweepMs = 0;
+    onSighting = null;
     accepted = 0;
     refusedUnsigned = 0;
     refusedQuota = 0;

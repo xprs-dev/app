@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/permission_gate.dart';
+import '../services/i18n/core_i18n.dart';
 import 'iwi_profile.dart';
 import 'profile_avatar.dart';
 import 'profile_crypto.dart';
@@ -61,14 +62,14 @@ class _UnlockPageState extends State<UnlockPage> {
       if (mounted) {
         setState(() {
           _busy = false;
-          _error = 'Wrong password';
+          _error = tr('onboarding.unlock.wrong_password');
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _busy = false;
-          _error = 'Unlock failed: $e';
+          _error = tr('onboarding.unlock.failed', {'error': e});
         });
       }
     }
@@ -110,7 +111,7 @@ class _UnlockPageState extends State<UnlockPage> {
   List<Widget> _passwordBody() => [
         const Icon(Icons.lock_outline, size: 20, color: Colors.white54),
         const SizedBox(height: 8),
-        const Text('This profile is encrypted'),
+        Text(tr('onboarding.unlock.encrypted')),
         const SizedBox(height: 16),
         TextField(
           controller: _password,
@@ -119,8 +120,8 @@ class _UnlockPageState extends State<UnlockPage> {
           autofocus: true,
           onSubmitted: (_) => _passwordUnlock(),
           decoration: InputDecoration(
-            labelText: 'Password',
-            helperText: 'Emoji welcome 🔑',
+            labelText: tr('onboarding.unlock.password'),
+            helperText: tr('onboarding.unlock.password_helper'),
             errorText: _error,
             border: const OutlineInputBorder(),
             suffixIcon: IconButton(
@@ -134,11 +135,10 @@ class _UnlockPageState extends State<UnlockPage> {
           value: _remember,
           onChanged:
               _busy ? null : (v) => setState(() => _remember = v ?? false),
-          title: const Text('Keep unlocked on this device'),
-          subtitle: const Text(
-            'Lets messages arrive in the background and skips this screen. '
-            'The key is stored on this device.',
-            style: TextStyle(fontSize: 12),
+          title: Text(tr('onboarding.unlock.keep')),
+          subtitle: Text(
+            tr('onboarding.unlock.keep_desc'),
+            style: const TextStyle(fontSize: 12),
           ),
           controlAffinity: ListTileControlAffinity.leading,
           contentPadding: EdgeInsets.zero,
@@ -153,7 +153,7 @@ class _UnlockPageState extends State<UnlockPage> {
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Unlock'),
+                : Text(tr('onboarding.unlock.button')),
           ),
         ),
       ];

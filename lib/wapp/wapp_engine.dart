@@ -36,6 +36,7 @@ import '../services/xprs/xprs_group_keys.dart';
 import '../services/xprs/xprs_group_ops.dart';
 import '../services/xprs/xprs_groups.dart';
 import '../services/xprs/xprs_archive.dart';
+import '../services/xprs/xprs_fetch.dart';
 import '../services/flash/flash_service.dart';
 import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_presence.dart';
@@ -4093,6 +4094,17 @@ class WappEngine {
           if (d is List) to = d.map((e) => e.toString()).toList();
           limit = (q['limit'] as num?)?.toInt() ?? 200;
         } catch (_) {}
+        // A wapp reading one station's messages is the core's cue to fetch
+        // what the archivers hold for it (12.6, XprsFetch): the wapp learns
+        // nothing of where they were, and reads them from this same store
+        // once they land. Throttled and skipped in earshot by the fetch.
+        final about = (from ?? only ?? '').trim();
+        if (about.isNotEmpty &&
+            !badKind &&
+            (types == null || types.contains('message')) &&
+            xprsAddressesStation(about)) {
+          XprsFetch.instance.requestStation(about, reason: 'history');
+        }
         final bytes = utf8.encode(jsonEncode(badKind
             ? const []
             : XprsArchive.instance.query(

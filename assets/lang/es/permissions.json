@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "language": "Español",
+    "reviewed": false
+  },
+  "permissions.welcome": "Bienvenido a XPRS",
+  "permissions.tagline": "Mensajería sin red, por Bluetooth y por internet.",
+  "permissions.title": "Permisos",
+  "permissions.all_granted": "Todos concedidos",
+  "permissions.tap_to_grant": "Toca para conceder",
+  "permissions.intro": "Concede estos permisos antes de continuar. Nada funciona sin ellos, y pedirlos ahora evita avisos inesperados más tarde.",
+  "permissions.grant_all": "Conceder todos",
+  "permissions.grant": "Conceder",
+  "permissions.grant_to_continue": "Concede los permisos para continuar",
+  "permissions.privacy": "Tus datos se quedan en tu dispositivo. Estos permisos solo se usan para la mensajería y la conectividad locales.",
+  "permissions.bluetooth.title": "Bluetooth",
+  "permissions.bluetooth.desc": "Descubrir dispositivos cercanos e intercambiar mensajes por la malla",
+  "permissions.nearby_wifi.title": "Dispositivos Wi-Fi cercanos",
+  "permissions.nearby_wifi.desc": "Mover archivos grandes entre dispositivos cercanos por un enlace Wi-Fi directo (mucho más rápido que Bluetooth)",
+  "permissions.notifications.title": "Notificaciones",
+  "permissions.notifications.desc": "Avisarte cuando llega un mensaje con la aplicación en segundo plano",
+  "permissions.storage.title": "Almacenamiento",
+  "permissions.storage.desc": "Guardar una copia de seguridad cifrada de tu identidad, que sobrevive a una reinstalación, y compartir archivos",
+  "permissions.storage_legacy.title": "Almacenamiento",
+  "permissions.storage_legacy.desc": "Guardar una copia de seguridad cifrada de tu identidad, que sobrevive a una reinstalación, y compartir archivos",
+  "permissions.location.title": "Ubicación",
+  "permissions.location.desc": "Android la exige para encontrar dispositivos cercanos por Bluetooth — con la ubicación apagada el sistema no devuelve ningún resultado y la aplicación se queda sorda sin aviso. También pone tu posición en el mapa.",
+  "permissions.battery.title": "Funcionar en segundo plano",
+  "permissions.battery.desc": "Dejar que la aplicación siga recibiendo mensajes con la pantalla apagada — si no, Android la duerme",
+  "permissions.internet.title": "Internet",
+  "permissions.internet.desc": "Conectar a los relés de internet y a la tienda de wapps (automático)"
+}

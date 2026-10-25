@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The three words the background service shows before Dart has run (boot,
+     and the keep-alive's default). Everything Dart shows comes translated
+     over the channel; see docs/plan-i18n-core.md section 3. -->
+<resources>
+    <string name="bg_running">Running in background</string>
+    <string name="bg_channel">Background services</string>
+    <string name="bg_tagline">Internet without internet</string>
+</resources>

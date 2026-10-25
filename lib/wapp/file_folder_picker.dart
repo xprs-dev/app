@@ -20,6 +20,7 @@ import 'package:file/file.dart';
 import 'package:flutter/material.dart';
 
 import '../services/android_permissions_service.dart';
+import '../services/i18n/core_i18n.dart';
 import '../platform/platform.dart' as platform;
 import '../platform/fs.dart';
 
@@ -148,7 +149,7 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
     } catch (e) {
       setState(() {
         _loading = false;
-        _error = 'Cannot open this folder${_isAndroid ? ' (permission?)' : ''}.';
+        _error = tr(_isAndroid ? 'wapp_host.picker.cannot_open_android' : 'wapp_host.picker.cannot_open');
       });
     }
   }
@@ -189,9 +190,9 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
 
   String get _dirName {
     final p = _dir.path;
-    if (p == '/storage/emulated/0' || p == '/sdcard') return 'Internal storage';
-    if (p == '/storage') return 'Storage';
-    if (p == '/' || p.isEmpty) return 'Device root';
+    if (p == '/storage/emulated/0' || p == '/sdcard') return tr('wapp_host.picker.internal');
+    if (p == '/storage') return tr('wapp_host.picker.storage');
+    if (p == '/' || p.isEmpty) return tr('wapp_host.picker.root');
     final n = p.split('/').last;
     return n.isEmpty ? p : n;
   }
@@ -226,7 +227,7 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
           actions: [
             PopupMenuButton<String>(
               icon: const Icon(Icons.sd_storage),
-              tooltip: 'Go to',
+              tooltip: tr('wapp_host.picker.goto'),
               onSelected: _enter,
               itemBuilder: (_) => [
                 for (final s in _shortcuts())
@@ -245,8 +246,8 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
     final out = <(String, String)>[];
     final h = platform.homeDir();
     if (_isAndroid) {
-      out.add(('Internal storage', '/storage/emulated/0'));
-      out.add(('SD / USB (/storage)', '/storage'));
+      out.add((tr('wapp_host.picker.internal'), '/storage/emulated/0'));
+      out.add((tr('wapp_host.picker.sd'), '/storage'));
     } else if (h != null && h.isNotEmpty) {
       out.add(('Home', h));
     }
@@ -267,20 +268,20 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
     final IconData icon;
     final String button;
     if (hasFile) {
-      caption = 'Add this file';
+      caption = tr('wapp_host.picker.add_this');
       name = _selectedFile!.split('/').last;
       icon = Icons.insert_drive_file;
-      button = 'Add file';
+      button = tr('wapp_host.picker.add_file');
     } else if (widget.allowFolderSelect) {
-      caption = 'Share this folder';
+      caption = tr('wapp_host.picker.share_this');
       name = _dirName;
       icon = Icons.folder;
-      button = 'Share folder';
+      button = tr('wapp_host.picker.share_folder');
     } else {
-      caption = 'No file selected';
-      name = 'Tap a file in the list to select it';
+      caption = tr('wapp_host.picker.none');
+      name = tr('wapp_host.picker.tap');
       icon = Icons.touch_app;
-      button = 'Add file';
+      button = tr('wapp_host.picker.add_file');
     }
 
     return SafeArea(
@@ -341,7 +342,7 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
                       .requestAllFilesAccess();
                   _init();
                 },
-                child: const Text('Grant access'),
+                child: Text(tr('wapp_host.picker.grant')),
               ),
             ],
           ),
@@ -355,7 +356,7 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text(_error!, textAlign: TextAlign.center),
             const SizedBox(height: 12),
-            OutlinedButton(onPressed: _up, child: const Text('Go up')),
+            OutlinedButton(onPressed: _up, child: Text(tr('wapp_host.picker.up'))),
           ]),
         ),
       );
@@ -365,7 +366,7 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
         if (!_atRoot)
           ListTile(
             leading: const Icon(Icons.arrow_upward),
-            title: const Text('.. (up)'),
+            title: Text(tr('wapp_host.picker.up_row')),
             onTap: _up,
           ),
         for (final e in _entries)

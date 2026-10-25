@@ -27,6 +27,7 @@ import 'package:wasm_run/wasm_run.dart'
 
 import '../../profile/storage_paths.dart';
 import '../../services/log_service.dart';
+import '../../services/i18n/core_i18n.dart';
 import '../wapp_engine.dart';
 import '../wapp_file_associations.dart';
 import 'hw_video_player.dart' show HwVideoController;
@@ -365,7 +366,7 @@ class _WasmVideoPlayerState extends State<WasmVideoPlayer> {
   // of leaving a black box.
   bool _sawSignal = false;
   bool _sawMeta = false; // media.meta arrived (demux + decoder init OK)
-  String _stage = 'Preparing decoder…'; // shown until the first frame
+  String _stage = tr('geoui.video.preparing'); // shown until the first frame
   Timer? _decodeTimeout;
   bool _playing = true; // play/pause state (audio UI)
   int _durationMs = 0; // from media.meta (audio UI progress)
@@ -391,8 +392,8 @@ class _WasmVideoPlayerState extends State<WasmVideoPlayer> {
         );
         _fail(
           anyHandler
-              ? 'No installed player can decode .${widget.ext} files.'
-              : 'No media player installed.\nInstall the Player wapp.',
+              ? tr('geoui.video.no_decoder', {'ext': widget.ext})
+              : tr('geoui.video.no_player'),
         );
         return;
       }
@@ -404,7 +405,7 @@ class _WasmVideoPlayerState extends State<WasmVideoPlayer> {
       final pkg = wappPackageStorage(dirPath);
       final wasm = await pkg.readBytes('app.wasm');
       if (wasm == null) {
-        _fail('Player package is missing app.wasm.');
+        _fail(tr('geoui.video.missing_wasm'));
         return;
       }
       // Compile (or reuse) the decoder module BEFORE anything else — on
@@ -437,7 +438,7 @@ class _WasmVideoPlayerState extends State<WasmVideoPlayer> {
       await engine.load(wasm, precompiled: module);
       engine.init();
       session.open(f.path, autoplay: true);
-      if (mounted) setState(() => _stage = 'Opening…');
+      if (mounted) setState(() => _stage = tr('geoui.video.opening'));
       // Hand the decoder the file; it pushes frames on its tick loop.
       engine.sendMessage(
         jsonEncode({'type': 'file.open', 'path': f.path, 'mode': 'view'}),
@@ -492,7 +493,7 @@ class _WasmVideoPlayerState extends State<WasmVideoPlayer> {
           _drainEngineLogs(e);
           _ticker?.cancel(); // a decoder trap — stop pumping
           if (!_sawSignal) {
-            _fail('Video decoder crashed.');
+            _fail(tr('geoui.video.crashed'));
           }
         }
         // Refresh the audio UI progress a few times a second.

@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "language": "Español",
+    "reviewed": false
+  },
+  "functionalities.hal.log": "Registro",
+  "functionalities.hal.time": "Funciones de tiempo",
+  "functionalities.hal.yield": "Multitarea cooperativa",
+  "functionalities.hal.platform": "Identificación de la plataforma",
+  "functionalities.hal.heap": "Estado de la memoria",
+  "functionalities.hal.kv": "Almacenamiento clave-valor (por módulo)",
+  "functionalities.hal.i18n": "Internacionalización",
+  "functionalities.hal.file": "Archivos (por módulo)",
+  "functionalities.hal.socket": "Sockets TCP (asíncronos, red del anfitrión)",
+  "functionalities.hal.sqlite": "Bases de datos SQLite (por módulo)",
+  "functionalities.hal.node": "El papel de directorio: de qué responde este dispositivo, y por invitación de quién",
+  "functionalities.hal.archive": "El papel de Archivador: almacenamiento ofrecido a otras personas, y lo que contiene",
+  "functionalities.hal.xprs": "Lo que este dispositivo ha oído en el aire: estaciones y paquetes XPRS",
+  "functionalities.hal.flash": "Grabar una placa conectada por USB con un firmware publicado",
+  "functionalities.hal.relay": "Copia de seguridad de mensajes directos por relé NOSTR (kind-4 sobre Reticulum)",
+  "functionalities.hal.nostr": "Cliente NOSTR independiente del transporte (wss:// internet + rns:// Reticulum + dispositivo local)",
+  "functionalities.hal.lib": "Llamadas de biblioteca entre módulos",
+  "functionalities.hal.display": "Salida a pantalla",
+  "functionalities.hal.gpio": "Pines GPIO (solo ESP32)"
+}

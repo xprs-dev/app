@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "language": "Français",
+    "reviewed": false
+  },
+  "notifications.title": "Notifications",
+  "notifications.clear": "Effacer",
+  "notifications.filter.wapps": "Wapps",
+  "notifications.filter.host": "Système",
+  "notifications.level.info": "Info",
+  "notifications.level.success": "Succès",
+  "notifications.level.warning": "Avertissement",
+  "notifications.level.error": "Erreur",
+  "notifications.empty": "Aucune notification",
+  "notifications.today": "Aujourd'hui",
+  "notifications.yesterday": "Hier",
+  "notifications.time.now": "maintenant",
+  "notifications.time.minutes": "{n} min",
+  "notifications.time.hours": "{n} h",
+  "notifications.time.days": "{n} j",
+  "notifications.cleanup.nothing": "Rien à libérer",
+  "notifications.cleanup.nothing.body": "Cet appareil ne conserve rien pour d'autres personnes.",
+  "notifications.cleanup.freed": "{size} libérés",
+  "notifications.cleanup.deleted.one": "{n} fichier conservé pour d'autres a été supprimé. Vos propres fichiers n'ont pas été touchés.",
+  "notifications.cleanup.deleted.other": "{n} fichiers conservés pour d'autres ont été supprimés. Vos propres fichiers n'ont pas été touchés.",
+  "notifications.update.available": "Mise à jour disponible",
+  "notifications.update.body": "XPRS {version} est disponible. Ouvrez Réglages → Mises à jour pour l'installer.",
+  "notifications.liked": "{from} a aimé votre message"
+}

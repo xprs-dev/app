@@ -6,6 +6,7 @@ import '../services/mesh/mesh_service.dart';
 import '../services/xprs/xprs_group_keys.dart';
 import '../services/xprs/xprs_group_ops.dart';
 import '../services/xprs/xprs_groups.dart';
+import '../services/i18n/core_i18n.dart';
 
 /// Settings → Groups. Closed groups, as section 26 defines them.
 ///
@@ -66,22 +67,20 @@ class _GroupsPageState extends State<GroupsPage> {
 
   Future<void> _create() async {
     final name = await _askText(
-        title: 'New group',
-        label: 'Name',
+        title: tr('groups.new'),
+        label: tr('groups.name'),
         hint: 'lisboa-net',
-        help: 'The callsign is derived from the group’s key, so there is '
-            'nothing to choose and nothing to collide with. The name is only '
-            'a label, shown once the signature checks out.',
-        action: 'Create');
+        help: tr('groups.new.help'),
+        action: tr('groups.create'));
     if (name == null) return;
     final g = XprsGroupOps.create(nick: name);
     if (!mounted) return;
     if (g == null) {
-      _say('Could not mint a group — no profile is open.');
+      _say(tr('groups.mint_failed'));
       return;
     }
     setState(() {});
-    _say('${g.callsign} created and announced.');
+    _say(tr('groups.created', {'call': g.callsign}));
   }
 
   @override
@@ -90,11 +89,11 @@ class _GroupsPageState extends State<GroupsPage> {
     final groups = _groups();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Groups')),
+      appBar: AppBar(title: Text(tr('groups.title'))),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _create,
         icon: const Icon(Icons.add),
-        label: const Text('New group'),
+        label: Text(tr('groups.new')),
       ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 96),
@@ -103,12 +102,8 @@ class _GroupsPageState extends State<GroupsPage> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
               groups.isEmpty
-                  ? 'No groups yet.\n\nThere is no directory to search: a group '
-                      'reaches this station when somebody in earshot mentions '
-                      'it, or when you create one.'
-                  : '${groups.length} known. There is no directory — these are '
-                      'the groups you hold a key to, plus every group this '
-                      'station has heard a signed act for.',
+                  ? tr('groups.empty')
+                  : tr('groups.known', {'n': groups.length}),
               style: TextStyle(color: cs.onSurfaceVariant, height: 1.5),
             ),
           ),
@@ -135,7 +130,7 @@ class _GroupsPageState extends State<GroupsPage> {
       onDismissed: (_) {
         XprsGroupOps.forget(call);
         setState(() {});
-        _say('Forgot $call on this device.');
+        _say(tr('groups.forgot', {'call': call}));
       },
       background: Container(
         alignment: Alignment.centerRight,
@@ -153,11 +148,11 @@ class _GroupsPageState extends State<GroupsPage> {
       title: Text(nick.isEmpty ? call : '$nick  ·  $call'),
       subtitle: Text(
         [
-          '$members member${members == 1 ? '' : 's'}',
+          trn('groups.members', members),
           if (candidates > 0)
-            '$candidates awaiting consent'
+            tr('groups.awaiting', {'n': candidates})
           else if (r.roles.length <= 1)
-            'nothing heard yet',
+            tr('groups.nothing_heard'),
         ].join('  ·  '),
         style: TextStyle(color: cs.onSurfaceVariant),
       ),
@@ -179,28 +174,22 @@ class _GroupsPageState extends State<GroupsPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Forget ${nick.isEmpty ? call : nick}?'),
+        title: Text(tr('groups.forget.title', {'name': nick.isEmpty ? call : nick})),
         content: Text(
           mine
-              ? 'This drops the group’s KEY from this device. The key cannot '
-                  'be regenerated — the callsign is derived from it — so you '
-                  'could never sign for $call again, and anybody else who '
-                  'heard its record still has it.\n\n'
-                  'The group does not stop existing. Only this device forgets.'
-              : 'This device forgets $call: its roster and the signed acts it '
-                  'kept.\n\nThe group does not stop existing, and you will '
-                  'hear about it again if somebody in earshot mentions it.',
+              ? tr('groups.forget.mine', {'call': call})
+              : tr('groups.forget.other', {'call': call}),
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel')),
+              child: Text(tr('common.cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(ctx).colorScheme.error,
                 foregroundColor: Theme.of(ctx).colorScheme.onError),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Forget'),
+            child: Text(tr('groups.forget')),
           ),
         ],
       ),
@@ -209,16 +198,16 @@ class _GroupsPageState extends State<GroupsPage> {
   }
 
   Widget? _roleChip(XprsRole role, {required bool pending}) {
-    if (pending) return const _Chip('Invited', Colors.orange);
+    if (pending) return _Chip(tr('groups.role.invited'), Colors.orange);
     switch (role) {
       case XprsRole.admin:
-        return const _Chip('Admin', Colors.deepPurple);
+        return _Chip(tr('groups.role.admin'), Colors.deepPurple);
       case XprsRole.mod:
-        return const _Chip('Mod', Colors.teal);
+        return _Chip(tr('groups.role.mod'), Colors.teal);
       case XprsRole.member:
-        return const _Chip('Member', Colors.blue);
+        return _Chip(tr('groups.role.member'), Colors.blue);
       case XprsRole.invited:
-        return const _Chip('Invited', Colors.orange);
+        return _Chip(tr('groups.role.invited'), Colors.orange);
       case XprsRole.sub:
       case XprsRole.none:
         return null;
@@ -295,7 +284,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         actions: [
           if (_amAdmin)
             IconButton(
-              tooltip: 'Invite',
+              tooltip: tr('groups.invite'),
               icon: const Icon(Icons.person_add_alt),
               onPressed: _invite,
             ),
@@ -303,9 +292,9 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
             onSelected: (v) {
               if (v == 'forget') _forget();
             },
-            itemBuilder: (_) => const [
+            itemBuilder: (_) => [
               PopupMenuItem(
-                  value: 'forget', child: Text('Forget on this device')),
+                  value: 'forget', child: Text(tr('groups.forget.device'))),
             ],
           ),
         ],
@@ -315,15 +304,11 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         children: [
           _header(cs, r.verified),
           if (myOffer != null) _invitation(cs, myOffer),
-          _section('Members', members.isEmpty ? 'Nobody yet.' : null),
+          _section(tr('groups.members'), members.isEmpty ? tr('groups.members.empty') : null),
           for (final e in members) _person(e.key, e.value),
           _section(
-              'Candidates',
-              candidates.isEmpty
-                  ? 'Nobody is waiting. A grant only becomes membership when '
-                      'the person signs an acceptance, so anyone invited '
-                      'appears here until they do.'
-                  : null),
+              tr('groups.candidates'),
+              candidates.isEmpty ? tr('groups.candidates.empty') : null),
           for (final e in candidates) _candidate(e.key, e.value),
           if (_isMember(myRole)) _leave(),
         ],
@@ -342,9 +327,8 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
             const SizedBox(height: 6),
             Text(
               _amAdmin
-                  ? 'You hold this group’s key, so you are its admin. The '
-                      'key cannot be rotated — the callsign is derived from it.'
-                  : 'The group signs its own decisions. Yours are signed by you.',
+                  ? tr('groups.header.admin')
+                  : tr('groups.header.member'),
               style: TextStyle(color: cs.onSurfaceVariant, height: 1.4),
             ),
             if (!verified) ...[
@@ -356,10 +340,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  'This group’s announcement has not arrived, so nothing '
-                  'below can be checked. It is shown anyway rather than shown '
-                  'as empty — a group you cannot verify must look unverified, '
-                  'not look like it has no members.',
+                  tr('groups.unverified'),
                   style: TextStyle(color: cs.onErrorContainer, height: 1.4),
                 ),
               ),
@@ -380,15 +361,12 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('You have been invited',
+            Text(tr('groups.invited.title'),
                 style: TextStyle(
                     fontWeight: FontWeight.w600, color: cs.onPrimaryContainer)),
             const SizedBox(height: 6),
             Text(
-              'Being named in a grant is not membership. Joining is a signed '
-              'act by you, naming this invitation ($offerId) — and so is '
-              'leaving, which is why nobody can claim you joined or deny you '
-              'left.',
+              tr('groups.invited.body', {'offer': offerId}),
               style: TextStyle(color: cs.onPrimaryContainer, height: 1.4),
             ),
             const SizedBox(height: 12),
@@ -396,11 +374,11 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
               FilledButton.icon(
                 onPressed: () => _accept(offerId),
                 icon: const Icon(Icons.check),
-                label: const Text('Join'),
+                label: Text(tr('groups.join')),
               ),
               const SizedBox(width: 8),
               TextButton(
-                  onPressed: _leaveNow, child: const Text('Not interested')),
+                  onPressed: _leaveNow, child: Text(tr('groups.not_interested'))),
             ]),
           ],
         ),
@@ -433,13 +411,13 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         leading: const Icon(Icons.person_outline),
         title: Text(call, style: const TextStyle(fontFamily: 'monospace')),
         subtitle: Text(role == XprsRole.mod
-            ? 'Moderator — may revoke and hide'
+            ? tr('groups.role.mod.desc')
             : role == XprsRole.admin
-                ? 'Admin'
-                : 'Member'),
+                ? tr('groups.role.admin')
+                : tr('groups.role.member')),
         trailing: _amAdmin && call != _me
             ? TextButton(
-                onPressed: () => _revoke(call), child: const Text('Remove'))
+                onPressed: () => _revoke(call), child: Text(tr('common.remove')))
             : null,
       );
 
@@ -447,10 +425,10 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         dense: true,
         leading: const Icon(Icons.hourglass_empty),
         title: Text(call, style: const TextStyle(fontFamily: 'monospace')),
-        subtitle: Text('Invited as offer $offerId — waiting for them to accept'),
+        subtitle: Text(tr('groups.candidate.desc', {'offer': offerId})),
         trailing: _amAdmin
             ? TextButton(
-                onPressed: () => _revoke(call), child: const Text('Withdraw'))
+                onPressed: () => _revoke(call), child: Text(tr('groups.withdraw')))
             : null,
       );
 
@@ -459,18 +437,17 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         child: OutlinedButton.icon(
           onPressed: _leaveNow,
           icon: const Icon(Icons.logout),
-          label: const Text('Leave this group'),
+          label: Text(tr('groups.leave')),
         ),
       );
 
   Future<void> _invite() async {
     final call = await _promptText(context,
-        title: 'Invite to ${widget.group}',
-        label: 'Callsign',
+        title: tr('groups.invite.title', {'group': widget.group}),
+        label: tr('groups.invite.label'),
         hint: 'X1ABCD',
-        help: 'They are not a member until they accept. Until then they show '
-            'as a candidate, here and on every station that hears this.',
-        action: 'Invite');
+        help: tr('groups.invite.help'),
+        action: tr('groups.invite'));
     if (call == null || call.isEmpty) return;
     _report(XprsGroupOps.grant(widget.group, [call.toUpperCase()],
         role: 'member'));
@@ -481,34 +458,29 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
 
   void _accept(String offerId) => _report(
       XprsGroupOps.accept(widget.group, _me, offerId),
-      done: 'Joined ${widget.group}.');
+      done: tr('groups.joined', {'group': widget.group}));
 
   void _leaveNow() => _report(XprsGroupOps.leave(widget.group, _me),
-      done: 'Left ${widget.group}.');
+      done: tr('groups.left', {'group': widget.group}));
 
   Future<void> _forget() async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Forget ${widget.group}?'),
+        title: Text(tr('groups.forget.title', {'name': widget.group})),
         content: Text(_amAdmin
-            ? 'This drops the group’s KEY from this device. It cannot be '
-                'regenerated — the callsign is derived from it — so you could '
-                'never sign for this group again. It does not stop existing: '
-                'everybody who heard its record still holds it.'
-            : 'This device forgets the group’s roster and the signed acts it '
-                'kept. The group does not stop existing, and you will hear of '
-                'it again if somebody in earshot mentions it.'),
+            ? tr('groups.forget.detail.mine')
+            : tr('groups.forget.detail.other')),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel')),
+              child: Text(tr('common.cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(ctx).colorScheme.error,
                 foregroundColor: Theme.of(ctx).colorScheme.onError),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Forget'),
+            child: Text(tr('groups.forget')),
           ),
         ],
       ),
@@ -522,7 +494,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
     if (mounted) setState(() {});
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(r.ok ? (done ?? 'Signed and sent.') : r.error!)));
+        content: Text(r.ok ? (done ?? tr('groups.signed_sent')) : r.error!)));
   }
 }
 
@@ -580,7 +552,8 @@ Future<String?> _promptText(
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(tr('common.cancel'))),
         FilledButton(
             onPressed: () => Navigator.of(ctx).pop(c.text.trim()),
             child: Text(action)),

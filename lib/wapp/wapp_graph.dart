@@ -130,22 +130,24 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         return null;
       case _Panel.detail:
         final n = _allNodes.where((e) => e.id == _selectedId).firstOrNull;
-        return n?.label ?? 'Device';
+        return n?.label ?? tr('graph.panel.device');
       case _Panel.devices:
-        return 'Devices';
+        return tr('graph.panel.devices');
       case _Panel.hubDevices:
         final hub = _allNodes.where((e) => e.id == _panelHubId).firstOrNull;
-        return hub == null ? 'Devices' : 'Devices · ${hub.label}';
+        return hub == null
+            ? tr('graph.panel.devices')
+            : '${tr('graph.panel.devices')} · ${hub.label}';
       case _Panel.xprsDevices:
-        return 'XPRS devices';
+        return tr('graph.panel.xprs_devices');
       case _Panel.hubs:
-        return 'Bootstrap hubs';
+        return tr('graph.panel.hubs');
       case _Panel.settings:
-        return 'Settings';
+        return tr('common.settings');
       case _Panel.chats:
-        return 'People';
+        return tr('graph.panel.people');
       case _Panel.page:
-        return _pageLabel.isNotEmpty ? _pageLabel : 'Page';
+        return _pageLabel.isNotEmpty ? _pageLabel : tr('graph.panel.page');
     }
   }
 
@@ -749,10 +751,10 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           ),
           const SizedBox(width: 4),
           _messagesButton(),
-          _iconBtn(Icons.dns_outlined, 'Bootstrap hubs',
+          _iconBtn(Icons.dns_outlined, tr('graph.panel.hubs'),
               () => setState(() => _panel = _Panel.hubs),
               active: _panel == _Panel.hubs),
-          _iconBtn(Icons.tune, 'Settings',
+          _iconBtn(Icons.tune, tr('common.settings'),
               () => setState(() => _panel = _Panel.settings),
               active: _panel == _Panel.settings),
         ]),
@@ -765,7 +767,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // screen no longer owns.
   Widget _messagesButton() => _iconBtn(
         Icons.people_outline,
-        'People',
+        tr('graph.panel.people'),
         () => setState(() => _panel = _Panel.chats),
         active: _panel == _Panel.chats,
       );
@@ -1070,16 +1072,16 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // origin), so the message is dropped below it — a caption under the orb and
   // its callsign, not a veil over them. The top inset matches the search bar,
   // which overlays the graph instead of insetting it.
-  Widget _buildEmpty() => const Positioned.fill(
+  Widget _buildEmpty() => Positioned.fill(
         child: IgnorePointer(
           child: Padding(
-            padding: EdgeInsets.only(top: 46),
+            padding: const EdgeInsets.only(top: 46),
             child: Align(
-              alignment: Alignment(0, 0.42),
+              alignment: const Alignment(0, 0.42),
               child: Text(
-                  'No nodes heard yet.\nWaiting for Reticulum announces…',
+                  tr('graph.empty.nodes'),
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: _gMuted, fontSize: 14)),
+                  style: const TextStyle(color: _gMuted, fontSize: 14)),
             ),
           ),
         ),
@@ -1227,38 +1229,24 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
 
   /// Section 24's `serve:` words, as a person would say them. The wire word is
   /// terse on purpose (250 bytes); a panel has room to say what it means.
-  static const Map<String, String> _serviceLabels = {
-    'relay': 'Relay',
-    'archive': 'Archiver',
-    'internet': 'Internet gateway',
-    'aprs': 'APRS gateway',
-    'nostr': 'NOSTR relay',
-    'files': 'File server',
-    'devices': 'Device controller',
-    'time': 'Time source',
-    'weather': 'Weather station',
-    'wifi': 'WiFi for people nearby',
-    'other': 'Something else (see its message)',
-  };
+  ///
+  /// The words live in assets/lang/<code>/graph.json as `graph.service.<w>`;
+  /// an unknown wire word is shown as itself. Resolved when a panel is built,
+  /// never in paint.
+  static String _serviceLabel(String w) {
+    final key = 'graph.service.$w';
+    final t = tr(key);
+    return t == key ? w : t;
+  }
 
   /// Measurement keys (section 15 telemetry, 14.3 source, 15.5.2 energy),
   /// named for reading.
-  static const Map<String, String> _readingLabels = {
-    'temp': 'Temperature', 'hum': 'Humidity', 'press': 'Pressure',
-    'wind': 'Wind', 'wdir': 'Wind direction', 'intemp': 'Indoor temperature',
-    'inhum': 'Indoor humidity', 'rain1': 'Rain, last hour',
-    'rain24': 'Rain, 24 hours', 'batt': 'Battery', 'volt': 'Supply voltage',
-    'state': 'State', 'level': 'Level', 'target': 'Setpoint',
-    'dose': 'Radiation dose',
-    'lifedose': 'Lifetime dose', 'radon': 'Radon', 'rf': 'RF field',
-    'efield': 'Electric field', 'mfield': 'Magnetic field',
-    'odometer': 'Odometer', 'source': 'Energy source',
-    'produces': 'Producing', 'consumes': 'Consuming', 'grid': 'Grid',
-    'storage': 'Storage', 'charged': 'Storage charge', 'load': 'Load',
-    'lifeproduces': 'Produced, total', 'lifeconsumes': 'Consumed, total',
-    'lifegridin': 'From the grid, total', 'lifegridout': 'To the grid, total',
-    'lifeload': 'Load, total',
-  };
+  /// `graph.reading.<key>` in the lang files; an unknown key shows as itself.
+  static String _readingLabel(String k) {
+    final key = 'graph.reading.$k';
+    final t = tr(key);
+    return t == key ? k : t;
+  }
 
   /// The bearer word as the legend names it, so the panel and the chips at the
   /// bottom of the graph agree.
@@ -1336,10 +1324,10 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       // up, the question is whether you can talk to it at all, and by which
       // radio.
       if (reach.isNotEmpty) ...[
-        const Padding(
-          padding: EdgeInsets.only(bottom: 6),
-          child: Text('REACHABLE OVER',
-              style: TextStyle(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Text(tr('graph.heading.reachable_over'),
+              style: const TextStyle(
                   color: _gMuted,
                   fontSize: 11,
                   letterSpacing: 0.6,
@@ -1378,17 +1366,17 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       // number this app decided the unit of (section 4.4).
       if (readings.isNotEmpty) ...[
         const SizedBox(height: 12),
-        const Padding(
-          padding: EdgeInsets.only(bottom: 4),
-          child: Text('LAST REPORTED',
-              style: TextStyle(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(tr('graph.heading.last_reported'),
+              style: const TextStyle(
                   color: _gMuted,
                   fontSize: 11,
                   letterSpacing: 0.6,
                   fontWeight: FontWeight.w700)),
         ),
         for (final e in readings.entries)
-          _kv(_readingLabels[e.key] ?? e.key, e.value.toString()),
+          _kv(_readingLabel(e.key), e.value.toString()),
       ],
       if (mail > 0) ...[
         const SizedBox(height: 12),
@@ -1396,7 +1384,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           width: double.infinity,
           child: OutlinedButton.icon(
             icon: const Icon(Icons.luggage_outlined, size: 18),
-            label: Text('Carried mail ($mail)'),
+            label: Text(tr('graph.carried_mail', {'n': mail})),
             onPressed: () => _openCarriedMail(n),
           ),
         ),
@@ -1451,12 +1439,11 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             ),
           ]),
         ),
-        const Padding(
-          padding: EdgeInsets.only(top: 6),
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
           child: Text(
-              'Somebody used this name to sign something they could not have '
-              'signed. Those packets were refused, not stored.',
-              style: TextStyle(color: _gMuted, fontSize: 11)),
+              tr('graph.sig.forged'),
+              style: const TextStyle(color: _gMuted, fontSize: 11)),
         ),
       ];
     }
@@ -1464,15 +1451,15 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     final (icon, label, colour) = switch (sig) {
       'verified' => (
           Icons.verified_user_outlined,
-          'Signed, and it checks out',
+          tr('graph.sig.verified'),
           _gGeo
         ),
       'unverified' => (
           Icons.help_outline,
-          'Signed, but we hold no key for this callsign',
+          tr('graph.sig.unverified'),
           _gMuted
         ),
-      _ => (Icons.lock_open_outlined, 'Not signed', _gMuted),
+      _ => (Icons.lock_open_outlined, tr('graph.sig.unsigned'), _gMuted),
     };
     return [
       const SizedBox(height: 10),
@@ -1505,7 +1492,9 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Text(
-            more > 0 ? 'Hears (${calls.length} of $peers)' : 'Hears',
+            more > 0
+                ? tr('graph.hears.partial', {'n': calls.length, 'of': peers})
+                : tr('graph.hears'),
             style: const TextStyle(
                 color: _gMuted,
                 fontSize: 11,
@@ -1530,7 +1519,9 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                     : null,
               ),
               child: Text(
-                c == self && self.isNotEmpty ? '$c · Reachable' : c,
+                c == self && self.isNotEmpty
+                    ? '$c · ${tr('graph.hears.reachable')}'
+                    : c,
                 style: TextStyle(
                     color: c == self && self.isNotEmpty ? _gGeo : Colors.white70,
                     fontSize: 12,
@@ -1542,7 +1533,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           if (more > 0)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Text('+$more not listed',
+              child: Text(tr('graph.hears.not_listed', {'n': more}),
                   style: const TextStyle(color: _gMuted, fontSize: 12)),
             ),
         ],
@@ -1551,9 +1542,9 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Text(
-              more > 0
-                  ? 'You are not in the part of the list that fitted'
-                  : 'It does not hear you — the path runs one way',
+              tr(more > 0
+                  ? 'graph.hears.you_cut'
+                  : 'graph.hears.one_way'),
               style: const TextStyle(color: _gMuted, fontSize: 11)),
         ),
     ];
@@ -1601,7 +1592,9 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2)),
               const SizedBox(width: 12),
-              Text(phase == 3 ? 'Taking custody…' : 'Asking $call…',
+              Text(phase == 3
+                      ? tr('graph.mail.taking')
+                      : tr('graph.mail.asking', {'call': call}),
                   style: const TextStyle(color: _gMuted)),
             ]),
           );
@@ -1609,18 +1602,15 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           body = Padding(
             padding: const EdgeInsets.all(24),
             child: Text(
-                'Could not reach $call right now — the radio may be busy or '
-                'the station out of range. Try again in a moment.',
+                tr('graph.mail.unreachable', {'call': call}),
                 style: const TextStyle(color: _gMuted, fontSize: 13)),
           );
         } else if ((entries ?? const []).isEmpty) {
-          body = const Padding(
-            padding: EdgeInsets.all(24),
+          body = Padding(
+            padding: const EdgeInsets.all(24),
             child: Text(
-                'Nothing here you can pick. Mail parked before this update '
-                'carries no id and delivers on its own; new mail will be '
-                'listed and pickable.',
-                style: TextStyle(color: _gMuted, fontSize: 13)),
+                tr('graph.mail.nothing_pickable'),
+                style: const TextStyle(color: _gMuted, fontSize: 13)),
           );
         } else {
           const urgNames = ['low', 'normal', 'high', 'urgent'];
@@ -1636,12 +1626,12 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                     value: picked.contains(am),
                     onChanged: (v) => setSheet(
                         () => v == true ? picked.add(am) : picked.remove(am)),
-                    title: Text('For ${e['target'] ?? '?'}',
+                    title: Text(tr('graph.mail.for', {'who': e['target'] ?? '?'}),
                         style: const TextStyle(color: _gFg, fontSize: 14)),
                     subtitle: Text(
                         '${e['len'] ?? 0} B · '
-                        'parked ${_agoS((e['ageS'] as num?)?.toInt() ?? 0)} · '
-                        '${urgNames[urg.clamp(0, 3)]} · $am',
+                        '${tr('graph.mail.parked', {'ago': _agoS((e['ageS'] as num?)?.toInt() ?? 0)})} · '
+                        '${tr('graph.mail.urgency.${urgNames[urg.clamp(0, 3)]}')} · $am',
                         style:
                             const TextStyle(color: _gMuted, fontSize: 11.5)),
                     secondary: const Icon(Icons.mail_outline,
@@ -1657,8 +1647,8 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                 child: FilledButton.icon(
                   icon: const Icon(Icons.luggage_outlined, size: 18),
                   label: Text(picked.isEmpty
-                      ? 'Pick messages to carry'
-                      : 'Carry ${picked.length} with me'),
+                      ? tr('graph.mail.pick')
+                      : tr('graph.mail.carry', {'n': picked.length})),
                   onPressed: picked.isEmpty
                       ? null
                       : () async {
@@ -1670,11 +1660,9 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                           ScaffoldMessenger.maybeOf(context)?.showSnackBar(
                               SnackBar(
                                   content: Text(ok
-                                      ? 'Taking custody of ${picked.length} '
-                                          'message(s) — they transfer over '
-                                          'this session.'
-                                      : 'Could not reach $call — nothing '
-                                          'was taken.')));
+                                      ? trn('graph.mail.took', picked.length)
+                                      : tr('graph.mail.nothing_taken',
+                                          {'call': call}))));
                         },
                 ),
               ),
@@ -1690,7 +1678,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                     size: 18, color: _gSelf),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text('Mail carried by $call',
+                  child: Text(tr('graph.mail.title', {'call': call}),
                       style: const TextStyle(
                           color: _gFg,
                           fontSize: 16,
@@ -1698,14 +1686,13 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                 ),
               ]),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                    'Envelopes only — the content stays sealed for its '
-                    'recipient. What you take, you deliver.',
-                    style: TextStyle(color: _gMuted, fontSize: 11.5)),
+                    tr('graph.mail.envelopes'),
+                    style: const TextStyle(color: _gMuted, fontSize: 11.5)),
               ),
             ),
             body,
@@ -1716,10 +1703,10 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   }
 
   static String _agoS(int s) {
-    if (s < 60) return '${s}s ago';
-    if (s < 3600) return '${s ~/ 60}m ago';
-    if (s < 86400) return '${s ~/ 3600}h ago';
-    return '${s ~/ 86400}d ago';
+    if (s < 60) return tr('graph.ago', {'t': '${s}s'});
+    if (s < 3600) return tr('graph.ago', {'t': '${s ~/ 60}m'});
+    if (s < 86400) return tr('graph.ago', {'t': '${s ~/ 3600}h'});
+    return tr('graph.ago', {'t': '${s ~/ 86400}d'});
   }
 
   String _shorten(String s, {int head = 10, int tail = 6}) {
@@ -1733,21 +1720,21 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     final v = (ms as num?)?.toInt() ?? 0;
     if (v == 0) return '—';
     final s = ((DateTime.now().millisecondsSinceEpoch - v) / 1000).floor();
-    if (s < 60) return '${s}s ago';
-    if (s < 3600) return '${s ~/ 60}m ago';
-    if (s < 86400) return '${s ~/ 3600}h ago';
-    return '${s ~/ 86400}d ago';
+    if (s < 60) return tr('graph.ago', {'t': '${s}s'});
+    if (s < 3600) return tr('graph.ago', {'t': '${s ~/ 60}m'});
+    if (s < 86400) return tr('graph.ago', {'t': '${s ~/ 3600}h'});
+    return tr('graph.ago', {'t': '${s ~/ 86400}d'});
   }
 
   Widget _detailBody(RnsGraphNode n) {
     final m = n.meta;
     final kindName = n.effectiveKind == 'self'
-        ? 'This node'
+        ? tr('graph.kind.self')
         : n.kind == 'xprs'
-            ? 'XPRS station · heard over the air'
+            ? tr('graph.kind.xprs')
             : n.effectiveKind == 'hub'
-                ? 'Hub / transport node'
-                : 'Peer';
+                ? tr('graph.kind.hub')
+                : tr('graph.kind.peer');
     final call = (m['callsign'] ?? '').toString();
     // CAN WE NAME IT? That is the whole question, and the old gate asked two
     // others: `dm` is a Reticulum announce property that a station heard on a
@@ -1773,10 +1760,10 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             : (n.xprs ? _gGeo : _gGeneric);
     final initial = n.label.isNotEmpty ? n.label.substring(0, 1).toUpperCase() : '?';
     final dmText = switch (n.dm) {
-      'lxmf' => 'LXMF · direct',
-      'sf' => 'LXMF · store-and-forward',
-      'chat' => 'XPRS chat',
-      _ => 'No 1:1 messaging heard',
+      'lxmf' => tr('graph.dm.lxmf'),
+      'sf' => tr('graph.dm.sf'),
+      'chat' => tr('graph.dm.chat'),
+      _ => tr('graph.dm.none'),
     };
     return ListView(padding: const EdgeInsets.all(18), children: [
       // Header: avatar + name + kind + last seen.
@@ -1807,7 +1794,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             if (n.kind != 'self' && m['lastSeen'] != null)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Text('Last seen ${_ago(m['lastSeen'])}',
+                child: Text(tr('graph.last_seen', {'ago': _ago(m['lastSeen'])}),
                     style: const TextStyle(color: _gMuted, fontSize: 12)),
               ),
           ]),
@@ -1823,7 +1810,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             Expanded(
               child: FilledButton.icon(
                 icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                label: const Text('Message'),
+                label: Text(tr('graph.action.message')),
                 style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 13)),
                 onPressed: () => _messagePeer(n),
@@ -1837,7 +1824,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             Expanded(
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.mail_outline, size: 18),
-                label: const Text('Mail'),
+                label: Text(tr('graph.action.mail')),
                 style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 13)),
                 onPressed: () => _openMail(mailTarget),
@@ -1861,7 +1848,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
           width: double.infinity,
           child: OutlinedButton.icon(
             icon: const Icon(Icons.account_circle_outlined, size: 18),
-            label: const Text('View full profile'),
+            label: Text(tr('graph.action.profile')),
             onPressed: () => _openPeerProfile(n),
           ),
         ),
@@ -1874,8 +1861,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             width: double.infinity,
             child: OutlinedButton.icon(
               icon: const Icon(Icons.list, size: 16),
-              label: Text('List ${n.xprsMembers} XPRS device'
-                  '${n.xprsMembers == 1 ? '' : 's'}'),
+              label: Text(trn('graph.list_devices', n.xprsMembers)),
               onPressed: () {
                 setState(() {
                   _panelHubId = n.id;
@@ -1890,10 +1876,10 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       // Services this device ANSWERS. They read as buttons in a chip row, so
       // they get a heading that says what they are: facts, not actions.
       if (n.services.isNotEmpty) ...[
-        const Padding(
-          padding: EdgeInsets.only(bottom: 4),
-          child: Text('HOSTS',
-              style: TextStyle(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(tr('graph.heading.hosts'),
+              style: const TextStyle(
                   color: _gMuted,
                   fontSize: 11,
                   letterSpacing: 0.6,
@@ -1901,7 +1887,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         ),
         // Said as a person would say it. `archive` on the wire is an archiver
         // to a reader, and a panel has the room the packet does not.
-        _chips([for (final w in n.services) _serviceLabels[w] ?? w]),
+        _chips([for (final w in n.services) _serviceLabel(w)]),
       ],
       // An XPRS station gets a compact, glanceable account instead of the key/
       // value waterfall: icon tiles (distance, service record, mail) and the
@@ -1912,22 +1898,22 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         if ((m['nickname'] ?? '').toString().isNotEmpty &&
             (m['nickname'] ?? '').toString().toUpperCase() !=
                 (m['callsign'] ?? '').toString().toUpperCase())
-          _kv('Nickname', m['nickname'].toString()),
+          _kv(tr('graph.kv.nickname'), m['nickname'].toString()),
         if ((m['callsign'] ?? '').toString().isNotEmpty)
-          _kv('Callsign', m['callsign'].toString()),
+          _kv(tr('graph.kv.callsign'), m['callsign'].toString()),
         if ((m['role'] ?? '').toString().isNotEmpty)
-          _kv('Relay role', m['role'].toString()),
+          _kv(tr('graph.kv.role'), m['role'].toString()),
         if (m['caps'] is List && (m['caps'] as List).isNotEmpty)
-          _kv('Capabilities', (m['caps'] as List).join(', ')),
-        if (n.kind != 'self') _kv('Hops', '${n.hops}'),
-        if (n.via.isNotEmpty) _kv('Via', n.via),
+          _kv(tr('graph.kv.caps'), (m['caps'] as List).join(', ')),
+        if (n.kind != 'self') _kv(tr('graph.kv.hops'), '${n.hops}'),
+        if (n.via.isNotEmpty) _kv(tr('graph.kv.via'), n.via),
         if (n.effectiveKind == 'hub' && n.xprsMembers > 0)
-          _kv('XPRS devices behind it', '${n.members}'),
-        if (m['firstSeen'] != null) _kv('First seen', _ago(m['firstSeen'])),
+          _kv(tr('graph.kv.behind'), '${n.members}'),
+        if (m['firstSeen'] != null) _kv(tr('graph.kv.first_seen'), _ago(m['firstSeen'])),
         // The two long identifiers are things you COPY (paste into Mail, into a
         // relay query) — printed raw they are just a wall of hex you cannot use.
         if (n.npub.isNotEmpty) _kvCopy('npub', n.npub),
-        if (n.id.isNotEmpty) _kvCopy('Identity', n.id),
+        if (n.id.isNotEmpty) _kvCopy(tr('graph.kv.identity'), n.id),
       ],
     ]);
   }
@@ -1942,8 +1928,8 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   void _messagePeer(RnsGraphNode n) {
     final call = ((n.meta['callsign'] ?? '') as Object).toString().trim();
     if (call.isEmpty) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
-          content: Text('This device has announced no callsign yet')));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+          content: Text(tr('graph.no_callsign'))));
       return;
     }
     _openChat(call, name: n.label.isNotEmpty ? n.label : call);
@@ -2067,13 +2053,13 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         return a.label.toLowerCase().compareTo(b.label.toLowerCase());
       }));
     if (peers.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Text(
-              'No other Reticulum devices right now.\n\n(Your XPRS devices are under the "XPRS" list; hubs under "hubs".)',
+              tr('graph.empty.devices'),
               textAlign: TextAlign.center,
-              style: TextStyle(color: _gMuted, fontSize: 13)),
+              style: const TextStyle(color: _gMuted, fontSize: 13)),
         ),
       );
     }
@@ -2095,13 +2081,13 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         return a.label.toLowerCase().compareTo(b.label.toLowerCase());
       });
     if (peers.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Text(
-              'No peers of this hub have been heard yet.\n(We only see nodes that announce — not the hub\'s full roster.)',
+              tr('graph.empty.hub_peers'),
               textAlign: TextAlign.center,
-              style: TextStyle(color: _gMuted, fontSize: 13)),
+              style: const TextStyle(color: _gMuted, fontSize: 13)),
         ),
       );
     }
@@ -2128,12 +2114,12 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         return a.label.toLowerCase().compareTo(b.label.toLowerCase());
       }));
     if (peers.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('No XPRS devices heard yet.',
+          padding: const EdgeInsets.all(24),
+          child: Text(tr('graph.empty.xprs'),
               textAlign: TextAlign.center,
-              style: TextStyle(color: _gMuted, fontSize: 13)),
+              style: const TextStyle(color: _gMuted, fontSize: 13)),
         ),
       );
     }
@@ -2149,9 +2135,9 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     return Column(children: [
       Expanded(
         child: _hubList.isEmpty
-            ? const Center(
-                child: Text('No bootstrap hubs configured.',
-                    style: TextStyle(color: _gMuted)))
+            ? Center(
+                child: Text(tr('graph.empty.hubs'),
+                    style: const TextStyle(color: _gMuted)))
             : ListView.builder(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 itemCount: _hubList.length,
@@ -2188,7 +2174,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                       IconButton(
                         icon: Icon(on ? Icons.link_off : Icons.link, size: 18),
                         color: _gMuted,
-                        tooltip: on ? 'Disconnect' : 'Connect',
+                        tooltip: tr(on ? 'graph.hub.disconnect' : 'graph.hub.connect'),
                         visualDensity: VisualDensity.compact,
                         onPressed: () => widget.onCommand({
                           'command': on ? 'hub_disconnect' : 'hub_connect',
@@ -2198,7 +2184,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
                       IconButton(
                         icon: const Icon(Icons.delete_outline, size: 18),
                         color: const Color(0xFFDA3633),
-                        tooltip: 'Remove',
+                        tooltip: tr('common.remove'),
                         visualDensity: VisualDensity.compact,
                         onPressed: () => widget.onCommand(
                             {'command': 'hub_remove', 'hub_endpoint': ep}),
@@ -2236,7 +2222,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
               widget.onCommand({'command': 'hub_add', 'hub_endpoint': ep});
               _hubCtl.clear();
             },
-            child: const Text('Add'),
+            child: Text(tr('common.add')),
           ),
         ]),
       ),
@@ -2275,13 +2261,13 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
         return a.label.toLowerCase().compareTo(b.label.toLowerCase());
       }));
     if (peers.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(22),
+          padding: const EdgeInsets.all(22),
           child: Text(
-              'No people heard yet.\n\nAn X1 callsign appears here as soon as this device hears it — over a radio, over the LAN, or through a hub. A licensed callsign is listed under Stations.',
+              tr('graph.empty.people'),
               textAlign: TextAlign.center,
-              style: TextStyle(color: _gMuted, fontSize: 13)),
+              style: const TextStyle(color: _gMuted, fontSize: 13)),
         ),
       );
     }
@@ -2454,7 +2440,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       _panel = _Panel.page;
     });
     if (_pagePub.isEmpty) {
-      setState(() => _pageErr = 'No identity key for this node yet.');
+      setState(() => _pageErr = tr('graph.page.no_key'));
       return;
     }
     RnsService.instance
@@ -2463,8 +2449,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
       if (!mounted || seq != _pageSeq) return;
       setState(() {
         if (bytes == null) {
-          _pageErr =
-              'No response — the node may be offline or not serving $path.';
+          _pageErr = tr('graph.page.no_response', {'path': path});
         } else {
           try {
             _pageText = utf8.decode(bytes, allowMalformed: true);
@@ -2483,7 +2468,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     var path = url.startsWith(':') ? url.substring(1) : url;
     // A "hash:/path" target points at a DIFFERENT node — not yet supported.
     if (RegExp(r'^[0-9a-fA-F]{16,}:').hasMatch(path)) {
-      setState(() => _pageErr = 'Links to other nodes are not supported yet.');
+      setState(() => _pageErr = tr('graph.page.no_cross_links'));
       return;
     }
     if (!path.startsWith('/')) path = '/$path';
@@ -2505,7 +2490,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             const SizedBox(height: 14),
             OutlinedButton.icon(
               icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('Retry'),
+              label: Text(tr('common.retry')),
               onPressed: () =>
                   _openNodePage(_pagePub, _pageLabel, path: _pagePath),
             ),
@@ -2521,7 +2506,7 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
               height: 26,
               child: CircularProgressIndicator(strokeWidth: 2)),
           const SizedBox(height: 14),
-          Text('Loading $_pagePath …',
+          Text(tr('graph.page.loading', {'path': _pagePath}),
               style: const TextStyle(color: _gMuted, fontSize: 13)),
         ]),
       );
@@ -2614,49 +2599,41 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
 
     final unnamed = (_counts['unnamed'] is int) ? _counts['unnamed'] as int : 0;
     return ListView(padding: const EdgeInsets.all(14), children: [
-      const Text('XPRS DEVICES',
-          style: TextStyle(color: _gMuted, fontSize: 10, letterSpacing: 0.5)),
+      Text(tr('graph.stats.xprs_devices'),
+          style: const TextStyle(color: _gMuted, fontSize: 10, letterSpacing: 0.5)),
       const SizedBox(height: 4),
-      stat('Reachable now', '${at('devices', 'reachable')}', color: _gGeo),
-      stat('Heard recently', '${at('devices', 'seen')}'),
-      stat('People (X1)', '${at('users', 'reachable')} of '
-          '${at('users', 'seen')}'),
-      stat('Stations (X2, X3, licensed)', '${at('stations', 'reachable')} of '
-          '${at('stations', 'seen')}'),
-      stat('Seen all time', '$geo'),
-      if (unnamed > 0) stat('Running XPRS, but unnamed', '$unnamed'),
+      stat(tr('graph.stats.reachable'), '${at('devices', 'reachable')}', color: _gGeo),
+      stat(tr('graph.stats.heard'), '${at('devices', 'seen')}'),
+      stat(tr('graph.stats.people'), tr('graph.stats.of', {'a': at('users', 'reachable'), 'b': at('users', 'seen')})),
+      stat(tr('graph.stats.stations'), tr('graph.stats.of', {'a': at('stations', 'reachable'), 'b': at('stations', 'seen')})),
+      stat(tr('graph.stats.seen_all'), '$geo'),
+      if (unnamed > 0) stat(tr('graph.stats.unnamed'), '$unnamed'),
       const SizedBox(height: 4),
-      const Text(
-          'A device is one of ours when we can put a callsign to it: heard as '
-          'an XPRS packet, or announced with a key that produces the name. A '
-          'node running this software that never says who it is cannot be '
-          'addressed, so it is counted here and shown nowhere.',
-          style: TextStyle(color: _gMuted, fontSize: 11)),
+      Text(
+          tr('graph.stats.ours_help'),
+          style: const TextStyle(color: _gMuted, fontSize: 11)),
       const Divider(color: _gBorder, height: 28),
-      const Text('THE RETICULUM NETWORK AROUND US',
-          style: TextStyle(color: _gMuted, fontSize: 10, letterSpacing: 0.5)),
+      Text(tr('graph.stats.reticulum'),
+          style: const TextStyle(color: _gMuted, fontSize: 10, letterSpacing: 0.5)),
       const SizedBox(height: 4),
-      stat('Nodes seen, all time', '$total'),
-      stat('Active (24h)', '$seen24h'),
-      stat('Live now', '$live'),
-      stat('Online now', '$online'),
-      stat('Messageable now (LXMF)', '$lxmfReach'),
-      stat('First ever seen', date(oldest)),
+      stat(tr('graph.stats.nodes_all'), '$total'),
+      stat(tr('graph.stats.active_24h'), '$seen24h'),
+      stat(tr('graph.stats.live'), '$live'),
+      stat(tr('graph.stats.online'), '$online'),
+      stat(tr('graph.stats.lxmf'), '$lxmfReach'),
+      stat(tr('graph.stats.first_seen'), date(oldest)),
       const SizedBox(height: 4),
-      const Text(
-          'Other people\'s devices — NomadNet, Sideband, anything else on '
-          'Reticulum. Counted from the on-disk cache, so the totals persist '
-          'across restarts; the live graph is a sampled view, not a hub\'s '
-          'full roster.',
-          style: TextStyle(color: _gMuted, fontSize: 11)),
+      Text(
+          tr('graph.stats.others_help'),
+          style: const TextStyle(color: _gMuted, fontSize: 11)),
       const Divider(color: _gBorder, height: 28),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        title: const Text("Passive (don't relay for others)",
-            style: TextStyle(color: _gFg, fontSize: 14)),
-        subtitle: const Text(
-            'Stay meshed and carry your own traffic, but stop doing relay work for others (sheds CPU).',
-            style: TextStyle(color: _gMuted, fontSize: 12)),
+        title: Text(tr('graph.passive'),
+            style: const TextStyle(color: _gFg, fontSize: 14)),
+        subtitle: Text(
+            tr('graph.passive.help'),
+            style: const TextStyle(color: _gMuted, fontSize: 12)),
         value: passive,
         onChanged: (v) =>
             widget.onCommand({'command': 'apply_settings', 'passive': v}),

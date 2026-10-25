@@ -28,6 +28,8 @@ import 'package:flutter/material.dart';
 
 import '../../../profile/storage_paths.dart';
 import '../../../services/preferences_service.dart';
+import '../../../services/i18n/core_i18n.dart';
+import '../../../services/i18n/format.dart';
 import '../../../services/media/media_fetch.dart';
 import '../../../services/media/media_ref_index.dart' show MediaRefInfo;
 import '../../../services/xprs/xprs_inline_file.dart' show kInlineMaxBytes;
@@ -373,14 +375,14 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
     if (received <= 0) {
       final start = _windowStartMs[ref.sha256] ?? _nowMs;
       final left = (_findSec - (_nowMs - start) ~/ 1000).clamp(0, _findSec);
-      return ('Looking for a peer…', 'no holder yet · ${left}s left');
+      return (tr('geoui.media.looking'), tr('geoui.media.no_holder', {'s': left}));
     }
     if (total > 0) {
       final pct = ((received / total) * 100).clamp(0, 100).round();
-      return ('Downloading $pct%',
+      return (tr('geoui.media.downloading_pct', {'pct': pct}),
           '${formatBytes(received)} / ${formatBytes(total)}');
     }
-    return ('Downloading…', formatBytes(received));
+    return (tr('geoui.media.downloading'), formatBytes(received));
   }
 
   // A two-line "finding / downloading" card: spinner + a phase title and a
@@ -443,13 +445,13 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_findFailed ? "Reachable peers don't have this file" : 'Image not available',
+                  Text(tr(_findFailed ? 'geoui.media.unreachable' : 'geoui.media.unavailable'),
                       style: const TextStyle(
                           fontSize: 12.5, fontWeight: FontWeight.w600)),
                   Text(
                       _findFailed
-                          ? '${_sizeLabel == null ? '' : '$_sizeLabel · '}none online now · tap retry'
-                          : '.${ref.ext} · tap retry to look again',
+                          ? '${_sizeLabel == null ? '' : '$_sizeLabel · '}${tr('geoui.media.none_online')}'
+                          : tr('geoui.media.retry_hint', {'ext': ref.ext}),
                       style:
                           TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
                 ],
@@ -459,7 +461,7 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
               icon: const Icon(Icons.refresh),
               iconSize: 20,
               visualDensity: VisualDensity.compact,
-              tooltip: 'Try downloading again',
+              tooltip: tr('geoui.media.retry'),
               color: cs.primary,
               onPressed: _retry,
             ),
@@ -489,8 +491,8 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('Tap to download',
-                        style: TextStyle(
+                    Text(tr('geoui.media.tap_download'),
+                        style: const TextStyle(
                             fontSize: 12.5, fontWeight: FontWeight.w600)),
                     Text(
                         _sizeLabel == null
@@ -801,11 +803,7 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
   }
 }
 
-String formatBytes(int b) {
-  if (b < 1024) return '$b B';
-  if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(1)} KB';
-  return '${(b / (1024 * 1024)).toStringAsFixed(1)} MB';
-}
+String formatBytes(int b) => trBytes(b);
 
 /// Full-size media view: zoomable image, capability-backed video player, or
 /// a details card. Pushed as a full route so it gets its own back arrow.
@@ -882,10 +880,11 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
     final p = MediaFetch.instance.progress(r.sha256);
     final size = o.size == null ? '' : ' · ${formatBytes(o.size!)}';
     final label = !_asked
-        ? 'Full resolution$size'
+        ? tr('geoui.media.full', {'size': size})
         : (p.received > 0 && (o.size ?? 0) > 0)
-            ? 'Getting the original… ${(100 * p.received / o.size!).clamp(0, 100).round()}%'
-            : 'Getting the original…';
+            ? tr('geoui.media.getting_pct',
+                {'pct': (100 * p.received / o.size!).clamp(0, 100).round()})
+            : tr('geoui.media.getting');
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -926,14 +925,13 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
 
   Widget _body(MediaArchive? archive, MediaMeta? meta) {
     if (archive == null || meta == null) {
-      return _fallback(Icons.help_outline, 'This media is not in the local '
-          'archive.\nOnly its reference travelled over the air.');
+      return _fallback(Icons.help_outline, tr('geoui.media.not_local'));
     }
     switch (_ref.kind) {
       case MediaKind.image:
         final data = archive.get(_ref.sha256);
         if (data == null) {
-          return _fallback(Icons.broken_image, 'Image data missing.');
+          return _fallback(Icons.broken_image, tr('geoui.media.image_missing'));
         }
         // Decoded at most 2048 px wide: a phone photograph at its full 12
         // megapixels is a 48 MB texture for a screen a fraction of that
@@ -950,7 +948,7 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
       case MediaKind.audio:
         final data = archive.get(_ref.sha256);
         if (data == null) {
-          return _fallback(Icons.broken_image, 'Media data missing.');
+          return _fallback(Icons.broken_image, tr('geoui.media.media_missing'));
         }
         // Full-size playback: the decoder runs in the player wapp (wasm),
         // rendering through the host's codec-free A/V sink.
@@ -1164,7 +1162,7 @@ class _GalleryMediaTileState extends State<GalleryMediaTile> {
   Widget _downloadButton(ColorScheme cs) => IconButton(
         icon: const Icon(Icons.download),
         color: cs.primary,
-        tooltip: 'Download',
+        tooltip: tr('geoui.media.download'),
         onPressed: _fetch,
       );
 

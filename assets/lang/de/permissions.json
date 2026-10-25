@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "language": "Deutsch",
+    "reviewed": false
+  },
+  "permissions.welcome": "Willkommen bei XPRS",
+  "permissions.tagline": "Nachrichten ohne Netz, über Bluetooth und das Internet.",
+  "permissions.title": "Berechtigungen",
+  "permissions.all_granted": "Alle erteilt",
+  "permissions.tap_to_grant": "Zum Erteilen tippen",
+  "permissions.intro": "Erteile diese Berechtigungen, bevor du fortfährst. Ohne sie funktioniert nichts, und wer jetzt fragt, überrascht später nicht.",
+  "permissions.grant_all": "Alle erteilen",
+  "permissions.grant": "Erteilen",
+  "permissions.grant_to_continue": "Berechtigungen erteilen, um fortzufahren",
+  "permissions.privacy": "Deine Daten bleiben auf deinem Gerät. Diese Berechtigungen dienen nur der lokalen Kommunikation und Verbindung.",
+  "permissions.bluetooth.title": "Bluetooth",
+  "permissions.bluetooth.desc": "Geräte in der Nähe finden und Nachrichten über das Mesh austauschen",
+  "permissions.nearby_wifi.title": "WLAN-Geräte in der Nähe",
+  "permissions.nearby_wifi.desc": "Große Dateien über eine direkte WLAN-Verbindung zwischen Geräten in der Nähe übertragen (viel schneller als Bluetooth)",
+  "permissions.notifications.title": "Benachrichtigungen",
+  "permissions.notifications.desc": "Dich benachrichtigen, wenn eine Nachricht ankommt, während die App im Hintergrund ist",
+  "permissions.storage.title": "Speicher",
+  "permissions.storage.desc": "Eine verschlüsselte Sicherung deiner Identität aufbewahren, die eine Neuinstallation übersteht, und Dateien teilen",
+  "permissions.storage_legacy.title": "Speicher",
+  "permissions.storage_legacy.desc": "Eine verschlüsselte Sicherung deiner Identität aufbewahren, die eine Neuinstallation übersteht, und Dateien teilen",
+  "permissions.location.title": "Standort",
+  "permissions.location.desc": "Von Android verlangt, um Geräte in der Nähe über Bluetooth zu finden — bei ausgeschaltetem Standort liefert das System keine Scan-Ergebnisse, und die App wird unbemerkt taub. Zeigt außerdem deine Position auf der Karte.",
+  "permissions.battery.title": "Im Hintergrund laufen",
+  "permissions.battery.desc": "Die App weiter Nachrichten empfangen lassen, wenn der Bildschirm aus ist — sonst legt Android sie schlafen",
+  "permissions.internet.title": "Internet",
+  "permissions.internet.desc": "Mit den Internet-Relays und dem Wapp-Store verbinden (automatisch)"
+}

@@ -306,6 +306,40 @@ store, no radio. That is how the dance was made to work before any of it
 reached a device, and it is the pattern for anything whose failure only shows
 up between machines.
 
+### Reaching a callsign from anywhere is routing, and routing is the core's (2026-10-25)
+
+XPRS.md 12.12: a message handed to any archiver reaches the callsign it names,
+wherever that callsign last touched a radio; and 12.6: the words a station said
+while you were away are in some archiver, and which one is not your business.
+Both are routing decisions, and both live under the wapp with nothing to show
+for it: Chat sends a message and is called back when one arrives; Chat reads a
+station's messages from the store and, if they are not there yet, they appear.
+
+The pieces, each with its sends injected so it runs on the three-station bench
+(`test/xprs_reach_anywhere_sim_test.dart`) before any radio:
+
+- **Reporting who you hear** is a core duty of every station with a radio and
+  an archiver (`XprsHearsReporter`, `MeshService._reportHeard`): the signed
+  observation deposited as an addressed copy, on change or on a period.
+- **Forwarding held mail** goes to every gateway that reported the recipient
+  (`XprsForwarder`), re-runs when gossip learns a new one, and never happens
+  for a recipient this station can reach itself.
+- **Fetching a station's words** (`XprsFetch`) is triggered by the one HAL the
+  wapp already uses, `hal_xprs_history`: a query naming a station out of
+  earshot is the cue. The wapp never learns an archiver existed. The rows that
+  answer are kept because they were asked for (`XprsIngest.askedFor`), the one
+  exception to "silence is not consent", and it is the operator's own act that
+  grants it.
+- **Two askers, one gate.** `XprsCatchup` and `XprsFetch` wait for each other
+  (`busyWith`, `externalBusy`): a second ask from the same requester supersedes
+  the replay running for the first at the responder, which would cancel a page
+  mid-air. Anything else that asks an archiver joins the same gate.
+
+The failure this guards against is the tempting one: a wapp that asks
+archivers itself when a conversation looks empty. It would have to choose
+lanes, follow `m:try`, respect `429`, and keep a shelf — store-and-forward in
+a wapp again.
+
 ### A wapp shows its own action at once (2026-09-10)
 
 Posting a status took up to twenty seconds to appear. Nothing was slow: the

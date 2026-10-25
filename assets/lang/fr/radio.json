@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "language": "Français",
+    "reviewed": false
+  },
+  "radio.location.off": "La localisation est désactivée : le maillage Bluetooth est sourd",
+  "radio.location.off.body": "Android cache à l'application tous les appareils à proximité tant que les services de localisation sont désactivés. Activez la localisation pour voir et être vu en Bluetooth.",
+  "radio.bluetooth.off": "Le Bluetooth est désactivé",
+  "radio.bluetooth.off.body": "Personne à proximité ne peut voir ce téléphone tant que le Bluetooth n'est pas activé. Le maillage reprend de lui-même dès qu'il l'est."
+}

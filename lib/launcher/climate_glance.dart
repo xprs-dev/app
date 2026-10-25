@@ -52,7 +52,7 @@ class _ClimateGlance extends StatelessWidget {
             _ClimateValue(
               icon: Icons.home_outlined,
               reading: c.inside!,
-              where: 'inside',
+              where: tr('launcher.climate.inside'),
             ),
           if (c.outside != null)
             _ClimateValue(
@@ -61,7 +61,7 @@ class _ClimateGlance extends StatelessWidget {
               // bulb, and a cloud or a sun says what the sky is doing.
               icon: Icons.forest_outlined,
               reading: c.outside!,
-              where: 'outside',
+              where: tr('launcher.climate.outside'),
             ),
         ],
       ),
@@ -87,9 +87,9 @@ class _ClimateValue extends StatelessWidget {
     // line needs. The word is still there for a screen reader, which cannot
     // see a house or a tree.
     return Tooltip(
-      message: 'Measured by ${reading.station}',
+      message: tr('launcher.climate.measured_by', {'station': reading.station}),
       child: Semantics(
-        label: '$where ${reading.label.replaceAll('°C', ' degrees Celsius')}',
+        label: '$where ${reading.label.replaceAll('°C', ' ${tr('launcher.climate.degrees_celsius')}')}',
         excludeSemantics: true,
         child: Row(
           mainAxisSize: MainAxisSize.min,

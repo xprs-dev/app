@@ -253,6 +253,43 @@ healed on the service heartbeat by `_armGattEndpoint`, for the same reason
 something a wapp asks for. The re-arm is idempotent and must stay that way —
 restarting a healthy advert is what rotates the address (section 2).
 
+**A capability probe made with Bluetooth off is not a verdict.** Android
+answers `false` to every LE capability question while the adapter is not ON
+(`BluetoothAdapter.getLeAccess`), and `Ble5Bus.supported()` cached whatever it
+heard first for the life of the process. The permissions intro never asks for
+Bluetooth to be switched on, so a first-run user who enabled it a few seconds
+after the app had started got `_ble5 = false` for the whole session: no
+extended advertising set, no XPRS beacon, no GATT endpoint, every BLE5 send
+dropped at `active`, while the extended SCAN (started unconditionally by
+`MeshService.start`) still heard everybody. A phone in that state is invisible
+to its neighbours and reports itself a healthy scan-only leaf — the same shape
+a chip without extended advertising reports, which is why nobody read it as a
+fault. Reported 2026-10-24: two phones, both with Bluetooth on, neither seeing
+the other. The same latch bites a headless boot (`BootReceiver`) that lands
+before the adapter is up. Native now answers `null` while the adapter is off,
+the bus returns `false` without caching it, and `BleService._supportWatchdog`
+asks again every 10 s off the heartbeat until it gets an answer, then wires the
+bus, starts the scan and raises the mesh node. `gattStatus().ble5Support` says
+which of the three states the device is in; `MeshService.start` keeps the best
+`canAdvertise` wish while it waits for a callsign, so a probe that answers late
+on a fresh device still starts the node relay-capable.
+
+**Location Services off is a deaf phone, and the intro only checks on the way
+in.** Android returns no BLE scan results at all while the Location master
+switch is off, whatever the app's permissions say. The permissions intro
+refuses to continue until it is on, but nothing looked again afterwards: a
+switch turned off later (by hand, or by a power-saving mode) left a phone that
+advertised, scanned and heard nothing, reporting itself healthy. And the
+intro's own probe falls back to "on" when it times out, because a failed probe
+must never block the boot, so a slow plugin could let a phone through with the
+switch off. `BleService._environmentWatchdog` now reads both switches, Location
+and the Bluetooth adapter, every 30 s off the heartbeat and tells the person
+ONCE per off episode through `NotificationService` (`radio:location`,
+`radio:bluetooth`, in-app and system tray); `RadioEnvironment` is the pure
+once-per-episode rule, tested without a phone. `gattStatus()` reports
+`locationServicesOn` and `adapterOn` as last read. The app cannot flip either
+switch; it can stop being silent about them.
+
 **A beacon address is not a dialable address.** The address in an XPRS beacon is
 the extended advertising set's MAC, and that set is non-connectable, so a GATT
 connect to it cannot complete — Android takes thirty seconds to answer
@@ -308,6 +345,8 @@ cached (a status request must not cost a platform-channel round trip):
 
 | Field | Reads |
 |---|---|
+| `ble5Support` | `yes`, `no` (a chip without extended advertising), or `unknown (Bluetooth was off when asked)` — the third is a phone that will come up on its own once the adapter is on, and the one to look for when `ble5: false` on a phone that should do BLE5 |
+| `locationServicesOn` / `adapterOn` | the two system switches outside the app, as the environment watchdog last read them (null before its first pass). Either one `false` is a phone that hears nothing, and the person has been told once |
 | `scanResults` | every advert the radio delivered, before any filtering |
 | `rxEmitted` | how many of those reached Dart |
 | `rxNoSink` | **arrived while nothing was listening** — deaf, not alone |

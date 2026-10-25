@@ -20,6 +20,7 @@ import 'dart:ui' as ui;
 import '../../../profile/profile_service.dart';
 import '../../../profile/station_avatar.dart';
 import '../../../services/media_disk_cache.dart';
+import '../../../services/i18n/core_i18n.dart';
 import '../../../services/reticulum/rns_service.dart';
 import '../../native/inline_video_player.dart';
 import '../../native/wasm_video_player.dart';
@@ -859,7 +860,7 @@ class _ActivityFeedState extends State<ActivityFeed> {
                     width: 36,
                     child: IconButton(
                       icon: const Icon(Icons.attach_file),
-                      tooltip: 'Attach an image or video',
+                      tooltip: tr('geoui.feed.attach'),
                       color: ChatPalette.accent,
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(
@@ -1194,21 +1195,21 @@ class ActivityPostCard extends StatelessWidget {
           ]),
         ),
       if (_own && post['deleted'] != true && onUnsend != null)
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'unsend',
           child: Row(children: [
-            Icon(Icons.delete_outline, size: 18, color: Colors.red),
-            SizedBox(width: 10),
-            Flexible(child: Text('Delete for everyone')),
+            const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+            const SizedBox(width: 10),
+            Flexible(child: Text(tr('geoui.chat.menu.delete'))),
           ]),
         ),
       if (activityEdited(post) && post['deleted'] != true && onHistory != null)
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'history',
           child: Row(children: [
-            Icon(Icons.history, size: 18),
-            SizedBox(width: 10),
-            Flexible(child: Text('Edit history')),
+            const Icon(Icons.history, size: 18),
+            const SizedBox(width: 10),
+            Flexible(child: Text(tr('geoui.chat.info.history'))),
           ]),
         ),
       if (!_own && onFollow != null)
@@ -1238,7 +1239,7 @@ class ActivityPostCard extends StatelessWidget {
             children: [
               const Icon(Icons.notifications_off_outlined, size: 18),
               const SizedBox(width: 10),
-              Text('Mute $from'),
+              Text(tr('geoui.feed.mute', {'from': from})),
             ],
           ),
         ),
@@ -1249,7 +1250,7 @@ class ActivityPostCard extends StatelessWidget {
             children: [
               const Icon(Icons.block, size: 18, color: Colors.red),
               const SizedBox(width: 10),
-              Text('Block $from'),
+              Text(tr('geoui.chat.menu.block', {'from': from})),
             ],
           ),
         ),

@@ -11,6 +11,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../conversation_store.dart';
 import 'chat_palette.dart';
 import '../../../profile/station_avatar.dart';
+import '../../../services/i18n/core_i18n.dart';
 import 'chat_view_field.dart';
 import 'generated_avatar.dart';
 
@@ -384,17 +385,17 @@ class _ConversationsFieldState extends State<ConversationsField> {
             textInputAction: TextInputAction.search,
             onChanged: _runSearch,
             style: const TextStyle(color: ChatPalette.text, fontSize: 15),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               isDense: true,
               border: InputBorder.none,
-              hintText: 'Find a user by callsign…',
-              hintStyle: TextStyle(color: ChatPalette.secondary, fontSize: 15),
-              prefixIcon: Icon(Icons.search, size: 20, color: ChatPalette.secondary),
+              hintText: tr('geoui.convo.search.hint'),
+              hintStyle: const TextStyle(color: ChatPalette.secondary, fontSize: 15),
+              prefixIcon: const Icon(Icons.search, size: 20, color: ChatPalette.secondary),
             ),
           ),
         ),
         IconButton(
-          tooltip: 'Close search',
+          tooltip: tr('geoui.convo.search.close'),
           icon: const Icon(Icons.close, size: 22),
           color: ChatPalette.accent,
           onPressed: _closeSearch,
@@ -409,7 +410,7 @@ class _ConversationsFieldState extends State<ConversationsField> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text('Type a callsign to search your contacts and the network.',
+          child: Text(tr('geoui.convo.search.intro'),
               textAlign: TextAlign.center,
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
         ),
@@ -419,7 +420,7 @@ class _ConversationsFieldState extends State<ConversationsField> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text('No users found for “${_searchCtrl.text.trim()}”.',
+          child: Text(tr('geoui.convo.search.none', {'query': _searchCtrl.text.trim()}),
               textAlign: TextAlign.center,
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
         ),
@@ -440,10 +441,10 @@ class _ConversationsFieldState extends State<ConversationsField> {
     final devices = (r['devices'] is int) ? r['devices'] as int : 0;
     final title = nick.isNotEmpty ? '$callsign ($nick)' : callsign;
     final sub = devices == 0
-        ? (npub.isNotEmpty ? 'Known contact' : 'Seen on the network')
+        ? tr(npub.isNotEmpty ? 'geoui.convo.known' : 'geoui.convo.seen')
         : online
-            ? '$devices device${devices == 1 ? '' : 's'} · online'
-            : '$devices device${devices == 1 ? '' : 's'} · offline';
+            ? trn('geoui.convo.devices_online', devices)
+            : trn('geoui.convo.devices_offline', devices);
     final color = _hashColor(callsign);
     final letter = callsign.isNotEmpty ? callsign[0].toUpperCase() : '?';
     return Material(
@@ -526,7 +527,7 @@ class _ConversationsFieldState extends State<ConversationsField> {
             Icon(Icons.forum_outlined,
                 size: 48, color: cs.onSurfaceVariant.withAlpha(120)),
             const SizedBox(height: 12),
-            Text('No conversations yet',
+            Text(tr('geoui.convo.empty'),
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 15)),
           ],
         ),
@@ -578,7 +579,7 @@ class _ConversationsFieldState extends State<ConversationsField> {
                       children: [
                         Expanded(
                           child: Text(
-                            it.subtitle.isEmpty ? 'No messages yet' : it.subtitle,
+                            it.subtitle.isEmpty ? tr('geoui.chat.empty') : it.subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -647,7 +648,7 @@ class _ConversationsFieldState extends State<ConversationsField> {
   Widget _convMenu(BuildContext context, ConversationItem it) {
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert, size: 20),
-      tooltip: 'Options',
+      tooltip: tr('geoui.convo.options'),
       onSelected: (v) {
         if (v == 'mute') {
           widget.onMute?.call(it.id, !it.muted);
@@ -672,13 +673,13 @@ class _ConversationsFieldState extends State<ConversationsField> {
             ),
           ),
         if (widget.onClose != null)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'close',
             child: Row(
               children: [
-                Icon(Icons.close),
-                SizedBox(width: 10),
-                Text('Close'),
+                const Icon(Icons.close),
+                const SizedBox(width: 10),
+                Text(tr('common.close')),
               ],
             ),
           ),
@@ -689,7 +690,7 @@ class _ConversationsFieldState extends State<ConversationsField> {
               children: [
                 const Icon(Icons.block, color: Color(0xFFda3633)),
                 const SizedBox(width: 10),
-                Text('Block ${it.title}',
+                Text(tr('geoui.convo.block', {'name': it.title}),
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Color(0xFFda3633))),
               ],
@@ -751,8 +752,8 @@ class _ConversationsFieldState extends State<ConversationsField> {
                       ],
                     ),
                     if (it.private)
-                      const Text('Reticulum only',
-                          style: TextStyle(
+                      Text(tr('geoui.convo.reticulum_only'),
+                          style: const TextStyle(
                               color: ChatPalette.accent,
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600))
@@ -912,7 +913,7 @@ class _ConversationsFieldState extends State<ConversationsField> {
           Icon(Icons.chat_bubble_outline,
               size: 48, color: cs.onSurfaceVariant.withAlpha(110)),
           const SizedBox(height: 12),
-          Text('Select a conversation',
+          Text(tr('geoui.convo.select'),
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
         ],
       ),

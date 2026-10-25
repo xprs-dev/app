@@ -19,6 +19,7 @@ import 'services/i2p/i2p_background_service.dart';
 import 'services/update_mirror_service.dart';
 import 'services/update_service.dart';
 import 'services/announced_tags_store.dart';
+import 'services/i18n/core_i18n.dart';
 import 'services/notification_service.dart';
 import 'services/notification_store.dart';
 import 'services/permission_gate.dart';
@@ -162,6 +163,18 @@ Future<void> _boot() async {
   // through the orchestrator (and show up in the tasks wapp with the
   // boot:parallel pill). They are cheap and independent, so parallel
   // is correct — no contention for CPU or memory.
+  BootOrchestrator.instance.register(
+    id: 'core-i18n',
+    name: 'Translations',
+    description:
+        'Loads assets/lang/<code>/*.json for the active language (the '
+        'Settings choice, else the OS locale) plus the English fallback, '
+        'once, before the first frame, so the permissions intro and the '
+        'welcome screen already read in the person\'s language. Reloads on '
+        'LocaleChangedEvent.',
+    mode: BootStart.parallel,
+    init: () => CoreI18n.instance.init(),
+  );
   BootOrchestrator.instance.register(
     id: 'notification-service',
     name: 'Notification service',

@@ -30,6 +30,7 @@ import 'profile_encryption.dart';
 import 'profile_storage.dart';
 import 'profile_storage_encrypted.dart';
 import 'storage_paths.dart';
+import '../services/i18n/core_i18n.dart';
 
 class ProfileService {
   ProfileService._();
@@ -80,7 +81,16 @@ class ProfileService {
   void _notifyWireCallsign() {
     final cs = (activeProfile?.wireCallsign ?? '').trim();
     if (cs != wireCallsignNotifier.value) wireCallsignNotifier.value = cs;
+    final all = (activeProfile?.allCallsigns ?? const <String>[]).join(',');
+    if (all != callsignsNotifier.value) callsignsNotifier.value = all;
   }
+
+  /// Every name the active profile answers to, comma-joined: the derived X1
+  /// and each issued callsign. Fires when one is added or removed even though
+  /// the one on the air ([wireCallsignNotifier]) stays the same -- a callsign
+  /// added for another jurisdiction has to be bound (XPRS.md 6.4.2) and
+  /// answered to at once, not at the next switch.
+  final ValueNotifier<String> callsignsNotifier = ValueNotifier<String>('');
 
   /// True once [load] has completed at least once. Used by `main.dart`
   /// to decide whether to show WelcomePage or the launcher on boot.
@@ -196,11 +206,11 @@ class ProfileService {
       CallsignKind kind = CallsignKind.person,
       int callsignLength = reticulum.NostrCrypto.kDefaultCallsignLength}) {
     if (!NostrKeyGenerator.isValidNsec(nsec)) {
-      throw ArgumentError('Invalid nsec — must be a bech32 nsec1… string');
+      throw ArgumentError(tr('profile.nsec.invalid'));
     }
     final npub = NostrKeyGenerator.derivePublicKey(nsec);
     if (npub == null) {
-      throw ArgumentError('Could not derive npub from nsec');
+      throw ArgumentError(tr('profile.nsec.no_npub'));
     }
     final callsign = switch (kind) {
       CallsignKind.person =>

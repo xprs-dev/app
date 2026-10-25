@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "language": "Español",
+    "reviewed": false
+  },
+  "coin.paste_descriptor": "Pega primero un descriptor de moneda.",
+  "coin.invalid_descriptor": "Descriptor de moneda no válido.",
+  "coin.no_such_coin": "Esa moneda no existe.",
+  "coin.paste_token": "Pega un token para recibir.",
+  "coin.invalid_token": "Token de moneda no válido.",
+  "coin.unknown_add_provider": "Moneda desconocida — añade primero el emisor.",
+  "coin.nothing_accepted": "Nada aceptado (ya en tu poder o no válido).",
+  "coin.pick_held": "Elige una moneda que tengas (pega su Coin ID).",
+  "coin.amount_positive": "Introduce una cantidad mayor que cero.",
+  "coin.recipient_npub": "Introduce el npub del destinatario.",
+  "coin.no_profile_key": "No hay clave de perfil activa con la que firmar.",
+  "coin.invalid_recipient": "npub del destinatario no válido.",
+  "coin.unknown": "Moneda desconocida",
+  "coin.atm.no_profile": "No hay perfil activo para operar como cajero.",
+  "coin.atm.name_coin": "Pon nombre a la moneda (singular, plural y/o código corto).",
+  "coin.atm.pick_yours": "Elige una de tus monedas.",
+  "coin.atm.no_operator_key": "No hay clave de operador para firmar bloques.",
+  "coin.atm.ledger_closed": "No se pudo abrir el libro mayor de la moneda.",
+  "coin.atm.rejected": "El libro mayor rechazó la distribución.",
+  "coin.atm.invalid_npub": "npub no válido.",
+  "coin.atm.enter_npub": "Introduce un npub en el que confiar.",
+  "coin.atm.trusted": "Designado como cajero de confianza para {coin}.",
+  "coin.atm.already_trusted": "Ya es de confianza.",
+  "coin.atm.descriptor_ready": "Descriptor listo para compartir.",
+  "coin.atm.your_coins": "Tus monedas"
+}

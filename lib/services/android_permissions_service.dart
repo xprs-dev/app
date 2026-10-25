@@ -220,7 +220,15 @@ class AndroidPermissionsService {
   /// The system-wide location switch (Settings → Location), not the app's
   /// permission. Android returns ZERO BLE scan results while it is off, so this
   /// is a hard requirement for finding anyone over Bluetooth.
-  Future<bool> locationServicesOn() async {
+  Future<bool> locationServicesOn() async =>
+      (await locationServicesState()) ?? true; // unknown: never block on a probe
+
+  /// The same switch, three-valued: null when the probe could not answer.
+  /// [locationServicesOn] reads null as "on" because its callers gate the
+  /// boot and the intro, which a failed probe must never block; a watchdog
+  /// that tells the person their mesh went deaf must not take a timeout for
+  /// good news, so it reads this one and ignores null.
+  Future<bool?> locationServicesState() async {
     if (!_isAndroid) return true;
     try {
       // HARD timeout. This is a platform-channel call, and PermissionGate.ready
@@ -229,9 +237,10 @@ class AndroidPermissionsService {
       // future never completed, boot never finished, and both devices sat on a
       // blank splash forever after a reboot. Never block the app on a probe.
       return await Geolocator.isLocationServiceEnabled()
-          .timeout(const Duration(seconds: 2), onTimeout: () => true);
+          .then<bool?>((on) => on)
+          .timeout(const Duration(seconds: 2), onTimeout: () => null);
     } catch (_) {
-      return true; // unknown: never block on a failed probe
+      return null;
     }
   }
 

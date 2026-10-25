@@ -8,6 +8,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import 'activity_feed.dart' show ActivityPostCard, activityFormatMentions;
 import '../../../profile/station_avatar.dart';
+import '../../../services/i18n/core_i18n.dart';
 
 class ProfileView extends StatefulWidget {
   final String callsign;
@@ -186,9 +187,8 @@ class _ProfileViewState extends State<ProfileView> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          _keep
-              ? 'Keeping $_name’s posts and media on this device'
-              : 'No longer keeping $_name’s data',
+          tr(_keep ? 'geoui.profile.keep.on' : 'geoui.profile.keep.off',
+              {'name': _name}),
         ),
         duration: const Duration(seconds: 2),
       ),
@@ -234,7 +234,7 @@ class _ProfileViewState extends State<ProfileView> {
                           color: _keep ? Colors.green : null,
                         ),
                         const SizedBox(width: 8),
-                        const Expanded(child: Text('Keep data')),
+                        Expanded(child: Text(tr('geoui.profile.keep'))),
                         const SizedBox(width: 8),
                         // A switch, not a verb: this is a state the user is
                         // reading as much as an action they are taking.
@@ -280,7 +280,7 @@ class _ProfileViewState extends State<ProfileView> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          _blocked ? 'Unblock' : 'Block',
+                          tr(_blocked ? 'geoui.profile.unblock' : 'geoui.profile.block'),
                           style: TextStyle(color: _blocked ? null : Colors.red),
                         ),
                       ],
@@ -315,7 +315,7 @@ class _ProfileViewState extends State<ProfileView> {
                   padding: const EdgeInsets.all(24),
                   child: Center(
                     child: Text(
-                      'No posts from $callsign yet.',
+                      tr('geoui.profile.no_posts', {'callsign': callsign}),
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
                         fontSize: 13,
@@ -362,10 +362,10 @@ class _ProfileViewState extends State<ProfileView> {
 
   // ── Reticulum devices ──────────────────────────────────────────────
   static String _relAge(int sec) {
-    if (sec < 60) return 'just now';
-    if (sec < 3600) return '${sec ~/ 60}m ago';
-    if (sec < 86400) return '${sec ~/ 3600}h ago';
-    return '${sec ~/ 86400}d ago';
+    if (sec < 60) return tr('geoui.age.now');
+    if (sec < 3600) return tr('geoui.age.m', {'n': sec ~/ 60});
+    if (sec < 86400) return tr('geoui.age.h', {'n': sec ~/ 3600});
+    return tr('geoui.age.d', {'n': sec ~/ 86400});
   }
 
   Widget _devicesSection(ColorScheme cs) {
@@ -386,7 +386,7 @@ class _ProfileViewState extends State<ProfileView> {
             ),
             const SizedBox(width: 10),
             Text(
-              'Looking for devices on the network…',
+              tr('geoui.profile.devices.looking'),
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
             ),
           ],
@@ -396,7 +396,7 @@ class _ProfileViewState extends State<ProfileView> {
       body = Padding(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
         child: Text(
-          'No devices seen on the Reticulum network yet.',
+          tr('geoui.profile.devices.none'),
           style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
         ),
       );
@@ -408,7 +408,8 @@ class _ProfileViewState extends State<ProfileView> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Text(
-              '$onlineN of ${devices.length} online',
+              tr('geoui.profile.devices.online',
+                  {'online': onlineN, 'total': devices.length}),
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
           ),
@@ -422,7 +423,7 @@ class _ProfileViewState extends State<ProfileView> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
           child: Text(
-            'Reticulum devices',
+            tr('geoui.profile.devices'),
             style: TextStyle(
               color: cs.onSurface,
               fontWeight: FontWeight.w700,
@@ -442,9 +443,11 @@ class _ProfileViewState extends State<ProfileView> {
     final hops = (d['hops'] is int) ? d['hops'] as int : 0;
     final ageSec = (d['ageSec'] is int) ? d['ageSec'] as int : 0;
     final services = (d['services'] ?? '').toString();
-    final status = online ? 'online' : 'last seen ${_relAge(ageSec)}';
+    final status = online
+        ? tr('geoui.profile.device.online')
+        : tr('geoui.profile.device.last_seen', {'when': _relAge(ageSec)});
     final detail = [
-      if (hops > 0) '$hops hop${hops == 1 ? '' : 's'}',
+      if (hops > 0) trn('geoui.profile.hops', hops),
       if (services.isNotEmpty) services,
     ].join(' · ');
     return Padding(
@@ -564,7 +567,7 @@ class _ProfileViewState extends State<ProfileView> {
                     OutlinedButton.icon(
                       onPressed: widget.onEdit,
                       icon: const Icon(Icons.edit_outlined, size: 16),
-                      label: const Text('Edit profile'),
+                      label: Text(tr('geoui.profile.edit')),
                     ),
                   if (!widget.isSelf && widget.onSetFollow != null)
                     _followButton(cs),
@@ -572,13 +575,13 @@ class _ProfileViewState extends State<ProfileView> {
                     OutlinedButton.icon(
                       onPressed: widget.onMessage,
                       icon: const Icon(Icons.forum_outlined, size: 16),
-                      label: const Text('Chat'),
+                      label: Text(tr('geoui.profile.chat')),
                     ),
                   if (!widget.isSelf && widget.onMail != null)
                     OutlinedButton.icon(
                       onPressed: widget.onMail,
                       icon: const Icon(Icons.mail_outline, size: 16),
-                      label: const Text('Mail'),
+                      label: Text(tr('geoui.profile.mail')),
                     ),
                 ],
               ),
@@ -629,12 +632,12 @@ class _ProfileViewState extends State<ProfileView> {
               Icon(Icons.schedule, size: 14, color: cs.onSurfaceVariant),
               const SizedBox(width: 5),
               Text(
-                'First seen ${_firstSeen()}',
+                tr('geoui.profile.first_seen', {'when': _firstSeen()}),
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12.5),
               ),
               const SizedBox(width: 16),
               Text(
-                '$postCount ${postCount == 1 ? 'post' : 'posts'}',
+                trn('geoui.profile.posts', postCount),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
@@ -657,7 +660,8 @@ class _ProfileViewState extends State<ProfileView> {
                   const SizedBox(width: 5),
                   Expanded(
                     child: Text(
-                      'Reachable via ${widget.reachableVia!.join(', ')}',
+                      tr('geoui.profile.reachable',
+                          {'via': widget.reachableVia!.join(', ')}),
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
                         fontSize: 12.5,
@@ -675,7 +679,7 @@ class _ProfileViewState extends State<ProfileView> {
                   const Icon(Icons.block, size: 14, color: Colors.red),
                   const SizedBox(width: 5),
                   Text(
-                    'Blocked — their messages are hidden',
+                    tr('geoui.profile.blocked'),
                     style: TextStyle(
                       color: Colors.red.withAlpha(200),
                       fontSize: 12,
@@ -702,9 +706,9 @@ class _ProfileViewState extends State<ProfileView> {
         onTap: () {
           Clipboard.setData(ClipboardData(text: text));
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Copied'),
-              duration: Duration(seconds: 1),
+            SnackBar(
+              content: Text(tr('common.copied')),
+              duration: const Duration(seconds: 1),
             ),
           );
         },
@@ -736,7 +740,7 @@ class _ProfileViewState extends State<ProfileView> {
     if (_following) {
       return OutlinedButton(
         onPressed: _toggleFollow,
-        child: const Text('Following'),
+        child: Text(tr('geoui.profile.following')),
       );
     }
     return FilledButton(
@@ -744,7 +748,7 @@ class _ProfileViewState extends State<ProfileView> {
       style: FilledButton.styleFrom(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
-      child: const Text('Follow'),
+      child: Text(tr('geoui.profile.follow')),
     );
   }
 
@@ -786,9 +790,9 @@ class _ProfileViewState extends State<ProfileView> {
         onTap: () {
           Clipboard.setData(ClipboardData(text: value));
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('npub copied'),
-              duration: Duration(seconds: 1),
+            SnackBar(
+              content: Text(tr('geoui.profile.npub_copied')),
+              duration: const Duration(seconds: 1),
             ),
           );
         },
