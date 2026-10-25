@@ -20,7 +20,21 @@
  *
  *   mine            my own traffic, my mail, my groups     always
  *   people I follow their conversation, every lane          keepFollowed
+ *   the rooms       strangers' talk in Local/Regional/Global  followRooms
  *   everyone else   strangers                               public only
+ *
+ * The rooms are the one place a stranger's words are kept without a public
+ * archiver (2026-10-25). XPRS.md 9.11.1: "applications show the three scopes
+ * as three conversations", and this app's Chat refills them from this very
+ * archive -- so a phone that dropped a stranger's room message at the door
+ * showed it while it was live and lost it on the next open, and the poller
+ * (XprsCatchup, 12.10.1) that fetched the same message back from an archiver
+ * had it dropped again. Measured at home with a T-Deck bridging a Meshtastic
+ * channel into the Regional room: the phone saw only what came in live.
+ * Keeping is not serving: such a station still announces no archiver role
+ * and still serves a stranger only its own publications (XprsArchive.query
+ * ownOnly). The rows sit on the strangers' shelf, under the quota and the
+ * age cap, so following a busy room costs a bounded amount of disk.
  *
  * Pure on purpose (docs/architecture.md 3): the decision belongs to the core,
  * and a decision that cannot be tested is a guess. It reads no preferences —
@@ -54,6 +68,7 @@ class XprsArchivePolicy {
     this.alwaysOn = false,
     this.keepFollowed = true,
     this.keepChatter = false,
+    this.followRooms = false,
   });
 
   /// Keep strangers' traffic, within the quota, and announce `serve:archive`.
@@ -75,17 +90,25 @@ class XprsArchivePolicy {
   /// answers every such ask with a 404 by construction.
   final bool keepChatter;
 
+  /// Keep what is said in the three chat rooms (9.11.1), whoever said it,
+  /// on the strangers' shelf under its quota. The same switch as the room
+  /// catch-up (XprsCatchup): a device that asks archivers for the rooms'
+  /// conversation keeps the answer, and what it hears of them live.
+  final bool followRooms;
+
   XprsArchivePolicy copyWith({
     bool? public,
     bool? alwaysOn,
     bool? keepFollowed,
     bool? keepChatter,
+    bool? followRooms,
   }) =>
       XprsArchivePolicy(
         public: public ?? this.public,
         alwaysOn: alwaysOn ?? this.alwaysOn,
         keepFollowed: keepFollowed ?? this.keepFollowed,
         keepChatter: keepChatter ?? this.keepChatter,
+        followRooms: followRooms ?? this.followRooms,
       );
 }
 
@@ -116,6 +139,10 @@ Tier? xprsAdmitTier({
   /// The sender is a station this operator follows BY CALLSIGN (a device,
   /// 11.7.1): its observations are not chatter but the very thing followed.
   bool followedStation = false,
+  /// A room's talk (9.11.1): an undirected `t:message` or a `t:reaction`,
+  /// heard within its scope's reach. The caller decides the reach; a
+  /// `scope:local` heard over LoRa is in no room and is not this.
+  bool room = false,
 }) {
   // Never spooled by anybody: acknowledgements, results and reachability
   // tests. The archive drops these at its own door too; naming them here
@@ -153,6 +180,13 @@ Tier? xprsAdmitTier({
     if (followedStation) return Tier.followed;
     return (!presence || chatterOk) ? Tier.followed : null;
   }
+
+  // ── The rooms. The one consent a private phone gives for a stranger's
+  // words: it follows the three conversations (XprsCatchup asks archivers
+  // for them, Chat refills them from here), so what is said in them is
+  // kept, under the strangers' quota. Talk heard in range only, never
+  // presence, never mail.
+  if (room && policy.followRooms && !presence) return Tier.stranger;
 
   // ── Everyone else. Silence is not consent (12): with Public archiver off
   // this station holds nothing for strangers — not their chatter, not their

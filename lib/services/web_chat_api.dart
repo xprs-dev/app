@@ -46,6 +46,7 @@ class WebChatApi {
       required List<String> types,
       String? from,
       String? visitor,
+      String? room,
       required int limit}) publicRows;
 
   /// How many public rows the archive holds (the page's "N packets held").
@@ -223,6 +224,10 @@ class WebChatApi {
     return WebChatReply(200, {'ok': true, 'session': token, 'call': from});
   }
 
+  /// `room=` (spec/API-HTTP.md): one of the three chat rooms, else none.
+  static String? _room(String? v) =>
+      const {'local', 'regional', 'global'}.contains(v) ? v : null;
+
   WebChatReply _history(Map<String, String> q) {
     var types = <String>[
       for (final t in (q['kind'] ?? q['only'] ?? '').split(','))
@@ -238,6 +243,7 @@ class WebChatApi {
       types: types,
       from: (q['call'] ?? '').trim().isEmpty ? null : q['call']!.trim(),
       visitor: sessionCall(q['session']),
+      room: _room(q['room']),
       limit: limit,
     );
     final dir = q['dir'];
@@ -323,6 +329,7 @@ List<Map<String, dynamic>> archivePublicRows(
     required List<String> types,
     String? from,
     String? visitor,
+    String? room,
     required int limit}) {
   final a = XprsArchive.instance;
   final open = a.query(
@@ -331,9 +338,11 @@ List<Map<String, dynamic>> archivePublicRows(
     types: types,
     to: const [''],
     from: from,
+    room: room,
     limit: limit,
   );
-  if (visitor == null || visitor.isEmpty) return open;
+  // A room is undirected traffic: a visitor's own mail is no room's.
+  if (room != null || visitor == null || visitor.isEmpty) return open;
   final mine = <Map<String, dynamic>>[
     ...a.query(
         sinceMs: sinceMs,

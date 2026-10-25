@@ -93,6 +93,26 @@ void main() {
     expect(rows.single['id'], xprsIdentifier(p));
   });
 
+  test('room: a chat room is the scope written before m:, one room a time', () {
+    final rows = {
+      'local': 't:message f:X1AAA ts:2026-08-13_10:00:00 scope:local m:near',
+      'regional': 't:message f:X1BBB ts:2026-08-13_10:00:01 scope:regional m:wide',
+      'global': 't:message f:X1CCC ts:2026-08-13_10:00:02 m:say scope:local here',
+      'global2': 't:message f:X1DDD ts:2026-08-13_10:00:03 scope:PT m:a country',
+    };
+    for (final w in rows.values) {
+      a.admit(_p(w), bearer: 'lora', nowMs: 1000);
+    }
+    a.flush(nowMs: 1000);
+    List<String> room(String r) =>
+        [for (final x in a.query(room: r, to: const [''])) x['from'] as String];
+    expect(room('local'), ['X1AAA']);
+    expect(room('regional'), ['X1BBB']);
+    expect(room('global')..sort(), ['X1CCC', 'X1DDD'],
+        reason: 'scope:local inside the text is not a scope; a country is global');
+    expect(a.query(room: 'nowhere'), isEmpty);
+  });
+
   test('zero-hop copy replaces a relayed one, never the reverse', () {
     final clean = _p('t:info f:X1AAA ts:2026-08-13_10:00:00 m:hop test');
     final hopped = clean.with_('via', 'X3RLY7');

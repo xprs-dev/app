@@ -10,6 +10,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:xprs/services/xprs/xprs_archive.dart';
+import 'package:xprs/services/xprs/xprs_archive_policy.dart';
 import 'package:xprs/services/xprs/xprs_ingest.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_airtime.dart';
@@ -19,6 +20,9 @@ import 'package:xprs/services/xprs/xprs_sig.dart';
 import 'package:xprs/services/xprs/xprs_id.dart';
 import 'package:xprs/util/nostr_crypto.dart';
 import 'package:hex/hex.dart';
+import 'package:sqlite3/open.dart';
+import 'dart:ffi';
+import 'dart:io';
 import 'dart:typed_data';
 
 /// A bearer that records what it was asked to carry.
@@ -74,6 +78,11 @@ String _wire({String? d, String? scope, String m = 'hello'}) =>
 void main() {
   late FakeBearer ble, lan, rns, lora;
   late XprsPublisher pub;
+
+  setUpAll(() {
+    open.overrideFor(
+        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
+  });
 
   setUp(() {
     ble = FakeBearer('ble5', archive: 'ble');
@@ -390,6 +399,57 @@ void _funnel() {
  * `queued` — the third answer, and the one whose absence made the report lie.
  */
 void _queued() {
+  group('the rooms are kept by a private phone (9.11.1)', () {
+    late Directory tmp;
+    final a = XprsArchive.instance;
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('xprsrooms');
+      a
+        ..selfCallsign = 'X1SELF'
+        ..init('${tmp.path}/a.sqlite3');
+      XprsIngest.policy = const XprsArchivePolicy(followRooms: true);
+    });
+    tearDown(() {
+      XprsIngest.policy = const XprsArchivePolicy();
+      a.close();
+      tmp.deleteSync(recursive: true);
+    });
+    void hear(String wire, String bearer) => XprsIngest.heard(
+        XprsPacket.parse(wire)!, bearer: bearer, selfCallsign: 'X1SELF');
+    List<String> kept() => [
+          for (final r in a.query(types: const ['message'])) r['wire'] as String
+        ];
+
+    test('a stranger\'s Regional message bridged in over Bluetooth survives '
+        'the restart; the same scope heard too far away does not', () {
+      // What the phone at home saw: a T-Deck bridging a Meshtastic channel
+      // into the Regional room over BLE. Shown live, gone on the next open,
+      // because a stranger's publication was dropped at the door.
+      hear('t:message f:MT33AB89C8 ts:$_ts scope:regional m:boa noite', 'ble');
+      hear('t:message f:X1QZ3N ts:$_ts scope:local m:anyone here', 'ble');
+      hear('t:message f:X1QZ3N ts:$_ts m:round two global', 'lan');
+      // 9.11: scope:local heard over LoRa is in no room, and not kept.
+      hear('t:message f:X1FAR1 ts:$_ts scope:local m:too far', 'lora');
+      // Somebody else's 1:1 is mail, not a room: carried, never kept here.
+      hear('t:message f:X1QZ3N d:X1RD89 ts:$_ts m:private', 'ble');
+      // A beacon is presence, whatever the switch says.
+      hear('t:observation f:MT33AB89C8 link:lora peers:1 ts:$_ts', 'ble');
+      a.flush(nowMs: 1000);
+      final k = kept();
+      expect(k, hasLength(3));
+      expect(k.join(), isNot(contains('too far')));
+      expect(k.join(), isNot(contains('private')));
+      expect(a.query().every((r) => r['type'] == 'message'), isTrue);
+    });
+
+    test('with the rooms not followed, the pocket default stands', () {
+      XprsIngest.policy = const XprsArchivePolicy();
+      hear('t:message f:MT33AB89C8 ts:$_ts scope:regional m:boa noite', 'ble');
+      a.flush(nowMs: 1000);
+      expect(kept(), isEmpty);
+    });
+  });
+
   group('a lane that stores and forwards answers queued, not refused', () {
     late FakeBearer ble, rns;
     late XprsPublisher pub;

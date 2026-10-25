@@ -4070,6 +4070,7 @@ class WappEngine {
         var badKind = false;
         List<String>? types;
         List<String>? to;
+        String? room;
         var limit = 200;
         try {
           final q = jsonDecode(_readStr(qPtr, qLen)) as Map<String, dynamic>;
@@ -4092,6 +4093,11 @@ class WappEngine {
           // window to custody re-airs (see XprsArchive.query).
           final d = q['to'];
           if (d is List) to = d.map((e) => e.toString()).toList();
+          // One chat room (9.11.1), by the scope its author wrote: a room
+          // asks for its own conversation, so a busy Regional cannot fill
+          // the window and leave Local looking empty.
+          final sc = q['scope'];
+          if (sc is String && sc.isNotEmpty) room = sc;
           limit = (q['limit'] as num?)?.toInt() ?? 200;
         } catch (_) {}
         // A wapp reading one station's messages is the core's cue to fetch
@@ -4115,6 +4121,7 @@ class WappEngine {
                 to: to,
                 from: from,
                 fromKind: kind,
+                room: room,
                 limit: limit.clamp(1, 200))));
         if (bytes.length > outCap) return -bytes.length;
         return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));

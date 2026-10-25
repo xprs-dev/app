@@ -19,7 +19,7 @@ void main() {
   final chatHtml = Uint8List.fromList(utf8.encode('<html>the chat</html>'));
   final sent = <String>[];
   WebChatApi api({String? app = '/app'}) => WebChatApi(
-        publicRows: ({sinceMs, untilMs, required types, from, visitor, required limit}) =>
+        publicRows: ({sinceMs, untilMs, required types, from, visitor, room, required limit}) =>
             [
               {'type': 'message', 'from': 'X1ARKL', 'to': '', 'own': false, 'wire': 't:message f:X1ARKL m:hi'},
             ],

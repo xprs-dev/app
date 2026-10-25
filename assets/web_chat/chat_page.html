@@ -177,6 +177,9 @@ h3:first-child{margin-top:0}
 .pkt .l1 .when{margin-left:auto;color:var(--muted);font-size:11px;
   white-space:nowrap;padding-left:6px}
 .pkt .l2{font-size:11px;color:var(--muted)}
+.btag{display:inline-block;margin:2px 3px 0 0;padding:0 5px;border-radius:8px;
+  border:1px solid var(--border);font-size:10px;line-height:16px;white-space:nowrap}
+.btag.sent{color:var(--accent);border-color:var(--accent)}
 .viewbtns button{background:none;border:1px solid var(--border);color:var(--muted);
   font:inherit;font-size:11px;padding:2px 7px;margin-right:4px;cursor:pointer}
 .viewbtns button.on{color:var(--accent);border-color:var(--accent)}
@@ -215,7 +218,6 @@ img.shot{max-width:100%;image-rendering:pixelated;border:1px solid var(--border)
     <div class="messages" id="msgs"></div>
     <div class="status-bar">
       <span id="stat">connecting</span>
-      <span id="stlink">XPRS station &middot; <a href="/config">settings</a></span>
       <a id="getapp" class="hide" href="/app">Get the app</a>
     </div>
     <div id="replybar"><span id="replyinfo"></span>
@@ -1242,6 +1244,29 @@ function clearChat(){
   snack('Chat view cleared');
 }
 var chatLoaded=false;
+/* Each room's archive, asked for by room (room=, spec/API-HTTP.md), once
+ * per page. The newest 200 of everything is one room on a busy station:
+ * a bridged Meshtastic channel alone filled it, and Local and Global showed
+ * nothing although the station held their conversations. One room at a
+ * time, chained: the station has one HTTP worker. A station that does not
+ * know room= answers its newest messages, which render() files as usual. */
+var roomsBackfilled=false;
+function backfillRooms(){
+  if(roomsBackfilled)return;
+  roomsBackfilled=true;
+  var asks=[['local','message'],['regional','message'],['global','message'],
+            ['social','status']];
+  (function next(i){
+    if(i>=asks.length)return;
+    var a=asks[i];
+    getJSON('/api/xprs/history?kind='+a[1]+'&room='+a[0]+'&limit=100'+
+            (sess?'&session='+sess:''),function(d){
+      var rows=(d&&d.rows||[]).slice().reverse();
+      for(var j=0;j<rows.length;j++)render(rows[j]);
+      next(i+1);
+    });
+  })(0);
+}
 function load(){
   try{
     var x=new XMLHttpRequest();
@@ -1255,6 +1280,7 @@ function load(){
         var d=JSON.parse(x.responseText);
         chatLoaded=true;
         var rows=(d.rows||[]).slice().reverse();
+        setTimeout(backfillRooms,0);
         for(var i=0;i<rows.length;i++){
           var t=rows[i].type||'';
           if(t==='message'||t==='reaction'||t==='status')render(rows[i]);
@@ -1351,24 +1377,55 @@ function openView(t){toggleMenu();showTab(t);}
 
 // Traffic: every packet the station filed, not only the ones chat shows.
 //
+// One entry per packet. The archive files a copy for every bearer a packet
+// left or arrived on, and a station on BLE, ESP-NOW, LoRa and the LAN showed
+// the same message four to ten times with only the bearer changed. Copies
+// are the same packet by the XPRS.md 5 identifier (wireId: via: and sig:
+// left out), so they merge into one entry whose tags say where it went
+// ("sent") and where it came from ("heard"), the loudest signal per bearer.
+//
 // Stacked rows rather than a table: six columns and a raw wire do not fit
 // 390 px, and a page that scrolls sideways on a phone is the wrong answer.
+function trafficGroups(rows){
+  var order=[],by={};
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i],k=wireId(r.wire||'');
+    var g=by[k];
+    if(!g){g=by[k]={row:r,ts:r.ts||0,own:!!r.own,tags:{},tagOrder:[]};order.push(g);}
+    if((r.ts||0)>g.ts)g.ts=r.ts;
+    if(r.own)g.own=true;
+    if(r.sig==='verified'||(r.sig==='unverified'&&g.row.sig==='none'))g.row=r;
+    var t=(r.own?'sent':'heard')+'|'+(r.bearer||'?');
+    var tg=g.tags[t];
+    if(!tg){tg=g.tags[t]={dir:r.own?'sent':'heard',bearer:r.bearer||'?',
+                          rssi:0,n:0};g.tagOrder.push(t);}
+    tg.n++;
+    if(r.rssi&&(!tg.rssi||r.rssi>tg.rssi))tg.rssi=r.rssi;
+  }
+  return order;
+}
 function loadTraffic(){
-  getJSON('/api/xprs/history?limit=60',function(d){
+  getJSON('/api/xprs/history?limit=120',function(d){
     if(!d||!d.rows)return fail('v-traffic','History');
     var h='',now=Math.floor(Date.now()/1000);
-    for(var i=0;i<d.rows.length;i++){
-      var r=d.rows[i];
+    var gs=trafficGroups(d.rows);
+    for(var i=0;i<gs.length&&i<60;i++){
+      var g=gs[i],r=g.row,tags='';
+      for(var j=0;j<g.tagOrder.length;j++){
+        var tg=g.tags[g.tagOrder[j]];
+        tags+='<span class="btag '+tg.dir+'" title="'+tg.dir+' on '+
+              esc(tg.bearer)+(tg.n>1?', '+tg.n+' copies':'')+'">'+
+              (tg.dir==='sent'?'&uarr;':'&darr;')+esc(tg.bearer)+
+              (tg.rssi?' '+esc(tg.rssi):'')+'</span>';
+      }
       h+='<div class="pkt"><div class="l1">'+
          '<b>'+esc(r.from||'?')+'</b>'+
-         (r.own?' <span class="dim">(us)</span>':'')+
+         (g.own?' <span class="dim">(us)</span>':'')+
          ' <span class="dim">&rarr;</span> '+esc(r.to||'all')+
-         '<span class="when">'+(r.ts?esc(ago(now-r.ts)):'-')+'</span></div>'+
+         '<span class="when">'+(g.ts?esc(ago(now-g.ts)):'-')+'</span></div>'+
          '<div class="l2">'+esc(r.type||'')+
-         ' &middot; '+esc(r.bearer||'')+
-         (r.rssi?' '+esc(r.rssi)+' dBm':'')+
          ' &middot; <span class="sig-'+esc(r.sig||'none')+'">'+
-         esc(r.sig||'none')+'</span></div>'+
+         esc(r.sig||'none')+'</span> '+tags+'</div>'+
          '<div class="wire">'+esc(r.wire||'')+'</div></div>';
     }
     el('v-traffic').innerHTML=(d.held!==undefined?
@@ -1608,7 +1665,6 @@ function applyServices(sv){
     n=bs[i].getAttribute('data-tab')||bs[i].getAttribute('data-view');
     if(tabs.indexOf(n)<0)bs[i].style.display='none';
   }
-  if(p.config===false)el('stlink').style.display='none';
   if(p.app){el('getapp').href=p.app;el('getapp').className='';}
 }
 

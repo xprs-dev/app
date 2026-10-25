@@ -257,8 +257,20 @@ class XprsIngest {
       alwaysOn: p.xprsAlwaysOn,
       keepFollowed: p.xprsKeepFollowed,
       keepChatter: p.xprsKeepChatter,
+      // The room catch-up and keeping the rooms are one decision: a device
+      // that polls archivers for the rooms' conversation keeps the answer.
+      followRooms: p.xprsCatchup,
     );
   }
+
+  /// A room's talk heard within its scope (9.11.1): an undirected message or
+  /// a reaction whose `scope:` admits the bearer it arrived on. The same
+  /// reach test the archive applies on read (XprsArchive._reachOf), so a row
+  /// is kept exactly when a room would show it.
+  static bool _isRoomTalk(XprsPacket p, String bearer) =>
+      (p.type == 'reaction' ||
+          (p.type == 'message' && (p['d'] ?? '').trim().isEmpty)) &&
+      xprsReachAdmits(xprsScopeReach(p), xprsBearerReach(bearer));
 
   /// Whose traffic this is: ours, somebody we follow, or a stranger.
   ///
@@ -462,6 +474,7 @@ class XprsIngest {
       policy: policy,
       addressedToUs: forUs,
       followedStation: _followedStation(_base(from)),
+      room: _isRoomTalk(p, _archiveBearer(bearer)),
     );
     if (shelf != null) {
       // `admit` only QUEUES. Whoever needs to know a row exists listens to
@@ -1129,6 +1142,7 @@ class XprsIngest {
       internet: true,
       policy: policy,
       followedStation: _followedStation(fromC),
+      room: _isRoomTalk(p, 'rns'),
     );
     if (shelf == null) {
       // A receipt, a ping or a result was never going to be written down by

@@ -29,8 +29,8 @@ void main() {
   var allow = true;
 
   WebChatApi make() => WebChatApi(
-        publicRows: ({sinceMs, untilMs, required types, from, visitor, required limit}) {
-          asked.add({'types': types, 'from': from, 'limit': limit, 'since': sinceMs, 'visitor': visitor});
+        publicRows: ({sinceMs, untilMs, required types, from, visitor, room, required limit}) {
+          asked.add({'types': types, 'from': from, 'limit': limit, 'since': sinceMs, 'visitor': visitor, 'room': room});
           return [
             {'type': 'message', 'from': 'X1AAA', 'to': '', 'own': false, 'wire': 'a'},
             {'type': 'message', 'from': 'X1SELF', 'to': '', 'own': true, 'wire': 'b'},
@@ -59,6 +59,13 @@ void main() {
   const msg = 't:message f:X3ABCD ts:2026-10-15_12:00:00 scope:local m:hello';
 
   group('what a visitor reads', () {
+    test('room= asks one chat room; anything else asks none', () async {
+      final a = make();
+      await a.handle('GET', '/api/xprs/history', {'kind': 'message', 'room': 'local'}, '');
+      await a.handle('GET', '/api/xprs/history', {'kind': 'message', 'room': 'x'}, '');
+      expect(asked.map((q) => q['room']).toList(), ['local', null]);
+    });
+
     test('only conversation types, newest rows, a capped limit', () async {
       final a = make();
       final r = await a.handle('GET', '/api/xprs/history',

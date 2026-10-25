@@ -979,10 +979,34 @@ class XprsArchive {
     /// the group's own business (10.9.3). Anybody else's mail is held for its
     /// addressee and "never offered to a third party".
     String? mailFor,
+    /// One chat room (XPRS.md 9.11): `local`, `regional` or `global`, by the
+    /// scope word its author wrote before `m:`. Global is everything that is
+    /// neither local nor regional (no scope, `scope:global`, a country). The
+    /// web chat asks a room at a time so that one busy room cannot fill the
+    /// whole window (spec/API-HTTP.md, `room`). Combine with [to] = [''] for
+    /// the undirected traffic a room shows.
+    String? room,
   }) {
     final db = _db;
     if (db == null) return const [];
     final where = StringBuffer('1=1');
+    if (room != null && room.isNotEmpty) {
+      // The header is the wire up to ` m:`, padded so ` scope:local ` matches
+      // at its end too; text after m: never decides the room.
+      const head = "(substr(wire, 1, instr(wire || ' m:', ' m:')) || ' ')";
+      const local = "instr($head, ' scope:local ') > 0";
+      const regional = "instr($head, ' scope:regional ') > 0";
+      switch (room) {
+        case 'local':
+          where.write(' AND $local');
+        case 'regional':
+          where.write(' AND $regional');
+        case 'global':
+          where.write(' AND NOT ($local) AND NOT ($regional)');
+        default:
+          return const [];
+      }
+    }
     final args = <Object?>[];
     if (ownOnly) where.write(' AND own = 1');
     if (from != null && from.trim().isNotEmpty) {

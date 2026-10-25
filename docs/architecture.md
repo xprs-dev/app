@@ -555,6 +555,19 @@ decides. Three consequences worth keeping:
 - **The tier is stored on the row** (`packets.tier`), so eviction is SQL, and
   the byte cap is honestly the strangers' quota rather than a bound on
   everything.
+- **The rooms are kept, and keeping is not serving (2026-10-25).** A private
+  phone dropped a stranger's Local or Regional message at the door, showed it
+  while it was live, and lost it on the next open; the poller then fetched it
+  back from the T-Deck and the door dropped it again. 9.11.1 says the three
+  scopes are three conversations and Chat refills them from this archive, so
+  an undirected message or reaction heard within its scope's reach is kept on
+  the strangers' shelf, under the quota and the age cap
+  (`XprsArchivePolicy.followRooms`, the same switch as the room catch-up).
+  Nothing about serving changes: no `serve:archive`, and a stranger's
+  `cmd:history` is still answered from this station's own publications only.
+  The room, not the shelf, is what the Chat asks for: `hal_xprs_history`
+  takes `scope`, and the wapp refills one room at a time, or a bridged
+  Meshtastic channel fills the window and Local looks empty.
 - **Who is followed is pushed, never derived.** `RnsService` owns callsign↔key,
   so it computes the followed callsigns when the follow list changes and hands
   `XprsArchive.followed` a set. The receive funnel does one set lookup; the

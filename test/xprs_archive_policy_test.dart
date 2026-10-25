@@ -124,6 +124,50 @@ void main() {
     });
   });
 
+  group('the rooms this device follows (9.11.1, 2026-10-25)', () {
+    const rooms = XprsArchivePolicy(followRooms: true);
+    Tier? room(String type, {XprsArchivePolicy policy = rooms, bool inRoom = true}) =>
+        xprsAdmitTier(
+            tier: Tier.stranger,
+            type: type,
+            publication: true,
+            declared: false,
+            internet: false,
+            policy: policy,
+            room: inRoom);
+
+    test('a stranger\'s room message is kept, on the strangers\' shelf', () {
+      expect(room('message'), Tier.stranger, reason: 'quota-bounded, not followed');
+      expect(room('reaction'), Tier.stranger);
+    });
+
+    test('the same words out of a room are not: a status, or heard out of range',
+        () {
+      expect(room('message', inRoom: false), isNull,
+          reason: 'the caller said it is in no room (scope:local off LoRa)');
+      expect(room('status', inRoom: false), isNull);
+    });
+
+    test('presence is never a room, and a private phone that does not follow '
+        'the rooms keeps the old rule', () {
+      expect(room('observation'), isNull);
+      expect(room('message', policy: private), isNull);
+    });
+
+    test('off the internet too: Global is the conversation that travels', () {
+      expect(
+          xprsAdmitTier(
+              tier: Tier.stranger,
+              type: 'message',
+              publication: true,
+              declared: false,
+              internet: true,
+              policy: rooms,
+              room: true),
+          Tier.stranger);
+    });
+  });
+
   group('what nobody keeps, and what everybody does', () {
     test('answers are not records', () {
       for (final t in ['receipt', 'result', 'ping', 'pong']) {

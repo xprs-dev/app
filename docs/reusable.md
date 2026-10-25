@@ -909,3 +909,18 @@ rewrite:
 - **one-shot wakes, never a poll** (`_wake`): a fetch schedules one Timer per
   ask (its grace) and nothing while nothing is open — the shape the
   `no-sub-minute-poll` guard rule wants for any user-triggered exchange.
+
+## Archive admission
+
+- **`XprsIngest._isRoomTalk(p, bearer)`** -- "is this a room's conversation,
+  heard within its scope": undirected message or reaction, and
+  `xprsReachAdmits(xprsScopeReach(p), xprsBearerReach(bearer))`. The same
+  test `XprsArchive._reachOf` applies on read; anything that decides whether
+  a row belongs to Local/Regional/Global should call one of these two rather
+  than parse `scope:` itself (the firmware's `xprs_scope_reach_wire` and the
+  web page's `scopeRoom` are the same rule in C and JS).
+- **`XprsArchive.query(room:)`** -- one chat room by the scope before `m:`,
+  reached from the web chat as `room=` and from a wapp as
+  `hal_xprs_history {"scope": ...}`. Ask a room at a time; never ask for the
+  newest N of everything and sieve.
+
