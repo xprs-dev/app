@@ -23,9 +23,11 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 YES=0
 VERSION=""
+LOCK_CHANGED=0
 for a in "$@"; do
   case "$a" in
     -y|--yes) YES=1 ;;
+    --lock-changed) LOCK_CHANGED=1 ;;   # a deliberate pubspec.lock fix
     *) VERSION="$a" ;;
   esac
 done
@@ -112,7 +114,7 @@ dart tool/check_tracked_imports.dart HEAD
 # build then fails `pub get --enforce-lockfile` in the buildserver, and the
 # release has to be cut again (v1.3.0 and v1.3.4 both died this way). A lock
 # change is legitimate only when pubspec.yaml changed too.
-if last_tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null); then
+if [[ "$LOCK_CHANGED" -ne 1 ]] && last_tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null); then
   if ! git diff --quiet "$last_tag" HEAD -- pubspec.lock && \
      git diff --quiet "$last_tag" HEAD -- pubspec.yaml; then
     echo "error: pubspec.lock changed since $last_tag with no change to pubspec.yaml;" >&2
