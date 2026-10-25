@@ -89,7 +89,9 @@ jobs:
           path: dist/
 
   linux:
-    runs-on: ubuntu-latest
+    # Pinned: on ubuntu-26.04 (ubuntu-latest from 2026-10-21) the Linux link
+    # fails, while the same tree links on 24.04.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Fetch reticulum-dart at the pinned commit (path dependency)
