@@ -18,7 +18,19 @@
 :root{--accent:#ffa86a;--bg:#101010;--text:#f0f0f0;
       --border:rgba(255,240,224,.125);--muted:#888}
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;overflow:hidden}
+/* The document never scrolls; the panels do. Android's captive-portal
+   browser (CaptivePortalLogin) wraps its WebView in a swipe-to-refresh
+   layout that reloads the page on any downward drag while the DOCUMENT is
+   at scroll 0, whichever panel the finger is on -- so scrolling up through
+   the conversation reloaded the page. The body is one pixel taller than the
+   window and parked at scrollY 1 (park(), in the script): the WebView then
+   reports it can scroll up and the drag stays with the panel. The document
+   itself cannot be dragged (overflow:hidden), and overscroll-behavior keeps
+   a panel at its end, and Chrome's own pull-to-refresh, from reaching it. */
+html{height:100%;overflow:hidden;overscroll-behavior:none}
+body{height:calc(100% + 1px);padding-top:1px;overflow:hidden;
+     overscroll-behavior:none}
+.messages,.view,#side{overscroll-behavior:contain}
 body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
      background:var(--bg);color:var(--text);font-size:14px;
      display:flex;flex-direction:column}
@@ -1450,14 +1462,33 @@ function loadDevices(){
          ' hop'+(v.hops>1?'s':'')+'</span>':'')+'</td>'+
          '<td class="n">'+esc(v.bearer)+'</td>'+
          '<td class="n">'+(v.rssi?esc(v.rssi)+' dBm':'-')+'</td>'+
-         '<td class="n">'+(v.dist_m>=0?'~'+esc(v.dist_m)+' m':'-')+'</td>'+
+         '<td class="n">'+distCell(v)+'</td>'+
          '<td class="n">'+esc(ago(v.age_s))+' ago</td></tr>';
     }
     h+='</table><p class="dim">Distance is estimated from signal strength '+
-       'and is only as good as the room. '+(d.heard||0)+' packets heard '+
+       'and is only as good as the room. A station reached through another '+
+       'is as far as that relay plus the relay\'s own reading of it; '+
+       '&gt; means the relay has not said. '+(d.heard||0)+' packets heard '+
        'since boot.</p>';
     el('v-devices').innerHTML=h;
   });
+}
+// The Distance cell. A relayed row's signal is the relay's, so the station
+// adds the relay's own reading of the far station (dist_m is the sum, with
+// near_m to the relay and far_m beyond it); when the relay has not said,
+// the first leg is shown as a floor. A neighbour is just dist_m.
+function distCell(v){
+  var via=v.via?' <span class="dim">via '+esc(v.via)+'</span>':'';
+  if(v.dist_m>=0){
+    var t=v.via&&v.near_m>=0?' title="~'+esc(v.near_m)+' m to '+esc(v.via)+
+          ', ~'+esc(v.far_m)+' m from there"':'';
+    return '<span'+t+'>~'+esc(v.dist_m)+' m</span>'+via;
+  }
+  if(v.via&&v.near_m>=0)
+    return '<span title="'+esc(v.via)+' is ~'+esc(v.near_m)+' m away and has '+
+           'not said how far '+esc(v.call)+' is from it">&gt;~'+
+           esc(v.near_m)+' m</span>'+via;
+  return '-'+via;
 }
 
 // Stats: the same three series the Stats panel charts.
@@ -1685,4 +1716,16 @@ function applyServices(sv){
     else if(++tries>12||(nostrAvailable()&&stGet('xprs_ext')!=='1'))clearInterval(tm);
   },250);
 })();
+// See the html/body rule in the stylesheet: the document is parked one
+// pixel down so Android's captive-portal browser does not take a scroll-up
+// inside a panel for a pull-to-refresh. Load, resize (the keyboard) and any
+// scroll that lands on 0 put it back.
+function park(){
+  var y=window.scrollY!==undefined?window.scrollY:document.documentElement.scrollTop;
+  if(y<1)window.scrollTo(0,1);
+}
+window.addEventListener('load',park);
+window.addEventListener('resize',park);
+window.addEventListener('scroll',park,{passive:true});
+park();
 </script></body></html>
