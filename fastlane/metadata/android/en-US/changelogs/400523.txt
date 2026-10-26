@@ -1,0 +1,4 @@
+* Flashing a station over USB now makes it yours at once: the app writes the active profile as its owner over the cable, so nobody nearby can claim it first.
+* A board that had updated itself over the air now boots the image written over the cable.
+* Web chat page: no reload when scrolling up in Android's captive-portal browser; relayed nodes show the measured LoRa distance to their repeater and the summed distance of their legs.
+* Firmware mirror: images are served to strangers past the history budget.
