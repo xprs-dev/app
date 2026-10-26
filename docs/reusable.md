@@ -960,3 +960,24 @@ rewrite:
   everyone (the firmware mirror sets it in `main.dart`). Reuse it for any
   other public, content-addressed set a device offers on purpose, instead of
   a second budget or a special-cased command.
+
+## Talking to a station over its USB cable
+
+### `claimOverConsole` — a line-oriented session on a booting station's console
+
+**File:** `lib/services/flash/station_console.dart`
+
+Written against `SerialPort` alone, so it runs on whichever isolate holds the
+port (the flash worker on Linux, the main isolate on Android). It waits for
+the firmware's banner (`XPRS station <call>`), sends `cfg` lines a few bytes
+at a time (an older image reads its console a character per UI tick and the
+USB-JTAG ring drops a line written in one go), matches each answer the way
+`xcfg_console` prints it, retries a line the board refused, and reopens a port
+that vanished on the reset. Its text buffer is bounded at 8 KB because it is
+scanned per read.
+
+Anything else the core needs to tell a station over the cable it already
+holds (WiFi for a board no radio can reach yet, a pinned key) should be one
+more `_ask` here, not a second console reader. `FakeConsole` in
+`test/flash_console_claim_test.dart` answers like the firmware and is the
+fixture to reuse.

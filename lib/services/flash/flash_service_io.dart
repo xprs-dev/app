@@ -20,6 +20,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 
+import '../../profile/profile_service.dart';
 import '../background_service.dart';
 import '../log_service.dart';
 import '../receive/core_state.dart';
@@ -30,6 +31,7 @@ import 'flash_catalog_io.dart';
 import 'serial/serial_android.dart';
 import 'serial/serial_linux_io.dart';
 import 'serial/serial_port.dart';
+import 'station_console.dart';
 
 class FlashPhase {
   static const idle = 'idle';
@@ -38,6 +40,8 @@ class FlashPhase {
   static const fetching = 'fetching';
   static const writing = 'writing';
   static const verifying = 'verifying';
+  /// Written; now telling the booting board who owns it, on its console.
+  static const claiming = 'claiming';
   static const done = 'done';
   static const failed = 'failed';
 }
@@ -50,8 +54,11 @@ class _Job {
   final String family; // expected, for write
   final List<Map<String, Object>> parts; // {name, offset, path}
   final List<Map<String, Object>> wipe; // {name, offset, size}
+  /// Who the board belongs to once written (station_console.dart); null
+  /// when there is no profile to give it to.
+  final ConsoleOwner? owner;
   const _Job(this.kind, this.portId, this.nativeUsb,
-      {this.family = '', this.parts = const [], this.wipe = const []});
+      {this.family = '', this.parts = const [], this.wipe = const [], this.owner});
 
   Map<String, Object> toMap() => {
         'kind': kind,
@@ -60,6 +67,7 @@ class _Job {
         'family': family,
         'parts': parts,
         'wipe': wipe,
+        if (owner != null) 'owner': owner!.toMap(),
       };
 
   static _Job fromMap(Map m) => _Job(
@@ -69,6 +77,7 @@ class _Job {
         family: m['family'] as String? ?? '',
         parts: (m['parts'] as List).cast<Map<String, Object>>(),
         wipe: (m['wipe'] as List).cast<Map<String, Object>>(),
+        owner: ConsoleOwner.fromMap(m['owner']),
       );
 }
 
@@ -96,6 +105,23 @@ class FlashService {
   int partCount = 0;
   int done = 0;
   int total = 0;
+
+  /// The last cable claim (station_console.dart): `station`, `owner`, `ok`,
+  /// `already`, `why`, and `seq`, which grows by one per claim so a wapp
+  /// acts on each once. Empty before the first.
+  Map<String, Object> claim = const {};
+  int _claimSeq = 0;
+
+  /// The active profile, as the board will be told it (XPRS.md 11.9: the
+  /// owner a claim names). Read here, on the main isolate, and handed to
+  /// the session as two strings.
+  static ConsoleOwner? _owner() {
+    final p = ProfileService.instance.activeProfile;
+    if (p == null || !p.npub.startsWith('npub1')) return null;
+    final wire = p.wireCallsign.trim().toUpperCase();
+    final call = ConsoleOwner.callFits(wire) ? wire : p.callsign.trim().toUpperCase();
+    return ConsoleOwner.fromMap({'npub': p.npub, 'call': call});
+  }
 
   bool _busy = false;
   bool _cancel = false;
@@ -317,25 +343,31 @@ class FlashService {
     }
     final fam = EspFamily.fromWebTools(b.family) ?? l.family;
     final wipeList = <Map<String, Object>>[];
-    if (wipe) {
-      // The partition table image says exactly where NVS and otadata sit.
-      FlashLocalPart? pt;
-      for (final p in l.parts) {
-        if (p.offset == 0x8000) pt = p;
-      }
-      if (pt != null) {
-        // arch-ignore: no-whole-file-read the partition table is 3 KB by the format (0xC00 max), never an image
-        final bytes = await File(pt.path).readAsBytes();
-        for (final part in espParsePartitions(bytes)) {
-          if (part.isNvs || part.isOtaData) {
-            wipeList.add({'name': part.label, 'offset': part.offset, 'size': part.size});
-          }
+    // The partition table image says exactly where NVS and otadata sit.
+    // otadata is blanked on EVERY write, not only a wipe: a station that
+    // updated itself over the air boots from ota_1, and otadata keeps
+    // pointing there, so the image written to ota_0 would never run (the
+    // bench C3, 2026-10-26). Blank, the bootloader takes the first app
+    // slot. It holds nothing else: key, owner and WiFi are in NVS, which
+    // only a wipe touches.
+    FlashLocalPart? pt;
+    for (final p in l.parts) {
+      if (p.offset == 0x8000) pt = p;
+    }
+    var nvs = false;
+    if (pt != null) {
+      // arch-ignore: no-whole-file-read the partition table is 3 KB by the format (0xC00 max), never an image
+      final bytes = await File(pt.path).readAsBytes();
+      for (final part in espParsePartitions(bytes)) {
+        if (part.isOtaData || (wipe && part.isNvs)) {
+          wipeList.add({'name': part.label, 'offset': part.offset, 'size': part.size});
+          nvs |= part.isNvs;
         }
       }
-      if (wipeList.isEmpty) {
-        _set(FlashPhase.failed, err: 'No partition table to find the settings in');
-        return false;
-      }
+    }
+    if (wipe && !nvs) {
+      _set(FlashPhase.failed, err: 'No partition table to find the settings in');
+      return false;
     }
     device = d;
     boardId = id;
@@ -347,14 +379,30 @@ class FlashService {
     done = 0;
     total = 0;
     _set(FlashPhase.writing, msg: 'Writing ${b.name} ${l.version}...');
+    final owner = _owner();
     try {
-      await _run(_Job('write', d.id, d.isNativeUsb,
+      final r = await _run(_Job('write', d.id, d.isNativeUsb,
           family: fam,
           parts: [
             for (final p in l.parts) {'name': p.name, 'offset': p.offset, 'path': p.path, 'sha256': p.sha256},
           ],
-          wipe: wipeList));
-      _set(FlashPhase.done, msg: '${b.name} ${l.version} written and verified. It is restarting.');
+          wipe: wipeList,
+          owner: owner));
+      final c = (r['claim'] as Map?)?.cast<String, Object>();
+      var msg = '${b.name} ${l.version} written and verified.';
+      if (c != null && owner != null) {
+        claim = {...c, 'owner': owner.call, 'seq': ++_claimSeq};
+        final st = (c['station'] as String?) ?? '';
+        final name = st.isEmpty ? 'It' : st;
+        msg = c['ok'] == true
+            ? '$msg $name ${c['already'] == true ? 'was already' : 'is now'} yours (${owner.call}), set over the cable.'
+            : '$msg Not made yours over the cable (${c['why']}): claim it when it asks.';
+        LogService.instance.add('flash: claim ${st.isEmpty ? '?' : st} for ${owner.call}: '
+            '${c['ok'] == true ? (c['already'] == true ? 'already theirs' : 'done') : 'failed, ${c['why']}'}');
+      } else {
+        msg = '$msg It is restarting${owner == null ? '; no profile to give it to, claim it when it asks' : ''}.';
+      }
+      _set(FlashPhase.done, msg: msg);
       LogService.instance.add('flash: ${b.id} ${l.version} -> ${d.port}${wipe ? ' (wiped)' : ''}');
       return true;
     } on EspCancelled {
@@ -407,6 +455,11 @@ class FlashService {
   }
 
   void _onProgress(Map<String, Object> p) {
+    final line = p['log'] as String?;
+    if (line != null) {
+      LogService.instance.add(line);
+      return;
+    }
     final ph = p['phase'] as String?;
     if (ph != null) phase = ph;
     final b = (p['blocks'] as num?)?.toInt();
@@ -487,6 +540,7 @@ class FlashService {
       'error': error,
       'supported': supported,
       'catalogAt': catalog.fetchedAt?.millisecondsSinceEpoch ?? 0,
+      'claim': claim,
       'board': boardId,
       'part': partName,
       'partIndex': partIndex,
@@ -627,6 +681,15 @@ Future<Map<String, Object>> runFlashJob(
     }
     progress({'message': 'Restarting the board...'});
     await loader.reboot();
+    // The cable is still ours: tell the booting board who owns it before it
+    // asks anybody over the air (XPRS.md 11.9, station_console.dart).
+    final owner = job.owner;
+    if (owner != null) {
+      progress({'phase': FlashPhase.claiming, 'message': 'Making it yours over the cable...'});
+      final c = await claimOverConsole(port, owner,
+          cancelled: cancelled, log: (l) => progress({'log': l}));
+      result['claim'] = c.toMap();
+    }
     return result;
   } finally {
     await port.close();
@@ -650,7 +713,7 @@ Future<void> _sessionMain(List<Object> args, SerialPort Function(String) openPor
     final r = await runFlashJob(openPort(portId), jobMap, (p) {
       // At most ten progress posts a second, plus every phase change.
       final now = DateTime.now().millisecondsSinceEpoch;
-      if (p.containsKey('phase') || p.containsKey('message') || p.containsKey('blocks') ||
+      if (p.containsKey('phase') || p.containsKey('message') || p.containsKey('blocks') || p.containsKey('log') ||
           now - last >= 100 || p['done'] == p['total']) {
         last = now;
         out.send({'type': 'progress', ...p});

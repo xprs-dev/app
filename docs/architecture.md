@@ -495,7 +495,24 @@ the loader asks the part for one block at a time and the MD5 grows as the
 blocks go out (performance.md 8.9). A wipe is not an erase of
 the chip: the partition table image names the NVS and OTA data partitions
 and exactly those get 0xFF, so a board keeps its key, owner and WiFi unless
-the person asked otherwise.
+the person asked otherwise. OTA data is blanked on every write, wipe or not:
+a station that updated itself over the air boots from its second slot, and
+the image just written to the first would otherwise never run.
+
+**The cable claims the board (2026-10-26).** XPRS.md 11.9 gives an unowned
+station to the first signer who answers its `q:owner`, which left a window
+in which anybody in earshot could take a board the person holding the cable
+had just flashed. The cable is the stronger proof (whoever holds it can
+reflash the board anyway, which is why 11.9 lets a reflash reclaim it), so
+the flash session, still holding the port after the reboot, writes the
+active profile as the owner on the station's console with the `cfg set
+own1 <npub>` / `own1c <callsign>` lines every published image already reads,
+and reads the answer back (`station_console.dart`). Nothing new in the
+firmware and nothing on the air. The wapp is not told how: `core.flash`
+carries a numbered `claim` (`station`, `owner`, `ok`, `why`) and the
+Firmwares wapp lists the station as yours once per number. A board whose
+console did not answer is reported, never failed: the image is written, and
+the station still asks to be claimed over the air.
 
 ### Where a copy of your words goes is the core's business (2026-09-10)
 
