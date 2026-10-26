@@ -1468,15 +1468,18 @@ function loadDevices(){
     h+='</table><p class="dim">Distance is estimated from signal strength '+
        'and is only as good as the room. A station reached through another '+
        'is as far as that relay plus the relay\'s own reading of it; '+
-       '&gt; means the relay has not said. '+(d.heard||0)+' packets heard '+
-       'since boot.</p>';
+       '&gt; is what was measured so far, the distance to the repeater it '+
+       'was heard from. '+(d.heard||0)+' packets heard since boot.</p>';
     el('v-devices').innerHTML=h;
   });
 }
 // The Distance cell. A relayed row's signal is the relay's, so the station
 // adds the relay's own reading of the far station (dist_m is the sum, with
-// near_m to the relay and far_m beyond it); when the relay has not said,
-// the first leg is shown as a floor. A neighbour is just dist_m.
+// near_m to the relay and far_m beyond it). When a leg has not been said,
+// what WAS measured is shown as a floor (floor_m): for a Meshtastic node
+// behind a repeater that is the radio's own reading of the repeater, which
+// is exactly what somebody standing next to the station wants. A neighbour
+// is just dist_m.
 function distCell(v){
   var via=v.via?' <span class="dim">via '+esc(v.via)+'</span>':'';
   if(v.dist_m>=0){
@@ -1484,10 +1487,13 @@ function distCell(v){
           ', ~'+esc(v.far_m)+' m from there"':'';
     return '<span'+t+'>~'+esc(v.dist_m)+' m</span>'+via;
   }
-  if(v.via&&v.near_m>=0)
-    return '<span title="'+esc(v.via)+' is ~'+esc(v.near_m)+' m away and has '+
-           'not said how far '+esc(v.call)+' is from it">&gt;~'+
-           esc(v.near_m)+' m</span>'+via;
+  if(v.floor_m>=0){
+    var who=v.via?esc(v.via):'a repeater';
+    return '<span title="'+esc(v.call)+' was heard through '+who+' about '+
+           esc(v.floor_m)+' m away; how far it is beyond that '+
+           (v.via?who+' has':'nobody has')+' said">&gt;~'+
+           esc(v.floor_m)+' m</span>'+via;
+  }
   return '-'+via;
 }
 
