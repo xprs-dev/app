@@ -1,0 +1,2 @@
+* Room messages you catch up on stay on this device: the Local, Regional and Global rooms keep strangers' talk when room catch-up is on, so a reopened room no longer loses what it showed live.
+* Maintenance release: the full test suite passes again on every build.
