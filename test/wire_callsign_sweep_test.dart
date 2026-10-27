@@ -69,6 +69,9 @@ void main() {
         if (l.trimLeft().startsWith('//') || l.trimLeft().startsWith('///')) {
           continue;
         }
+        // One read in a file that is otherwise held to the rule, marked
+        // where it stands with its reason.
+        if (l.contains('// derived-callsign:')) continue;
         if (pattern.hasMatch(l)) {
           offenders.add('$rel:${i + 1}  ${l.trim()}');
         }

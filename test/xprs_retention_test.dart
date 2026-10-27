@@ -69,14 +69,26 @@ void main() {
   });
 
   test("and neither is a stranger's conversation, until the operator says so",
-      () {
+      () async {
     // The tiers of XPRS.md 12: a pocket phone keeps "its operator's own words
     // and those of the callsigns they follow", and "holds nothing for
     // strangers until its operator says so". This device kept every stranger's
     // message it overheard, by default, and its own screen offered no way to
-    // say otherwise.
+    // say otherwise. The room catch-up is the operator saying so for the
+    // rooms (XprsArchivePolicy.followRooms), so it is off here.
+    await PreferencesService.instanceSync!.setXprsCatchup(false);
+    XprsIngest.reloadPolicy();
     heard('t:message f:X3R8XX ts:2026-08-22_06:00:00 scope:local m:hello');
     expect(admitted, isEmpty);
+  });
+
+  test('a room the operator catches up on keeps what is said in it', () async {
+    // 2026-10-25: Chat refills Local/Regional/Global from this archive, so a
+    // room message dropped at the door was lost on the next open.
+    await PreferencesService.instanceSync!.setXprsCatchup(true);
+    XprsIngest.reloadPolicy();
+    heard('t:message f:X3R8XX ts:2026-08-22_06:00:00 scope:local m:hello');
+    expect(admitted, ['message']);
   });
 
   test('a public archiver keeps it', () async {

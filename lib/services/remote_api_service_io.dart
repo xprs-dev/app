@@ -1145,7 +1145,7 @@ class RemoteApiService {
         // the key it pins and nothing else (firmware xfw_publisher_call).
         final profile = ProfileService.instance.activeProfile;
         final pubr = XprsFolderPublisher(
-          self: profile?.callsign ?? MeshService.instance.tableCallsign,
+          self: profile?.callsign ?? MeshService.instance.tableCallsign, // derived-callsign: stations find the publisher by it
           key: key,
           store: (bytes, ext, fname) {
             final token = arch.putBytes(bytes, ext, name: fname);
