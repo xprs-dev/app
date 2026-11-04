@@ -15,7 +15,13 @@ import '../services/hero/launcher_visibility.dart';
 import '../services/notification_service.dart';
 import '../wapp/android_foreground_service.dart';
 import '../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
+import '../connections/bluetooth/ble_rns_radio.dart';
+import '../services/files/open_path.dart';
+import '../services/flash/flash_service.dart';
+import '../services/location_service.dart';
 import 'core_stores_app.dart';
+import 'power_app.dart';
+import 'radio_app.dart';
 import 'sqlite_prepare.dart';
 
 /// Called once at boot, before any core service starts.
@@ -40,4 +46,14 @@ void wireCoreHost() {
   CoreHost.prepareSqlite = prepareAppSqlite;
   CoreHost.hasAllFilesAccess =
       AndroidPermissionsService.instance.hasAllFilesAccess;
+  CoreHost.battery = BatteryPlusSource();
+  CoreHost.pushPowerTier = pushPowerTierToNative;
+  observeLifecycleForPower();
+  CoreHost.radio = const AppAdvertRadio();
+  CoreHost.newBle5RnsRadio = Ble5ChunkedRnsRadio.new;
+  CoreHost.newGattRnsRadio = BleServiceRnsRadio.new;
+  CoreHost.openFile = openFileWithSystem;
+  CoreHost.openFolder = openFolderOnDisk;
+  CoreHost.locationFix = LocationService.instance.fixForPeer;
+  CoreHost.perfSources['flash'] = FlashService.instance.drainStats;
 }

@@ -27,7 +27,7 @@ class _ClimateGlance extends StatelessWidget {
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
       child: ValueListenableBuilder<LocalClimate>(
-        valueListenable: XprsClimate.instance.current,
+        valueListenable: XprsClimate.instance.current.listenable,
         builder: (context, c, _) => c.isEmpty
             ? const SizedBox(width: double.infinity, height: _gap)
             : _line(c),

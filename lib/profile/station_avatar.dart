@@ -92,7 +92,7 @@ class StationAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
-      valueListenable: XprsProfiles.instance.revision,
+      valueListenable: XprsProfiles.instance.revision.listenable,
       builder: (context, _, _) => ValueListenableBuilder<int>(
         valueListenable: ProfileService.instance.revision.listenable,
         builder: (context, _, _) {

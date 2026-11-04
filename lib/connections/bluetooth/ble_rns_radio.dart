@@ -20,6 +20,7 @@ import 'ble5_bus.dart';
 import 'ble_service.dart';
 import 'rns_chunk.dart';
 import 'package:meta/meta.dart';
+import 'package:xprs_core/src/platform/ble_rns_radio.dart';
 
 class BleServiceRnsRadio implements RnsBleRadio {
   /// Owner token for our adverts in BleService's per-owner rotation.
@@ -65,7 +66,7 @@ class BleServiceRnsRadio implements RnsBleRadio {
 /// logged over and over on a device whose only link to the world was Bluetooth.
 /// Announces are exactly the packets that go over, and an announce that never
 /// leaves is a device nobody can find.
-class Ble5ChunkedRnsRadio implements RnsBleRadio {
+class Ble5ChunkedRnsRadio implements BleRnsRadio {
   void Function(Uint8List frame)? _handler;
   final RnsChunkAssembler _assembler = RnsChunkAssembler();
   int _sent = 0;
