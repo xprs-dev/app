@@ -28,7 +28,6 @@ import '../platform/platform.dart' as platform;
 
 import 'native/media_capability.dart';
 import 'native/wasm_audio_output.dart';
-import 'native/wasm_video_player.dart' show WasmVideoThumbnailer;
 import 'native/wasm_video_session.dart';
 
 import 'file_folder_picker.dart';
@@ -77,7 +76,6 @@ import '../services/location_service.dart';
 import '../services/preferences_service.dart';
 import '../services/store/wapp_catalog_service.dart';
 import '../services/reticulum/rns_service.dart';
-import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_vocab.dart';
 import '../services/xprs/xprs_passphrases.dart';
 import '../util/time_ago.dart';
@@ -107,6 +105,7 @@ import 'wapp_engine.dart';
 import 'wapp_secret_fields.dart';
 import '../services/mesh/mesh_service.dart';
 import '../platform/fs.dart';
+import 'wapp_notes.dart';
 
 part '../editor/wapp_editor.dart';
 part 'wapp_maps.dart';
@@ -566,14 +565,8 @@ class _WappPageState extends State<WappPage>
                   _nomadnetArchive?.byMid(mid)?['author'] ??
                   '')
               .toString();
-      final ev = RnsService.instance.buildSignedReaction(mid, author);
-      if (ev != null) {
-        // Reticulum FIRST (store + fan-out to peer indexers) so the like reaches
-        // the author over the mesh; wss engine best-effort.
-        unawaited(RnsService.instance.relayPublish(ev.toJson()));
-        final poller = _allPoller;
-        if (poller != null) unawaited(poller.publishEvent(ev));
-      }
+      // The core chooses the lanes (RnsService.react).
+      unawaited(RnsService.instance.react(mid, author));
     }
   }
 
@@ -2578,11 +2571,11 @@ class _WappPageState extends State<WappPage>
             unawaited(() async {
               // Embed a tiny preview thumbnail so peers can show a picture for
               // this post without downloading the full media first.
-              final enriched = await _embedNoteThumbnail(text);
-              await RnsService.instance.publishNote(
-                enriched,
-                topic: topic.isEmpty ? null : topic,
-                parent: parent.isEmpty ? null : parent,
+              await publishWappNote(
+                text,
+                topic: topic,
+                parent: parent,
+                withThumbnail: true,
               );
               // If the author is looking at Nomadnet, surface their own post
               // right away: it is now in the local relay store carrying the
@@ -4758,10 +4751,9 @@ class _WappPageState extends State<WappPage>
   /// a message leaves now or waits.
   bool _peerReachable(String id) {
     if (id.isEmpty || id.startsWith('#')) return false;
-    // Green when heard on the air OR reachable over the internet -- a peer on
-    // the far side of the hubs is not an air sighting but is still reachable.
-    return XprsMonitor.instance.heardRecently(id) ||
-        RnsService.instance.reachableByCallsign(id);
+    // The verdict is the core's (heard on the air OR reachable over the
+    // internet); the screen draws it.
+    return RnsService.instance.inReach(id);
   }
 
   /// A view this page pushed over itself (a Status thread, `post:<id>`), so
@@ -8623,59 +8615,6 @@ class _WappPageState extends State<WappPage>
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => ProfileEditPage(profile: p)),
     );
-  }
-
-  /// If [text] references a held image or video via a `file:` token, embed a
-  /// tiny PNG preview as a `tn:<base64url>` token so peers can render a
-  /// thumbnail for the post WITHOUT downloading the full file. Only the first
-  /// media that yields a preview, only when the encoded form stays small;
-  /// otherwise [text] is returned unchanged.
-  Future<String> _embedNoteThumbnail(String text) async {
-    try {
-      if (text.contains(' tn:')) return text; // already carries a preview
-      final archive = sharedMediaArchive();
-      if (archive == null) return text;
-      for (final r in MediaRef.findAll(text)) {
-        if (r.kind != MediaKind.image && r.kind != MediaKind.video) continue;
-        // Reuse a cached poster if one exists, else generate + cache it.
-        // Video posters come from the player wapp's wasm decoder (headless).
-        var poster = archive.getScreenshot(r.sha256);
-        if (poster == null) {
-          final full = archive.get(r.sha256);
-          if (full == null) continue; // not held — can't make a preview
-          poster = r.kind == MediaKind.image
-              ? await _thumbnailPng(full, 128)
-              : await WasmVideoThumbnailer.generate(full, r.ext);
-          if (poster == null) continue;
-          archive.setScreenshot(r.sha256, poster);
-        }
-        // Wire copy: cached posters can be up to 360px — re-downscale so the
-        // inline token stays small, dropping to 96px if 128px still busts the
-        // cap (relay ingest allows 64 KB of content; stay well under).
-        var wire = await _thumbnailPng(poster, 128) ?? poster;
-        var b64 = base64Url.encode(wire);
-        if (b64.length > 40000) {
-          wire = await _thumbnailPng(poster, 96) ?? wire;
-          b64 = base64Url.encode(wire);
-          if (b64.length > 40000) continue; // too large to inline
-        }
-        return '$text tn:$b64';
-      }
-    } catch (_) {}
-    return text;
-  }
-
-  /// Downscale [src] image bytes to a square-ish PNG at most [size] px wide, for
-  /// embedding in a profile note. Null on decode failure.
-  Future<Uint8List?> _thumbnailPng(Uint8List src, int size) async {
-    try {
-      final codec = await ui.instantiateImageCodec(src, targetWidth: size);
-      final frame = await codec.getNextFrame();
-      final data = await frame.image.toByteData(format: ui.ImageByteFormat.png);
-      return data?.buffer.asUint8List();
-    } catch (_) {
-      return null;
-    }
   }
 
   /// Resolve a profile `picture` field to an avatar image: an inline `data:` URI

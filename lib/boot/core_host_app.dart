@@ -9,6 +9,7 @@ import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:xprs_core/src/platform/core_host.dart';
+import 'package:xprs_core/src/services/notifications/notification.dart';
 
 import '../services/android_permissions_service.dart';
 import '../services/hero/launcher_visibility.dart';
@@ -24,12 +25,26 @@ import 'power_app.dart';
 import 'radio_app.dart';
 import 'sqlite_prepare.dart';
 
+/// Which wapp shows a notification the core raised about a topic. The core
+/// says what a notification is about (`core:nostr`); which wapp handles that
+/// here is this app's decision, not the core's (architecture.md §3).
+const Map<String, String> coreNotificationWapps = {
+  'core:nostr': 'social',
+  'core:archiver': 'archiver',
+};
+
+/// [n] with a core topic replaced by `wapp:<the wapp that handles it>`.
+XprsNotification routeCoreNotification(XprsNotification n) {
+  final wapp = coreNotificationWapps[n.source];
+  return wapp == null ? n : n.withSource('wapp:$wapp');
+}
+
 /// Called once at boot, before any core service starts.
 void wireCoreHost() {
   CoreHost.keepAlive = AndroidForegroundService.instance;
   CoreHost.anyoneLooking = () => LauncherVisibility.instance.visible.value;
   CoreHost.mediaArchive = sharedMediaArchive;
-  CoreHost.notify = NotificationService.instance.show;
+  CoreHost.notify = (n) => NotificationService.instance.show(routeCoreNotification(n));
   CoreHost.openPreferences = SharedPreferencesStore.open;
   CoreHost.secureStore = const FlutterSecureStore(FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),

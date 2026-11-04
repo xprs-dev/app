@@ -35,7 +35,6 @@ import 'geoui/conversation_store.dart';
 import 'shared_media_fetch.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
-import '../services/reticulum/rns_service.dart';
 import '../services/wapp_unread_service.dart';
 import '../services/hero/hero_inbox.dart';
 import '../services/preferences_service.dart';
@@ -44,6 +43,7 @@ import 'hal_permissions.dart';
 import 'wapp_event_broker.dart';
 import 'wapp_engine.dart';
 import '../services/mesh/mesh_service.dart';
+import 'wapp_notes.dart';
 
 class BackgroundWappManager {
   BackgroundWappManager._();
@@ -599,15 +599,7 @@ class _WappBackgroundService extends BackgroundService {
         final text = (data['text'] ?? '').toString();
         final topic = (data['topic'] ?? '').toString();
         final parent = (data['parent'] ?? '').toString();
-        if (text.isNotEmpty) {
-          unawaited(
-            RnsService.instance.publishNote(
-              text,
-              topic: topic.isEmpty ? null : topic,
-              parent: parent.isEmpty ? null : parent,
-            ),
-          );
-        }
+        unawaited(publishWappNote(text, topic: topic, parent: parent));
       } else if (type == 'ui.activity.react') {
         // Tally like votes received while headless so they show on next open.
         final mid = (data['mid'] ?? '').toString();

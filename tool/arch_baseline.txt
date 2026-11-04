@@ -59,7 +59,6 @@
 ../core/lib/src/services/mesh/mesh_transfer_scheduler.dart :: no-sub-minute-interval-constant :: static const Duration _tick = Duration(seconds: 10);
 ../core/lib/src/services/nostr/nostr_signer.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
 ../core/lib/src/services/reticulum/rns_service.dart :: no-app-logic-in-core :: static const String kRvWappTag = 'circles';
-../core/lib/src/services/reticulum/rns_service.dart :: no-app-logic-in-core :: wappDataStorageFor(prefs, 'social'),
 ../core/lib/src/services/reticulum/rns_service.dart :: no-content-in-log :: LogService.instance.add(
 ../core/lib/src/services/reticulum/rns_service.dart :: no-native-import-outside-io-file :: import 'dart:io' hide File, Directory, FileSystemEntity, Link;
 ../core/lib/src/services/reticulum/rns_service.dart :: no-sub-minute-interval-constant :: static const Duration _rvReannounceEvery = Duration(seconds: 8);
@@ -155,16 +154,12 @@ lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.disc
 lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.fetchFollowedProfile(callsign);
 lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.followPubkey(hex);
 lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.followPubkey(key);
-lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.reachableByCallsign(id);
 lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.setPassive(data['value'] == true);
 lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.unfollowPubkey(hex);
 lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.unfollowPubkey(key);
-lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: await RnsService.instance.publishNote(
-lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: final ev = RnsService.instance.buildSignedReaction(mid, author);
 lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: final tags = RnsService.instance.relayLocalEvent(
 lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: notes = await RnsService.instance.fetchFeedBackfill(
 lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: notes = await RnsService.instance.fetchFeedBackfill(since);
-lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: unawaited(RnsService.instance.relayPublish(ev.toJson()));
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(milliseconds: 400), (t) {
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(milliseconds: 600), (t) {
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: _fastBackfillTimer = Timer.periodic(

@@ -157,7 +157,10 @@ const rules = <Rule>[
     pattern: r'''\b(?:wappId|appId|id)\s*==\s*['"]tools\.xprs\.\w+['"]'''
         r'''|wappDataStorageFor\([^,]+,\s*['"]'''
         r'''|\b(?:_?wapp\w*|appId|wappId)\s*[!=]=\s*['"]'''
-        r'''|\bk\w*Wapp\w*\s*=\s*['"]''',
+        r'''|\bk\w*Wapp\w*\s*=\s*['"]'''
+        // A notification raised as one wapp's (`source: 'wapp:social'`):
+        // the core says what it is about (`core:nostr`), the host routes it.
+        r'''|\bsource:\s*['"]wapp:[a-z]''',
     message: 'Give the core a capability any wapp can use, and let the wapp '
         'name itself through the HAL.',
   ),
