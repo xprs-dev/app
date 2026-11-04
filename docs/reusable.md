@@ -985,3 +985,31 @@ holds (WiFi for a board no radio can reach yet, a pinned key) should be one
 more `_ask` here, not a second console reader. `FakeConsole` in
 `test/flash_console_claim_test.dart` answers like the firmware and is the
 fixture to reuse.
+
+## The app's half of the core (lib/boot/)
+
+The core (`../core`) asks this app for platform things only through
+`CoreHost`; these are the answers. Reuse them; add a new answer here, never a
+Flutter import in the core.
+
+- **`lib/boot/core_host_app.dart` `wireCoreHost()`** — the one place every
+  seam is wired, at boot before any core service starts.
+  `routeCoreNotification()` maps a core topic (`core:nostr`) to the wapp that
+  shows it; extend `coreNotificationWapps` rather than naming a wapp in core.
+- **`lib/boot/core_stores_app.dart`** — `SharedPreferencesStore`
+  (KeyValueStore), `FlutterSecureStore` (SecureStore), `BundleAssets`
+  (AssetSource). Tests get the first and last through
+  `test/flutter_test_config.dart`.
+- **`lib/boot/power_app.dart`** — `BatteryPlusSource`, the tier push to the
+  native service, and the lifecycle observer that feeds `PowerState`.
+- **`lib/boot/radio_app.dart`** — `AppAdvertRadio` (Ble5Bus + BleService).
+- **`lib/boot/sqlite_prepare.dart`** — the conditional io/web split for
+  SQLCipher; the pattern for any boot step that touches FFI.
+- **`lib/util/observable_listenable.dart`** — `observable.listenable`: a core
+  `Observable` as a Flutter `ValueListenable` for `ValueListenableBuilder`
+  (one cached adapter per value, so builders see a stable object).
+- **`lib/wapp/wapp_notes.dart` `publishWappNote()`** — a wapp's `social.note`,
+  for the page and the headless engine alike; the page asks for the preview
+  thumbnail.
+- **`lib/services/i18n/flutter_locales.dart`** — CoreI18n's language as
+  Flutter `Locale`s for MaterialApp.

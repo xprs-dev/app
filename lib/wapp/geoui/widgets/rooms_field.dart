@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../conversation_store.dart';
-import '../../../services/xprs/xprs_monitor.dart';
 import '../../../services/reticulum/rns_service.dart';
 import '../../../profile/station_avatar.dart';
 import '../../../services/i18n/core_i18n.dart';
@@ -296,11 +295,9 @@ class _RoomsFieldState extends State<RoomsField> {
     final selected = r['selected'] == true || id == widget.openId;
     final item = widget.store.items[id];
     // Reachability is the core's, not the wapp's: a callsign room is "live"
-    // when the station is heard on the air OR reachable over the internet --
-    // the same test the header dot uses; a '#room' has no single peer.
-    final live = !id.startsWith('#') &&
-        (XprsMonitor.instance.heardRecently(id) ||
-            RnsService.instance.reachableByCallsign(id));
+    // the core's presence verdict (RnsService.inReach), the same one the
+    // header dot reads; a '#room' has no single peer.
+    final live = RnsService.instance.inReach(id);
 
     // The second line: what was last said here, else what this place IS.
     // "N people seen" is the wapp's count of DISTINCT senders observed — never

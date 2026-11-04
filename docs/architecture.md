@@ -118,9 +118,26 @@ none of it (a test, the server):
 | `prepareSqlite` | SQLCipher on Android | system SQLite |
 | `hasAllFilesAccess` | Android all-files permission | yes |
 | `mediaArchive` | the shared media store | none |
+| `battery`, `pushPowerTier` | battery_plus; the tier to the native service | on mains |
+| `radio` | Ble5Bus + BleService (`AdvertRadio`) | no radio |
+| `newBle5RnsRadio`, `newGattRnsRadio` | the BLE radios Reticulum runs over | none |
+| `openFile`, `openFolder` | the system viewer, the file manager | nothing |
+| `locationFix` | the GPS fix for a peer who asks | none |
+| `usbSerial` | Android's USB host (`UsbSerialHost`) | none (Linux opens ttys itself) |
+| `perfSources` | the host's own `perf:` counters (the flasher) | empty |
 
-The app wires them once at boot (`lib/boot/core_host_app.dart`), and its tests
-in `test/flutter_test_config.dart`. Three plain-Dart stand-ins replace what the
+The app wires them once at boot (`lib/boot/core_host_app.dart`, with the
+adapters beside it in `lib/boot/`), and its tests in
+`test/flutter_test_config.dart`. Lifecycle reaches the core the same way: the
+app observes Flutter and calls `PowerState.setForeground`, the core does not
+observe Flutter.
+
+**Screens forward intent; the core decides.** A like is
+`RnsService.react(...)`: the lanes and their order are the core's. The chat's
+presence dot is `RnsService.inReach(...)`: the verdict is the core's. A
+notification is raised by topic (`core:nostr`) and the host routes it to the
+wapp that shows it (`routeCoreNotification`). The guard's
+`no-core-calls-from-screen` and `no-app-logic-in-core` refuse the old shapes. Three plain-Dart stand-ins replace what the
 core used to borrow from Flutter: `Observable<T>` for `ValueNotifier` (a screen
 watches one through `.listenable`, `lib/util/observable_listenable.dart`),
 `offThread()` for `compute`, and `util/compat.dart` for `kIsWeb`/`setEquals`.
@@ -761,14 +778,28 @@ The baseline is keyed on the offending line rather than the file. Keying on the
 file would also forgive the next violation added to that file, which was
 observed during the guard's own self-test before release.
 
-The baseline currently holds 89 entries, and the guard reports them on every
-run (`arch_guard: clean (89 known, 89 baselined)`). Thirty-one of them are the
-`no-native-import-outside-io-file` rule's: the native-only services (sockets,
-I2P, torrents, bulk spool, video) and reticulum-dart's socket interfaces and
-isolate workers, which compile for web and throw when reached ([web.md](web.md)
-lists what a browser cannot do). A new violation still fails the build
-immediately; the baseline is what the rules found already in the tree when each
-was added, not a clean bill of health.
+The baseline holds 156 entries (2026-11-04), and the guard reports them on
+every run. The largest groups: `no-sub-minute-poll` and
+`no-native-import-outside-io-file` (the native-only services and sockets, which
+compile for web and throw when reached, [web.md](web.md)), then the deprecated
+Circles and Mail wapps (`no-transport-logic-in-wapps-repo`, `hal-budget`) and
+Social's host-rendered feed (`no-wapp-special-case-in-host`, the backfill in
+`no-core-calls-from-screen`); `core/docs/audit-2026-11-04.md` §8 says what each
+group needs. A new violation still fails the build immediately; the baseline is
+what the rules found already in the tree when each was added, not a clean bill
+of health.
+
+**Re-baseline only what moved.** When code moves to `../core`, its baselined
+lines reappear under `../core/lib/src/...`; that relocation is the one
+legitimate re-baseline. Read the NEW list before running `--baseline`: an
+addition that is not the same rule and line removed elsewhere is a violation,
+and it is fixed. (During the move one was nearly baselined: an unconditional
+`package:sqlite3/open.dart` in boot code, which breaks the web build.)
+
+**A clean guard is a floor.** The 2026-11-04 audit found by reading what the
+rules, each matching one spelling, had let through. When a read finds a shape
+the guard missed, widen the rule that day, with the spelling that got past it
+in the rule's `why`.
 
 ### What the pre-push hook refuses, and why
 

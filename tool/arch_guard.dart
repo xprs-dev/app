@@ -179,6 +179,17 @@ const rules = <Rule>[
     exempt: [
       'lib/profile/*_page.dart', 'lib/profile/*avatar*.dart',
       'lib/profile/callsign_input.dart',
+      // The app's own host services, filed under lib/services but never core:
+      // opening a screen on a tap or a deep link, starting wapps at boot,
+      // the loopback admin API and its wapp tools, the HAL glue. Each is the
+      // app's answer to something, and none is meant to move to ../core.
+      'lib/services/notification_service.dart',
+      'lib/services/deep_link_service.dart',
+      'lib/services/permission_gate.dart',
+      'lib/services/remote_api_service_io.dart',
+      'lib/services/share_app_service_io.dart',
+      'lib/services/reticulum/rns_autostart.dart',
+      'lib/connections/hal/**',
     ],
     pattern: r'''^\s*(?:import|export)\s+'(?:package:xprs/|(?:\.\./)+)'''
         r'''(?:wapp|launcher|ui|editor)/''',
@@ -213,9 +224,12 @@ const rules = <Rule>[
     window: 2,
     pattern: r'''\b(?:RnsService|MeshService|MeshCourier|XprsPublisher|'''
         r'''XprsSend|XprsArchive|XprsCatchup|XprsFetch|MediaFetch)'''
-        r'''\.instance\s*\.\s*(?:publish\w*|relay\w*|reachable\w*|fetch\w*|'''
-        r'''send\w*|setPassive|disconnect\w*|connect\w*|follow\w*|'''
-        r'''unfollow\w*|deposit\w*|air\w*|request\w*|announce\w*|'''
+        // Forwarding the person's intent (follow, connect, setPassive) or
+        // reading a value is what a screen is for. These are the decisions
+        // that are not: publishing, choosing a lane, judging reachability,
+        // sending, and running a fetch loop.
+        r'''\.instance\s*\.\s*(?:publish\w*|relayPublish|reachable\w*|'''
+        r'''fetchFeedBackfill|send\w*|deposit\w*|air\w*|announce\w*|'''
         r'''buildSigned\w*)\b''',
     message: 'Send the intent to the wapp engine / a HAL verb; the core '
         'service decides how.',
@@ -324,7 +338,7 @@ const rules = <Rule>[
     appliesTo: ['lib/**'],
     window: 2,
     pattern: r'''(?:LogService\.(?:instance\.)?add|debugPrint|\b_?log)\([^;]*'''
-        r'''(?:contentString|\.content\b)''',
+        r'''(?:contentString|\.content\b)(?!\.length)''',
     message: 'Count it in a perf: line; never log what a person wrote.',
   ),
   Rule(

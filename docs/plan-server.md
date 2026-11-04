@@ -1,6 +1,6 @@
 # Plan: `xprs-dev/server` — the XPRS server edition
 
-Status: **proposal, no code written.** Decisions marked **(D1)…(D6)** are open
+Status: **Phases 0 and 1 done (2026-11-04)**: `reticulum-dart` is plain Dart and the XPRS core lives in `xprs-dev/core`, reached by the app only through `CoreHost` seams (architecture.md §2a). Phase 2, the server repo itself, is next. Decisions marked **(D1)…(D6)** are open
 and listed at the end.
 
 ## 1. What it is

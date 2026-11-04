@@ -28,7 +28,7 @@ paths below assume they are checked out as siblings of this directory:
 | | |
 |---|---|
 | `../reticulum-dart` | the library: Reticulum, NOSTR, LXMF, DHT, files, and `XprsCrypto`. A **path dependency** in `pubspec.yaml`, so it must be a sibling or the build fails. Plain Dart; its Flutter BLE half is `packages/reticulum_ble` |
-| `../core` | the shared XPRS core (`xprs-dev/core`, package `xprs_core`): plain Dart code the app and the server both run. Also a **path dependency**. Files moved there leave an export shim at their old `lib/` path; `tool/arch_guard.dart` scans it with the app's rules. Code both editions need goes there, not in `lib/` |
+| `../core` | the XPRS core (`xprs-dev/core`, package `xprs_core`): identity, transports, delivery, storage, the receive door — plain Dart that the app and the server both run. Also a **path dependency**. `lib/services/**` here is mostly export shims into it. **Core code goes there, not in `lib/`.** It reaches this app only through `CoreHost` seams, wired in `lib/boot/core_host_app.dart` (docs/architecture.md §2a; `../core/CLAUDE.md`). `tool/arch_guard.dart` scans it with this repo's rules |
 | `../apps` | wapp source (`xprs-dev/apps`); `assets/wapps/*.wapp` here are built copies |
 | Station firmware (ESP32, nRF52840) | `xprs-dev/firmware` (was `xprs-esp32`), formerly `esp32/` in this repo. `docs/ble5.md` and `docs/lan.md` describe transports with an end in each, so they are kept here AND there and must not drift |
 
