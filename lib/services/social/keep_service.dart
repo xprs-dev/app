@@ -4,11 +4,11 @@ import 'dart:convert';
 import 'package:reticulum/reticulum.dart';
 
 
-import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 import '../log_service.dart';
 import '../preferences_service.dart';
 import '../reticulum/rns_service.dart';
 import 'keep_policy.dart';
+import 'package:xprs_core/src/platform/core_host.dart';
 
 /// "To touch it is to keep it" — the host half of the touch rule
 /// (docs/NOSTR.md, *The bridge*).
@@ -227,7 +227,7 @@ class KeepService {
       final got = await _rns.fetchMediaPreferMesh(url, maxBytes: maxBytes);
       final bytes = got.bytes;
       if (bytes == null || bytes.isEmpty) return;
-      final archive = sharedMediaArchive();
+      final archive = CoreHost.mediaArchive();
       if (archive == null) return;
       final token = archive.putHosted(
         bytes,

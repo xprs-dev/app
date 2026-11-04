@@ -21,7 +21,6 @@ import 'xprs_self.dart';
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 
 import '../../connections/bluetooth/ble5_bus.dart';
@@ -53,6 +52,7 @@ import 'xprs_packet.dart';
 import 'xprs_sig.dart';
 import 'xprs_groups.dart';
 import 'xprs_vocab.dart';
+import 'package:meta/meta.dart';
 
 /// One way bytes can leave this device.
 ///

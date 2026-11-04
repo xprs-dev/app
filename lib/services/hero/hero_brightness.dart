@@ -4,9 +4,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
-import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 import '../media_disk_cache.dart';
 import 'hero_item.dart';
+import 'package:xprs_core/src/platform/core_host.dart';
 
 /// Is the hero image BRIGHT exactly where the text sits?
 ///
@@ -72,7 +72,7 @@ class HeroBrightness {
     if (url == null) return item.thumbnail;
     // Already mirrored into the archive (a followed author's picture).
     if (url.startsWith('file:')) {
-      return sharedMediaArchive()?.get(url) ?? item.thumbnail;
+      return CoreHost.mediaArchive()?.get(url) ?? item.thumbnail;
     }
     if (url.startsWith('http')) {
       // The card is displaying this image anyway, so it is already in the disk

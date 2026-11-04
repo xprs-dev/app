@@ -31,10 +31,7 @@ import 'dart:async';
 import 'xprs_station_policy.dart';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 
-import '../../wapp/android_foreground_service.dart';
-import '../hero/launcher_visibility.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
 import '../reticulum/rns_service.dart';
@@ -48,6 +45,8 @@ import 'xprs_presence.dart';
 import 'xprs_publisher.dart';
 import 'xprs_vocab.dart';
 import '../../platform/platform.dart' as platform;
+import 'package:meta/meta.dart';
+import 'package:xprs_core/src/platform/core_host.dart';
 
 class XprsCatchup {
   XprsCatchup._();
@@ -166,7 +165,7 @@ class XprsCatchup {
 
   /// Is anybody looking? A fast cadence with the screen off spends somebody's
   /// battery on news no one is awake to read (docs/performance.md 6.5).
-  bool get _visible => LauncherVisibility.instance.visible.value;
+  bool get _visible => CoreHost.anyoneLooking();
 
   /// What this peer will tolerate. Only an always-on archiver's raised budgets
   /// (36.9.4) can serve a fast caller; our own other devices are not metered
@@ -368,13 +367,13 @@ class XprsCatchup {
     unawaited(tick(selfCallsign));
     if (_armed || !platform.isAndroid) return;
     _armed = true;
-    AndroidForegroundService.instance.addTickListener(_onNativeTick);
+    CoreHost.keepAlive.addTickListener(_onNativeTick);
   }
 
   void stop() {
     if (!_armed) return;
     _armed = false;
-    AndroidForegroundService.instance.removeTickListener(_onNativeTick);
+    CoreHost.keepAlive.removeTickListener(_onNativeTick);
   }
 
   void _onNativeTick() {

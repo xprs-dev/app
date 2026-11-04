@@ -19,8 +19,9 @@ import '../services/i18n/core_i18n.dart';
 import '../services/power_state.dart';
 import 'background_wapp_manager.dart';
 import '../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/core_host.dart' show KeepAlive;
 
-class AndroidForegroundService {
+class AndroidForegroundService implements KeepAlive {
   AndroidForegroundService._() {
     if (_supported) _channel.setMethodCallHandler(_onCall);
   }
@@ -115,20 +116,24 @@ class AndroidForegroundService {
   }
 
   /// Add a named holder; starts the service if it wasn't running.
+  @override
   Future<void> hold(String reason) async {
     _holders.add(reason);
     await _sync();
   }
 
   /// Release a named holder; stops the service when no holders remain.
+  @override
   Future<void> release(String reason) async {
     _holders.remove(reason);
     await _sync();
   }
 
+  @override
   void addTickListener(void Function() listener) =>
       _tickListeners.add(listener);
 
+  @override
   void removeTickListener(void Function() listener) =>
       _tickListeners.remove(listener);
 

@@ -53,7 +53,6 @@ import '../profile/storage_paths.dart';
 import '../util/media_archive.dart';
 import '../util/media_ref.dart';
 import '../util/nostr_crypto.dart';
-import '../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 import '../wapp/background_wapp_manager.dart';
 import '../wapp/shared_media_fetch.dart' show resolveSharedMedia;
 import '../wapp/wapp_page.dart';
@@ -84,6 +83,7 @@ import 'xprs/xprs_send.dart';
 import 'update_service.dart';
 import 'update_models.dart';
 import 'update_native.dart';
+import 'package:xprs_core/src/platform/core_host.dart';
 
 /// Fixed RNS-over-WiFi-Direct port (the GO serves RNS here on 192.168.49.1).
 const int kWfdRnsPort = 4965;
@@ -2156,7 +2156,7 @@ class RemoteApiService {
   /// per-profile share dir (mirrors shared_media_fetch). Null when storage isn't
   /// ready (e.g. web / before a profile is active).
   MediaArchive? _mediaArchive() {
-    final archive = sharedMediaArchive();
+    final archive = CoreHost.mediaArchive();
     final prefs = PreferencesService.instanceSync;
     if (archive == null || prefs == null) return null;
     TorrentService.instance

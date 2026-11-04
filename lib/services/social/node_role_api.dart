@@ -6,7 +6,6 @@ import 'package:reticulum/src/services/social/node_profile.dart';
 import 'package:reticulum/src/util/rate_ring.dart';
 import 'package:reticulum/src/services/social/relay_role.dart';
 
-import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 import '../log_service.dart';
 import '../i18n/core_i18n.dart';
 import '../i18n/format.dart';
@@ -18,6 +17,7 @@ import 'package:reticulum/src/util/media_archive.dart';
 import 'archiver_service.dart';
 import 'node_profile_service.dart';
 import 'pointer_sync_service.dart';
+import 'package:xprs_core/src/platform/core_host.dart';
 
 /// The host side of the **Indexer** and **Archiver** wapps (docs/NOSTR.md).
 ///
@@ -330,7 +330,7 @@ class NodeRoleApi {
   String archiveStatusJson() {
     final p = PreferencesService.instanceSync;
     final policy = ArchiverService.instance.policy;
-    final archive = sharedMediaArchive();
+    final archive = CoreHost.mediaArchive();
     final st = archive?.hostedStats();
 
     final quotaGb = p?.archiveQuotaGb ?? 0;
@@ -396,7 +396,7 @@ class NodeRoleApi {
   /// do I get a gigabyte back. So this is the breakdown, and [archiveSweep] is
   /// the way out.
   String archiveItemsJson() {
-    final archive = sharedMediaArchive();
+    final archive = CoreHost.mediaArchive();
     if (archive == null) return '[]';
     final st = archive.hostedStats();
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -528,7 +528,7 @@ class NodeRoleApi {
   /// Run a cleanup. The id comes straight from the row the user tapped, so what
   /// they saw previewed is exactly what runs.
   int archiveSweep(String id) {
-    final archive = sharedMediaArchive();
+    final archive = CoreHost.mediaArchive();
     if (archive == null) return -1;
 
     HostedSweep? sweep;

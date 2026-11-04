@@ -23,7 +23,6 @@ import 'dart:math' show Random;
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
-import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 
 import '../../connections/bluetooth/ble5_radio.dart';
 import '../../connections/bluetooth/ble_rns_radio.dart';
@@ -96,9 +95,7 @@ import '../folders/folder_subscriptions.dart';
 import '../folders/folder_meta.dart';
 import '../folders/ntorrent.dart';
 import '../folders/piece_hashes.dart';
-import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 import '../../wapp/geoui/activity_archive.dart';
-import '../../wapp/android_foreground_service.dart';
 import '../mesh/mesh_store.dart';
 import 'package:reticulum/reticulum.dart'
     show MediaArchive, MediaRef, MediaKind;
@@ -134,6 +131,9 @@ import 'rns_transport.dart';
 import 'wapp_mailbox.dart';
 import '../../platform/fs.dart';
 import '../../platform/platform.dart' as platform;
+import 'package:meta/meta.dart';
+import 'package:xprs_core/src/platform/off_thread.dart';
+import 'package:xprs_core/src/platform/core_host.dart';
 
 // Our Reticulum destination namespace is "xprs" (the platform); XPRS is one
 // branch of it. All overlay services share it: xprs/chat, xprs/files,
@@ -2878,12 +2878,17 @@ class RnsService {
       inboxRefusedProtocol++;
       return false;
     }
+    // The last [_inboxMax] admitted, for /api/rns/status and debugging only.
+    // Nothing reads it any more (`hal_lxmf_recv`, which drained it, is gone):
+    // it was unbounded and kept every message's words for the life of the
+    // process (audit 2026-11-04, docs/performance.md 8.18).
     _lxmfInbox.add(row);
+    if (_lxmfInbox.length > _inboxMax) {
+      _lxmfInbox.removeRange(0, _lxmfInbox.length - _inboxMax);
+    }
 
-    // AND PUBLISH IT, ADDRESSED. The list above is the old shared pool: one
-    // flat list of human correspondence with no recipient test, handed to
-    // whichever wapp called `hal_lxmf_recv` first. It stays for now because
-    // chat still drains it, and it goes the moment chat subscribes instead.
+    // AND PUBLISH IT, ADDRESSED. This is the delivery: the core picks the
+    // topic and the broker hands it only to the engines that subscribed.
     //
     // The bus is the replacement: the core picks the topic, the broker fans
     // it out to the engines that asked for that topic and wakes them, and a
@@ -3924,8 +3929,10 @@ class RnsService {
               title: m.titleString,
               tsMs: (m.timestamp * 1000).round(),
             );
+            // Who and how much, never what: /api/log is served, and a
+            // person's words do not belong in a debug ring (no-content-in-log).
             LogService.instance.add(
-              'LXMF: from ${_hex(m.sourceHash)}: "${m.contentString}"',
+              'LXMF: from ${_hex(m.sourceHash)} (${m.contentString.length} chars)',
             );
 
           },
@@ -4212,10 +4219,10 @@ class RnsService {
                   _nostrHub = c
                     ..onChanged = _notifyNostrListeners
                     ..onLog = (m) => LogService.instance.add('NOSTR: $m');
-                  AndroidForegroundService.instance.addTickListener(
+                  CoreHost.keepAlive.addTickListener(
                     _nostrBackgroundTick,
                   );
-                  unawaited(AndroidForegroundService.instance.hold('nostr'));
+                  unawaited(CoreHost.keepAlive.hold('nostr'));
                   // Hand the engine what the user has already refused to carry.
                   // A mute is persisted, so it must be in force from the first
                   // event of the session — not only from the next time it is
@@ -4644,7 +4651,7 @@ class RnsService {
       // Dart timer above stops firing once the screen goes off; the foreground
       // service's native heartbeat does not. Both call the same pump, which
       // no-ops unless we are actually overdue.
-      AndroidForegroundService.instance.addTickListener(pumpAnnounce);
+      CoreHost.keepAlive.addTickListener(pumpAnnounce);
       _republishTimer?.cancel();
       _republishTimer = Timer.periodic(_republishEvery, (_) {
         if (_up) _files?.republishAll();
@@ -6526,7 +6533,7 @@ class RnsService {
   void _armLxmfBackground() {
     if (_lxmfBgArmed || !platform.isAndroid) return;
     _lxmfBgArmed = true;
-    AndroidForegroundService.instance.addTickListener(_onLxmfNativeTick);
+    CoreHost.keepAlive.addTickListener(_onLxmfNativeTick);
   }
 
   void _onLxmfNativeTick() => unawaited(_runLxmfRetries());
@@ -11172,7 +11179,7 @@ class RnsService {
     // The listing itself: from disk when we own it, else from the op-log's
     // mirrored fields plus whatever data/ files the folder published.
     final meta = folderMeta(folderId);
-    final archive = sharedMediaArchive();
+    final archive = CoreHost.mediaArchive();
 
     Map<String, dynamic>? one(String? name) {
       if (name == null || name.isEmpty) return null;
@@ -11365,7 +11372,7 @@ class RnsService {
     final sha = (entry?['x'] as String?) ?? '';
     if (sha.length != 64) return '';
     // Make sure the bytes are renderable: copy disk→archive, or fetch if absent.
-    final archive = sharedMediaArchive();
+    final archive = CoreHost.mediaArchive();
     if (archive?.has(sha) != true) {
       final diskPath = _diskMgr?.filePathOf(folderId, sha);
       if (diskPath != null && archive != null) {
@@ -11423,7 +11430,7 @@ class RnsService {
       {String? name, String group = 'media'}) async {
     final sha = _normShaHex(shaHex);
     if (sha.length != 64) return false;
-    final archive = sharedMediaArchive();
+    final archive = CoreHost.mediaArchive();
     if (archive == null || !archive.has(sha)) return false;
     final key = MediaArchive.storageKeyOf(sha);
     if (key == null) return false;
@@ -11556,7 +11563,7 @@ class RnsService {
     final q = _localFolderQuery(folderId);
     if (q.cached != null) return q.cached!;
     final st =
-        await compute(_reduceFolderOffThread, (folderId, q.keyset, q.ops));
+        await offThread(_reduceFolderOffThread, (folderId, q.keyset, q.ops));
     return _keepLocalReduce(folderId, q.count, st);
   }
 
@@ -11886,11 +11893,11 @@ class RnsService {
     // ignore: discarded_futures
     _nostrHub?.close();
     _nostrHub = null;
-    AndroidForegroundService.instance.removeTickListener(_nostrBackgroundTick);
-    AndroidForegroundService.instance.removeTickListener(pumpAnnounce);
-    AndroidForegroundService.instance.removeTickListener(_onLxmfNativeTick);
+    CoreHost.keepAlive.removeTickListener(_nostrBackgroundTick);
+    CoreHost.keepAlive.removeTickListener(pumpAnnounce);
+    CoreHost.keepAlive.removeTickListener(_onLxmfNativeTick);
     _lxmfBgArmed = false;
-    unawaited(AndroidForegroundService.instance.release('nostr'));
+    unawaited(CoreHost.keepAlive.release('nostr'));
     // ignore: discarded_futures
     _nostrWs?.stop();
     _nostrWs = null;
@@ -12026,9 +12033,32 @@ class _ObservedNode {
 /// call time, so the serve node built once at start still reflects a source
 /// assigned later (autostart ordering, a later /api/rns/start). Whole-file
 /// read only — the interface's single method.
-class _LiveFileSource implements FileSource {
+/// Forwards to whatever source is current. It is a [RangedFileSource] so a
+/// ranged source behind it is used as one: as a plain FileSource it made every
+/// piece request read the whole file (docs/performance.md 8.9).
+class _LiveFileSource implements RangedFileSource {
   _LiveFileSource(this._get);
   final FileSource? Function() _get;
   @override
   Uint8List? read(Uint8List fileHash) => _get()?.read(fileHash);
+
+  @override
+  Uint8List? readRange(Uint8List fileHash, int offset, int length) {
+    final s = _get();
+    if (s == null) return null;
+    if (s is RangedFileSource) return s.readRange(fileHash, offset, length);
+    final whole = s.read(fileHash);
+    if (whole == null || offset < 0 || offset >= whole.length) return null;
+    final end = offset + length > whole.length ? whole.length : offset + length;
+    return Uint8List.sublistView(whole, offset, end);
+  }
+
+  @override
+  PieceMask? pieceMask(Uint8List fileHash, int pieceSize) {
+    final s = _get();
+    if (s == null) return null;
+    if (s is RangedFileSource) return s.pieceMask(fileHash, pieceSize);
+    final whole = s.read(fileHash);
+    return whole == null ? null : PieceMask.full(whole.length, pieceSize);
+  }
 }

@@ -11,8 +11,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../log_service.dart';
-import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 import 'i2p_worker.dart';
+import 'package:xprs_core/src/platform/core_host.dart';
 
 class I2pService {
   I2pService._() {
@@ -76,7 +76,7 @@ class I2pService {
   /// Serve a sha256 (32 bytes) request from the shared MediaArchive (runs on the
   /// main isolate; bridged from the worker).
   Future<Uint8List?> _serve(Uint8List sha256) async {
-    final archive = sharedMediaArchive();
+    final archive = CoreHost.mediaArchive();
     if (archive == null) return null;
     return archive.get(_b64u(sha256));
   }
@@ -145,7 +145,7 @@ class I2pService {
 
   bool _store(Uint8List? bytes, Uint8List sha256, String ext, String from) {
     if (bytes == null || bytes.isEmpty) return false;
-    sharedMediaArchive()?.putBytes(bytes, ext);
+    CoreHost.mediaArchive()?.putBytes(bytes, ext);
     LogService.instance
         .add('I2P: fetched ${_b64u(sha256)} from $from (${bytes.length}b)');
     return true;

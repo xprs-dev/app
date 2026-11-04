@@ -38,6 +38,7 @@ import 'services/task_monitor_service.dart';
 
 import 'launcher/boot_splash.dart';
 import 'launcher/launcher.dart';
+import 'boot/core_host_app.dart';
 
 /// Entry point.
 ///
@@ -66,6 +67,11 @@ bool _bootFinished = false;
 Future<void> _boot() async {
   // Required before any async work that touches platform channels.
   WidgetsFlutterBinding.ensureInitialized();
+
+  // The core (package:xprs_core) runs in this app and in the server edition,
+  // so it reaches the host only through CoreHost. Wire this app's Flutter-
+  // backed implementations before any core service starts.
+  wireCoreHost();
 
   // Lock to portrait — the UI is designed portrait-first and auto-rotation is
   // disorienting on phones (the manifest also pins screenOrientation=portrait,

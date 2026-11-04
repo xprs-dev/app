@@ -43,7 +43,6 @@ import '../../services/mesh/mesh_session.dart' show MspCaps;
 import '../../services/mesh/xblob_service.dart';
 import '../../services/receive/packet_gateway.dart';
 import '../../services/preferences_service.dart';
-import '../../wapp/android_foreground_service.dart';
 import 'ble5_bus.dart';
 import 'ble_gatt_client.dart';
 import 'ble_gatt_server.dart';
@@ -51,6 +50,7 @@ import 'ble_parcel.dart';
 import 'ble_queue_service.dart';
 import 'ble_reassembler.dart';
 import 'radio_environment.dart';
+import 'package:xprs_core/src/platform/core_host.dart';
 
 /// APRS-over-BLE manufacturer id carried in advertisement manufacturer data.
 /// Must match peer firmware (e.g. ESP32). 0xFFFF is the reserved test id.
@@ -1076,7 +1076,7 @@ class BleService {
   void _armServiceTick() {
     if (_serviceTickArmed || !Platform.isAndroid) return;
     _serviceTickArmed = true;
-    AndroidForegroundService.instance.addTickListener(_onServiceTick);
+    CoreHost.keepAlive.addTickListener(_onServiceTick);
   }
 
   void _onServiceTick() {
@@ -1182,7 +1182,7 @@ class BleService {
     if (!Platform.isAndroid || _serviceHeld) return;
     _serviceHeld = true;
     try {
-      await AndroidForegroundService.instance.hold('ble');
+      await CoreHost.keepAlive.hold('ble');
     } catch (_) {}
   }
 
@@ -1190,7 +1190,7 @@ class BleService {
     if (!_serviceHeld) return;
     _serviceHeld = false;
     try {
-      await AndroidForegroundService.instance.release('ble');
+      await CoreHost.keepAlive.release('ble');
     } catch (_) {}
   }
 

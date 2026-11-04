@@ -404,7 +404,7 @@ class WappEngine {
 
   WappEngine({this.headless = false}) {
     _byId[engineId] = this;
-    WappEventBroker.instance.registerEngine(engineId);
+    WappEventBroker.instance.registerEngine(engineId, onEvent: handleEvent);
   }
 
   bool get isLoaded => _loaded;

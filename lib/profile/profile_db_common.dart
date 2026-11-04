@@ -8,11 +8,11 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../platform/fs.dart';
 import 'profile_crypto.dart';
 import 'storage_paths.dart';
+import 'package:meta/meta.dart';
 
 /// Test seam: overrides the storage root used to map database paths to
 /// profiles (normally `xprsRootStorage().basePath`).

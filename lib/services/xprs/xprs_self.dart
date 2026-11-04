@@ -30,11 +30,11 @@
  */
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../profile/iwi_profile.dart';
 import '../../profile/profile_service.dart';
 import '../preferences_service.dart';
+import 'package:meta/meta.dart';
 
 class XprsSelf {
   XprsSelf._();

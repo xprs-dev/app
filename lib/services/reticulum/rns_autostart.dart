@@ -15,7 +15,6 @@ import 'dart:async';
 
 import '../../profile/profile_service.dart';
 import '../../profile/storage_paths.dart';
-import '../../wapp/android_foreground_service.dart';
 import '../../wapp/background_wapp_manager.dart';
 import 'wapp_mailbox.dart';
 import '../blossom_server.dart';
@@ -28,6 +27,7 @@ import '../social/email_resolve_service.dart';
 import '../../util/media_archive.dart';
 import 'rns_service.dart';
 import '../../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/core_host.dart';
 
 /// Start the Reticulum node if it isn't already running, connecting to the
 /// configured public testnet bootstrap as a TCP client. Safe to call repeatedly.
@@ -142,7 +142,7 @@ Future<void> ensureRnsAutostart() async {
         // Keep the process alive while the node is up so it goes on sharing /
         // routing with the screen off or backgrounded (ref-counted holder, so
         // it coexists with the background-wapp service).
-        await AndroidForegroundService.instance.hold('mesh');
+        await CoreHost.keepAlive.hold('mesh');
         break;
       }
     }
@@ -158,7 +158,7 @@ Future<void> ensureRnsAutostart() async {
         if (ok || rns.isUp) {
           LogService.instance.add(
               'RNS autostart: no bootstrap reachable — up on Bluetooth only');
-          await AndroidForegroundService.instance.hold('mesh');
+          await CoreHost.keepAlive.hold('mesh');
           return;
         }
       } catch (e) {

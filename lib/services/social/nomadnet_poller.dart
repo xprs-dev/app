@@ -13,12 +13,12 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:reticulum/reticulum.dart' show NostrEvent;
 
 import '../log_service.dart';
 import '../reticulum/rns_service.dart';
 import '../../wapp/geoui/activity_archive.dart';
+import 'package:xprs_core/src/platform/off_thread.dart';
 
 class NomadnetPoller {
   NomadnetPoller({
@@ -78,7 +78,7 @@ class NomadnetPoller {
 
       // Verify signatures + split kind-1 posts vs kind-6/7 reactions off the UI
       // thread (secp256k1 is heavy).
-      final result = await compute(_verifyPull, events);
+      final result = await offThread(_verifyPull, events);
       if (_disposed) return 0;
       final rows =
           (result['rows'] as List).cast<Map<String, dynamic>>();
@@ -194,7 +194,7 @@ class NomadnetPoller {
   }
 }
 
-/// compute() isolate: verify signatures, split kind-1 posts (→ archive rows)
+/// offThread() isolate: verify signatures, split kind-1 posts (→ archive rows)
 /// from kind-6/7 reactions (→ {mid, liker, like}). NO curation. Returns
 /// `{'rows': [...], 'reactions': [...]}`.
 Map<String, dynamic> _verifyPull(List<Map<String, dynamic>> events) {

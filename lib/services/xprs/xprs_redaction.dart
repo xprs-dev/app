@@ -35,7 +35,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 import 'package:reticulum/reticulum.dart' show XprsCrypto;
 
 import '../../wapp/wapp_event_broker.dart';
@@ -47,6 +46,8 @@ import 'xprs_packet.dart';
 import 'xprs_passphrases.dart';
 import 'xprs_publisher.dart';
 import 'xprs_vocab.dart';
+import 'package:meta/meta.dart';
+import 'package:xprs_core/src/platform/off_thread.dart';
 
 class XprsRedaction {
   XprsRedaction._();
@@ -118,7 +119,7 @@ class XprsRedaction {
     final passes = pass.isNotEmpty
         ? <String>[pass]
         : candidates(_senderOf(wire));
-    final res = await compute(
+    final res = await offThread(
         xrUnlockCompute, <String, dynamic>{'wire': wire, 'passes': passes});
     if (res.isEmpty) {
       derivations += passes.length; // every candidate was paid for in full
@@ -196,7 +197,7 @@ class XprsRedaction {
   /// group's X5 callsign. [pass] empty = the default.
   Future<void> hide(String convo, String text, String pass) async {
     final passphrase = pass.isEmpty ? XprsCrypto.kXrDefaultPassphrase : pass;
-    final res = await compute(xrRedactCompute,
+    final res = await offThread(xrRedactCompute,
         <String, dynamic>{'text': text, 'passphrase': passphrase});
     if (res.isEmpty) return _failed(convo); // nothing was marked
     final m = jsonDecode(res) as Map<String, dynamic>;

@@ -13,7 +13,7 @@
  * they are leaves: they see the street but the street can't route via them.
  */
 import '../../profile/iwi_profile.dart';
-import 'package:flutter/foundation.dart' show setEquals;
+import 'package:xprs_core/src/util/compat.dart' show setEquals;
 import 'dart:async';
 import 'dart:convert';
 import 'package:file/file.dart';
@@ -55,7 +55,6 @@ import '../xprs/xprs_group_keys.dart';
 import '../xprs/xprs_passphrases.dart';
 import '../xprs/xprs_publisher.dart';
 import '../xprs/xprs_station_policy.dart';
-import '../../wapp/android_foreground_service.dart';
 import '../xprs/xprs_archiver_choice.dart';
 import '../xprs/xprs_mailbox.dart';
 import '../xprs/xprs_outbox.dart';
@@ -82,6 +81,7 @@ import 'mesh_store.dart';
 import 'mesh_table.dart';
 import '../../platform/fs.dart';
 import '../../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/core_host.dart';
 
 class MeshService {
   MeshService._();
@@ -635,7 +635,7 @@ class MeshService {
               .add('XPRS: inline $ref from $from stalled — asking for the rest');
           unawaited(XprsPublisher.instance.publishWire(wire));
         };
-        AndroidForegroundService.instance.addTickListener(
+        CoreHost.keepAlive.addTickListener(
             () => XprsInlineAsm.instance.sweepStalled(DateTime.now()));
         // What we adopted last time we ran. Restored BEFORE the first
         // reconsider, or that reconsider reads our own adoption as the

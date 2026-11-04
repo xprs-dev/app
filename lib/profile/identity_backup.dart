@@ -35,7 +35,6 @@ import 'package:file/file.dart';
 import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:flutter/foundation.dart' show compute;
 
 import '../platform/platform.dart' as platform;
 import '../services/android_permissions_service.dart';
@@ -43,6 +42,7 @@ import '../services/log_service.dart';
 import 'iwi_profile.dart';
 import '../platform/fs.dart';
 import '../services/i18n/core_i18n.dart';
+import 'package:xprs_core/src/platform/off_thread.dart';
 
 /// One identity restorable from a backup file.
 class RestorableIdentity {
@@ -296,13 +296,13 @@ class IdentityBackup {
   // ── crypto: AES-256-GCM with a PBKDF2-HMAC-SHA256 key ────────────────────
   // PBKDF2 at this iteration count is long pure-Dart work, and backupAll runs
   // on every boot and profile save, so both
-  // directions go through compute() (a worker isolate; inline on web).
+  // directions go through offThread() (a worker isolate; inline on web).
   Future<Map<String, dynamic>> _encrypt(String plaintext, String passphrase) =>
-      compute(_encryptJob, [plaintext, passphrase, _randomBytes(16)]);
+      offThread(_encryptJob, [plaintext, passphrase, _randomBytes(16)]);
 
   Future<String> _decrypt(Map<String, dynamic> raw, String passphrase) async {
     try {
-      return await compute(_decryptJob, [Map<String, dynamic>.of(raw), passphrase]);
+      return await offThread(_decryptJob, [Map<String, dynamic>.of(raw), passphrase]);
     } catch (_) {
       throw BadPassphrase(tr('profile.backup.restore.wrong'));
     }
@@ -326,7 +326,7 @@ Future<SecretKey> _deriveKey(String passphrase, List<int> salt, int iters) {
   );
 }
 
-/// compute() entry point: [plaintext, passphrase, salt].
+/// offThread() entry point: [plaintext, passphrase, salt].
 Future<Map<String, dynamic>> _encryptJob(List<Object> args) async {
   final plaintext = args[0] as String;
   final salt = args[2] as List<int>;
@@ -352,7 +352,7 @@ Future<Map<String, dynamic>> _encryptJob(List<Object> args) async {
   };
 }
 
-/// compute() entry point: [raw backup map, passphrase]. Throws on a wrong
+/// offThread() entry point: [raw backup map, passphrase]. Throws on a wrong
 /// passphrase or a corrupt file.
 Future<String> _decryptJob(List<Object> args) async {
   final raw = args[0] as Map<String, dynamic>;

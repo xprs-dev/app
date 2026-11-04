@@ -25,16 +25,16 @@
 // command is waiting.
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 
 import '../../platform/platform.dart' as platform;
-import '../../wapp/android_foreground_service.dart';
 import '../log_service.dart';
 import '../receive/wapp_delivery.dart';
 import 'xprs_id.dart';
 import 'xprs_packet.dart';
 import 'xprs_publisher.dart';
 import 'xprs_vocab.dart';
+import 'package:meta/meta.dart';
+import 'package:xprs_core/src/platform/core_host.dart';
 
 class XprsCommandCourier {
   XprsCommandCourier._();
@@ -187,7 +187,7 @@ class XprsCommandCourier {
     if (_armed) return;
     _armed = true;
     if (platform.isAndroid) {
-      AndroidForegroundService.instance.addTickListener(_onNativeTick);
+      CoreHost.keepAlive.addTickListener(_onNativeTick);
     } else {
       _chain();
     }
@@ -209,7 +209,7 @@ class XprsCommandCourier {
     _timer?.cancel();
     _timer = null;
     if (platform.isAndroid) {
-      AndroidForegroundService.instance.removeTickListener(_onNativeTick);
+      CoreHost.keepAlive.removeTickListener(_onNativeTick);
     }
   }
 

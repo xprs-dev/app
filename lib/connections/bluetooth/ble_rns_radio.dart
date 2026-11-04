@@ -11,9 +11,7 @@
 // lib/services/reticulum/rns_ble_interface.dart.
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:reticulum/reticulum.dart'
-    show Ble5Bus, Ble5Subtype, RnsTransport;
+import 'package:reticulum/reticulum.dart' show RnsTransport;
 
 import '../../services/log_service.dart';
 import '../../services/reticulum/rns_ble_interface.dart';
@@ -21,6 +19,7 @@ import 'ble_reassembler.dart' show kBleBcastMax;
 import 'ble5_bus.dart';
 import 'ble_service.dart';
 import 'rns_chunk.dart';
+import 'package:meta/meta.dart';
 
 class BleServiceRnsRadio implements RnsBleRadio {
   /// Owner token for our adverts in BleService's per-owner rotation.

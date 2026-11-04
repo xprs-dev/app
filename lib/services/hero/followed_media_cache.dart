@@ -2,13 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:file/file.dart';
 
-import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 import '../log_service.dart';
 import '../media_disk_cache.dart';
 import '../reticulum/rns_service.dart';
 import 'hero_item.dart';
 import 'launcher_visibility.dart';
 import '../../platform/fs.dart';
+import 'package:xprs_core/src/platform/core_host.dart';
 
 /// Keeps the pictures of the people you follow.
 ///
@@ -102,7 +102,7 @@ class FollowedMediaCache {
         _miss(url);
         return;
       }
-      final archive = sharedMediaArchive();
+      final archive = CoreHost.mediaArchive();
       if (archive == null) return;
       final author = _authorOf[url] ?? '';
       // An account the user explicitly keeps gets its media PINNED: hosted,

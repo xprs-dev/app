@@ -45,7 +45,6 @@
 ../reticulum-dart/lib/src/services/social/blossom_server.dart :: no-native-import-outside-io-file :: import 'dart:io';
 ../reticulum-dart/lib/src/services/social/nostr_engine.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
 ../reticulum-dart/lib/src/services/social/nostr_ws_server.dart :: no-native-import-outside-io-file :: import 'dart:io';
-lib/connections/bluetooth/ble_service_io.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
 lib/connections/bluetooth/ble_service_io.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 2), (_) => _dartTick());
 lib/connections/hal/connection_functionalities.dart :: core-imports-ui :: import '../../wapp/functionality_def.dart';
 lib/launcher/hero_carousel.dart :: no-core-calls-from-screen :: final hasFollows = RnsService.instance.follows.asSet.isNotEmpty;
@@ -71,15 +70,11 @@ lib/services/files/capacity_governor.dart :: no-native-import-outside-io-file ::
 lib/services/files/open_path.dart :: no-native-import-outside-io-file :: import 'dart:io';
 lib/services/folders/disk_folder.dart :: no-whole-file-read :: return fs.file(path).readAsBytesSync();
 lib/services/folders/folder_export_io.dart :: no-unbounded-select :: db.select('SELECT data FROM media WHERE sha256=?', [job.key]);
-lib/services/hero/followed_media_cache.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
-lib/services/hero/hero_brightness.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
-lib/services/i2p/i2p_service.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 lib/services/media_disk_cache.dart :: no-whole-file-read :: final bytes = await f.readAsBytes();
 lib/services/mesh/mesh_bulk_spool.dart :: no-native-import-outside-io-file :: import 'dart:io';
 lib/services/mesh/mesh_bulk_spool.dart :: no-whole-file-read :: final bytes = File(_partPath(hex)).readAsBytesSync();
 lib/services/mesh/mesh_courier.dart :: core-imports-ui :: import '../../wapp/wapp_event_broker.dart';
 lib/services/mesh/mesh_courier.dart :: no-sub-minute-poll :: _pump ??= Timer.periodic(const Duration(seconds: 5), (_) => _tick());
-lib/services/mesh/mesh_service.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
 lib/services/mesh/mesh_service.dart :: no-sub-minute-interval-constant :: static const Duration _beaconInterval = Duration(seconds: 30);
 lib/services/mesh/mesh_service.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 300), (_) => _sendXprsLanBeacon());
 lib/services/mesh/mesh_service.dart :: no-sub-minute-poll :: _beaconTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -93,15 +88,11 @@ lib/services/permission_gate.dart :: core-imports-ui :: import '../wapp/backgrou
 lib/services/receive/core_state.dart :: core-imports-ui :: import '../../wapp/wapp_event_broker.dart';
 lib/services/receive/wapp_delivery.dart :: core-imports-ui :: import '../../wapp/wapp_event_broker.dart';
 lib/services/remote_api_service_io.dart :: core-imports-ui :: import '../wapp/background_wapp_manager.dart';
-lib/services/remote_api_service_io.dart :: core-imports-ui :: import '../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 lib/services/remote_api_service_io.dart :: core-imports-ui :: import '../wapp/shared_media_fetch.dart' show resolveSharedMedia;
 lib/services/remote_api_service_io.dart :: core-imports-ui :: import '../wapp/wapp_page.dart';
-lib/services/reticulum/rns_autostart.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
 lib/services/reticulum/rns_autostart.dart :: core-imports-ui :: import '../../wapp/background_wapp_manager.dart';
 lib/services/reticulum/rns_autostart.dart :: no-app-logic-in-core :: wappDataStorageFor(prefs, 'mesh').getAbsolutePath('observed.sqlite3');
-lib/services/reticulum/rns_service.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
 lib/services/reticulum/rns_service.dart :: core-imports-ui :: import '../../wapp/geoui/activity_archive.dart';
-lib/services/reticulum/rns_service.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 lib/services/reticulum/rns_service.dart :: no-app-logic-in-core :: static const String kRvWappTag = 'circles';
 lib/services/reticulum/rns_service.dart :: no-app-logic-in-core :: wappDataStorageFor(prefs, 'social'),
 lib/services/reticulum/rns_service.dart :: no-content-in-log :: LogService.instance.add(
@@ -123,9 +114,7 @@ lib/services/reticulum/wapp_mailbox.dart :: no-unbounded-select :: final rows = 
 lib/services/reticulum/wapp_mailbox.dart :: no-unbounded-select :: final rows = db.select('SELECT COUNT(*) c FROM mail');
 lib/services/reticulum/wapp_mailbox.dart :: no-unbounded-select :: final rows = db.select('SELECT DISTINCT tag FROM mail');
 lib/services/share_app_service_io.dart :: core-imports-ui :: import '../wapp/android_foreground_service.dart';
-lib/services/social/keep_service.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 lib/services/social/keep_service.dart :: no-sub-minute-interval-constant :: static const Duration _tick = Duration(seconds: 3);
-lib/services/social/node_role_api.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 lib/services/social/nomadnet_poller.dart :: core-imports-ui :: import '../../wapp/geoui/activity_archive.dart';
 lib/services/social/nostr_all_poller.dart :: core-imports-ui :: import '../../wapp/geoui/activity_archive.dart';
 lib/services/torrent_service.dart :: no-native-import-outside-io-file :: import 'dart:io';
@@ -136,8 +125,6 @@ lib/services/update_mirror_service.dart :: no-sub-minute-interval-constant :: st
 lib/services/update_native_io.dart :: no-whole-file-read :: final bytes = await File(tarGzPath).readAsBytes();
 lib/services/wifi_direct/wifi_direct_coordinator.dart :: no-sub-minute-poll :: _idleTimer = Timer.periodic(const Duration(seconds: 10), (_) {
 lib/services/xprs/xprs_archive.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 20), (_) => flush());
-lib/services/xprs/xprs_catchup.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
-lib/services/xprs/xprs_command_courier.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
 lib/services/xprs/xprs_files.dart :: no-sub-minute-interval-constant :: static const Duration askEvery = Duration(seconds: 45);
 lib/services/xprs/xprs_gossip.dart :: no-unbounded-select :: : db.select('SELECT COUNT(*) c FROM gossip_live').first['c'],
 lib/services/xprs/xprs_gossip.dart :: no-unbounded-select :: : db.select('SELECT COUNT(*) c FROM gossip_visits').first['c'],

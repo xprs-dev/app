@@ -12,10 +12,10 @@ import 'dart:typed_data';
 import 'package:file/file.dart';
 
 import 'package:crypto/crypto.dart' as crypto;
-import 'package:flutter/foundation.dart' show compute;
 
 import '../files/file_transfer.dart' show FileSource, PieceMask, RangedFileSource;
 import '../../platform/fs.dart';
+import 'package:xprs_core/src/platform/off_thread.dart';
 
 /// The hidden key file kept inside an owned folder (excluded from sharing).
 const String kFolderKeyFile = '.folder.json';
@@ -88,7 +88,7 @@ class DiskFolderSource implements RangedFileSource {
   /// file on the UI isolate: 12.8 s of main-isolate CPU in the first 30 s on
   /// the desktop, and typing lagged until it finished (architecture.md 2).
   Future<List<DiskFile>> scanAsync() async =>
-      _apply(await compute(_walkOffThread, (dirPath, _cacheOut())));
+      _apply(await offThread(_walkOffThread, (dirPath, _cacheOut())));
 
   static _Walk _walkOffThread((String, Map<String, _Cached>) m) =>
       _walk(m.$1, m.$2);

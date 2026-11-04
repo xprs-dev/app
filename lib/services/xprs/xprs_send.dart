@@ -35,7 +35,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../profile/profile_service.dart';
 import '../log_service.dart';
@@ -50,6 +49,7 @@ import 'xprs_outbox.dart';
 import 'xprs_packet.dart';
 import 'xprs_presence.dart';
 import 'xprs_publisher.dart';
+import 'package:meta/meta.dart';
 
 /// What became of a send, answered before the bearers have finished with it.
 ///

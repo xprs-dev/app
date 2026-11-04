@@ -47,7 +47,6 @@ import '../xprs/xprs_self.dart';
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 
 import 'package:hex/hex.dart';
@@ -75,6 +74,7 @@ import 'mesh_custody.dart';
 import 'mesh_frame.dart';
 import 'mesh_store.dart';
 import 'mesh_service.dart';
+import 'package:meta/meta.dart';
 
 /// One message waiting to find out whether it needs a carrier.
 class _Armed {
