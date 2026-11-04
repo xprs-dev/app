@@ -40,6 +40,15 @@ jobs:
           repository: xprs-dev/reticulum-dart
           path: reticulum-dart
 
+      # core is code that moved out of lib/ and keeps every app rule; without
+      # it the guard would silently stop checking that code, so no
+      # continue-on-error here.
+      - name: Checkout core (moved app rules)
+        uses: actions/checkout@v4
+        with:
+          repository: xprs-dev/core
+          path: core
+
       - uses: dart-lang/setup-dart@v1
 
       - name: Architecture guard

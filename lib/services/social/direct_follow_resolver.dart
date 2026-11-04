@@ -1,12 +1,3 @@
-Set<String> resolveDirectFollows({
-  required Iterable<String> contactSnapshot,
-  required Iterable<String> localFollows,
-  required Iterable<String> explicitUnfollows,
-}) {
-  final unfollowed = {for (final key in explicitUnfollows) key.toLowerCase()};
-  return {
-    for (final key in [...contactSnapshot, ...localFollows])
-      if (key.length == 64 && !unfollowed.contains(key.toLowerCase()))
-        key.toLowerCase(),
-  };
-}
+// Moved to the shared core package (xprs-dev/core). This shim keeps the
+// app's existing imports working; new code should import package:xprs_core.
+export 'package:xprs_core/src/services/social/direct_follow_resolver.dart';

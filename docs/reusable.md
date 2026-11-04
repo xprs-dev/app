@@ -1,5 +1,9 @@
 # xprs (iwi/) reusable components
 
+Shared, Flutter-free components moved to the `core` sibling repo
+(`xprs-dev/core`, package `xprs_core`); its own `docs/reusable.md` lists them.
+Check there first; code that both the app and the server need belongs there.
+
 Catalog of reusable libraries inside the xprs Flutter launcher (`iwi/`).
 Each entry should describe what the component does, where it lives, and the
 non-obvious constraints a future caller needs to know.
@@ -862,8 +866,8 @@ class XprsForwarder {
 }
 ```
 
-`XprsMailbox` (`sendTo`, `reachable`, `held`, `holdersOf`, `publish`) is the
-original; `XprsForwarder` (`lib/services/xprs/xprs_forwarder.dart`) follows
+`XprsMailbox` (`sendTo`, `reachable`, `held`, `holdersOf`, `publish`; now in
+`../core`) is the original; `XprsForwarder` (`lib/services/xprs/xprs_forwarder.dart`) follows
 it, and `mesh_service.dart` is the one place both are wired to the device.
 Reuse this shape for anything whose failure only shows between machines (a
 fetch that follows `m:try`, a deposit, a release): test it on the bench first,
@@ -943,7 +947,7 @@ rewrite:
   that publishes a set of files for others to find by a person's key goes
   through it; the firmware folder is the first user
   (`POST /api/xprs/folder/publish`).
-- **`xprsFmtTs`** in `xprs_vocab.dart`: the inverse of `xprsParseTs`.
+- **`xprsFmtTs`** in `xprs_vocab.dart` (now in `../core`): the inverse of `xprsParseTs`.
   `XprsCatchup._ts` and `XprsFetch` predate it and could use it.
 - **`RnsService.addFileSource`** -- serve a `DiskFolderSource` (or any
   `FileSource`) over the `xprs/files` link lane without restarting the node.

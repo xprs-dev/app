@@ -31,12 +31,12 @@ lib/services/files/capacity_governor.dart :: no-native-import-outside-io-file ::
 lib/services/files/open_path.dart :: no-native-import-outside-io-file :: import 'dart:io';
 lib/services/folders/disk_folder.dart :: no-whole-file-read :: return fs.file(path).readAsBytesSync();
 lib/services/folders/folder_export_io.dart :: no-unbounded-select :: db.select('SELECT data FROM media WHERE sha256=?', [job.key]);
-lib/services/i2p/i2p_node.dart :: no-native-import-outside-io-file :: import 'dart:io';
-lib/services/i2p/i2p_node.dart :: no-sub-minute-poll :: _natTimer = Timer.periodic(const Duration(seconds: 45), (t) async {
-lib/services/i2p/i2p_ntcp2.dart :: no-native-import-outside-io-file :: import 'dart:io';
-lib/services/i2p/i2p_reseed.dart :: no-native-import-outside-io-file :: import 'dart:io';
-lib/services/i2p/i2p_swarm.dart :: no-native-import-outside-io-file :: import 'dart:io';
-lib/services/i2p/i2p_worker.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
+../core/lib/src/services/i2p/i2p_node.dart :: no-native-import-outside-io-file :: import 'dart:io';
+../core/lib/src/services/i2p/i2p_node.dart :: no-sub-minute-poll :: _natTimer = Timer.periodic(const Duration(seconds: 45), (t) async {
+../core/lib/src/services/i2p/i2p_ntcp2.dart :: no-native-import-outside-io-file :: import 'dart:io';
+../core/lib/src/services/i2p/i2p_reseed.dart :: no-native-import-outside-io-file :: import 'dart:io';
+../core/lib/src/services/i2p/i2p_swarm.dart :: no-native-import-outside-io-file :: import 'dart:io';
+../core/lib/src/services/i2p/i2p_worker.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
 lib/services/media_disk_cache.dart :: no-whole-file-read :: final bytes = await f.readAsBytes();
 lib/services/mesh/mesh_bulk_spool.dart :: no-native-import-outside-io-file :: import 'dart:io';
 lib/services/mesh/mesh_bulk_spool.dart :: no-whole-file-read :: final bytes = File(_partPath(hex)).readAsBytesSync();
@@ -44,11 +44,11 @@ lib/services/mesh/mesh_courier.dart :: no-sub-minute-poll :: _pump ??= Timer.per
 lib/services/mesh/mesh_service.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 300), (_) => _sendXprsLanBeacon());
 lib/services/mesh/mesh_service.dart :: no-sub-minute-poll :: _beaconTimer = Timer.periodic(const Duration(seconds: 10), (_) {
 lib/services/mesh/mesh_service.dart :: no-sub-minute-poll :: _sweepTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-lib/services/mesh/mesh_session.dart :: no-sub-minute-poll :: _finishTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-lib/services/mesh/mesh_session.dart :: no-sub-minute-poll :: _stallTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+../core/lib/src/services/mesh/mesh_session.dart :: no-sub-minute-poll :: _finishTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+../core/lib/src/services/mesh/mesh_session.dart :: no-sub-minute-poll :: _stallTimer = Timer.periodic(const Duration(seconds: 5), (_) {
 lib/services/mesh/mesh_store.dart :: no-page-fetch-to-count :: return db.select('SELECT 1 FROM mesh_store WHERE am = ?', [key]).isNotEmpty;
 lib/services/mesh/mesh_store.dart :: no-page-fetch-to-count :: return db.select('SELECT 1 FROM received_ams WHERE am = ?', [am]).isNotEmpty;
-lib/services/nostr/nostr_signer.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
+../core/lib/src/services/nostr/nostr_signer.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
 lib/services/reticulum/rns_service.dart :: no-native-import-outside-io-file :: import 'dart:io' hide File, Directory, FileSystemEntity, Link;
 lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 1), (_) => _runLxmfRetries());
 lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _diskSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {

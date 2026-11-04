@@ -331,7 +331,13 @@ void main(List<String> args) {
   // [dir] is scanned; [rel] is what the globs match against — for this repo
   // that is the path as written in the rules ("lib/ui/x.dart"), for the sibling
   // wapps repo it is the path inside that repo ("chat/main.c").
-  void scan(Directory dir, List<Rule> rs, String prefix, {bool inner = false}) {
+  //
+  // [globAs], when set, is put in front of [rel] for glob matching only: the
+  // core sibling mirrors the app's lib/ under lib/src/, so its files are
+  // matched as "lib/services/x.dart" and the app's rules apply unchanged,
+  // while the reported path stays the real one.
+  void scan(Directory dir, List<Rule> rs, String prefix,
+      {bool inner = false, String? globAs}) {
     if (!dir.existsSync()) return;
     final base = dir.path.endsWith('/') ? dir.path : '${dir.path}/';
     for (final f in dir.listSync(recursive: true).whereType<File>()) {
@@ -351,9 +357,10 @@ void main(List<String> args) {
       } catch (_) {
         continue;
       }
+      final globRel = globAs == null ? rel : '$globAs$rel';
       for (final r in rs) {
-        if (!_matchesAny(rel, r.appliesTo)) continue;
-        if (_matchesAny(rel, r.exempt)) continue;
+        if (!_matchesAny(globRel, r.appliesTo)) continue;
+        if (_matchesAny(globRel, r.exempt)) continue;
         for (var i = 0; i < lines.length; i++) {
           final line = lines[i];
           if (line.trimLeft().startsWith('//') ||
@@ -382,6 +389,12 @@ void main(List<String> args) {
   final sibling = Directory('../reticulum-dart');
   if (sibling.existsSync()) {
     scan(sibling, siblingRules, '../reticulum-dart/', inner: true);
+  }
+  // The shared core (xprs-dev/core) is code that moved out of lib/: it keeps
+  // every app rule, not just the web-build one.
+  final core = Directory('../core/lib/src');
+  if (core.existsSync()) {
+    scan(core, rules, '../core/lib/src/', inner: true, globAs: 'lib/');
   }
   final wapps = Directory('../apps');
   if (wapps.existsSync()) scan(wapps, wappRules, '../apps/', inner: true);

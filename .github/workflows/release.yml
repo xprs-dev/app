@@ -13,8 +13,8 @@ name: release
 # its build is identical: a reproducible build. See docs/f-droid.md.
 #
 # Every job builds the version pubspec.yaml carries at the tag (release.sh wrote
-# it, and lib/version.dart with it), with ../reticulum-dart at the commit
-# .reticulum-dart-commit pins. Nothing is rewritten here: F-Droid cannot rewrite
+# it, and lib/version.dart with it), with ../reticulum-dart and ../core at the
+# commits .reticulum-dart-commit and .core-commit pin. Nothing is rewritten here: F-Droid cannot rewrite
 # anything either, and the two builds have to agree.
 
 on:
@@ -94,11 +94,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch reticulum-dart at the pinned commit (path dependency)
+      - name: Fetch reticulum-dart and core at the pinned commits (path dependencies)
         shell: bash
         run: |
           git clone --filter=blob:none https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
           git -C ../reticulum-dart checkout -q "$(cat .reticulum-dart-commit)"
+          git clone --filter=blob:none https://github.com/xprs-dev/core.git ../core
+          git -C ../core checkout -q "$(cat .core-commit)"
       - name: Install Linux build deps
         run: |
           sudo apt-get update
@@ -133,11 +135,13 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch reticulum-dart at the pinned commit (path dependency)
+      - name: Fetch reticulum-dart and core at the pinned commits (path dependencies)
         shell: bash
         run: |
           git clone --filter=blob:none https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
           git -C ../reticulum-dart checkout -q "$(cat .reticulum-dart-commit)"
+          git clone --filter=blob:none https://github.com/xprs-dev/core.git ../core
+          git -C ../core checkout -q "$(cat .core-commit)"
       - uses: subosito/flutter-action@v2
         with:
           channel: stable

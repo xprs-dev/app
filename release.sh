@@ -2,8 +2,8 @@
 # =============================================================================
 # release.sh — cut an XPRS release.
 #
-# Bumps pubspec.yaml, syncs lib/version.dart, pins ../reticulum-dart and
-# ../apps by commit, adds the F-Droid changelog copies, commits, tags vX.Y.Z
+# Bumps pubspec.yaml, syncs lib/version.dart, pins ../reticulum-dart, ../core
+# and ../apps by commit, adds the F-Droid changelog copies, commits, tags vX.Y.Z
 # and pushes. Pushing the tag is what triggers everything else: release.yml
 # builds the three platforms as xprs-<version>-<platform> (Android in F-Droid's
 # own buildserver image, so F-Droid reproduces it), xprs-dev/downloads puts them
@@ -76,6 +76,7 @@ pin_of() {
   echo "$sha"
 }
 RD_PIN=$(pin_of ../reticulum-dart)
+CORE_PIN=$(pin_of ../core)
 WAPPS_PIN=$(pin_of ../apps)
 
 # F-Droid shows changelogs/<versionCode>.txt, and each per-ABI APK has its own
@@ -96,7 +97,7 @@ if [[ -z "$CL" ]]; then
 fi
 
 echo ">> current: $current   new: $VERSION+$CODE"
-echo ">> pins: reticulum-dart $RD_PIN, wapps $WAPPS_PIN; changelog: ${CL:-none}"
+echo ">> pins: reticulum-dart $RD_PIN, core $CORE_PIN, wapps $WAPPS_PIN; changelog: ${CL:-none}"
 if [[ "$YES" -ne 1 ]]; then
   read -r -p ">> proceed? [y/N] " ans; [[ "$ans" == "y" || "$ans" == "Y" ]] || exit 1
 fi
@@ -137,6 +138,7 @@ verblob=$(git hash-object -w lib/version.dart)
 # paths it removes (a changelog named for a stale count).
 declare -A put=( [pubspec.yaml]="$pubblob" [lib/version.dart]="$verblob"
   [.reticulum-dart-commit]=$(echo "$RD_PIN" | git hash-object -w --stdin)
+  [.core-commit]=$(echo "$CORE_PIN" | git hash-object -w --stdin)
   [.wapps-commit]=$(echo "$WAPPS_PIN" | git hash-object -w --stdin) )
 drop=()
 if [[ -n "$CL" ]]; then

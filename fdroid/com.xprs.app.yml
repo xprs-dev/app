@@ -39,6 +39,7 @@ Builds:
     srclibs:
       - flutter@stable
       - xprs-reticulum-dart@@RD_PIN@
+      - xprs-core@@CORE_PIN@
       - xprs-wapps@@WAPPS_PIN@
       - dav1d@1.4.3
     rm:
@@ -55,8 +56,10 @@ Builds:
       - '[[ $flutterVersion ]]'
       - git -C $$flutter$$ checkout -f $flutterVersion
       - git -C $$xprs-reticulum-dart$$ checkout -f $(cat .reticulum-dart-commit)
+      - git -C $$xprs-core$$ checkout -f $(cat .core-commit)
       - git -C $$xprs-wapps$$ checkout -f $(cat .wapps-commit)
       - cp -r $$xprs-reticulum-dart$$ ../reticulum-dart
+      - cp -r $$xprs-core$$ ../core
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter pub get --enforce-lockfile

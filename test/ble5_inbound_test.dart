@@ -12,7 +12,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:reticulum/src/connections/bluetooth/ble5_bus.dart';
+import 'package:reticulum_ble/src/ble5_bus.dart';
 
 const _method = MethodChannel('com.xprs.app/ble5');
 const _scanChannel = 'com.xprs.app/ble5_scan';

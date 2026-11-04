@@ -17,11 +17,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      # pubspec.yaml has a path dependency on ../reticulum-dart; clone it next to
+      # pubspec.yaml has a path dependencies on ../reticulum-dart and ../core;
+      # clone them next to
       # the workspace so pub get (incl. flutter-action's setup) can resolve it.
-      - name: Fetch reticulum-dart (path dependency)
+      - name: Fetch reticulum-dart and core (path dependencies)
         shell: bash
-        run: git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
+        run: |
+          git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
+          git clone --depth 1 https://github.com/xprs-dev/core.git ../core
 
       - uses: actions/setup-java@v4
         with:
