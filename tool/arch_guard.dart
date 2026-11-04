@@ -25,6 +25,7 @@ class Rule {
     required this.pattern,
     this.exempt = const [],
     this.message,
+    this.window = 1,
   });
 
   /// Stable id — appears in the baseline, in `// arch-ignore:` and in docs.
@@ -46,6 +47,13 @@ class Rule {
 
   /// Extra guidance for this specific hit.
   final String? message;
+
+  /// How many lines the pattern is matched across. A call split over lines
+  /// (`Timer.periodic(\n  const Duration(...)`) escapes a one-line regex, and
+  /// that is how several sub-minute timers got past the first version of this
+  /// guard. With a window > 1 the lines are joined with a space, and a hit
+  /// counts only if it STARTS on the current line, so it is reported once.
+  final int window;
 }
 
 // ── the web build ───────────────────────────────────────────────────────────
@@ -140,9 +148,74 @@ const rules = <Rule>[
     id: 'no-app-logic-in-core',
     why: 'A core service must not know a wapp exists. Give the core a generic '
         'capability and let the wapp use it — otherwise every wapp needs its '
-        'own special case in lib/.',
+        'own special case in lib/. The first version of this rule matched only '
+        "`id == 'tools.xprs.x'`, and the core went on writing straight into "
+        "the Social wapp's database (wappDataStorageFor(prefs, 'social')) and "
+        "carrying a Circles-only rendezvous (kRvWappTag = 'circles') unseen "
+        '(audit 2026-11-04).',
     appliesTo: ['lib/services/**', 'lib/connections/**'],
-    pattern: r'''\b(?:wappId|appId|id)\s*==\s*['"]tools\.xprs\.\w+['"]''',
+    pattern: r'''\b(?:wappId|appId|id)\s*==\s*['"]tools\.xprs\.\w+['"]'''
+        r'''|wappDataStorageFor\([^,]+,\s*['"]'''
+        r'''|\b(?:_?wapp\w*|appId|wappId)\s*[!=]=\s*['"]'''
+        r'''|\bk\w*Wapp\w*\s*=\s*['"]''',
+    message: 'Give the core a capability any wapp can use, and let the wapp '
+        'name itself through the HAL.',
+  ),
+  Rule(
+    id: 'core-imports-ui',
+    why: 'The core sits UNDER the wapps and the screens (architecture.md §1). '
+        'A core service that imports lib/wapp, lib/launcher, lib/ui or '
+        'lib/editor cannot move to the shared core package, cannot run in the '
+        'server edition, and drags the UI into every test of it. The media '
+        'store was defined in a widget file (media_view.dart) and three core '
+        'services imported it to reach their own storage (audit 2026-11-04).',
+    appliesTo: [
+      'lib/services/**', 'lib/connections/**', 'lib/profile/**',
+      'lib/platform/**', 'lib/util/**', 'lib/models/**',
+    ],
+    exempt: [
+      'lib/profile/*_page.dart', 'lib/profile/*avatar*.dart',
+      'lib/profile/callsign_input.dart',
+    ],
+    pattern: r'''^\s*(?:import|export)\s+'(?:package:xprs/|(?:\.\./)+)'''
+        r'''(?:wapp|launcher|ui|editor)/''',
+    message: 'Move the thing the core needs down into the core, or give the '
+        'core an interface the app implements (core/lib/src/platform/).',
+  ),
+  Rule(
+    id: 'no-wapp-special-case-in-host',
+    why: "The host renders whatever wapp it is given. A branch on one wapp's "
+        "name (`_wappName == 'social'`) is that wapp's logic living in the "
+        'host: wapp_page.dart carried about twenty for Social, including the '
+        'choice of lane for a reaction (architecture.md §3, §4 "The host does '
+        "not publish on a named wapp's behalf\").",
+    appliesTo: ['lib/wapp/**', 'lib/launcher/**', 'lib/ui/**'],
+    pattern: r'''\b(?:_?wappName|wappId|wapp\.name|entry\.name)\s*[!=]=\s*'''
+        r'''['"](alerts|app-creator|archiver|atm|chat|circles|files|firmwares|forum|install|mail|maps|mediapack|mesh|movies|mp4player|social|tasks|terminal|tester|things|torrents|wallet|xprs)['"]''',
+    message: 'Give every wapp the capability (a manifest flag, a HAL verb, a '
+        'field type) and let this wapp use it.',
+  ),
+  Rule(
+    id: 'no-core-calls-from-screen',
+    why: "A screen renders state and forwards the person's intent; it does "
+        'not choose lanes, publish, fetch, follow or judge reachability. '
+        'wapp_page.dart published NOSTR notes, chose "Reticulum FIRST, wss '
+        'best-effort" for a reaction and decided whether a message "leaves '
+        'now or waits" (architecture.md §3.1). None of that can run on the '
+        'server edition, which has no screen.',
+    appliesTo: [
+      'lib/wapp/wapp_page.dart', 'lib/wapp/geoui/**', 'lib/launcher/**',
+      'lib/ui/**',
+    ],
+    window: 2,
+    pattern: r'''\b(?:RnsService|MeshService|MeshCourier|XprsPublisher|'''
+        r'''XprsSend|XprsArchive|XprsCatchup|XprsFetch|MediaFetch)'''
+        r'''\.instance\s*\.\s*(?:publish\w*|relay\w*|reachable\w*|fetch\w*|'''
+        r'''send\w*|setPassive|disconnect\w*|connect\w*|follow\w*|'''
+        r'''unfollow\w*|deposit\w*|air\w*|request\w*|announce\w*|'''
+        r'''buildSigned\w*)\b''',
+    message: 'Send the intent to the wapp engine / a HAL verb; the core '
+        'service decides how.',
   ),
 
   // ── the HAL surface ───────────────────────────────────────────────────────
@@ -158,8 +231,15 @@ const rules = <Rule>[
     // points — is a directory lookup, and a wapp is allowed to ask: hal_relay_
     // reachable was reviewed under this rule and kept, because the chat wapp
     // uses it to TELL peers where its DM backups live, not to steer delivery.
+    // Widened 2026-11-04: Circles and Mail had grown their own delivery on
+    // verbs this pattern never named (rns_send_to, rns_pull, rv_*, relay_*),
+    // and Files schedules reachability discovery (lan_scan). The
+    // hal_relay_reachable exemption above was granted for a use that no
+    // longer exists; only the deprecated Mail called it.
     pattern: r"EndpointDef\('hal_\w*(has_path|_pending|_custody|_forward|"
-        r"should_send|carrier|relay_decide)\w*'",
+        r"should_send|carrier|relay_decide|rns_send_to|rns_pull|"
+        r"rns_broadcast|_rv_|rns_delivery_dest|rns_prop_dest|relay_for|"
+        r"relay_dm_|relay_resolve|relay_reachable|lan_scan)\w*'",
     message: 'Read-only diagnostics are fine but must be documented as such; '
         'a wapp must not steer delivery.',
   ),
@@ -208,10 +288,41 @@ const rules = <Rule>[
         'is awake to see. Justify it as cost-per-hour-screen-off, and fire '
         'once immediately then settle (docs/performance.md 6.5, 8.5).',
     appliesTo: ['lib/**'],
+    // Across 3 lines: `Timer.periodic(\n  const Duration(seconds: 5),` is
+    // the formatter's own output and slipped past the one-line version.
+    window: 3,
     pattern: r'Timer\.periodic\(\s*(?:const\s+)?Duration\('
         r'\s*(?:milliseconds|seconds)\s*:',
     message: 'If it must be this fast, say what it costs per hour with the '
         'screen off, and gate it on something being awake to read it.',
+  ),
+  Rule(
+    id: 'no-sub-minute-interval-constant',
+    why: 'The same battery rule as no-sub-minute-poll, for an interval kept '
+        'in a named constant and handed to Timer.periodic elsewhere. The '
+        'Circles rendezvous re-announced every 8 s (signing three announces '
+        'per tick) through `_rvReannounceEvery`, invisible to the call-site '
+        'rule (docs/performance.md 6.5, audit 2026-11-04). Core layers only: '
+        'a launcher animation that runs while its widget is on screen is not '
+        'a poll.',
+    appliesTo: ['lib/services/**', 'lib/connections/**', 'lib/profile/**'],
+    pattern: r'''\b(?:static\s+)?(?:const|final)\s+(?:Duration\s+)?_?\w*'''
+        r'''(?:[Ee]very|[Ii]nterval|[Tt]ick|[Pp]oll|[Pp]eriod|[Cc]adence)\w*'''
+        r'''\s*=\s*(?:const\s+)?Duration\(\s*(?:milliseconds\s*:\s*\d+|'''
+        r'''seconds\s*:\s*[1-5]?\d)\s*\)''',
+    message: 'Ride the native heartbeat (BackgroundService), fire once then '
+        'settle, or justify the cost per hour with the screen off.',
+  ),
+  Rule(
+    id: 'no-content-in-log',
+    why: "The log ring is served by /api/log. A message's words in it are a "
+        'privacy leak, and a line per message is the per-event logging that '
+        'fills the ring with itself (docs/performance.md 8.10).',
+    appliesTo: ['lib/**'],
+    window: 2,
+    pattern: r'''(?:LogService\.(?:instance\.)?add|debugPrint|\b_?log)\([^;]*'''
+        r'''(?:contentString|\.content\b)''',
+    message: 'Count it in a perf: line; never log what a person wrote.',
   ),
   Rule(
     id: 'no-store-work-in-ui-layer',
@@ -313,8 +424,13 @@ const wappRules = <Rule>[
         'airing and reachability guessing are core concerns (MeshCourier). '
         'This exact code lived in apps/chat/main.c and had to be removed.',
     appliesTo: ['*/main.c', '*/*.c'],
+    // The same logic came back under new names in Circles and Mail
+    // (deliver_to_members / pull_from_members, relay polling): the verbs
+    // that let a wapp address, pull or pick relays are matched too.
     pattern: r'\b(best_hope|bh_arm|bh_pump|store_and_forward|custody_|'
-        r'hal_lxmf_pending|hal_rns_has_path)\w*\s*\(',
+        r'hal_lxmf_pending|hal_rns_has_path|hal_rns_send_to|hal_rns_pull|'
+        r'hal_rns_rv_\w+|hal_relay_(?:for|reachable|dm_send|dm_fetch|resolve)|'
+        r'hal_lan_scan|deliver_to_members|pull_from_members)\w*\s*\(',
   ),
 ];
 
@@ -368,7 +484,14 @@ void main(List<String> args) {
               line.trimLeft().startsWith('/*')) {
             continue; // a rule name inside prose is not a violation
           }
-          if (!_re(r.pattern).hasMatch(line)) continue;
+          if (r.window <= 1) {
+            if (!_re(r.pattern).hasMatch(line)) continue;
+          } else {
+            final end = (i + r.window) < lines.length ? i + r.window : lines.length;
+            final joined = lines.sublist(i, end).join(' ');
+            final m = _re(r.pattern).firstMatch(joined);
+            if (m == null || m.start >= line.length) continue;
+          }
           if (_ignored(lines, i, r.id)) continue;
           // Keyed on the offending LINE, not on file+rule: a baseline that
           // forgives a whole file also forgives the next violation added to

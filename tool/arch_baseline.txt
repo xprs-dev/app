@@ -1,7 +1,41 @@
 # Architecture-guard baseline — violations that predate the guard.
 # NEW violations fail the build; these do not. Shrink this file.
 # Regenerate deliberately: dart tool/arch_guard.dart --baseline
-../reticulum-dart/lib/src/connections/bluetooth/ble_gatt_server.dart :: no-native-import-outside-io-file :: import 'dart:io' show Platform;
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: deliver_to_members(i, d);               /* reliable addressed + store-and-forward */
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: deliver_to_members(i, d);   /* reliable history replay to members */
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: deliver_to_members(i, d);   /* reliable: stored for members to pull if needed */
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: deliver_to_members(i, d);   /* reliable: stored for the owner to pull if needed */
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: deliver_to_members(i, d);   /* reliably push the keyset to known members */
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: hal_rns_pull(pp, s_len(pp));
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: hal_rns_rv_announce(seed, s_len(seed), app, s_len(app));
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: hal_rns_rv_send(seed, s_len(seed), d, s_len(d));
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: hal_rns_send_to(dl, s_len(dl), d, s_len(d));
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: hal_rns_send_to(dl, s_len(dl), d, s_len(d)); /* reliable to that member */
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: hal_rns_send_to(ownerDeliv, s_len(ownerDeliv), d, s_len(d));
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: pull_from_members(i);
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: static int  deliver_to_members(int i, const char *d); /* addressed gossip */
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: static int deliver_to_members(int i, const char *d) {
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: static void pull_from_members(int i) {
+../apps/circles/circle.c :: no-transport-logic-in-wapps-repo :: uint32_t n = hal_rns_rv_resolve(seed, s_len(seed), app, sizeof(app) - 1);
+../apps/files/main.c :: no-transport-logic-in-wapps-repo :: hal_lan_scan(servers, sizeof(servers) - 1);
+../apps/mail/main.c :: no-transport-logic-in-wapps-repo :: hal_relay_dm_fetch(0, g_relays, str_len(g_relays));
+../apps/mail/main.c :: no-transport-logic-in-wapps-repo :: hal_relay_resolve(call, str_len(call), g_relays, str_len(g_relays));
+../apps/mail/main.c :: no-transport-logic-in-wapps-repo :: hal_relay_resolve(in, str_len(in), g_relays, str_len(g_relays));
+../apps/mail/main.c :: no-transport-logic-in-wapps-repo :: hal_relay_resolve(q, str_len(q), g_relays, str_len(g_relays));
+../apps/mail/main.c :: no-transport-logic-in-wapps-repo :: hal_relay_resolve(up_call, str_len(up_call),
+../apps/mail/main.c :: no-transport-logic-in-wapps-repo :: int n = hal_relay_for(peer_hex, str_len(peer_hex), g_relays, sizeof(g_relays) - 1);
+../apps/mail/main.c :: no-transport-logic-in-wapps-repo :: lane2 = hal_relay_dm_send(b64, str_len(b64), env, str_len(env),
+../apps/mail/main.c :: no-transport-logic-in-wapps-repo :: unsigned n = hal_relay_resolve_recv(js, sizeof(js) - 1);
+../apps/mail/main.c :: no-transport-logic-in-wapps-repo :: unsigned r = hal_relay_reachable(g_relays, sizeof(g_relays) - 1);
+../core/lib/src/services/i2p/i2p_node.dart :: no-native-import-outside-io-file :: import 'dart:io';
+../core/lib/src/services/i2p/i2p_node.dart :: no-sub-minute-poll :: _natTimer = Timer.periodic(const Duration(seconds: 45), (t) async {
+../core/lib/src/services/i2p/i2p_ntcp2.dart :: no-native-import-outside-io-file :: import 'dart:io';
+../core/lib/src/services/i2p/i2p_reseed.dart :: no-native-import-outside-io-file :: import 'dart:io';
+../core/lib/src/services/i2p/i2p_swarm.dart :: no-native-import-outside-io-file :: import 'dart:io';
+../core/lib/src/services/i2p/i2p_worker.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
+../core/lib/src/services/mesh/mesh_session.dart :: no-sub-minute-poll :: _finishTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+../core/lib/src/services/mesh/mesh_session.dart :: no-sub-minute-poll :: _stallTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+../core/lib/src/services/nostr/nostr_signer.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
 ../reticulum-dart/lib/src/services/reticulum/rns_crypto.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
 ../reticulum-dart/lib/src/services/reticulum/rns_lan_interface.dart :: no-native-import-outside-io-file :: import 'dart:io';
 ../reticulum-dart/lib/src/services/reticulum/rns_tcp_interface.dart :: no-native-import-outside-io-file :: import 'dart:io';
@@ -10,10 +44,13 @@
 ../reticulum-dart/lib/src/services/reticulum/rns_udp_interface.dart :: no-native-import-outside-io-file :: import 'dart:io';
 ../reticulum-dart/lib/src/services/social/blossom_server.dart :: no-native-import-outside-io-file :: import 'dart:io';
 ../reticulum-dart/lib/src/services/social/nostr_engine.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
-../reticulum-dart/lib/src/services/social/nostr_relay_hub.dart :: no-native-import-outside-io-file :: import 'dart:io' hide File, Directory, FileSystemEntity, Link;
 ../reticulum-dart/lib/src/services/social/nostr_ws_server.dart :: no-native-import-outside-io-file :: import 'dart:io';
+lib/connections/bluetooth/ble_service_io.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
 lib/connections/bluetooth/ble_service_io.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 2), (_) => _dartTick());
-lib/launcher/wapp_runner_page.dart :: no-sub-minute-poll :: _tickTimer = Timer.periodic(Duration(milliseconds: interval), (_) {
+lib/connections/hal/connection_functionalities.dart :: core-imports-ui :: import '../../wapp/functionality_def.dart';
+lib/launcher/hero_carousel.dart :: no-core-calls-from-screen :: final hasFollows = RnsService.instance.follows.asSet.isNotEmpty;
+lib/launcher/launcher_page.dart :: no-wapp-special-case-in-host :: if (entry.name == 'app-creator') continue;
+lib/launcher/launcher_page.dart :: no-wapp-special-case-in-host :: if (wappId == 'social') {
 lib/main.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(milliseconds: 500), (_) {
 lib/platform/fs_web.dart :: no-whole-file-read :: bytes = _mem.file(p).readAsBytesSync();
 lib/platform/platform_io.dart :: no-whole-file-read :: return await f.readAsBytes();
@@ -27,32 +64,56 @@ lib/profile/secure_file.dart :: no-whole-file-read :: final raw = f.readAsBytesS
 lib/profile/vanity_callsign_page.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
 lib/profile/vanity_callsign_page.dart :: no-sub-minute-poll :: _timer = Timer.periodic(const Duration(milliseconds: 200), (_) {
 lib/services/background_service.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
+lib/services/deep_link_service.dart :: core-imports-ui :: import '../launcher/launcher.dart' show rootNavigatorKey;
+lib/services/deep_link_service.dart :: core-imports-ui :: import '../wapp/wapp_open.dart';
+lib/services/deep_link_service.dart :: core-imports-ui :: import '../wapp/wapp_page.dart';
 lib/services/files/capacity_governor.dart :: no-native-import-outside-io-file :: import 'dart:io';
 lib/services/files/open_path.dart :: no-native-import-outside-io-file :: import 'dart:io';
 lib/services/folders/disk_folder.dart :: no-whole-file-read :: return fs.file(path).readAsBytesSync();
 lib/services/folders/folder_export_io.dart :: no-unbounded-select :: db.select('SELECT data FROM media WHERE sha256=?', [job.key]);
-../core/lib/src/services/i2p/i2p_node.dart :: no-native-import-outside-io-file :: import 'dart:io';
-../core/lib/src/services/i2p/i2p_node.dart :: no-sub-minute-poll :: _natTimer = Timer.periodic(const Duration(seconds: 45), (t) async {
-../core/lib/src/services/i2p/i2p_ntcp2.dart :: no-native-import-outside-io-file :: import 'dart:io';
-../core/lib/src/services/i2p/i2p_reseed.dart :: no-native-import-outside-io-file :: import 'dart:io';
-../core/lib/src/services/i2p/i2p_swarm.dart :: no-native-import-outside-io-file :: import 'dart:io';
-../core/lib/src/services/i2p/i2p_worker.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
+lib/services/hero/followed_media_cache.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
+lib/services/hero/hero_brightness.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
+lib/services/i2p/i2p_service.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 lib/services/media_disk_cache.dart :: no-whole-file-read :: final bytes = await f.readAsBytes();
 lib/services/mesh/mesh_bulk_spool.dart :: no-native-import-outside-io-file :: import 'dart:io';
 lib/services/mesh/mesh_bulk_spool.dart :: no-whole-file-read :: final bytes = File(_partPath(hex)).readAsBytesSync();
+lib/services/mesh/mesh_courier.dart :: core-imports-ui :: import '../../wapp/wapp_event_broker.dart';
 lib/services/mesh/mesh_courier.dart :: no-sub-minute-poll :: _pump ??= Timer.periodic(const Duration(seconds: 5), (_) => _tick());
+lib/services/mesh/mesh_service.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
+lib/services/mesh/mesh_service.dart :: no-sub-minute-interval-constant :: static const Duration _beaconInterval = Duration(seconds: 30);
 lib/services/mesh/mesh_service.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 300), (_) => _sendXprsLanBeacon());
 lib/services/mesh/mesh_service.dart :: no-sub-minute-poll :: _beaconTimer = Timer.periodic(const Duration(seconds: 10), (_) {
 lib/services/mesh/mesh_service.dart :: no-sub-minute-poll :: _sweepTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-../core/lib/src/services/mesh/mesh_session.dart :: no-sub-minute-poll :: _finishTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-../core/lib/src/services/mesh/mesh_session.dart :: no-sub-minute-poll :: _stallTimer = Timer.periodic(const Duration(seconds: 5), (_) {
 lib/services/mesh/mesh_store.dart :: no-page-fetch-to-count :: return db.select('SELECT 1 FROM mesh_store WHERE am = ?', [key]).isNotEmpty;
 lib/services/mesh/mesh_store.dart :: no-page-fetch-to-count :: return db.select('SELECT 1 FROM received_ams WHERE am = ?', [am]).isNotEmpty;
-../core/lib/src/services/nostr/nostr_signer.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
+lib/services/mesh/mesh_transfer_scheduler.dart :: no-sub-minute-interval-constant :: static const Duration _tick = Duration(seconds: 10);
+lib/services/notification_service.dart :: core-imports-ui :: import '../launcher/launcher.dart' show rootNavigatorKey;
+lib/services/notification_service.dart :: core-imports-ui :: import '../wapp/wapp_open.dart';
+lib/services/permission_gate.dart :: core-imports-ui :: import '../wapp/background_wapp_manager.dart';
+lib/services/receive/core_state.dart :: core-imports-ui :: import '../../wapp/wapp_event_broker.dart';
+lib/services/receive/wapp_delivery.dart :: core-imports-ui :: import '../../wapp/wapp_event_broker.dart';
+lib/services/remote_api_service_io.dart :: core-imports-ui :: import '../wapp/background_wapp_manager.dart';
+lib/services/remote_api_service_io.dart :: core-imports-ui :: import '../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
+lib/services/remote_api_service_io.dart :: core-imports-ui :: import '../wapp/shared_media_fetch.dart' show resolveSharedMedia;
+lib/services/remote_api_service_io.dart :: core-imports-ui :: import '../wapp/wapp_page.dart';
+lib/services/reticulum/rns_autostart.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
+lib/services/reticulum/rns_autostart.dart :: core-imports-ui :: import '../../wapp/background_wapp_manager.dart';
+lib/services/reticulum/rns_autostart.dart :: no-app-logic-in-core :: wappDataStorageFor(prefs, 'mesh').getAbsolutePath('observed.sqlite3');
+lib/services/reticulum/rns_service.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
+lib/services/reticulum/rns_service.dart :: core-imports-ui :: import '../../wapp/geoui/activity_archive.dart';
+lib/services/reticulum/rns_service.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
+lib/services/reticulum/rns_service.dart :: no-app-logic-in-core :: static const String kRvWappTag = 'circles';
+lib/services/reticulum/rns_service.dart :: no-app-logic-in-core :: wappDataStorageFor(prefs, 'social'),
+lib/services/reticulum/rns_service.dart :: no-content-in-log :: LogService.instance.add(
 lib/services/reticulum/rns_service.dart :: no-native-import-outside-io-file :: import 'dart:io' hide File, Directory, FileSystemEntity, Link;
+lib/services/reticulum/rns_service.dart :: no-sub-minute-interval-constant :: static const Duration _rvReannounceEvery = Duration(seconds: 8);
 lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 1), (_) => _runLxmfRetries());
 lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _diskSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _lanBeaconTimer = Timer.periodic(
 lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _linkWatchdog = Timer.periodic(const Duration(seconds: 10), (_) {
+lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _mirrorTimer ??= Timer.periodic(
+lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _notifTimer = Timer.periodic(
+lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _obFlushTimer = Timer.periodic(
 lib/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _profileRetryTimer = Timer.periodic(const Duration(seconds: 90), (_) {
 lib/services/reticulum/rns_service.dart :: no-whole-file-read :: archive.putBytes(fs.file(diskPath).readAsBytesSync(),
 lib/services/reticulum/rns_service.dart :: no-whole-file-read :: final bytes = fs.file(diskPath).readAsBytesSync();
@@ -61,22 +122,45 @@ lib/services/reticulum/wapp_mailbox.dart :: no-unbounded-select :: ? db.select('
 lib/services/reticulum/wapp_mailbox.dart :: no-unbounded-select :: final rows = db.select('SELECT COALESCE(SUM(LENGTH(payload)),0) b FROM mail');
 lib/services/reticulum/wapp_mailbox.dart :: no-unbounded-select :: final rows = db.select('SELECT COUNT(*) c FROM mail');
 lib/services/reticulum/wapp_mailbox.dart :: no-unbounded-select :: final rows = db.select('SELECT DISTINCT tag FROM mail');
+lib/services/share_app_service_io.dart :: core-imports-ui :: import '../wapp/android_foreground_service.dart';
+lib/services/social/keep_service.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
+lib/services/social/keep_service.dart :: no-sub-minute-interval-constant :: static const Duration _tick = Duration(seconds: 3);
+lib/services/social/node_role_api.dart :: core-imports-ui :: import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
+lib/services/social/nomadnet_poller.dart :: core-imports-ui :: import '../../wapp/geoui/activity_archive.dart';
+lib/services/social/nostr_all_poller.dart :: core-imports-ui :: import '../../wapp/geoui/activity_archive.dart';
 lib/services/torrent_service.dart :: no-native-import-outside-io-file :: import 'dart:io';
 lib/services/torrent_service.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 20), (t) {
 lib/services/torrent_service.dart :: no-whole-file-read :: final data = await f.readAsBytes();
 lib/services/update_mirror_service.dart :: no-native-import-outside-io-file :: import 'dart:io';
+lib/services/update_mirror_service.dart :: no-sub-minute-interval-constant :: static const Duration _pollDownload = Duration(seconds: 5);
 lib/services/update_native_io.dart :: no-whole-file-read :: final bytes = await File(tarGzPath).readAsBytes();
 lib/services/wifi_direct/wifi_direct_coordinator.dart :: no-sub-minute-poll :: _idleTimer = Timer.periodic(const Duration(seconds: 10), (_) {
 lib/services/xprs/xprs_archive.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 20), (_) => flush());
+lib/services/xprs/xprs_catchup.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
+lib/services/xprs/xprs_command_courier.dart :: core-imports-ui :: import '../../wapp/android_foreground_service.dart';
+lib/services/xprs/xprs_files.dart :: no-sub-minute-interval-constant :: static const Duration askEvery = Duration(seconds: 45);
 lib/services/xprs/xprs_gossip.dart :: no-unbounded-select :: : db.select('SELECT COUNT(*) c FROM gossip_live').first['c'],
 lib/services/xprs/xprs_gossip.dart :: no-unbounded-select :: : db.select('SELECT COUNT(*) c FROM gossip_visits').first['c'],
 lib/services/xprs/xprs_group_keys.dart :: no-unbounded-select :: final rows = db.select('SELECT nsec FROM xprs_groups WHERE callsign = ?',
 lib/services/xprs/xprs_group_keys.dart :: no-unbounded-select :: if (db.select('SELECT 1 FROM xprs_groups WHERE callsign = ?', [call])
 lib/services/xprs/xprs_lan.dart :: no-native-import-outside-io-file :: import 'dart:io';
+lib/services/xprs/xprs_lan.dart :: no-sub-minute-interval-constant :: static const Duration sweepEvery = Duration(seconds: 30);
+lib/services/xprs/xprs_redaction.dart :: core-imports-ui :: import '../../wapp/wapp_event_broker.dart';
 lib/services/xprs/xprs_tcp.dart :: no-native-import-outside-io-file :: import 'dart:io';
+lib/wapp/functionality_registry.dart :: hal-budget :: EndpointDef('hal_relay_dm_drop',
+lib/wapp/functionality_registry.dart :: hal-budget :: EndpointDef('hal_relay_dm_fetch',
+lib/wapp/functionality_registry.dart :: hal-budget :: EndpointDef('hal_relay_dm_recv',
+lib/wapp/functionality_registry.dart :: hal-budget :: EndpointDef('hal_relay_dm_send',
+lib/wapp/functionality_registry.dart :: hal-budget :: EndpointDef('hal_relay_for',
+lib/wapp/functionality_registry.dart :: hal-budget :: EndpointDef('hal_relay_reachable',
+lib/wapp/functionality_registry.dart :: hal-budget :: EndpointDef('hal_relay_resolve',
+lib/wapp/functionality_registry.dart :: hal-budget :: EndpointDef('hal_relay_resolve_recv',
+lib/wapp/functionality_registry.dart :: hal-budget :: EndpointDef('hal_rns_broadcast', 'Broadcast a datagram to peers running this wapp', [
 lib/wapp/geoui/tile_cache_io.dart :: no-whole-file-read :: final bytes = await file.readAsBytes();
+lib/wapp/geoui/widgets/activity_feed.dart :: no-core-calls-from-screen :: final tags = RnsService.instance.relayLocalEvent(mid)?['tags'];
 lib/wapp/geoui/widgets/media_view.dart :: no-sub-minute-poll :: _poll = Timer.periodic(const Duration(seconds: 1), (t) {
 lib/wapp/geoui/widgets/people_view_field.dart :: no-sub-minute-poll :: _poll = Timer.periodic(const Duration(seconds: 1), (t) {
+lib/wapp/geoui/widgets/rooms_field.dart :: no-core-calls-from-screen :: RnsService.instance.reachableByCallsign(id));
 lib/wapp/native/hw_video_player.dart :: no-sub-minute-poll :: _posPoll ??= Timer.periodic(const Duration(milliseconds: 250), (_) async {
 lib/wapp/native/native_process_video_player.dart :: no-native-import-outside-io-file :: import 'dart:io';
 lib/wapp/native/wasm_video_player.dart :: no-native-import-outside-io-file :: import 'dart:io';
@@ -84,9 +168,44 @@ lib/wapp/native/wasm_video_player.dart :: no-sub-minute-poll :: _ticker = Timer.
 lib/wapp/native/wasm_video_session.dart :: no-sub-minute-poll :: _pump = Timer.periodic(const Duration(milliseconds: 8), (_) => _drain());
 lib/wapp/wapp_engine.dart :: no-whole-file-read :: : fs.file(path).readAsBytesSync();
 lib/wapp/wapp_engine.dart :: no-whole-file-read :: f.readAsBytesSync(),
-lib/wapp/wapp_page.dart :: no-native-import-outside-io-file :: import 'dart:io' hide File, Directory, FileSystemEntity, Link;
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: : () => RnsService.instance.fetchProfileMetadata(npub),
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: : () => RnsService.instance.fetchProfileMetadata(resolvedNpub),
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.connectBootstrap(ep);
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.disconnectUplink(host, port);
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.fetchFollowedProfile(callsign);
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.followPubkey(hex);
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.followPubkey(key);
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.reachableByCallsign(id);
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.setPassive(data['value'] == true);
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.unfollowPubkey(hex);
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: RnsService.instance.unfollowPubkey(key);
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: await RnsService.instance.publishNote(
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: final ev = RnsService.instance.buildSignedReaction(mid, author);
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: final tags = RnsService.instance.relayLocalEvent(
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: notes = await RnsService.instance.fetchFeedBackfill(
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: notes = await RnsService.instance.fetchFeedBackfill(since);
+lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: unawaited(RnsService.instance.relayPublish(ev.toJson()));
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(milliseconds: 400), (t) {
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(milliseconds: 600), (t) {
+lib/wapp/wapp_page.dart :: no-sub-minute-poll :: _fastBackfillTimer = Timer.periodic(
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: _tickTimer = Timer.periodic(Duration(milliseconds: interval), (_) {
-lib/wapp/wapp_page.dart :: no-whole-file-read :: final bytes = await f.readAsBytes();
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: (_wappName == 'social' && _socialFeedFilter == 'nomadnet')
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: bool get _isAppCreator => _wappName == 'app-creator';
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: curatedAll: _wappName == 'social',
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: final hydrated = _wappName == 'social' && name == 'follows_list'
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: final loadingLabel = _wappName == 'social'
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: if (_wappName != 'install') {
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: if (_wappName != 'social') {
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: if (_wappName == 'install' && !_engine.hasKvKey('source')) {
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: if (_wappName == 'social' && _socialFeedFilter != f) {
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: if (_wappName == 'social' && _socialFeedFilter == 'nomadnet') {
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: if (_wappName == 'social' && name == 'follows_list') {
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: if (_wappName == 'social') {
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: if (wapp.name == 'install') {
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: onEdit: _wappName == 'social' ? _editActivityPost : null,
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: onHistory: _wappName == 'social' ? _activityHistory : null,
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: onLoadOlder: _wappName == 'social' ? _loadOlderSocialPosts : null,
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: onRepost: _wappName == 'social' ? null : _repostPost,
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: onUnsend: _wappName == 'social' ? _unsendActivityPost : null,
+lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: onVote: _wappName == 'social'
 lib/wapp/wapp_page.dart :: no-whole-file-read :: final bytes = await file.readAsBytes();
