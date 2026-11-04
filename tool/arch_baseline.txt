@@ -68,8 +68,6 @@
 ../reticulum-dart/lib/src/services/social/blossom_server.dart :: no-native-import-outside-io-file :: import 'dart:io';
 ../reticulum-dart/lib/src/services/social/nostr_engine.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
 ../reticulum-dart/lib/src/services/social/nostr_ws_server.dart :: no-native-import-outside-io-file :: import 'dart:io';
-lib/boot/core_host_app.dart :: no-native-import-outside-io-file :: import 'dart:io' show Platform;
-lib/boot/core_host_app.dart :: no-native-import-outside-io-file :: import 'package:sqlite3/open.dart';
 lib/connections/bluetooth/ble_service_io.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 2), (_) => _dartTick());
 lib/connections/hal/connection_functionalities.dart :: core-imports-ui :: import '../../wapp/functionality_def.dart';
 lib/launcher/hero_carousel.dart :: no-core-calls-from-screen :: final hasFollows = RnsService.instance.follows.asSet.isNotEmpty;
