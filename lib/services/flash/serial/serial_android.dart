@@ -14,6 +14,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 
+import 'package:xprs_core/src/platform/usb_serial.dart';
+
 import 'serial_port.dart';
 
 class AndroidUsbSerial {
@@ -198,4 +200,19 @@ class AndroidSerialPort implements SerialPort {
       // Already gone.
     }
   }
+}
+
+/// The app's Android USB host behind the core's UsbSerialHost.
+class AndroidUsbSerialHost implements UsbSerialHost {
+  const AndroidUsbSerialHost();
+  @override
+  Future<List<SerialDevice>> listDevices() => AndroidUsbSerial.listDevices();
+  @override
+  Future<bool> requestPermission(String deviceId) =>
+      AndroidUsbSerial.requestPermission(deviceId);
+  @override
+  set onDevicesChanged(void Function()? f) =>
+      AndroidUsbSerial.onDevicesChanged = f;
+  @override
+  SerialPort open(String portId) => AndroidSerialPort(portId);
 }

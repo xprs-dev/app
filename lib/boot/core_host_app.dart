@@ -19,6 +19,7 @@ import '../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 import '../connections/bluetooth/ble_rns_radio.dart';
 import '../services/files/open_path.dart';
 import '../services/flash/flash_service.dart';
+import '../services/flash/serial/serial_android.dart';
 import '../services/location_service.dart';
 import 'core_stores_app.dart';
 import 'power_app.dart';
@@ -71,4 +72,5 @@ void wireCoreHost() {
   CoreHost.openFolder = openFolderOnDisk;
   CoreHost.locationFix = LocationService.instance.fixForPeer;
   CoreHost.perfSources['flash'] = FlashService.instance.drainStats;
+  CoreHost.usbSerial = const AndroidUsbSerialHost();
 }

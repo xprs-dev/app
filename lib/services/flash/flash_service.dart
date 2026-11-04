@@ -1,6 +1,3 @@
-/// Flashing a board over USB: the core's one door. The native half is
-/// flash_service_io.dart (serial ports, isolates, files); on the web there
-/// is no cable, and the stub says so through the same state.
-library;
-
-export 'flash_service_stub.dart' if (dart.library.io) 'flash_service_io.dart';
+// Moved to the shared core package (xprs-dev/core). This shim keeps the
+// app's existing imports working; new code should import package:xprs_core.
+export 'package:xprs_core/src/services/flash/flash_service.dart';
