@@ -10,7 +10,7 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
-import '../../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/os.dart' as platform;
 
 /// Live group credentials (GO side) or join target (client side).
 class WfdGroupCredentials {

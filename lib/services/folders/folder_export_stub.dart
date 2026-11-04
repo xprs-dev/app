@@ -1,10 +1,3 @@
-library;
-
-/// Web: there is no OS to hand a file to. Null, exactly like an archive that
-/// does not hold the key.
-Future<String?> exportArchiveFile({
-  required String dbPath,
-  required String storageKey,
-  required String outPath,
-}) async =>
-    null;
+// Moved to the shared core package (xprs-dev/core). This shim keeps the
+// app's existing imports working; new code should import package:xprs_core.
+export 'package:xprs_core/src/services/folders/folder_export_stub.dart';

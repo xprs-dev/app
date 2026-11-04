@@ -15,6 +15,7 @@
  */
 library;
 
+import '../services/i18n/flutter_locales.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:async';

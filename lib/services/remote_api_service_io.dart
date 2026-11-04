@@ -47,7 +47,7 @@ import 'mesh/mesh_service.dart';
 import 'mesh/mesh_store.dart';
 import 'mesh/mesh_table.dart';
 import 'mesh/mesh_transfer_scheduler.dart';
-import '../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/os.dart' as platform;
 import '../profile/profile_service.dart';
 import '../profile/storage_paths.dart';
 import '../util/media_archive.dart';

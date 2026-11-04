@@ -34,7 +34,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'log_service.dart';
-import '../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/os.dart' as platform;
 
 enum PowerTier { active, idle, battery, low }
 

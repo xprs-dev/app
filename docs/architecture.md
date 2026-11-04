@@ -30,7 +30,7 @@ now checked mechanically: see section 5.
   +----------------^---------------------------+-----------------+
                    | events in                 | hal_* calls out
   +----------------+---------------------------v-----------------+
-  | core (lib/)                                                   |
+  | core (../core, package xprs_core; lib/ until moved)           |
   |   identity and keys   profiles, nsec, signing, encryption     |
   |   transports          Reticulum, BLE5, LAN, WiFi-Direct, I2P  |
   |   delivery            LXMF, MeshCourier, custody, retries     |
@@ -89,6 +89,61 @@ few milliseconds belongs in an isolate or a `compute` call.
 
 ---
 
+## 2a. The core is its own repository (2026-11-04)
+
+The core is not "whatever is under `lib/services`". It is the sibling
+repository `xprs-dev/core` (Dart package `xprs_core`), plain Dart with no
+Flutter, and it is what both editions run: this app (phones and desktops) and
+the server edition (Linux, no screen). A rule follows from that, and the guard
+enforces it:
+
+> **The core never imports the app.** Not `lib/wapp`, not `lib/launcher`, not
+> `lib/ui`, not a Flutter plugin. When it needs something only the host
+> program can provide, it asks `CoreHost`.
+
+`CoreHost` (`core/lib/src/platform/core_host.dart`) is the whole list of what
+the core needs from its host, each with a default right for a program that has
+none of it (a test, the server):
+
+| seam | the app's answer | default |
+|---|---|---|
+| `keepAlive` | Android foreground service: `hold`/`release`, native tick | none, never ticks |
+| `anyoneLooking` | `LauncherVisibility` | no |
+| `hasView` | `PlatformDispatcher.views` | no |
+| `notify` | `NotificationService.show` | dropped |
+| `openPreferences` | shared_preferences | in memory |
+| `secureStore` | flutter_secure_storage | none |
+| `assets` | the Flutter asset bundle | none |
+| `appSupportDir` | path_provider | home directory |
+| `prepareSqlite` | SQLCipher on Android | system SQLite |
+| `hasAllFilesAccess` | Android all-files permission | yes |
+| `mediaArchive` | the shared media store | none |
+
+The app wires them once at boot (`lib/boot/core_host_app.dart`), and its tests
+in `test/flutter_test_config.dart`. Three plain-Dart stand-ins replace what the
+core used to borrow from Flutter: `Observable<T>` for `ValueNotifier` (a screen
+watches one through `.listenable`, `lib/util/observable_listenable.dart`),
+`offThread()` for `compute`, and `util/compat.dart` for `kIsWeb`/`setEquals`.
+
+**Adding a seam is the exception, and it is small.** Name the one thing the
+core needs (a function, or an interface of the calls it really makes), give it
+a headless default, wire the app's answer in `core_host_app.dart`. Never pass
+the core a Flutter type, and never import the app from it to save the trouble:
+that is how the media store ended up defined in a widget file and three core
+services imported the widget to reach their storage.
+
+**Moving code into the core** keeps the app's directory layout under
+`core/lib/src/` so relative imports hold, and leaves a one-line export shim at
+the old `lib/` path, so nothing else in the app has to change at once.
+`tool/arch_guard.dart` scans `../core/lib/src` with the app's own rules,
+globbed as `lib/`, so moved code is held to the same standard it was. The
+tests of moved code move with it and run under `dart test`.
+
+What is still in the app's `lib/services` and belongs in the core is listed in
+`core/docs/audit-2026-11-04.md` §4, with what holds each file back.
+
+---
+
 ## 3. Placing a new feature
 
 Evaluate in order:
@@ -100,6 +155,10 @@ Evaluate in order:
 3. Is it about what a message means to one application? Wapp.
 4. Is it a screen? Wapp, or `lib/ui/` for a core surface such as Settings, the
    launcher or the profile.
+
+And for anything that is core by 1 or 2: it goes in `../core`, not in
+`lib/services` (§2a). Code that only the app can run (a plugin, a channel) is
+the app's answer to a `CoreHost` seam, not part of the core.
 
 A core service does not know that any particular wapp exists. A special case for
 chat in `lib/` indicates the wrong shape: the core should provide a generic
@@ -739,10 +798,15 @@ Rules enforced:
 | `no-blocking-io-on-ui` | `*Sync` file I/O and `sleep()` on the UI isolate |
 | `one-receive-door` | anything but `PacketGateway` reaching the receive funnel, the courier or the inbox — every bearer enters through one door |
 | `no-transport-in-wapp-layer` | `lib/wapp/**` reaching into radio or transport internals instead of a service facade |
-| `no-app-logic-in-core` | `lib/services/**` and `lib/connections/**` naming a specific wapp |
-| `no-transport-logic-in-wapps-repo` | wapp C source reimplementing custody, retry or reachability |
+| `no-app-logic-in-core` | `lib/services/**` and `lib/connections/**` naming a specific wapp: `id == 'tools.xprs.x'`, a wapp-name comparison, `wappDataStorageFor(prefs, '<wapp>')`, `k*Wapp* = '<name>'` |
+| `no-transport-logic-in-wapps-repo` | wapp C source reimplementing custody, retry or reachability, by the old names or through the verbs that let a wapp address, pull or pick relays |
 | `no-platform-channel-off-main` | `MethodChannel` or `Ble5Bus` in isolate entry points |
-| `hal-budget` | a `hal_*` endpoint whose name describes a transport decision (reach, path, pending, custody, forward) rather than a capability |
+| `hal-budget` | a `hal_*` endpoint whose name describes a transport decision (reach, path, pending, custody, forward, `rns_send_to`, `rns_pull`, `rv_*`, `relay_*`, `lan_scan`) rather than a capability |
+| `core-imports-ui` | a core-layer file (`lib/services`, `connections`, `profile`, `platform`, `util`, `models`, and `../core`) importing `lib/wapp`, `launcher`, `ui` or `editor` (§2a) |
+| `no-wapp-special-case-in-host` | the host branching on one wapp's name (`_wappName == 'social'`) instead of offering every wapp the capability |
+| `no-core-calls-from-screen` | a screen (`wapp_page.dart`, `geoui`, launcher, ui) calling a core singleton to publish, relay, fetch, follow, send or judge reachability |
+| `no-sub-minute-interval-constant` | an interval under a minute held in a named constant in a core layer ([performance.md](performance.md) 6.5) |
+| `no-content-in-log` | a person's words (`contentString`, `.content`) written to the log ring `/api/log` serves |
 | `no-native-import-outside-io-file` | an unconditional `dart:io`, `dart:ffi`, `dart:isolate` or FFI `package:sqlite3` import outside a `*_io.dart` file, in `lib/` and in the reticulum-dart sibling: the web build compiles `lib/` with dart2js, where FFI is a compile error and the rest throw at runtime ([web.md](web.md)) |
 
 To add a rule, extend the table in `tool/arch_guard.dart`. It is a single Dart

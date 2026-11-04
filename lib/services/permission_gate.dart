@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import '../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/os.dart' as platform;
 import '../profile/profile_db.dart';
 import '../profile/profile_encryption.dart';
 import '../profile/profile_service.dart';

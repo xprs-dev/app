@@ -20,6 +20,7 @@ import '../services/xprs/xprs_profiles.dart';
 import '../util/media_ref.dart';
 import '../wapp/geoui/widgets/generated_avatar.dart';
 import 'profile_service.dart';
+import '../util/observable_listenable.dart';
 
 /// Decoded-once bytes per picture. A picture is about eight kilobytes and a
 /// list shows a few dozen, so the archive is read once per picture rather than
@@ -93,7 +94,7 @@ class StationAvatar extends StatelessWidget {
     return ValueListenableBuilder<int>(
       valueListenable: XprsProfiles.instance.revision,
       builder: (context, _, _) => ValueListenableBuilder<int>(
-        valueListenable: ProfileService.instance.revision,
+        valueListenable: ProfileService.instance.revision.listenable,
         builder: (context, _, _) {
           final dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0;
           final img =

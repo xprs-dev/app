@@ -32,7 +32,6 @@ import '../../profile/profile_service.dart';
 import '../../services/android_permissions_service.dart';
 import '../../services/log_service.dart';
 import '../../services/i18n/core_i18n.dart';
-import '../../services/notification_service.dart';
 import '../../services/mesh/mesh_custody.dart';
 import '../../services/power_state.dart';
 import '../../services/mesh/mesh_transfer_scheduler.dart';
@@ -51,6 +50,7 @@ import 'ble_queue_service.dart';
 import 'ble_reassembler.dart';
 import 'radio_environment.dart';
 import 'package:xprs_core/src/platform/core_host.dart';
+import 'package:xprs_core/src/services/notifications/notification.dart';
 
 /// APRS-over-BLE manufacturer id carried in advertisement manufacturer data.
 /// Must match peer firmware (e.g. ESP32). 0xFFFF is the reserved test id.
@@ -672,7 +672,7 @@ class BleService {
       LogService.instance.add('BLE5: $off is off — telling the person once');
       final title = tr('radio.$off.off');
       final body = tr('radio.$off.off.body');
-      NotificationService.instance.show(XprsNotification(
+      CoreHost.notify(XprsNotification(
         level: NotificationLevel.warning,
         title: title,
         body: body,

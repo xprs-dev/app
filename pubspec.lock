@@ -235,7 +235,7 @@ packages:
   encrypted_archive:
     dependency: "direct main"
     description:
-      path: "packages/encrypted_archive"
+      path: "../core/packages/encrypted_archive"
       relative: true
     source: path
     version: "0.1.0"

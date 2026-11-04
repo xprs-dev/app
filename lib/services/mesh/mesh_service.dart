@@ -80,7 +80,7 @@ import 'mesh_bulk_spool.dart';
 import 'mesh_store.dart';
 import 'mesh_table.dart';
 import '../../platform/fs.dart';
-import '../../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/os.dart' as platform;
 import 'package:xprs_core/src/platform/core_host.dart';
 
 class MeshService {

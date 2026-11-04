@@ -9,7 +9,6 @@ import 'package:reticulum/src/services/social/relay_role.dart';
 import '../log_service.dart';
 import '../i18n/core_i18n.dart';
 import '../i18n/format.dart';
-import '../notification_service.dart';
 import '../preferences_service.dart';
 import '../reticulum/rns_service.dart';
 import 'package:reticulum/src/util/media_archive.dart';
@@ -18,6 +17,7 @@ import 'archiver_service.dart';
 import 'node_profile_service.dart';
 import 'pointer_sync_service.dart';
 import 'package:xprs_core/src/platform/core_host.dart';
+import 'package:xprs_core/src/services/notifications/notification.dart';
 
 /// The host side of the **Indexer** and **Archiver** wapps (docs/NOSTR.md).
 ///
@@ -556,7 +556,7 @@ class NodeRoleApi {
     // Say it happened. A destructive action that reports nothing leaves the
     // person unsure whether it ran — and "nothing to delete" is a real,
     // legitimate outcome that must not look like a broken button.
-    NotificationService.instance.show(XprsNotification(
+    CoreHost.notify(XprsNotification(
       level: NotificationLevel.info,
       title: r.items == 0
           ? tr('notifications.cleanup.nothing')

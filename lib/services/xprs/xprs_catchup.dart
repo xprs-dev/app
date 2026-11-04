@@ -44,7 +44,7 @@ import 'xprs_packet.dart';
 import 'xprs_presence.dart';
 import 'xprs_publisher.dart';
 import 'xprs_vocab.dart';
-import '../../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/os.dart' as platform;
 import 'package:meta/meta.dart';
 import 'package:xprs_core/src/platform/core_host.dart';
 

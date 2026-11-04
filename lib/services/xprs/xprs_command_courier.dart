@@ -26,7 +26,7 @@
 import 'dart:async';
 
 
-import '../../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/os.dart' as platform;
 import '../log_service.dart';
 import '../receive/wapp_delivery.dart';
 import 'xprs_id.dart';

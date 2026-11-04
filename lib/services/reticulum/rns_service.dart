@@ -101,7 +101,6 @@ import 'package:reticulum/reticulum.dart'
     show MediaArchive, MediaRef, MediaKind;
 import 'package:reticulum/reticulum.dart' show BlossomServer;
 
-import '../notification_service.dart';
 import '../../profile/profile_db.dart';
 import '../../profile/profile_service.dart';
 import '../../profile/storage_paths.dart';
@@ -130,10 +129,11 @@ import 'rns_tcp_server_interface.dart';
 import 'rns_transport.dart';
 import 'wapp_mailbox.dart';
 import '../../platform/fs.dart';
-import '../../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/os.dart' as platform;
 import 'package:meta/meta.dart';
 import 'package:xprs_core/src/platform/off_thread.dart';
 import 'package:xprs_core/src/platform/core_host.dart';
+import 'package:xprs_core/src/services/notifications/notification.dart';
 
 // Our Reticulum destination namespace is "xprs" (the platform); XPRS is one
 // branch of it. All overlay services share it: xprs/chat, xprs/files,
@@ -9716,7 +9716,7 @@ class RnsService {
       _ => 'replied to you',
     };
     LogService.instance.add('NOSTR: notify $who $what (${e['id']})');
-    NotificationService.instance.show(
+    CoreHost.notify(
       XprsNotification(
         level: NotificationLevel.info,
         title: '$who $what',

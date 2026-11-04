@@ -26,7 +26,7 @@ import '../preferences_service.dart';
 import '../social/email_resolve_service.dart';
 import '../../util/media_archive.dart';
 import 'rns_service.dart';
-import '../../platform/platform.dart' as platform;
+import 'package:xprs_core/src/platform/os.dart' as platform;
 import 'package:xprs_core/src/platform/core_host.dart';
 
 /// Start the Reticulum node if it isn't already running, connecting to the

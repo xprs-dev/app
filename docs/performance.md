@@ -922,7 +922,9 @@ commit instead of being remembered:
 | rule | what it refuses |
 |---|---|
 | `no-page-fetch-to-count` | `.query(…).length` / `.isEmpty` — counting by materialising rows |
-| `no-sub-minute-poll` | `Timer.periodic` under a minute — §6.5's battery setting |
+| `no-sub-minute-poll` | `Timer.periodic` under a minute — §6.5's battery setting, matched across three lines since 2026-11-04 (the formatter splits the call, and the one-line version missed it) |
+| `no-sub-minute-interval-constant` | an interval under a minute held in a named constant (`_rvReannounceEvery`, `_tick`) and handed to a timer elsewhere — core layers only |
+| `no-content-in-log` | a person's words (`contentString`, `.content`) in the log ring (§8.10, and `/api/log` is served) |
 | `no-store-work-in-ui-layer` | raw SQL in `lib/ui`, `lib/launcher`, `lib/wapp/geoui` (modules named `*_db`/`*_store`/`*_archive` are exempt — they own the store) |
 | `no-whole-file-read` | `readAsBytes()` / `readAsBytesSync()` — the whole file on the heap (§8.9) |
 | `no-scan-for-one-row` | looping a `recent()` page to find one key — the store has an index (`byMid`) |
@@ -1418,6 +1420,44 @@ How it was found, which is the reusable part: `dumpsys meminfo` to see that
 the process was large, the 8.7 log census to see what the station was busy
 with, then every count on `/api/status` and `/api/rns/status`, looking for the
 one that grows with uptime instead of with the network's size.
+
+### 8.19 Read, don't only grep: what the 2026-11-04 audit found
+
+The guard reported clean, and a read of the code against this file and
+architecture.md still found the shapes above, under spellings its regexes did
+not know (`core/docs/audit-2026-11-04.md`). Fixed:
+
+- **An answered link is not forever.** `LxmfRouter` kept every inbound link,
+  with its session state, in `_in`/`_propIn` for the life of the process, and
+  anyone can open one. A closed link now goes at once; each accept sweeps links
+  idle for 10 minutes and evicts the least recently used past 256 (§8.6, §8.18;
+  `lxmf_inbound_bound_test`).
+- **A piece is not the file.** Serving media read the whole SQLite BLOB, up to
+  16 MB, for every `GET_RANGE` and `GET_HAVE` a peer sent, because
+  `MediaFileSource` was not a `RangedFileSource` and `RnsService`'s
+  `_LiveFileSource` wrapper hid the ranged one behind it. `MediaArchive` now
+  answers `sizeOf` from its size column and `readRange` with SQLite `substr`
+  (§8.9; `media_ranged_read_test`).
+- **`_lxmfInbox` kept every message's words** with nothing reading them (the
+  verb that drained it is gone): bounded to 64 like `_inbox` (§8.18).
+- **A message's words went to the log** on receipt: now who and how long.
+
+Left open, deliberately, with the reason recorded here so the next reader does
+not "fix" them blind:
+
+- `XprsArchive.flush` verifies signatures in its loop on the main isolate. Most
+  calls are memo hits (delivery verified the packet first, §8.15), so the cost
+  that remains is the one §8.15 already names: one curve operation per NEW
+  packet on main. The fix is to verify once, off main, at the receive door,
+  which is a change to `PacketGateway`, not to the flush.
+- Whole files read into a BLOB (`rns_service` serving a disk file through
+  `putBytes`, `MeshBulkSpool`'s fallback): the fix is §8.9's "a large file gets
+  a path and a rename", a storage change rather than a one-line one. Both stay
+  in the guard's baseline.
+
+> **Rule: a clean guard is a floor, not a verdict.** When a review reads code
+> against these documents and finds a shape the guard missed, widen the rule
+> the same day (§8.8), with the spelling that got past it in the rule's `why`.
 
 ## Profiling native memory on a stock device (recipe)
 

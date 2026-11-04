@@ -20,6 +20,7 @@ import '../util/media_ref.dart';
 import 'iwi_profile.dart';
 import 'profile_service.dart';
 import 'station_avatar.dart';
+import '../util/observable_listenable.dart';
 
 /// Map a [kProfileColors] name to a concrete colour.
 Color profileColor(IwiProfile p) {
@@ -68,7 +69,7 @@ class ProfileAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
-      valueListenable: ProfileService.instance.revision,
+      valueListenable: ProfileService.instance.revision.listenable,
       builder: (context, _, __) => _build(context),
     );
   }

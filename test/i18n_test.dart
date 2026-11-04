@@ -4,6 +4,7 @@
  * checks what the tool cannot — tr()'s behaviour — and that every language
  * folder a build ships parses and mirrors English file for file.
  */
+import 'package:xprs/services/i18n/flutter_locales.dart';
 import 'dart:convert';
 import 'dart:io';
 
