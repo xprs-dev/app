@@ -38,6 +38,10 @@ class AndroidForegroundService implements KeepAlive {
   final Set<void Function()> _tickListeners = {};
 
   bool get _supported => platform.isAndroid;
+
+  /// The native heartbeat exists only on Android.
+  @override
+  bool get ticks => _supported;
   bool get isRunning => _running;
 
   /// Set by the wapp page that currently owns media playback; the native
