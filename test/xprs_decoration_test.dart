@@ -59,19 +59,17 @@ void main() {
       expect(xprsVerify(p, k.pub), XprsSigState.verified);
     });
 
-    test("the spec's 198-byte example is two packets, each for any bearer",
-        () {
-      // 6.3.2's worked packet is 198 B; the smallest controller carries 184
-      // (ble5.md 3). "Any subset of these fields" lets it be two.
+    test("the spec's 198-byte example is one packet, for any bearer", () {
+      // 6.3.2's worked packet is 198 B, and a packet is 250 B on every
+      // transport, BLE5 included (XPRS.md 4): it travels whole.
       final k = _key();
       final w = _deco(k);
-      expect(w, hasLength(2));
-      expect(XprsPacket.parse(w[0])!['file'], _pic.substring(5));
-      expect(XprsPacket.parse(w[1])!['m'], 'sailing the Algarve coast');
-      for (final x in w) {
-        expect(_bytes(x), lessThanOrEqualTo(XprsPublisher.decorationFrameMax));
-        expect(xprsVerify(XprsPacket.parse(x)!, k.pub), XprsSigState.verified);
-      }
+      expect(w, hasLength(1));
+      final p = XprsPacket.parse(w.single)!;
+      expect(p['file'], _pic.substring(5));
+      expect(p['m'], 'sailing the Algarve coast');
+      expect(_bytes(w.single), lessThanOrEqualTo(XprsPacket.maxBytes));
+      expect(xprsVerify(p, k.pub), XprsSigState.verified);
     });
 
     test('too much for one frame: picture and name first, the line alone', () {
@@ -83,7 +81,7 @@ void main() {
       expect(w, hasLength(2));
       final a = XprsPacket.parse(w[0])!, b = XprsPacket.parse(w[1])!;
       expect(_bytes(w[0]), lessThanOrEqualTo(XprsPublisher.decorationFrameMax),
-          reason: 'the smallest BLE controller carries 184 B (ble5.md 3)');
+          reason: 'a packet is 250 B on every transport (XPRS.md 4)');
       expect(a['file'], _pic.substring(5), reason: 'the picture never drops');
       expect(a['nick']!.length, lessThanOrEqualTo(16));
       expect(b.has('file'), isFalse);

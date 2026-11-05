@@ -235,11 +235,10 @@ void _identityAndSlots() {
     expect(p.has('ts'), isTrue);
     expect(xprsVerify(p, pub), XprsSigState.verified);
 
-    // 171 bytes in the spec; the smallest controller measured in
-    // docs/ble5.md section 3 carries 184, and an oversized advert is refused
-    // rather than truncated. No nick:, no room for one.
+    // 171 bytes in the spec, within the 250-byte packet of every transport
+    // (XPRS.md 4). The name travels in the decoration, not here.
     expect(p.fits, isTrue);
-    expect(wire.length, lessThanOrEqualTo(184));
+    expect(wire.length, lessThanOrEqualTo(XprsPacket.maxBytes));
   });
 
   // Re-registering an advert key REPLACES that rotation entry. Every publish
