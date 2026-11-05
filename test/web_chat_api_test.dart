@@ -110,7 +110,7 @@ void main() {
     test('services says which tabs and where the app is', () async {
       final r = await make().handle('GET', '/api/services', {}, '');
       final page = r.json['page'] as Map;
-      expect(page['tabs'], ['chat', 'traffic']);
+      expect(page['tabs'], ['chat', 'traffic', 'alerts']);
       expect(page['config'], false);
       expect(page['session'], true);
       expect(page['app'], '/app');
