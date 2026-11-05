@@ -9,6 +9,8 @@ import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:xprs_core/src/platform/core_host.dart';
+import 'package:xprs_core/src/platform/heartbeat_keep_alive.dart';
+import 'package:xprs_core/src/platform/os.dart' as platform;
 import 'package:xprs_core/src/services/notifications/notification.dart';
 
 import '../services/android_permissions_service.dart';
@@ -42,7 +44,16 @@ XprsNotification routeCoreNotification(XprsNotification n) {
 
 /// Called once at boot, before any core service starts.
 void wireCoreHost() {
-  CoreHost.keepAlive = AndroidForegroundService.instance;
+  // Android's foreground service ticks from native code. A desktop has no
+  // such service, so it gets the same 2 s tick from a Dart timer (nothing
+  // throttles one there); without it the core's heartbeat-driven work, the
+  // catch-up poll above all (XPRS.md 12.10.1), ran once per launch. A browser
+  // tab is throttled in the background and keeps no heartbeat.
+  CoreHost.keepAlive = platform.isAndroid || platform.isWeb
+      ? AndroidForegroundService.instance
+      : HeartbeatKeepAlive(
+          every: const Duration(seconds: 2),
+          holds: AndroidForegroundService.instance);
   CoreHost.anyoneLooking = () => LauncherVisibility.instance.visible.value;
   CoreHost.mediaArchive = sharedMediaArchive;
   CoreHost.notify = (n) => NotificationService.instance.show(routeCoreNotification(n));

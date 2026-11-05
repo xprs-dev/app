@@ -107,7 +107,7 @@ none of it (a test, the server):
 
 | seam | the app's answer | default |
 |---|---|---|
-| `keepAlive` | Android foreground service: `hold`/`release`, native tick (`ticks` true on Android only; the server ticks every 2 s) | none, never ticks. Heartbeat-only work (the catch-up poll) arms on `ticks`, never on the OS name |
+| `keepAlive` | Android foreground service: `hold`/`release`, native tick (`ticks`); desktop and server: `HeartbeatKeepAlive`, a 2 s Dart tick | none, never ticks. Heartbeat-only work (the catch-up poll) arms on `ticks`, never on the OS name |
 | `anyoneLooking` | `LauncherVisibility` | no |
 | `hasView` | `PlatformDispatcher.views` | no |
 | `notify` | `NotificationService.show` | dropped |
