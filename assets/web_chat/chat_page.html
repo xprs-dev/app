@@ -51,6 +51,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 .header .logo{font-family:'Wartext',sans-serif;font-size:38px;
         color:var(--accent);letter-spacing:5px;margin-top:-12px;
         transform:scaleY(.72);transform-origin:center}
+.header .stcall{color:var(--muted);font-size:13px;letter-spacing:1px;
+        margin-left:-6px;white-space:nowrap}
 .menu{margin-left:auto;position:relative}
 .my-callsign{color:var(--accent);font-size:12px;font-weight:bold;
         margin-right:8px}
@@ -65,6 +67,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
         color:var(--text);padding:10px 12px;text-align:left;cursor:pointer;
         font-size:13px}
 .menu-panel button:hover{background:rgba(255,255,255,.06)}
+.menu-panel .menu-sec{font-size:10px;color:var(--muted);text-transform:uppercase;
+        letter-spacing:1px;padding:8px 12px 2px;border-top:1px solid var(--border)}
+.menu-panel .menu-sec:first-child{border-top:0}
+#v-admin label.opt{display:block;padding:4px 0;cursor:pointer}
+#v-admin button.act{background:transparent;border:1px solid var(--accent);
+        color:var(--accent);padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit}
+.roomnote{color:var(--muted);font-size:12px;padding:10px 12px}
 #content{flex:1;display:flex;min-height:0}
 #side{width:150px;border-right:1px solid var(--border);overflow-y:auto;
       padding:8px 0;flex-shrink:0}
@@ -157,6 +166,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
         display:flex;justify-content:space-between}
 .status-bar a{color:var(--muted)}
 #getapp.hide{display:none}
+/* Asked once when a NOSTR extension is present (identity, below). */
+#extask{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;
+        display:flex;align-items:center;justify-content:center;padding:16px}
+#extask .card{background:#151515;border:1px solid var(--border);border-radius:8px;
+        max-width:360px;padding:16px;line-height:1.4}
+#extask .title{color:var(--accent);font-weight:bold;margin-bottom:8px}
+#extask .btns{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+#extask button{padding:10px;border-radius:6px;border:1px solid var(--border);
+        background:transparent;color:var(--text);font:inherit;cursor:pointer}
+#extask button.main{background:var(--accent);border-color:var(--accent);
+        color:#101010;font-weight:bold}
 .snackbar{visibility:hidden;min-width:250px;background:#333;color:#fff;
         text-align:center;border-radius:4px;padding:12px;position:fixed;
         z-index:10;left:50%;bottom:calc(60px + var(--sab));transform:translateX(-50%);
@@ -215,21 +235,37 @@ img.shot{max-width:100%;image-rendering:pixelated;border:1px solid var(--border)
 @keyframes fadeout{from{bottom:60px;opacity:1}to{bottom:0;opacity:0}}
 </style></head><body>
 <div class="header">
-  <span class="logo">XPRS</span>
+  <span class="logo">XPRS</span><span class="stcall" id="stcall" title="the station you are using"></span>
   <div class="menu">
     <span class="my-callsign" id="call"></span>
     <button class="menu-btn" onclick="toggleMenu()">&#9776;</button>
     <div class="menu-panel" id="menu">
-      <button data-view="stats" onclick="openView('stats')">Stats</button>
-      <button data-view="station" onclick="openView('station')">Station</button>
-      <button data-view="settings" onclick="openView('settings')">Settings</button>
-      <button onclick="clearChat()">Clear chat view</button>
+      <div class="menu-sec">Your identity</div>
       <button id="extbtn" style="display:none" onclick="toggleExtension()">Use my NOSTR extension</button>
       <button onclick="showNpub()">Show my npub</button>
       <button onclick="exportNsec()">Export nsec</button>
       <button onclick="importNsec()">Import another nsec</button>
       <button onclick="newIdentity()">New identity</button>
+      <div class="menu-sec">This station</div>
+      <button data-view="station" onclick="openView('station')">Station</button>
+      <button data-view="stats" onclick="openView('stats')">Stats</button>
+      <button data-view="settings" onclick="openView('settings')">Settings</button>
+      <button id="adminbtn" style="display:none" onclick="openView('admin')">Administration</button>
+      <div class="menu-sec">This page</div>
+      <button onclick="clearChat()">Clear chat view</button>
       <button onclick="toggleSound()" id="sndbtn">Sound: on</button>
+    </div>
+  </div>
+</div>
+<div id="extask" style="display:none" role="dialog" aria-modal="true" aria-labelledby="extasktitle">
+  <div class="card">
+    <div class="title" id="extasktitle">Use your NOSTR identity?</div>
+    <div>Your browser has a NOSTR extension. Chat with the identity it holds:
+      the same callsign on every XPRS station, and its key never leaves the
+      extension.</div>
+    <div class="btns">
+      <button class="main" id="extyes" onclick="answerExt(true)">Use my NOSTR identity</button>
+      <button id="extno" onclick="answerExt(false)">Make a new key in this page</button>
     </div>
   </div>
 </div>
@@ -261,6 +297,7 @@ img.shot{max-width:100%;image-rendering:pixelated;border:1px solid var(--border)
   <div class="view hide" id="v-stats">loading&hellip;</div>
   <div class="view hide" id="v-station">loading&hellip;</div>
   <div class="view hide" id="v-settings"></div>
+  <div class="view hide" id="v-admin"></div>
 </div>
 <div class="snackbar" id="snack"></div>
 <div id="msgmenu"></div>
@@ -687,10 +724,35 @@ function snack(t){
 function toggleMenu(){
   var m=document.getElementById('menu');
   m.className=m.className.indexOf('open')>=0?'menu-panel':'menu-panel open';}
+function closeMenu(){var m=document.getElementById('menu');if(m)m.className='menu-panel';}
+/* The menu closes on a click or tap anywhere outside it, and on Escape. */
+document.addEventListener('click',function(e){
+  var t=e.target;
+  while(t&&t!==document){if(t.className==='menu')return;t=t.parentNode;}
+  closeMenu();
+},true);
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeMenu();});
+/* A section heading shows only when something under it does (a host that
+   serves no Stats, Station or Settings still has Administration). */
+function tidyMenu(){
+  var kids=el('menu').children,i,sec=null,any=false;
+  for(i=0;i<=kids.length;i++){
+    var k=kids[i];
+    if(!k||k.className==='menu-sec'){
+      if(sec)sec.style.display=any?'':'none';
+      sec=k;any=false;continue;
+    }
+    if(k.style.display!=='none')any=true;
+  }
+}
 
-// ---- identity: made silently on first visit; the menu changes it ----
+// ---- identity ----
+// A NOSTR extension, when the browser has one, is offered first (and asked
+// once, see askExtension); otherwise a key is made silently on the first
+// visit. The menu changes either.
 var priv=null,npub='',mycall='';
 function useKey(bytes){
+  hideExtAsk();
   priv=bytes;extMode=false;extPub='';
   npub=npubEncode(pubkeyX(priv));
   mycall=callsignFromNpub(npub);
@@ -754,11 +816,12 @@ function showExtButton(){
   if(!b)return;
   b.style.display=(nostrAvailable()||extMode)?'':'none';
   b.textContent=extMode?'Use the key in this page':'Use my NOSTR extension';
+  tidyMenu();
 }
 function toggleExtension(){
   toggleMenu();
   if(extMode){
-    extMode=false;extPub='';stSet('xprs_ext','');
+    extMode=false;extPub='';stSet('xprs_ext','0');
     var saved=stGet('xprs_nsec'),b=saved?nsecDecode(saved):null;
     useKey(b||randKey());showExtButton();rerenderAll();
     snack('Now chatting as '+mycall);
@@ -766,11 +829,14 @@ function toggleExtension(){
   }
   useExtension(false);
 }
-function useExtension(quiet){
-  if(!nostrAvailable()){if(!quiet)snack('No NOSTR extension found');return;}
+/* [failed] runs when the extension is missing, refuses or gives no key. */
+function useExtension(quiet,failed){
+  var no=function(why){if(!quiet)snack(why);if(failed)failed();};
+  if(!nostrAvailable()){no('No NOSTR extension found');return;}
   var fin=function(h){
     var pub=typeof h==='string'&&h.length===64?unhexBytes(h):null;
-    if(!pub){if(!quiet)snack('The extension gave no usable key');return;}
+    if(!pub){no('The extension gave no usable key');return;}
+    hideExtAsk();
     extMode=true;extPub=h;priv=null;
     npub=npubEncode(pub);mycall=callsignFromNpub(npub);
     stSet('xprs_ext','1');
@@ -782,9 +848,29 @@ function useExtension(quiet){
   };
   try{
     var r=window.nostr.getPublicKey();
-    if(r&&r.then)r.then(fin,function(){if(!quiet)snack('The extension refused');});
+    if(r&&r.then)r.then(fin,function(){no('The extension refused');});
     else fin(r);
-  }catch(e){if(!quiet)snack('The extension refused');}
+  }catch(e){no('The extension refused');}
+}
+/* The visitor has not chosen yet (xprs_ext unset) and an extension is here:
+   ask, with the extension as the default answer. A first-time visitor has no
+   key until they answer; one who already has a key here may keep it. */
+function askExtension(){
+  el('extno').textContent=priv?'Keep '+mycall+', the key in this page':'Make a new key in this page';
+  el('extask').style.display='';
+  try{el('extyes').focus();}catch(e){}
+}
+function hideExtAsk(){var a=el('extask');if(a)a.style.display='none';}
+function answerExt(yes){
+  hideExtAsk();
+  var keep=function(){
+    if(!priv)useKey(randKey());
+    showExtButton();rerenderAll();
+  };
+  if(!yes){stSet('xprs_ext','0');keep();snack('Chatting as '+mycall);return;}
+  /* The extension may ask its own question now; if it says no, the page
+     keeps (or makes) its own key, and the menu can try again later. */
+  useExtension(false,keep);
 }
 /* The room again from what was heard, under the key now in use. */
 function rerenderAll(){plainCache={};switchRoom(curRoom);load();}
@@ -841,7 +927,10 @@ function ensureSession(tries){
       x.timeout=6000;
       x.onload=function(){
         var j=null;try{j=JSON.parse(x.responseText);}catch(e){}
-        if(x.status===200&&j&&j.session){sess=j.session;chatLoaded=false;load();}
+        if(x.status===200&&j&&j.session){
+          sess=j.session;chatLoaded=false;load();
+          if(tab==='admin')loadAdmin();
+        }
         else if(x.status===409&&(tries||0)<4)
           /* The station has not heard our identity yet. */
           setTimeout(function(){ensureSession((tries||0)+1);},1500);
@@ -1121,11 +1210,15 @@ function renderSide(){
     items[i].onclick=(function(r){return function(){switchRoom(r);};})(
       items[i].getAttribute('data-r'));
 }
+/* Rooms the station keeps from visitors outside its network. */
+var roomPrivate={};
 function switchRoom(r){
   curRoom=r;stSet('xprs_room',r);
   cancelReply();
   seen={};
-  document.getElementById('msgs').innerHTML='';
+  document.getElementById('msgs').innerHTML=roomPrivate[r]?
+    '<div class="roomnote">This station keeps its Local room private to its '+
+    'own network: join its WiFi or LAN to read it.</div>':'';
   renderSide();
   for(var i=0;i<allRows.length;i++)render(allRows[i]);
   document.getElementById('txt').placeholder=
@@ -1288,6 +1381,7 @@ function backfillRooms(){
     var a=asks[i];
     getJSON('/api/xprs/history?kind='+a[1]+'&room='+a[0]+'&limit=100'+
             (sess?'&session='+sess:''),function(d){
+      if(d&&d.private){roomPrivate[a[0]]=true;if(curRoom===a[0])switchRoom(curRoom);}
       var rows=(d&&d.rows||[]).slice().reverse();
       for(var j=0;j<rows.length;j++)render(rows[j]);
       next(i+1);
@@ -1332,7 +1426,7 @@ function load(){
 // reply; four phones polling five endpoints each would be the whole budget
 // spent on nobody looking.
 var tab='chat', tabTimer=null;
-var TAB_MS={chat:3000,traffic:5000,devices:5000,stats:60000,station:10000,settings:5000};
+var TAB_MS={chat:3000,traffic:5000,devices:5000,stats:60000,station:10000,settings:5000,admin:60000};
 
 function el(id){return document.getElementById(id);}
 function esc(t){return String(t==null?'':t)
@@ -1384,7 +1478,7 @@ function showTab(t){
   for(var i=0;i<bs.length;i++)
     bs[i].className=bs[i].getAttribute('data-tab')===t?'on':'';
   el('chatwrap').className=t==='chat'?'':'hide';
-  var views=['traffic','devices','stats','station','settings'];
+  var views=['traffic','devices','stats','station','settings','admin'];
   for(var j=0;j<views.length;j++)
     el('v-'+views[j]).className='view'+(views[j]===t?'':' hide');
   if(tabTimer)clearInterval(tabTimer);
@@ -1398,6 +1492,7 @@ function tick(){
   else if(tab==='stats')loadStats();
   else if(tab==='station')loadStation();
   else if(tab==='settings')loadSettings();
+  else if(tab==='admin')loadAdmin();
 }
 // Stats, Station and Settings live behind the menu, not in the tab row.
 function openView(t){toggleMenu();showTab(t);}
@@ -1707,9 +1802,16 @@ function wifiJoin(){
 // /api/services says which panels it can fill and whether it hands out the
 // app (`app`: the path of its download page); one that does not (the boards,
 // today) shows everything, as it always has.
+/* The station's callsign beside the title: from /api/services, or from
+   /api/status on a host that does not name itself there (the boards). */
+function showStation(call){
+  if(call)el('stcall').textContent='('+call+')';
+}
 function applyServices(sv){
+  if(sv&&sv.station)showStation(sv.station);
+  else getJSON('/api/status',function(d){if(d)showStation(d.callsign);});
   var p=sv&&sv.page;
-  if(!p)return;
+  if(!p)return tidyMenu();
   if(p.session){canSession=true;ensureSession(0);}
   var tabs=p.tabs||['chat'];
   var bs=document.querySelectorAll('[data-tab],[data-view]'),i,n;
@@ -1718,23 +1820,114 @@ function applyServices(sv){
     if(tabs.indexOf(n)<0)bs[i].style.display='none';
   }
   if(p.app){el('getapp').href=p.app;el('getapp').className='';}
+  if(p.admin)el('adminbtn').style.display='';
+  tidyMenu();
 }
 
-// ---- boot: an identity exists before the first keystroke ----
+// ---- administration --------------------------------------------------------
+//
+// The station's administrator is a visitor who proved their key (a session).
+// A station with none yet lets the first such visitor on its own network
+// claim it: the moment after a board is flashed or a server installed. The
+// settings say what visitors from outside its network see and who may post.
+function loadAdmin(){
+  if(!sess){
+    el('v-admin').innerHTML='<h3>Administration</h3>'+
+      '<p class="dim">Proving your identity to the station&hellip;</p>';
+    ensureSession(0);
+    return;
+  }
+  getJSON('/api/admin?session='+encodeURIComponent(sess),function(d){
+    if(!d||!d.ok)return fail('v-admin','Administration');
+    drawAdmin(d);
+  });
+}
+function drawAdmin(d){
+  var h='<h3>Administration</h3><table class="kv">'+
+    row('Administrator',d.admin?esc(d.admin)+(d.you?' (you)':''):
+        '<span class="dim">none yet</span>')+
+    row('You are',esc(mycall))+'</table>';
+  if(!d.admin){
+    h+=d.claimable?
+      '<p>This station has no administrator yet. You can become it, with the '+
+      'identity you are using now ('+esc(mycall)+').</p>'+
+      '<p><button class="act" id="ad-claim" onclick="adminDo(\'claim\')">'+
+      'Become the administrator</button></p>':
+      '<p class="dim">This station has no administrator yet. It can be claimed '+
+      'only from its own network (its WiFi or LAN), not over the internet.</p>';
+  }else if(!d.you){
+    h+='<p class="dim">Only '+esc(d.admin)+' can change this station&rsquo;s settings.</p>';
+  }else{
+    var s=d.settings||{},who=s.who_may_post||'everyone';
+    var radio=function(v,label){
+      return '<label class="opt"><input type="radio" name="ad-who" value="'+v+'"'+
+        (who===v?' checked':'')+' onchange="adminSet({who_may_post:\''+v+'\'})"> '+
+        label+'</label>';};
+    h+='<h3>Privacy</h3><label class="opt"><input type="checkbox" id="ad-lp"'+
+      (s.local_private?' checked':'')+
+      ' onchange="adminSet({local_private:this.checked})"> Keep the Local room private</label>'+
+      '<p class="dim">Visitors from the internet (or from another network) do not see '+
+      'Local conversations; people on this station&rsquo;s own network still do.</p>'+
+      '<h3>Who may post from this page</h3>'+
+      radio('everyone','Everyone who opens it')+
+      radio('local','Only people on this station&rsquo;s network')+
+      radio('nobody','Nobody: the page is read-only')+
+      '<h3>Administrator</h3><p><button class="act" onclick="adminRelease()">'+
+      'Give up administration</button></p><p class="dim">The station then has no '+
+      'administrator, and the next person on its network to open this page can claim it.</p>';
+  }
+  el('v-admin').innerHTML=h;
+}
+function adminDo(action,extra){
+  var b={action:action,session:sess},k;
+  for(k in (extra||{}))b[k]=extra[k];
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/admin',true);
+  x.timeout=6000;
+  x.onload=function(){
+    var j=null;try{j=JSON.parse(x.responseText);}catch(e){}
+    if(x.status===200&&j&&j.ok){
+      drawAdmin(j);
+      snack(action==='claim'?'You are this station\u2019s administrator':
+            action==='release'?'Administration given up':'Saved');
+    }else{snack(j&&j.error||('HTTP '+x.status));loadAdmin();}
+  };
+  x.onerror=x.ontimeout=function(){snack('The station did not answer');};
+  x.send(JSON.stringify(b));
+}
+function adminSet(settings){adminDo('set',{settings:settings});}
+function adminRelease(){
+  if(!confirm('Give up administration of this station?'))return;
+  adminDo('release');
+}
+
+// ---- boot: an identity before the first keystroke, the extension first ----
 (function(){
   var saved=stGet('xprs_nsec');
   var b=saved?nsecDecode(saved):null;
-  useKey(b||randKey());
+  /* A returning visitor's key is used at once. A new one gets a key only
+     once it is clear there is no extension to offer (below). */
+  if(b)useKey(b);else el('call').textContent='\u2026';
   renderSide();
   switchRoom(curRoom);
   load();
   tabTimer=setInterval(tick,TAB_MS.chat);
   getJSON('/api/services',applyServices);
-  /* An extension injects `window.nostr` a moment after the page starts. */
+  /* An extension injects `window.nostr` a moment after the page starts:
+     look for it for 3 s. Chosen before: use it. Declined before: the page's
+     key. Never asked: ask. No extension: the page's key, made now if new. */
   var tries=0,tm=setInterval(function(){
     showExtButton();
-    if(nostrAvailable()&&stGet('xprs_ext')==='1'&&!extMode){clearInterval(tm);useExtension(true);}
-    else if(++tries>12||(nostrAvailable()&&stGet('xprs_ext')!=='1'))clearInterval(tm);
+    var choice=stGet('xprs_ext');
+    if(nostrAvailable()){
+      clearInterval(tm);
+      if(choice==='1'){if(!extMode)useExtension(true,function(){if(!priv)useKey(randKey());});}
+      else if(choice==='0'||choice===''){if(!priv)useKey(randKey());} /* '' = declined, older pages */
+      else askExtension();
+    }else if(++tries>12){
+      clearInterval(tm);
+      if(!priv&&!extMode)useKey(randKey());
+    }
   },250);
 })();
 // See the html/body rule in the stylesheet: the document is parked one

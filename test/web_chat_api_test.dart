@@ -61,9 +61,19 @@ void main() {
   group('what a visitor reads', () {
     test('room= asks one chat room; anything else asks none', () async {
       final a = make();
-      await a.handle('GET', '/api/xprs/history', {'kind': 'message', 'room': 'local'}, '');
-      await a.handle('GET', '/api/xprs/history', {'kind': 'message', 'room': 'x'}, '');
+      // A visitor on the hotspot (a private address, the station's network).
+      const lan = '192.168.43.2';
+      await a.handle('GET', '/api/xprs/history', {'kind': 'message', 'room': 'local'}, '', peer: lan);
+      await a.handle('GET', '/api/xprs/history', {'kind': 'message', 'room': 'x'}, '', peer: lan);
       expect(asked.map((q) => q['room']).toList(), ['local', null]);
+    });
+
+    test('the Local room is not asked for a visitor from the internet', () async {
+      final a = make();
+      final r = await a.handle('GET', '/api/xprs/history',
+          {'kind': 'message', 'room': 'local'}, '', peer: '203.0.113.7');
+      expect(asked, isEmpty);
+      expect(r.json['private'], true);
     });
 
     test('only conversation types, newest rows, a capped limit', () async {
