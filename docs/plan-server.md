@@ -1,6 +1,6 @@
 # Plan: `xprs-dev/server` — the XPRS server edition
 
-Status: **Phases 0 and 1 done (2026-11-04)**: `reticulum-dart` is plain Dart and the XPRS core lives in `xprs-dev/core`, reached by the app only through `CoreHost` seams (architecture.md §2a). Phase 2, the server repo itself, is next. Decisions marked **(D1)…(D6)** are open
+Status: **Phases 0 and 1 done (2026-11-04)**: `reticulum-dart` is plain Dart and the XPRS core lives in `xprs-dev/core`, reached by the app only through `CoreHost` seams (architecture.md §2a). Phase 2 MVP is running (2026-11-05): `../server` (not yet on GitHub) brings up the core headless (Reticulum transport on TCP 4242 with hub uplinks, the LAN bridge, the public archiver) and serves the webchat on HTTP with the core's `WebChatApi`; identity is the server's own X3 callsign (D3), TLS is left to a reverse proxy (D5). Decisions marked **(D1)…(D6)** are open
 and listed at the end.
 
 ## 1. What it is
