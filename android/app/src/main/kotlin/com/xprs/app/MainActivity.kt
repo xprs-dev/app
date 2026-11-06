@@ -210,8 +210,28 @@ class MainActivity : FlutterFragmentActivity() {
         shareBridge?.dispose()
         shareBridge = ShareBridge(this, flutterEngine.dartExecutor.binaryMessenger)
 
-        // Allow receiving LAN broadcast/multicast (Reticulum LAN auto-peering).
-        acquireMulticastLock()
+        // LAN broadcast/multicast reception is BgService's (applyTier): a lock
+        // held here lived as long as the Activity, which is the whole night
+        // in the background, and defeated the service's release on battery.
+        // Without the service (background work off) the lock is held while
+        // this Activity is in front, which is when the LAN matters to it.
+        if (BgService.live == null) acquireMulticastLock()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try {
+            multicastLock?.let { if (it.isHeld) it.release() }
+        } catch (_: Exception) {
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        try {
+            if (BgService.live == null) multicastLock?.let { if (!it.isHeld) it.acquire() }
+        } catch (_: Exception) {
+        }
     }
 
     /**

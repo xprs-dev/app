@@ -108,15 +108,26 @@ class BgService : Service() {
     private var screenSynced = false
 
     /**
-     * Apply a tier published by Dart's PowerState. Three dials, none of which
+     * Apply a tier published by Dart's PowerState. Four dials, none of which
      * can stop delivery: how often the heartbeat fires, whether the CPU wake
-     * lock stands or is taken per tick, and how hard the WiFi radio is held.
-     * The multicast lock is NOT one of them — Reticulum's LAN discovery is
-     * broadcast, and dropping it makes the device deaf to its neighbours.
+     * lock stands or is taken per tick, how hard the WiFi radio is held, and
+     * whether the WiFi chip's broadcast filter is off.
+     *
+     * The multicast lock used to be held for the life of the service ("the
+     * LAN discovery is broadcast, and dropping it makes the device deaf to
+     * its neighbours"). It also makes the SoC wake for every ARP, mDNS and
+     * SSDP frame on the LAN, several a second on a home network, all night,
+     * which was the one wake source left after the standing wake lock went
+     * (docs/performance.md 8.23). In the saving tiers it is released: the
+     * device still SENDS its LAN beacon (broadcast transmit needs no lock)
+     * and still receives unicast, so a neighbour that heard it reaches it;
+     * it only stops overhearing the others' broadcasts until the screen or
+     * the charger comes back.
      */
     fun applyTier(t: String) {
         tier = t
         val saving = t == "battery" || t == "low"
+        holdMulticast(!saving)
         tickMs = when (t) {
             "battery" -> 10_000L
             "low" -> 30_000L
@@ -169,6 +180,16 @@ class BgService : Service() {
         try { if (old != null && old.isHeld) old.release() } catch (_: Throwable) {}
     }
 
+    /** Hold or release the multicast lock; idempotent, never throws. */
+    private fun holdMulticast(hold: Boolean) {
+        val ml = multicastLock ?: return
+        try {
+            if (hold && !ml.isHeld) ml.acquire()
+            if (!hold && ml.isHeld) ml.release()
+        } catch (_: Throwable) {
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -192,15 +213,15 @@ class BgService : Service() {
         ensureWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF)
         // Reticulum finds peers on the LAN with UDP broadcast, and Android's
         // WiFi chip drops broadcast/multicast frames before userspace unless a
-        // multicast lock is held. MainActivity holds one — but only while the
-        // Activity exists, so with the screen off (or after a boot with no UI)
-        // the device went deaf to its own neighbours: it kept announcing and
-        // stopped hearing anyone. Hold it for as long as this service lives.
+        // multicast lock is held. MainActivity held one — but only while the
+        // Activity existed, so with the screen off (or after a boot with no
+        // UI) the device went deaf to its own neighbours. This service holds
+        // it in the tiers where somebody is there to hear (applyTier).
         if (multicastLock == null) {
             try {
                 val wm = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
                 multicastLock = wm.createMulticastLock("aurora-rns-lan-bg")
-                    .apply { setReferenceCounted(false); acquire() }
+                    .apply { setReferenceCounted(false) }
             } catch (_: Throwable) {
             }
         }
@@ -321,8 +342,10 @@ class BgService : Service() {
         /** Last tier published by Dart, re-applied on every (re)start. */
         @Volatile private var tier = "active"
 
-        /** The running service, so a tier can be applied without an Intent. */
-        @Volatile private var live: BgService? = null
+        /** The running service, so a tier can be applied without an Intent;
+         *  read by MainActivity to know whether the service holds the locks. */
+        @Volatile var live: BgService? = null
+            private set
 
         private var screenReceiverOn = false
 

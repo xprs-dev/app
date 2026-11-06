@@ -4578,8 +4578,18 @@ class RnsService {
         // even before/without a connection, so local browsing reflects disk edits
         // and the changes upload as soon as a link comes up.
         _diskSyncTimer?.cancel();
+        // A station walks its folders every minute. A phone on battery is
+        // not publishing them (8.20), and the walk — an isolate per folder,
+        // every file stat'ed — was 1,440 a day per folder for a listing
+        // nobody was pulling; it walks only while the screen is on, which is
+        // when its owner may be editing them (docs/performance.md 8.23).
         _diskSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-          if (_diskMgr != null) _diskMgr!.syncAll();
+          if (_diskMgr == null) return;
+          if (PowerState.instance.profile.value == PowerProfile.normal &&
+              PowerState.instance.tier.value != PowerTier.active) {
+            return;
+          }
+          _diskMgr!.syncAll();
         });
 
         // Tier-aware retention sweep: drop hosted stranger text past its retention
