@@ -23,6 +23,7 @@ import '../files/media_file_source.dart';
 import '../hero/followed_media_cache.dart';
 import '../hero/hero_inbox.dart';
 import '../log_service.dart';
+import '../power_state.dart';
 import '../preferences_service.dart';
 import '../social/email_resolve_service.dart';
 import '../../util/media_archive.dart';
@@ -42,7 +43,11 @@ Future<void> ensureRnsAutostart() async {
   final prefs = await PreferencesService.instance();
   if (!prefs.rnsAutoStart) return; // user opted out
 
-  final servers = prefs.rnsBootstrapServers;
+  // On battery (PowerState.profile normal) the phone dials no public hub:
+  // the node comes up on its local bearers and the archiver is reached on
+  // request. The hub list is the station's (docs/performance.md 8.20).
+  final station = PowerState.instance.profile.value == PowerProfile.station;
+  final servers = station ? prefs.rnsBootstrapServers : const <String>[];
 
   final ws = wappsDataStorage(prefs);
   final arch = MediaArchive.forDirectory(ws.getAbsolutePath(''));
@@ -147,6 +152,10 @@ Future<void> ensureRnsAutostart() async {
       }
     }
     if (!rns.isUp) {
+      if (!station) {
+        LogService.instance.add(
+            'RNS autostart: normal profile (on battery) — Bluetooth and LAN only, no hubs');
+      }
       // No hub reachable — that is not the same as no network. A phone with
       // nothing but Bluetooth is the case this whole stack exists for, and it
       // used to end here: no node meant no transport, so its BLE interface was
@@ -249,6 +258,18 @@ void startRnsAutostart() {
     LogService.instance.add('RNS autostart: uplink dropped — reconnecting now');
     unawaited(_attempt());
   };
+  // The charger decides the profile; the profile decides the hubs. Station:
+  // connect them now (the attempt tops up the mesh on a node that is up).
+  // Normal: release them, keep the local bearers.
+  PowerState.instance.profile.addListener(() {
+    final p = PowerState.instance.profile.value;
+    if (p == PowerProfile.station) {
+      RnsService.instance.applyPowerProfile(p);
+      unawaited(_attempt());
+    } else {
+      RnsService.instance.applyPowerProfile(p);
+    }
+  });
   // Defer the first attempt so the UI paints first. Node startup does real
   // synchronous work on this isolate (identity, store open, indexing owned
   // disk folders); running it during boot froze the splash for a long time on

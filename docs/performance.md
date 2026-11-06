@@ -1455,6 +1455,36 @@ more slowly.
 
 **Measurement status:** as 8.11's, still owed. The protocol there stands.
 
+### 8.20 Two profiles: a station when plugged in, a messenger on battery (2026-11-06)
+
+8.11's tier changes what the phone COSTS; it never changed what the phone
+IS. On battery it stayed a full Reticulum node: four public hubs held open
+(a busy hub streams two announces a second, so the radio never idled), the
+DHT republish every half hour, folder auto-sync, profile retries, the
+edge-bridge transport role. That is a station's day, paid by a phone in a
+pocket.
+
+`PowerState.profile` (`PowerProfile.station` / `normal`) is the switch, and
+the charger throws it: plugged in (charging, full, connected-not-charging, or
+no battery at all) is a station, discharging is normal. The preference
+`power.profile` (`auto` / `station` / `normal`, `/api` key `powerProfile`)
+overrides the charger either way; a desktop is a station.
+
+| | station | normal |
+|---|---|---|
+| public hubs | all configured, topped up every 5 min (`rns_autostart`) | none held; `applyPowerProfile(normal)` releases them |
+| DHT republish, auto-sync, profile retries | armed (`_armStationTimers`) | not armed |
+| Bluetooth, LAN bearers, the node, the identity | up | up, unchanged |
+| BLE presence, scan, digipeater, XPRS beacon | on | on (8.19's empty-room cadence applies) |
+| hub role, archiver volunteering | by `CapacityGovernor` (plugged + Wi-Fi) | off |
+
+What a normal-profile phone does NOT yet have is the way back to the
+internet: the line-protocol client to its archiver (XPRS.md 13.0.2, `dial:`),
+and the on-request session that brings a hub up to serve a file and drops it
+again. Until those land, a phone on battery reaches the internet only when
+plugged in. That is deliberate — the alternative was the day described above —
+and it is the next piece of work.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile

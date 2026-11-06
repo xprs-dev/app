@@ -1087,6 +1087,14 @@ class PreferencesService {
   bool get rnsAutoStart => _prefs.getBool('rns.autoStart') ?? true;
   set rnsAutoStart(bool v) => _prefs.setBool('rns.autoStart', v);
 
+  // The power profile (PowerState.profile, docs/performance.md 8.20):
+  //   auto     — a station while plugged in, a normal app on battery
+  //   station  — always a station (the user's always-on machine, or a phone
+  //              whose owner wants it so whatever the charger says)
+  //   normal   — never a station, plugged in or not
+  String get powerProfile => _prefs.getString('power.profile') ?? 'auto';
+  set powerProfile(String v) => _prefs.setString('power.profile', v);
+
   String get rnsBootstrapHost =>
       _prefs.getString('rns.bootstrapHost') ?? 'rns.wisco.network';
   /// destHex|callsign pairs the core has heard announce. Persisted because the

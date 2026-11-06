@@ -65,6 +65,7 @@ import '../files/partial_store.dart';
 import '../files/serve_quota.dart';
 import '../files/serve_stats.dart';
 import '../log_service.dart';
+import '../power_state.dart';
 import 'rns_iface_kind.dart';
 import '../media_disk_cache.dart';
 import '../social/relay_event_store.dart';
@@ -3532,6 +3533,84 @@ class RnsService {
   /// hub at host:port), or 'ble' (connectionless broadcast). [announceName] is
   /// the app_data broadcast in the initial + periodic announces (e.g. the
   /// device callsign); kept generic — the caller decides the content.
+  // ── The power profile (docs/performance.md 8.20) ─────────────────────────
+  //
+  // A station holds its hubs, republishes its files to the DHT every half
+  // hour, pulls auto-sync folders and followed profiles, and forwards for its
+  // neighbours. A phone on battery does none of that: it keeps its local
+  // bearers (Bluetooth, LAN) and reaches the internet through its archiver
+  // when something needs it. The switch is the charger (PowerState.profile).
+
+  bool _stationTimersArmed = false;
+
+  void _armStationTimers() {
+    if (_stationTimersArmed) return;
+    _stationTimersArmed = true;
+    _republishTimer?.cancel();
+    _republishTimer = Timer.periodic(_republishEvery, (_) {
+      if (_up) _files?.republishAll();
+      // Reclaim stale/abandoned resumable-download partials (week-old or over a
+      // 2 GB budget) so they don't accumulate on disk.
+      // ignore: discarded_futures
+      _partialStore?.gc(
+        maxAge: const Duration(days: 7),
+        maxBytes: 2 * 1024 * 1024 * 1024,
+      );
+    });
+    // Pull newer versions of files the user downloaded from auto-sync folders.
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      if (_up) {
+        _autoSyncTick();
+        refreshFollowedProfiles(); // keep followed nicknames/avatars current
+      }
+    });
+    // Keep trying, every now and then, to fetch followed profiles we still
+    // don't have (the author may have been unreachable on earlier attempts).
+    _profileRetryTimer?.cancel();
+    _profileRetryTimer = Timer.periodic(const Duration(seconds: 90), (_) {
+      if (_up) _retryWantedProfiles();
+    });
+  }
+
+  void _cancelStationTimers() {
+    _stationTimersArmed = false;
+    _republishTimer?.cancel();
+    _republishTimer = null;
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = null;
+    _profileRetryTimer?.cancel();
+    _profileRetryTimer = null;
+  }
+
+  /// The charger came or went (or the user chose). Station: arm the clocks
+  /// and republish once; the hubs are the autostart's to connect. Normal:
+  /// drop every public hub and the clocks. The local bearers, the node and
+  /// the identity are untouched either way — a phone that was reachable over
+  /// Bluetooth a second ago still is.
+  void applyPowerProfile(PowerProfile p) {
+    if (!_up) return;
+    switch (p) {
+      case PowerProfile.station:
+        _armStationTimers();
+        if (_files != null) unawaited(_files!.republishAll());
+        LogService.instance.add('RNS: station profile — clocks armed');
+      case PowerProfile.normal:
+        _cancelStationTimers();
+        final hubs = List.of(_clients);
+        for (final c in hubs) {
+          _dropClient(c);
+        }
+        if (hubs.isNotEmpty) {
+          LogService.instance.add(
+              'RNS: normal profile — ${hubs.length} hub uplink(s) released, '
+              'Bluetooth and LAN stay up');
+        } else {
+          LogService.instance.add('RNS: normal profile — no hubs held');
+        }
+    }
+  }
+
   Future<bool> start({
     required String mode,
     String host = '127.0.0.1',
@@ -4645,31 +4724,12 @@ class RnsService {
       // service's native heartbeat does not. Both call the same pump, which
       // no-ops unless we are actually overdue.
       AndroidForegroundService.instance.addTickListener(pumpAnnounce);
-      _republishTimer?.cancel();
-      _republishTimer = Timer.periodic(_republishEvery, (_) {
-        if (_up) _files?.republishAll();
-        // Reclaim stale/abandoned resumable-download partials (week-old or over a
-        // 2 GB budget) so they don't accumulate on disk.
-        // ignore: discarded_futures
-        _partialStore?.gc(
-          maxAge: const Duration(days: 7),
-          maxBytes: 2 * 1024 * 1024 * 1024,
-        );
-      });
-      // Pull newer versions of files the user downloaded from auto-sync folders.
-      _autoSyncTimer?.cancel();
-      _autoSyncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-        if (_up) {
-          _autoSyncTick();
-          refreshFollowedProfiles(); // keep followed nicknames/avatars current
-        }
-      });
-      // Keep trying, every now and then, to fetch followed profiles we still
-      // don't have (the author may have been unreachable on earlier attempts).
-      _profileRetryTimer?.cancel();
-      _profileRetryTimer = Timer.periodic(const Duration(seconds: 90), (_) {
-        if (_up) _retryWantedProfiles();
-      });
+      // The station's clocks: DHT republish, auto-sync, profile retries. A
+      // normal-profile phone (on battery) arms none of them; the profile
+      // switch arms them when the charger arrives (applyPowerProfile).
+      if (PowerState.instance.profile.value == PowerProfile.station) {
+        _armStationTimers();
+      }
       // Hub-uplink watchdog: a connected hub floods signed announces nonstop, so
       // a stretch of total silence while "up" means the uplink died — typically a
       // network change (Wi-Fi⇄cellular, AP roam) that kills the socket without a
@@ -11868,6 +11928,7 @@ class RnsService {
     _lanBeaconTimer = null;
     _republishTimer?.cancel();
     _republishTimer = null;
+    _stationTimersArmed = false;
     _rvTimer?.cancel();
     _rvTimer = null;
     _rvActive.clear();

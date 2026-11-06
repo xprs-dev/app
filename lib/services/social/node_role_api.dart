@@ -8,6 +8,7 @@ import 'package:reticulum/src/services/social/relay_role.dart';
 
 import '../../wapp/geoui/widgets/media_view.dart' show sharedMediaArchive;
 import '../log_service.dart';
+import '../power_state.dart';
 import '../i18n/core_i18n.dart';
 import '../i18n/format.dart';
 import '../notification_service.dart';
@@ -122,6 +123,8 @@ class NodeRoleApi {
     return jsonEncode({
       // What we are, and why.
       'volunteer': p?.archiverVolunteer ?? 'auto',
+      'powerProfile': PowerState.instance.profileMode,
+      'profile': PowerState.instance.profile.value.name,
       'serving': _rns.isArchiver,
       'role': role == null
           ? 'leaf'
@@ -244,6 +247,12 @@ class NodeRoleApi {
         p.hostCapacityGated = value == 'auto';
         _rns.applyHostingSettings();
         LogService.instance.add('archiver: volunteer=$value');
+        return 0;
+      case 'powerProfile':
+        // auto — a station while plugged in; station / normal — regardless.
+        if (!const ['auto', 'station', 'normal'].contains(value)) return -1;
+        PowerState.instance.setProfileMode(value);
+        LogService.instance.add('power: profile mode=$value');
         return 0;
       case 'topics':
         _rns.setArchiverTopics(

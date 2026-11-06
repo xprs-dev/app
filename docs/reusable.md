@@ -570,6 +570,11 @@ also fire `ErrorEvent` on `EventBus`.
   a presence advert) should consult it before adding a timer of its own.
 - `nativeTickMs` — the native heartbeat period for the tier, for any Dart
   fallback that must tell "the service is driving" from "it stopped".
+- `profile` (`ValueNotifier<PowerProfile>`: station / normal), `profileMode`,
+  `setProfileMode('auto'|'station'|'normal')` — what the device IS (8.20).
+  Anything that only a plugged-in, always-on node should do (hold a public
+  hub, publish to the DHT, forward for others, run a periodic pull) keys off
+  this, not off `isPowered` directly, so the user's override is honoured.
 
 ---
 

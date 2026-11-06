@@ -34,9 +34,24 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'log_service.dart';
+import 'preferences_service.dart';
 import '../platform/platform.dart' as platform;
 
 enum PowerTier { active, idle, battery, low }
+
+/// What this device IS right now, as opposed to what it may cost ([PowerTier]).
+///
+///   station  plugged in (or told to be one): the always-on node — hubs held,
+///            folders published, the transport role, the hub on the LAN.
+///   normal   on battery: a messenger with a radio. Bluetooth presence,
+///            scanning and the digipeater stay on; Reticulum keeps its local
+///            bearers (Bluetooth, LAN) and holds no public hub, publishes
+///            nothing to the DHT, forwards for nobody. The internet is reached
+///            through the archiver, on request (XPRS.md 13.0.2).
+///
+/// Desktops have no battery and are stations. The preference
+/// (`power.profile`: auto / station / normal) overrides the charger.
+enum PowerProfile { normal, station }
 
 class PowerState with WidgetsBindingObserver {
   PowerState._();
@@ -146,6 +161,7 @@ class PowerState with WidgetsBindingObserver {
           WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     } catch (_) {}
     tier.addListener(_pushToNative);
+    _profileMode = PreferencesService.instanceSync?.powerProfile ?? 'auto';
     try {
       await _readBattery();
       // Charging state is event-driven; the level has no stream, and two
@@ -233,6 +249,7 @@ class PowerState with WidgetsBindingObserver {
           state == BatteryState.unknown;
       _level = level;
       if (powered.value != _powered) powered.value = _powered;
+      _recomputeProfile();
       _recompute();
     } catch (_) {}
   }
@@ -271,9 +288,47 @@ class PowerState with WidgetsBindingObserver {
     tier.value = want;
   }
 
+  // ── The profile ──────────────────────────────────────────────────────────
+
+  /// Station or normal; see [PowerProfile]. Starts as `station` so a desktop,
+  /// which never reads a battery, is one from the first instant; a phone is
+  /// re-read from its charger at [start].
+  final ValueNotifier<PowerProfile> profile = ValueNotifier(PowerProfile.station);
+
+  /// The preference: 'auto' (follow the charger), 'station', 'normal'.
+  String get profileMode => _profileMode;
+  String _profileMode = 'auto';
+
+  /// Change and persist the preference; the profile follows at once (no
+  /// dwell: the user asked, or the charger is a fact).
+  void setProfileMode(String mode) {
+    if (!const ['auto', 'station', 'normal'].contains(mode)) return;
+    _profileMode = mode;
+    PreferencesService.instanceSync?.powerProfile = mode;
+    _recomputeProfile();
+  }
+
+  void _recomputeProfile() {
+    final want = switch (_profileMode) {
+      'station' => PowerProfile.station,
+      'normal' => PowerProfile.normal,
+      // A desktop or a laptop is a station whatever its battery says: it
+      // has no pocket to be in, and the always-on archiver is one of these.
+      _ => _powered || !(platform.isAndroid || platform.isIOS)
+          ? PowerProfile.station
+          : PowerProfile.normal,
+    };
+    if (want == profile.value) return;
+    LogService.instance.add('power: profile ${want.name} '
+        '(${_profileMode == 'auto' ? (_powered ? 'plugged in' : 'on battery') : 'set by the user'})');
+    profile.value = want;
+  }
+
   /// For the diagnostics page and `perf:` lines.
   Map<String, Object?> get status => {
         'tier': tier.value.name,
+        'profile': profile.value.name,
+        'profileMode': _profileMode,
         'screenOn': _screenOn,
         'foreground': _foreground,
         'powered': _powered,
