@@ -575,6 +575,9 @@ also fire `ErrorEvent` on `EventBus`.
   Anything that only a plugged-in, always-on node should do (hold a public
   hub, publish to the DHT, forward for others, run a periodic pull) keys off
   this, not off `isPowered` directly, so the user's override is honoured.
+  A phone STARTS as `normal` and is promoted by its charger; a service that
+  reads the profile at boot and then does something slow must re-read it
+  afterwards (`ensureRnsAutostart` does; performance.md 8.23).
 
 ### XprsLineLane / XprsLineClient / XprsLinePeers — one socket to an archiver
 
@@ -592,6 +595,19 @@ also fire `ErrorEvent` on `EventBus`.
   socket by itself through the publisher's `line` bearer when the `d:` is
   connected, so a feature that wants "send this to my archiver now" just
   publishes. Received lines enter the funnel as the internet lane.
+- The only undirected wires the bearer carries are `t:identity` and
+  `t:mailbox` (to every dialled archiver, as `queued` so the radios still
+  air them): they are what gets a station onto the archiver's socket.
+  `MeshService._onLineUp` sends them, then `q:mail`. Do not add a third
+  undirected type without a reason of that weight.
+- `XprsPublisher.identityWire(call, npub)`, `ownIdentityWire()`,
+  `mailboxWire(holdCsv)` build the signed wires; `XprsCatchup.mailboxHoldCsv()`
+  is the one `hold:` list. The airing, the deposit and the handshake all go
+  through these — never compose a `t:identity` or `t:mailbox` inline.
+- `XprsPublisher.depositArchivers(wires, what:)` tries the socket, then a
+  hub; with neither it keeps the copy (bounded, never presence) and
+  `flushDeferredDeposits()` places it when a socket or a session arrives.
+  A feature that has "something for my archiver" deposits and forgets.
 
 ### RnsSession — a hub, on request, for a phone on battery
 
@@ -603,6 +619,13 @@ duration, a no-op in the station profile. Any feature that needs the shared
 transport for a while (a transfer, a Reticulum-only contact) asks at the
 moment it knows and never checks `connectedHubs` first; the session's
 release is automatic (8.22). Don't connect hubs from a feature directly.
+
+Only MAIL is worth a hub (8.23): the publisher's Reticulum bearer opens a
+session for a `t:message` or `t:receipt` and for nothing else. A periodic
+ask (a catch-up, a report, a poll) must never request a session — with a
+ten-minute cadence and a five-minute hold that is a hub always on. It
+sends when a hub is up or a local path exists, and is `refused` otherwise;
+design the caller to be asked again on its cadence, not retried at once.
 
 ---
 

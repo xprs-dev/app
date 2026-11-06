@@ -1544,6 +1544,122 @@ interface, as it always did), the hub's announce flood for the duration,
 then silence again. Against the day of 8.20 that is minutes an hour at
 most, and only when something was asked for.
 
+### 8.23 The second audit: where the normal profile was still defeated (2026-11-06)
+
+A second pass over 8.19–8.22, done against the code as shipped in 1.4.0
+rather than against its own notes, with the native layer, every Dart timer,
+the library's idle work and the messaging paths traced separately. The
+profile of 8.20 was real and defeated in practice by paths the first audit
+had not looked at. Each item below says what was found and what changed;
+the before/after soak of 8.11 is still the only number that counts.
+
+**Sessions.** `_ReticulumBearer.send` asked `RnsSession` for a hub on EVERY
+directed wire. The catch-up asks every known archiver — the named ones plus
+up to 32 X2 and 32 X3 stations learned from announces — at least every ten
+minutes, and the hears report runs every five, so the "hub on request" was
+a hub always up with a reconnect every ten minutes on top. Now only a
+`t:message` or `t:receipt` opens a session. Everything else rides a hub
+that is up anyway or a path the local bearers hold, and is `refused`
+otherwise: a catch-up ask is asked again on its cadence, a deposit waits
+for the next socket or session (`XprsPublisher.flushDeferredDeposits`),
+presence is never kept.
+
+**A wire reported sent into nothing.** A directed wire to a station this
+node could not name fell through to `wappBroadcast` and answered `sent`,
+so the publisher filed it as carried by `rns` and stopped: the hubs do not
+cross-forward announces, so nobody received it. `refused` now, which is
+what lets custody and the deposit keep carrying it.
+
+**The boot race.** `PowerState.profile` defaulted to `station` and was
+corrected only inside `PowerState.start()`, which runs after `runApp`; the
+Reticulum autostart fires four seconds into boot and read the default. On
+a slow boot (shared folders to index) the phone dialled every public hub,
+and `applyPowerProfile` was a no-op while the node was still starting, so
+nothing released them. A phone now starts as `normal` until its charger is
+read, `BatteryState.unknown` is not "plugged in" on a phone, and
+`ensureRnsAutostart` releases hubs it dialled under a profile that changed
+meanwhile (a session's hub is left alone).
+
+**The zombie hub.** A node that booted on battery runs in `ble5` mode.
+`_onUplinkDown` returned on that mode before dropping the client and the
+silence watchdog was armed only for `tcpclient`, so a session hub whose
+socket died stayed in `_clients`, `connectUplink` answered true on the
+stale key, and no session could bring a hub up again until a restart. A
+dead uplink is dropped in any mode; the watchdog is armed per uplink and
+cancels itself while none is held.
+
+**The line lane never completed a first contact.** The archiver puts a
+station on its socket only once a signed line verifies against a key it
+already holds (`XprsTcp`), and the line bearer refused every undirected
+wire, so a phone that met its archiver only through the socket never
+handed over its `t:identity` or its `t:mailbox`: `q:mail` was answered and
+nothing was ever delivered to it. `MeshService._onLineUp` now sends the
+signed identity, then the declaration, then `q:mail`; the line bearer
+carries those two undirected types to every dialled archiver (as `queued`,
+so the radios still air them); the archiver asks `q:identity` once per
+connection on a signed line it cannot verify; `q:mail` is marked answered
+before the funnel so the asker does not get it twice. Deposits try the
+socket first — they went straight to LXMF, which on a battery phone was a
+path request on the radio, a failed delivery and a retry ladder, every
+five minutes.
+
+**Unplugging did not demote the node.** `applyPowerProfile(normal)` only
+released hubs; the transport id and the edge bridge set as a station
+stayed, so an unplugged phone re-aired every BLE announce onto the LAN,
+answered path requests for others and grew its path table, with no hub to
+bridge anything onto. The normal profile sheds the role, the station
+profile restores the BLE edge bridge, and a node started on battery never
+takes it (`_shedTransportRole` / `_restoreTransportRole`).
+
+**Announces over the advert cap dialled a GATT link.** The relay role rides
+the chat announce and puts it past the 248 B advert cap, and
+`Ble5ChunkedRnsRadio.unicast` sent an over-cap announce down the GATT
+route like traffic: queued for a link, with `_maybeAutoPair` dialling the
+last-seen peer for it. A GATT connection every five minutes in company,
+for a packet whose fragments were going on the air anyway. Fragments only
+now; a link that exists is used, none is dialled for presence.
+
+**Two scan watchdogs.** `ble5_bus.dart` restarted a silent scan after
+150 s on a 60 s timer, which in an empty room pre-empted `Ble5.kt`'s own
+2/4/8/16-minute backoff (8.19) every three minutes for the life of the
+process. Thirty minutes now: the net under a native watchdog that died.
+
+**Clocks that ignored the room.** The Reticulum BLE beacon (60 s, three
+signed announces) now follows `PowerState.alone` to three minutes; the LAN
+beacon (90 s) goes to three minutes in the normal profile; the wide
+six-announce cycle stretches from five to fifteen minutes on a phone with
+no hub, where it reaches only the room the beacons already tell. The
+engine's stats post goes to the main isolate on change or once a minute,
+not every 10 s whatever happened.
+
+**The multicast lock.** `BgService` held the WiFi multicast lock for the
+life of the service, in every tier, and `MainActivity` a second one for
+the life of the Activity (the whole night, in the background). The lock
+turns the WiFi chip's broadcast filter off, so every ARP, mDNS and SSDP
+frame on a home LAN woke the SoC — the one wake source left after the
+standing wake lock went. Released in the battery and low tiers: the device
+still sends its LAN beacon (broadcast transmit needs no lock) and still
+receives unicast, so a neighbour that heard it reaches it; it stops
+overhearing the others' broadcasts until the screen or the charger comes
+back. The Activity holds one only when the service is not running, and
+only while in front.
+
+**Two more clocks.** Mail (autostarted) called `hal_relay_dm_fetch` every
+60 s, which with no hub was a path request on the radio — a `prio` frame
+that opened the BLE transmit window every minute — and a 12 s timeout per
+relay; it is answered "not now" until a hub exists. The disk-folder walk
+(an isolate per folder, every file stat'ed, every 60 s) runs on a phone on
+battery only while the screen is on.
+
+What the second audit found and left alone, for the record: the Dart 2 s
+fallback tick on Android (returns early under the native heartbeat; on
+battery it fires only when something else woke the CPU); the presence
+advert at BALANCED whenever a neighbour is in range (that is the modest
+station the owner asked for); GATT links at `CONNECTION_PRIORITY_HIGH` for
+their lifetime (dropped after 25 s idle); the `nostr` engine's own timers
+(off unless NOSTR is enabled). Still owed: the soak of 8.11, and a socket
+test of `XprsTcp.attach` against a key the archiver does not hold.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile
