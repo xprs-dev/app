@@ -1657,8 +1657,10 @@ battery it fires only when something else woke the CPU); the presence
 advert at BALANCED whenever a neighbour is in range (that is the modest
 station the owner asked for); GATT links at `CONNECTION_PRIORITY_HIGH` for
 their lifetime (dropped after 25 s idle); the `nostr` engine's own timers
-(off unless NOSTR is enabled). Still owed: the soak of 8.11, and a socket
-test of `XprsTcp.attach` against a key the archiver does not hold.
+(off unless NOSTR is enabled). The first contact is now under test on a
+real socket (`test/xprs_tcp_line_test.dart`: asked for its key, not
+registered, then registered and delivered to once the key is held). Still
+owed: the soak of 8.11.
 
 ## Profiling native memory on a stock device (recipe)
 

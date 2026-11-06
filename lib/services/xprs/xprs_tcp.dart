@@ -105,6 +105,10 @@ class XprsTcp {
 
   static int served = 0;
 
+  /// Who this archiver is, for a bench that has no MeshService running
+  /// (the mail relay simulation's seam, same shape as XprsMailbox's).
+  static String Function()? selfCallsign;
+
   /// Attach a plain-text connection: returns the sink the TCP server feeds
   /// every chunk into. Matches RnsTcpServerInterface.onPlainText.
   static void Function(Uint8List data) attach(Socket socket, String label) {
@@ -123,7 +127,8 @@ class XprsTcp {
       if (wire.isEmpty) return;
       final p = XprsPacket.parse(wire);
       if (p == null) return;
-      final selfCall = MeshService.instance.tableCallsign.trim();
+      final selfCall =
+          (selfCallsign?.call() ?? MeshService.instance.tableCallsign).trim();
       if (selfCall.isEmpty) return;
       final selfBase = NostrCrypto.bareCallsign(selfCall);
 
