@@ -135,6 +135,24 @@ request. The same define is the rule for any other store later.
   release build failed F-Droid's scanner on the gzipped web chat page (section
   7); the page is bundled plain since, and the tag was moved to the fixed
   commit before anything had been published for it.
+* **2026-11-04 17:30 UTC: MERGED.** fdroiddata !48456 is in `master` as
+  `metadata/com.xprs.app.yml`, pointing at v1.3.8 (codes 4005311-3, commit
+  `2b11e33`), reproducible against the GitHub release APKs, with
+  `UpdateCheckMode: Tags` so later `vX.Y.Z` tags (v1.4.0 was cut 2026-11-06)
+  are picked up by `checkupdates` without a new merge request.
+* **Why it is not listed yet (checked 2026-11-06):** the merge landed after
+  the build cycle that started 2026-11-04 12:10 UTC had begun, and that cycle
+  ran until 2026-11-06 01:13 UTC without the app. F-Droid's cycles are
+  sequential — `build` (one to two days), then `publish` and `update`, then the
+  index and the mirrors — so a newly merged app appears at the earliest at
+  the end of the NEXT full cycle, typically four to ten days after the merge.
+  The public status files say where things are:
+  https://f-droid.org/repo/status/running.json (what is running now),
+  build.json / publish.json / update.json (the last of each), and once a
+  build has run the log is at
+  https://monitor.f-droid.org/builds/log/com.xprs.app/4005313. The package
+  page and https://f-droid.org/api/v1/packages/com.xprs.app answer 404
+  until the index carries it. Nothing on our side is pending.
 
 ## 3. Following the review
 
