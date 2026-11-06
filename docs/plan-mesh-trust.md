@@ -1,7 +1,19 @@
 # Plan: alerts, posts and forums across a mesh of stations, under the administrator's trust
 
-Status: **proposal, 2026-11-06.** Nothing of it is built. Decisions marked
-**(T1)…(T5)** are listed at the end. Read `XPRS.md` 9.11, 12, 12.9.3, 13.3,
+Status: **Phase 1 done, 2026-11-06**, decisions T1 to T5 taken as
+recommended. `XprsMeshPolicy` and `xprsMeshAdmits` in the core, asked by the
+receive door (`XprsIngest.mesh`), the digipeater (`XprsDigipeater.admits`)
+and the history server (`XprsHistoryServer.trusted`); the six settings on
+`/api/admin`, validated, with `onSettings` for the host; the server rebuilds
+the snapshot on boot and on every change; the Mesh card in Administration;
+the mock, the conformance suite and the spec rows. One finding from the
+two-instance run shaped the rest: a server never repeats onto Reticulum and
+the room catch-up asks for `kind:message` only, so between two stations an
+alert or a post has no path at all until Phase 3's standing ask, and an
+answer to that ask is kept by design. The reach cap therefore governs what
+arrives unasked over the internet lane (a phone's broadcast, a hub's
+replay), which the unit test covers and a two-server bench cannot produce.
+Decisions marked **(T1)…(T5)** are listed at the end. Read `XPRS.md` 9.11, 12, 12.9.3, 13.3,
 24 and `docs/plan-forum.md` first.
 
 ## 1. The problem
