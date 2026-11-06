@@ -468,6 +468,53 @@ class PreferencesService {
   bool get xprsArchiverAuto => _prefs.getBool('xprs.archiverAuto') ?? true;
   set xprsArchiverAuto(bool v) => _prefs.setBool('xprs.archiverAuto', v);
 
+  // ── The line lane (XPRS.md 13.0.2) ───────────────────────────────────────
+
+  /// Our own `dial:`: where THIS station answers a TCP connection under the
+  /// one-port rule, announced on the observation beacons while it is a
+  /// public archiver. Empty = not reachable that way (a phone, a box behind
+  /// a NAT it does not control).
+  String get xprsDial => _prefs.getString('xprs.dial') ?? '';
+  set xprsDial(String v) => _prefs.setString('xprs.dial', v.trim());
+
+  /// `room:`: whether this archiver takes new stations. Yes until 12.9.5's
+  /// load reading, or the operator, says no.
+  bool get xprsRoom => _prefs.getBool('xprs.room') ?? true;
+  set xprsRoom(bool v) => _prefs.setBool('xprs.room', v);
+
+  /// The `dial:` each archiver announced, by callsign, remembered across
+  /// restarts: the station table is in memory, and a pocket device hears an
+  /// archiver's announcement only while attached to a transport (13.0.2).
+  Map<String, String> get xprsArchiverDials {
+    final raw = _prefs.getString('xprs.archiverDials') ?? '';
+    if (raw.isEmpty) return const {};
+    try {
+      final m = jsonDecode(raw);
+      if (m is Map) {
+        return {
+          for (final e in m.entries)
+            if (e.value is String && (e.value as String).isNotEmpty)
+              e.key.toString().toUpperCase(): e.value as String,
+        };
+      }
+    } catch (_) {}
+    return const {};
+  }
+
+  /// Remember (or, with null, forget) where [callsign] answers.
+  void rememberArchiverDial(String callsign, String? dial) {
+    final c = callsign.trim().toUpperCase();
+    if (c.isEmpty) return;
+    final m = Map<String, String>.of(xprsArchiverDials);
+    if (dial == null || dial.trim().isEmpty) {
+      if (m.remove(c) == null) return;
+    } else {
+      if (m[c] == dial.trim()) return;
+      m[c] = dial.trim();
+    }
+    _prefs.setString('xprs.archiverDials', jsonEncode(m));
+  }
+
   Future<void> setXprsServeHistory(bool v) async {
     await _prefs.setBool('xprs.serveHistory', v);
   }

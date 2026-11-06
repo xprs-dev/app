@@ -1485,6 +1485,39 @@ again. Until those land, a phone on battery reaches the internet only when
 plugged in. That is deliberate — the alternative was the day described above —
 and it is the next piece of work.
 
+### 8.21 The line lane: a phone reaches its archiver on one socket (2026-11-06)
+
+8.20 left a normal-profile phone with no way to the internet. This is the
+way: XPRS.md 13.4's one port, used from the client side. An archiver that
+is a public archiver announces `dial:` (its host, port 4242 unless said) and
+`room:` on its observation beacons (`xprsComposeObservation`); a station
+that hears one — on the LAN, or replayed by any archiver — keeps it
+(`XprsStation.dial`, persisted as `xprs.archiverDials`) and, if that archiver
+is among the ones it chose (`xprsArchivers`), dials it: `MeshService
+._dialArchivers`, every minute, at most two sockets (`XprsLineLane`).
+
+On the socket everything is an ordinary packet, one per line. Up: the phone
+sends `q:mail only:ME` (9.12.3) and lets the catch-up run. The archiver side
+(`XprsTcp`) registers the peer once a signed line of its VERIFIES against
+the key held for it (`XprsLinePeers`), answers `q:mail` with `s:mail mail:N`
+on the socket, serves `cmd:history` inline (and marks it answered, so the
+paced replay the funnel would also start does not send the page twice), and
+DELIVERS: `XprsMailbox.reachable` is true for a line peer, `sendTo` tries
+the socket first, a registration sweeps held mail at once, and mail that
+arrives for a connected peer (`onCarry`) is swept at once too. The
+publisher has a `line` bearer, tried first for any directed wire whose
+`d:` is on a socket, either direction. `q:mail` is also answered over the
+other lanes (the history server; the internet lane now hands `t:request`
+to it).
+
+What it costs the phone: one idle TCP socket with a four-minute kernel
+keepalive. What it does not do yet: 12.9.5 (archivers exchanging
+declarations, `room:` from load), and the on-request hub session for
+serving a file (Phase 3). Set up by hand today: on the archiver,
+`POST /api/xprs/archiver {"dial":"host[:port]"}` (it must be a public
+archiver); on a phone that cannot yet hear the announcement,
+`{"dials":{"X3ARC1":"host"}}` plus `X3ARC1` in `archivers`.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile

@@ -941,7 +941,9 @@ class XprsIngest {
     // gate below is deliberately untouched: it governs what this station
     // spools off the internet, not what it will say.
     if (self.isNotEmpty) {
-      if (p.type == 'command') {
+      // A `t:request` (`q:mail`, `q:pos`, `q:identity`) is a question for
+      // this station as much as a `t:command` is; the handler sorts them.
+      if (p.type == 'command' || p.type == 'request') {
         try {
           onCommand?.call(p, selfBase: self, bearer: 'rns');
         } catch (e) {

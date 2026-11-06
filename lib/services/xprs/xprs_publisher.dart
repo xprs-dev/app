@@ -36,6 +36,8 @@ import '../../profile/profile_service.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
 import '../reticulum/rns_service.dart';
+import 'xprs_line.dart';
+import 'xprs_tcp.dart';
 import 'xprs_ingest.dart';
 import 'xprs_lan.dart';
 import 'xprs_airtime.dart';
@@ -78,6 +80,39 @@ enum XprsSendResult {
 
   /// The medium said no to this frame.
   refused,
+}
+
+/// The line lane (XPRS.md 13.4, 13.0.2): a DIRECTED wire to a station on an
+/// open text socket — an archiver this station dialled, or a peer that
+/// dialled it — goes down that socket, one packet per line. Nothing
+/// undirected belongs here: a socket has one station on the other end, and
+/// the fan-out asks every bearer, so an undirected wire is simply not ours.
+class _LineBearer extends XprsBearer {
+  @override
+  String get name => 'line';
+  @override
+  String get archiveBearer => 'rns'; // the internet lane, as the spool names it
+  @override
+  bool get shortRange => false;
+  @override
+  Future<bool> get active async =>
+      XprsLineLane.instance.anyConnected || XprsLinePeers.instance.any;
+  @override
+  Future<XprsSendResult> send(String wire,
+      {required int part,
+      String slot = 'status',
+      Duration? ttl,
+      bool datagram = false,
+      bool verbatim = false}) async {
+    final p = XprsPacket.parse(wire);
+    final dest = p?['d']?.trim().toUpperCase() ?? '';
+    if (dest.isEmpty) return XprsSendResult.refused;
+    if (XprsLineLane.instance.sendTo(dest, wire) ||
+        XprsLinePeers.instance.sendTo(dest, wire)) {
+      return XprsSendResult.sent;
+    }
+    return XprsSendResult.refused;
+  }
 }
 
 abstract class XprsBearer {
@@ -487,6 +522,7 @@ class XprsPublisher {
   /// Replaceable for tests; order is presentation only (every active bearer
   /// is used).
   List<XprsBearer> bearers = [
+    _LineBearer(),
     _Ble5Bearer(),
     _LanBearer(),
     _ReticulumBearer(),
@@ -742,10 +778,19 @@ class XprsPublisher {
       return worst == XprsSendResult.sent;
     }
 
+    // A station on an open text socket (XPRS.md 13.0.2) is reached there
+    // first: the archiver we dialled, or a peer that dialled us. It is the
+    // cheapest lane there is and the one the archiver delivers on, so a
+    // caller's preference for a radio does not override it.
+    final want = dest.isNotEmpty &&
+            (XprsLineLane.instance.connectedTo(dest) ||
+                XprsLinePeers.instance.isConnected(dest))
+        ? 'line'
+        : prefer;
     var done = false;
     var preferTried = false;
-    if (prefer != null) {
-      final pick = bearers.where((b) => b.name == prefer);
+    if (want != null) {
+      final pick = bearers.where((b) => b.name == want);
       if (pick.isNotEmpty) {
         preferTried = true;
         done = await tryOne(pick.first);
@@ -756,7 +801,7 @@ class XprsPublisher {
       // LXMF handed to store-and-forward) is not `sent`, and used to send the
       // packet a second time on the same bearer: every chunk of a file went
       // out twice, 542 datagrams for 271 chunks.
-      if (preferTried && b.name == prefer) continue;
+      if (preferTried && b.name == want) continue;
       if (done) {
         report[b.name] = 'unused';
         continue;

@@ -53,6 +53,8 @@ XprsPacket? xprsComposeObservation({
   int? uptimeS,
   int? lifetimeS,
   String? serve,
+  String? dial,
+  String? room,
   BigInt? signingKey,
   String? ts,
 }) {
@@ -69,10 +71,14 @@ XprsPacket? xprsComposeObservation({
     envelope = envelope.with_('lifetime', xprsFmtDuration(lifetimeS));
   }
   if (serve != null && serve.isNotEmpty) envelope = envelope.with_('serve', serve);
+  // 13.0.2: where this station answers a TCP connection, and whether it has
+  // room for new stations. Both ride the same announcement as `serve:`.
+  if (dial != null && dial.isNotEmpty) envelope = envelope.with_('dial', dial);
+  if (room != null && room.isNotEmpty) envelope = envelope.with_('room', room);
   if (ts != null) envelope = envelope.with_('ts', ts);
 
-  final room = budget - (signingKey != null ? 65 : 0);
-  final fit = xprsNeighbourFit(heard, envelope, room);
+  final roomBytes = budget - (signingKey != null ? 65 : 0);
+  final fit = xprsNeighbourFit(heard, envelope, roomBytes);
   var p = envelope.with_('peers', '${fit.peers}');
   if (fit.hears.isNotEmpty) p = p.with_('hears', fit.hears.join(','));
   if (signingKey != null) p = xprsSign(p, signingKey);

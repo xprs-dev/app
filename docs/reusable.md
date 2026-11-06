@@ -576,6 +576,23 @@ also fire `ErrorEvent` on `EventBus`.
   hub, publish to the DHT, forward for others, run a periodic pull) keys off
   this, not off `isPowered` directly, so the user's override is honoured.
 
+### XprsLineLane / XprsLineClient / XprsLinePeers — one socket to an archiver
+
+**Files:** `lib/services/xprs/xprs_line.dart` (conditional export),
+`xprs_line_io.dart`, `xprs_line_stub.dart` (web), `xprs_dial.dart` (pure
+`dial:` parsing), `xprs_tcp.dart` (`XprsLinePeers`, the server's registry).
+
+- `XprsDial.parse('host[:port]')` — the one place `dial:` is read.
+- `XprsLineLane.instance.wantAll({callsign: dial})` keeps exactly that set
+  of client sockets (backoff, long keepalive, re-dial on a changed address);
+  `sendTo(call, wire)`, `connectedTo(call)`; `onClientUp` for the first ask.
+- `XprsLinePeers.instance` — who is on a socket to US, registered only after
+  a signed line verifies; `sendTo`, `isConnected`.
+- Reuse the lane rather than opening sockets: any directed wire goes down a
+  socket by itself through the publisher's `line` bearer when the `d:` is
+  connected, so a feature that wants "send this to my archiver now" just
+  publishes. Received lines enter the funnel as the internet lane.
+
 ---
 
 ## App authoring

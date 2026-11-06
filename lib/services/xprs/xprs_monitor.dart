@@ -166,6 +166,12 @@ class XprsStation {
   /// The firmware it runs (`fw:`, 11.8), verbatim; null until it said.
   String? fw;
 
+  /// 13.0.2: where this station answers a TCP connection (`host` or
+  /// `host:port`), and whether it takes new stations (`room:no` is the only
+  /// value that says anything). Announcement fields, kept like `serve:`.
+  String? dial;
+  String? room;
+
   /// What it says it does for other stations (section 24, `serve:`). This is
   /// how an archiver is told from a phone: `index` in here and nowhere else.
   List<String> services = const [];
@@ -404,6 +410,8 @@ class XprsMonitor {
     // `fw:` rides the service announcement (11.8) and a station's answers;
     // the same rule as `serve:`, a message never erases it.
     if (p.has('fw')) st.fw = p['fw'];
+    if (p.has('dial')) st.dial = p['dial'];
+    if (p.has('room')) st.room = p['room'];
     if (p.type == 'identity' && p.has('nick') &&
         xprsKindOf(from) == XprsKind.foreign) {
       final n = (p['nick'] ?? '').trim();
@@ -547,6 +555,8 @@ class XprsMonitor {
       final st = _stations[c] ?? XprsStation(c, 'rns', now);
       if (saying.has('serve')) st.services = xprsServices(saying);
       if (saying.has('uptime')) st.uptime = saying['uptime'];
+      if (saying.has('dial')) st.dial = saying['dial'];
+      if (saying.has('room')) st.room = saying['room'];
       st.lastMs = now;
       st.bearers['rns'] = now;
       _stations[c] = st;

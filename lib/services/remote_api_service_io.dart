@@ -20,7 +20,9 @@ import 'xprs/xprs_inline_file.dart';
 import 'xprs/xprs_inline_sender.dart';
 import 'receive/wapp_delivery.dart';
 import 'xprs/xprs_lan.dart';
+import 'xprs/xprs_line.dart';
 import 'xprs/xprs_publisher.dart';
+import 'xprs/xprs_tcp.dart';
 import 'mesh/xblob_service.dart';
 import '../connections/bluetooth/ble5_bus.dart';
 import 'xprs/xprs_gossip.dart';
@@ -1729,6 +1731,21 @@ class RemoteApiService {
           final v = int.tryParse('${data['maxDays']}');
           if (v != null && v > 0) prefs?.xprsArchiveMaxDays = v;
         }
+        // 13.0.2: where THIS station answers a connection (announced while
+        // it is a public archiver), whether it has room, and the dials of
+        // archivers the operator wants named by hand.
+        if (data.containsKey('dial')) {
+          prefs?.xprsDial = '${data['dial'] ?? ''}';
+        }
+        if (data.containsKey('room')) {
+          prefs?.xprsRoom = data['room'] != false;
+        }
+        if (data['dials'] is Map) {
+          for (final e in (data['dials'] as Map).entries) {
+            prefs?.rememberArchiverDial(
+                e.key.toString(), e.value == null ? null : '${e.value}');
+          }
+        }
         final beKey = legacy ? 'be' : 'alwaysOn';
         if (data.containsKey(beKey)) {
           final on = data[beKey] == true;
@@ -1759,6 +1776,13 @@ class RemoteApiService {
           'quotaMb': prefs?.xprsArchiveMaxMb ?? 500,
           'maxDays': prefs?.xprsArchiveMaxDays ?? 365,
           'archivers': prefs?.xprsNamedArchivers ?? const <String>[],
+          'dial': prefs?.xprsDial ?? '',
+          'room': prefs?.xprsRoom ?? true,
+          'dials': prefs?.xprsArchiverDials ?? const <String, String>{},
+          'line': {
+            'dialled': XprsLineLane.instance.status,
+            'peers': XprsLinePeers.instance.status,
+          },
           'records': {
             'own': counts.own,
             'followed': counts.followed,
