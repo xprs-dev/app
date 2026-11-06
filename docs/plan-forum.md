@@ -8,8 +8,20 @@ the core's `WebChatApi` (`kind`, `t:blog` taken in a forum room, a split post
 held and filed as the verified whole, `root=`, the topic index in
 `web_chat_forum.dart`), the Forum section in the web chat with topics, threads,
 a composer that splits and signs, withdrawal and moderation, the mock and the
-conformance suite. Phases 3 and 4 (sharing between stations) are not started.
-Decisions marked **(F1)…(F4)** are open and listed at the end. Read `XPRS.md` 10.10,
+conformance suite. Phase 3 (two stations) done the same day, with F2 and F3
+taken as recommended: `XprsGroupMirror` in the core keeps each (room, peer)
+pair in step with a standing `cmd:history only:<X5>` ask on its own mark,
+asks a peer for the key of a signer whose act was parked, and files what
+comes back through the receive door; `XprsHistoryServer` serves a hosted room
+only to whom `WebChatApi.roomServable` says it is shared with, on the air and
+on the inline TCP lane alike; `share`, `mirror`, `unmirror` and `sync` are
+`/api/rooms` actions with an administration page for them; the server wires
+it all and ticks the mirror once a minute. Verified on two instances on one
+machine: a topic posted at A listed at B, a reply made at B counted at A, a
+moderator's removal signed at A honoured at B. Phase 4 (directory line,
+`m:try`, the per-group ceiling, the adaptive period) is not started.
+Decisions marked **(F1)…(F4)** are listed at the end; F2 and F3 were taken as
+recommended. Read `XPRS.md` 10.10,
 10.10.1, 12.9.3, 18 and `API-HTTP.md` first; this plan adds almost nothing to
 them, which is the point.
 
