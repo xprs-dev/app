@@ -15,7 +15,7 @@ import '../services/i18n/core_i18n.dart';
 /// Settings → Hardware: what this device is made of (docs/NOSTR.md).
 ///
 /// Stated ONCE, for the device, and read by every role — a box volunteered as
-/// both an Indexer and an Archiver must not be asked twice what it is plugged
+/// both an Archiver and an Archiver must not be asked twice what it is plugged
 /// into, and two answers that can disagree is a bug waiting to be filed.
 ///
 /// Full-size on purpose: the value is in the *combinations* — power source ×

@@ -8,7 +8,7 @@
  *   2) B fetches that picture from C by hash (cmd:file), gated by the file's
  *      audience — a participant gets the bytes, a stranger is refused; content
  *      integrity is checked end to end.
- *   3) The seeder/indexer sync: C advertises the hash as a signed provider
+ *   3) The seeder/archiver sync: C advertises the hash as a signed provider
  *      record and a large archiver D folds it into its index, so a global user
  *      asking D learns the file is at C — small archivers reporting upward, no
  *      archiver holding the whole network.
@@ -181,7 +181,7 @@ void main() {
         '(the hash is public, the bytes are not).');
 
     // ── Scenario 3: C tells the large archiver D where the file lives. ──────
-    // C advertises a SIGNED provider record; D (an indexer) folds it into its
+    // C advertises a SIGNED provider record; D (an archiver) folds it into its
     // map via the pointer-sync federation. Nobody trusts D or C blindly — the
     // provider signs the record, D verifies it on the way in.
     final cId = await RnsIdentity.generate();

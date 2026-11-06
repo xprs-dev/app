@@ -54,7 +54,7 @@ class MirrorService {
   bool get _shouldMirror {
     final policy = ArchiverService.instance.policy;
     if (!policy.isArchiving || !policy.mirrorSmallDevices) return false;
-    if (!_rns.isIndexer) return false; // a phone does not mirror other phones
+    if (!_rns.isArchiver) return false; // a phone does not mirror other phones
     if (_rns.onMeteredNetwork) return false;
     return true;
   }
@@ -65,7 +65,7 @@ class MirrorService {
     final now = DateTime.now().millisecondsSinceEpoch;
     final out = [
       for (final e in _rns.relayDirectory.entries())
-        if (!e.announcement.isIndexer &&
+        if (!e.announcement.isArchiver &&
             (e.announcement.pubkey?.length ?? 0) == 64 &&
             now - e.lastSeenMs < 24 * 3600 * 1000)
           e

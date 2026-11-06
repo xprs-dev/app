@@ -132,15 +132,15 @@ they choose to add it, since an unsigned name in a link is just bait.
 > **Circles** (private group chat with keys that rotate), a media **Player**, and
 > the **Wapp Store**.
 
-## Indexers, archivers, and no server anywhere
+## Archivers, archivers, and no server anywhere
 
 There is no server behind any of this. The network is only ever user devices, and
 a device can take on one of two extra jobs if it wants to:
 
-- **Indexers** are the trackers. When a device holds a folder or a file, it
+- **Archivers** are the trackers. When a device holds a folder or a file, it
   publishes a small pointer that says "this address has folder F" or "this address
-  has file sha", and indexers keep those pointers and answer searches. That is how
-  a downloader finds who has something without a central catalog. Indexers only
+  has file sha", and archivers keep those pointers and answer searches. That is how
+  a downloader finds who has something without a central catalog. Archivers only
   ever hold pointers, never the files.
 - **Archivers** keep the bytes around. They accept files that peers hand them and
   mirror the folders they follow, so content stays reachable even when the person
@@ -184,7 +184,7 @@ Reticulum makes it hard to watch people in bulk:
         +---------------+-----------+    +-------------+-------------------+
         |  Reticulum / LXMF         |    |  Reticulum links               |
         |  Bluetooth mesh + LoRa    |    |  + DHT       (find by hash)    |
-        |  internet                 |    |  + Indexers  (find by text)    |
+        |  internet                 |    |  + Archivers  (find by text)    |
         +---------------+-----------+    +-------------+-------------------+
                         |                              |
                         +--------------+---------------+
@@ -199,7 +199,7 @@ Reticulum makes it hard to watch people in bulk:
 - **Files** are named by their hash inside a message and moved separately over
   Reticulum, the DHT, a LAN, or BitTorrent.
 - **Reticulum** is what lets two devices on different networks find each other. The
-  DHT and the indexers are the decentralized ways to look up who has a file, with
+  DHT and the archivers are the decentralized ways to look up who has a file, with
   nothing central.
 
 The networking layers are written up with file and line pointers into the code

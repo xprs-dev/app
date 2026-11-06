@@ -178,7 +178,7 @@ class KeepService {
         _keepMedia(plan.fetchMedia, ev.pubkey);
 
         // Present is not the same as findable. Tell the DHT that this device is
-        // a home for this author AND for this note, so an Indexer asked "where
+        // a home for this author AND for this note, so an Archiver asked "where
         // can I find npub X" — or "who still has that note" — can answer with
         // us. A pointer is ~176 bytes; no content leaves here.
         unawaited(_rns.publishAuthorProvider(ev.pubkey));

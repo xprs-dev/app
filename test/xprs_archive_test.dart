@@ -378,7 +378,7 @@ void main() {
 
   // ── The station keeps its own log ──────────────────────────────────────
   //
-  // An installation is its own archive and indexer, so what it SENT and what
+  // An installation is its own archive and archiver, so what it SENT and what
   // was addressed to IT are kept unconditionally. Each of these pins a hole
   // that was silent: no error, no row, nothing to notice.
 

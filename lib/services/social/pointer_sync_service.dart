@@ -10,20 +10,20 @@ import '../log_service.dart';
 import '../preferences_service.dart';
 import '../reticulum/rns_service.dart';
 
-/// The Indexer↔Indexer sync scheduler (docs/NOSTR.md).
+/// The Archiver↔Archiver sync scheduler (docs/NOSTR.md).
 ///
-/// Indexers spread the map among themselves so the phones do not have to.
-/// Indexer-to-indexer traffic is fast and wired; a phone's is neither. So:
+/// Archivers spread the map among themselves so the phones do not have to.
+/// Archiver-to-archiver traffic is fast and wired; a phone's is neither. So:
 ///
 /// **Battery-powered leaves are never sync partners.** They announce, they get
 /// indexed, and they are left alone. That asymmetry is the whole reason the
-/// Indexer role exists — without it, "everyone is a relay" means "everyone's
+/// Archiver role exists — without it, "everyone is a relay" means "everyone's
 /// battery pays for everyone else's queries".
 ///
-/// This device only *runs* the loop when it is itself an Indexer (plugged in,
+/// This device only *runs* the loop when it is itself an Archiver (plugged in,
 /// on a real uplink — `RelayRoleManager` derives that from the hardware, not
 /// from a wish), and it only *talks to* peers whose announce says they are
-/// Indexers too.
+/// Archivers too.
 ///
 /// ## Performance (docs/performance.md)
 ///
@@ -37,12 +37,12 @@ class PointerSyncService {
   static final PointerSyncService instance = PointerSyncService._();
 
   /// Pointers refresh on a 30-minute republish cycle, so there is nothing to
-  /// gain from hammering this. A minute is short enough that a new indexer
+  /// gain from hammering this. A minute is short enough that a new archiver
   /// becomes useful quickly, and long enough that the exchange is a rounding
   /// error on anybody's uplink.
   static const Duration _tick = Duration(minutes: 1);
 
-  /// Per exchange. A LoRa-attached indexer takes the same log in tiny bites over
+  /// Per exchange. A LoRa-attached archiver takes the same log in tiny bites over
   /// hours; the cursor is what makes that free.
   static const int _batch = 64;
 
@@ -79,17 +79,17 @@ class PointerSyncService {
     _timer = null;
   }
 
-  /// One exchange with one partner. Round-robins through the known indexers so a
+  /// One exchange with one partner. Round-robins through the known archivers so a
   /// single slow peer cannot starve the rest.
   Future<void> _syncOnce() async {
     final relay = _rns.relayNode;
     final log = _rns.pointerLog;
     if (relay == null || log == null) return;
 
-    // Only an Indexer syncs. A leaf has nothing to give and cannot afford to
+    // Only an Archiver syncs. A leaf has nothing to give and cannot afford to
     // give it.
-    if (!_rns.isIndexer) {
-      LogService.instance.add('sync: idle — this device is not an indexer');
+    if (!_rns.isArchiver) {
+      LogService.instance.add('sync: idle — this device is not an archiver');
       return;
     }
 
@@ -97,9 +97,9 @@ class PointerSyncService {
     if (partners.isEmpty) {
       // Say WHY nothing is happening. A sync loop that quietly does nothing is
       // indistinguishable from a broken one.
-      final all = _rns.relayDirectory.indexers().length;
+      final all = _rns.relayDirectory.archivers().length;
       LogService.instance.add(
-          'sync: no partner (indexers seen=$all, searchable=0)');
+          'sync: no partner (archivers seen=$all, searchable=0)');
       return;
     }
 
@@ -157,10 +157,10 @@ class PointerSyncService {
     }
   }
 
-  /// Who is worth syncing with: other Indexers, freshest first. Never a leaf —
+  /// Who is worth syncing with: other Archivers, freshest first. Never a leaf —
   /// a phone in somebody's pocket is not a database to be scraped.
   List<RelayEntry> _partners() {
-    final all = _rns.relayDirectory.indexers();
+    final all = _rns.relayDirectory.archivers();
     final out = [
       for (final e in all)
         if (e.announcement.has(RelayCap.search)) e

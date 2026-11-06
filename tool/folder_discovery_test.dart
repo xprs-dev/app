@@ -1,8 +1,8 @@
-// PEER-TO-PEER FOLDER DISCOVERY over a real rnsd, with NO indexer (slice).
+// PEER-TO-PEER FOLDER DISCOVERY over a real rnsd, with NO archiver (slice).
 // Three plain Aurora nodes connect through one rnsd. Node A creates + edits a
 // folder and advertises itself in the DHT under the folder key. Node B and node
 // C, given ONLY the folder id, resolve providers via the DHT and browse the
-// folder directly from A — no indexer, no RelayDirectory. B then holds the
+// folder directly from A — no archiver, no RelayDirectory. B then holds the
 // events (auto-seed ready), so any device can serve a folder it has seen.
 //
 //   dart run tool/folder_discovery_test.dart [port]
@@ -156,7 +156,7 @@ Future<void> main(List<String> args) async {
     await b.connect(port);
     await c.connect(port);
 
-    // Let everyone announce so DHT contacts + paths form (no indexer role).
+    // Let everyone announce so DHT contacts + paths form (no archiver role).
     final pump = Timer.periodic(const Duration(milliseconds: 700), (_) {
       a!.announce();
       b!.announce();
@@ -183,8 +183,8 @@ Future<void> main(List<String> args) async {
       return false;
     }
 
-    check('B finds the folder by key alone (no indexer)', await browseHas(b, shaA));
-    check('C finds the folder by key alone (no indexer)', await browseHas(c, shaA));
+    check('B finds the folder by key alone (no archiver)', await browseHas(b, shaA));
+    check('C finds the folder by key alone (no archiver)', await browseHas(c, shaA));
 
     // B now holds the folder's events locally -> it can serve them (auto-seed).
     final bHeld = b.store

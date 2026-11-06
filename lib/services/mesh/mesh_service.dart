@@ -1388,7 +1388,7 @@ class MeshService {
   ///
   /// **Signed**, which the Bluetooth beacon is not: signing is the default
   /// (section 9.1) and only the advert ceiling argues against it. Here there is
-  /// room, and an unsigned beacon is a callsign anybody can write — an indexer
+  /// room, and an unsigned beacon is a callsign anybody can write — an archiver
   /// deciding whether to spend airtime on us has nothing else to go on.
   /// Fire-and-forget wrapper: airing now awaits the bearer, and neither the
   /// timer nor the startup path has anything to do with the answer.

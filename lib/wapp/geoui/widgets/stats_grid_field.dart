@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// `$type:"stats"` — a native dashboard grid, because statistics are not a
-/// form (docs/NOSTR.md, the Indexer UI).
+/// form (docs/NOSTR.md, the Archiver UI).
 ///
 /// GeoUI's only stat display used to be a read-only text field, which renders
 /// as exactly what it is: an input box someone disabled. A dashboard needs the

@@ -9,7 +9,7 @@
  * about the network:
  *
  *   T=0 special : 32-byte folder public key        (required, exactly one)
- *   T=1 hint    : 16-byte RNS destination hash of a provider/indexer (0..n)
+ *   T=1 hint    : 16-byte RNS destination hash of a provider/archiver (0..n)
  *   T=2 author  : 32-byte pubkey of the publisher  (optional, off by default)
  *   T=3 kind    : uint32 big-endian                (optional, reserved)
  *
@@ -34,7 +34,7 @@ class NtorrentRef {
   /// 64-hex folder public key (the folder id).
   final String folderId;
 
-  /// RNS destination hashes (16 bytes each) of providers/indexers worth asking
+  /// RNS destination hashes (16 bytes each) of providers/archivers worth asking
   /// first, before walking the DHT. May be stale — they are a hint, not a fact.
   final List<Uint8List> hints;
 

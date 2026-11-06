@@ -18,7 +18,7 @@
  * (`t:mailbox hold:` — docs/XPRS.md section 13.12) or the packet is mail to a
  * station that did. Without that rule a well-connected hub would spool the
  * whole mesh's chatter and fill its disk with strangers (section 36.3: a
- * station pushes to the indexers its operator CHOSE).
+ * station pushes to the archivers its operator CHOSE).
  */
 import 'xprs_self.dart';
 import 'dart:async';
@@ -455,12 +455,12 @@ class XprsIngest {
 
     if (p.type == 'moderate') XprsGroups.instance.offer(p);
 
-    // The preference governs the INDEXER — other people's traffic. A packet
+    // The preference governs the ARCHIVER — other people's traffic. A packet
     // addressed to us is our own mail and is kept either way.
     final forUs =
         _addressesUs(p['d'], selfCallsign, selfAliases) ||
             // A group act is addressed to the GROUP, so the test above says no
-            // to every one of them and, with the indexer off, the record of a
+            // to every one of them and, with the archiver off, the record of a
             // group we belong to was dropped as somebody else's chatter. 26.4
             // replays a roster from those packets and nothing else: keep none
             // and the station forgets every group it is in on restart.
@@ -825,7 +825,7 @@ class XprsIngest {
   /// optional.** It ignores the public-archiver switch on purpose: that
   /// preference governs whether this station indexes OTHER people's traffic,
   /// where the storage cost and the choice actually live. Switching the
-  /// indexer off must not stop a station keeping its own log.
+  /// archiver off must not stop a station keeping its own log.
   ///
   /// Every transmit primitive calls this. A new bearer that does not is a
   /// bearer whose traffic silently leaves no trace.
@@ -833,7 +833,7 @@ class XprsIngest {
     final p = XprsPacket.parse(wire);
     if (p == null) return;
     // Our own log stays complete for everything a `cmd:history` asked of US
-    // could replay -- section 36.5, and the reason this ignores the indexer
+    // could replay -- section 36.5, and the reason this ignores the archiver
     // preference. Our own PRESENCE is the exception: nobody has ever asked a
     // phone to replay its own beacons, and on the bench they were 139 of the
     // newest 200 rows in this device's archive.
@@ -1066,14 +1066,14 @@ class XprsIngest {
     final toC = _base(p['d'] ?? '');
 
     // Addressed to us: our own mail, kept with no declaration from anyone and
-    // regardless of the indexer preference. The declaration rule below exists
+    // regardless of the archiver preference. The declaration rule below exists
     // to stop this station spooling the whole Reticulum lane on other
     // people's behalf; it was never meant to refuse our own post.
     //
     // A closed group we belong to counts as ours for exactly the same reason,
     // and by the same test the air lane uses. Without this a group post that
     // arrived ONLY over Reticulum fell past here to the declaration rule and,
-    // with the indexer preference off, was dropped -- so the room would have
+    // with the archiver preference off, was dropped -- so the room would have
     // gone quiet for anybody not also in LAN or BLE range. It survived on the
     // bench only because the LAN copy arrived too.
     if (XprsArchive.instance.addressesUs(p['d']) ||

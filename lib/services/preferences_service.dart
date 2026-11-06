@@ -22,6 +22,7 @@ class PreferencesService {
     return _pending ??= () async {
       final service = PreferencesService._();
       service._prefs = await SharedPreferences.getInstance();
+      await service._migrateArchiverKeys();
       // The editor's AI tab is gone from the core; its settings, an API key
       // among them, were stored in plaintext. Nothing reads them any more.
       for (final k in const ['ai.providerId', 'ai.baseUrl', 'ai.model',
@@ -380,7 +381,7 @@ class PreferencesService {
   int get xprsArchiveMaxDays => _prefs.getInt('xprs.archiveMaxDays') ?? 365;
   set xprsArchiveMaxDays(int v) => _prefs.setInt('xprs.archiveMaxDays', v);
 
-  /// Favorite indexers: callsigns (in preference order) this station
+  /// Favorite archivers: callsigns (in preference order) this station
   /// declares as its mailboxes with a signed `t:mailbox hold:` (XPRS 13.12).
   /// Empty = no declaration is aired.
   String get xprsMailboxHold => _prefs.getString('xprs.mailboxHold') ?? '';
@@ -616,12 +617,35 @@ class PreferencesService {
   String get nodeRadios => _prefs.getString('node.radios') ?? '';
   set nodeRadios(String v) => _prefs.setString('node.radios', v);
 
-  // Does the owner volunteer this device as an Indexer? 'off' | 'auto' (serve
+  // The role used to be called "indexer" (renamed 2026-11-06: an archiver
+  // indexes, but what it does for others is archive). Installs that chose a
+  // value under the old keys keep it: copy once, then the old keys are gone.
+  Future<void> _migrateArchiverKeys() async {
+    const moves = {
+      'indexer.volunteer': 'archiver.volunteer',
+      'indexer.queryRing': 'archiver.queryRing',
+      'indexer.topics': 'archiver.topics',
+    };
+    for (final e in moves.entries) {
+      if (!_prefs.containsKey(e.key)) continue;
+      if (!_prefs.containsKey(e.value)) {
+        final v = _prefs.get(e.key);
+        if (v is String) await _prefs.setString(e.value, v);
+        if (v is List<String>) await _prefs.setStringList(e.value, v);
+        if (v is List) {
+          await _prefs.setStringList(e.value, v.map((x) => '$x').toList());
+        }
+      }
+      await _prefs.remove(e.key);
+    }
+  }
+
+  // Does the owner volunteer this device as an Archiver? 'off' | 'auto' (serve
   // when plugged in — the inferred default) | 'always'. Revoking must be as easy
   // as granting, or it was never really granted.
-  String get indexerVolunteer =>
-      _prefs.getString('indexer.volunteer') ?? 'auto';
-  set indexerVolunteer(String v) => _prefs.setString('indexer.volunteer', v);
+  String get archiverVolunteer =>
+      _prefs.getString('archiver.volunteer') ?? 'auto';
+  set archiverVolunteer(String v) => _prefs.setString('archiver.volunteer', v);
 
   // ── The Archiver (docs/NOSTR.md) ─────────────────────────────────────────
   //
@@ -660,10 +684,10 @@ class PreferencesService {
   bool get archiveMirrorSmall => _prefs.getBool('archive.mirrorSmall') ?? true;
   set archiveMirrorSmall(bool v) => _prefs.setBool('archive.mirrorSmall', v);
 
-  // The Indexer dashboard's requests-per-hour ring (RateRing.encode()). A
+  // The Archiver dashboard's requests-per-hour ring (RateRing.encode()). A
   // dashboard that resets to zero on every restart teaches the owner nothing.
-  String get indexerQueryRing => _prefs.getString('indexer.queryRing') ?? '';
-  set indexerQueryRing(String v) => _prefs.setString('indexer.queryRing', v);
+  String get archiverQueryRing => _prefs.getString('archiver.queryRing') ?? '';
+  set archiverQueryRing(String v) => _prefs.setString('archiver.queryRing', v);
 
   // The Archiver dashboard's 48-hour graphs: requests served and bytes served,
   // one bucket per hour (RateRing.encode()). Persisted, because a graph that
@@ -674,14 +698,14 @@ class PreferencesService {
   String get archiveBwRing => _prefs.getString('archive.bwRing') ?? '';
   set archiveBwRing(String v) => _prefs.setString('archive.bwRing', v);
 
-  // Topics this indexer volunteers for ("what I'm comfortable indexing").
+  // Topics this archiver volunteers for ("what I'm comfortable indexing").
   // Empty = wide when the hardware allows it: index everything heard.
-  List<String> get indexerTopics =>
-      _prefs.getStringList('indexer.topics') ?? const [];
-  set indexerTopics(List<String> v) =>
-      _prefs.setStringList('indexer.topics', v);
+  List<String> get archiverTopics =>
+      _prefs.getStringList('archiver.topics') ?? const [];
+  set archiverTopics(List<String> v) =>
+      _prefs.setStringList('archiver.topics', v);
 
-  // One cursor per indexer we sync pointers with: (epoch, seq). Eight bytes and
+  // One cursor per archiver we sync pointers with: (epoch, seq). Eight bytes and
   // a name, persisted — because the whole reason the cursor is a POSITION and
   // not a time is that a node with no clock can still resume after a reboot.
   String get pointerCursors => _prefs.getString('dht.pointerCursors') ?? '';

@@ -636,7 +636,7 @@ class XprsArchive {
     // same way the byte cap below already exempts it: this station IS its own
     // archive, and a log that deletes what you said and what was said to you
     // is not one. Everyone else's traffic still ages out — that is the
-    // indexer's job and where the storage actually goes.
+    // archiver's job and where the storage actually goes.
     //
     // Own `observation` beacons are the exception to the exemption: one every
     // 300 s is ~100k rows a year, and a beacon is telemetry rather than

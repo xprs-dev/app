@@ -10,7 +10,7 @@ metadata:
 
 Max renamed the product: there is no more "Aurora", there is only **XPRS** (2026-08-23).
 
-**Why:** One product, one name — same reasoning as the Indexer/Archiver merge and the one-port rule (4242): a second name for the same thing is a standing source of confusion.
+**Why:** One product, one name — same reasoning as the Archiver/Archiver merge and the one-port rule (4242): a second name for the same thing is a standing source of confusion.
 
 **How to apply:** Never call the app Aurora in replies, commit messages, code, comments, or docs. New user-visible strings say XPRS. Legacy identifiers that still say `aurora` (package name, data dir `~/.local/share/aurora`, binary path) are migration surfaces, not licence to keep the name alive — renaming them needs a data-dir migration for installed devices. Related: [[read-performance-md-before-coding]].
 

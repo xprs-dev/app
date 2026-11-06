@@ -757,7 +757,7 @@ class RemoteApiService {
       }
       if (req.method == 'POST' && path == '/api/rns/relay/publish') {
         // {"event": {NIP-01 signed event json}} — store locally + fan out to an
-        // indexer. The event must already be Schnorr-signed by the caller.
+        // archiver. The event must already be Schnorr-signed by the caller.
         final data = await _body(req);
         final ev = data['event'];
         if (ev is! Map) {
@@ -793,7 +793,7 @@ class RemoteApiService {
         return _json(res, {'ok': true, 'count': events.length, 'events': events});
       }
       if (req.method == 'POST' && path == '/api/rns/relay/topic') {
-        // {"topic":"reticulum"} — add a topic to our indexer interest set.
+        // {"topic":"reticulum"} — add a topic to our archiver interest set.
         final data = await _body(req);
         final topic = '${data['topic'] ?? ''}'.trim();
         if (topic.isEmpty) {
@@ -801,7 +801,7 @@ class RemoteApiService {
               status: HttpStatus.badRequest);
         }
         RnsService.instance.addRelayTopic(topic);
-        return _json(res, {'ok': true, 'indexers': RnsService.instance.relayIndexerCount});
+        return _json(res, {'ok': true, 'archivers': RnsService.instance.relayArchiverCount});
       }
       if (req.method == 'POST' && path == '/api/rns/folder/create') {
         // {"name":"My folder","desc":"...","type":"private|readonly|collab"}
@@ -951,7 +951,7 @@ class RemoteApiService {
             .folderOpenFile(fid, sha, name: '${data['name'] ?? ''}');
         return _json(res, {'ok': ok});
       }
-      // Pin/unpin: keep a full copy and advertise ourselves to the Indexers.
+      // Pin/unpin: keep a full copy and advertise ourselves to the Archivers.
       if (req.method == 'POST' && path == '/api/rns/folder/pin') {
         // {"folderId":..,"on":true}
         final data = await _body(req);
@@ -1994,7 +1994,7 @@ class RemoteApiService {
         return _json(res, {'ok': true, 'opened': opened,
             ...XprsFetch.instance.json});
       }
-      // Declare this station's favorite indexers (XPRS 13.12): persists the
+      // Declare this station's favorite archivers (XPRS 13.12): persists the
       // hold list and airs the signed t:mailbox on every bearer now.
       if (req.method == 'POST' && path == '/api/xprs/mailbox') {
         final data = await _body(req);

@@ -1,5 +1,5 @@
 /*
- * FolderRelay — peer-to-peer folder discovery by key, no indexer required.
+ * FolderRelay — peer-to-peer folder discovery by key, no archiver required.
  *
  * A folder's state is signed NOSTR events. Discovery reuses the SAME mechanism
  * XPRS uses to find files by sha256: every device that holds a folder publishes

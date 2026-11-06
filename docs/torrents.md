@@ -1,13 +1,13 @@
 # Torrents over Reticulum
 
 A torrent client where **the unit of sharing is a folder, not a file**, the
-tracker is the **Indexer mesh** ([NOSTR.md](NOSTR.md)), the swarm is
+tracker is the **Archiver mesh** ([NOSTR.md](NOSTR.md)), the swarm is
 **Reticulum**, and the "info hash" is a **public key** instead of a digest of the
 contents.
 
 Nothing here is a new network. The pieces already exist: mutable folders
 (`lib/services/folders/`, [folders.md](folders.md)), the content-addressed file
-layer and DHT (`lib/services/files/`), the Indexer role and provider records
+layer and DHT (`lib/services/files/`), the Archiver role and provider records
 (NOSTR.md). The **Torrents wapp** (`apps/torrents`) is the torrent-client
 face on top of them.
 
@@ -31,7 +31,7 @@ face on top of them.
 | Info hash = SHA-1 of the metadata | **Folder id = an npub** (secp256k1 public key) |
 | Changing a file changes the info hash → a new torrent | The npub **never changes**; the contents change under it |
 | `.torrent` file / magnet link, distributed out of band | The **signed op-log** is fetched from the swarm itself |
-| Tracker / DHT keyed by content | **Indexers** keyed by the folder npub *and* by each file's sha256 |
+| Tracker / DHT keyed by content | **Archivers** keyed by the folder npub *and* by each file's sha256 |
 | Anyone with the info hash can seed; nobody can update | Anyone with the npub can **read and seed**; only the **nsec holder** (and admins they signed in) can **publish an update** |
 
 **The folder hash is not a hash of the folder.** It is the folder's public key.
@@ -129,7 +129,7 @@ this device.
 4. **Sign the op-log.** One `addFile` op per entry — `{name, x: sha256, ext,
    size}` — signed with the folder nsec, appended to `events`.
 5. **Announce.** Publish a provider record under the **folder npub** *and* one
-   under **each file sha256**, to the DHT and to the Indexers we know
+   under **each file sha256**, to the DHT and to the Archivers we know
    (`publishKey`). Those two keys are what the tracker answers on: *who has this
    folder* and *who has this file*.
 6. **Share the `ntorrent1…`.** Chat message, QR, copy button. It is the magnet
@@ -147,14 +147,14 @@ The torrent never dies and never forks.
 ## 4. Downloading a torrent
 
 The client is the ordinary torrent loop, with Reticulum in place of TCP and
-Indexers in place of a tracker.
+Archivers in place of a tracker.
 
-1. **Resolve the folder.** Ask the **best Indexer** (`bestIndexer()`, scored by
+1. **Resolve the folder.** Ask the **best Archiver** (`bestArchiver()`, scored by
    interest match, capacity, hops, freshness) for the folder npub. It answers
    with a **list of holders**, and per holder — this is the part a bare peer list
-   would be useless without — the node profile from NOSTR.md §"What an Indexer
+   would be useless without — the node profile from NOSTR.md §"What an Archiver
    actually answers": last-heard and its provenance (heard directly vs learned
-   from another Indexer), power source and uplink, capacity class, radios and
+   from another Archiver), power source and uplink, capacity class, radios and
    listening schedule, coverage region.
 2. **Pull the op-log**, reduce it, and show the user the file list *before*
    downloading a byte. This is the `.torrent` — except it was fetched from the
@@ -195,12 +195,12 @@ they care about.**
 Pin a folder and the device: downloads everything under it, keeps it against
 eviction (retention tier 0 — a pinned folder is never evicted for a stranger's
 junk), follows the op-log so an update is fetched automatically, and — the
-point — **reports itself to the Indexers as a holder**, for the folder key and
+point — **reports itself to the Archivers as a holder**, for the folder key and
 for every file sha256 in it, republished every 30 min against the 45-min record
 TTL.
 
 That report is what makes pinning worth anything to anyone but the pinner: a
-folder with five pins has five entries in every Indexer's who-has map, and the
+folder with five pins has five entries in every Archiver's who-has map, and the
 publisher's phone stops being the single point of failure it was the day the
 folder was created. **A pin is a vote that the thing should survive.**
 
@@ -219,7 +219,7 @@ disk path). One file, one delete.
 
 ---
 
-## 6. What the Indexers answer
+## 6. What the Archivers answer
 
 Two questions, two keys, one mechanism — the existing DHT + provider-record
 layer, which stores **pointers only, never content**.
@@ -231,11 +231,11 @@ layer, which stores **pointers only, never content**.
 
 A `ProviderRecord` is ~176 B, Ed25519-signed by the provider, TTL 45 min,
 republished at 30 — so a seeder that goes away leaves the tracker by itself, with
-nobody to garbage-collect it and nobody to bribe to stay in. Indexers sync their
+nobody to garbage-collect it and nobody to bribe to stay in. Archivers sync their
 maps with each other (fast, wired, spares the phones), and they anchor the DHT.
-An Indexer that dies costs the swarm a directory, not an archive.
+An Archiver that dies costs the swarm a directory, not an archive.
 
-**An Indexer never sends file bytes.** It says *these N devices have it*, and it
+**An Archiver never sends file bytes.** It says *these N devices have it*, and it
 says enough about each of them that the client can choose well.
 
 ---
@@ -294,7 +294,7 @@ one.
      per-peer window sized by capacity + measured throughput, verify per piece,
      drop and re-issue from a liar, `demoteProvider` a dead one.
 3. **Swarm view** — expose the resolved holders + their profiles to the wapp; the
-   Indexer already returns them, nothing renders them.
+   Archiver already returns them, nothing renders them.
 4. **Pin as a first-class state** — the report loop, the quota checks, the
    retention pin.
 5. **The wapp UI** — the five screens above.
@@ -352,7 +352,7 @@ The publisher's phone is no longer the only copy — which is what a pin is for.
   disk-backed; the per-folder SQLite is item 1 of the build order.
 - Mutable folders, the op-log, the reducer, the capability boundaries: **built and
   tested**.
-- The DHT, provider records, Indexer selection, node profiles, quotas: **built**,
+- The DHT, provider records, Archiver selection, node profiles, quotas: **built**,
   and the DHT is live-validated across networks.
 - File transfer over RNS: **at parity with reference RNS** both for a
   single-provider fetch and, now, the **piece engine's multi-provider path**.
@@ -378,10 +378,10 @@ with extra steps.
 | **Endgame mode** (engine) | duplicate-request the last pieces, cancel on first arrival |
 | **Choking / fairness** | the quotas answer *how much* we give strangers, never *which* stranger. A swarm of pure leechers is currently stable and useless. Rank requesters by what they served **us**, keep one **optimistic-unchoke** slot so a newcomer with nothing can still bootstrap. This is tit-for-tat, and it is the only thing that makes seeding rational rather than charitable |
 | **Availability** | the minimum number of copies of the rarest piece across the swarm. Shown per torrent, because `0.7` means *this folder is dying and nobody has told you* |
-| **PEX** | peers gossip their peer lists, so a swarm survives every Indexer being unreachable |
+| **PEX** | peers gossip their peer lists, so a swarm survives every Archiver being unreachable |
 | **LSD** | LAN broadcast peer discovery — the LAN bus already exists; a co-located peer should never need the mesh |
 | **Web seed (BEP-19)** | **Blossom is already this.** A content-addressed HTTPS blob is a web seed; use it as the fallback tier when the swarm is cold, subject to the Reticulum-first rule (mesh first, internet only on timeout, switchable off) |
-| **Private swarm** | a flag that suppresses PEX/DHT gossip: the folder is discoverable only through the Indexers the owner named. Pairs with `private` share type |
+| **Private swarm** | a flag that suppresses PEX/DHT gossip: the folder is discoverable only through the Archivers the owner named. Pairs with `private` share type |
 | **Ban list** | drop a peer that serves bad pieces, persistently, per torrent |
 
 ### Client behaviour
@@ -407,7 +407,7 @@ with extra steps.
   plaintext mode to hide.
 - **IP blocklists** — there are no IPs. A ban is by pubkey.
 - **Trackers as infrastructure** — no announce URLs, nothing to seize, nothing to
-  pay for. Indexers self-nominate and expire on their own.
+  pay for. Archivers self-nominate and expire on their own.
 
 ---
 
@@ -446,7 +446,7 @@ HRP `ntorrent`, bech32, NIP-19 TLV body:
 | T | V | |
 |---|---|---|
 | `0` special | 32-byte **folder pubkey** | required, exactly one |
-| `1` hint | 16-byte **RNS destination hash** of a known provider or Indexer | repeatable, 0..n |
+| `1` hint | 16-byte **RNS destination hash** of a known provider or Archiver | repeatable, 0..n |
 | `2` author | 32-byte **npub of the publisher** | optional |
 | `3` kind | uint32 | optional; reserved, so a later pointer variant needs no new HRP |
 
@@ -624,7 +624,7 @@ browser hides empty buckets. Everything is resolvable from the op-log, so a
 torrent that is only a listing (not downloaded) is fully searchable.
 
 This is per-node today (what this device knows). Search ACROSS the network is the
-next layer: the Indexers already answer "who has this folder"; a category/keyword
+next layer: the Archivers already answer "who has this folder"; a category/keyword
 query over their listing mirror is a natural extension and wants its own design.
 
 ---

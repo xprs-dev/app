@@ -49,7 +49,7 @@ thing.
 |---|---|
 | [reticulum-connections.md](reticulum-connections.md) | The whole file is hard-won. *"The transport is almost never the problem — look before blaming it."* A display list is not a reachability list. Unknown is not empty. MTU discovery that floors itself back up is not discovery. |
 | [folders.md](folders.md) / [sync.md](sync.md) | Mutable folders as a signed append-only op-log; collab folders on top. |
-| [indexer.md](indexer.md) | What happened while I was not listening — the question a station cannot answer for itself. |
+| [archiver.md](archiver.md) | What happened while I was not listening — the question a station cannot answer for itself. |
 | [lan.md](lan.md) | The bearer that costs nothing when a station is on WiFi or ethernet. |
 
 **Kept in this repo and in `xprs-firmware`, and they must not drift**: `ble5.md`

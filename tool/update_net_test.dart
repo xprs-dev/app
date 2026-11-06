@@ -4,7 +4,7 @@
 //
 //   Publisher (P) owns a signed mutable folder (the "beta" channel) holding real
 //   release binaries named aurora-<version>-<platform>, and serves their bytes
-//   from a FileTransferNode. An indexer (B) hosts the folder's signed op-log.
+//   from a FileTransferNode. An archiver (B) hosts the folder's signed op-log.
 //   Consumer (C) — a separate identity — browses the folder over the network,
 //   runs the SAME releasesFromFolder() adapter the app uses to pick the newest
 //   stable vs beta, fetches the chosen binary by sha256 over a Reticulum link,
@@ -133,7 +133,7 @@ class _Node {
 
   Future<void> announceRelay() async {
     final pkt = await RnsAnnounceBuilder.build(id, kRelayApp, kRelayAspects,
-        appData: Uint8List.fromList('indexer'.codeUnits));
+        appData: Uint8List.fromList('archiver'.codeUnits));
     transport.sendOnAll(pkt.pack());
   }
 
@@ -180,7 +180,7 @@ Future<void> main(List<String> args) async {
 
   _Node? b, p, c;
   try {
-    b = _Node(await RnsIdentity.generate()); // indexer (hosts the op-log)
+    b = _Node(await RnsIdentity.generate()); // archiver (hosts the op-log)
     p = _Node(await RnsIdentity.generate()); // publisher (owns folder + serves)
     c = _Node(await RnsIdentity.generate()); // consumer (the updating app)
 
@@ -206,14 +206,14 @@ Future<void> main(List<String> args) async {
     await c.connect(port);
     await Future<void>.delayed(const Duration(seconds: 1));
 
-    // B announces as the indexer; P announces its files destination so C learns
+    // B announces as the archiver; P announces its files destination so C learns
     // a route to fetch from.
     final bTimer = Timer.periodic(
         const Duration(milliseconds: 600), (_) => b!.announceRelay());
     final pTimer = Timer.periodic(
         const Duration(milliseconds: 600), (_) => p!.announceFiles());
 
-    // C learns the indexer B and the provider P over the wire.
+    // C learns the archiver B and the provider P over the wire.
     RnsIdentity? bFromP, bFromC, pFromC;
     await _until(() {
       for (final e in p!.transport.paths) {
@@ -228,7 +228,7 @@ Future<void> main(List<String> args) async {
       }
       return bFromP != null && bFromC != null && pFromC != null;
     });
-    check('publisher + consumer learned the indexer', bFromP != null && bFromC != null);
+    check('publisher + consumer learned the archiver', bFromP != null && bFromC != null);
     check('consumer learned the provider (route to fetch binaries)', pFromC != null);
     if (bFromP == null || bFromC == null || pFromC == null) {
       bTimer.cancel();

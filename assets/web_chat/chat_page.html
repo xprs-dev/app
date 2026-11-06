@@ -1585,8 +1585,8 @@ function loadStation(){
              (d.net.internet?'reachable':'no'));
     if(d.heard!==undefined)
       h+=row('Heard',esc(d.heard)+' packets, '+esc(d.in_reach||0)+' in reach now');
-    if(d.indexer)
-      h+=row('Archive',esc(d.indexer.count)+' packets held');
+    if(d.archiver)
+      h+=row('Archive',esc(d.archiver.count)+' packets held');
     h+='</table>';
     if(d.lora){
       h+='<h3>LoRa</h3><table class="kv">'+

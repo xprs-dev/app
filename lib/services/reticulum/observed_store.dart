@@ -165,7 +165,7 @@ class ObservedStore {
 
   /// The best-known XPRS peers to warm-start discovery from: those running
   /// XPRS software with a usable public key, ranked by advertised uptime
-  /// (stable nodes — likely indexers — first) then recency. Each row carries
+  /// (stable nodes — likely archivers — first) then recency. Each row carries
   /// {id, pubkey, services, uptime, lastSeen}. Used on boot to seed the DHT
   /// routing table + relay directory and path-request/ping the steadiest peers
   /// first, instead of waiting minutes for live announces to converge.

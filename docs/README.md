@@ -38,7 +38,7 @@ file/line pointers into the code), not an idealised spec.
 | [chat-rooms.md](chat-rooms.md) | Chat rooms as NIP‑72 communities + a signed moderation op‑log: subtree‑scoped admin/mod authority, kick/suspend/ban/points, and a client‑side 1‑10 reputation. Federates to any standard NOSTR relay. |
 | [folders.md](folders.md) | Mutable shared folders over Reticulum: key‑addressed directories backed by a signed, append‑only op‑log. |
 | [sync.md](sync.md) | Collab (multi‑writer) folders and cross‑device sync built on top of mutable folders. |
-| [NOSTR.md](NOSTR.md) | **The vision**: every user a relay, self‑nominated indexers that answer *where* (not *what*), and one account living on the internet and on Reticulum at once. Marks what is built and what is not. |
+| [NOSTR.md](NOSTR.md) | **The vision**: every user a relay, self‑nominated archivers that answer *where* (not *what*), and one account living on the internet and on Reticulum at once. Marks what is built and what is not. |
 | [nostr-client.md](nostr-client.md) | The NOSTR client wapp and its transport‑abstract relay hub (wss + Reticulum + local store). |
 | [social.md](social.md) | The **Social wapp** in practice: how the curated All feed works (main‑isolate poll‑and‑close, reaction‑driven curation, profiles, likes, the "(updated)" label), and the lessons/traps for anyone changing it — chiefly that the engine isolate freezes on socket reopen. |
 | [esp32.md](esp32.md) | The ESP32 dongle firmware map: project layout, which firmware is which, BLE protocol state, and the traps. |

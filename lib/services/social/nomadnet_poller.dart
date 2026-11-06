@@ -1,6 +1,6 @@
 /*
  * NomadnetPoller — the Social "Nomadnet" feed: fresh NOSTR publications pulled
- * from the RETICULUM mesh (indexers + callsign peers across the hubs) AND this
+ * from the RETICULUM mesh (archivers + callsign peers across the hubs) AND this
  * device's own local relay store. UNCURATED — just signature-verified,
  * newest-first.
  *
@@ -49,7 +49,7 @@ class NomadnetPoller {
   void start() {
     if (_disposed) return;
     stop();
-    // Announce ourselves so a peer adds us to its indexer directory within
+    // Announce ourselves so a peer adds us to its archiver directory within
     // seconds (both directions of fan-out + our REQ pull), then pull now.
     RnsService.instance.announceRelayNow();
     unawaited(pollOnce());
@@ -70,7 +70,7 @@ class NomadnetPoller {
     if (_busy || _disposed) return 0;
     _busy = true;
     try {
-      // Per-target incremental pull: each indexer is asked only for what is new
+      // Per-target incremental pull: each archiver is asked only for what is new
       // since our last contact with it (persisted cursor in RnsService).
       final events = await RnsService.instance.nomadnetPull();
       if (_disposed) return 0;
@@ -144,7 +144,7 @@ class NomadnetPoller {
     }
   }
 
-  /// Apply a single event pushed to us by a peer indexer (RnsService.
+  /// Apply a single event pushed to us by a peer archiver (RnsService.
   /// onNomadnetInbound) — the live push path. Runs on the main isolate; the
   /// event is already signature-verified by the relay before storage.
   void ingestPushed(Map<String, dynamic> json) {

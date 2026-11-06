@@ -107,7 +107,7 @@ void main() {
     XprsMonitor.instance.clear();
   });
 
-  test('a station that says serve:archive reads as an indexer', () {
+  test('a station that says serve:archive reads as an archiver', () {
     XprsMonitor.instance.clear();
     // Section 24's vocabulary. `archive` is one claim covering all of it:
     // keeping a spool, re-airing it on cmd:history, and holding mail for
@@ -124,15 +124,15 @@ void main() {
         .cast<Map<String, dynamic>>()
         .firstWhere((n) => n['id'] == 'xprs:X3WWAJ');
     expect((node['services'] as List), containsAll(['relay', 'archive']));
-    expect((node['meta'] as Map)['role'], 'indexer',
+    expect((node['meta'] as Map)['role'], 'archiver',
         reason: 'serve:archive is the whole difference from a passing phone');
     expect((node['meta'] as Map)['count'], 212);
 
     // A service filter now SELECTS these stations instead of dropping them.
-    final indexers = (RnsService.instance.graphSnapshot(
+    final archivers = (RnsService.instance.graphSnapshot(
         includeXprs: true, service: 'archive')['nodes'] as List)
         .cast<Map<String, dynamic>>();
-    expect(indexers.any((n) => n['id'] == 'xprs:X3WWAJ'), true);
+    expect(archivers.any((n) => n['id'] == 'xprs:X3WWAJ'), true);
     final files = (RnsService.instance
             .graphSnapshot(includeXprs: true, service: 'files')['nodes'] as List)
         .cast<Map<String, dynamic>>();
@@ -163,7 +163,7 @@ void main() {
         .cast<Map<String, dynamic>>()
         .firstWhere((n) => n['id'] == 'xprs:X3SUPR');
     expect((node['services'] as List), ['archive']);
-    expect((node['meta'] as Map)['role'], 'indexer',
+    expect((node['meta'] as Map)['role'], 'archiver',
         reason: 'it announced no depth and no uptime, so it is an archiver '
             'like any other -- the claim alone never made it always-on');
     XprsMonitor.instance.clear();
@@ -197,8 +197,8 @@ void main() {
 
     expect(roleOf('X3DEEP'), 'always-on archiver');
     expect(roleOf('X3AWKE'), 'always-on archiver');
-    expect(roleOf('X3ARCH'), 'indexer');
-    expect(roleOf('X3LORA'), 'indexer',
+    expect(roleOf('X3ARCH'), 'archiver');
+    expect(roleOf('X3LORA'), 'archiver',
         reason: 'not addressable: depth on a radio-only station is not a '
             'promise you can collect on from somewhere else');
     XprsMonitor.instance.clear();

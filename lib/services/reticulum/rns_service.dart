@@ -312,8 +312,8 @@ class RnsService {
   /// sending the same text twice, which is worse than any duplicate.
   final Set<String> _lxmfSeenHashes = <String>{};
 
-  // Distributed NOSTR-like relay/indexer: a local event store + search, a relay
-  // endpoint over Reticulum, a directory of peer indexers, a capacity-driven
+  // Distributed NOSTR-like relay/archiver: a local event store + search, a relay
+  // endpoint over Reticulum, a directory of peer archivers, a capacity-driven
   // role, and LXMF store-and-forward. The DB path is set by the app before start
   // (persistent); if unset we fall back to an in-memory store.
   String? relayStorePath;
@@ -326,7 +326,7 @@ class RnsService {
   void Function(Map<String, dynamic> eventJson)? onSelfNotePublished;
 
   /// Fired when a reticulum-native (`z=rns`) event is PUSHED to us by a peer
-  /// indexer — the fan-out EVENT lands in our store via [RelayNode.onEvent].
+  /// archiver — the fan-out EVENT lands in our store via [RelayNode.onEvent].
   /// The Nomadnet feed uses it as a push trigger: a peer's new post/reaction
   /// refreshes the open feed instantly, no poll, no socket. kind-1 → a new row;
   /// kind-6/7 → a reaction on an existing post. Argument is the signed event
@@ -335,8 +335,8 @@ class RnsService {
 
   /// Persisted per-target pull cursor: target relay identity `hexHash` → the
   /// newest `created_at` (sec) we have received FROM it. Lets the Nomadnet pull
-  /// ask each indexer only for what is new since our last contact with THAT
-  /// indexer, instead of one global `since` that re-requests or skips.
+  /// ask each archiver only for what is new since our last contact with THAT
+  /// archiver, instead of one global `since` that re-requests or skips.
   final Map<String, int> _relayCursor = {};
   String? relayCursorsPath;
   Timer? _relayCursorSaveTimer;
@@ -500,7 +500,7 @@ class RnsService {
 
   // callsign -> that peer's full RNS identity (learned from its chat announce).
   // Lets us derive the peer's relay destination and fetch its NOSTR events
-  // (e.g. its kind-0 profile) DIRECTLY from it — no third-party indexer needed.
+  // (e.g. its kind-0 profile) DIRECTLY from it — no third-party archiver needed.
   final Map<String, RnsIdentity> _callIdentity = {};
 
   // callsign -> that peer's NOSTR pubkey (hex), bridged from the APRS wapp's
@@ -1628,7 +1628,7 @@ class RnsService {
   /// idempotent, non-fatal: a device without BLE5 (e.g. desktop) just stays a
   /// leaf.
   /// Promote or demote this node as a TRANSPORT hub for its neighbours, on the
-  /// same capacity gate that makes it an indexer (mains + Wi-Fi/Ethernet).
+  /// same capacity gate that makes it an archiver (mains + Wi-Fi/Ethernet).
   ///
   /// Promoted: the transport rebroadcasts announces across ALL its interfaces
   /// (not only edge→core as the BLE bridge does) and a LAN TCP hub is bound on
@@ -1902,7 +1902,7 @@ class RnsService {
 
   /// Seconds this node's Reticulum stack has been up this run (0 when down).
   /// Advertised on the wire (relay announce) and the API so peers can prefer
-  /// stable, long-running nodes (likely indexers) when warm-starting discovery.
+  /// stable, long-running nodes (likely archivers) when warm-starting discovery.
   int get uptimeSeconds {
     final t = _startedAt;
     if (!_up || t == null) return 0;
@@ -1982,7 +1982,7 @@ class RnsService {
     if (_relayRole != null) 'relayRole': _relayRole!.current.role.name,
     if (_relayStore != null) 'relayEvents': _relayStore!.count(),
     if (_relayStore != null) 'relayMailbox': _relayStore!.sfCount(),
-    'relayIndexers': _relayDir.indexers().length,
+    'relayArchivers': _relayDir.archivers().length,
     'observed': _observed.length,
   };
 
@@ -2082,7 +2082,7 @@ class RnsService {
   /// Warm-start discovery from the persistent observed-node cache: seed the DHT
   /// routing table from the public keys of known XPRS peers (so resolve /
   /// publish act immediately), then pull transport paths to the steadiest peers
-  /// (highest advertised uptime → likely indexers) FIRST, so the first folder /
+  /// (highest advertised uptime → likely archivers) FIRST, so the first folder /
   /// file lookup is routable within seconds instead of waiting minutes for live
   /// announces to re-converge. Runs once on boot, after the node is up.
   Future<void> _warmStartFromCache() async {
@@ -3253,7 +3253,7 @@ class RnsService {
     //
     // A `service:` filter used to hide every one of them, on the reasoning that
     // a beacon announces no services. It does now: `t:service serve:archive`
-    // (§24) is exactly how an indexer says what it is, so these stations are
+    // (§24) is exactly how an archiver says what it is, so these stations are
     // filtered on what they claim like anything else.
     if (includeXprs && !localOnly) {
       final mon = XprsMonitor.instance..sweep();
@@ -3323,14 +3323,14 @@ class RnsService {
             // The word on the wire is `archive` (section 24), not `index`:
             // section 24 folds keeping a spool, answering cmd:history and
             // holding mail into that single claim, and section 36 calls the
-            // station doing it an indexer. This read `contains('index')`,
+            // station doing it an archiver. This read `contains('index')`,
             // which xprsServices can never return because `index` is not in
             // kXprsServices -- so the role was unreachable and every archiver
             // on the air rendered as an ordinary station.
             'role': isAlwaysOn
                 ? 'always-on archiver'
                 : s.services.contains('archive')
-                    ? 'indexer'
+                    ? 'archiver'
                     : '',
             'caps': const <String>[],
             'capacity': 0,
@@ -3636,17 +3636,17 @@ class RnsService {
                 // node, but the closure runs only when a frame arrives.
                 onRelayFrame: (body) =>
                     _relay?.answerRelayFrame(body) ?? Future.value(null),
-                // Persistence anchors: the always-on relay indexers. The DHT also STOREs
+                // Persistence anchors: the always-on relay archivers. The DHT also STOREs
                 // provider records to them and queries them FIRST on resolve, so records
                 // survive churn of the ephemeral k-closest and stay findable regardless
                 // of XOR distance (the enabler for shrinking k later). We pick the most
-                // stable (lowest kCap) fresh indexers, excluding ourselves, capped to a
+                // stable (lowest kCap) fresh archivers, excluding ourselves, capped to a
                 // few to bound the extra traffic. Empty when none are known → unchanged.
                 stableAnchors: () {
                   final selfHash = _id?.hash;
                   final list =
                       _relayDir
-                          .indexers()
+                          .archivers()
                           .where((e) {
                             final c = e.announcement.capacity;
                             return c >= kCapArchive && c <= kCapHomeWifi;
@@ -4041,7 +4041,7 @@ class RnsService {
           _diskIndex = null;
         }
 
-        // Distributed relay/indexer: local event store + search + serve endpoint.
+        // Distributed relay/archiver: local event store + search + serve endpoint.
         try {
           _relayStore = RelayEventStore.open(relayStorePath ?? ':memory:');
           _relay = RelayNode(
@@ -4088,7 +4088,7 @@ class RnsService {
             // Per-tier admission: self always; strangers refused past their
             // monthly note / storage caps. Text notes only here (isMedia false).
             admitEvent: _admitHostedEvent,
-            // A peer indexer just PUSHED an event into our store (fan-out). If
+            // A peer archiver just PUSHED an event into our store (fan-out). If
             // it is reticulum-native (z=rns), hand it to the Nomadnet feed as a
             // live push trigger — the open feed updates immediately, no poll.
             onEvent: (ev) {
@@ -4102,7 +4102,7 @@ class RnsService {
             },
           );
           // A relay role is advertised whenever hosting is enabled; the capacity
-          // profile decides leaf vs indexer + which caps (storeForward, archive).
+          // profile decides leaf vs archiver + which caps (storeForward, archive).
           final p = PreferencesService.instanceSync;
           _relayRole = (p?.hostEnabled ?? true)
               ? RelayRoleManager(
@@ -4116,13 +4116,13 @@ class RnsService {
               : null;
           // The owner's decision beats the charger. Without this, picking
           // "Always" set a preference and changed nothing on the wire.
-          _relayRole?.volunteer = p?.indexerVolunteer ?? 'auto';
+          _relayRole?.volunteer = p?.archiverVolunteer ?? 'auto';
           // …and what they volunteered to index. Topics persist; an interest
           // set that resets to empty on every launch is not a setting.
-          for (final t in p?.indexerTopics ?? const <String>[]) {
+          for (final t in p?.archiverTopics ?? const <String>[]) {
             _relayRole?.interests.addTopic(t);
           }
-          // The pointer log this device syncs with other indexers. Its epoch is
+          // The pointer log this device syncs with other archivers. Its epoch is
           // derived from the identity, so a rebuilt log gets a new epoch and a
           // peer's stale cursor is DETECTED rather than silently honoured.
           _pointerLog = PointerLog(
@@ -4228,9 +4228,9 @@ class RnsService {
                   // behind the Android background service — so a like made in a
                   // tunnel is archived once there is a network again, app open or not.
                   KeepService.instance.resume();
-                  // Indexers spread the pointer map among themselves, so the phones
+                  // Archivers spread the pointer map among themselves, so the phones
                   // never have to answer for it. This device only runs the loop when
-                  // it IS an indexer, and only talks to peers that say they are too.
+                  // it IS an archiver, and only talks to peers that say they are too.
                   PointerSyncService.instance.start();
                   // An Archiver takes the weight off the phones around it: pull what
                   // they share, then publish ourselves so the DHT stops waking them.
@@ -4262,12 +4262,12 @@ class RnsService {
         // Restore discovered peers (callsign->identity) so backfill can query
         // known posters immediately instead of re-waiting for their announces.
         _loadCallPeers();
-        // Restore per-indexer Nomadnet pull cursors so we resume asking each
-        // indexer from where we left off (incremental), not the cold window.
+        // Restore per-archiver Nomadnet pull cursors so we resume asking each
+        // archiver from where we left off (incremental), not the cold window.
         _loadRelayCursors();
 
         // Mutable folders: owned-key store + service. Discovery is peer-to-peer via
-        // the DHT (no indexer): any holder advertises itself under the folder key
+        // the DHT (no archiver): any holder advertises itself under the folder key
         // and a browser resolves providers by that key — exactly like sha256 files.
         try {
           final store = _relayStore;
@@ -4782,11 +4782,11 @@ class RnsService {
       return;
     }
     _lastRequestedAnnounceMs = nowMs;
-    // Piggyback our relay/indexer announcement (role, services, hardware
+    // Piggyback our relay/archiver announcement (role, services, hardware
     // capacity, pubkey, optional coords) onto the CHAT announce — the one that
     // reliably survives the public hubs' announce rate-limiting. The dedicated
     // relay-dest announce is frequently dropped, so peers never learned each
-    // other were indexers (sync had no partner). Format: callsign, a NUL, then
+    // other were archivers (sync had no partner). Format: callsign, a NUL, then
     // the msgpack RelayAnnouncement. A node with no relay role sends the plain
     // callsign, unchanged.
     final csBytes = utf8.encode(text);
@@ -4903,26 +4903,26 @@ class RnsService {
 
   /// Announce the relay destination carrying our role/capacity/interest summary
   /// (RelayAnnouncement). Peers collect these into their RelayDirectory.
-  /// Record a peer's relay/indexer role from a RelayAnnouncement [appData],
+  /// Record a peer's relay/archiver role from a RelayAnnouncement [appData],
   /// whether it arrived on the dedicated relay dest OR piggybacked on the chat
-  /// announce. Shared so both paths converge the indexer directory identically.
+  /// announce. Shared so both paths converge the archiver directory identically.
   void _observeRelayAnnouncement(
     RnsIdentity identity,
     Uint8List appData,
     int hops,
   ) {
     final e = _relayDir.observe(identity, appData, hops: hops);
-    // Being able to SEE the other indexers is the precondition for syncing with
+    // Being able to SEE the other archivers is the precondition for syncing with
     // them. Logged once per peer per role change, not per announce — a hub flood
     // must not become a log flood.
     if (e != null) {
       final id = _hex(identity.hash).substring(0, 8);
-      final role = e.announcement.isIndexer ? 'indexer' : 'leaf';
+      final role = e.announcement.isArchiver ? 'archiver' : 'leaf';
       if (_relaySeenRole[id] != role) {
         _relaySeenRole[id] = role;
         LogService.instance.add(
           'relay: heard $role $id '
-          '(${_relayDir.indexers().length} indexer(s) known)',
+          '(${_relayDir.archivers().length} archiver(s) known)',
         );
       }
     }
@@ -5576,9 +5576,9 @@ class RnsService {
         // follow it and don't have it yet.
         _maybeFetchFollowedProfile(cs);
       }
-      // Piggybacked relay/indexer announcement rides the chat announce, so a
-      // peer's indexer role is learned from the announce that survives the hubs
-      // — the fix for "indexers seen=0". Feed the relay directory just like a
+      // Piggybacked relay/archiver announcement rides the chat announce, so a
+      // peer's archiver role is learned from the announce that survives the hubs
+      // — the fix for "archivers seen=0". Feed the relay directory just like a
       // dedicated relay-dest announce would.
       if (relayPiggyback != null) {
         _observeRelayAnnouncement(ann.identity, relayPiggyback, hops + 1);
@@ -5813,9 +5813,9 @@ class RnsService {
     );
   }
 
-  // ── Indexer↔Indexer pointer sync (docs/NOSTR.md) ──────────────────────────
+  // ── Archiver↔Archiver pointer sync (docs/NOSTR.md) ──────────────────────────
   //
-  // The map of who-has-what is spread between INDEXERS, so the phones never have
+  // The map of who-has-what is spread between ARCHIVERS, so the phones never have
   // to answer for it. Everything below is addresses; no content moves.
 
   PointerLog? _pointerLog;
@@ -5830,18 +5830,18 @@ class RnsService {
   RelayDirectory get relayDirectory => _relayDir;
   RelayRoleManager? get relayRole => _relayRole;
 
-  /// The DHT node, for the counters the Indexer wapp shows. A role nobody can
+  /// The DHT node, for the counters the Archiver wapp shows. A role nobody can
   /// inspect is a role nobody trusts.
   DhtNode? get dhtNode => _files?.dht;
 
-  /// Are we an Indexer right now? Derived from the hardware (charger + a real
+  /// Are we an Archiver right now? Derived from the hardware (charger + a real
   /// uplink), never from a wish — a phone on battery is a leaf, and leaves are
   /// left alone.
-  bool get isIndexer => _isIndexerHost();
+  bool get isArchiver => _isArchiverHost();
 
-  /// A pointer another Indexer told us about. It is already VERIFIED against the
+  /// A pointer another Archiver told us about. It is already VERIFIED against the
   /// provider that signed it (PointerSyncClient does that before we ever see it),
-  /// so a relaying Indexer cannot forge, retarget or resurrect one.
+  /// so a relaying Archiver cannot forge, retarget or resurrect one.
   Future<bool> acceptSyncedPointer(ProviderRecord rec) async {
     final files = _files;
     if (files == null) return false;
@@ -5855,7 +5855,7 @@ class RnsService {
       // new provider for a key, fetch that author's reticulum-native notes from
       // P over the link that just synced (which reliably forms, unlike the cold
       // fan-out/REQ paths). This is what actually makes a post cross between two
-      // indexers over Reticulum.
+      // archivers over Reticulum.
       unawaited(_pullAuthorNotesFrom(rec.providerIdentity, rec.sha256));
     }
     return stored;
@@ -5922,7 +5922,7 @@ class RnsService {
   }
 
   /// "This provider no longer holds that key." A removal travels like an
-  /// insertion — an Indexer that never propagated them would hand out dead
+  /// insertion — an Archiver that never propagated them would hand out dead
   /// addresses for ever.
   void dropSyncedPointer(Uint8List key, Uint8List providerPub) {
     final dropped = _files?.dht?.demoteProvider(key, providerPub) ?? false;
@@ -6008,7 +6008,7 @@ class RnsService {
     if (!_authorRecords.add(pubHex.toLowerCase())) return; // already advertised
     try {
       final holders = await _files!.publishKey(key, capacity: selfCapacity);
-      // Into our own pointer log too, so the indexers that sync with us learn
+      // Into our own pointer log too, so the archivers that sync with us learn
       // that this device is a home for that author — without anyone having to
       // ask us.
       final rec = await ProviderRecord.create(
@@ -6027,17 +6027,17 @@ class RnsService {
     }
   }
 
-  /// Replace the indexer's topic set ("what I'm comfortable indexing"),
+  /// Replace the archiver's topic set ("what I'm comfortable indexing"),
   /// persist it, and RE-ANNOUNCE — a decision the network never hears is not a
   /// decision. Empty = wide, when the hardware allows it.
   Timer? _topicsDebounce;
 
-  void setIndexerTopics(List<String> topics) {
+  void setArchiverTopics(List<String> topics) {
     final clean = [
       for (final t in topics)
         if (t.trim().isNotEmpty) t.trim().toLowerCase(),
     ];
-    PreferencesService.instanceSync?.indexerTopics = clean;
+    PreferencesService.instanceSync?.archiverTopics = clean;
     final role = _relayRole;
     if (role == null) return;
     role.interests.topics
@@ -6053,14 +6053,14 @@ class RnsService {
       if (prof != null) role.applyCapacity(prof);
       _announceRelayDest();
       LogService.instance.add(
-        'indexer: topics=${clean.isEmpty ? '(everything)' : clean.join(',')} — re-announced',
+        'archiver: topics=${clean.isEmpty ? '(everything)' : clean.join(',')} — re-announced',
       );
     });
   }
 
   /// Remove pointers older than [age] — preview with [dryRun]. Every REAL
   /// removal is paired with a pointer-log entry so the deletion travels to the
-  /// indexers we sync with: an indexer that cleans up silently keeps its
+  /// archivers we sync with: an archiver that cleans up silently keeps its
   /// neighbours serving ghosts.
   int sweepPointersOlderThan(Duration age, {bool dryRun = false}) {
     final dht = _files?.dht;
@@ -6072,7 +6072,7 @@ class RnsService {
     );
     if (!dryRun && n > 0) {
       LogService.instance.add(
-        'indexer: swept $n pointer(s) older than ${age.inDays}d',
+        'archiver: swept $n pointer(s) older than ${age.inDays}d',
       );
     }
     return n;
@@ -6090,7 +6090,7 @@ class RnsService {
     );
     if (!dryRun && n > 0) {
       LogService.instance.add(
-        'indexer: evicted $n pointer(s) from ${providerPubHex.substring(0, 12)}',
+        'archiver: evicted $n pointer(s) from ${providerPubHex.substring(0, 12)}',
       );
     }
     return n;
@@ -7258,7 +7258,7 @@ class RnsService {
     return Uint8List(0);
   }
 
-  // ── Social relay / indexer (app-facing) ────────────────────────────────────
+  // ── Social relay / archiver (app-facing) ────────────────────────────────────
 
   /// This node's relay destination hash (peers open relay links here).
   String? get relayDestHex {
@@ -7267,7 +7267,7 @@ class RnsService {
   }
 
   /// Register an interest (topic / author pubkey) so this node, when it is an
-  /// indexer, advertises and aggregates it. Re-announces the role.
+  /// archiver, advertises and aggregates it. Re-announces the role.
   void addRelayTopic(String topic) {
     _relayRole?.interests.addTopic(topic);
     final p = CapacityGovernor.instance.lastProfile;
@@ -7281,7 +7281,7 @@ class RnsService {
   }
 
   /// Publish a signed NOSTR event (JSON, NIP-01). Stored locally and, if we know
-  /// an indexer, pushed to the best one for it. Returns true if stored locally.
+  /// an archiver, pushed to the best one for it. Returns true if stored locally.
   /// Store one of OUR chat messages (a group bulletin or an Activity post) as a
   /// signed NOSTR note (kind 1) in the relay, so other nodes can request our
   /// posts later. [topic] tags the group/context for search. Self-tier (never
@@ -7322,7 +7322,7 @@ class RnsService {
     await relayPublish(ev.toJson());
     // Instant local echo of our own note (Nomadnet), same as nostrPost.
     onSelfNotePublished?.call(ev.toJson());
-    // Advertise that WE hold notes from this author (self) so a synced indexer
+    // Advertise that WE hold notes from this author (self) so a synced archiver
     // learns to content-pull our posts from us (self-dedups after the first).
     final selfPub = selfPubHex;
     if (selfPub != null) unawaited(publishAuthorProvider(selfPub));
@@ -7342,16 +7342,16 @@ class RnsService {
       followsHex: _mirroredAuthors,
     );
     final stored = store.put(ev, tier: tier.index);
-    // Replicate to EVERY known indexer (freshest first, capped), not just the
+    // Replicate to EVERY known archiver (freshest first, capped), not just the
     // single "best" one. Redundant holders are the reliability fix: a joiner
-    // queries indexers in parallel, so the more that hold this note, the more
+    // queries archivers in parallel, so the more that hold this note, the more
     // likely at least one answers over the flaky public mesh (a single-holder
     // query frequently gets no response back).
     if (_relay != null) {
       final seen = <String>{};
       var fanned = 0;
       final to = <String>[];
-      for (final ix in _relayDir.indexers()) {
+      for (final ix in _relayDir.archivers()) {
         if (!seen.add(ix.identity.hexHash)) continue;
         // ignore: discarded_futures
         _relay!.publish(ix.identity, ev);
@@ -7360,7 +7360,7 @@ class RnsService {
       }
       LogService.instance.add(
         'relay: fan-out EVENT ${(ev.id ?? '').padRight(8).substring(0, 8)} '
-        '-> ${to.isEmpty ? 'NO INDEXERS' : to.join(',')}',
+        '-> ${to.isEmpty ? 'NO ARCHIVERS' : to.join(',')}',
       );
     }
     return stored;
@@ -7416,7 +7416,7 @@ class RnsService {
   }
 
   /// Backfill the FEED stream from Reticulum: ask every known relay peer (and
-  /// the best indexer) for kind-1 notes tagged [topic] with created_at >=
+  /// the best archiver) for kind-1 notes tagged [topic] with created_at >=
   /// [sinceSec], so posts that were lost over APRS-IS get recovered. Each peer
   /// serves at least its own notes. Fetched notes are cached in our store and
   /// returned as raw maps {pub, text, parent, ts} (newest first); the caller
@@ -7473,7 +7473,7 @@ class RnsService {
   }
 
   /// Query the RETICULUM mesh for events matching [filter]: our local relay
-  /// store first, then every reachable relay/indexer + callsign peer, in
+  /// store first, then every reachable relay/archiver + callsign peer, in
   /// parallel, deduped by event id. All over RNS Links on the main isolate — no
   /// WebSocket, so none of the engine-isolate socket freeze applies. Shared by
   /// [fetchFeedBackfill] and the Nomadnet feed.
@@ -7513,7 +7513,7 @@ class RnsService {
     if (relay == null) return byId;
 
     final targets = <RnsIdentity>[];
-    final best = _relayDir.bestIndexer(topic: topic);
+    final best = _relayDir.bestArchiver(topic: topic);
     if (best != null) targets.add(best.identity);
     for (final e in _relayDir.entries()) {
       targets.add(e.identity);
@@ -7553,7 +7553,7 @@ class RnsService {
     return byId;
   }
 
-  /// NOMADNET feed: fresh kind-1 notes from the Reticulum mesh (indexers +
+  /// NOMADNET feed: fresh kind-1 notes from the Reticulum mesh (archivers +
   /// callsign peers) AND this device's local store. No topic tag — ALL posts.
   /// Returns raw NIP-01 event JSON so the caller can verify/build off-thread.
   Future<List<Map<String, dynamic>>> nomadnetFetch(
@@ -7593,9 +7593,9 @@ class RnsService {
     return [for (final e in byId.values) e.toJson()];
   }
 
-  /// NOMADNET incremental pull. Asks EACH reachable indexer/peer only for events
+  /// NOMADNET incremental pull. Asks EACH reachable archiver/peer only for events
   /// newer than the last one we received FROM it (a persisted per-target cursor),
-  /// so bandwidth is spent on new content, and a newly-discovered indexer still
+  /// so bandwidth is spent on new content, and a newly-discovered archiver still
   /// gets its full backlog (from the cold window). Fetches kind-1 notes AND
   /// kind-6/7 reactions (all `z=rns`), so likes propagate over the mesh with the
   /// posts. Returns raw event JSON (mixed kinds); the caller splits + verifies.
@@ -7633,9 +7633,9 @@ class RnsService {
       return [for (final e in byId.values) e.toJson()];
     }
 
-    // Targets: best indexer + every heard relay + every callsign peer, deduped.
+    // Targets: best archiver + every heard relay + every callsign peer, deduped.
     final targets = <RnsIdentity>[];
-    final best = _relayDir.bestIndexer();
+    final best = _relayDir.bestArchiver();
     if (best != null) targets.add(best.identity);
     for (final e in _relayDir.entries()) {
       targets.add(e.identity);
@@ -7649,7 +7649,7 @@ class RnsService {
       if (seen.add(_hex(id.hash))) unique.add(id);
     }
 
-    // Per-target since: each indexer is asked only for what is new since our
+    // Per-target since: each archiver is asked only for what is new since our
     // last contact with IT.
     final results = await Future.wait(
       unique.map((id) async {
@@ -7730,12 +7730,12 @@ class RnsService {
     }
   }
 
-  /// Fire our announces right now so a peer adds us to its indexer directory
+  /// Fire our announces right now so a peer adds us to its archiver directory
   /// within seconds instead of waiting out the re-announce cadence — used when
   /// the user opens Nomadnet to speed discovery. Sends BOTH the callsign announce
-  /// (reliably propagated) AND the relay/indexer + service announces (which carry
-  /// our indexer role; the public hubs rate-limit these, so re-sending on demand
-  /// improves the odds a peer hears we are an indexer).
+  /// (reliably propagated) AND the relay/archiver + service announces (which carry
+  /// our archiver role; the public hubs rate-limit these, so re-sending on demand
+  /// improves the odds a peer hears we are an archiver).
   void announceRelayNow() {
     try {
       // ignore: discarded_futures
@@ -7783,9 +7783,9 @@ class RnsService {
 
   /// Fetch a peer's profile metadata (kind-0 content map: {name, about,
   /// picture}) by [npubOrHex]. Tries the local relay store first, then the best
-  /// known indexer; a fetched event is cached locally for next time. Null if no
+  /// known archiver; a fetched event is cached locally for next time. Null if no
   /// metadata is known. (Direct by-npub peer fetch needs the peer's relay
-  /// identity, which we don't always have — this is best-effort via indexers.)
+  /// identity, which we don't always have — this is best-effort via archivers.)
   Future<Map<String, dynamic>?> fetchProfileMetadata(String npubOrHex) async {
     final hex = FollowSet.toHex(npubOrHex);
     if (hex == null) return null;
@@ -7801,7 +7801,7 @@ class RnsService {
     final local = parse(_relayStore?.profileOf(hex));
     if (local != null) return local;
     // Prefer a DIRECT query to the author (we may know its identity from a chat
-    // announce) — no third-party indexer needed. Fall back to the best indexer.
+    // announce) — no third-party archiver needed. Fall back to the best archiver.
     final id = _identityForPub(hex);
     try {
       if (id != null && _relay != null) {
@@ -8344,7 +8344,7 @@ class RnsService {
     }
   }
 
-  /// Full-text search (NIP-50). Queries the best known indexer if available,
+  /// Full-text search (NIP-50). Queries the best known archiver if available,
   /// otherwise the local store. Returns matching events as JSON.
   Future<List<Map<String, dynamic>>> relaySearch(
     String text, {
@@ -8356,7 +8356,7 @@ class RnsService {
     return _relayRun(filter, topic: topic);
   }
 
-  /// Run a NIP-01 filter (JSON form) against the best indexer or the local store.
+  /// Run a NIP-01 filter (JSON form) against the best archiver or the local store.
   Future<List<Map<String, dynamic>>> relayQuery(
     Map<String, dynamic> filterJson, {
     String? topic,
@@ -8377,7 +8377,7 @@ class RnsService {
     NostrFilter filter, {
     String? topic,
   }) async {
-    final best = _relayDir.bestIndexer(topic: topic);
+    final best = _relayDir.bestArchiver(topic: topic);
     if (best != null && _relay != null) {
       final events = await _relay!.query(best.identity, filter);
       if (events.isNotEmpty) return [for (final e in events) e.toJson()];
@@ -8386,8 +8386,8 @@ class RnsService {
     return [for (final e in local) e.toJson()];
   }
 
-  /// Known peer indexers (for diagnostics / UI).
-  int get relayIndexerCount => _relayDir.indexers().length;
+  /// Known peer archivers (for diagnostics / UI).
+  int get relayArchiverCount => _relayDir.archivers().length;
 
   // ── NOSTR-relay store-and-forward DM backup (kind-4 NIP-04) ───────────────
   // The APRS wapp uses these (via hal_relay_*) to back up 1:1 messages to up to
@@ -8397,7 +8397,7 @@ class RnsService {
 
   /// Up to [max] reachable relays (their RNS identity hashes, hex) that store +
   /// serve events — i.e. peers we've heard announce a relay role (they run with
-  /// hosting on, so serve=true). Indexers are preferred, then any relay entry.
+  /// hosting on, so serve=true). Archivers are preferred, then any relay entry.
   List<String> relayReachable({int max = 3}) {
     final out = <String>[];
     final seen = <String>{};
@@ -8409,7 +8409,7 @@ class RnsService {
       }
     }
 
-    take(_relayDir.indexers());
+    take(_relayDir.archivers());
     if (out.length < max) take(_relayDir.entries());
     return out;
   }
@@ -8430,7 +8430,7 @@ class RnsService {
     key = key.toLowerCase();
     final seen = <String>{};
     final all = <RelayEntry>[
-      for (final e in [..._relayDir.indexers(), ..._relayDir.entries()])
+      for (final e in [..._relayDir.archivers(), ..._relayDir.entries()])
         if (seen.add(e.identity.hexHash)) e,
     ];
     final ranked = all.map((e) {
@@ -8508,7 +8508,7 @@ class RnsService {
       LogService.instance.add('RNS/relay: DM sign failed: $e');
       return null;
     }
-    await relayPublish(ev.toJson()); // local store + best-indexer fan-out
+    await relayPublish(ev.toJson()); // local store + best-archiver fan-out
     var sent = 0;
     final missing = <String>[];
     for (final hex in relayDestsHex) {
@@ -8681,7 +8681,7 @@ class RnsService {
       LogService.instance.add('RNS/relay: identity sign failed: $e');
       return;
     }
-    await relayPublish(ev.toJson()); // local store + best-indexer fan-out
+    await relayPublish(ev.toJson()); // local store + best-archiver fan-out
     for (final hex in relayDestsHex) {
       final id = _relayIdentity(hex);
       if (id != null && _relay != null) {
@@ -8716,7 +8716,7 @@ class RnsService {
   /// THIS device's profile key: "I resolved this address via NIP-05 and
   /// [kind0Match] says whether the target's kind-0 nip05 field agreed".
   /// relayPublish stores it locally (→ onPut → WS broadcast reaches any open
-  /// subscription waiting on the conversion) and fans it out to indexers, so
+  /// subscription waiting on the conversion) and fans it out to archivers, so
   /// offgrid peers can resolve the same address from the mesh later.
   Future<NostrEvent?> publishMailtoMapping({
     required String email,
@@ -8858,7 +8858,7 @@ class RnsService {
     // Someone we follow is never a stranger to be vetted by the spam gate.
     pushTrustedAuthors();
     // Following is a storage decision here, so tell the mesh: this device is
-    // now a home for them, and an Indexer can send people looking for their
+    // now a home for them, and an Archiver can send people looking for their
     // notes to us. ignore: discarded_futures
     final hex = key.toLowerCase();
     if (hex.length == 64) unawaited(publishAuthorProvider(hex));
@@ -9154,7 +9154,7 @@ class RnsService {
     // changed its mind as far as the network is concerned.
     final role = _relayRole;
     if (role != null) {
-      final want = PreferencesService.instanceSync?.indexerVolunteer ?? 'auto';
+      final want = PreferencesService.instanceSync?.archiverVolunteer ?? 'auto';
       if (role.volunteer != want) {
         role.volunteer = want;
         final prof = CapacityGovernor.instance.lastProfile;
@@ -9162,7 +9162,7 @@ class RnsService {
         _announceRelayDest();
         LogService.instance.add(
           'relay: role re-announced (volunteer=$want, '
-          '${role.current.isIndexer ? 'indexer' : 'leaf'})',
+          '${role.current.isArchiver ? 'archiver' : 'leaf'})',
         );
       }
     }
@@ -9178,9 +9178,9 @@ class RnsService {
         onChanged: (_) => _announceRelayDest(),
       );
       _relayRole!.volunteer =
-          PreferencesService.instanceSync?.indexerVolunteer ?? 'auto';
+          PreferencesService.instanceSync?.archiverVolunteer ?? 'auto';
       for (final t
-          in PreferencesService.instanceSync?.indexerTopics ??
+          in PreferencesService.instanceSync?.archiverTopics ??
               const <String>[]) {
         _relayRole!.interests.addTopic(t);
       }
@@ -9491,7 +9491,7 @@ class RnsService {
       tags: [
         ['e', eventId],
         if (authorHex.isNotEmpty) ['p', authorHex],
-        // Reticulum-native marker — the like fans out to peer indexers.
+        // Reticulum-native marker — the like fans out to peer archivers.
         const ['z', 'rns'],
       ],
       // A heart, not "+". NIP-25 reads "+" as an upvote, and the post card now
@@ -9504,7 +9504,7 @@ class RnsService {
     } catch (_) {
       return;
     }
-    // Reticulum first (local store + fan-out to peer indexers), wss best-effort.
+    // Reticulum first (local store + fan-out to peer archivers), wss best-effort.
     // ignore: discarded_futures
     relayPublish(ev.toJson());
     final hub = _nostrHub;
@@ -9531,7 +9531,7 @@ class RnsService {
         ['e', eventId],
         if (authorHex.isNotEmpty) ['p', authorHex],
         // Reticulum-native marker so the like rides the Nomadnet content plane
-        // (relayPublish → store + fan-out to peer indexers), reaching the post's
+        // (relayPublish → store + fan-out to peer archivers), reaching the post's
         // author over the mesh — not just wss.
         const ['z', 'rns'],
       ],
@@ -9783,7 +9783,7 @@ class RnsService {
       tags: [
         ['e', eventId],
         if (authorHex.isNotEmpty) ['p', authorHex],
-        // Reticulum-native marker: the vote fans out to peer indexers and
+        // Reticulum-native marker: the vote fans out to peer archivers and
         // reaches the post author over the mesh (see relayPublish below).
         const ['z', 'rns'],
       ],
@@ -9794,7 +9794,7 @@ class RnsService {
     } catch (_) {
       return;
     }
-    // Serve it over Reticulum FIRST (local store + fan-out to peer indexers),
+    // Serve it over Reticulum FIRST (local store + fan-out to peer archivers),
     // then the wss engine best-effort.
     // ignore: discarded_futures
     relayPublish(ev.toJson());
@@ -9838,7 +9838,7 @@ class RnsService {
     } catch (_) {
       return;
     }
-    // Reticulum first (store + fan-out to peer indexers), wss best-effort.
+    // Reticulum first (store + fan-out to peer archivers), wss best-effort.
     // ignore: discarded_futures
     relayPublish(ev.toJson());
     final hub = _nostrHub;
@@ -9892,7 +9892,7 @@ class RnsService {
       return null;
     }
     // FIRST: put it in the Reticulum relay store (self-tier) and replicate it to
-    // the reticulum indexers, so the post is served over Reticulum and shows up
+    // the reticulum archivers, so the post is served over Reticulum and shows up
     // in other devices' Nomadnet feed. Done first + awaited so an engine publish
     // that throws/stalls (frozen sockets) can never skip it — without this a
     // Social post lived only in the engine's internet store, invisible to the mesh.
@@ -9903,7 +9903,7 @@ class RnsService {
     );
     // Echo our own note to any live listener (Nomadnet) the moment it is stored.
     if (kind == 1) onSelfNotePublished?.call(ev.toJson());
-    // Advertise our authorship so a synced indexer content-pulls our posts from
+    // Advertise our authorship so a synced archiver content-pulls our posts from
     // us (self-dedups after the first advertise).
     if (kind == 1 && pub != null) unawaited(publishAuthorProvider(pub));
     // Then the internet relays (wss) via the engine — best-effort, never blocks,
@@ -10461,7 +10461,7 @@ class RnsService {
   //
   // The local index only knows folders this device owns or follows. But every
   // published listing already leaves the device: setMeta ops are kind-1064
-  // events replicated to the indexer mesh, and a REQ whose filter carries a
+  // events replicated to the archiver mesh, and a REQ whose filter carries a
   // `search` field is a NIP-50 full-text query any serve-node answers. So
   // "search the network" is a fan-out of that REQ — no new protocol, the
   // listings were already out there waiting to be asked for.
@@ -10553,7 +10553,7 @@ class RnsService {
   Future<void> _refreshGlobalSearch(String key, String q, String cat) async {
     // One filter, two modes: with `q` it is a NIP-50 FTS query the serve-nodes
     // run against their whole index; without it, a plain kind-1064 pull —
-    // "what listings does the network hold" — capped so a big indexer cannot
+    // "what listings does the network hold" — capped so a big archiver cannot
     // flood a phone.
     final filter = NostrFilter(
       kinds: const [kKindFolderOp],
@@ -10706,9 +10706,9 @@ class RnsService {
     }
   }
 
-  /// Who has this folder — the swarm, as the Indexers answer it: a list of
+  /// Who has this folder — the swarm, as the Archivers answer it: a list of
   /// holders, each with what a caller needs in order to choose well (NOSTR.md,
-  /// "What an Indexer actually answers"). Returns the last snapshot immediately
+  /// "What an Archiver actually answers"). Returns the last snapshot immediately
   /// and refreshes in the background; call again for fresher data.
   List<Map<String, dynamic>> folderSwarm(String folderIdOrNpub) {
     final folderId = _normFolderId(folderIdOrNpub);
@@ -10826,7 +10826,7 @@ class RnsService {
   }
 
   /// Pin/unpin a folder: keep a complete copy of it on this device and tell the
-  /// Indexers we hold it, so the publisher's phone stops being the only source.
+  /// Archivers we hold it, so the publisher's phone stops being the only source.
   /// A pin is a vote that the thing should survive (docs/torrents.md §5).
   void folderPin(String folderIdOrNpub, bool on) {
     final folderId = _normFolderId(folderIdOrNpub);
@@ -11285,7 +11285,7 @@ class RnsService {
       if (f['size'] is int) totalBytes += f['size'] as int;
     }
 
-    // Seeders: how many OTHER holders the Indexers know of. Read from the cached
+    // Seeders: how many OTHER holders the Archivers know of. Read from the cached
     // swarm snapshot (returned instantly; refreshed in the background), so opening
     // the info page costs no network round-trip. Also feeds the popularity store.
     final swarm = folderSwarm(folderId);
@@ -11761,7 +11761,7 @@ class RnsService {
       // action), not a side effect of viewing it — the wapp store, for one, only
       // fetches the index of available wapps here, never the bytes. Phase 3
       // mirroring (survive-owner-offline) runs in _autoSyncTick for folders the
-      // node was explicitly told to host, gated to always-on indexer nodes.
+      // node was explicitly told to host, gated to always-on archiver nodes.
       return st.toJson();
     } catch (_) {
       return folderBrowse(folderId); // fall back to whatever we hold locally
@@ -11804,22 +11804,22 @@ class RnsService {
     ];
   }
 
-  /// True when this node is a self-nominated INDEXER (always-on: charger +
+  /// True when this node is a self-nominated ARCHIVER (always-on: charger +
   /// Wi-Fi/Ethernet, per RelayRole) AND hosting is enabled. Such nodes mirror
   /// the folders they discover so a folder stays reachable when its owner is
   /// offline. Leaf/battery nodes return false and never mirror others' folders.
-  bool _isIndexerHost() {
+  bool _isArchiverHost() {
     if (!(PreferencesService.instanceSync?.hostEnabled ?? true)) return false;
-    return _relayRole?.current.isIndexer ?? false;
+    return _relayRole?.current.isArchiver ?? false;
   }
 
-  // Keep auto-sync folders current, and — on an indexer host — fully MIRROR them
+  // Keep auto-sync folders current, and — on an archiver host — fully MIRROR them
   // (download every file, not just changed ones) so this node can serve both the
   // directory and the bytes after the owner sleeps. Runs on the background tick.
   Future<void> _autoSyncTick() async {
     final s = _subs, f = _folders;
     if (s == null || f == null) return;
-    final mirror = _isIndexerHost();
+    final mirror = _isArchiverHost();
     for (final fid in s.folderIds()) {
       if (!s.autoSyncOf(fid)) continue;
       final st = await f.browse(fid);
@@ -11842,7 +11842,7 @@ class RnsService {
       for (final e in cur.entries) {
         final old = have[e.key];
         if (old == null) {
-          // New / never-downloaded file: an indexer host mirrors it so it holds
+          // New / never-downloaded file: an archiver host mirrors it so it holds
           // (and re-seeds) the bytes; a leaf only tracks what it explicitly got.
           if (mirror) await folderDownloadFile(fid, e.value, e.key);
         } else if (old != e.value) {
@@ -11983,7 +11983,7 @@ class _ObservedNode {
   String via = '';
   // Last advertised uptime (seconds since the peer's RNS stack started), from
   // its relay announce. 0 = not advertised. Drives warm-start ranking: stable
-  // (high-uptime) nodes are likely indexers and are tried first on next boot.
+  // (high-uptime) nodes are likely archivers and are tried first on next boot.
   int uptimeSeconds = 0;
   // Transport-id (hex) of the relayer we reach this node through; null = direct
   // neighbour of ours. Other nodes' relayer == a hub's identity.

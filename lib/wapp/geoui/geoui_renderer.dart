@@ -573,7 +573,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
     final totalText = totalBytes > 0
         ? tr('geoui.torrent.total', {'size': _fmtGalleryBytes(totalBytes)})
         : '';
-    // Seeders known to the Indexers (cached; -1 when the field is absent).
+    // Seeders known to the Archivers (cached; -1 when the field is absent).
     final seeders = (g['seeders'] as num?)?.toInt() ?? -1;
 
     if (banner == null &&

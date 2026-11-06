@@ -19,7 +19,7 @@ Social is a NOSTR client shipped as a wapp. Four tabs:
   feed of interesting public posts from strangers over wss relays. NOT a raw
   firehose (see §4). This is the tab that caused all the pain.
 - **Nomadnet** (enum/string `nomadnet`) — NOSTR publications fetched over
-  **Reticulum** (indexers + callsign peers) + this device's own posts. NO
+  **Reticulum** (archivers + callsign peers) + this device's own posts. NO
   curation, newest-first. See §11.
 - **Following** — kind-1 notes from the accounts the user follows (their own
   archive, `social_following.sqlite3`).
@@ -43,7 +43,7 @@ The differences worth knowing before anyone tries to bridge the two:
 
 | | Social (shipped) | XPRS section 27 (specified) |
 |---|---|---|
-| Reach | wss relays and Reticulum indexers | any bearer, including LoRa and packet radio |
+| Reach | wss relays and Reticulum archivers | any bearer, including LoRa and packet radio |
 | Catching up | poll a relay, hours-deep (§4, §11) | `cmd:history` asks a station to re-air what it kept, paged with `code:206` |
 | Following | kind-3 follow lists, published | a list on the device, deliberately never a packet |
 | Profile picture | inline in kind-0 (the same thumbnail, for NOSTR clients) | a sha256 in `file:`, fetched with `cmd:file` (implemented) |
@@ -288,10 +288,10 @@ mesh**, not the internet. Unlike Internet (wss, frozen engine → main-isolate
 poller), Reticulum NOSTR is already isolate-safe and lives on the MAIN isolate.
 
 - **Transport**: `RnsService._relay` (`RelayNode.query` over an RNS Link),
-  `RnsService._relayDir` (reachable relays/indexers via announces), and
+  `RnsService._relayDir` (reachable relays/archivers via announces), and
   `RnsService._relayStore` (the local NOSTR relay store). `nomadnetFetch` uses the
   shared `_fanOutQuery` (also used by `fetchFeedBackfill`): local store + best
-  indexer + all reachable relays + callsign peers, parallel, deduped.
+  archiver + all reachable relays + callsign peers, parallel, deduped.
 - **Poller**: `nomadnet_poller.dart` (`NomadnetPoller`) — main isolate, NO
   sockets. Verifies signatures in a `compute` isolate, writes newest-first into
   `social_nomadnet2.sqlite3`, fetches kind-0 profiles. Starts/stops ONLY while the
@@ -305,7 +305,7 @@ poller), Reticulum NOSTR is already isolate-safe and lives on the MAIN isolate.
   index + in-memory set) means re-polls never duplicate cached rows.
 - **Publishing**: `publishNote`/`nostrPost` tag every kind-1 note we publish with
   the single-letter marker **`["z","rns"]`** (added before signing) and
-  `relayPublish()` it (local store self-tier + replicate to indexers), done FIRST
+  `relayPublish()` it (local store self-tier + replicate to archivers), done FIRST
   and independent of the engine publish — else the post lives only in the internet
   store, invisible to the mesh. After composing while on Nomadnet, `wapp_page`
   calls `pollOnce()` so the author's own post surfaces from the local leg

@@ -371,7 +371,7 @@ class XprsFileServer {
   bool holds(String shaHex) => _lookUp(shaHex.toLowerCase()) != null;
 
   /// "Who else holds this hash" — the seeder index (§12.9.2, Phase E): the
-  /// sources table and, on an indexer, the provider-record/DHT lookup. Returns
+  /// sources table and, on an archiver, the provider-record/DHT lookup. Returns
   /// callsigns to name in a `q:have` miss's `m:try`. Null = nothing indexed.
   List<String> Function(String shaHex)? holderIndex;
 

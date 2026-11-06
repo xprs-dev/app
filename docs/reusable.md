@@ -103,6 +103,18 @@ or browser backends.
   encrypted/IndexedDB backend lands the install flow will need to
   unzip into a temp dir then `copyFromExternal` each entry.
 
+### Renaming a preference key — `PreferencesService._migrateArchiverKeys`
+
+**File:** `lib/services/preferences_service.dart` (called right after
+`SharedPreferences.getInstance()` in `load()`).
+
+The pattern for a stored key whose name changes: a `{old: new}` map, walked
+once at startup — copy the value if the new key is absent, then remove the
+old key, preserving the type (`String` / `List<String>`). Written for the
+indexer → archiver rename (2026-11-06); add further pairs to the map rather
+than a second migration method, and keep the pairs for a few releases so an
+install skipping versions still carries its settings across.
+
 ---
 
 ## Events

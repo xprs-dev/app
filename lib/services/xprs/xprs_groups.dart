@@ -358,7 +358,7 @@ class XprsGroups {
   /// Does this `t:moderate` belong to a group THIS station is part of?
   ///
   /// A group act is addressed to the group, never to a person, so the funnel's
-  /// "is it for us" test says no to every one of them — and with the indexer
+  /// "is it for us" test says no to every one of them — and with the archiver
   /// off, the record of a group you belong to was thrown away as somebody
   /// else's chatter. Section 26.4 replays that record from the packets and
   /// nothing else, so a station that keeps none of them forgets every group it

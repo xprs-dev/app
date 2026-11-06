@@ -167,7 +167,7 @@ class XprsStation {
   String? fw;
 
   /// What it says it does for other stations (section 24, `serve:`). This is
-  /// how an indexer is told from a phone: `index` in here and nowhere else.
+  /// how an archiver is told from a phone: `index` in here and nowhere else.
   List<String> services = const [];
 
   /// The last value this station reported for each measurement key it has

@@ -1,5 +1,5 @@
 // Headless test for slice 3: capacity->role mapping, relay announcement
-// encode/decode, interest coverage, and the directory's indexer ranking + TTL.
+// encode/decode, interest coverage, and the directory's archiver ranking + TTL.
 //
 //   dart run tool/social_relay_role_test.dart
 import 'dart:io';
@@ -36,15 +36,15 @@ Future<void> main() async {
   final aBatt = RelayAnnouncement.forCapacity(wifiBattery, InterestSet());
   final aCell = RelayAnnouncement.forCapacity(cellular, InterestSet());
 
-  check('charger+wifi => indexer', aWifi.role == RelayRole.indexer);
-  check('indexer advertises search+firehose+store-forward',
+  check('charger+wifi => archiver', aWifi.role == RelayRole.archiver);
+  check('archiver advertises search+firehose+store-forward',
       aWifi.has(RelayCap.search) && aWifi.has(RelayCap.firehose) && aWifi.has(RelayCap.storeForward));
-  check('home wifi indexer is NOT a wide archive', !aWifi.wide && aWifi.capacity == kCapHomeWifi);
+  check('home wifi archiver is NOT a wide archive', !aWifi.wide && aWifi.capacity == kCapHomeWifi);
   check('ethernet+charger => wide archive', aFiber.has(RelayCap.archive) && aFiber.wide && aFiber.capacity == kCapHomeFiber);
   check('wifi on battery => leaf', aBatt.role == RelayRole.leaf && aBatt.caps == 0);
   check('cellular => leaf', aCell.role == RelayRole.leaf);
 
-  // 2) Interest set drives announced topics/authors (non-wide indexer).
+  // 2) Interest set drives announced topics/authors (non-wide archiver).
   final interests = InterestSet()
     ..addTopic('Reticulum')
     ..addTopic('solar')
@@ -56,7 +56,7 @@ Future<void> main() async {
   // 3) Announcement encode/decode round-trip.
   final round = RelayAnnouncement.decode(aInterest.encode());
   check('round-trip decodes', round != null);
-  check('round-trip role', round!.role == RelayRole.indexer);
+  check('round-trip role', round!.role == RelayRole.archiver);
   check('round-trip caps', round.caps == aInterest.caps);
   check('round-trip topics', round.topics.contains('solar'));
   check('non-relay appData decodes to null', RelayAnnouncement.decode(null) == null);
@@ -72,8 +72,8 @@ Future<void> main() async {
   final dir = RelayDirectory(entryTtl: const Duration(minutes: 30), clock: () => t);
 
   final idLeaf = await RnsIdentity.generate();
-  final idGeneric = await RnsIdentity.generate(); // indexer, no matching interest
-  final idTopic = await RnsIdentity.generate(); // indexer covering 'solar'
+  final idGeneric = await RnsIdentity.generate(); // archiver, no matching interest
+  final idTopic = await RnsIdentity.generate(); // archiver covering 'solar'
   final idArchive = await RnsIdentity.generate(); // wide archive (fiber)
 
   dir.observe(idLeaf, aBatt.encode(), hops: 1); // leaf — must be ignored
@@ -87,22 +87,22 @@ Future<void> main() async {
       hops: 3);
   dir.observe(idArchive, aFiber.encode(), hops: 2);
 
-  check('directory ignores leaf in indexers()', dir.indexers().length == 3);
-  check('bestIndexer for solar = the topic-covering indexer',
-      dir.bestIndexer(topic: 'solar')?.idHex == _hx(idTopic.hash));
-  check('bestIndexer for unknown topic = wide archive',
-      dir.bestIndexer(topic: 'quantum')?.idHex == _hx(idArchive.hash));
+  check('directory ignores leaf in archivers()', dir.archivers().length == 3);
+  check('bestArchiver for solar = the topic-covering archiver',
+      dir.bestArchiver(topic: 'solar')?.idHex == _hx(idTopic.hash));
+  check('bestArchiver for unknown topic = wide archive',
+      dir.bestArchiver(topic: 'quantum')?.idHex == _hx(idArchive.hash));
 
   // 6) TTL expiry via injected clock.
   t += const Duration(minutes: 31).inMilliseconds;
-  check('entries expire after TTL', dir.indexers().isEmpty);
+  check('entries expire after TTL', dir.archivers().isEmpty);
 
-  // 7) RoleManager fires onChanged when capacity crosses leaf<->indexer.
+  // 7) RoleManager fires onChanged when capacity crosses leaf<->archiver.
   RelayAnnouncement? fired;
   final mgr = RelayRoleManager(initial: cellular, onChanged: (a) => fired = a);
   check('manager starts as leaf', mgr.current.role == RelayRole.leaf);
   mgr.applyCapacity(homeWifi);
-  check('promotion to indexer fires onChanged', fired != null && fired!.role == RelayRole.indexer);
+  check('promotion to archiver fires onChanged', fired != null && fired!.role == RelayRole.archiver);
   fired = null;
   mgr.applyCapacity(homeWifi);
   check('no-op capacity does not refire', fired == null);

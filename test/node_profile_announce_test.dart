@@ -66,7 +66,7 @@ void main() {
         reason: 'the hardware description must never cost a second packet');
 
     final back = RelayAnnouncement.decode(bytes)!;
-    expect(back.role, RelayRole.indexer);
+    expect(back.role, RelayRole.archiver);
     expect(back.profile.power, PowerSource.solarBattery);
     expect(back.profile.uplink, UplinkKind.satellite);
     expect(back.profile.radios.first.freqKhz, 144800,

@@ -1,8 +1,8 @@
 // STORE-AND-FORWARD over a real rnsd (slice 4): three Aurora nodes.
-//   B = propagation indexer (charger+wifi => storeForward).
+//   B = propagation archiver (charger+wifi => storeForward).
 //   A = sender. C = recipient, initially OFFLINE.
 // A sends an LXMF message to C; direct delivery fails (C offline) so A deposits
-// it at indexer B. Later C comes online and announces; B flushes the queued mail
+// it at archiver B. Later C comes online and announces; B flushes the queued mail
 // to C, which receives and verifies the ORIGINAL sender's (A's) signature.
 //
 //   dart run tool/social_relay_sf_test.dart [port]
@@ -164,11 +164,11 @@ Future<void> main(List<String> args) async {
 
   _Node? a, b, c;
   try {
-    b = _Node(await RnsIdentity.generate()); // propagation indexer
+    b = _Node(await RnsIdentity.generate()); // propagation archiver
     a = _Node(await RnsIdentity.generate()); // sender
     c = _Node(await RnsIdentity.generate()); // recipient (offline at first)
 
-    // B advertises itself as a store-forward indexer (charger + wifi).
+    // B advertises itself as a store-forward archiver (charger + wifi).
     final bAnn = RelayAnnouncement.forCapacity(
         policyFor(NetKind.wifi, true, serveOnCellular: false, quotaMb: 1024),
         InterestSet());
@@ -187,8 +187,8 @@ Future<void> main(List<String> args) async {
 
     // A learns B as a store-forward propagation node.
     final learnedB = await _until(() =>
-        a!.dir.indexers().any((e) => e.announcement.has(RelayCap.storeForward)));
-    check('A discovered B as a store-forward indexer', learnedB);
+        a!.dir.archivers().any((e) => e.announcement.has(RelayCap.storeForward)));
+    check('A discovered B as a store-forward archiver', learnedB);
 
     // A composes a signed LXMF message addressed to (currently offline) C.
     final cDeliveryHash =
@@ -203,7 +203,7 @@ Future<void> main(List<String> args) async {
     // Direct fails (C offline) -> A deposits at B.
     final outcome = await a.sf.sendOrStore(msg);
     check('send falls back to store-and-forward', outcome == SendOutcome.stored);
-    check('indexer B queued the message', b.store.sfCount() == 1);
+    check('archiver B queued the message', b.store.sfCount() == 1);
     check('C has not received yet', c.received == null);
 
     // C comes online and announces its LXMF delivery dest.

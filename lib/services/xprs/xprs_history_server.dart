@@ -12,7 +12,7 @@
  * presence beacons, and token buckets per requester (a station that declared
  * us, or whose key we hold, gets more than a stranger; another device of OURS
  * is unmetered — section 3.1). The replay bytes are byte-identical to what
- * was stored: no via:, no re-sign — an indexer passes on the author's packet,
+ * was stored: no via:, no re-sign — an archiver passes on the author's packet,
  * and the signature that travels with it is the author's (36.2).
  *
  * Commands arrive through XprsIngest ([install] hooks its onCommand). A
