@@ -1,0 +1,4 @@
+* On battery a phone is now a messenger with a radio, a full station only when plugged in: no public hub held open, the archiver reached over one socket where mail is delivered as it arrives, a hub brought up only for a transfer.
+* Bluetooth presence, scanning and the digipeater stay on, cheaper in an empty room.
+* Fixed: folders re-published every minute, a stuck dial hold, the wake lock.
+* "Indexer" is now "archiver"; settings carry over.
