@@ -1466,7 +1466,14 @@ class MeshService {
       // 13.0.2: an archiver says where it answers a connection, and whether
       // it has room. A station that is not one says neither.
       dial: public && (prefs?.xprsDial ?? '').isNotEmpty ? prefs!.xprsDial : null,
-      room: public && !(prefs?.xprsRoom ?? true) ? 'no' : null,
+      // 12.9.5: the load is the declarations naming us; past the operator's
+      // ceiling, or on their word, newcomers are told to go elsewhere.
+      room: public &&
+              (!(prefs?.xprsRoom ?? true) ||
+                  XprsArchive.instance.caredFor() >=
+                      (prefs?.xprsRoomStations ?? 500))
+          ? 'no'
+          : null,
       signingKey: xprsProfileScalar(),
       ts: stamped ? xprsNowTs() : null,
     );

@@ -972,8 +972,15 @@ class XprsCatchup {
     // asked and its Global chat never arrived. The ask is DIRECTED (d:), so
     // it costs one packet to one station whichever lane carries it, and the
     // answer comes back on the directed lane too (36.12.1).
+    // An archiver asking another archiver also asks for the declarations
+    // (12.9.5, `kind:mailbox`): who is cared for by whom is what lets it
+    // read its own load, point a newcomer at a peer with room, and route
+    // 12.8.1 across the federation. A pocket device asks for messages only.
+    final kinds = (PreferencesService.instanceSync?.xprsPublicArchiver ?? false)
+        ? 'message,mailbox'
+        : 'message';
     final wire = StringBuffer('t:command f:$self d:$archiver ts:${_ts(now)} '
-        'cmd:history kind:message since:${_ts(w.sinceMs)}');
+        'cmd:history kind:$kinds since:${_ts(w.sinceMs)}');
     if (untilMs != null) wire.write(' until:${_ts(untilMs)}');
     final p = XprsPacket.parse(wire.toString());
     if (p == null || !p.fits) return;

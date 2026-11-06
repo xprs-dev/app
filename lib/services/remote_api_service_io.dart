@@ -1759,6 +1759,10 @@ class RemoteApiService {
         if (data.containsKey('room')) {
           prefs?.xprsRoom = data['room'] != false;
         }
+        if (data.containsKey('roomStations')) {
+          final v = int.tryParse('${data['roomStations']}');
+          if (v != null && v > 0) prefs?.xprsRoomStations = v;
+        }
         if (data['dials'] is Map) {
           for (final e in (data['dials'] as Map).entries) {
             prefs?.rememberArchiverDial(
@@ -1797,6 +1801,8 @@ class RemoteApiService {
           'archivers': prefs?.xprsNamedArchivers ?? const <String>[],
           'dial': prefs?.xprsDial ?? '',
           'room': prefs?.xprsRoom ?? true,
+          'roomStations': prefs?.xprsRoomStations ?? 500,
+          'caredFor': XprsArchive.instance.caredFor(),
           'dials': prefs?.xprsArchiverDials ?? const <String, String>{},
           'line': {
             'dialled': XprsLineLane.instance.status,

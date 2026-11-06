@@ -482,6 +482,12 @@ class PreferencesService {
   bool get xprsRoom => _prefs.getBool('xprs.room') ?? true;
   set xprsRoom(bool v) => _prefs.setBool('xprs.room', v);
 
+  /// How many stations this archiver will take care of (12.9.5): past this
+  /// many active declarations naming it, it announces `room:no`. The
+  /// operator's ceiling, by their disk and bandwidth.
+  int get xprsRoomStations => _prefs.getInt('xprs.roomStations') ?? 500;
+  set xprsRoomStations(int v) => _prefs.setInt('xprs.roomStations', v);
+
   /// The `dial:` each archiver announced, by callsign, remembered across
   /// restarts: the station table is in memory, and a pocket device hears an
   /// archiver's announcement only while attached to a transport (13.0.2).

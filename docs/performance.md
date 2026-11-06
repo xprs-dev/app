@@ -1511,9 +1511,10 @@ other lanes (the history server; the internet lane now hands `t:request`
 to it).
 
 What it costs the phone: one idle TCP socket with a four-minute kernel
-keepalive. What it does not do yet: 12.9.5 (archivers exchanging
-declarations, `room:` from load), and the on-request hub session for
-serving a file (Phase 3). Set up by hand today: on the archiver,
+keepalive. 12.9.5 is in too: a public archiver's catch-up asks its peers
+`kind:message,mailbox`, its load is `XprsArchive.caredFor()` (distinct
+declarers naming it), and past `roomStations` (500 by default) it
+announces `room:no`. The on-request hub session is 8.22. Set up by hand today: on the archiver,
 `POST /api/xprs/archiver {"dial":"host[:port]"}` (it must be a public
 archiver); on a phone that cannot yet hear the announcement,
 `{"dials":{"X3ARC1":"host"}}` plus `X3ARC1` in `archivers`.
