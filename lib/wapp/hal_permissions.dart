@@ -139,7 +139,7 @@ bool halImportAllowed(String importName, Set<String> granted) {
 /// an empty grant rather than a full one: a manifest that cannot be read is
 /// not a manifest that consents.
 /// `"conversations": "wapp"` in `manifest.json`: the wapp keeps its own
-/// conversation history (through `hal_sqlite_*`) and the host's conversation
+/// conversation history (through `hal_db_*`) and the host's conversation
 /// stores are a render cache it repaints -- nothing is persisted host-side.
 /// Absent or anything else: the host persists, as before.
 bool wappOwnsConversations(String? manifestJson) {

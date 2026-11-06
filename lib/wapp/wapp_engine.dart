@@ -184,11 +184,11 @@ class _WappStreamState {
   }
 }
 
-/// State for a single hal_sqlite_* handle. Lives in [WappEngine._sqlite] keyed
+/// State for a single hal_db_* handle. Lives in [WappEngine._dbs] keyed
 /// by handle. Wraps one open [XDb] (a file under the wapp's private data
-/// dir) and the last error string for hal_sqlite_error.
-class _WappSqliteState {
-  _WappSqliteState(this.db);
+/// dir) and the last error string for hal_db_error.
+class _WappDbState {
+  _WappDbState(this.db);
   final XDb db;
   String? lastError;
 }
@@ -334,10 +334,10 @@ class WappEngine {
   final Map<int, _WappStreamState> _streams = {};
   int _nextStreamHandle = 1;
 
-  // hal_sqlite_* state. Per-wapp databases live under the wapp's private data
+  // hal_db_* state. Per-wapp databases live under the wapp's private data
   // dir; handles are disposed on teardown.
-  final Map<int, _WappSqliteState> _sqlite = {};
-  int _nextSqliteHandle = 1;
+  final Map<int, _WappDbState> _dbs = {};
+  int _nextDbHandle = 1;
 
   // This wapp's id (folder name), used as the tag for the per-wapp RNS datagram
   // channel so hal_rns_* traffic demultiplexes between wapps. Set via setAppId.
@@ -644,7 +644,7 @@ class WappEngine {
   }
 
   /// Read a UTF-8 string from wasm memory (correct for non-ASCII text, unlike
-  /// the byte-preserving [_readStr]). Used by the sqlite HAL where SQL and bound
+  /// the byte-preserving [_readStr]). Used by the database HAL where SQL and bound
   /// values can carry user chat text.
   String _readUtf8(int ptr, int len) =>
       utf8.decode(_readBytes(ptr, len), allowMalformed: true);
@@ -657,7 +657,7 @@ class WappEngine {
     return n;
   }
 
-  /// Resolve a wapp-supplied sqlite path to an absolute path confined to this
+  /// Resolve a wapp-supplied database path to an absolute path confined to this
   /// wapp's private data dir. Rejects absolute paths and any '..' segment so a
   /// wapp can't escape its sandbox. Returns null if unresolvable/unsafe.
   String? _wappDbPath(String rel) {
@@ -669,8 +669,8 @@ class WappEngine {
     return s.getAbsolutePath(parts.join('/'));
   }
 
-  /// Decode the optional JSON-array bind parameters for a sqlite call.
-  List<Object?> _sqliteParams(int ptr, int len) {
+  /// Decode the optional JSON-array bind parameters for a database call.
+  List<Object?> _dbParams(int ptr, int len) {
     if (len <= 0) return const [];
     try {
       final v = jsonDecode(_readUtf8(ptr, len));
@@ -804,7 +804,7 @@ class WappEngine {
       results: [ValueTy.i32],
     );
     // ── Media archive + sharing HAL (Files wapp; DESIGN.md §4/§5/§6) ──────
-    // The shared content-addressed archive (media.sqlite3) + the Blossom
+    // The shared content-addressed archive (media.zx) + the Blossom
     // provider endpoint + the BitTorrent seeder live host-side; these calls
     // are the wapp-facing control surface.
     MediaArchive? mediaArchive() {
@@ -894,7 +894,7 @@ class WappEngine {
       results: [ValueTy.i32],
     );
     // Hand a held file to whatever this device uses to view that type. The
-    // export runs on a worker isolate straight out of sqlite, so a 40 MB video
+    // export runs on a worker isolate straight out of the blob files, so a 40 MB video
     // never passes through this call (docs/performance.md §8.9). 1 = the
     // export started; the viewer opening is up to the system.
     final halMediaOpen = WasmFunction(
@@ -2616,8 +2616,8 @@ class WappEngine {
       params: [], results: [ValueTy.i32],
     );
 
-    // ── SQLite HAL (per-wapp database, scoped to the wapp data dir) ──────────
-    final halSqliteOpen = WasmFunction(
+    // ── Database HAL (per-wapp zxdb database, scoped to the wapp data dir) ──
+    final halDbOpen = WasmFunction(
       (int pathPtr, int pathLen) {
         if (pathLen <= 0) return -1;
         final p = _wappDbPath(_readUtf8(pathPtr, pathLen));
@@ -2630,25 +2630,25 @@ class WappEngine {
           final sw = Stopwatch()..start();
           final db = openProfileDb(p);
           _noteSlowSql('open', p.substring(slash + 1), sw);
-          final h = _nextSqliteHandle++;
-          _sqlite[h] = _WappSqliteState(db);
+          final h = _nextDbHandle++;
+          _dbs[h] = _WappDbState(db);
           return h;
         } catch (e, st) {
           // The wapp only sees -1; the reason is the host's to keep.
-          LogService.instance.add('hal_sqlite_open $p failed: $e\n$st');
+          LogService.instance.add('hal_db_open $p failed: $e\n$st');
           return -1;
         }
       },
       params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
     );
-    final halSqliteExec = WasmFunction(
+    final halDbExec = WasmFunction(
       (int h, int sqlPtr, int sqlLen, int parPtr, int parLen) {
-        final st = _sqlite[h];
+        final st = _dbs[h];
         if (st == null || sqlLen <= 0) return -1;
         try {
           final sw = Stopwatch()..start();
           final sql = _readUtf8(sqlPtr, sqlLen);
-          st.db.execute(sql, _sqliteParams(parPtr, parLen));
+          st.db.execute(sql, _dbParams(parPtr, parLen));
           _noteSlowSql('exec', sql, sw);
           st.lastError = null;
           return 0;
@@ -2660,15 +2660,15 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
-    final halSqliteQuery = WasmFunction(
+    final halDbQuery = WasmFunction(
       (int h, int sqlPtr, int sqlLen, int parPtr, int parLen, int outPtr,
           int outCap) {
-        final st = _sqlite[h];
+        final st = _dbs[h];
         if (st == null || sqlLen <= 0 || outCap <= 0) return -1;
         try {
           final sw = Stopwatch()..start();
           final sql = _readUtf8(sqlPtr, sqlLen);
-          final rs = st.db.select(sql, _sqliteParams(parPtr, parLen));
+          final rs = st.db.select(sql, _dbParams(parPtr, parLen));
           _noteSlowSql('query', sql, sw);
           final cols = rs.columnNames;
           final rows = [
@@ -2689,17 +2689,17 @@ class WappEngine {
       ],
       results: [ValueTy.i32],
     );
-    final halSqliteError = WasmFunction(
+    final halDbError = WasmFunction(
       (int h, int outPtr, int outCap) {
-        final st = _sqlite[h];
+        final st = _dbs[h];
         if (st == null || outCap <= 0) return 0;
         return _writeUtf8(outPtr, outCap, st.lastError ?? '');
       },
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
     );
-    final halSqliteClose = WasmFunction.voidReturn(
+    final halDbClose = WasmFunction.voidReturn(
       (int h) {
-        final st = _sqlite.remove(h);
+        final st = _dbs.remove(h);
         if (st != null) {
           try {
             st.db.dispose();
@@ -4880,11 +4880,11 @@ class WappEngine {
       WasmImport('hal', 'event_available', halEventAvailable),
       WasmImport('hal', 'event_recv', halEventRecv),
       // SQLite (per-wapp relational storage, scoped to the wapp data dir)
-      WasmImport('hal', 'sqlite_open', halSqliteOpen),
-      WasmImport('hal', 'sqlite_exec', halSqliteExec),
-      WasmImport('hal', 'sqlite_query', halSqliteQuery),
-      WasmImport('hal', 'sqlite_error', halSqliteError),
-      WasmImport('hal', 'sqlite_close', halSqliteClose),
+      WasmImport('hal', 'db_open', halDbOpen),
+      WasmImport('hal', 'db_exec', halDbExec),
+      WasmImport('hal', 'db_query', halDbQuery),
+      WasmImport('hal', 'db_error', halDbError),
+      WasmImport('hal', 'db_close', halDbClose),
       // Generic crypto (caller-supplied keys; complements identity_*/encrypt)
       WasmImport('hal', 'crypto_keygen', halCryptoKeygen),
       WasmImport('hal', 'crypto_sign', halCryptoSign),
@@ -5088,7 +5088,7 @@ class WappEngine {
   void _noteSlowSql(String what, String sql, Stopwatch sw) {
     if (sw.elapsedMilliseconds < _slowMs) return;
     LogService.instance.add(
-        'perf: wapp $_appId sqlite $what took ${sw.elapsedMilliseconds}ms: '
+        'perf: wapp $_appId db $what took ${sw.elapsedMilliseconds}ms: '
         '${sql.length > 70 ? sql.substring(0, 70) : sql}');
   }
 
@@ -5197,11 +5197,11 @@ class WappEngine {
       try { s.sub?.cancel(); } catch (_) {}
     }
     _streams.clear();
-    // Close any sqlite databases the wapp left open.
-    for (final s in _sqlite.values) {
+    // Close any databases the wapp left open.
+    for (final s in _dbs.values) {
       try { s.db.dispose(); } catch (_) {}
     }
-    _sqlite.clear();
+    _dbs.clear();
     // Release this wapp's slot on the RNS datagram channel.
     if (_appId != null) {
       RnsService.instance.wappUnregister(_appId!);
