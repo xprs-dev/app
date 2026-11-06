@@ -2,7 +2,7 @@
 /// docs/plan-encrypted-storage.md): enable → use → lock → unlock →
 /// change password → disable, against a real ProfileService.
 ///
-/// ProfileService persists to `$HOME/.local/share/aurora`, so this file
+/// ProfileService persists to `$HOME/.local/share/xprs`, so this file
 /// REFUSES to run unless AURORA_TEST_HOME=1 is set — run it with an
 /// isolated HOME:
 ///
@@ -35,7 +35,7 @@ void main() {
     final plainNsec = preview.nsec;
     expect(plainNsec, isNotEmpty);
 
-    final root = '${Platform.environment['HOME']}/.local/share/aurora';
+    final root = '${Platform.environment['HOME']}/.local/share/xprs';
     final profilesFile = File('$root/profiles.json');
 
     // Sanity: plaintext nsec on disk before enabling.
@@ -60,7 +60,7 @@ void main() {
     // In-memory profile still has the working nsec.
     expect(service.activeProfile!.nsec, equals(plainNsec));
 
-    // Encrypted storage works and puts loose files in the archive.
+    // Encrypted storage works and puts loose files in profile.zx.
     final storage = service.storageForProfile(id);
     expect(storage.isEncrypted, isTrue);
     await storage.writeString('data/chat/hello.json', '{"msg":"secret 🤫"}');
@@ -68,9 +68,9 @@ void main() {
         equals('{"msg":"secret 🤫"}'));
     expect(File('$root/devices/$id/data/chat/hello.json').existsSync(),
         isFalse);
-    final earBytes =
-        File('$root/devices/$id/profile.ear').readAsBytesSync();
-    expect(utf8.decode(earBytes, allowMalformed: true).contains('secret'),
+    final storeBytes =
+        File('$root/devices/$id/profile.zx').readAsBytesSync();
+    expect(utf8.decode(storeBytes, allowMalformed: true).contains('secret'),
         isFalse);
 
     // ── lock / unlock ──
@@ -112,7 +112,7 @@ void main() {
     await ProfileEncryption.disable(id, password: 'new🐘pass');
     expect(ProfileEncryption.isEncrypted(id), isFalse);
     expect(File('$root/devices/$id/keyslot.json').existsSync(), isFalse);
-    expect(File('$root/devices/$id/profile.ear').existsSync(), isFalse);
+    expect(File('$root/devices/$id/profile.zx').existsSync(), isFalse);
     final restored = profilesFile.readAsStringSync();
     expect(restored, contains(plainNsec));
     expect(restored.contains('nsec_enc'), isFalse);
@@ -132,7 +132,7 @@ void main() {
         reason: 'no password was typed — the device key holds the secret');
     expect(await ProfileEncryption.hasCachedKeys(p.id), isTrue);
 
-    final root = '${Platform.environment['HOME']}/.local/share/aurora';
+    final root = '${Platform.environment['HOME']}/.local/share/xprs';
     final persisted = File('$root/profiles.json').readAsStringSync();
     expect(persisted.contains(nsec), isFalse,
         reason: 'nsec is encrypted at rest from the very first save');

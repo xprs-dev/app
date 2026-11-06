@@ -49,13 +49,8 @@ class ProfileKeyring {
   final Map<String, UnlockedProfileKeys> _unlocked = {};
 
   /// Listeners fired (fire-and-forget) when a profile locks, so holders of
-  /// derived resources (open profile.ear archives) can close them.
+  /// derived resources (the open profile.zx store) can close them.
   final List<Future<void> Function(String profileId)> onLock = [];
-
-  /// Listeners fired (fire-and-forget) right after a profile unlocks. The
-  /// encrypted storage backend uses this to pre-open profile.ear so the
-  /// sync (WASM HAL) paths find it ready.
-  final List<Future<void> Function(String profileId)> onUnlock = [];
 
   bool isUnlocked(String profileId) => _unlocked.containsKey(profileId);
 
@@ -64,9 +59,6 @@ class ProfileKeyring {
   void putKeys(String profileId, UnlockedProfileKeys keys) {
     _unlocked[profileId]?.dispose();
     _unlocked[profileId] = keys;
-    for (final listener in onUnlock) {
-      unawaited(listener(profileId));
-    }
   }
 
   /// Drop a profile's keys (zeroing the master key). Fires [onLock] so the

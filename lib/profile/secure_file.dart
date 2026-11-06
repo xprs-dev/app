@@ -1,35 +1,39 @@
 /*
- * Per-file encryption for profile secrets that must live directly on the
- * filesystem (bound by absolute path from RnsService and friends, so they
- * can't move into the profile.ear archive): rns_identity.key, folders.json.
+ * Loose profile files that must stay real files (bound by absolute path
+ * from RnsService and friends, so they can't live in profile.zx):
+ * rns_identity.key, folders.json, and the media archive's blobs.
  *
- * Format: 'AEF1' magic || 12-byte nonce || ciphertext || 16-byte GCM tag.
- * Key = HKDF(PMK, "aurora-file-v1:<profile-relative path>").
+ * In an encrypted profile each is a one-entry .zx archive (zxPackBytes),
+ * encrypted by zx itself: AES-256-CTR + HMAC-SHA-256, the password being
+ * the hex of HKDF(PMK, "aurora-file-v1:<profile-relative path>"). There is
+ * no encryption code of the app's own here.
  *
  * For plain profiles (no keyslot) reads/writes pass straight through, and
- * a read of a plain (pre-encryption) file inside an encrypted profile
- * still returns its bytes — the next write encrypts it.
+ * a read of a plain file inside an encrypted profile still returns its
+ * bytes — the next write encrypts it.
  */
 
 import 'dart:convert';
-import 'package:file/file.dart';
 import 'dart:typed_data';
 
-import 'package:encrypted_archive/encrypted_archive.dart'
-    show ArchiveCryptoException, KeyDerivation;
+import 'package:zx/zxdb.dart'
+    show SevenZipException, zxLooksPacked, zxPackBytes, zxUnpackBytes;
 
 import 'profile_crypto.dart';
 import 'profile_db.dart';
 import '../platform/fs.dart';
 
-/// Reads/writes profile files with transparent at-rest encryption for
-/// encrypted profiles. All methods are synchronous (call sites are sync).
+/// A file of an encrypted profile that is unreadable: packed but no key
+/// (outside an unlocked profile), or a wrong key / damaged bytes.
+class SecureFileException implements Exception {
+  final String message;
+  const SecureFileException(this.message);
+  @override
+  String toString() => 'SecureFileException: $message';
+}
+
 class SecureProfileFile {
   SecureProfileFile._();
-
-  static final Uint8List _magic = Uint8List.fromList('AEF1'.codeUnits);
-  static const int _nonceLen = 12;
-  static const int _tagLen = 16;
 
   static UnlockedProfileKeys? _keysFor(String absPath) {
     final loc = locateProfileDb(absPath);
@@ -42,38 +46,17 @@ class SecureProfileFile {
     return keys;
   }
 
-  static bool _isWrapped(Uint8List bytes) =>
-      bytes.length >= _magic.length + _nonceLen + _tagLen &&
-      bytes[0] == _magic[0] &&
-      bytes[1] == _magic[1] &&
-      bytes[2] == _magic[2] &&
-      bytes[3] == _magic[3];
-
   /// Read [absPath], decrypting when it belongs to an unlocked encrypted
   /// profile. Returns null when the file does not exist. Throws
-  /// [ProfileLockedException] / [ArchiveCryptoException] on locked profile
-  /// or tampered content.
+  /// [ProfileLockedException] / [SecureFileException] on a locked profile
+  /// or unreadable content.
   static Uint8List? readBytes(String absPath) {
     final f = fs.file(absPath);
     if (!f.existsSync()) return null;
     // arch-ignore: no-blocking-io-on-ui sync by contract: the WASI fd_* shims read encrypted profile files through here
     final raw = f.readAsBytesSync();
-
-    if (!_isWrapped(raw)) return raw; // plain file (plain profile or pre-encryption)
-
-    final keys = _keysFor(absPath);
-    if (keys == null) {
-      // Wrapped file but no encryption context — cannot decrypt.
-      throw const ArchiveCryptoException(
-          'Encrypted file found outside an unlocked encrypted profile');
-    }
-    final loc = locateProfileDb(absPath)!;
-    final nonce = Uint8List.sublistView(
-        raw, _magic.length, _magic.length + _nonceLen);
-    final ct = Uint8List.sublistView(
-        raw, _magic.length + _nonceLen, raw.length - _tagLen);
-    final tag = Uint8List.sublistView(raw, raw.length - _tagLen);
-    return KeyDerivation.decryptSync(ct, tag, keys.fileKey(loc.relPath), nonce);
+    if (!zxLooksPacked(raw)) return raw; // plain file
+    return unwrap(raw, fileKeyFor(absPath));
   }
 
   /// Write [bytes] to [absPath], encrypting when it belongs to an unlocked
@@ -81,50 +64,38 @@ class SecureProfileFile {
   static void writeBytes(String absPath, Uint8List bytes) {
     final parent = fs.file(absPath).parent;
     if (!parent.existsSync()) parent.createSync(recursive: true);
-
-    final keys = _keysFor(absPath);
-    if (keys == null) {
-      // arch-ignore: no-blocking-io-on-ui sync by contract: called from the WASI fd_write shim
-      fs.file(absPath).writeAsBytesSync(bytes);
-      return;
-    }
-    final loc = locateProfileDb(absPath)!;
-    final nonce = ProfileCrypto.randomBytes(_nonceLen);
-    final enc =
-        KeyDerivation.encryptSync(bytes, keys.fileKey(loc.relPath), nonce);
-    final out = BytesBuilder(copy: false)
-      ..add(_magic)
-      ..add(nonce)
-      ..add(enc.ciphertext)
-      ..add(enc.authTag);
+    final key = fileKeyFor(absPath);
+    // Media is compressed already; LZ4 gives up on such blocks quickly.
+    final out = key == null
+        ? bytes
+        : zxPackBytes(bytes, password: key, scryptLog2N: 1);
     // arch-ignore: no-blocking-io-on-ui sync by contract: called from the WASI fd_write shim
-    fs.file(absPath).writeAsBytesSync(out.toBytes());
+    fs.file(absPath).writeAsBytesSync(out);
   }
 
-  /// The key that [writeBytes] encrypts [absPath] with, or null when the
+  /// The password that [writeBytes] packs [absPath] with, or null when the
   /// file is written plain (outside an encrypted profile). For a worker
   /// isolate that reads a large file itself ([unwrap]): the keyring lives
   /// on the isolate that unlocked the profile.
-  static Uint8List? fileKeyFor(String absPath) {
+  static String? fileKeyFor(String absPath) {
     final keys = _keysFor(absPath);
     if (keys == null) return null;
-    return keys.fileKey(locateProfileDb(absPath)!.relPath);
+    return keys.fileKeyHex(locateProfileDb(absPath)!.relPath);
   }
 
-  /// [raw] as [readBytes] returns it, with the key from [fileKeyFor]: pure,
-  /// usable on any isolate. A plain file comes back as it is.
-  static Uint8List unwrap(Uint8List raw, Uint8List? key) {
-    if (!_isWrapped(raw)) return raw;
+  /// [raw] as [readBytes] returns it, with the password from [fileKeyFor]:
+  /// pure, usable on any isolate. A plain file comes back as it is.
+  static Uint8List unwrap(Uint8List raw, String? key) {
+    if (!zxLooksPacked(raw)) return raw;
     if (key == null) {
-      throw const ArchiveCryptoException(
-          'Encrypted file found outside an unlocked encrypted profile');
+      throw const SecureFileException(
+          'encrypted file found outside an unlocked encrypted profile');
     }
-    final nonce = Uint8List.sublistView(
-        raw, _magic.length, _magic.length + _nonceLen);
-    final ct = Uint8List.sublistView(
-        raw, _magic.length + _nonceLen, raw.length - _tagLen);
-    final tag = Uint8List.sublistView(raw, raw.length - _tagLen);
-    return KeyDerivation.decryptSync(ct, tag, key, nonce);
+    try {
+      return zxUnpackBytes(raw, password: key);
+    } on SevenZipException catch (e) {
+      throw SecureFileException(e.message);
+    }
   }
 
   static String? readString(String absPath) {

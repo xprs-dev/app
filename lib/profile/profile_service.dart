@@ -24,7 +24,7 @@ import '../util/nostr_key_generator.dart';
 import '../services/log_service.dart';
 import '../services/preferences_service.dart';
 import 'identity_backup.dart';
-import 'legacy_sqlite_sweep.dart';
+import 'legacy_storage_sweep.dart';
 import 'profile_db.dart';
 import 'secure_file.dart';
 import 'profile_encryption.dart';
@@ -123,8 +123,8 @@ class ProfileService {
     // Route every reticulum-package database open (media archive, disk
     // index, serve stats, relay events, coin wallet) through the profile
     // opener so encrypted profiles get their passwords, and the media
-    // archive's blob files through SecureProfileFile so they are encrypted
-    // like the rows that describe them. Must happen before any store is
+    // archive's blob files through SecureProfileFile (one-entry encrypted
+    // .zx each) so they are encrypted like the rows that describe them. Must happen before any store is
     // constructed; this boot task runs before wapp/reticulum autostart on
     // both UI and headless engines.
     reticulum.dbOpener = openProfileDb;
@@ -137,7 +137,7 @@ class ProfileService {
     await root.createDirectory('');
     // The SQLite files of earlier builds are not read (no migration); the
     // first start of this build deletes them in the background.
-    if (!kIsWeb) unawaited(sweepLegacySqlite(profileStorageRoot()));
+    if (!kIsWeb) unawaited(sweepLegacyStorage(profileStorageRoot()));
     final existing = await root.readJson(_profilesFile);
     if (existing != null) {
       final list = existing['profiles'];
@@ -299,7 +299,7 @@ class ProfileService {
   /// to read/write that profile's avatar image. (cf. [activeProfileStorage].)
   ///
   /// Encrypted profiles (keyslot.json present) get the routing backend that
-  /// keeps loose files inside profile.ear; plain profiles get the plain
+  /// keeps loose files inside profile.zx; plain profiles get the plain
   /// filesystem scope, exactly as before.
   ProfileStorage storageForProfile(String id) {
     if (ProfileKeyring.instance.isEncryptedProfile(id)) {

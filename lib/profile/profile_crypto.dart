@@ -15,8 +15,13 @@
  *   KEK       = HKDF-SHA256(KEK_pw || nsecBytes, salt, "aurora-profile-kek-v1")
  *   PMK       = random 32 B profile master key (generated once at enable)
  *   pmk_ct    = AES-256-GCM(KEK, PMK)              -> devices/<id>/keyslot.json
- *   earPass   = hex(HKDF(PMK, "aurora-ear-v1"))    -> password for profile.ear
+ *   storePass = hex(HKDF(PMK, "aurora-ear-v1"))    -> password of profile.zx
  *   dbKey(p)  = HKDF(PMK, "aurora-db-v1:" + relPath) -> zxdb password (hex)
+ *   fileKey(p)= HKDF(PMK, "aurora-file-v1:" + relPath) -> password (hex) of
+ *               a loose file packed as a one-entry .zx (SecureProfileFile)
+ *
+ * The data itself is encrypted by zx (AES-256-CTR + HMAC-SHA-256 per
+ * block); the app's own cipher only wraps the PMK and the nsec above.
  *
  * The password alone decrypts the nsec envelope (stage 1); the profile data
  * keys additionally mix in the nsec (stage 2), so a profile folder copied off
@@ -26,7 +31,7 @@
  * constant-time, no oracle. Password change re-wraps PMK + nsec only.
  *
  * Argon2id runs only at unlock/enable time (async); everything derived from
- * PMK uses the sync HKDF from encrypted_archive so it can serve sync callers.
+ * PMK uses a synchronous HKDF (RFC 5869, below) so it can serve sync callers.
  */
 
 import 'dart:convert';
@@ -34,7 +39,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:encrypted_archive/encrypted_archive.dart' show KeyDerivation;
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:hex/hex.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
@@ -192,10 +197,12 @@ class UnlockedProfileKeys {
     }
   }
 
-  /// Password for the profile's `.ear` archive.
-  String get earPassword {
+  /// Password (hex) of the profile's file store, `profile.zx`. The
+  /// derivation label keeps its historical name (`ear`): changing it would
+  /// change the key.
+  String get storePassword {
     _ensureLive();
-    return HEX.encode(KeyDerivation.hkdfSha256(
+    return HEX.encode(hkdfSha256(
       _pmk,
       Uint8List(0),
       Uint8List.fromList(utf8.encode('aurora-ear-v1')),
@@ -207,7 +214,7 @@ class UnlockedProfileKeys {
   /// (forward-slash separated, e.g. `data/mesh.zx`).
   Uint8List dbKey(String relPath) {
     _ensureLive();
-    return KeyDerivation.hkdfSha256(
+    return hkdfSha256(
       _pmk,
       Uint8List(0),
       Uint8List.fromList(utf8.encode('aurora-db-v1:$relPath')),
@@ -218,18 +225,21 @@ class UnlockedProfileKeys {
   /// The password (hex) of the database at [relPath] (zxdb, AES-256).
   String dbKeyHex(String relPath) => HEX.encode(dbKey(relPath));
 
-  /// Raw 32-byte AES-GCM key for an individually-encrypted loose file at
-  /// profile-relative [relPath] (used for secrets like rns_identity.key
-  /// that must stay directly on the filesystem — see SecureProfileFile).
+  /// Raw 32-byte key of a loose file at profile-relative [relPath] that
+  /// must stay a real file (rns_identity.key, media blobs): its hex is the
+  /// password of the one-entry .zx it is packed in (SecureProfileFile).
   Uint8List fileKey(String relPath) {
     _ensureLive();
-    return KeyDerivation.hkdfSha256(
+    return hkdfSha256(
       _pmk,
       Uint8List(0),
       Uint8List.fromList(utf8.encode('aurora-file-v1:$relPath')),
       32,
     );
   }
+
+  /// The zx password (hex) of the loose file at [relPath].
+  String fileKeyHex(String relPath) => HEX.encode(fileKey(relPath));
 
   /// Serialize for the app-private "keep unlocked on this device" cache.
   Map<String, dynamic> toCacheJson() {
@@ -255,7 +265,7 @@ class UnlockedProfileKeys {
 class ProfileCrypto {
   ProfileCrypto._();
 
-  // Argon2id parameters (mirrors encrypted_archive defaults).
+  // Argon2id parameters of the keyslot (the person's password).
   static const int argon2TimeCost = 3;
   static const int argon2MemoryKib = 65536; // 64 MiB
   static const int argon2Parallelism = 1;
@@ -289,7 +299,7 @@ class ProfileCrypto {
     final ikm = Uint8List(kekPw.length + nsecBytes.length)
       ..setRange(0, kekPw.length, kekPw)
       ..setRange(kekPw.length, kekPw.length + nsecBytes.length, nsecBytes);
-    final kek = KeyDerivation.hkdfSha256(
+    final kek = hkdfSha256(
       ikm,
       salt,
       Uint8List.fromList(utf8.encode(_kekInfo)),
@@ -463,4 +473,23 @@ class ProfileCrypto {
     }
     return diff == 0;
   }
+}
+
+/// RFC 5869 HKDF-SHA256, synchronous. An empty [salt] means HashLen zero
+/// bytes. Every profile key is derived through it; its output for given
+/// inputs must never change.
+Uint8List hkdfSha256(Uint8List ikm, Uint8List salt, Uint8List info, int length) {
+  final effectiveSalt = salt.isEmpty ? Uint8List(32) : salt;
+  final prk = crypto.Hmac(crypto.sha256, effectiveSalt).convert(ikm).bytes;
+  final out = BytesBuilder(copy: false);
+  var previous = <int>[];
+  var counter = 1;
+  while (out.length < length) {
+    final block =
+        crypto.Hmac(crypto.sha256, prk).convert([...previous, ...info, counter]).bytes;
+    out.add(block);
+    previous = block;
+    counter++;
+  }
+  return Uint8List.fromList(out.toBytes().sublist(0, length));
 }

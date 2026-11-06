@@ -1,24 +1,30 @@
 # Encrypted Profile Storage
 
-Status: all five phases implemented (crypto core, encrypted databases (SQLCipher, replaced by zxdb on 2026-11-06), profile.ear loose files, unlock UI + enable/disable, headless remember-key + locked notification). Android on-device validation pending. This document specifies how XPRS encrypts each profile's user data at rest.
+Status: all five phases implemented (crypto core, encrypted databases (SQLCipher, replaced by zxdb on 2026-11-06), loose files (profile.ear, replaced by profile.zx on 2026-11-06), unlock UI + enable/disable, headless remember-key + locked notification). Android on-device validation pending. This document specifies how XPRS encrypts each profile's user data at rest.
 
-> **Amendment (2026-11-06): SQLCipher is superseded by zxdb.** SQLite was
-> removed completely (owner's decision; no backward compatibility, no
-> migration). Every database is now a zxdb file (`*.zx`, `XDb`, from the
-> owner's zx project: a SQL database with SQLite's dialect inside an
-> archive, AES-256 by password, pure Dart, no native library on any
-> platform). The per-database key below (`dbKey(p)`, `dbKeyHex`) is
-> unchanged in derivation and is now the zxdb **password** instead of a
-> SQLCipher `PRAGMA key`. `sqlcipher_flutter_libs`, `ensureSqlCipherLoaded`
-> and the per-isolate native-library overrides are gone; the NOSTR engine
-> isolate receives the password as `dbKeyHex`. `profile.ear` still uses
-> `encrypted_archive` with its same schema and per-chunk AES-GCM, now on
-> zx's `ZxDb`; an old SQLite-format `profile.ear` is deleted when opened and
-> a new archive starts. The media archive keeps its bytes as files under
-> `data/media/`, encrypted per file through `SecureProfileFile`. A one-time
-> sweep deletes leftover `*.sqlite3` files on first start. The sections
-> below keep the original SQLCipher plan as history and say where it no
-> longer applies.
+> **Amendment (2026-11-06): zx encrypts everything; SQLCipher,
+> `encrypted_archive` and AEF1 are gone.** SQLite was removed completely
+> (owner's decision; no backward compatibility, no migration), and the
+> owner then asked for the storage to use zx's own encryption instead of
+> layers of the app's. Every byte at rest is now encrypted by zx
+> (AES-256-CTR + HMAC-SHA-256 per block, names and sizes hidden too):
+>
+> | What | Where | zx password |
+> |---|---|---|
+> | every database (`*.zx`, `XDb`) | its own file | `dbKeyHex(relPath)` = hex HKDF(PMK, "aurora-db-v1:" + relPath) |
+> | loose user files (kv.json, hal_file_*, avatar, ...) | rows of `files` in `profile.zx`, a zxdb database (replaces `profile.ear`) | `storePassword` = hex HKDF(PMK, "aurora-ear-v1") |
+> | files that must stay real files (`rns_identity.key`, `folders.json`, media blobs under `data/media/`) | each a one-entry .zx archive (`zxPackBytes`, `SecureProfileFile`) | `fileKeyHex(relPath)` = hex HKDF(PMK, "aurora-file-v1:" + relPath) |
+>
+> The derivations are unchanged (frozen labels). The passwords are random
+> 256-bit keys, so every file is written with `scryptLog2N: 1`: zx's
+> default scrypt cost (about a second per open on a phone) would buy
+> nothing and cost two dozen seconds per unlock. The app's own cipher code
+> only wraps the PMK and the nsec (keyslot.json, profiles.json); the
+> `encrypted_archive` package and the AEF1 wrapper were deleted. A
+> one-time sweep (`legacy_storage_sweep_io.dart`) deletes `*.sqlite3`,
+> `profile.ear` and AEF1 files on first start. The sections below are the
+> original plan, kept as history; where they speak of SQLCipher,
+> `profile.ear` or AES-GCM per file, the table above applies instead.
 
 > **Amendment (2026-08-02):** the "fingerprint prompt is the lock" doctrine is
 > retired. Device-key profiles now unlock **silently everywhere** (UI and

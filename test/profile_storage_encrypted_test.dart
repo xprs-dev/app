@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zx/zxdb.dart' show zxLooksPacked, zxUnpackBytes;
 
 import 'package:xprs/profile/profile_crypto.dart';
 import 'package:xprs/profile/profile_db.dart';
@@ -36,7 +37,7 @@ void main() {
   });
 
   tearDown(() async {
-    await EncryptedProfileStorage.closeAllArchives();
+    await EncryptedProfileStorage.closeAllStores();
     ProfileKeyring.instance.lockAll();
     profileDbRootOverride = null;
     try {
@@ -48,8 +49,8 @@ void main() {
     test('routes correctly', () {
       // filesystem side
       expect(EncryptedProfileStorage.isPassthroughPath('keyslot.json'), isTrue);
-      expect(EncryptedProfileStorage.isPassthroughPath('profile.ear'), isTrue);
-      expect(EncryptedProfileStorage.isPassthroughPath('profile.ear.zx-lock'),
+      expect(EncryptedProfileStorage.isPassthroughPath('profile.zx'), isTrue);
+      expect(EncryptedProfileStorage.isPassthroughPath('profile.zx-lock'),
           isTrue);
       expect(EncryptedProfileStorage.isPassthroughPath('.seeded.json'), isTrue);
       expect(EncryptedProfileStorage.isPassthroughPath('wapps/chat/app.wasm'),
@@ -71,7 +72,7 @@ void main() {
           isTrue);
       expect(EncryptedProfileStorage.isPassthroughPath('data/share/abc.jpg'),
           isTrue);
-      // archive side
+      // profile.zx side
       expect(EncryptedProfileStorage.isPassthroughPath('avatar.png'), isFalse);
       expect(EncryptedProfileStorage.isPassthroughPath('data/chat/kv.json'),
           isFalse);
@@ -82,7 +83,7 @@ void main() {
   });
 
   group('EncryptedProfileStorage', () {
-    test('loose file round-trip lands in archive, not on filesystem',
+    test('loose file round-trip lands in profile.zx, not on filesystem',
         () async {
       final st = await encryptedStorage('E1');
 
@@ -90,19 +91,21 @@ void main() {
       expect(await st.readString('data/chat/kv.json'), equals('{"hello":"🌍"}'));
       expect(await st.exists('data/chat/kv.json'), isTrue);
 
-      // Nothing plaintext on disk: only keyslot + profile.ear(-wal/shm).
+      // Nothing plaintext on disk: only keyslot + profile.zx (+ its lock).
       final files = Directory('${tempRoot.path}/devices/E1')
           .listSync(recursive: true)
           .whereType<File>()
           .map((f) => f.path.split('/').last)
           .toList();
       expect(files.where((f) => f.contains('kv.json')), isEmpty);
-      expect(files.where((f) => f.startsWith('profile.ear')), isNotEmpty);
+      expect(files.where((f) => f.startsWith('profile.zx')), isNotEmpty);
 
-      // Content really is unreadable in the archive file.
-      final ear =
-          File('${tempRoot.path}/devices/E1/profile.ear').readAsBytesSync();
-      expect(utf8.decode(ear, allowMalformed: true).contains('hello'), isFalse);
+      // Content and names really are unreadable in the store's file.
+      final store =
+          File('${tempRoot.path}/devices/E1/profile.zx').readAsBytesSync();
+      final text = utf8.decode(store, allowMalformed: true);
+      expect(text.contains('hello'), isFalse);
+      expect(text.contains('kv.json'), isFalse);
     });
 
     test('passthrough write creates a real file', () async {
@@ -130,10 +133,10 @@ void main() {
       await st.delete('data/x/log.txt');
     });
 
-    test('listDirectory merges archive and filesystem entries', () async {
+    test('listDirectory merges profile.zx and filesystem entries', () async {
       final st = await encryptedStorage('E4');
 
-      await st.writeString('data/w/kv.json', '{}'); // archive
+      await st.writeString('data/w/kv.json', '{}'); // profile.zx
       await st.writeBytes('data/w/blob.bin', Uint8List.fromList([1, 2, 3]));
       File('${tempRoot.path}/devices/E4/data/w/store.zx')
         ..createSync(recursive: true)
@@ -145,11 +148,11 @@ void main() {
       // root listing hides the container + keyslot
       final rootNames =
           (await st.listDirectory('')).map((e) => e.name).toSet();
-      expect(rootNames.contains('profile.ear'), isFalse);
+      expect(rootNames.contains('profile.zx'), isFalse);
       expect(rootNames.contains(keyslotFileName), isFalse);
     });
 
-    test('directoryExists + renameDirectory across archive entries', () async {
+    test('directoryExists + renameDirectory across profile.zx rows', () async {
       final st = await encryptedStorage('E5');
       await st.writeString('data/old/a.txt', 'A');
       await st.writeString('data/old/deep/b.txt', 'B');
@@ -161,22 +164,44 @@ void main() {
       expect(await st.directoryExists('data/old'), isFalse);
     });
 
-    test('sync ops work after unlock pre-open', () async {
-      final st = await encryptedStorage('E6');
-      // onUnlock pre-open is fire-and-forget; force it deterministically
-      // with one async op, as first boot does.
-      await st.exists('data/anything');
+    test('empty directories, recursive listing and deleteDirectory',
+        () async {
+      final st = await encryptedStorage('E9');
+      await st.createDirectory('data/empty');
+      expect(await st.directoryExists('data/empty'), isTrue);
+      await st.writeString('data/t/a/b.txt', 'b');
+      await st.writeString('data/t/c.txt', 'c');
+      final flat = (await st.listDirectory('data/t')).map((e) => e.path).toSet();
+      expect(flat, containsAll({'data/t/a', 'data/t/c.txt'}));
+      expect(flat.contains('data/t/a/b.txt'), isFalse);
+      final deep = (await st.listDirectory('data/t', recursive: true))
+          .map((e) => e.path)
+          .toSet();
+      expect(deep, containsAll({'data/t/a', 'data/t/a/b.txt', 'data/t/c.txt'}));
+      await st.deleteDirectory('data/t', recursive: true);
+      expect(await st.exists('data/t/c.txt'), isFalse);
+      expect(await st.directoryExists('data/t'), isFalse);
+      final ext = '${tempRoot.path}/out/c.txt';
+      await st.writeString('data/x.txt', 'external');
+      await st.copyToExternal('data/x.txt', ext);
+      expect(File(ext).readAsStringSync(), 'external');
+      await st.copyFromExternal(ext, 'data/y.txt');
+      expect(await st.readString('data/y.txt'), 'external');
+    });
 
+    test('sync ops work from the first call (no async open first)',
+        () async {
+      final st = await encryptedStorage('E6');
       st.writeBytesSync('data/w/sync.bin', Uint8List.fromList([9, 8, 7]));
       expect(st.existsSync('data/w/sync.bin'), isTrue);
       expect(st.readBytesSync('data/w/sync.bin'), equals([9, 8, 7]));
       expect(await st.readBytes('data/w/sync.bin'), equals([9, 8, 7]));
     });
 
-    test('data persists across archive close/reopen', () async {
+    test('data persists across store close/reopen', () async {
       var st = await encryptedStorage('E7');
       await st.writeString('data/keep.txt', 'still here');
-      await EncryptedProfileStorage.closeArchive('E7');
+      await EncryptedProfileStorage.closeStore('E7');
 
       st = EncryptedProfileStorage('E7', '${tempRoot.path}/devices/E7');
       expect(await st.readString('data/keep.txt'), equals('still here'));
@@ -200,12 +225,12 @@ void main() {
         ..createSync(recursive: true);
       final path = '${dir.path}/rns_identity.key';
       SecureProfileFile.writeBytes(path, Uint8List.fromList([1, 2, 3, 4]));
-      // Plain on disk (no AEF1 magic).
+      // Plain on disk (not packed).
       expect(File(path).readAsBytesSync(), equals([1, 2, 3, 4]));
       expect(SecureProfileFile.readBytes(path), equals([1, 2, 3, 4]));
     });
 
-    test('encrypted profile: wrapped on disk, round-trips', () async {
+    test('encrypted profile: a packed, encrypted .zx on disk, round-trips', () async {
       await encryptedStorage('S1');
       final path = '${tempRoot.path}/devices/S1/data/rns_identity.key';
       final secret = Uint8List.fromList(List.generate(64, (i) => i));
@@ -213,8 +238,9 @@ void main() {
       SecureProfileFile.writeBytes(path, secret);
 
       final raw = File(path).readAsBytesSync();
-      expect(String.fromCharCodes(raw.sublist(0, 4)), equals('AEF1'));
-      expect(raw, isNot(equals(secret)));
+      expect(zxLooksPacked(raw), isTrue);
+      expect(() => zxUnpackBytes(raw), throwsA(anything),
+          reason: 'needs the password');
 
       expect(SecureProfileFile.readBytes(path), equals(secret));
     });
@@ -233,7 +259,8 @@ void main() {
       // next write encrypts
       SecureProfileFile.writeString(path, '[]');
       final raw = File(path).readAsBytesSync();
-      expect(String.fromCharCodes(raw.sublist(0, 4)), equals('AEF1'));
+      expect(zxLooksPacked(raw), isTrue);
+      expect(utf8.decode(raw, allowMalformed: true).contains('[]'), isFalse);
       expect(SecureProfileFile.readString(path), equals('[]'));
     });
 
@@ -244,6 +271,16 @@ void main() {
       ProfileKeyring.instance.lock('S3');
 
       expect(() => SecureProfileFile.readBytes(path), throwsA(anything));
+    });
+
+    test('a file packed for another profile key fails, not garbage',
+        () async {
+      await encryptedStorage('S4');
+      final path = '${tempRoot.path}/devices/S4/data/rns_identity.key';
+      SecureProfileFile.writeBytes(path, Uint8List.fromList([1, 2]));
+      await encryptedStorage('S4'); // new secrets: another master key
+      expect(() => SecureProfileFile.readBytes(path),
+          throwsA(isA<SecureFileException>()));
     });
   });
 }

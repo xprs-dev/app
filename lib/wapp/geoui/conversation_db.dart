@@ -2,7 +2,7 @@
  * Durable conversation history — one zxdb database per wapp.
  *
  * History used to be a single `messages/<field>.json` rewritten in full on
- * every message. On an encrypted profile that file lives inside `profile.ear`,
+ * every message. On an encrypted profile that file lived inside `profile.ear`,
  * and three things then conspired to destroy it on Android: a restore that
  * failed (locked keyring, half-written file) was indistinguishable from "no
  * history", the next message wrote the resulting EMPTY store back over the

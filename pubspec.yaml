@@ -78,8 +78,10 @@ dependencies:
   events_emitter2: ^1.0.4
   reticulum:
     path: ../reticulum-dart
-  encrypted_archive:
-    path: packages/encrypted_archive       # per-profile encrypted .ear archive (AES-256-GCM)
+  zx:                                    # zx: profile.zx and the packed loose files (the databases go through reticulum's XDb)
+    git:
+      url: https://github.com/x1watt/zx.git
+      ref: b3b431c2d3901036d7da8367fccd09e9d4bb3d10
   unorm_dart: ^0.3.0                       # NFC normalization for emoji-capable profile passwords
   flutter_secure_storage: ^10.3.1          # Android Keystore / OS-keychain storage for the profile device key
 

@@ -17,14 +17,13 @@
 
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:typed_data';
 
 import '../../profile/secure_file.dart';
 
 /// Arguments for the worker (must be a plain, sendable value).
 class _ExportJob {
   final String blobPath;
-  final Uint8List? fileKey; // null: the blob is a plain file
+  final String? fileKey; // zx password; null: the blob is a plain file
   final String outPath;
   const _ExportJob(this.blobPath, this.fileKey, this.outPath);
 }
@@ -60,9 +59,9 @@ String? _export(_ExportJob job) {
       // A plain blob is the file itself: copied, never read into memory.
       src.copySync(tmp.path);
     } else {
-      // An encrypted blob is one AES-GCM message: its tag is checked over the
-      // whole of it, so it is read whole, as the SQLite row it used to be was.
-      // arch-ignore: no-whole-file-read one AES-GCM message, authenticated whole; worker isolate, one user-initiated open
+      // An encrypted blob is a one-entry .zx archive held in memory
+      // (zxUnpackBytes), so it is read whole.
+      // arch-ignore: no-whole-file-read a one-entry .zx unpacked in memory; worker isolate, one user-initiated open
       final raw = src.readAsBytesSync();
       tmp.writeAsBytesSync(SecureProfileFile.unwrap(raw, key), flush: true);
     }

@@ -289,8 +289,8 @@ class WappEngine {
   int _nextFileHandle = 1;
 
   /// Flush a write/append hal_file handle. Paths inside an encrypted
-  /// profile land in profile.ear (append = read + concat there — archive
-  /// entries have no append); everything else is plain dart:io.
+  /// profile land in profile.zx (append = read + concat there — a row has
+  /// no append); everything else is plain dart:io.
   void _flushWappFile(_WappFileState s) {
     if (s.mode != 1 && s.mode != 2) return;
     try {
@@ -2226,7 +2226,7 @@ class WappEngine {
         final path = _readStr(pathPtr, pathLen);
         if (path.isEmpty || mode < 0 || mode > 2) return -1;
         final s = _WappFileState(path: path, mode: mode);
-        // Paths inside an encrypted profile are served from profile.ear
+        // Paths inside an encrypted profile are served from profile.zx
         // instead of the raw filesystem (docs/plan-encrypted-storage.md).
         final enc = EncryptedProfileStorage.routeAbsolutePath(path);
         if (mode == 0) {

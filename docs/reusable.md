@@ -37,7 +37,7 @@ non-obvious constraints a future caller needs to know.
 `lib/` — that rule is enforced by code review and the analyser will catch
 slips because the storage call sites do not import `dart:io`. The pillar
 exists so that the backing store can be swapped for an encrypted
-archive (encrypted profiles: `profile.ear`, on zxdb), a browser IndexedDB tree (web build), or a
+store (encrypted profiles: `profile.zx`, a zxdb database), a browser IndexedDB tree (web build), or a
 plain filesystem (today's desktop) without touching call sites.
 
 **API surface** (mirrors the parent repo's
@@ -127,6 +127,20 @@ database, not in rows (the media archive's `blobRead`/`blobWrite`). No
 VACUUM or journal pragmas: the file compacts itself when it doubles, and the
 old pragmas are accepted no-ops. Foreign keys are parsed but not enforced, so
 delete dependent rows explicitly.
+
+### SecureProfileFile — one loose file encrypted by zx (2026-11-06)
+
+**Files:** `lib/profile/secure_file.dart`; zx `zxPackBytes` /
+`zxUnpackBytes` / `zxLooksPacked` (`package:zx/zxdb.dart`).
+
+**What it is.** For a profile file that must stay a real file (bound by
+path from RnsService, a media blob): `readBytes`/`writeBytes`/
+`readString`/`writeString` by absolute path. Plain profile: plain bytes.
+Encrypted profile: a one-entry .zx archive encrypted by zx with
+`fileKeyHex(relPath)`. `fileKeyFor` + `unwrap` let a worker isolate read
+one without the keyring. Any random-key password handed to zx goes with
+`scryptLog2N: 1` (xdbStoreOptions does it for databases): never write
+cipher code of the app's own for data at rest.
 
 ### Renaming a preference key — `PreferencesService._migrateArchiverKeys`
 

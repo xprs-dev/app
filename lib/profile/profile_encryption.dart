@@ -162,7 +162,7 @@ class ProfileEncryption {
     keys.dispose();
 
     ProfileKeyring.instance.lock(id);
-    await EncryptedProfileStorage.closeArchive(id);
+    await EncryptedProfileStorage.closeStore(id);
     _deleteProfileUserData(id);
     _tryDelete(_keyslotPath(id));
     await DeviceKeyStore.instance.clearAll(id);
@@ -293,7 +293,7 @@ class ProfileEncryption {
   static Future<void> lockNow(String id) async {
     await DeviceKeyStore.instance.clearCachedKeys(id);
     ProfileKeyring.instance.lock(id);
-    await EncryptedProfileStorage.closeArchive(id);
+    await EncryptedProfileStorage.closeStore(id);
     LogService.instance.add('encryption: locked $id');
   }
 
@@ -349,7 +349,7 @@ class ProfileEncryption {
   }
 
   /// Delete a profile's user data, keeping wapp code, seed markers and the
-  /// keyslot: data/ tree, avatar, profile.ear (and its lock), every
+  /// keyslot: data/ tree, avatar, profile.zx (and its lock), every
   /// database (`*.zx*`) under wapps/.
   static void _deleteProfileUserData(String id) {
     final base = _profileDir(id);
@@ -358,7 +358,7 @@ class ProfileEncryption {
       _tryDelete('$base/$name');
     }
     for (final suffix in ['', '.zx-lock']) {
-      _tryDelete('$base/$profileArchiveName$suffix');
+      _tryDelete('$base/$profileStoreName$suffix');
     }
     final wapps = fs.directory('$base/wapps');
     if (wapps.existsSync()) {

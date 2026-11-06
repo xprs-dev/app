@@ -20,7 +20,7 @@ void main() {
       );
 
       expect(unlocked.nsec, equals(nsec));
-      expect(unlocked.earPassword, equals(secrets.keys.earPassword));
+      expect(unlocked.storePassword, equals(secrets.keys.storePassword));
       expect(
         unlocked.dbKeyHex('data/mesh.zx'),
         equals(secrets.keys.dbKeyHex('data/mesh.zx')),
@@ -93,7 +93,7 @@ void main() {
         () async {
       final secrets =
           await ProfileCrypto.createProfileSecrets('old pass', nsec);
-      final earBefore = secrets.keys.earPassword;
+      final earBefore = secrets.keys.storePassword;
       final dbBefore = secrets.keys.dbKeyHex('data/media.zx');
 
       final changed = await ProfileCrypto.changePassword(
@@ -108,7 +108,7 @@ void main() {
         changed.nsecEnvelope,
         changed.keyslot,
       );
-      expect(unlocked.earPassword, equals(earBefore));
+      expect(unlocked.storePassword, equals(earBefore));
       expect(unlocked.dbKeyHex('data/media.zx'), equals(dbBefore));
 
       await expectLater(
@@ -156,7 +156,7 @@ void main() {
           UnlockedProfileKeys.fromCacheJson(secrets.keys.toCacheJson());
 
       expect(restored.nsec, equals(nsec));
-      expect(restored.earPassword, equals(secrets.keys.earPassword));
+      expect(restored.storePassword, equals(secrets.keys.storePassword));
       expect(
         restored.dbKeyHex('data/social.zx'),
         equals(secrets.keys.dbKeyHex('data/social.zx')),
@@ -167,7 +167,7 @@ void main() {
       final secrets =
           await ProfileCrypto.createProfileSecrets('bye 👋', nsec);
       secrets.keys.dispose();
-      expect(() => secrets.keys.earPassword, throwsStateError);
+      expect(() => secrets.keys.storePassword, throwsStateError);
       expect(() => secrets.keys.dbKey('data/x.zx'), throwsStateError);
     });
   });
