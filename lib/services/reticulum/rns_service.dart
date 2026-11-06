@@ -849,8 +849,18 @@ class RnsService {
   Duration _announceInterval() {
     final g = CapacityGovernor.instance;
     final goodNet = g.lastNet == NetKind.wifi || g.lastNet == NetKind.ethernet;
+    // A phone on battery with no hub: the wide announce reaches only the
+    // room, which the BLE and LAN beacons already tell every minute or
+    // three. Six announces, each signed, every five minutes, for nobody
+    // past the room — stretched (docs/performance.md 8.23).
+    if (PowerState.instance.profile.value == PowerProfile.normal &&
+        _clients.isEmpty) {
+      return _announceLocalOnly;
+    }
     return (g.lastCharging && goodNet) ? _announceFast : _announceSlow;
   }
+
+  static const Duration _announceLocalOnly = Duration(minutes: 15);
 
   /// Schedule the next periodic re-announce, re-reading the power/network state
   /// each time so the cadence adapts (plug in / move to Wi-Fi → speeds up; unplug
@@ -882,7 +892,16 @@ class RnsService {
   /// wrong for the room you are standing in — a phone in a pocket dropped out
   /// of its neighbour's "nearby" list between beats. A broadcast datagram on
   /// the local subnet costs nothing anyone is paying for.
-  static const int _lanBeaconEveryMs = 90 * 1000;
+  int get _lanBeaconEveryMs =>
+      PowerState.instance.profile.value == PowerProfile.normal
+          ? _beaconIdleMs
+          : 90 * 1000;
+
+  /// The beacons' idle band on a phone on battery (docs/mesh.md 7): the LAN
+  /// beacon in the normal profile, the BLE beacon in an empty room. Each is
+  /// a signed announce and, on BLE, an advert slot refresh; neither was
+  /// following the room or the charger (docs/performance.md 8.23).
+  static const int _beaconIdleMs = 3 * 60 * 1000;
 
   /// Broadcast our announce on the LAN interface ONLY. Same packet the wide
   /// announce sends, but it never touches a hub uplink, so it can be frequent.
@@ -911,7 +930,8 @@ class RnsService {
   /// 35-second advert TTL: its neighbour never learned its address, so no
   /// message could be addressed to it in either direction. Airing an advert
   /// costs no one's bandwidth and no hub anything.
-  static const int _bleBeaconEveryMs = 60 * 1000;
+  int get _bleBeaconEveryMs =>
+      PowerState.instance.alone.value ? _beaconIdleMs : 60 * 1000;
 
   /// Broadcast our announce on the BLE interface ONLY (never a hub uplink).
   Future<void> _bleBeacon() async {
@@ -1750,18 +1770,20 @@ class RnsService {
       );
       _transport!
         ..addInterface(iface)
-        ..transportId = _id!
-            .hash // 16-byte relay id (truncated identity hash)
-        ..edgeBridge = true
         // Scoped relay work is tiny; never auto-shed it (would stop bridging).
         ..setPassive(false, auto: false);
       _ifaces.add(iface);
       _ble = iface;
       _bleBridge = true;
+      // The bridge itself (transport id + edge bridge) is a station's: a
+      // phone on battery holds no hub to bridge onto, and the role only
+      // costs it the LAN re-air of every BLE announce and the path answers
+      // for others. The profile switch turns it on with the charger.
+      _restoreTransportRole();
       unawaited(_bleBeacon()); // say we are here NOW, not in five minutes
-      LogService.instance.add(
-        'RNS: BLE edge-bridge ON (relaying BLE peers onto the hubs)',
-      );
+      LogService.instance.add(_transport!.edgeBridge
+          ? 'RNS: BLE edge-bridge ON (relaying BLE peers onto the hubs)'
+          : 'RNS: BLE interface up, no bridge (normal profile)');
     } catch (e) {
       LogService.instance.add('RNS: BLE edge-bridge unavailable: $e');
     }
@@ -3629,12 +3651,43 @@ class RnsService {
     switch (p) {
       case PowerProfile.station:
         _armStationTimers();
+        _restoreTransportRole();
         if (_files != null) unawaited(_files!.republishAll());
         LogService.instance.add('RNS: station profile — clocks armed');
       case PowerProfile.normal:
         _cancelStationTimers();
+        _shedTransportRole();
         releaseHubs('normal profile');
     }
+  }
+
+  /// On battery the node forwards for nobody (docs/performance.md 8.20).
+  /// An unplugged phone used to keep the transport id and the edge bridge
+  /// it had as a station, and went on re-airing every BLE announce onto the
+  /// LAN, answering path requests for others and growing its path table,
+  /// with no hub left to bridge anything onto (8.23).
+  void _shedTransportRole() {
+    final t = _transport;
+    if (t == null) return;
+    if (t.transportId == null && !t.edgeBridge && !t.edgeQuiet) return;
+    t
+      ..transportId = null
+      ..edgeBridge = false
+      ..edgeQuiet = false;
+    LogService.instance.add('RNS: transport role off (normal profile)');
+  }
+
+  /// The BLE edge bridge, back with the charger. A promoted hub
+  /// ([_applyHubRole]) owns the flags and is left alone.
+  void _restoreTransportRole() {
+    final t = _transport;
+    if (t == null || _id == null || _hubPromoted || !_bleBridge) return;
+    if (PowerState.instance.profile.value != PowerProfile.station) return;
+    if (t.transportId != null && t.edgeBridge) return;
+    t
+      ..transportId = _id!.hash // 16-byte relay id (truncated identity hash)
+      ..edgeBridge = true;
+    LogService.instance.add('RNS: BLE edge-bridge ON (station profile)');
   }
 
   /// Drop every public hub uplink and keep everything else: the local
@@ -4756,9 +4809,16 @@ class RnsService {
       unawaited(_warmStartFromCache());
       _scheduleAnnounce();
       _lanBeaconTimer?.cancel();
+      // Ticks at the fast cadence; the beacon itself goes when it is due at
+      // the cadence of the moment (the pump below does the same).
       _lanBeaconTimer = Timer.periodic(
-        const Duration(milliseconds: _lanBeaconEveryMs),
-        (_) => unawaited(_lanBeacon()),
+        const Duration(seconds: 90),
+        (_) {
+          final now = DateTime.now().millisecondsSinceEpoch;
+          if (now - _lastLanBeaconMs >= _lanBeaconEveryMs) {
+            unawaited(_lanBeacon());
+          }
+        },
       );
       // …and a second, un-throttleable clock for the same job. On Android the
       // Dart timer above stops firing once the screen goes off; the foreground
