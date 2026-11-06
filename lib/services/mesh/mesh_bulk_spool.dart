@@ -47,7 +47,7 @@ class MeshBulkSpool {
   final Set<String> _activeSha = {};
 
   // One-blob read cache for the active outbound transfer (archive reads are
-  // whole-BLOB; caching avoids re-reading sqlite for every chunk).
+  // whole-BLOB; caching avoids re-reading the archive for every chunk).
   String? _cacheSha;
   Uint8List? _cacheBytes;
 
@@ -122,7 +122,7 @@ class MeshBulkSpool {
   /// Return the absolute path the file now lives at (the spool renames it
   /// there), or null to let the normal MediaArchive path run. This exists
   /// because archiving reads the whole file into memory and stores it as a
-  /// sqlite blob — right for a photo in a chat bubble, wrong for a 56 MB app
+  /// MediaArchive blob — right for a photo in a chat bubble, wrong for a 56 MB app
   /// update on the phone that is receiving it (docs/performance.md 8.7).
   String? Function(String shaHex, String partPath, Map<String, dynamic> meta)?
       inboundClaim;
@@ -181,7 +181,7 @@ class MeshBulkSpool {
   /// copying it or reading it into memory.
   ///
   /// [enqueueFromArchive] is the chat-attachment path: the bytes live in the
-  /// MediaArchive as a sqlite blob, and serving one means holding the whole
+  /// MediaArchive as one blob, and serving one means holding the whole
   /// thing (see the `archive` branch of [readAt]). That is fine for a photo and
   /// wrong for an app update — an artifact is 47-61 MB and the station serving
   /// it is usually the one with the least RAM (docs/performance.md 8.7).

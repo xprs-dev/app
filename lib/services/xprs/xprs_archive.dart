@@ -591,7 +591,7 @@ class XprsArchive {
   }
 
   /// Our base callsign, set by the owner at init/profile switch so `mine` can
-  /// be computed at flush time without asking a service from inside sqlite.
+  /// be computed at flush time without asking a service from inside the database.
   ///
   /// This is the name this station AIRS: an operator's licensed callsign when
   /// they have one, else the one their key derives (XPRS.md 6.4.1). We wear

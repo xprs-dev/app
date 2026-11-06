@@ -29,7 +29,7 @@ class ObservedStore {
   bool open() {
     if (_db != null) return true;
     try {
-      // sqlite3.open creates the file but not parent dirs.
+      // Opening creates the file but not parent dirs.
       final parent = fs.file(path).parent;
       if (!parent.existsSync()) parent.createSync(recursive: true);
       final db = openProfileDb(path);

@@ -4,8 +4,8 @@
 // so it survives restarts, and can be queried back by a centre + radius so a
 // wapp can show the older messages for a chosen region.
 //
-// Backed by SQLite (same as wapp_social_store.dart) — chosen over a flat
-// append-log specifically for durability: writes are atomic/WAL-journalled, an
+// Backed by a zxdb database (same as wapp_social_store.dart) — chosen over a flat
+// append-log specifically for durability: commits are copy-on-write, an
 // app crash mid-write can't shred the file, and a single corrupt row never
 // costs the whole archive (vs. a line-log where one bad line + a rewrite-prune
 // risks the lot). Range queries use an indexed lat/lon bounding-box prefilter
@@ -15,7 +15,7 @@
 // what to archive (it sends only messages with lat/lon) and when to query a
 // region; this just stores rows and answers haversine range queries.
 //
-// Native only — SQLite needs dart:ffi. Every call is a no-op on web (kIsWeb),
+// Native only. Every call is a no-op on web (kIsWeb),
 // matching wapp_social_store.
 
 import 'package:file/file.dart';
@@ -62,7 +62,7 @@ class GeoChatArchive {
     final existing = _db;
     if (existing != null) return existing;
     try {
-      // sqlite3.open creates the file but not parent dirs.
+      // Opening creates the file but not parent dirs.
       final parent = fs.file(_dbPath).parent;
       if (!parent.existsSync()) parent.createSync(recursive: true);
       final db = openProfileDb(_dbPath);

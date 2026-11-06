@@ -12,7 +12,7 @@
  * key signs XPRS", and it stays that -- for the STATION. A group signs as
  * itself, and [scalarFor] is that key.
  *
- * It lives in the profile database, which is SQLCipher-encrypted, because a
+ * It lives in the profile database, which is zxdb-encrypted, because a
  * group's private key is exactly as sensitive as the profile's own: section
  * 26.6 says a leaked one is permanent, cannot be rotated (the callsign derives
  * from it), and its holder is indistinguishable from the admin.
@@ -60,7 +60,7 @@ class XprsGroupKeys {
     // empty), and its signed acts are kept in their own table -- so the roster
     // (26.4) is rebuilt from THIS store on restart, not scavenged from the
     // general archive where a cellular member's key binding never lands. One
-    // durable home per X5 group, like a chat conversation's own sqlite.
+    // durable home per X5 group, like a chat conversation's own database.
     db.execute('''
       CREATE TABLE IF NOT EXISTS xprs_group_acts(
         callsign TEXT NOT NULL,

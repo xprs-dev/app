@@ -451,8 +451,8 @@ class _WappPageState extends State<WappPage>
   /// former is disposable discovery history, while the latter is the durable
   /// background inbox used by notifications and the Following filter.
   // The Following tab is a FILTER over `_activityArchive`, not a second store.
-  // `social_following.sqlite3` is left on disk untouched by this build; every
-  // row it holds is in the main archive too.
+  // No `social_following` database is opened; every row the old one held is
+  // in the main archive too.
 
   /// The selected Social timeline. Kept by the host as well as the widget so
   /// archive queries never build one mixed list and hope a display filter can
@@ -479,7 +479,7 @@ class _WappPageState extends State<WappPage>
 
   /// The Social "Nomadnet" feed: NOSTR publications fetched over RETICULUM
   /// (archivers + peers across the hubs) + this device's local store, into its
-  /// OWN separate archive (social_nomadnet.sqlite3). Runs only while the Nomadnet
+  /// OWN separate archive (social_nomadnet2.zx). Runs only while the Nomadnet
   /// tab is viewed (started/stopped in onFilterChanged) to save battery.
   ActivityArchive? _nomadnetArchive;
   NomadnetPoller? _nomadPoller;
@@ -747,7 +747,7 @@ class _WappPageState extends State<WappPage>
   // ConversationsField. No app-specific (e.g. APRS) knowledge lives here.
   final Map<String, ConversationStore> _convStores = {};
 
-  /// Durable conversation history (SQLCipher). Null until [_loadConversations]
+  /// Durable conversation history (zxdb). Null until [_loadConversations]
   /// has opened it — and it STAYS null when the open failed, which is exactly
   /// the state in which nothing may be written.
   ConversationDb? _convDb;
@@ -772,9 +772,10 @@ class _WappPageState extends State<WappPage>
         return store;
       });
 
-  // Conversation persistence lives in `conversations.sqlite3` under the wapp
-  // data dir — a real file even inside an encrypted profile (`.sqlite3` is
-  // passthrough), encrypted by SQLCipher with the profile key. Writes are
+  // Conversation persistence lives in `conversations.zx` under the wapp
+  // data dir — a real file even inside an encrypted profile (`.zx` is
+  // passthrough), encrypted by zxdb with the password derived from the
+  // profile key. Writes are
   // per-row and immediate; there is no debounce and no whole-file rewrite to
   // lose, and a restore that FAILS can no longer erase what it could not read.
   static const String _convDir = 'messages'; // legacy JSON, imported once
@@ -1365,7 +1366,7 @@ class _WappPageState extends State<WappPage>
 
       // Nomadnet: its OWN separate archive + a poller that runs ONLY while the
       // Nomadnet tab is viewed (started/stopped in onFilterChanged) — battery.
-      // v2 filename: the old social_nomadnet.sqlite3 was written by earlier
+      // v2 filename: the old social_nomadnet archive was written by earlier
       // builds that leaked internet posts in; abandon it wholesale rather than
       // migrate. This DB is now fed ONLY by tag-filtered (reticulum-native)
       // polls, so it is safe to KEEP across sessions — we show its cached posts
@@ -2054,7 +2055,7 @@ class _WappPageState extends State<WappPage>
               // Recover NIP-92 imeta (video poster / blurhash / dimensions)
               // for feed posts: the wapp forwards only the text, but the full
               // event (tags included) sits in the local relay store under the
-              // post's mid. Local sqlite lookup — no network.
+              // post's mid. Local database lookup — no network.
               if (fieldName == 'activity' || fieldName == 'search_results') {
                 final mid = (row['mid'] ?? '').toString();
                 final hasMeta = (row['meta'] ?? '').toString().isNotEmpty;
@@ -7185,7 +7186,7 @@ class _WappPageState extends State<WappPage>
     return out;
   }
 
-  // Memoised feed list: fetching recent() (a 200-300 row synchronous sqlite
+  // Memoised feed list: fetching recent() (a 200-300 row synchronous database
   // SELECT) on EVERY build lagged the UI badly — build runs on scroll, image
   // loads, any setState. Recompute only when the archive actually changed
   // (_activityRev) or the tab switched (_rankedCacheFilter).
@@ -7197,7 +7198,7 @@ class _WappPageState extends State<WappPage>
     // Cache hit: same archive revision, same tab. _activityRev is bumped at
     // every write site (adds, reactions, profile updates), so rev+filter is a
     // complete invalidation key. Without this, every build() ran a 200-300 row
-    // synchronous sqlite SELECT on the UI thread.
+    // synchronous database SELECT on the UI thread.
     final filter = '$_wappName/$_socialFeedFilter';
     if (_rankedCache != null &&
         _rankedCacheRev == _activityRev.value &&
@@ -8031,7 +8032,7 @@ class _WappPageState extends State<WappPage>
   /// seeded from persisted reaction receipts, so a hero-opened thread shows
   /// its counts instantly instead of waiting for a relay round trip.
   /// The archive backing the feed currently on screen. Nomadnet is its OWN
-  /// sqlite (posts/replies/likes fetched over Reticulum); every other Social
+  /// database (posts/replies/likes fetched over Reticulum); every other Social
   /// tab uses the Internet archive. Thread view, save toggles, etc. must read
   /// the SAME archive the stream does — otherwise a Nomadnet thread queries the
   /// Internet DB and shows no replies.
@@ -8040,9 +8041,9 @@ class _WappPageState extends State<WappPage>
       ? _nomadnetArchive
       : _activityArchive;
 
-  // Per-revision memo for the sqlite-backed card stats. _actionRow asks for
+  // Per-revision memo for the database-backed card stats. _actionRow asks for
   // like and reply counts for EVERY visible card on EVERY frame, and the
-  // reply tally is a recursive CTE (threadReplyCount) — three FFI queries per
+  // reply tally is a recursive CTE (threadReplyCount) — three database queries per
   // card per frame before this cache. Every write path (archive adds,
   // reactions, nostr stat arrivals) bumps _activityRev, so rev + tab is a
   // complete invalidation key. The live in-memory source (_wappPostStats)
@@ -10177,7 +10178,7 @@ class _WappPageState extends State<WappPage>
   }
 
   /// Enrich a catalog wapp with NDF store metadata — reads
-  /// `store/description.json` and `social.sqlite3` from the wapp
+  /// `store/description.json` and `social.zx` from the wapp
   /// package (installed copy or built-in archive).
   void _enrichCatalogWapp(_CatalogWapp wapp) {
     // Resolve the wapp's own package storage — installed copy first,
@@ -10255,9 +10256,9 @@ class _WappPageState extends State<WappPage>
       }
     }
 
-    // Read social.sqlite3 counts.
+    // Read social.zx counts.
     if (!kIsWeb) {
-      // Find the wapp directory path for the SQLite database.
+      // Find the wapp directory path for the database.
       String? wappDir;
       if (_installed.existsSync('${wapp.name}/manifest.json')) {
         wappDir = _installed.getAbsolutePath(wapp.name);

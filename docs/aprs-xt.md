@@ -628,8 +628,9 @@ many messages, senders or apps reference it. Per entry the archive keeps:
 | `screenshot`  | a reusable preview image (thumbnail/poster), shown before/instead of the full media |
 | `data`        | the file bytes themselves                                     |
 
-The reference implementation is a single SQLite database (`media.sqlite3`,
-WAL‑journalled) shared by all wapps on the device.
+The reference implementation is a single zxdb database (`media.zx`) shared
+by all wapps on the device; the `data` bytes are kept as files
+`media/<storage key>` next to it rather than in the row.
 
 ### 15.5 Out of scope (for now)
 

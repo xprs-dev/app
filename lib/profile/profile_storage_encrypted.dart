@@ -340,7 +340,7 @@ class EncryptedProfileStorage extends ProfileStorage {
       {bool recursive = false}) async {
     final p = _normalizeRel(relativePath);
 
-    // Merge: filesystem side (wapps/, sqlite files, markers) + archive side.
+    // Merge: filesystem side (wapps/, .zx files, markers) + archive side.
     final out = <String, StorageEntry>{};
 
     if (await _fs.directoryExists(p)) {
@@ -393,7 +393,7 @@ class EncryptedProfileStorage extends ProfileStorage {
   Future<void> createDirectory(String relativePath) async {
     final p = _normalizeRel(relativePath);
     if (isPassthroughPath(p)) return _fs.createDirectory(p);
-    // Real directory too: sqlite files / passthrough children of this
+    // Real directory too: .zx files / passthrough children of this
     // directory need it to exist on disk.
     await _fs.createDirectory(p);
     final archive = await _archive();

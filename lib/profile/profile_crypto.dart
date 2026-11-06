@@ -16,7 +16,7 @@
  *   PMK       = random 32 B profile master key (generated once at enable)
  *   pmk_ct    = AES-256-GCM(KEK, PMK)              -> devices/<id>/keyslot.json
  *   earPass   = hex(HKDF(PMK, "aurora-ear-v1"))    -> password for profile.ear
- *   dbKey(p)  = HKDF(PMK, "aurora-db-v1:" + relPath) -> SQLCipher raw key
+ *   dbKey(p)  = HKDF(PMK, "aurora-db-v1:" + relPath) -> zxdb password (hex)
  *
  * The password alone decrypts the nsec envelope (stage 1); the profile data
  * keys additionally mix in the nsec (stage 2), so a profile folder copied off
@@ -203,8 +203,8 @@ class UnlockedProfileKeys {
     ));
   }
 
-  /// Raw 32-byte SQLCipher key for the database at profile-relative [relPath]
-  /// (forward-slash separated, e.g. `data/mesh.sqlite3`).
+  /// Raw 32-byte key (the zxdb password, as hex) for the database at profile-relative [relPath]
+  /// (forward-slash separated, e.g. `data/mesh.zx`).
   Uint8List dbKey(String relPath) {
     _ensureLive();
     return KeyDerivation.hkdfSha256(

@@ -3,7 +3,7 @@
  * its crypto and network loops never starve the app's UI isolate (the phone
  * test showed the node, on the main isolate, made the app unresponsive).
  *
- * The main isolate keeps the MediaArchive (sqlite) and the UI; the worker
+ * The main isolate keeps the MediaArchive (media.zx) and the UI; the worker
  * isolate owns the node and its sockets. They talk over SendPorts:
  *   main -> worker: start, fetch, discoverFetch, announce, setRoster, provide,
  *                   pause, resume, stop  (each with a request id)

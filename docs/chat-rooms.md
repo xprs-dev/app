@@ -5,7 +5,7 @@ npub-signed **moderation op-log**, all reduced client-side. Rooms federate to an
 standard NOSTR relay: a room is a plain kind-34550 community, room messages are
 ordinary kind-1 notes tagged to it, and a non-xprs client simply ignores our
 custom op kind. All of this lives in the wapp (`apps/chat/room.c` + `room.h`);
-the host stays generic (only its existing `hal_nostr_*`, `hal_sqlite_*`,
+the host stays generic (only its existing `hal_nostr_*`, `hal_db_*`,
 `hal_crypto_*` HALs are used).
 
 Status: **Phase 1 shipped** (main room, roles, moderation, reputation, open
@@ -133,7 +133,7 @@ Weights (`REP_W_MSG`), the 6-month window (`REP_WINDOW_SEC`) and the level curve
 (`REP_THRESH`) are one constants block in `room.c`; adjust there. (A reactions
 term is reserved for a later phase.)
 
-## Storage (device-local, `rooms.sqlite3`)
+## Storage (device-local database via `hal_db_*`; `rooms.sqlite3` in the SQLite days, a zxdb `.zx` file since 2026-11-06)
 
 `rooms(roomId, adminPub, name, description, parentRoomId, access, approvedBy,
 closed, verified, createdTs)` (a tree), `room_mods(roomId, pub)`, `ops(id, roomId,

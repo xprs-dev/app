@@ -36,8 +36,8 @@ non-obvious constraints a future caller needs to know.
 `ProfileStorage`. No `dart:io` `File` / `Directory` calls anywhere else in
 `lib/` — that rule is enforced by code review and the analyser will catch
 slips because the storage call sites do not import `dart:io`. The pillar
-exists so that the backing store can be swapped for an encrypted SQLite
-archive (encrypted profiles), a browser IndexedDB tree (web build), or a
+exists so that the backing store can be swapped for an encrypted
+archive (encrypted profiles: `profile.ear`, on zxdb), a browser IndexedDB tree (web build), or a
 plain filesystem (today's desktop) without touching call sites.
 
 **API surface** (mirrors the parent repo's
@@ -53,7 +53,7 @@ later with a single import change):
   `writeStringSync`, `writeBytesSync`, `existsSync`. These exist only
   because WASM imports run synchronously and Dart `Future`s cannot be
   awaited from inside them. `FilesystemProfileStorage` implements them
-  with `dart:io` sync methods. **Non-sync backends** (encrypted SQLite,
+  with `dart:io` sync methods. **Non-sync backends** (encrypted archive,
   browser IndexedDB) **must throw** `UnsupportedError` for these — and
   callers must fall back to a message-based async API in that case.
 
@@ -102,6 +102,31 @@ or browser backends.
   because `installedAppsStorage()` is filesystem-backed. When an
   encrypted/IndexedDB backend lands the install flow will need to
   unzip into a temp dir then `copyFromExternal` each entry.
+
+### XDb — every database (zxdb), opened through one seam (2026-11-06)
+
+**Files:** reticulum-dart `lib/src/util/xdb.dart` (`XDb`, aliases of zx's
+`ZxDb`), `lib/src/util/xdb_zx.dart` (`xdbStoreOptions()`),
+`lib/src/util/db_opener.dart` (`dbOpener`, `dbMemoryOpener`, `blobRead`,
+`blobWrite`, `blobDelete`); app `lib/profile/profile_db*.dart`
+(`openProfileDb`, `openPlainDb`, `openMemoryDb`).
+
+**What it is.** The one database handle: a SQL database (SQLite's dialect,
+FTS5 included) in a `.zx` file, AES-256 by password, pure Dart. `execute`,
+`select` (rows as `Map<String, dynamic>`), `prepare`, `updatedRows`,
+`lastInsertRowId`, `transaction()`, `bytes`, `liveBytes`, `compact()`,
+`dispose()`. Open a store inside a profile with `openProfileDb` (or
+`dbOpener` in the library), never directly: that is what gives it the
+profile's password on an encrypted profile and an in-memory database on web.
+`arch_guard`'s `no-sqlite` rule refuses SQLite packages coming back.
+
+**Rules a store follows.** Batch writes in a transaction (a statement outside
+BEGIN/COMMIT is its own commit, ~1 ms and a few KiB appended). Byte budgets
+read `liveBytes`, not `bytes`. Large blobs live in files next to the
+database, not in rows (the media archive's `blobRead`/`blobWrite`). No
+VACUUM or journal pragmas: the file compacts itself when it doubles, and the
+old pragmas are accepted no-ops. Foreign keys are parsed but not enforced, so
+delete dependent rows explicitly.
 
 ### Renaming a preference key — `PreferencesService._migrateArchiverKeys`
 

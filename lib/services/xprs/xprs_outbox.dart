@@ -76,7 +76,7 @@ class XprsOutbox {
   /// it with an archiver, and the retry ladder has nothing to stop it early.
   /// A tick is small; re-sending a delivered message to a mailbox is airtime.
   ///
-  /// Profile database (SQLCipher) like [XprsFileAcl]: what this station sent
+  /// Profile database (zxdb, encrypted with the profile) like [XprsFileAcl]: what this station sent
   /// is this station's business. Every write is one primary-key upsert and
   /// every read a primary-key lookup, so it is safe on the caller's isolate
   /// (docs/architecture.md §2).

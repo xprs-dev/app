@@ -17,7 +17,7 @@
  * hash with no binding is treated as public (a bare digest an operator pinned,
  * an update-mirror artifact): the default is open, private is a deliberate bind.
  *
- * It lives in the profile database (SQLCipher), like [XprsPassphrases] and
+ * It lives in the profile database (zxdb, encrypted with the profile), like [XprsPassphrases] and
  * [XprsGroupKeys]: the audience of a private picture is the profile's business.
  * Lookups are single-row primary-key reads, never a scan — safe on the caller's
  * isolate (docs/architecture.md §2).

@@ -1,6 +1,24 @@
 # Encrypted Profile Storage
 
-Status: all five phases implemented (crypto core, SQLCipher databases, profile.ear loose files, unlock UI + enable/disable, headless remember-key + locked notification). Android on-device validation pending. This document specifies how XPRS encrypts each profile's user data at rest.
+Status: all five phases implemented (crypto core, encrypted databases (SQLCipher, replaced by zxdb on 2026-11-06), profile.ear loose files, unlock UI + enable/disable, headless remember-key + locked notification). Android on-device validation pending. This document specifies how XPRS encrypts each profile's user data at rest.
+
+> **Amendment (2026-11-06): SQLCipher is superseded by zxdb.** SQLite was
+> removed completely (owner's decision; no backward compatibility, no
+> migration). Every database is now a zxdb file (`*.zx`, `XDb`, from the
+> owner's zx project: a SQL database with SQLite's dialect inside an
+> archive, AES-256 by password, pure Dart, no native library on any
+> platform). The per-database key below (`dbKey(p)`, `dbKeyHex`) is
+> unchanged in derivation and is now the zxdb **password** instead of a
+> SQLCipher `PRAGMA key`. `sqlcipher_flutter_libs`, `ensureSqlCipherLoaded`
+> and the per-isolate native-library overrides are gone; the NOSTR engine
+> isolate receives the password as `dbKeyHex`. `profile.ear` still uses
+> `encrypted_archive` with its same schema and per-chunk AES-GCM, now on
+> zx's `ZxDb`; an old SQLite-format `profile.ear` is deleted when opened and
+> a new archive starts. The media archive keeps its bytes as files under
+> `data/media/`, encrypted per file through `SecureProfileFile`. A one-time
+> sweep deletes leftover `*.sqlite3` files on first start. The sections
+> below keep the original SQLCipher plan as history and say where it no
+> longer applies.
 
 > **Amendment (2026-08-02):** the "fingerprint prompt is the lock" doctrine is
 > retired. Device-key profiles now unlock **silently everywhere** (UI and
@@ -16,8 +34,8 @@ Each XPRS profile (`devices/<id>/`) holds private user data — chat history, me
 
 **Approved decisions:**
 1. **No plaintext ever on disk** — extract-to-disk/repack explicitly rejected.
-2. **Container = encrypted folder**: `devices/<id>/` holds one `profile.ear` (all loose files) + SQLCipher-encrypted `.sqlite3` files (live DBs can't run inside an archive).
-3. **Scope = user data only**: `data/` tree, avatar, identity, folder keystore, and ALL `.sqlite3` DBs (incl. `wapps/<w>/social.sqlite3`); wapp code files (`manifest.json`, `app.wasm`, screens) stay plaintext.
+2. **Container = encrypted folder**: `devices/<id>/` holds one `profile.ear` (all loose files) + password-encrypted database files (live DBs can't run inside an archive). Originally SQLCipher `.sqlite3`; since 2026-11-06 zxdb `.zx` files, plus the media archive's per-file encrypted blobs under `data/media/`.
+3. **Scope = user data only**: `data/` tree, avatar, identity, folder keystore, and ALL databases (incl. `wapps/<w>/social.zx`); wapp code files (`manifest.json`, `app.wasm`, screens) stay plaintext.
 4. **Headless boot = optional remember-key**: "Keep unlocked on this device" caches derived keys app-private; otherwise gated services wait for manual unlock.
 5. **nsec encrypted at rest too** (in `profiles.json`, identity-backup-style AES-GCM envelope).
 6. Per-profile opt-in toggle. **No data migration**: enabling encryption deletes the old plaintext files and starts fresh encrypted; disabling deletes encrypted data.
@@ -35,7 +53,7 @@ KEK       = HKDF-SHA256(ikm = KEK_pw ‖ nsecBytes, salt, info="aurora-profile-k
 PMK       = random 32 B profile master key (generated once at enable)
 pmk_ct    = AES-256-GCM(KEK, PMK)                → devices/<id>/keyslot.json
 earPass   = hex(HKDF(PMK, info="aurora-ear-v1"))          → password for profile.ear
-dbKey(p)  = HKDF(PMK, info="aurora-db-v1:" + relPath) → 32 B → PRAGMA key = "x'<hex>'"
+dbKey(p)  = HKDF(PMK, info="aurora-db-v1:" + relPath) → 32 B → hex = zxdb password (was SQLCipher PRAGMA key = "x'<hex>'")
 remember  = {PMK, nsec} in app-private prefs (Android Keystore wrap = later hardening)
 ```
 
@@ -46,10 +64,20 @@ remember  = {PMK, nsec} in app-private prefs (Android Keystore wrap = later hard
 ## Components
 
 ### 1. Port `encrypted_archive` package
-Copy `/home/brito/code/xprs/xprs/packages/encrypted_archive` → `aurora/packages/encrypted_archive`. All deps already in aurora (`sqlite3`, `cryptography`, `crypto`, `archive`).
+Copy `/home/brito/code/xprs/xprs/packages/encrypted_archive` → `aurora/packages/encrypted_archive`. All deps already in aurora (`sqlite3`, `cryptography`, `crypto`, `archive`). (Since 2026-11-06 the package runs on zx's `ZxDb` instead of `sqlite3`, same schema; its stats are counted when asked, since zxdb has no triggers.)
 **Modification**: add **sync** read/write/exists paths (AES-GCM via `pointycastle`'s `GCMBlockCipher` — sync; the `cryptography` package is Future-only) so the WASM HAL sync callbacks (`ProfileStorage.readBytesSync` etc., `lib/profile/profile_storage.dart:80-96`) work. Argon2id stays async (unlock-time only).
 
-### 2. SQLCipher for live databases
+### 2. SQLCipher for live databases (superseded 2026-11-06 by zxdb)
+
+What is built today: `openProfileDb` (`lib/profile/profile_db_io.dart`) opens a
+zxdb file with `password = dbKeyHex(relPath)` inside an encrypted, unlocked
+profile, with no password in a plain profile, and throws
+`ProfileLockedException` in a locked one. reticulum-dart's stores open through
+the injected `dbOpener`, and the media archive reads and writes its blob files
+through the injected `blobRead`/`blobWrite` (`SecureProfileFile`). There is no
+native library to ship or verify on any platform. The original SQLCipher plan
+follows as history:
+
 - `pubspec.yaml`: replace `sqlite3_flutter_libs` → `sqlcipher_flutter_libs` (mutually exclusive; `package:sqlite3` API unchanged). **Verify Linux/Windows support first thing in this phase**; fallback = ship libsqlcipher via CMake for desktop.
 - New central opener `lib/profile/profile_db.dart`: `Database openProfileDb(String absPath)` — consults `ProfileKeyring`; encrypted profile → `sqlite3.open(path)` + `PRAGMA key="x'<dbKey>'"`, plain profile → open as today (SQLCipher reads plain DBs when no key set).
 - `reticulum-dart` (sibling, path dep): add injectable opener hook `Database Function(String path)` used by `MediaArchive`, `observed_store.dart:32`, social/event stores; aurora injects `openProfileDb` at startup.
@@ -58,7 +86,7 @@ Copy `/home/brito/code/xprs/xprs/packages/encrypted_archive` → `aurora/package
 ### 3. `EncryptedProfileStorage` (loose files → profile.ear)
 - New `lib/profile/profile_storage_encrypted.dart` implementing the existing `ProfileStorage` interface (`lib/profile/profile_storage.dart:40`, `isEncrypted` flag already there) backed by `devices/<id>/profile.ear`; sync variants via the sync archive API.
 - Selection in `ProfileService.activeProfileStorage()/storageForProfile()` (`lib/profile/profile_service.dart:184,233`): keyslot exists → encrypted backend (throws `ProfileLockedException` if keyring locked), else filesystem.
-- **Boundary rule** inside encrypted profile: `wapps/<w>/` non-sqlite files + `.seeded.json` + `keyslot.json` stay filesystem-plaintext; every `*.sqlite3` = SQLCipher on filesystem; everything else (data/ loose files, avatar.png, folders.json, disk_folders.json) = inside `profile.ear`.
+- **Boundary rule** inside encrypted profile: `wapps/<w>/` non-database files + `.seeded.json` + `keyslot.json` stay filesystem-plaintext; every `*.zx` (and its `.zx-lock`) = zxdb encrypted by its own password on the filesystem (was `*.sqlite3` with SQLCipher); `data/media/` = the media archive's blob files, encrypted per file; everything else (data/ loose files, avatar.png, folders.json, disk_folders.json) = inside `profile.ear`.
 - Reroute bypass call sites to `ProfileStorage`: `wapp_engine.dart:1747-1807,3397-3400` (`hal_file_*` raw `dart:io`), `disk_folder_manager.dart:268-283`, `folder_keystore.dart` (folder master privs — high-value secrets), remote API file serving (`remote_api_service_io.dart` — audit during phase).
 
 ### 4. Unlock flow + keyring
@@ -70,7 +98,7 @@ Copy `/home/brito/code/xprs/xprs/packages/encrypted_archive` → `aurora/package
 
 ### 5. Enable/disable — no data migration
 No plain↔encrypted data conversion machinery. In profile edit page (near identity-backup passphrase UI, `profile_edit_page.dart:53-134` pattern):
-- **Enable**: choose password (twice) + warning ("no recovery; existing profile data will be deleted") → stop gated services & close all profile DB/archive handles → **delete old plaintext data files** (`data/` tree, profile `.sqlite3` DBs, avatar, folder keystore) → generate salt+PMK, write keyslot, encrypt nsec in `profiles.json` → profile continues fresh, all new writes encrypted.
+- **Enable**: choose password (twice) + warning ("no recovery; existing profile data will be deleted") → stop gated services & close all profile DB/archive handles → **delete old plaintext data files** (`data/` tree, profile database files, avatar, folder keystore) → generate salt+PMK, write keyslot, encrypt nsec in `profiles.json` → profile continues fresh, all new writes encrypted.
 - **Disable**: delete encrypted data files + keyslot, restore nsec to plaintext entry → fresh plaintext profile.
 - Password change: re-wrap only (keeps data).
 - When encryption on: identity backup mirror (`identity_backup.dart`) must be passphrase-encrypted (force or strongly warn — else nsec leaks to `/storage/emulated/0/XPRS`).
@@ -78,22 +106,23 @@ No plain↔encrypted data conversion machinery. In profile edit page (near ident
 ## Phases (each shippable)
 
 1. **Crypto core**: port+modify `encrypted_archive`, `ProfileCrypto` key hierarchy, `unorm_dart`; unit tests incl. emoji/ZWJ passwords, wrong password, password change.
-2. **SQLCipher plumbing**: dep swap (verify desktop platforms), `openProfileDb`, reticulum-dart hook, migrate all call sites; plain profiles must behave identically (regression: run app, chat, media).
+2. **SQLCipher plumbing**: dep swap (verify desktop platforms), `openProfileDb`, reticulum-dart hook, migrate all call sites; plain profiles must behave identically (regression: run app, chat, media). Superseded 2026-11-06: the same `openProfileDb` and `dbOpener` seams now open zxdb files with the derived password.
 3. **EncryptedProfileStorage + reroutes**: hal_file, folder keystore, remote API; selection logic.
 4. **Unlock UI + enable/disable + nsec envelope**: UnlockPage, enable/disable (delete-old-files, no conversion), switcher badges, password change UI.
 5. **Headless remember-key**: cached-key unlock in headless boot, locked notification, gated-services skip.
 
 ## Verification
 
-- `flutter analyze` + unit tests (`test/`): key derivation vectors, emoji NFC stability, archive round-trip, sqlcipher round-trip, enable/disable flows.
-- Desktop live: create profile → enable encryption (confirm old files gone) → use chat/media → restart → unlock (wrong then right password) → data intact. Then `strings`/`hexdump` over `devices/<id>/` files: no plaintext message content anywhere; `file profile.ear` + sqlite3 CLI on DBs must fail without key.
+- `flutter analyze` + unit tests (`test/`): key derivation vectors, emoji NFC stability, archive round-trip, encrypted database round-trip (zxdb with password; was sqlcipher), enable/disable flows.
+- Desktop live: create profile → enable encryption (confirm old files gone) → use chat/media → restart → unlock (wrong then right password) → data intact. Then `strings`/`hexdump` over `devices/<id>/` files: no plaintext message content anywhere; `profile.ear` and the `.zx` databases must not open without the key.
 - Plain-profile regression on desktop after Phase 2 (no key, identical behavior).
 - Android: build via `~/bin/android-build-locked`, deploy to C61; test unlock UI, remember-key + headless restart, background chat reception locked vs unlocked.
 
 ## Risks
 
-- `sqlcipher_flutter_libs` desktop (Linux/Windows) support — verify day 1 of Phase 2; fallback CMake-built libsqlcipher.
-- SQLCipher ~5-15 % DB overhead; Argon2id 64 MiB at unlock on low-RAM phones (one-shot, acceptable).
+- ~~`sqlcipher_flutter_libs` desktop (Linux/Windows) support~~ — gone with SQLCipher (2026-11-06); zxdb has no native library.
+- ~~SQLCipher ~5-15 % DB overhead~~ (SQLCipher-era estimate; zxdb's encryption cost has not been measured here). Argon2id 64 MiB at unlock on low-RAM phones (one-shot, acceptable).
+- On web there is no writable zxdb file yet, so encrypted profiles are refused there ([web.md](web.md)).
 - `PreferencesService.wappDataDir` override can point `data/` outside the profile — opener still keys those DBs, but loose files there won't be in the .ear; document limitation.
 - Deletion of old plaintext files is best-effort on flash (wear-leveling defeats overwrite); enabling encryption early, before data accumulates, is the real protection.
 - Changes span two repos (aurora + reticulum-dart).

@@ -86,7 +86,7 @@ class ProfileEncryption {
   /// (it deletes it, same as [enable] — but a fresh profile has none).
   static Future<void> enableWithDeviceKey(String id) async {
     if (isEncrypted(id)) return;
-    // No SQLCipher in sqlite3.wasm and no keychain in a browser: a web
+    // No writable zxdb file and no keychain in a browser: a web
     // profile stays plain, and says so once where /api/log would have shown
     // it (docs/web.md).
     if (platform.isWeb) {
@@ -105,7 +105,7 @@ class ProfileEncryption {
   }
 
   /// Enable encryption on a profile. DELETES its existing user data
-  /// (data/ tree, avatar, every SQLite DB under wapps/) — caller must have
+  /// (data/ tree, avatar, every database under wapps/) — caller must have
   /// confirmed this with the user — then writes the keyslot + nsec
   /// envelope and leaves the profile unlocked.
   static Future<void> enable(String id, String password,

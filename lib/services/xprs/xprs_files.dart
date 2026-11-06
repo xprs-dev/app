@@ -471,7 +471,7 @@ class XprsFileFetch {
   static const Duration askEvery = Duration(seconds: 45);
 
   /// Where a caller wants its file put, by digest. Set at [fetch] time and
-  /// honoured by [claimInbound] so the artifact never becomes a sqlite blob.
+  /// honoured by [claimInbound] so the artifact never becomes an archive blob.
   final Map<String, String> _destDir = {};
 
   /// The internet middle (§11.2.2): fetch the bytes over Reticulum/DHT/torrent
@@ -645,8 +645,8 @@ class XprsFileFetch {
 
   /// Claim an arriving file we asked for, before the spool archives it.
   ///
-  /// Archiving reads the whole file into memory and stores it as a sqlite
-  /// blob. For a 56 MB artifact that is the wrong answer on both counts, so a
+  /// Archiving reads the whole file into memory and stores it as one
+  /// MediaArchive blob. For a 56 MB artifact that is the wrong answer on both counts, so a
   /// caller that named a destination gets a rename instead — same volume, no
   /// bytes moved (docs/performance.md 8.7).
   String? claimInbound(

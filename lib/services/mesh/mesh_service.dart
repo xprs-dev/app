@@ -290,7 +290,7 @@ class MeshService {
     _running = true;
 
     // The custody store lives beside the other cross-wapp state
-    // (…/data/mesh.sqlite3) and re-opens when the profile changes.
+    // (…/data/mesh.zx) and re-opens when the profile changes.
     final prefs = PreferencesService.instanceSync;
     // The owner's standing answer on carrying for other people (default yes).
     if (prefs != null) {
@@ -1820,7 +1820,7 @@ class MeshService {
     final last = _releaseTriedMs[callsign] ?? 0;
     if (now - last < 30000) return;
     // Arm the throttle BEFORE the store probe, not only on a hit: this sits
-    // on the funnel, every beacon lands here, and pendingFor is a sqlite
+    // on the funnel, every beacon lands here, and pendingFor is a database
     // query on the main isolate. Armed only on a hit, the empty case — which
     // is nearly every packet on a busy bench — paid that query per beacon,
     // forever (docs/performance.md 4.2: a cheap call in a hot loop IS the

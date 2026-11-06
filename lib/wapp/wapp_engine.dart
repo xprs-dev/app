@@ -4879,7 +4879,7 @@ class WappEngine {
       WasmImport('hal', 'event_publish', halEventPublish),
       WasmImport('hal', 'event_available', halEventAvailable),
       WasmImport('hal', 'event_recv', halEventRecv),
-      // SQLite (per-wapp relational storage, scoped to the wapp data dir)
+      // Database (zxdb: per-wapp relational storage, scoped to the wapp data dir)
       WasmImport('hal', 'db_open', halDbOpen),
       WasmImport('hal', 'db_exec', halDbExec),
       WasmImport('hal', 'db_query', halDbQuery),

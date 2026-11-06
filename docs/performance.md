@@ -18,10 +18,10 @@ isolate**. It doesn't any more:
 
 | Isolate | Owns | Spawned by |
 |---|---|---|
-| `main` | UI, wapp engines, LXMF/files/relay subsystems, all the sqlite stores except the NOSTR feed | Flutter |
+| `main` | UI, wapp engines, LXMF/files/relay subsystems, all the zxdb stores except the NOSTR feed | Flutter |
 | `rns-transport` | RnsTransport: announce validation, dedup, path table, transit forwarding, rebroadcast, passive governor | `RnsTransportClient.spawn` (`rns_transport_engine.dart`) |
 | `rns-crypto` | Every hot Curve25519 op (verify / sign / derive / ECDH / keygen), keypair cache, bounded queue | `_CryptoWorker` (`rns_crypto.dart`) — one per isolate that uses RnsCrypto, so there are normally two |
-| `nostr-engine` | Public-relay firehose: WS receive, decode, verify, `nostr_feed.sqlite3`, like/reply tallies | `NostrClient.spawn` (`nostr_engine.dart`) |
+| `nostr-engine` | Public-relay firehose: WS receive, decode, verify, `nostr_feed.zx`, like/reply tallies | `NostrClient.spawn` (`nostr_engine.dart`) |
 | `i2p` (opt-in) | The I2P node | `i2p_worker.dart` |
 
 Two things follow from this and are easy to forget:
@@ -47,7 +47,7 @@ needs a debug build.
 | `perf: main isolate stalled ~Nms` | `main.dart` 500ms heartbeat | The UI event loop blocked for N ms. Steady state should be **zero**. |
 | `perf: cpu tasks total …` | `TaskMonitorService.startCpuSummary` | Per-task **main-isolate** CPU, ranked, every 60s. |
 | `perf: crypto-worker edVerify=… x25519Gen=… edSign=…` | `RnsCrypto.drainCryptoStats` | Curve25519 ops per minute **by type**. The composition is the diagnosis (see §3.4). |
-| `perf: nostr-engine seen=… stored=… reactions=… profileLookups=…` | `NostrRelayHub.drainEventStats` | Relay firehose volume + how much sqlite it is provoking. |
+| `perf: nostr-engine seen=… stored=… reactions=… profileLookups=…` | `NostrRelayHub.drainEventStats` | Relay firehose volume + how much database work it is provoking. |
 | `perf: rns-transport announces/s=… paths=… passive=…` | `RnsService` | The announce flood the transport engine is chewing. |
 | `perf: <task> tick took Nms` | `TaskMonitorService.reportSuccess` | Any monitored tick over 48ms. |
 | `vmService` in `GET /api/status` | `main.dart` + `LogService.vmServiceUri` | The Dart VM service URI **with its auth token**. |
@@ -75,8 +75,10 @@ debug builds** and returns "Profiler is disabled"; `setFlag('profiler', true)`
 reports success but still yields zero samples. Don't burn time on it.
 
 **A profiled isolate showing 0 frames while its thread burns 100% CPU means it
-is inside a native FFI call** (sqlite3, wasmtime) — the Dart profiler cannot see
-those frames. That signature is itself the clue.
+is inside a native FFI call** (wasmtime; native sqlite3 until 2026-11-06) — the
+Dart profiler cannot see those frames. That signature is itself the clue. The
+database is zxdb now, pure Dart, so database work shows up in the profile like
+any other Dart code.
 
 ---
 
@@ -107,16 +109,17 @@ a forged signature can never pass); our own ops queue with backpressure.
 ### 3.2 The pegged core with nothing to show for it (`nostr_engine.dart`)
 
 A DartWorker sat at 100% while *every* counter said idle. Invisible to the Dart
-profiler because it was inside native sqlite. Three causes, all **work redone
+profiler because it was inside native sqlite (the store was SQLite then; it is
+zxdb, pure Dart, since 2026-11-06). Three causes, all **work redone
 forever**:
 
-- **`_syncMyFollows()` ran on every 400ms tick**: a sqlite query for our kind-3
+- **`_syncMyFollows()` ran on every 400ms tick**: a database query for our kind-3
   contact list, then a re-parse of every `p` tag in it (contact lists routinely
   carry thousands). The dedup guard suppressed only the outbound *message* —
   never the work. Now gated on the stored event: the hub flags it dirty when a
   new kind-3 of ours actually lands.
 - **Profile lookups cached only hits.** Every author whose kind-0 never arrives —
-  most of a public firehose — was re-queried against sqlite on every tick,
+  most of a public firehose — was re-queried against the database on every tick,
   forever. Now misses are remembered too (5-min retry), and lookups per tick are
   bounded.
 - **Reaction receipts were persisted for the entire kind-7 firehose** (a
@@ -237,17 +240,18 @@ Every one of these produced a wrong number that I believed for a while.
    where the release build on the same code, same phone, same window read **5.8%**.
    Profile builds are for *finding* a hot isolate, never for *quantifying* one.
 8. **Let it settle.** Boot is a storm — announce flood, NOSTR history replay,
-   sqlite backfill, wapp seeding. Give it **5 minutes after launch** before the
+   database backfill, wapp seeding. Give it **5 minutes after launch** before the
    measurement window starts, or the number is the startup cost, not the idle cost.
 9. **A wapp's tick time is NOT its cost.** The task monitor reports
    `wapp.bg.messages=103ms(0.2%)` — that is only what the tick burned on the main
    isolate. The work a wapp *provokes* through the HAL (a relay fetch, a profile
-   subscription, a sqlite write) lands in **other isolates** and is invisible in
+   subscription, a database write) lands in **other isolates** and is invisible in
    that line. A wapp can read 0.2% and still be the reason a `DartWorker` is
    pegged. Attribute by bisecting with `force-stop`, not by reading the tick.
 10. **A pegged isolate with ZERO Dart frames is inside native code.** `getStack`
     across every isolate returning nothing, while a `DartWorker` burns a core, is
-    the fingerprint of **FFI — usually sqlite**. The Dart profiler cannot see it.
+    the fingerprint of **FFI** (wasmtime today; it was usually sqlite before
+    zxdb replaced it, 2026-11-06). The Dart profiler cannot see it.
     Do not conclude "the profiler shows nothing, so nothing is wrong".
 
 ### 4.1.1 The wapp-page CPU leak — mostly fixed, not fully (2026-07-12)
@@ -266,8 +270,8 @@ the public relays' `#news` firehose.
 **How it was found** — the method matters more than the bug:
 
 1. Process at 109%, one `DartWorker` at ~104%, `getStack` empty on every isolate.
-   The empty-stack fingerprint says *native/FFI*, which pointed at sqlite. **That
-   was a red herring.**
+   The empty-stack fingerprint says *native/FFI*, which pointed at sqlite (the
+   database was SQLite then). **That was a red herring.**
 2. **Pause each isolate in turn and watch the process CPU.** Pausing
    `nostr-engine` dropped it 109% → 6%. Nothing else mattered. This is the single
    most useful trick in this file: it names the culprit in one minute, without a
@@ -310,8 +314,8 @@ expensive algorithm:
 Rule of thumb before adding any periodic work: *what does this cost per hour with
 the screen off, and who is awake to see the result?*
 
-**A storage cadence is not a UI cadence.** `XprsArchive` flushes to sqlite
-every 20 s and fires `core.archive` from the flush — right for the disk, and
+**A storage cadence is not a UI cadence.** `XprsArchive` flushes to its
+database every 20 s and fires `core.archive` from the flush — right for the disk, and
 it was the only way the Social wapp learned that its own post existed, so a
 person waited up to twenty seconds to see their own words. What a screen needs
 is the packet, and the core already publishes that on `xprs.<type>` the moment
@@ -331,17 +335,16 @@ happen on every frame this device hears.
 
 ## 5. Build & device traps (each of these cost real time)
 
-- **A platform difference can turn a budget off, silently.** `PRAGMA
-  page_count` returns an **INTEGER on desktop sqlite and a STRING on Android**.
-  Three callers here read it as `.values.first as num`, caught the cast failure
-  and returned **0**: the Archiver screen said "0 B" over 156,000 packets — the
-  visible half — and the gossip table's byte budget compared 0 against its cap,
-  so it never evicted anything on phones, the devices with least room. Read
-  both shapes through `lib/services/db_bytes.dart`, and keep the distinction it
-  makes: **null is "would not say", never "empty"**. A cap that can never be
-  exceeded is a cap that does nothing, and nothing logs it. Whenever a number
-  drives eviction, print it once on a real device before believing the budget
-  runs.
+- **A platform difference can turn a budget off, silently.** In the SQLite
+  days `PRAGMA page_count` returned an INTEGER on desktop and a STRING on
+  Android; three callers cast it, caught the failure and returned **0**, so the
+  Archiver screen said "0 B" over 156,000 packets and the gossip table's byte
+  budget never evicted anything on phones. That reader is gone with SQLite: a
+  byte budget now reads `XDb.liveBytes` (the live data, not the file, which
+  holds history until the next automatic compaction). The lesson stands: a cap
+  that can never be exceeded is a cap that does nothing, and nothing logs it.
+  Whenever a number drives eviction, print it once on a real device before
+  believing the budget runs.
 - **`adb uninstall` WIPES app data.** The identity survives (`identity-backup.json`
   in shared storage → "Restore <callsign>" card on next launch), **wapp data does
   not**. Do not reach for uninstall to resolve an install conflict.
@@ -523,7 +526,7 @@ still on the LAN keeps its fast path despite interleaved hub announces.
 - **`nostr-engine` pushes a relays snapshot every 400ms tick** whether or not it
   changed. Send on change.
 - **`RnsService` still owns the LXMF / files / relay / DHT subsystems and ~10
-  sqlite stores on main.** After the transport migration the main isolate idles,
+  database stores on main.** After the transport migration the main isolate idles,
   so there is *no measured reason* to move them — recorded here so nobody
   "optimises" it on instinct. Revisit only if a measurement says so.
 
@@ -617,7 +620,7 @@ The decision rule, before writing the work:
   a worker if the *processing* is heavy, exactly as `RnsTransport` registers the
   owner's sockets/radios as *external* interfaces and the worker only ever sends
   `['tx', label, bytes]` back to main for the actual I/O.
-- **Pure CPU (crypto, parsing, sqlite, compression), no plugins?** It belongs on a
+- **Pure CPU (crypto, parsing, database scans, compression), no plugins?** It belongs on a
   worker isolate. Two idioms already exist — copy one, don't invent a third:
   - **One-shot heavy call inside an existing tick:** `BackgroundService.runOffThread(fn)`
     (= `Isolate.run`) in `services/background_service.dart`. For a *single* offload,
@@ -648,7 +651,7 @@ The decision rule, before writing the work:
 > **Do not move work to an isolate on instinct.** §6.4 is a worked *rejection*:
 > moving the background wapp engine off main would route ~114 singleton touchpoints
 > through port bridges inside the messaging path to reclaim 0.2%. And §6.3 records
-> that `RnsService` keeps ~10 sqlite stores on a *now-idle* main isolate with **no
+> that `RnsService` keeps ~10 database stores on a *now-idle* main isolate with **no
 > measured reason** to move them. Off-isolate is for measured hot CPU, not for tidiness.
 
 ### 8.2 Continuous work must survive a suspended phone — the Android background stack
@@ -959,7 +962,7 @@ code that was correct for the thing it was written for — a chat attachment.
 |---|---|---|
 | `MeshBulkSpool.readAt` | cached the WHOLE archive entry in `_cacheBytes` to serve one window | a photo is 200 kB |
 | `MeshBulkSpool.verify` | `sha256.convert(f.readAsBytesSync())` | same |
-| `MeshBulkSpool.completeInbound` | read the finished file into memory, then wrote it into sqlite as a BLOB | same |
+| `MeshBulkSpool.completeInbound` | read the finished file into memory, then wrote it into the database as a BLOB | same |
 | `UpdateNative.verifyFile` | `sha256.convert(await f.readAsBytes())` on the downloaded APK | it was never true; this one shipped |
 
 Four times 56 MB, on the phone with 3.8 GB of RAM, on the path whose whole
@@ -971,10 +974,14 @@ the biggest legitimate input is, and if the answer is "a file the user chose" or
 and the receiver renames the finished `.part` into place rather than copying it
 through memory into a database.
 
-**The corollary that bit hardest**: `MediaArchive` stores content as a **sqlite
+**The corollary that bit hardest**: `MediaArchive` stored content as a **sqlite
 BLOB**. That is a fine store for thumbnails and a bad one for artifacts, and
 "content-addressed store" reads like it will do for both. A large file gets a
-path and a rename; only small content gets a row.
+path and a rename. Since zxdb (2026-11-06) the media archive keeps no bytes in
+rows at all: each item is a file `media/<storage key>` next to `media.zx`, read
+and written through `blobRead`/`blobWrite` (encrypted per file on an encrypted
+profile), and only the index is in the database. Large blobs live in files,
+not rows.
 
 ### 8.10 A log line per parcel is a log ring that only logs itself
 

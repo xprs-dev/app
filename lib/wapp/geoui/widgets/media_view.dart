@@ -40,7 +40,7 @@ import '../../shared_media_fetch.dart' show resolveSharedMedia;
 import '../../native/inline_video_player.dart';
 import '../../native/wasm_video_player.dart';
 
-/// The device's shared media archive (devices/&lt;id&gt;/data/media.sqlite3),
+/// The device's shared media archive (devices/&lt;id&gt;/data/media.zx),
 /// or null when storage isn't ready (e.g. web).
 MediaArchive? sharedMediaArchive() {
   if (kIsWeb) return null;

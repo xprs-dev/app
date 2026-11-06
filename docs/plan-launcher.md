@@ -185,7 +185,7 @@ Title/summary from `stripNoteTokens(content)`: first line/sentence → title
 picture `['pic']`, falling back to a short npub; `refreshFollowedProfiles()`
 (5-min timer, `rns_service.dart:2269`) keeps these warm.
 
-`RelayEventStore` is sqlite with no change stream, so the feed is **polled**:
+`RelayEventStore` is a zxdb store with no change stream, so the feed is **polled**:
 refresh on mount, on `AppStartedEvent`, and every 60 s while foregrounded (feed
 content moves faster than the 5-min profile timer).
 

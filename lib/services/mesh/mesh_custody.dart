@@ -783,7 +783,7 @@ class MeshCustodyDelegate implements MeshSessionDelegate {
   /// [_pokeQuiet].
   ///
   /// The throttle is checked BEFORE anything else because `pokeFor` leads to
-  /// `MeshStore.pendingFor`, a sqlite query, and this now runs on every
+  /// `MeshStore.pendingFor`, a database query, and this now runs on every
   /// outbound 1:1 — a cheap call in a hot loop IS the drain
   /// (docs/performance.md section 4.2).
   static final Map<String, DateTime> _pokedAt = {};

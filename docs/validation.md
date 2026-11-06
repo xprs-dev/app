@@ -195,7 +195,7 @@ flutter test integration_test/xprs_federation_it.dart -d <device-id>
 The federation scenarios it runs (group posts copied to favourites, the three
 large archivers finding each other and syncing via the real
 ProviderRecord/PointerSync, cross-archiver holder resolution) are pure Dart plus
-real crypto — no sqlite, no desktop-only sqlite override — so what passes on the
+real crypto — no database, no desktop-only native override — so what passes on the
 device is byte-for-byte the code path that ships. The 50-machine scale sweep
 stays on the desktop (`flutter test test/xprs_scale_50_test.dart`); a device run
 proves portability, not scale (real keygen per node is slow on a phone).

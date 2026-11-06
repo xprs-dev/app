@@ -34,7 +34,7 @@ now checked mechanically: see section 5.
   |   identity and keys   profiles, nsec, signing, encryption     |
   |   transports          Reticulum, BLE5, LAN, WiFi-Direct, I2P  |
   |   delivery            LXMF, MeshCourier, custody, retries     |
-  |   storage             sqlite, media archive, folders, spool   |
+  |   storage             zxdb, media archive, folders, spool     |
   +--------------------------------------------------------------+
 ```
 
@@ -71,7 +71,7 @@ Measured layout and rationale: [performance.md](performance.md).
 
 | Isolate | Permitted | Not permitted |
 |---|---|---|
-| main / UI | widgets, `setState`, wapp page engines, MethodChannel calls | crypto over large buffers, sqlite scans, file hashing, blocking I/O, unbounded loops |
+| main / UI | widgets, `setState`, wapp page engines, MethodChannel calls | crypto over large buffers, database scans, file hashing, blocking I/O, unbounded loops |
 | rns-crypto | Reticulum sign, verify, encrypt | UI, platform channels |
 | rns-transport | packet routing, links, resources | UI, platform channels |
 | wapp background engines | `module_tick` for background wapps | anything requiring a UI |
@@ -743,7 +743,8 @@ Rules enforced:
 | `no-transport-logic-in-wapps-repo` | wapp C source reimplementing custody, retry or reachability |
 | `no-platform-channel-off-main` | `MethodChannel` or `Ble5Bus` in isolate entry points |
 | `hal-budget` | a `hal_*` endpoint whose name describes a transport decision (reach, path, pending, custody, forward) rather than a capability |
-| `no-native-import-outside-io-file` | an unconditional `dart:io`, `dart:ffi`, `dart:isolate` or FFI `package:sqlite3` import outside a `*_io.dart` file, in `lib/` and in the reticulum-dart sibling: the web build compiles `lib/` with dart2js, where FFI is a compile error and the rest throw at runtime ([web.md](web.md)) |
+| `no-native-import-outside-io-file` | an unconditional `dart:io`, `dart:ffi` or `dart:isolate` import outside a `*_io.dart` file, in `lib/` and in the reticulum-dart sibling: the web build compiles `lib/` with dart2js, where FFI is a compile error and the rest throw at runtime ([web.md](web.md)) |
+| `no-sqlite` | an import of `package:sqlite3`, `sqlcipher_flutter_libs`, `sqlite3_flutter_libs` or `drift` in `lib/`, `test/`, `tool/`, `packages/` and in the reticulum-dart sibling: every database is zxdb through `XDb` (SQLite was removed on 2026-11-06) |
 
 To add a rule, extend the table in `tool/arch_guard.dart`. It is a single Dart
 file with no dependencies, which is deliberate.

@@ -27,7 +27,7 @@ class NomadnetPoller {
     required this.onProfiles,
   });
 
-  /// The Nomadnet archive (its OWN sqlite: social_nomadnet.sqlite3).
+  /// The Nomadnet archive (its OWN database: social_nomadnet2.zx).
   final ActivityArchive archive;
 
   /// Bumped when new posts were written.

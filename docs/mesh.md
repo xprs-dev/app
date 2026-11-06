@@ -161,8 +161,8 @@ Roles are emergent from the condition byte — no manual configuration:
 
 ## 6. Store-and-forward (SCF)
 
-Every custody node archives what it carries. Persistent sqlite store (must
-survive restarts — 7-day retention outlives any process):
+Every custody node archives what it carries. Persistent zxdb store
+(`mesh.zx`; must survive restarts — 7-day retention outlives any process):
 
 ```
 mesh_store(am TEXT PK, target TEXT, sender TEXT, wire BLOB, ts INT,
@@ -259,7 +259,7 @@ readable by carriers:
 | Legacy connectable discovery beacon | GATT reachability (extended set stays non-connectable) |
 | `?HELLO` + `g_sdev` seen-device registry | seed for neighbor table + contact ratios |
 | `am:` + `?ACK d/r` receipts (validated) | end-to-end acks + SCF purge |
-| `mailbox_add` / `?MAIL` | conceptual ancestor of SCF (replaced by sqlite store) |
+| `mailbox_add` / `?MAIL` | conceptual ancestor of SCF (replaced by the `mesh.zx` store) |
 | Dedup rings (`fseen`/`rpt`) | fallback broadcast path loop control |
 | RNS auto-passive pattern | politeness backoff shape |
 | Reticulum internet edge-bridge | off-street reach (unchanged; the on-street mesh replaces RNS *BLE* transport plans) |
@@ -271,7 +271,7 @@ readable by carriers:
 - `lib/connections/bluetooth/`: MESH subtype on the bus; mesh GATT service
   (custody transfer + peering exchange protocol); beacon assembly/parse.
 - New `lib/services/mesh/`: DV table, contact-ratio tracker, custodian scorer,
-  politeness governor, sqlite SCF store (quota sweep), have-digest bloom.
+  politeness governor, SCF store (quota sweep; `mesh.zx` since zxdb), have-digest bloom.
 - HAL: expose mesh send/receive + route/neighbor queries to wapps (keep host
   generic — mesh is a transport service, chat semantics stay in the wapp).
 
@@ -338,7 +338,7 @@ Reticulum wapp.
   Dart `mesh_session.dart` and C `blemesh_session.c` with shared fixtures)
   carries message custody (MSG/ACK = handover), gossip and a BULK FILE
   lane (FILE_OFFER/ACCEPT with offset resume, CHUNK windows, sha-verified
-  FILE_OK custody). sqlite SCF + have-digest bloom + `[pending]` beacon
+  FILE_OK custody). SCF store (SQLite then, zxdb `mesh.zx` since 2026-11-06) + have-digest bloom + `[pending]` beacon
   trailer shipped. Validated: 5 MB image phone→phone through two floors at
   27 kB/s, sha-verified into the receiver's media archive; custody park +
   overheard-`?ACK` purge; ESP32 dongle as MSP GATT server with SD spool
@@ -413,8 +413,8 @@ one window.
 A third kind (`src: 'file'`, an absolute path) serves with the same seek+read
 the `.part` branch already used. The file stays where its owner put it and is
 never copied. Symmetrically, `inboundClaim` lets a caller take the finished
-`.part` by rename instead of having it read into memory and stored as a sqlite
-BLOB. See `docs/performance.md` §8.9 — four places read a whole file, and all
+`.part` by rename instead of having it read into memory and stored as a
+database BLOB (the media archive keeps its bytes in files since zxdb). See `docs/performance.md` §8.9 — four places read a whole file, and all
 four were correct for a photo.
 
 ### 14.4 Numbers, honestly

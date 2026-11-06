@@ -74,23 +74,32 @@ what moved. This is `disk_folder.dart` / `disk_folder_manager.dart` today.
 Right for: a media library, a photo directory, anything the user already
 organises with a file manager and wants to keep organising that way.
 
-### Database-backed — one SQLite per shared folder
+### Database-backed — one database per shared folder (designed, NOT built)
 
-The folder has no directory. Its contents live in a SQLite database owned by the
-Torrents wapp, **one database per shared folder**:
+**What exists today** (2026-11-06): no per-folder database. Every torrent is
+disk-backed or lives in the stores every folder already uses: the signed
+op-log is published to and queried from the relay event store (`social.zx`,
+through `relayPublish`/`relayQuery`), and bytes that are not on a shared disk
+path are held by the content-addressed media archive (files
+`media/<storage key>` next to `media.zx`). The design below is item 1 of the
+build order (§8).
+
+The design: the folder has no directory. Its contents live in a zxdb database
+owned by the Torrents wapp, **one database per shared folder**:
 
 ```
-<profile>/torrents/<folderId>.sqlite3
+<profile>/torrents/<folderId>.zx
 ```
 
 One file per folder is a deliberate performance decision, not tidiness. A single
-shared database would put every torrent's blobs, every op, and every piece
-bitmap in one write path, one page cache, one `VACUUM`, and one lock — and a
-100 k-file archive would tax a 12-file folder. Separating them means: a torrent
-is one file you can move, back up, delete or hand to another device wholesale;
-a corrupt torrent cannot take the others with it; the page cache of the folder
-you are actively downloading is not evicted by the one that is merely seeding;
-and unpinning is `rm one.sqlite3`, not a delete sweep.
+shared database would put every torrent's ops and every piece bitmap in one
+write path, one cache, one compaction, and one writer lock — and a 100 k-file
+archive would tax a 12-file folder. Separating them means: a torrent is one
+file (plus its blob directory) you can move, back up, delete or hand to another
+device wholesale; a corrupt torrent cannot take the others with it; the cache of
+the folder you are actively downloading is not evicted by the one that is
+merely seeding; and unpinning is deleting one database and its blobs, not a
+delete sweep.
 
 Schema (per folder DB):
 
@@ -99,7 +108,7 @@ Schema (per folder DB):
 | `meta` | folderId, share type, name, description, our role (owner / pinned / partial), created, last verified |
 | `events` | the signed op-log: kind 1064 ops + kind 30564 keysets, raw, verifiable |
 | `entries` | reduced state: `name → (sha256, size, ext, mtime, metadata)` — a materialised view of `events`, rebuildable at any time |
-| `blobs` | `sha256 → bytes` (or `sha256 → external path`, for a disk-backed folder that pins only some files) |
+| `blobs` | `sha256 → file next to the database` (or `sha256 → external path`, for a disk-backed folder that pins only some files); large blobs live in files, not rows |
 | `pieces` | per-file piece bitmap: which 64 KiB chunks of a partially-downloaded file we hold, so a resume costs nothing |
 | `peers` | providers last seen for this folder, with their node profile — a warm start that skips the first DHT resolve |
 
@@ -109,8 +118,8 @@ the SAF makes real directories painful, and any folder the user *pinned* rather
 than authored.
 
 **Blobs are shared where possible.** A file the device already holds in the
-media archive (`media.sqlite3`) or another folder is referenced by sha256 rather
-than copied — a torrent DB stores the bytes only when it is the only holder on
+media archive (`media.zx`) or another folder is referenced by sha256 rather
+than copied — a torrent stores the bytes only when it is the only holder on
 this device.
 
 ---
@@ -122,7 +131,7 @@ this device.
    (`folder_keystore.dart`) and **never leaves the device** — never into the DB
    that gets shared, never into a backup someone else can host. Copying the key
    file to another machine is handing over write authority, not "seeding".
-2. **Choose the backend** — a directory on disk, or a new per-folder SQLite.
+2. **Choose the backend** — a directory on disk, or (once built, §2) a new per-folder database.
 3. **Hash the contents.** sha256 per file, on a background isolate. Big files are
    hashed in 64 KiB pieces and the piece hashes are kept, so a later
    partial/parallel download can verify a chunk without holding the whole file.
@@ -214,8 +223,8 @@ Pinning obeys the quotas that already exist:
   answers *"not me, try one of these"* and hands back the other providers.
   Seeding is generosity, not a tax.
 
-Unpin = drop the provider records, delete `<folderId>.sqlite3` (or forget the
-disk path). One file, one delete.
+Unpin = drop the provider records, delete `<folderId>.zx` and its blobs once the
+database-backed source exists (§2), or forget the disk path.
 
 ---
 
@@ -269,7 +278,7 @@ one.
 
 ## 8. Build order
 
-1. **Database-backed folder source** — the per-folder SQLite, `FolderSource`
+1. **Database-backed folder source** — the per-folder zxdb database, `FolderSource`
    interface with disk and DB implementations behind it. Everything else already
    works against the folder abstraction.
 2. **The piece engine** — the actual torrent, and the only genuinely new
@@ -349,7 +358,7 @@ The publisher's phone is no longer the only copy — which is what a pin is for.
   resolve in the background (60s TTL, misses cached), ranked by the NOSTR.md
   rule: mains + a fat uplink first, a battery phone on cellular last.
 - **The database-backed folder source (§2) is NOT built.** Today a torrent is
-  disk-backed; the per-folder SQLite is item 1 of the build order.
+  disk-backed; the per-folder database is item 1 of the build order.
 - Mutable folders, the op-log, the reducer, the capability boundaries: **built and
   tested**.
 - The DHT, provider records, Archiver selection, node profiles, quotas: **built**,

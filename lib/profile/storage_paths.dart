@@ -45,11 +45,11 @@ String? _resolvedBase;
 /// both touch disk). Idempotent.
 Future<void> initStorageRoot() async {
   // The filesystem and database engines first: natively both are no-ops,
-  // on web they hydrate IndexedDB and fetch sqlite3.wasm, and every store
+  // on web they hydrate IndexedDB, and every store
   // below assumes they are ready.
   await initFs();
   // reticulum-dart keeps its own files (follow sets, partial downloads, the
-  // parents of its SQLite files); point it at the same tree.
+  // parents of its database files); point it at the same tree.
   reticulum.fileSystem = fs;
   await initProfileDb();
   final os = platform.platformName();

@@ -4,7 +4,7 @@
  * Every storage operation in the XPRS Flutter host must go through this
  * abstraction. No direct dart:io File/Directory calls anywhere else in
  * iwi/lib/ — not because dart:io is bad, but because the backing store may be
- * an encrypted SQLite archive, a browser IndexedDB tree, or (today) a plain
+ * an encrypted archive, a browser IndexedDB tree, or (today) a plain
  * filesystem, and call sites should not care which.
  *
  * This file is API-compatible with the parent repo's
@@ -81,7 +81,7 @@ abstract class ProfileStorage {
   //
   // WASM imports run synchronously; Dart Futures cannot be awaited from
   // inside them. These sync variants exist only for those call sites.
-  // Non-sync backends (encrypted SQLite, browser IndexedDB) throw
+  // Non-sync backends (encrypted archive, browser IndexedDB) throw
   // [UnsupportedError] — callers must fall back to a message-based async API
   // in that case.
 

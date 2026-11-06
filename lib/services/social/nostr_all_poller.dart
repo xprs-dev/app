@@ -299,8 +299,8 @@ class NostrAllPoller {
       }
 
       // Persist curated posts, their likes and their replies — ALL in one
-      // transaction. Per-row SQLCipher INSERTs (hundreds of them) blocked the UI
-      // thread for seconds otherwise (ANR).
+      // transaction. Per-row INSERTs (hundreds of commits) blocked the UI
+      // thread for seconds otherwise (ANR, measured on SQLCipher).
       final keptIds = <String>{};
       archive.transact(() {
         for (final row in kept) {

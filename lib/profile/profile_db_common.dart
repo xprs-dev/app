@@ -2,8 +2,8 @@
  * The platform-free half of the profile database layer: the in-memory keyring
  * of unlocked profiles and the path -> (profile, relative path) mapping that
  * every per-database key derivation is built on. Shared verbatim by the native
- * opener (profile_db_io.dart, SQLCipher over FFI) and the web opener
- * (profile_db_web.dart, sqlite3.wasm over IndexedDB).
+ * opener (profile_db_io.dart, zxdb files) and the web opener
+ * (profile_db_web.dart, every database in memory).
  */
 
 import 'dart:async';
@@ -109,7 +109,7 @@ String? profileDbKeyHex(String absPath) {
 class ProfileDbLocation {
   final String profileId;
 
-  /// Forward-slash path relative to `devices/<id>/`, e.g. `data/mesh.sqlite3`.
+  /// Forward-slash path relative to `devices/<id>/`, e.g. `data/mesh.zx`.
   /// This exact string feeds the per-DB key derivation — treat as stable API.
   final String relPath;
 

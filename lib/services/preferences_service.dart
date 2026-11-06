@@ -171,7 +171,7 @@ class PreferencesService {
 
   // Social notifications. Two high-water marks, both persisted, because both
   // were in-memory and that is the whole bug: on every restart the standing
-  // "#p = me" subscription replays the stored notifications out of SQLite, and
+  // "#p = me" subscription replays the stored notifications out of the database, and
   // an in-memory "already announced" set cannot remember that they were
   // announced last time.
   //
@@ -263,7 +263,7 @@ class PreferencesService {
   ///
   /// Off by default on a pocket device, and the numbers are why: measured on a
   /// phone with two stations in earshot, 89% of everything it stored was
-  /// presence chatter and 3% was messages, at roughly twenty thousand sqlite
+  /// presence chatter and 3% was messages, at roughly twenty thousand database
   /// writes an hour for rows nothing ever reads. The live view does not need
   /// them either -- the mesh graph, the Traffic screen and the station list all
   /// read XprsMonitor, which is RAM.

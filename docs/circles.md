@@ -19,15 +19,15 @@ Source of truth: `xprs/wapps/circles/` (C → wasm). Host HAL: `lib/wapp/wapp_en
 |------|------|
 | Lifecycle + UI glue (commands in / prompts out, RNS drain) | `apps/circles/main.c` |
 | All circle logic: keys, epochs, crypto, sync, panels, folders | `apps/circles/circle.c` (~2080 lines) |
-| Thin sqlite wrappers + schema | `apps/circles/db.c` / `db.h` |
+| Thin database wrappers (`hal_db_*`) + schema | `apps/circles/db.c` / `db.h` |
 | String/JSON/base64 helpers | `apps/circles/util.c` |
 | Native (non-wasm) integration test | `apps/circles/tests/native/` (`sh tests/native/run.sh`) |
-| Host HAL (sqlite/crypto/rns/msg) | `aurora/lib/wapp/wapp_engine.dart` |
+| Host HAL (db/crypto/rns/msg) | `aurora/lib/wapp/wapp_engine.dart` |
 | Headless background runner | `aurora/lib/wapp/background_wapp_manager.dart` |
 | Shipped binary | `aurora/assets/wapps/circles.wapp` (a zip: app.wasm + manifest + ui) |
 
 The wapp is **generic-host clean**: all circle-specific logic is in the wapp C;
-the host only exposes generic `hal_sqlite_*`, `hal_crypto_*`, `hal_rns_*`,
+the host only exposes generic `hal_db_*`, `hal_crypto_*`, `hal_rns_*`,
 `hal_msg_*`, `hal_identity_*`, `hal_contacts_*` primitives.
 
 ## 2. Host ↔ wapp event model
@@ -50,14 +50,18 @@ Driving headlessly: send the flat command directly, e.g. create a circle with
 `{"command":"prompt","prompt_id":"newcircle","prompt_input":"My Circle"}`
 (bypasses needing the UI to open the prompt first — `on_prompt` runs regardless).
 
-## 3. Data model (sqlite, NOT encrypted at rest)
+## 3. Data model (zxdb; encrypted at rest only inside an encrypted profile)
 
-Databases live under the wapp data dir, opened with plain `sqlite3.open` (WAL,
-no SQLCipher). On Android: `…/app_flutter/<profile>/wapps-data/circles/`.
+Databases live under the wapp data dir. Since 2026-11-06 (circles 0.35.5) the
+wapp opens them through `hal_db_open` (WASM import `db_open`, functionality
+`hal.db`), and the host opens each with `openProfileDb`: a zxdb `.zx` file,
+encrypted by its per-database password when the profile is encrypted, plain
+otherwise. (Before that it was a plain `sqlite3.open`, never keyed.) On
+Android: `…/app_flutter/<profile>/wapps-data/circles/`.
 
-- **Index DB** `circles/index.sqlite3`: `circles(id, name, master_priv, created)`.
+- **Index DB** `circles/index.zx`: `circles(id, name, master_priv, created)`.
   `master_priv` is set **only for circles we own**.
-- **Per-circle DB** `circles/<circleId>.sqlite3` (`db_init_circle`):
+- **Per-circle DB** `circles/<circleId>.zx` (`db_init_circle`):
   - `meta(k,v)` — name, description, picture, epoch, default_role.
   - `members(pub, added_epoch, revoked_epoch, role, status)`.
   - `roles(name, description, created)`.
@@ -75,10 +79,12 @@ no SQLCipher). On Android: `…/app_flutter/<profile>/wapps-data/circles/`.
   is an **announce** (broadcast) and is NOT additionally transport-encrypted;
   envelope metadata (circle tag, epoch, author pubkey, ts, signature) travels in
   cleartext. So content is protected; metadata (who/when/which circle) leaks.
-- **At rest: NOT encrypted.** The DB stores `events.body` plaintext AND the AES
-  keys (`epochs.key`) AND the owner's `master_priv` all in cleartext. Anyone with
-  the `.sqlite3` file reads everything. Fixing this needs SQLCipher / keyed DB
-  open in the host HAL (`sqlite3.open`) — see §8. Accepted as-is for now.
+- **At rest: encrypted only with the profile.** The schema stores `events.body`
+  plaintext AND the AES keys (`epochs.key`) AND the owner's `master_priv` in
+  cleartext columns. In an encrypted profile the whole `.zx` file is encrypted
+  by its zxdb password (derived from the profile master key), so the file alone
+  reads nothing. In a plain profile anyone with the `.zx` file reads everything.
+  The wapp itself adds no encryption at rest — see §8.
 
 ## 4. Identity & crypto primitives
 
@@ -197,7 +203,7 @@ they blocked circles datagrams from crossing device-to-device:
    meshing is unaffected). It auto-resumes when the flood subsides. Surfaced in
    `/api/rns/status` as `passive` + `annRate`. See §11.
 
-Still open / not done: at-rest DB encryption (SQLCipher / keyed open) — see §3.
+At-rest DB encryption follows the profile since zxdb (2026-11-06): keyed in an encrypted profile, plain in a plain one — see §3.
 
 ## 11. RNS passive (leaf) mode — staying meshed under CPU pressure
 
@@ -244,7 +250,7 @@ curl localhost:<localport>/api/status               # node up? hub connected?
 curl localhost:<localport>/api/log?n=200            # wapp + RNS logs
 ```
 
-Read the sqlite DBs directly (verify ciphertext at rest, membership, requests):
+Read the `.zx` DBs directly (verify ciphertext at rest, membership, requests):
 `adb -s <serial> exec-out run-as com.xprs.app cat <path>/circles/<db>`.
 
 ## 12. Cooperative data exchange / gossip transport (validated 2026-06-22)

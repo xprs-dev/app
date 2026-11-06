@@ -24,7 +24,7 @@
  * The period is one minute. That is a battery setting, not a freshness setting
  * (docs/performance.md section 6.5): it costs one small frame per station per
  * minute inside an advertising window that already opens, no GATT link, no
- * crypto, no sqlite. The expensive half — dialling a station to pull what it
+ * crypto, no database. The expensive half — dialling a station to pull what it
  * holds — stays gated on a station actually saying it holds something.
  */
 import 'dart:async';

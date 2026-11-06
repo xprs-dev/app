@@ -16,9 +16,9 @@ those two rules are tested by absence rather than by discipline.
 |---|---|---|
 | GeoUI, launcher, wapp screens, i18n, App Creator | yes | yes, same code |
 | wasm wapps (`wasm_run`) | wasmtime over FFI | the browser's own `WebAssembly` API |
-| SQLite | `package:sqlite3` over FFI, SQLCipher | the same package's `wasm.dart`: `sqlite3.wasm` over an IndexedDB VFS |
+| databases | zxdb (`XDb`, pure Dart) in `.zx` files | zxdb **in memory** for the tab's life (no writable `.zx` file in a browser yet) |
 | files | the disk | an in-memory tree persisted to IndexedDB |
-| profile encryption | SQLCipher + AES-GCM archive | **no**: a web profile stays plain (see below) |
+| profile encryption | zxdb password per database + AES-GCM archive | **no**: a web profile stays plain (see below) |
 | NOSTR relays (`wss://`) | yes | yes, same `web_socket_channel` client |
 | Reticulum (TCP, UDP, LAN discovery) | yes | **no**: a page cannot open a socket |
 | BLE5, GATT/MSP, LoRa, WiFi-Direct | yes | **no** |
@@ -37,8 +37,11 @@ run): the launcher boots in about 2 s; Continue on the welcome page creates a
 profile and the launcher appears with hero cards, the wapp list and the quick
 launch row; the Chat wapp opens to `#LOCAL`; the background engines of chat,
 mail and torrents run their wasm; a reload comes back to the launcher with the
-same profile. After that run IndexedDB holds 2696 records in the file tree and
-six SQLite files (104 blocks). No uncaught exception, no error toast.
+same profile. After that run (2026-09-07, still on SQLite) IndexedDB held 2696
+records in the file tree and six SQLite files (104 blocks). No uncaught
+exception, no error toast. Since zxdb (2026-11-06) the databases are in memory
+on web, so IndexedDB holds the file tree only and a reload starts the stores
+empty.
 
 ## Building and running
 
@@ -49,9 +52,9 @@ six SQLite files (104 blocks). No uncaught exception, no error toast.
 
 Every `flutter build` goes through the lock (CLAUDE.md); dart2js takes about
 55 s here. The bundle is `build/web`: `main.dart.js` (7.8 MB release, 21 MB
-`--profile`), `sqlite3.wasm` (0.7 MB, copied from `web/`), CanvasKit and the
-assets. `.github/workflows/build-web.yml` builds it on every push and pull
-request.
+`--profile`), CanvasKit and the assets (2026-09-07 sizes; `sqlite3.wasm` was
+also in the bundle until zxdb replaced SQLite on 2026-11-06).
+`.github/workflows/build-web.yml` builds it on every push and pull request.
 
 `--pwa-strategy=none` stays: the service worker cached a stale `main.dart.js`
 across rebuilds, and `web/index.html` still carries the one-shot purge for
@@ -95,6 +98,9 @@ The first build produced 1318 error lines. Every one was `dart:ffi`:
 | `io_stub.dart` drifted from `dart:io` | 8 | `wapp_engine.dart` (`RawSynchronousSocket`, `Socket.listen`) |
 | 64-bit integer literals | 4 | `i2p_crypto.dart` SipHash constants |
 
+(The first two rows are history: `package:sqlite3` and `sqlcipher_flutter_libs`
+were removed on 2026-11-06, and zxdb has no FFI on any platform.)
+
 Two assumptions from the survey turned out false, and they shaped the work:
 
 - **`dart:io` and `dart:isolate` compile under dart2js.** Fifty-five app
@@ -108,49 +114,33 @@ Two assumptions from the survey turned out false, and they shaped the work:
   to `wasm_interop` (the browser's `WebAssembly`) and never touches the Rust
   bridge.
 
-### SQLite: one package, two halves
+### Databases: zxdb, in memory on web
 
-`package:sqlite3` ships an FFI binding and a wasm binding behind one
-`CommonDatabase` interface. Every store types its handle as `CommonDatabase`
-and imports `package:sqlite3/common.dart`; the FFI import survives in three
-files, each compiled only natively:
+Since 2026-11-06 every database is zxdb (`XDb`, from the owner's zx project),
+pure Dart with no FFI and no native library, so the database layer no longer
+splits into an FFI half and a wasm half. What still differs per target is
+where the bytes live:
 
 | seam | native | web |
 |---|---|---|
-| `lib/profile/profile_db.dart` → | `profile_db_io.dart` (SQLCipher, keyring) | `profile_db_web.dart` (`WasmSqlite3.loadFromUrl`, `IndexedDbFileSystem`) |
-| reticulum-dart `db_opener.dart` → | `db_opener_io.dart` (`sqlite3.open`) | `db_opener_stub.dart` (throws until the host injects) |
-| encrypted_archive `sqlite_loader.dart` → | `sqlite_loader_flutter.dart` / `_pure.dart` | `sqlite_loader_stub.dart` (throws until the host injects) |
+| `lib/profile/profile_db.dart` → | `profile_db_io.dart` (`.zx` files, per-database password from the keyring) | `profile_db_web.dart` (every database in memory) |
+| reticulum-dart `db_opener.dart` → | `dbOpener` / `dbMemoryOpener`, injected by the host | the same, injected by the host |
 
-The host injects where it already did (`ProfileService.load`):
-`reticulum.dbOpener`, `reticulum.dbMemoryOpener`, and on web
-`SQLiteLoader.override`. Natively encrypted_archive keeps its own default,
-because a `profile.ear` inside an encrypted profile must not get a SQLCipher
-key on top of its own encryption.
+The host injects in `ProfileService.load`: `reticulum.dbOpener`,
+`reticulum.dbMemoryOpener`, and the `blobRead`/`blobWrite` the media archive
+uses for its files.
 
-`openPlainDb` is new: the mailbox spool and the gossip visit table were opened
-with a bare `sqlite3.open` before, deliberately unkeyed even inside an
-encrypted profile, and switching them to `openProfileDb` would have tried to
-key existing plaintext files. They stay plain, through the seam.
+zxdb's file store reads and writes through `dart:io`, and zx's browser engine
+opens archives read only, so there is no writable `.zx` file in a browser yet.
+On web `openProfileDb`, `openPlainDb` and `openMemoryDb` all return a
+database in memory that lasts as long as the tab. `initProfileDb()` is still
+awaited in `initStorageRoot()`; it has nothing to load on either target.
 
-`initProfileDb()` is awaited in `initStorageRoot()`: a no-op natively, the
-wasm fetch and VFS open on web. Opening a database before that is a
-`StateError`, never a silent in-memory database.
+`openPlainDb` opens a database that stays unkeyed even inside an encrypted
+profile (the mailbox spool and the gossip visit table). Natively it is a plain
+`.zx` file; on web it is in memory like the rest.
 
-The web opener sets `PRAGMA temp_store = MEMORY` and `journal_mode = MEMORY`.
-Without the first, SQLite opens its scratch files (the temporary database an
-`ALTER TABLE` uses, statement journals) through the VFS with a NULL name, and
-sqlite3 2.4.5's IndexedDB VFS dereferences it: `Cannot read properties of
-null (reading 'toString')` from inside the wasm import table, which surfaced
-as the wapp mailbox failing to open. WAL needs shared memory the VFS has not.
-
-**`web/sqlite3.wasm` is pinned to the pub version of `package:sqlite3`**
-(2.4.5 today: <https://github.com/simolus3/sqlite3.dart/releases/tag/sqlite3-2.4.5>).
-Bump both together.
-
-**Encrypted profiles do not exist on web.** The stock wasm has no SQLCipher.
-The multi-cipher build (`sqlite3mc.wasm`) exists only from `sqlite3` 2.7 and
-uses a different on-disk format, so a profile encrypted on a phone would not
-open in a browser even then. Profile creation on web therefore skips the
+**Encrypted profiles do not exist on web.** Profile creation on web skips the
 device-key step and logs `encryption: not available on web -- profile X stays
 plain`; `openProfileDb` on web refuses an encrypted profile with
 `UnsupportedError` rather than open it as plaintext; asking for password
@@ -166,7 +156,7 @@ door; its one backend (`profile_storage_fs.dart`) sits on `fs` for every
 target, and the localStorage backend is gone. reticulum-dart has the same
 seam (`reticulum.fileSystem`, injected in `initStorageRoot`) for the files it
 keeps itself: follow sets, the relay hub config, partial downloads, the
-parents of its SQLite files.
+parents of its database files and the media archive's blob files.
 
 Persistence on web (`fs_web.dart`): a timer stats the tree every 500 ms and
 commits what changed (mtime, size, kind) to IndexedDB in one transaction;
@@ -445,8 +435,8 @@ Everything in "Next: Reticulum in the browser, with no proxy" above, which is
 designed but not built: the WebSocket bearer, the per-device web host, and the
 Web Workers. Also encrypted profiles on web; `--wasm`; shared
 folders, torrents, bulk spool, media archive serving; video playback; the PWA
-service worker; a GitHub Pages deployment; multi-tab safety (the IndexedDB
-VFS is single-tab; a second XPRS tab on the same origin corrupts the SQLite
-files); Firefox and Safari; `flutter_secure_storage` on web is localStorage,
+service worker; a GitHub Pages deployment; a writable zxdb file in the
+browser (today every database is in memory for the tab's life); multi-tab
+safety; Firefox and Safari; `flutter_secure_storage` on web is localStorage,
 so the device key would not be hardware-backed there, which is one more
 reason web profiles stay plain.

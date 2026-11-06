@@ -1,11 +1,11 @@
 // Persistence for the Activity feed (the unified stream of incoming group/DM
 // posts that the APRS wapp sends via ui.chat.append on the "activity" field).
-// Mirrors GeoChatArchive: one SQLite file per wapp data dir, shared by the
+// Mirrors GeoChatArchive: one database file per wapp data dir, shared by the
 // foreground page AND the background engine, so a post received while the app is
 // closed (background service) still shows up when the user opens the Activity
 // tab. Time-ordered (no geo query). App-agnostic — just stores rows.
 //
-// Native only (SQLite via dart:ffi); every call is a no-op on web.
+// Native only; every call is a no-op on web.
 
 import 'dart:convert';
 import 'package:file/file.dart';
@@ -278,9 +278,9 @@ class ActivityArchive {
     _pruneOnce(db);
   }
 
-  /// Persist a bounded delivery as one SQLite transaction. Relay decoding and
+  /// Persist a bounded delivery as one database transaction. Relay decoding and
   /// signature verification happen in the NOSTR isolate; this keeps the small
-  /// main-isolate handoff to one fsync instead of one fsync per publication.
+  /// main-isolate handoff to one commit instead of one commit per publication.
   void addAll(Iterable<Map<String, dynamic>> posts) {
     transact(() {
       for (final post in posts) {
@@ -289,10 +289,11 @@ class ActivityArchive {
     });
   }
 
-  /// Run [body] inside ONE SQLite transaction. Hundreds of individual
+  /// Run [body] inside ONE database transaction. Hundreds of individual
   /// `add`/`setReaction` writes are cheap batched but brutal one-by-one —
-  /// SQLCipher fsyncs each, which blocked the UI thread for seconds (ANR) when
-  /// the curated poll persisted its posts + per-liker reactions + replies. Wrap
+  /// each is its own commit (in the SQLite days SQLCipher fsynced each, which
+  /// blocked the UI thread for seconds (ANR) when the curated poll persisted
+  /// its posts + per-liker reactions + replies). Wrap
   /// the whole persist in this.
   void transact(void Function() body) {
     final db = _ensureDb();
@@ -498,7 +499,7 @@ class ActivityArchive {
 
   /// Remove rows that do not belong to this archive's provenance. Used once
   /// while repairing builds that copied the complete legacy mixed feed into
-  /// `social_all.sqlite3`.
+  /// `social_all.zx`.
   void retainSources(Set<String> sources) {
     final db = _ensureDb();
     if (db == null || sources.isEmpty) return;

@@ -1,6 +1,6 @@
 /*
  * DiskFolderSource — serve an owner's on-disk directory by content hash, WITHOUT
- * copying the files into the sqlite archive. Indexes a directory (sha256 -> path)
+ * copying the files into the media archive. Indexes a directory (sha256 -> path)
  * and serves bytes straight from disk. The folder's master key file and dotfiles
  * are excluded from the index so they are never published or served.
  *

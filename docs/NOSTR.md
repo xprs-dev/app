@@ -230,7 +230,7 @@ role, no quota UI, and no direct-link (LAN/BLE/LoRa) policy yet.
 
 - **Over Reticulum**: `RelayNode` answers `REQ` / `COUNT` / `EVENT` / `DEPOSIT`
   / `DROP` over RNS links (`relay_protocol.dart`), backed by `RelayEventStore`
-  (SQLite + FTS5, NIP-50 search). A **leaf still answers queries about its own
+  (zxdb with its fts5 module, NIP-50 search). A **leaf still answers queries about its own
   posts** — "ask the author directly" is a real path.
 - **Over the LAN**: `NostrWsServer` — any stock NOSTR client on the LAN can use
   this device as a `wss://` relay, NIP-11 and all.

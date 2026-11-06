@@ -697,8 +697,10 @@ The dex is free of Firebase, Play Services, Google Analytics, Crashlytics and
 any advertising or tracking SDK. `com.google.crypto.tink` (Apache-2.0, pulled
 in by `flutter_secure_storage`) is free software. The native libraries are
 `libapp.so`, `libflutter.so`, `libwasm_run_dart.so` (built from source),
-`libsqlcipher.so` (`net.zetetic:sqlcipher-android` from Maven Central, BSD),
-`libdartjni.so` and `libdatastore_shared_counter.so` (AndroidX).
+`libdartjni.so` and `libdatastore_shared_counter.so` (AndroidX). Releases
+audited before 2026-11-06 also carried `libsqlcipher.so`
+(`net.zetetic:sqlcipher-android` from Maven Central, BSD); it is gone since
+every database moved to zxdb, which is pure Dart.
 
 ### 9.4 Permissions worth explaining
 

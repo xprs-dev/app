@@ -53,7 +53,7 @@ class _StatusBarState extends State<_StatusBar> {
   }
 
   /// Everything here is an in-memory read except the two post counts, which are
-  /// indexed sqlite COUNTs on a store this isolate already owns. Cheap enough
+  /// indexed database COUNTs on a store this isolate already owns. Cheap enough
   /// for a 5-second tick; anything heavier belongs behind a tap, not on the
   /// home screen.
   void _sample() {

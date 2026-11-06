@@ -9,7 +9,7 @@
  * the same secret opens without a prompt. The reader still taps every time --
  * persistence only removes the prompt, never the tap.
  *
- * It lives in the profile database, which is SQLCipher-encrypted: a remembered
+ * It lives in the profile database, which is zxdb-encrypted: a remembered
  * passphrase is a small secret and belongs with the profile's own, like a
  * password manager's store. Section 9.2.1 is plain that the default passphrase
  * buys obfuscation not secrecy, but a real one a reader typed is worth keeping
@@ -67,7 +67,7 @@ class XprsPassphrases {
     // free", not to charge the holder of the passphrase twice for one message.
     //
     // The plaintext is no more exposed than it already was: the passphrase
-    // that opens it is kept in THIS SAME SQLCipher database, so anyone who can
+    // that opens it is kept in THIS SAME encrypted database, so anyone who can
     // read this table could decrypt the message anyway, and content opened
     // with the default passphrase is public by construction. The tap is
     // untouched -- a reopened conversation still shows bars.

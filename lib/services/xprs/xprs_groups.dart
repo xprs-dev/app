@@ -212,7 +212,7 @@ class XprsGroups {
 
   /// Called for every verified `t:moderate` act, so the persistence layer can
   /// keep it (and the group's key). Injected the way [keyResolver] is, so this
-  /// class stays a pure replay engine that knows nothing about sqlite.
+  /// class stays a pure replay engine that knows nothing about the database.
   void Function(String group, String id, String wire, int ts)? onActVerified;
 
   /// Feed one `t:moderate`. Returns false when the packet is not one, or when

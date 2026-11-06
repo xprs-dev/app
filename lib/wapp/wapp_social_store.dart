@@ -1,12 +1,12 @@
 /*
- * WappSocialStore — per-wapp SQLite database for reactions and comments.
+ * WappSocialStore — per-wapp database for reactions and comments.
  *
- * Each wapp carries its own `social.sqlite3` inside its package
+ * Each wapp carries its own `social.zx` inside its package
  * directory. When the wapp is shared or exported, the social data
  * travels with it. The permissions.json at the wapp root controls
  * who can write reactions/comments.
  *
- * Storage path: <wapp_dir>/social.sqlite3
+ * Storage path: <wapp_dir>/social.zx
  *
  * Reactions are NOSTR kind-7 events (like/emoji). Comments are
  * kind-1111 events. Both are Schnorr-signed.

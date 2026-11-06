@@ -9,7 +9,7 @@
  * preview. Those packets go by; the reference is rendered again a week later.
  * So the core keeps the few words that matter, keyed on the hash.
  *
- * Profile database (SQLCipher) like [XprsFileAcl]: what was shared with this
+ * Profile database (zxdb, encrypted with the profile) like [XprsFileAcl]: what was shared with this
  * profile is this profile's business. Every read is a primary-key lookup, so
  * it is safe on the caller's isolate (docs/architecture.md §2).
  */

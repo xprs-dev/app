@@ -188,7 +188,10 @@ here, what did I miss".
 The spool of what this station has heard. On by default: a spool nobody keeps is
 a network nobody can catch up on.
 
-- **SQLite**, WAL, `synchronous = NORMAL`. Two tables: `packets` (the §5
+- **zxdb** (`xprs_archive.zx`; SQLite with WAL until 2026-11-06). The timer
+  flushes in one transaction, since a statement outside one is its own commit;
+  copy-on-write keeps the last good commit, and the byte budget reads
+  `liveBytes`, not the file size. Two tables: `packets` (the §5
   identifier as primary key, plus `ts`/`pts`, type, `fromc`, `toc`, bearer,
   rssi, signature state, via-count, heard-count and the wire) and
   `mailbox_decl` (the `t:mailbox` declarations of §13.12).

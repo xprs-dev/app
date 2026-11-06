@@ -25,9 +25,9 @@ import '../../platform/fs.dart';
 /// all, so notes are structurally safe. All this class does is put the bytes in
 /// front of them.
 ///
-/// The budget below is not decoration. This writes multi-MB blobs into a sqlite
+/// The budget below is not decoration. This writes multi-MB blobs into a
 /// store that lives on the **main isolate**, so an unbounded ingest would show
-/// up exactly as the pegged-core-inside-native-sqlite signature in
+/// up exactly as the pegged-main-isolate signature in
 /// docs/performance.md §4.1.
 class FollowedMediaCache {
   FollowedMediaCache._();

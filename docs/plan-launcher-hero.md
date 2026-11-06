@@ -18,7 +18,7 @@ Four problems on top of that, each verified in the tree:
 | Problem | Where |
 |---|---|
 | Refresh timer and carousel animation run while a wapp page is on top, and while the screen is off | `novelties_service.dart:387` (`Timer.periodic(1 minute)`), `novelties_carousel.dart:49` (6 s advance). `LauncherPage` stays mounted under pushed routes, and **nothing in the app observes routes or lifecycle** — no `RouteObserver`, no `navigatorObservers`. |
-| We forget what the people we follow said, and serve it to nobody | The NOSTR hub isolate writes `nostr_feed.sqlite3` (`rns_service.dart:2081`). `RelayNode` — what answers other peers — serves `_relayStore` = `social.sqlite3` (`rns_service.dart:1989`). **The hub never writes into `_relayStore`.** Only locally-published notes (`:3703`) and events off the RNS relay protocol (`admitEvent`, `:2022`) land there. The comment at `:2061` claiming they merge into one store is wrong. |
+| We forget what the people we follow said, and serve it to nobody | The NOSTR hub isolate writes `nostr_feed.sqlite3` (now `nostr_feed.zx`; `rns_service.dart:2081`). `RelayNode` — what answers other peers — serves `_relayStore` = `social.sqlite3` (now `social.zx`; `rns_service.dart:1989`). **The hub never writes into `_relayStore`.** Only locally-published notes (`:3703`) and events off the RNS relay protocol (`admitEvent`, `:2022`) land there. The comment at `:2061` claiming they merge into one store is wrong. |
 | The storage quota is decorative | `hostQuota()` (`:4792`) reads `host.ceilingGb`, default **100 GB** (`preferences_service.dart:138`). `planEviction()` runs hourly (`:2195-2237`) and evicts nothing. And `BlossomServer` only ever starts lazily from inside `hal_media_infohash` (`wapp_engine.dart:1258`) — a device that merely *reads* the feed never starts it and serves no media at all. |
 | Unreadable cards, blind dock | The scrim is a flat 0.10→0.78 black over the whole image (`novelties_carousel.dart:230-241`): it dims the photo and is still too light behind the summary. No timestamp. And the dock's 4 slots are ordered purely by pins/launch-count (`home_modules.dart:9-33`), so a wapp with 12 unread can sit off-dock, invisible — even though `WappUnreadService` already paints a badge on its tile. |
 
@@ -157,18 +157,19 @@ paid for:
   `wapp_engine.dart` engine-dispose fix. The mirror's sub is torn down on every
   follow-set change and on shutdown.
 
-A followed note now lives in both `nostr_feed.sqlite3` (the engine's scratch
-firehose cache) and `social.sqlite3` (what we durably serve). That duplication is
-deliberate. Writing `social.sqlite3` from inside the engine isolate is *not* the
-alternative: two writers on one sqlite file is a lock-contention bug waiting to
-happen.
+A followed note now lives in both `nostr_feed.zx` (the engine's scratch
+firehose cache) and `social.zx` (what we durably serve). That duplication is
+deliberate. Writing `social.zx` from inside the engine isolate is *not* the
+alternative: two writers on one database file is a lock-contention bug waiting
+to happen (zxdb, like SQLite before it, admits one writer at a time).
 
 **Media.** `FollowedMediaCache` pulls the images of followed authors' posts into
 `MediaArchive.putHosted(tier: followed)` — content-addressed, so `BlossomServer`
 serves them to peers for free at `GET /<sha256>`. The item's `imageUrl` is
 rewritten to `file:<sha>.<ext>`, so the card then renders from local bytes:
-instant, and it works offline. Budgeted, because this writes multi-MB blobs into a
-sqlite store on the main isolate: ≤4 blobs per cycle, ≤5 MB each, 2 concurrent
+instant, and it works offline. Budgeted, because this writes multi-MB blobs into the
+media archive on the main isolate (a database row then; a file next to
+`media.zx` since zxdb): ≤4 blobs per cycle, ≤5 MB each, 2 concurrent
 fetches, only while the launcher is visible and the network unmetered. And it
 **caches the miss** (§3.2) — on a public network a dead image URL is the common
 case, and a hit-only cache re-fetches it forever.
@@ -211,7 +212,7 @@ box) and X11 window capture.
 | A wapp can put a card on the hero | `POST /api/hero/publish` (the same `HeroInbox` entry point `hal_msg_send` lands on) → the card renders with its source chip, title, summary and time pill. |
 | Follows-only, strict | `hero: source=follows (4 buffered)`; the four cards are exactly the followed authors, **two each** — the per-author cap, visible on screen. |
 | The 5-minute refresh is gated on being seen | Opening a wapp logs `hero: launcher hidden (route=false resumed=true)`; `lastRefresh` then did not move for **100 s** (the old code would have refreshed twice). Coming back logs `visible` and refreshes at once. |
-| We cache what we follow | Seeded a signed post from a followed author into the hub's own store (`test/live/hero_mirror_seed_test.dart`) → the mirror copied it into `social.sqlite3` at the followed tier: `perf: hero mirror stored=1 dropped=0 ms=3`. |
+| We cache what we follow | Seeded a signed post from a followed author into the hub's own store (`test/live/hero_mirror_seed_test.dart`) → the mirror copied it into `social.sqlite3` (now `social.zx`) at the followed tier: `perf: hero mirror stored=1 dropped=0 ms=3`. |
 | …and **serve** it | Connected to the node's own relay endpoint as an outside client and asked for that author's posts — it handed the note back (`test/live/hero_mirror_serve_test.dart`). That is the mini-relay, proven from outside the app. |
 | Blossom actually runs | `curl http://127.0.0.1:3457/` → `{"app":"aurora-blossom","v":1}`. Before this change it never started on a device that had not shared something. |
 | Unread floats to the dock | Chat went from dock slot 4 to slot 1, badge `12`, when it gained unread. |
@@ -242,7 +243,7 @@ signature** — only the in-process path may skip verification), and
 `host_retention_policy` at the new 10 GB / 2 GB numbers.
 
 Live: on the **Linux desktop build** (`./launch-linux.sh`, debug API on
-`localhost:3456`). Follow an account, confirm its notes land in `social.sqlite3`
+`localhost:3456`). Follow an account, confirm its notes land in `social.zx`
 (`perf: hero mirror stored=…` in `/api/log`, and the relay event count in
 `/api/status` rising), then fetch one of its images back out of our own Blossom
 (`curl http://127.0.0.1:3457/<sha256>`) — that is the cache-and-serve requirement

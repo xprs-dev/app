@@ -177,7 +177,7 @@ class XprsGossip {
     if (db == null || callsign.isEmpty || selfCallsign.isEmpty) return;
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
     // This sits on the funnel: every beacon from every neighbour lands here,
-    // several a second on a busy bench, and each write below is two sqlite
+    // several a second on a busy bench, and each write below is two database
     // statements on this isolate. The table's answer does not change by the
     // beacon — debounce identical sightings in RAM and pay the disk once a
     // minute per (callsign, bearer) (performance.md 4.2: no timers, the

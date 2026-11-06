@@ -1,9 +1,9 @@
 /*
  * mesh_store — the street-mesh store-and-forward archive (docs/mesh.md §6).
  *
- * Every custody node archives the 1:1 messages it carries. SQLite (WAL) for
- * the same reason as media_archive.dart: atomic writes, a crash can't shred
- * the file, one corrupt row never costs the store.
+ * Every custody node archives the 1:1 messages it carries. A zxdb database
+ * (mesh.zx) for the same reason as media_archive.dart: copy-on-write
+ * commits, so a crash keeps the last good commit and never shreds the file.
  *
  *   mesh_store    — parked/carried messages, keyed by their am: receipt id
  *                   (or a content-hash pseudo-key 'c:<fnv>' when a frame has
@@ -471,7 +471,7 @@ class MeshStore {
   ///
   /// `IN ()` is not valid SQL, and an empty name list used to be an `= ''`
   /// that matched nothing, so the false branch has to keep that meaning.
-  /// It is `0 = 1` and not `0`: in an `ORDER BY` term sqlite reads a bare
+  /// It is `0 = 1` and not `0`: in an `ORDER BY` term SQL reads a bare
   /// integer as an ORDINAL COLUMN REFERENCE, so `ORDER BY (0)` is not "sort
   /// by false", it is "1st ORDER BY term out of range" and the statement does
   /// not even prepare.
@@ -632,7 +632,7 @@ class MeshStore {
     //
     // `rowid DESC` breaks ties: `ts` has second-to-millisecond resolution and a
     // burst parks several rows inside one tick, so without it "newest" is
-    // whatever sqlite feels like returning. Insertion order is the real
+    // whatever the database feels like returning. Insertion order is the real
     // tiebreak and the table has a rowid.
     for (final r in db.select(
         'SELECT am,target,sender,wire,ts FROM mesh_store '

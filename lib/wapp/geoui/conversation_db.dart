@@ -1,5 +1,5 @@
 /*
- * Durable conversation history — one SQLCipher database per wapp.
+ * Durable conversation history — one zxdb database per wapp.
  *
  * History used to be a single `messages/<field>.json` rewritten in full on
  * every message. On an encrypted profile that file lives inside `profile.ear`,
@@ -10,8 +10,8 @@
  * kill that Android performs on any paused app. A phone lost every message it
  * had ever received, every single restart.
  *
- * A `.sqlite3` path is passthrough for the encrypted profile store, so this
- * file stays a real file that SQLCipher encrypts with the profile key (see
+ * A `.zx` path is passthrough for the encrypted profile store, so this
+ * file stays a real file that zxdb encrypts with the profile-derived password (see
  * [openProfileDb]). Writes are per-row and transactional: nothing is ever
  * rewritten wholesale, a kill mid-write cannot truncate anything, and a failure
  * to READ can no longer cause a write.
@@ -48,16 +48,16 @@ class ConversationDb {
   /// signals the caller MUST NOT treat as "empty".
   static ConversationDb open(String absPath) {
     // A wapp that has never stored anything has no data directory yet, and
-    // sqlite reports that as a bare "unable to open database file".
+    // the database reports that as a bare "unable to open database file".
     final slash = absPath.lastIndexOf('/');
     if (slash > 0) {
       final dir = fs.directory(absPath.substring(0, slash));
       if (!dir.existsSync()) dir.createSync(recursive: true);
     }
-    // openProfileDb sets a busy_timeout, so a lock met at the page->headless
-    // handoff -- the SQLite checkpoint the other engine is finishing -- is
-    // WAITED OUT at the C level rather than thrown. That timeout runs
-    // independently of this isolate (it is the OS releasing a file lock), so it
+    // zxdb takes one writer at a time across isolates (`<file>.zx-lock`), so
+    // a commit the other engine is finishing at the page->headless handoff is
+    // WAITED OUT by the lock rather than thrown. The lock is released by the
+    // other isolate, not by this one, so it
     // needs no Dart-level retry, and a Dart sleep here would only block the UI
     // without letting anything clear. This is where a message used to be lost:
     // the open threw, the store fell to memory-only, and the bubble went
@@ -77,7 +77,7 @@ class ConversationDb {
   /// reading `x:<sealed> t:message f:X3ARK d:X1VCVM ts:... n:2/3 sig:...`.
   ///
   /// SQL narrows first and Dart decides only on what survives, because the
-  /// predicate cannot run in sqlite and loading every row to filter in Dart is
+  /// predicate cannot run in SQL and loading every row to filter in Dart is
   /// exactly the shape docs/performance.md section 8.7 blames for an OOM on
   /// this hardware. `LIKE` on both markers throws nearly everything away
   /// before a single body is decoded, and the deletes go in one statement.
