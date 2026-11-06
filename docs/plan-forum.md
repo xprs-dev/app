@@ -18,8 +18,14 @@ on the inline TCP lane alike; `share`, `mirror`, `unmirror` and `sync` are
 `/api/rooms` actions with an administration page for them; the server wires
 it all and ticks the mirror once a minute. Verified on two instances on one
 machine: a topic posted at A listed at B, a reply made at B counted at A, a
-moderator's removal signed at A honoured at B. Phase 4 (directory line,
-`m:try`, the per-group ceiling, the adaptive period) is not started.
+moderator's removal signed at A honoured at B. Phase 4 done the same day
+except the directory line: a shared room's miss names its other holders in
+`404 m:try` (12.9); the archive keeps a byte ceiling per `X5` group, oldest
+first, its acts and identity never (10.9.3, `XprsArchive.maxGroupBytes`);
+the mirror's period is the adaptive ladder of §3; the page warns before a
+private room is shared. The XDIR1 directory line (10.9.1) waits on the core
+having a directory at all: no station writes one today, so there is nothing
+to add a line to.
 Decisions marked **(F1)…(F4)** are listed at the end; F2 and F3 were taken as
 recommended. Read `XPRS.md` 10.10,
 10.10.1, 12.9.3, 18 and `API-HTTP.md` first; this plan adds almost nothing to
