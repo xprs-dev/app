@@ -24,6 +24,7 @@ import '../util/nostr_key_generator.dart';
 import '../services/log_service.dart';
 import '../services/preferences_service.dart';
 import 'identity_backup.dart';
+import 'legacy_sqlite_sweep.dart';
 import 'profile_db.dart';
 import 'secure_file.dart';
 import 'profile_encryption.dart';
@@ -134,6 +135,9 @@ class ProfileService {
     }
     final root = xprsRootStorage();
     await root.createDirectory('');
+    // The SQLite files of earlier builds are not read (no migration); the
+    // first start of this build deletes them in the background.
+    if (!kIsWeb) unawaited(sweepLegacySqlite(profileStorageRoot()));
     final existing = await root.readJson(_profilesFile);
     if (existing != null) {
       final list = existing['profiles'];

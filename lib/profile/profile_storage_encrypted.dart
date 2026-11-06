@@ -26,6 +26,9 @@ import 'dart:typed_data';
 
 import 'package:encrypted_archive/encrypted_archive.dart';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+import 'legacy_sqlite_sweep.dart';
 import 'profile_db.dart';
 import 'profile_storage.dart';
 import 'profile_storage_fs.dart';
@@ -120,6 +123,12 @@ class EncryptedProfileStorage extends ProfileStorage {
       argon2MemoryCost: 8192, // 8 MiB
       argon2Parallelism: 1,
     );
+    // An earlier build wrote profile.ear as a SQLite file; it is not read
+    // (no migration), and leaving it would fail every open and lock the
+    // person out of their profile: it goes, and a new archive starts.
+    if (!kIsWeb && await _fileExists(path) && isSqliteFile(path)) {
+      await _fs.delete(path.substring(_basePath.length + 1));
+    }
     final archive = await _fileExists(path)
         ? await EncryptedArchive.open(path, earPassword)
         : await EncryptedArchive.create(path, earPassword, options: options);

@@ -33,12 +33,26 @@ jobs:
 
       # The web-build rule is also checked in reticulum-dart (a path dependency
       # of the app); without the sibling the guard silently checks less.
+      - name: Library branch
+        id: libref
+        shell: bash
+        run: |
+          b="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          if git ls-remote --exit-code --heads https://github.com/xprs-dev/reticulum-dart.git "$b" >/dev/null 2>&1; then
+            echo "ref=$b" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout reticulum-dart (sibling rules)
         uses: actions/checkout@v4
         continue-on-error: true
         with:
           repository: xprs-dev/reticulum-dart
           path: reticulum-dart
+          # The library branch of the same name when there is one, else main
+          # (resolved in the step before).
+          ref: ${{ steps.libref.outputs.ref }}
 
       - uses: dart-lang/setup-dart@v1
 

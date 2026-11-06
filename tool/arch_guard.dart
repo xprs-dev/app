@@ -51,8 +51,8 @@ class Rule {
 // ── the web build ───────────────────────────────────────────────────────────
 const webBuildRule = Rule(
   id: 'no-native-import-outside-io-file',
-  why: 'lib/ also compiles with dart2js (flutter build web). dart:ffi and '
-      'the FFI half of package:sqlite3 are hard compile errors there; '
+  why: 'lib/ also compiles with dart2js (flutter build web). dart:ffi is '
+      'a hard compile error there; '
       'dart:io and dart:isolate compile and then throw on every call. Put '
       'the native half in a *_io.dart behind a conditional export '
       '(lib/platform/fs.dart, lib/profile/profile_db.dart are the pattern) '
@@ -63,7 +63,21 @@ const webBuildRule = Rule(
   // An unconditional import: the URI and its show/hide/as on ONE line ending
   // in `;`. A conditional one continues on the next line with `if (...)`, so
   // it does not end here and is not matched.
-  pattern: r'''^\s*import\s+'(dart:io|dart:ffi|dart:isolate|package:sqlite3/sqlite3\.dart|package:sqlite3/open\.dart)'(\s+(show|hide|as)\s+[^;]*)?;''',
+  pattern: r'''^\s*import\s+'(dart:io|dart:ffi|dart:isolate)'(\s+(show|hide|as)\s+[^;]*)?;''',
+);
+
+// ── SQLite stays out ─────────────────────────────────────────────────────
+const noSqliteRule = Rule(
+  id: 'no-sqlite',
+  why: 'Every database is zxdb, through XDb (package:reticulum; '
+      'docs/reusable.md): pure Dart on every platform, encrypted with the '
+      'profile, compacted by itself. SQLite was removed on 2026-11-06 with '
+      'its native libraries, SQLCipher and the per-isolate loader '
+      'overrides; a store that brings it back brings all of that back.',
+  appliesTo: ['lib/**', 'test/**', 'tool/**', 'packages/**'],
+  pattern: r'''^\s*import\s+'package:(sqlite3|sqlcipher_flutter_libs|sqlite3_flutter_libs|drift)/''',
+  message: 'Open the store with openProfileDb (or dbOpener in the library) '
+      'and keep its SQL: zxdb speaks SQLite\'s dialect.',
 );
 
 const rules = <Rule>[
@@ -213,16 +227,17 @@ const rules = <Rule>[
     message: 'If it must be this fast, say what it costs per hour with the '
         'screen off, and gate it on something being awake to read it.',
   ),
+  noSqliteRule,
   Rule(
     id: 'no-store-work-in-ui-layer',
-    why: 'sqlite is pure CPU with no plugin behind it, so it belongs to a '
+    why: 'zxdb is pure CPU with no plugin behind it, so it belongs to a '
         'service or a worker, never to a widget or a wapp-engine tick. On the '
         'UI isolate it is a dropped frame; on a tick it is a dropped frame '
         'every tick (docs/performance.md 8.1).',
     appliesTo: ['lib/ui/**', 'lib/launcher/**', 'lib/wapp/**'],
     // A module whose NAME says it owns a store is where the statements
     // belong, wherever it happens to sit in the tree. The rule is about a
-    // widget reaching for sqlite, not about a directory.
+    // widget reaching for the database, not about a directory.
     exempt: [
       'lib/**/*_db.dart',
       'lib/**/*_store.dart',
@@ -304,6 +319,7 @@ const rules = <Rule>[
 /// unless the library does.
 const siblingRules = <Rule>[
   webBuildRule,
+  noSqliteRule,
 ];
 
 const wappRules = <Rule>[
@@ -379,6 +395,8 @@ void main(List<String> args) {
 
   scan(Directory('lib'), rules, '');
   scan(Directory('tool'), rules, '');
+  scan(Directory('test'), rules, '');
+  scan(Directory('packages'), rules, '');
   final sibling = Directory('../reticulum-dart');
   if (sibling.existsSync()) {
     scan(sibling, siblingRules, '../reticulum-dart/', inner: true);

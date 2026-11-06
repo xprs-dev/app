@@ -19,11 +19,25 @@ jobs:
         with:
           path: xprs
 
+      - name: Library branch
+        id: libref
+        shell: bash
+        run: |
+          b="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          if git ls-remote --exit-code --heads https://github.com/xprs-dev/reticulum-dart.git "$b" >/dev/null 2>&1; then
+            echo "ref=$b" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout reticulum-dart (path dependency)
         uses: actions/checkout@v4
         with:
           repository: xprs-dev/reticulum-dart
           path: reticulum-dart
+          # The library branch of the same name when there is one, else main
+          # (resolved in the step before).
+          ref: ${{ steps.libref.outputs.ref }}
 
       - uses: subosito/flutter-action@v2
         with:
