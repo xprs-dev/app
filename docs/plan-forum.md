@@ -1,7 +1,10 @@
 # Plan: a Forum on the XPRS station
 
-Status: **proposal, 2026-11-06**. Nothing here is implemented. Decisions
-marked **(F1)…(F4)** are open and listed at the end. Read `XPRS.md` 10.10,
+Status: **proposal, 2026-11-06; Phase 1 (the text) done the same day**:
+XPRS.md 18.5 Comments, the shared-room paragraph in 10.10.1 and the section
+37 rows; API-HTTP.md room `kind`, the `share`, `mirror` and `unmirror`
+actions, the `topics` index and `root=` on history. Nothing is implemented in
+code. Decisions marked **(F1)…(F4)** are open and listed at the end. Read `XPRS.md` 10.10,
 10.10.1, 12.9.3, 18 and `API-HTTP.md` first; this plan adds almost nothing to
 them, which is the point.
 
