@@ -1,31 +1,21 @@
 // Durable conversation history: the properties that had to hold for a phone
 // to stop losing every message it had ever received.
-import 'dart:ffi';
 import 'dart:io';
 
+import 'package:xprs/profile/profile_db.dart' show openPlainDb;
 import 'package:xprs/services/log_service.dart';
 import 'package:xprs/wapp/geoui/conversation_db.dart';
 import 'package:xprs/wapp/geoui/conversation_store.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
-import 'package:sqlite3/sqlite3.dart';
 
 void main() {
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-        OperatingSystem.linux,
-        () => DynamicLibrary.open('libsqlite3.so.0'),
-      );
-    }
-  });
 
   late Directory tmp;
   late String dbPath;
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('convo_db_test');
-    dbPath = '${tmp.path}/conversations.sqlite3';
+    dbPath = '${tmp.path}/conversations.zx';
   });
 
   tearDown(() {
@@ -138,7 +128,7 @@ void main() {
     // Simulate the older schema exactly: no ckey column, one stored message.
     final legacyDb = ConversationDb.open(dbPath);
     legacyDb.close();
-    final raw = sqlite3.open(dbPath);
+    final raw = openPlainDb(dbPath);
     raw.execute('DROP INDEX IF EXISTS msg_key');
     raw.execute('ALTER TABLE messages DROP COLUMN ckey');
     raw.execute(
@@ -266,7 +256,7 @@ void main() {
     db.close();
 
     // Strip it the way an older build would have left the row.
-    final raw = sqlite3.open(dbPath);
+    final raw = openPlainDb(dbPath);
     raw.execute(
         "UPDATE threads SET meta = json_remove(meta, '\$.lastLine') "
         "WHERE field='conversations'");
@@ -482,7 +472,7 @@ void main() {
   // The empty box: at the page->headless handoff the DB open met a lock and
   // threw, and the store fell to memory-only for good — a message arriving
   // then was written nowhere while its notification fired. openProfileDb waits
-  // a lock out now, and ConversationDb.open retries a transient SqliteException
+  // a lock out now, and ConversationDb.open retries a transient XDbException
   // rather than giving up. A normal open must be unaffected.
 
   test('open on a fresh path returns a usable, writable database', () {

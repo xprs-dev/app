@@ -9,25 +9,19 @@
  * delivered makes the mailbox leave ANOTHER copy with an archiver and leaves
  * the retry ladder with nothing to stop it.
  */
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_outbox.dart';
 
 void main() {
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   late Directory tmp;
   late String path;
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('xprs_outbox');
-    path = '${tmp.path}/xprs_outbox.sqlite3';
+    path = '${tmp.path}/xprs_outbox.zx';
     XprsOutbox.debugReset();
     XprsOutbox.instance.init(path);
   });

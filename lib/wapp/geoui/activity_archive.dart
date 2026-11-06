@@ -8,11 +8,10 @@
 // Native only (SQLite via dart:ffi); every call is a no-op on web.
 
 import 'dart:convert';
-import '../../services/db_bytes.dart';
 import 'package:file/file.dart';
 
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb, XRows, XRow;
 
 import '../../services/log_service.dart';
 import '../../profile/profile_db.dart';
@@ -32,10 +31,10 @@ class ActivityArchive {
     () => ActivityArchive._(dataDir.getAbsolutePath(fileName)),
   );
 
-  static const String _fileName = 'activity.sqlite3';
+  static const String _fileName = 'activity.zx';
 
   final String _dbPath;
-  CommonDatabase? _db;
+  XDb? _db;
   bool _failed = false;
 
   static const int _maxAgeMs = 183 * 24 * 60 * 60 * 1000; // 6 months
@@ -59,7 +58,7 @@ class ActivityArchive {
   // event from several relays is byte-identical, so we keep exactly one copy.
   final Set<String> _seenMids = {};
 
-  CommonDatabase? _ensureDb() {
+  XDb? _ensureDb() {
     if (kIsWeb || _failed) return null;
     final existing = _db;
     if (existing != null) return existing;
@@ -69,9 +68,6 @@ class ActivityArchive {
       final db = openProfileDb(_dbPath);
       // INCREMENTAL auto-vacuum (must precede table creation) so firehose
       // deletes actually shrink the file, keeping it under the byte ceiling.
-      db.execute('PRAGMA auto_vacuum = INCREMENTAL;');
-      db.execute('PRAGMA journal_mode = WAL;');
-      db.execute('PRAGMA synchronous = NORMAL;');
       db.execute('''
         CREATE TABLE IF NOT EXISTS activity(
           id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -320,7 +316,7 @@ class ActivityArchive {
   List<Map<String, dynamic>> recent({int limit = 300}) {
     final db = _ensureDb();
     if (db == null) return const [];
-    ResultSet rows;
+    XRows rows;
     try {
       rows = db.select(
         'SELECT t,dir,from_call,author_pubkey,text,convo,kind,via,meta,lat,lon,time,mid,parent,pop,source,batch '
@@ -377,7 +373,7 @@ class ActivityArchive {
     }
   }
 
-  List<Map<String, dynamic>> _rowsToPosts(ResultSet rows) {
+  List<Map<String, dynamic>> _rowsToPosts(XRows rows) {
     final out = <Map<String, dynamic>>[];
     for (final r in rows) {
       final m = <String, dynamic>{
@@ -535,7 +531,7 @@ class ActivityArchive {
   List<Map<String, dynamic>> repliesFor(String mid, {int limit = 300}) {
     final db = _ensureDb();
     if (db == null || mid.isEmpty) return const [];
-    ResultSet rows;
+    XRows rows;
     try {
       rows = db.select(
         'SELECT t,dir,from_call,author_pubkey,text,convo,kind,via,meta,lat,lon,time,mid,parent,pop '
@@ -610,7 +606,7 @@ class ActivityArchive {
   Map<String, dynamic>? byMid(String mid) {
     final db = _ensureDb();
     if (db == null || mid.isEmpty) return null;
-    ResultSet rows;
+    XRows rows;
     try {
       rows = db.select(
         'SELECT t,dir,from_call,author_pubkey,text,convo,kind,via,meta,lat,lon,time,mid,parent,pop '
@@ -733,7 +729,7 @@ class ActivityArchive {
   List<Map<String, dynamic>> byAuthor(String callsign, {int limit = 200}) {
     final db = _ensureDb();
     if (db == null || callsign.isEmpty) return const [];
-    ResultSet rows;
+    XRows rows;
     try {
       rows = db.select(
         'SELECT t,dir,from_call,author_pubkey,text,convo,kind,via,meta,lat,lon,time,mid,parent,pop '
@@ -884,7 +880,7 @@ class ActivityArchive {
     }
   }
 
-  void _pruneOnce(CommonDatabase db) {
+  void _pruneOnce(XDb db) {
     // Protected (followed / follower) authors are never firehose-evicted.
     final prot = protectedAuthors?.call() ?? const <String>{};
     final protList = prot.toList();
@@ -906,14 +902,14 @@ class ActivityArchive {
       }
     }
 
-    // Row + byte caps run periodically — a firehose floods within one session,
+    // XRow + byte caps run periodically — a firehose floods within one session,
     // so a once-per-session prune is not enough. This MUST stay cheap: it runs
     // on the add() hot path (the engine thread), so it does O(1) DELETEs and
     // converges over successive calls rather than looping-until-under.
     if (++_addsSincePrune < 400) return;
     _addsSincePrune = 0;
     try {
-      // Row cap: keep the newest _maxRows unprotected rows.
+      // XRow cap: keep the newest _maxRows unprotected rows.
       db.execute(
         'DELETE FROM activity WHERE id NOT IN '
         '(SELECT id FROM activity ORDER BY t DESC LIMIT ?)$notProt',
@@ -941,7 +937,6 @@ class ActivityArchive {
             '(SELECT id FROM activity WHERE 1=1$notProt ORDER BY t ASC LIMIT ?)',
             [...protList, drop],
           );
-          db.execute('PRAGMA incremental_vacuum;');
         }
       }
     } catch (e) {
@@ -952,7 +947,7 @@ class ActivityArchive {
   /// On-disk database size (page_count × page_size) — O(1), so it is safe to
   /// call on the add() hot path. With INCREMENTAL auto-vacuum the freed pages
   /// return after a delete, so this tracks the real file the user cares about.
-  int _dataBytes(CommonDatabase db) => sqliteDbBytes(db) ?? 0;
+  int _dataBytes(XDb db) => db.liveBytes;
 
   /// Wipe every archived post (the "Clear feed" action). Likes/saved rows are
   /// kept — a user's bookmarks shouldn't vanish with a feed clear.
@@ -995,8 +990,6 @@ class ActivityArchive {
     if (db == null) return;
     try {
       db.execute('DELETE FROM activity;');
-      db.execute('PRAGMA wal_checkpoint(TRUNCATE);');
-      db.execute('PRAGMA incremental_vacuum;');
       _recent.clear();
     } catch (e) {
       debugPrint('ActivityArchive: clear failed: $e');

@@ -3,12 +3,10 @@
 library;
 
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 
 import 'package:xprs/profile/profile_crypto.dart';
 import 'package:xprs/profile/profile_db.dart';
@@ -19,12 +17,6 @@ const _nsec =
     'nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5';
 
 void main() {
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   late Directory tempRoot;
   late ProfileSecrets secrets;
@@ -57,17 +49,19 @@ void main() {
       // filesystem side
       expect(EncryptedProfileStorage.isPassthroughPath('keyslot.json'), isTrue);
       expect(EncryptedProfileStorage.isPassthroughPath('profile.ear'), isTrue);
-      expect(
-          EncryptedProfileStorage.isPassthroughPath('profile.ear-wal'), isTrue);
+      expect(EncryptedProfileStorage.isPassthroughPath('profile.ear.zx-lock'),
+          isTrue);
       expect(EncryptedProfileStorage.isPassthroughPath('.seeded.json'), isTrue);
       expect(EncryptedProfileStorage.isPassthroughPath('wapps/chat/app.wasm'),
           isTrue);
-      expect(
-          EncryptedProfileStorage.isPassthroughPath('data/mesh.sqlite3'),
+      expect(EncryptedProfileStorage.isPassthroughPath('data/mesh.zx'), isTrue);
+      expect(EncryptedProfileStorage.isPassthroughPath('data/mesh.zx-lock'),
+          isTrue);
+      expect(EncryptedProfileStorage.isPassthroughPath('data/media/abc'),
           isTrue);
       expect(
           EncryptedProfileStorage.isPassthroughPath(
-              'data/chat/geochat.sqlite3-wal'),
+              'data/chat/geochat.zx'),
           isTrue);
       expect(EncryptedProfileStorage.isPassthroughPath('data/rns_identity.key'),
           isTrue);
@@ -141,12 +135,12 @@ void main() {
 
       await st.writeString('data/w/kv.json', '{}'); // archive
       await st.writeBytes('data/w/blob.bin', Uint8List.fromList([1, 2, 3]));
-      File('${tempRoot.path}/devices/E4/data/w/store.sqlite3')
+      File('${tempRoot.path}/devices/E4/data/w/store.zx')
         ..createSync(recursive: true)
         ..writeAsStringSync('fake-db'); // filesystem
 
       final names = (await st.listDirectory('data/w')).map((e) => e.name).toSet();
-      expect(names, containsAll({'kv.json', 'blob.bin', 'store.sqlite3'}));
+      expect(names, containsAll({'kv.json', 'blob.bin', 'store.zx'}));
 
       // root listing hides the container + keyslot
       final rootNames =

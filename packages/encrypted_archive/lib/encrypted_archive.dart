@@ -45,7 +45,6 @@
 library encrypted_archive;
 
 export 'src/archive.dart' show EncryptedArchive;
-export 'src/sqlite_loader.dart' show SQLiteLoader;
 export 'src/compression.dart' show Compression, StreamChunker;
 export 'src/entry.dart' show ArchiveEntry, ArchiveStats;
 export 'src/exceptions.dart';

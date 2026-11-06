@@ -3,27 +3,19 @@
  * redacted text survive a restart and come back most-recently-used first, so a
  * tap can try them before prompting. A restart is close() + a fresh init().
  */
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_passphrases.dart';
 
 void main() {
   late Directory tmp;
   late String path;
 
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('xprspass');
-    path = '${tmp.path}/xprs_passphrases.sqlite3';
+    path = '${tmp.path}/xprs_passphrases.zx';
     XprsPassphrases.instance.init(path);
   });
 

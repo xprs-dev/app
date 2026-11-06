@@ -19,7 +19,6 @@ import 'package:xprs/services/social/relay_node.dart';
 import 'package:xprs/util/nostr_crypto.dart';
 import 'package:xprs/util/nostr_event.dart';
 
-import 'sqlite_loader.dart';
 
 const _rnsd = '/home/brito/.platformio/penv/bin/rnsd';
 
@@ -118,7 +117,6 @@ NostrEvent _ev(NostrKeyPair kp,
 }
 
 Future<void> main(List<String> args) async {
-  ensureSqlite();
   final port = args.isNotEmpty ? int.parse(args[0]) : 5560;
   final cfg = '/tmp/rnsd_relay_test';
 

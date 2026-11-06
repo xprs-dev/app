@@ -22,7 +22,7 @@ import 'dart:convert';
 import 'package:file/file.dart';
 import 'dart:typed_data';
 
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb, XRow;
 
 import '../../profile/profile_db.dart';
 
@@ -77,7 +77,7 @@ class MeshStore {
   MeshStore._();
   static final MeshStore instance = MeshStore._();
 
-  CommonDatabase? _db;
+  XDb? _db;
   int quotaBytes = 100 * 1024 * 1024;
 
   /// Whether this device carries other people's mail at all.
@@ -102,7 +102,6 @@ class MeshStore {
     try {
       fs.directory(fs.file(path).parent.path).createSync(recursive: true);
       final db = openProfileDb(path);
-      db.execute('PRAGMA journal_mode=WAL');
       db.execute('''
         CREATE TABLE IF NOT EXISTS mesh_store(
           am TEXT PRIMARY KEY,
@@ -313,7 +312,7 @@ class MeshStore {
   /// receipt ends custody — so the row stays `state = 0` and these two columns
   /// are what stop it being re-aired every time the recipient's beacon lands,
   /// which on a live bearer is every thirty seconds.
-  static void _migrateReleaseCols(CommonDatabase db) {
+  static void _migrateReleaseCols(XDb db) {
     final cols = db
         .select('PRAGMA table_info(mesh_store)')
         .map((r) => r['name'] as String)
@@ -334,7 +333,7 @@ class MeshStore {
   /// REASSEMBLED message (7.6), whose identifier hashes plaintext a holder of
   /// sealed parts does not have, so before this a sealed split message could
   /// never be released and was re-aired until the seven-day sweep.
-  static void _migrateSetKey(CommonDatabase db) {
+  static void _migrateSetKey(XDb db) {
     final cols = db
         .select('PRAGMA table_info(mesh_store)')
         .map((r) => r['name'] as String)
@@ -352,13 +351,13 @@ class MeshStore {
   /// custodians re-aired the same messages for ever, while a message handed
   /// over in a session was delivered again off the air. Bare is the shape that
   /// matches a parked row; the compact lane keeps its own `am:`/`c:` names.
-  static void _migrateDeliveredKeys(CommonDatabase db) {
+  static void _migrateDeliveredKeys(XDb db) {
     db.execute(
         "UPDATE OR REPLACE received_ams SET am = substr(am, 4) "
         "WHERE am LIKE 'id:%'");
   }
 
-  static void _migratePrioToUrg(CommonDatabase db) {
+  static void _migratePrioToUrg(XDb db) {
     final cols = db
         .select('PRAGMA table_info(mesh_store)')
         .map((r) => r['name'] as String)
@@ -593,7 +592,7 @@ class MeshStore {
     final out = <MeshPendingMsg>[];
     final seen = <String>{};
 
-    void take(Row r) {
+    void take(XRow r) {
       final key = r['am'] as String;
       if (!seen.add(key)) return;
       out.add(MeshPendingMsg(

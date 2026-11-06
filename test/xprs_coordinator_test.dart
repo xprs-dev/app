@@ -20,8 +20,6 @@ import 'package:xprs/services/xprs/xprs_sig.dart';
 import 'package:xprs/services/xprs/xprs_id.dart';
 import 'package:xprs/util/nostr_crypto.dart';
 import 'package:hex/hex.dart';
-import 'package:sqlite3/open.dart';
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -79,10 +77,6 @@ void main() {
   late FakeBearer ble, lan, rns, lora;
   late XprsPublisher pub;
 
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   setUp(() {
     ble = FakeBearer('ble5', archive: 'ble');
@@ -406,7 +400,7 @@ void _queued() {
       tmp = Directory.systemTemp.createTempSync('xprsrooms');
       a
         ..selfCallsign = 'X1SELF'
-        ..init('${tmp.path}/a.sqlite3');
+        ..init('${tmp.path}/a.zx');
       XprsIngest.policy = const XprsArchivePolicy(followRooms: true);
     });
     tearDown(() {

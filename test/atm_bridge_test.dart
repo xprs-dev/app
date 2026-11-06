@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 
 import 'package:xprs/profile/profile_storage.dart';
 import 'package:xprs/profile/profile_storage_fs.dart';
@@ -12,12 +10,6 @@ import 'package:xprs/wapp/coin/coin_host_bridge.dart';
 import 'package:reticulum/reticulum.dart';
 
 void main() {
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   final temps = <Directory>[];
   (ProfileStorage, String) freshStore() {

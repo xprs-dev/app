@@ -4,16 +4,14 @@
 // It seeds the NOSTR hub's own store with a signed post from an author this
 // device follows: exactly what the hub would be holding after pulling that post
 // off a relay. On the next app start the follows mirror should copy it into the
-// SERVED store (social.sqlite3) at the followed tier, which is what RelayNode
+// SERVED store (social.zx) at the followed tier, which is what RelayNode
 // hands to other peers. That is the "cache what you follow and serve it" claim,
 // checked from the outside.
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reticulum/reticulum.dart';
-import 'package:sqlite3/open.dart';
 
 const _dir = '/home/brito/.local/share/aurora/devices/X16JK8/data';
 const _priv =
@@ -25,8 +23,6 @@ void main() {
   final live = Directory(_dir).existsSync();
 
   test('seed a followed author post into the hub store', () {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
 
     final pub = NostrCrypto.derivePublicKey(_priv);
     final ev = NostrEvent(
@@ -35,11 +31,11 @@ void main() {
       kind: 1,
       tags: const [],
       content: 'Mirror test: a post from someone this device follows. It must '
-          'land in social.sqlite3 at the followed tier and be servable to peers.',
+          'land in social.zx at the followed tier and be servable to peers.',
     );
     ev.sign(_priv);
 
-    final hub = RelayEventStore.open('$_dir/nostr_feed.sqlite3');
+    final hub = RelayEventStore.open('$_dir/nostr_feed.zx');
     final stored = hub.put(ev, tier: 1);
     hub.close();
 

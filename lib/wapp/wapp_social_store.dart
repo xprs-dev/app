@@ -13,7 +13,7 @@
  */
 
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb, XRow;
 
 import '../profile/profile_db.dart';
 
@@ -22,18 +22,18 @@ class WappSocialStore {
   static final WappSocialStore instance = WappSocialStore._();
 
   /// Cache of open databases keyed by wapp directory path.
-  final Map<String, CommonDatabase> _dbs = {};
+  final Map<String, XDb> _dbs = {};
 
   /// Open (or reuse) the social database for a specific wapp.
   /// [wappDirPath] is the absolute path to the wapp's package
   /// directory (e.g. `~/.local/share/xprs/devices/X1/apps/maps/`
   /// or `<repo>/wapps/maps/`).
-  CommonDatabase? open(String wappDirPath) {
+  XDb? open(String wappDirPath) {
     if (kIsWeb) return null;
     if (_dbs.containsKey(wappDirPath)) return _dbs[wappDirPath]!;
 
     try {
-      final dbPath = '$wappDirPath/social.sqlite3';
+      final dbPath = '$wappDirPath/social.zx';
       final db = openProfileDb(dbPath);
       _migrate(db);
       _dbs[wappDirPath] = db;
@@ -43,7 +43,7 @@ class WappSocialStore {
     }
   }
 
-  void _migrate(CommonDatabase db) {
+  void _migrate(XDb db) {
     db.execute('''
       CREATE TABLE IF NOT EXISTS reactions (
         id         TEXT PRIMARY KEY,
@@ -173,7 +173,7 @@ class WappSocialStore {
     return [for (final row in r) _rowToMap(row)];
   }
 
-  Map<String, dynamic> _rowToMap(Row row) {
+  Map<String, dynamic> _rowToMap(XRow row) {
     final map = <String, dynamic>{};
     for (final col in row.keys) {
       map[col] = row[col];

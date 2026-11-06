@@ -4364,20 +4364,15 @@ class RnsService {
             );
           }
           if (base != null && nostrOn) {
-            final feedPath = '${base}nostr_feed.sqlite3';
+            final feedPath = '${base}nostr_feed.zx';
             // ignore: discarded_futures
             NostrClient.spawn(
                   storePath: feedPath,
                   persistPath: '${base}nostr_relays.json',
                   selfPubHex: selfPubHex,
-                  // The sqlite3 loader override is PER-ISOLATE. XPRS bundles
-                  // SQLCipher (encrypted profiles), so without this the engine
-                  // isolate looked for a libsqlite3.so the app does not ship,
-                  // threw, and the entire NOSTR pipeline — internet relays
-                  // included — never started. Silently.
-                  sqliteLibrary: engineSqliteLibrary(),
-                  // …and inside an encrypted profile the feed is real user
-                  // content: key it like every other profile database.
+                  // Inside an encrypted profile the feed is real user content:
+                  // its password, like every other profile database's (the
+                  // engine isolate cannot reach the keyring).
                   dbKeyHex: profileDbKeyHex(feedPath),
                 )
                 .then((c) {
@@ -9233,7 +9228,7 @@ class RnsService {
       if (prefs != null) {
         final archive = ActivityArchive.forStorage(
           wappDataStorageFor(prefs, 'social'),
-          fileName: 'social_following.sqlite3',
+          fileName: 'social_following.zx',
         );
         archive.addAll([
           for (final event in batch)
@@ -11607,8 +11602,7 @@ class RnsService {
     final outPath = '$dir/$group/$leaf';
 
     final path = await exportArchiveFile(
-      dbPath: archive.dbPath,
-      storageKey: key,
+      blobPath: archive.blobPathOf(key),
       outPath: outPath,
     );
     if (path == null) {

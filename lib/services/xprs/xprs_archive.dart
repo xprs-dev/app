@@ -26,11 +26,10 @@ import 'dart:async';
 import 'package:file/file.dart';
 import 'dart:typed_data';
 
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb, XStatement;
 
 import '../../profile/profile_db.dart';
 import '../../util/nostr_crypto.dart';
-import '../db_bytes.dart';
 import '../log_service.dart';
 import '../receive/core_state.dart';
 import 'xprs_id.dart';
@@ -71,7 +70,7 @@ class XprsArchive {
   XprsArchive._();
   static final XprsArchive instance = XprsArchive._();
 
-  CommonDatabase? _db;
+  XDb? _db;
   bool get ready => _db != null;
 
   /// The stored packet whose §5 identifier is [id], or null when the spool
@@ -152,9 +151,6 @@ class XprsArchive {
       final db = openProfileDb(path);
       // INCREMENTAL auto-vacuum must precede table creation, or deletes never
       // shrink the file and the byte cap caps nothing.
-      db.execute('PRAGMA auto_vacuum = INCREMENTAL;');
-      db.execute('PRAGMA journal_mode = WAL;');
-      db.execute('PRAGMA synchronous = NORMAL;');
       db.execute('''
         CREATE TABLE IF NOT EXISTS packets(
           id     TEXT PRIMARY KEY,
@@ -426,7 +422,7 @@ class XprsArchive {
   /// names, and remember the identifiers. Only the author's own rows: the
   /// delete is keyed on the signer's `fromc`, so a withdrawal can never reach
   /// somebody else's packet.
-  void _purgeWithdrawn(CommonDatabase db, CommonPreparedStatement tomb, XprsPacket p,
+  void _purgeWithdrawn(XDb db, XStatement tomb, XprsPacket p,
       String fromc, int nowMs) {
     final kind = (p['remove'] ?? '').trim().toLowerCase();
     if (kind.isEmpty || !_withdrawable.contains(kind)) return;
@@ -484,7 +480,7 @@ class XprsArchive {
 
   /// True when [p] is an original or an edit that a verified withdrawal of
   /// the same author already destroyed. A withdrawal itself is never refused.
-  bool _isWithdrawn(CommonDatabase db, XprsPacket p, String fromc) {
+  bool _isWithdrawn(XDb db, XprsPacket p, String fromc) {
     if (p.has('remove') || !_withdrawable.contains(p.type)) return false;
     final root = (p['edit'] ?? '').trim().toLowerCase();
     final ids = [xprsIdentifier(p), if (_idRe.hasMatch(root)) root];
@@ -512,7 +508,7 @@ class XprsArchive {
   /// replayed old page never displaces a newer reading; served by
   /// idx_pk_from(fromc, pts). A row a public archiver keeps for strangers is
   /// on another shelf and not touched.
-  static void _capFollowedPresence(CommonDatabase db, String fromc) {
+  static void _capFollowedPresence(XDb db, String fromc) {
     if (fromc.isEmpty) return;
     db.execute(
         'DELETE FROM packets WHERE fromc = ? AND tier = ? '
@@ -547,7 +543,7 @@ class XprsArchive {
   /// rows of each kind per station, for ever.
   static const _identityFields = ['k', 'nick', 'file', 'm'];
 
-  static void _collapseIdentities(CommonDatabase db, String fromc) {
+  static void _collapseIdentities(XDb db, String fromc) {
     if (fromc.isEmpty) return;
     final rows = db.select(
         "SELECT id, wire, sig FROM packets WHERE type = 'identity' AND fromc = ? "
@@ -630,7 +626,7 @@ class XprsArchive {
     return to == _selfBase.toUpperCase() || selfAlsoKnownAs.contains(to);
   }
 
-  void _prune(CommonDatabase db, {int? nowMs}) {
+  void _prune(XDb db, {int? nowMs}) {
     final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
     // Age, once per session. Our own side of the conversation is exempt, the
     // same way the byte cap below already exempts it: this station IS its own
@@ -714,7 +710,6 @@ class XprsArchive {
           'AND md.pos >= 0 AND (md.until IS NULL OR md.until >= ?)) THEN 3 '
           'ELSE 2 END) ASC, pts ASC LIMIT ?)',
           [now, drop]);
-      db.execute('PRAGMA incremental_vacuum;');
     } catch (e) {
       LogService.instance.add('XPRS archive: cap prune failed: $e');
     }
@@ -790,33 +785,16 @@ class XprsArchive {
     return db.updatedRows;
   }
 
-  /// What the spool occupies on disk, for the Archiver screen. Two PRAGMAs.
-  int get spoolBytes {
-    final db = _db;
-    return db == null ? 0 : _dataBytes(db);
-  }
+  /// What the spool occupies on disk, for the Archiver screen: the file,
+  /// history included until its next compaction.
+  int get spoolBytes => _db?.bytes ?? 0;
 
-  /// Where the spool lives, for [_dataBytes]'s fallback.
+  /// Where the spool lives.
   String? _path;
 
-  int _dataBytes(CommonDatabase db) {
-    final pages = sqliteDbBytes(db);
-    if (pages != null) return pages;
-    // The pragma answered nothing usable (it returns a STRING on Android,
-    // which is how this reported "0 B" over 156,000 rows). Stat the file
-    // instead -- the same number by another route, WAL included, since pages
-    // waiting in the log are on the disk too.
-    final path = _path;
-    if (path == null || path == ':memory:') return 0;
-    var total = 0;
-    for (final suffix in const ['', '-wal']) {
-      try {
-        final f = fs.file('$path$suffix');
-        if (f.existsSync()) total += f.statSync().size;
-      } catch (_) {}
-    }
-    return total;
-  }
+  /// The live data, for the byte budget (XDb.liveBytes: history the next
+  /// compaction drops must not be paid for by evicting live rows).
+  int _dataBytes(XDb db) => db.liveBytes;
 
   // ── mailbox declarations (section 13.12) ─────────────────────────────────
 

@@ -6,11 +6,9 @@
  * real table in a temp dir because the L3/L2 distinction the forwarder
  * routes by is the table's.
  */
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_forwarder.dart';
 import 'package:xprs/services/xprs/xprs_gossip.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
@@ -32,10 +30,8 @@ void main() {
   late List<String> named;
 
   setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
     tmp = Directory.systemTemp.createTempSync('xprsfwd');
-    g.init('${tmp.path}/gossip.sqlite3');
+    g.init('${tmp.path}/gossip.zx');
   });
 
   setUp(() {

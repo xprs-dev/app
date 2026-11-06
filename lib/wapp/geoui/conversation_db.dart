@@ -24,7 +24,7 @@
 import 'dart:convert';
 import 'package:file/file.dart';
 
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb, XDbException;
 
 import '../../profile/profile_db.dart';
 import '../../services/log_service.dart';
@@ -38,13 +38,13 @@ const int kConvoMaxMessages = 500;
 class ConversationDb {
   ConversationDb._(this._db);
 
-  final CommonDatabase _db;
+  final XDb _db;
   bool _closed = false;
 
   /// Open (creating if needed) the conversation database at [absPath].
   ///
   /// Throws [ProfileLockedException] when the profile is locked and
-  /// [SqliteException] when the file is corrupt or the key is wrong. Both are
+  /// [XDbException] when the file is corrupt or the key is wrong. Both are
   /// signals the caller MUST NOT treat as "empty".
   static ConversationDb open(String absPath) {
     // A wapp that has never stored anything has no data directory yet, and
@@ -112,7 +112,6 @@ class ConversationDb {
   }
 
   void _migrate() {
-    _db.execute('PRAGMA journal_mode = WAL;');
     _db.execute('''
       CREATE TABLE IF NOT EXISTS threads (
         field       TEXT NOT NULL,

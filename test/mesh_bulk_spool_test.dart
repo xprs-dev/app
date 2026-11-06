@@ -2,7 +2,6 @@
  * MeshBulkSpool tests — offer/resume/verify/custody-relay lifecycle on a
  * temp dir, with a real MediaArchive for the origin path.
  */
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -12,24 +11,19 @@ import 'package:xprs/services/mesh/mesh_store.dart';
 import 'package:xprs/util/media_archive.dart';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 
 void main() {
   late Directory tmp;
   late MeshBulkSpool spool;
   late MediaArchive archive;
 
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('meshbulk');
     archive = MediaArchive.forDirectory(tmp.path);
     spool = MeshBulkSpool.instance;
     spool.init('${tmp.path}/bulk', archive);
-    MeshStore.instance.init('${tmp.path}/mesh.sqlite3');
+    MeshStore.instance.init('${tmp.path}/mesh.zx');
   });
 
   tearDown(() {

@@ -35,7 +35,6 @@ import 'package:xprs/services/files/file_node.dart';
 import 'package:xprs/services/files/file_transfer.dart';
 import 'package:xprs/services/update_models.dart';
 
-import 'sqlite_loader.dart';
 
 const _rnsd = '/home/brito/.platformio/penv/bin/rnsd';
 
@@ -173,7 +172,6 @@ Uint8List _artifact(int size, int seed) {
 }
 
 Future<void> main(List<String> args) async {
-  ensureSqlite();
   final port = args.isNotEmpty ? int.parse(args[0]) : 5580;
   final rnsd = await _startRnsd('/tmp/rnsd_update_test', port);
   await Future<void>.delayed(const Duration(seconds: 3));

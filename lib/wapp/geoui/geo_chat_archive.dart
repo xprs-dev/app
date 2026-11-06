@@ -22,7 +22,7 @@ import 'package:file/file.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb, XRows;
 
 import '../../profile/profile_db.dart';
 
@@ -39,10 +39,10 @@ class GeoChatArchive {
       _instances.putIfAbsent(dataDir.basePath,
           () => GeoChatArchive._(dataDir.getAbsolutePath(_fileName)));
 
-  static const String _fileName = 'geochat.sqlite3';
+  static const String _fileName = 'geochat.zx';
 
   final String _dbPath;
-  CommonDatabase? _db;
+  XDb? _db;
   bool _failed = false; // a fatal open error → operate degraded, never wipe
 
   // Keep the archive bounded (pruned with atomic DELETEs, no rewrite).
@@ -57,7 +57,7 @@ class GeoChatArchive {
 
   // ── DB lifecycle ────────────────────────────────────────────────────────
 
-  CommonDatabase? _ensureDb() {
+  XDb? _ensureDb() {
     if (kIsWeb || _failed) return null;
     final existing = _db;
     if (existing != null) return existing;
@@ -66,8 +66,6 @@ class GeoChatArchive {
       final parent = fs.file(_dbPath).parent;
       if (!parent.existsSync()) parent.createSync(recursive: true);
       final db = openProfileDb(_dbPath);
-      db.execute('PRAGMA journal_mode = WAL;'); // crash-safe, concurrent reads
-      db.execute('PRAGMA synchronous = NORMAL;');
       db.execute('''
         CREATE TABLE IF NOT EXISTS geochat(
           id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,7 +172,7 @@ class GeoChatArchive {
     final dLon = radiusKm / (111.32 * (cosLat < 1e-6 ? 1e-6 : cosLat));
     final since = sinceMs ?? 0;
 
-    ResultSet rows;
+    XRows rows;
     try {
       rows = db.select(
         'SELECT t,dir,from_call,text,kind,via,meta,lat,lon FROM geochat '
@@ -216,7 +214,7 @@ class GeoChatArchive {
 
   /// One prune per session: drop rows older than [_maxAgeMs] and cap the row
   /// count at [_maxRows]. Both are atomic DELETEs — no risky file rewrite.
-  void _pruneOnce(CommonDatabase db) {
+  void _pruneOnce(XDb db) {
     if (_prunedThisSession) return;
     _prunedThisSession = true;
     try {

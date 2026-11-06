@@ -9,10 +9,9 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
 import 'package:path/path.dart' as p;
-import 'package:sqlite3/common.dart';
+import 'package:zx/zxdb.dart';
 
 import 'compression.dart';
-import 'sqlite_loader.dart';
 import 'entry.dart';
 import 'exceptions.dart';
 import 'key_derivation.dart';
@@ -23,7 +22,7 @@ import 'schema.dart';
 /// A high-performance encrypted archive using SQLite for storage.
 class EncryptedArchive {
   final String _path;
-  final CommonDatabase _db;
+  final ZxDb _db;
   final ArchiveOptions _options;
   final KeyDerivation _keyDerivation;
   final MasterKeyMaterial _keys;
@@ -33,7 +32,7 @@ class EncryptedArchive {
 
   EncryptedArchive._({
     required String path,
-    required CommonDatabase db,
+    required ZxDb db,
     required ArchiveOptions options,
     required MasterKeyMaterial keys,
   })  : _path = path,
@@ -88,8 +87,7 @@ class EncryptedArchive {
       await parent.create(recursive: true);
     }
 
-    // Open database using platform-aware loader
-    final db = SQLiteLoader.openDatabase(path);
+    final db = openArchiveDb(path);
 
     try {
       // Configure pragmas
@@ -169,8 +167,7 @@ class EncryptedArchive {
       throw ArchiveOpenException(path, 'Archive not found');
     }
 
-    // Open database using platform-aware loader
-    final db = SQLiteLoader.openDatabase(path);
+    final db = openArchiveDb(path);
 
     try {
       // Read header
@@ -494,8 +491,7 @@ class EncryptedArchive {
 
     _db.execute(ArchiveSQL.softDeleteFile, [normalizedPath]);
 
-    final changes = _db.select('SELECT changes() as c');
-    if (changes.first['c'] as int == 0) {
+    if (_db.updatedRows == 0) {
       throw EntryNotFoundException(normalizedPath);
     }
   }
@@ -513,8 +509,7 @@ class EncryptedArchive {
     final now = DateTime.now().millisecondsSinceEpoch;
     _db.execute(ArchiveSQL.renameFile, [normalizedNew, now, normalizedOld]);
 
-    final changes = _db.select('SELECT changes() as c');
-    if (changes.first['c'] as int == 0) {
+    if (_db.updatedRows == 0) {
       throw EntryNotFoundException(normalizedOld);
     }
   }
@@ -691,7 +686,7 @@ class EncryptedArchive {
   }) async {
     _ensureOpen();
 
-    ResultSet result;
+    ZxRows result;
     if (prefix != null) {
       final normalizedPrefix = _normalizePath(prefix);
       result = _db.select(
@@ -769,8 +764,8 @@ class EncryptedArchive {
       rethrow;
     }
 
-    // Run SQLite vacuum to reclaim space
-    _db.execute('VACUUM');
+    // Reclaim the space: the file is rewritten to its live pages.
+    _db.compact();
 
     return count;
     });
@@ -923,7 +918,7 @@ class EncryptedArchive {
   /// List files (synchronous).
   List<ArchiveEntry> listFilesSync({String? prefix, bool includeDeleted = false}) {
     _ensureOpen();
-    ResultSet result;
+    ZxRows result;
     if (prefix != null) {
       result = _db.select(
         ArchiveSQL.listFilesWithPrefix,
@@ -1098,8 +1093,7 @@ class EncryptedArchive {
     final normalizedPath = _normalizePath(path);
 
     _db.execute(ArchiveSQL.softDeleteFile, [normalizedPath]);
-    final changes = _db.select('SELECT changes() as c');
-    if (changes.first['c'] as int == 0) {
+    if (_db.updatedRows == 0) {
       throw EntryNotFoundException(normalizedPath);
     }
   }
@@ -1140,12 +1134,9 @@ class EncryptedArchive {
     _db.dispose();
   }
 
-  /// Flush WAL to database file (checkpoint).
-  /// Use PASSIVE mode for non-blocking checkpoint that won't interfere with ongoing operations.
-  void checkpoint() {
-    if (_closed) return;
-    _db.execute('PRAGMA wal_checkpoint(PASSIVE);');
-  }
+  /// Kept for callers of the SQLite days, when it flushed the WAL: every
+  /// commit is in the file already (zxdb has no WAL), so nothing to do.
+  void checkpoint() {}
 
   /// Normalize a path for storage.
   String _normalizePath(String path) {

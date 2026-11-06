@@ -13,7 +13,7 @@
  * profile is this profile's business. Every read is a primary-key lookup, so
  * it is safe on the caller's isolate (docs/architecture.md §2).
  */
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb, XRow;
 
 import '../../profile/profile_db.dart';
 import '../../util/media_ref.dart';
@@ -54,7 +54,7 @@ class MediaRefIndex {
   MediaRefIndex._();
   static final MediaRefIndex instance = MediaRefIndex._();
 
-  CommonDatabase? _db;
+  XDb? _db;
   bool get ready => _db != null;
 
   void init(String path) {
@@ -173,7 +173,7 @@ class MediaRefIndex {
     }
   }
 
-  static MediaRefInfo _row(Row r) => MediaRefInfo(
+  static MediaRefInfo _row(XRow r) => MediaRefInfo(
         sha: r['sha'] as String,
         size: r['size'] as int?,
         name: r['name'] as String?,

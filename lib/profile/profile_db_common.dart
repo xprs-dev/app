@@ -95,7 +95,7 @@ class ProfileKeyring {
       '${profileStorageRoot()}/devices/$profileId/$keyslotFileName';
 }
 
-/// SQLCipher key (raw hex) for the database at [absPath], or null when it is
+/// Password (raw hex key) of the database at [absPath], or null when it is
 /// not inside an encrypted profile. For isolates that cannot reach the
 /// keyring; on the main isolate, `openProfileDb` does this itself.
 String? profileDbKeyHex(String absPath) {

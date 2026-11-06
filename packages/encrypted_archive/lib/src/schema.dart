@@ -1,7 +1,7 @@
-/// CommonDatabase schema and migrations.
+/// Archive schema and migrations (zxdb, SQLite's dialect).
 library;
 
-import 'package:sqlite3/common.dart';
+import 'package:zx/zxdb.dart';
 
 import 'options.dart';
 
@@ -11,28 +11,24 @@ const int currentSchemaVersion = 1;
 /// Magic string identifying archive format.
 const String archiveMagic = 'EARCH01';
 
-/// Configure SQLite pragmas for optimal performance.
-void configurePragmas(CommonDatabase db, ArchiveOptions options) {
-  db.execute('PRAGMA page_size = ${options.pageSize};');
-  db.execute('PRAGMA cache_size = ${options.cacheSize};');
-  db.execute('PRAGMA temp_store = MEMORY;');
-  db.execute('PRAGMA foreign_keys = ON;');
+/// Opens (or creates) the archive's database file. Durable: the archive
+/// holds a profile's files, and a commit must survive a power cut. LZ4 pages
+/// (the chunks are encrypted, so stronger compression would gain nothing)
+/// and caches sized for one open archive on a phone.
+ZxDb openArchiveDb(String path) => zxDbOpenFile(path,
+    options: ZxDbStoreOptions(
+        compression: 'fast',
+        durable: true,
+        pageCacheBytes: 8 << 20,
+        blockCacheBytes: 4 << 20,
+        txnMemoryBytes: 32 << 20));
 
-  if (options.enableWAL) {
-    db.execute('PRAGMA journal_mode = WAL;');
-    db.execute('PRAGMA synchronous = NORMAL;');
-  } else {
-    db.execute('PRAGMA journal_mode = DELETE;');
-    db.execute('PRAGMA synchronous = FULL;');
-  }
-
-  if (options.mmapSize > 0) {
-    db.execute('PRAGMA mmap_size = ${options.mmapSize};');
-  }
-}
+/// Kept for the archive's open path: SQLite's pragmas meant nothing to
+/// zxdb (it has no page size, cache or journal settings per connection).
+void configurePragmas(ZxDb db, ArchiveOptions options) {}
 
 /// Create all tables for a new archive.
-void createSchema(CommonDatabase db) {
+void createSchema(ZxDb db) {
   // Archive header (singleton)
   db.execute('''
     CREATE TABLE archive_header (
@@ -129,77 +125,8 @@ void createSchema(CommonDatabase db) {
     INSERT INTO archive_stats (id, total_files, total_size, total_stored_size, total_chunks, dedup_savings)
     VALUES (1, 0, 0, 0, 0, 0)
   ''');
-
-  // Triggers for automatic stats updates
-  _createStatsTriggers(db);
 }
 
-/// Create triggers to maintain stats automatically.
-void _createStatsTriggers(CommonDatabase db) {
-  // After inserting a file (not deleted)
-  db.execute('''
-    CREATE TRIGGER tr_files_insert AFTER INSERT ON files
-    WHEN NEW.deleted = 0 AND NEW.type = 0
-    BEGIN
-      UPDATE archive_stats SET
-        total_files = total_files + 1,
-        total_size = total_size + NEW.size,
-        total_stored_size = total_stored_size + NEW.stored_size;
-    END
-  ''');
-
-  // After soft-deleting a file
-  db.execute('''
-    CREATE TRIGGER tr_files_softdelete AFTER UPDATE ON files
-    WHEN OLD.deleted = 0 AND NEW.deleted = 1 AND NEW.type = 0
-    BEGIN
-      UPDATE archive_stats SET
-        total_files = total_files - 1,
-        total_size = total_size - OLD.size,
-        total_stored_size = total_stored_size - OLD.stored_size;
-    END
-  ''');
-
-  // After restoring a file
-  db.execute('''
-    CREATE TRIGGER tr_files_restore AFTER UPDATE ON files
-    WHEN OLD.deleted = 1 AND NEW.deleted = 0 AND NEW.type = 0
-    BEGIN
-      UPDATE archive_stats SET
-        total_files = total_files + 1,
-        total_size = total_size + NEW.size,
-        total_stored_size = total_stored_size + NEW.stored_size;
-    END
-  ''');
-
-  // After updating a live file's sizes (files are inserted with size 0 and
-  // get their real sizes via updateFileStats once all chunks are written)
-  db.execute('''
-    CREATE TRIGGER tr_files_resize AFTER UPDATE OF size, stored_size ON files
-    WHEN OLD.deleted = 0 AND NEW.deleted = 0 AND NEW.type = 0
-    BEGIN
-      UPDATE archive_stats SET
-        total_size = total_size - OLD.size + NEW.size,
-        total_stored_size = total_stored_size - OLD.stored_size + NEW.stored_size;
-    END
-  ''');
-
-  // After inserting a chunk
-  db.execute('''
-    CREATE TRIGGER tr_chunks_insert AFTER INSERT ON chunks
-    BEGIN
-      UPDATE archive_stats SET total_chunks = total_chunks + 1;
-    END
-  ''');
-
-  // After deleting a chunk
-  db.execute('''
-    CREATE TRIGGER tr_chunks_delete AFTER DELETE ON chunks
-    BEGIN
-      UPDATE archive_stats SET total_chunks = total_chunks - 1;
-    END
-  ''');
-}
 
 /// SQL statements for common operations.
 class ArchiveSQL {
@@ -299,8 +226,17 @@ class ArchiveSQL {
   ''';
 
   // Stats operations
+  // The totals are counted when asked (zxdb has no triggers to keep a
+  // running sum, and a stats screen is not a hot path); the stats row keeps
+  // what nothing else records: dedup savings and the maintenance times.
   static const selectStats = '''
-    SELECT * FROM archive_stats WHERE id = 1
+    SELECT
+      (SELECT COUNT(*) FROM files WHERE deleted = 0 AND type = 0) AS total_files,
+      (SELECT COALESCE(SUM(size), 0) FROM files WHERE deleted = 0 AND type = 0) AS total_size,
+      (SELECT COALESCE(SUM(stored_size), 0) FROM files WHERE deleted = 0 AND type = 0) AS total_stored_size,
+      (SELECT COUNT(*) FROM chunks) AS total_chunks,
+      s.dedup_savings, s.last_vacuum_at, s.last_integrity_check_at
+    FROM archive_stats s WHERE s.id = 1
   ''';
 
   static const countDirectories = '''

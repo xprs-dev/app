@@ -3,22 +3,14 @@
 // exactly as hal_media_fetch does. Requires a Blossom origin reachable at
 // $BLOSSOM_ORIGIN (default http://127.0.0.1:3460) serving the fixture file at
 // /<sha256-hex>. Skips cleanly when the origin isn't up, so CI stays green.
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/profile/profile_storage_fs.dart';
 import 'package:xprs/services/blossom_server.dart';
 import 'package:xprs/util/media_archive.dart';
 
 void main() {
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   test('fetch a referenced file from a remote host via a recorded source',
       () async {

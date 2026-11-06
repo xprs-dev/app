@@ -15,7 +15,7 @@
  * buys obfuscation not secrecy, but a real one a reader typed is worth keeping
  * out of the clear. Mirrors [XprsGroupKeys]'s per-profile store.
  */
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb;
 
 import '../../profile/profile_db.dart';
 
@@ -23,7 +23,7 @@ class XprsPassphrases {
   XprsPassphrases._();
   static final XprsPassphrases instance = XprsPassphrases._();
 
-  CommonDatabase? _db;
+  XDb? _db;
 
   bool get ready => _db != null;
 

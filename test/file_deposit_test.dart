@@ -3,13 +3,11 @@
 // verifies the compact NOSTR auth, classifies the depositor's tier, enforces the
 // quota, receives the bytes as an RNS Resource, verifies the hash, and stores it.
 import 'dart:async';
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 
 import 'package:xprs/profile/profile_storage_fs.dart';
 import 'package:xprs/services/files/composite_file_source.dart';
@@ -30,12 +28,6 @@ Uint8List _unhex(String h) => Uint8List.fromList([
     ]);
 
 void main() {
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   final temps = <Directory>[];
   tearDownAll(() {

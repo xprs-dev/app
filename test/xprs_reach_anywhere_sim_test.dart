@@ -16,11 +16,9 @@
  * The bench runs the real funnel, store, gossip, forwarder, mailbox and
  * receipts (test/support/mail_relay_sim.dart); only the air is virtual.
  */
-import 'dart:ffi';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/mesh/mesh_store.dart';
 import 'package:xprs/services/preferences_service.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
@@ -40,10 +38,6 @@ import 'support/mail_relay_sim.dart';
 const _ts = '2026-10-25_10:00:00';
 
 void main() {
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   late MailRelaySim sim;
   late SimStation a, b, b2, c, x;

@@ -184,7 +184,7 @@ class BackgroundWappManager {
       if (prefs != null) {
         try {
           final db = ConversationDb.open(wappDataStorageFor(prefs, wappName)
-              .getAbsolutePath('conversations.sqlite3'));
+              .getAbsolutePath('conversations.zx'));
           try {
             for (final field in db.fields()) {
               final store = ConversationStore()
@@ -330,7 +330,7 @@ class _WappBackgroundService extends BackgroundService {
   /// background was missing from Mesh, and its thread came back empty.
   late final ActivityArchive _socialArchive = ActivityArchive.forStorage(
     wappDataStorageFor(prefs, name),
-    fileName: 'social_all.sqlite3',
+    fileName: 'social_all.zx',
   );
 
   // Conversation history shared with the foreground page through the SAME
@@ -361,7 +361,7 @@ class _WappBackgroundService extends BackgroundService {
     final data = wappDataStorageFor(prefs, name);
     try {
       _convDb = ConversationDb.open(
-          data.getAbsolutePath('conversations.sqlite3'));
+          data.getAbsolutePath('conversations.zx'));
     } catch (e) {
       // Locked/corrupt: run memory-only rather than overwrite real history.
       LogService.instance.add(

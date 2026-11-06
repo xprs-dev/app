@@ -25,7 +25,6 @@
  *
  * It prints a transcript, so running it reads as the scenario playing out.
  */
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -34,7 +33,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reticulum/reticulum.dart';
 import 'package:reticulum/src/services/files/dht/pointer_log.dart';
 import 'package:reticulum/src/services/files/dht/pointer_sync.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/mesh/mesh_bulk_spool.dart';
 import 'package:xprs/services/xprs/xprs_file_acl.dart';
 import 'package:xprs/services/xprs/xprs_files.dart';
@@ -59,10 +57,6 @@ void main() {
   final server = XprsFileServer.instance;
   final aired = <int>[];
 
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('xprsfedsim');
@@ -70,7 +64,7 @@ void main() {
     b = _Node('X1BOB2', '${tmp.path}/b');
     c = _Node('X3ARC1', '${tmp.path}/c'); // the chosen archiver
     d = _Node('X3BIGD9', '${tmp.path}/d'); // the large/always-on archiver
-    XprsFileAcl.instance.init('${tmp.path}/acl.sqlite3');
+    XprsFileAcl.instance.init('${tmp.path}/acl.zx');
     MeshBulkSpool.instance.init('${tmp.path}/c/bulk', c.archive);
     server.resolver = null;
     server.authorize = null;

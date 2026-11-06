@@ -20,7 +20,7 @@
  * Deliberately small: an id, who it was for, a state and a timestamp. It is
  * not a message store. The words are the wapp's; this is only their fate.
  */
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb;
 
 import '../../profile/profile_db.dart';
 import '../log_service.dart';
@@ -80,7 +80,7 @@ class XprsOutbox {
   /// is this station's business. Every write is one primary-key upsert and
   /// every read a primary-key lookup, so it is safe on the caller's isolate
   /// (docs/architecture.md §2).
-  CommonDatabase? _db;
+  XDb? _db;
 
   /// Rows kept on disk. Larger than [maxRows] — memory holds the hot end, the
   /// file holds enough history that a receipt for yesterday's message still

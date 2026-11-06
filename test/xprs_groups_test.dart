@@ -3,7 +3,6 @@
  * the same answer from the same packets", so they are worth testing as rules
  * rather than as whatever the code happens to do.
  */
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -13,7 +12,6 @@ import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_sig.dart';
 import 'package:xprs/util/nostr_crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_group_keys.dart';
 import 'package:hex/hex.dart';
 
@@ -480,15 +478,9 @@ void main() {
   group('durable store — a member survives a restart', () {
     late Directory tmp;
     late String path;
-    setUpAll(() {
-      if (Platform.isLinux) {
-        open.overrideFor(
-            OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-      }
-    });
     setUp(() {
       tmp = Directory.systemTemp.createTempSync('xprsgroupsrestart');
-      path = '${tmp.path}/xprs_groups.sqlite3';
+      path = '${tmp.path}/xprs_groups.zx';
       XprsGroupKeys.instance.init(path);
     });
     tearDown(() {

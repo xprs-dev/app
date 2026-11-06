@@ -9,28 +9,20 @@
  * Counters, not a stopwatch: a clock measures the machine, a count measures
  * the decision (docs/performance.md §4).
  */
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reticulum/reticulum.dart' show XprsCrypto;
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_passphrases.dart';
 import 'package:xprs/services/xprs/xprs_redaction.dart';
 
 void main() {
   late Directory tmp;
 
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('xprsredact');
-    XprsPassphrases.instance.init('${tmp.path}/xprs_passphrases.sqlite3');
+    XprsPassphrases.instance.init('${tmp.path}/xprs_passphrases.zx');
     XprsRedaction.instance.resetForTest();
   });
 
@@ -83,7 +75,7 @@ void main() {
     test('a hint survives a restart, like the passphrase it names', () {
       XprsPassphrases.instance.hint('X1WATT', 'hunter2');
       XprsPassphrases.instance.close();
-      XprsPassphrases.instance.init('${tmp.path}/xprs_passphrases.sqlite3');
+      XprsPassphrases.instance.init('${tmp.path}/xprs_passphrases.zx');
       expect(XprsPassphrases.instance.hintFor('X1WATT'), 'hunter2');
       // Callsigns are compared upper case however they were written.
       expect(XprsPassphrases.instance.hintFor('x1watt'), 'hunter2');
@@ -92,7 +84,7 @@ void main() {
     test('an opened message is kept, and answered without a derivation', () {
       XprsPassphrases.instance.cacheOpened('ab12cd', 'meet Max', 'hunter2');
       XprsPassphrases.instance.close();
-      XprsPassphrases.instance.init('${tmp.path}/xprs_passphrases.sqlite3');
+      XprsPassphrases.instance.init('${tmp.path}/xprs_passphrases.zx');
       expect(XprsPassphrases.instance.opened('ab12cd'), 'meet Max');
       expect(XprsPassphrases.instance.opened('nothing'), isNull);
     });

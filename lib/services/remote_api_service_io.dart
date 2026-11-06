@@ -610,7 +610,7 @@ class RemoteApiService {
         final prefs = PreferencesService.instanceSync;
         if (prefs != null) {
           RnsService.instance.relayStorePath =
-              wappsDataStorage(prefs).getAbsolutePath('social.sqlite3');
+              wappsDataStorage(prefs).getAbsolutePath('social.zx');
           RnsService.instance.callPeersPath =
               wappsDataStorage(prefs).getAbsolutePath('call_peers.json');
           RnsService.instance.relayCursorsPath =
@@ -624,9 +624,9 @@ class RemoteApiService {
           RnsService.instance.subscriptionsPath =
               wappsDataStorage(prefs).getAbsolutePath('folder_subscriptions.json');
           RnsService.instance.serveStatsPath =
-              wappsDataStorage(prefs).getAbsolutePath('serve_stats.sqlite3');
+              wappsDataStorage(prefs).getAbsolutePath('serve_stats.zx');
           RnsService.instance.popularityPath = wappsDataStorage(prefs)
-              .getAbsolutePath('folder_popularity.sqlite3');
+              .getAbsolutePath('folder_popularity.zx');
           RnsService.instance.identityPath =
               wappsDataStorage(prefs).getAbsolutePath('rns_identity.key');
         }

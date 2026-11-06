@@ -22,13 +22,13 @@ void main() {
       expect(unlocked.nsec, equals(nsec));
       expect(unlocked.earPassword, equals(secrets.keys.earPassword));
       expect(
-        unlocked.dbKeyHex('data/mesh.sqlite3'),
-        equals(secrets.keys.dbKeyHex('data/mesh.sqlite3')),
+        unlocked.dbKeyHex('data/mesh.zx'),
+        equals(secrets.keys.dbKeyHex('data/mesh.zx')),
       );
       // Distinct DBs get distinct keys.
       expect(
-        unlocked.dbKeyHex('data/mesh.sqlite3'),
-        isNot(equals(unlocked.dbKeyHex('data/media.sqlite3'))),
+        unlocked.dbKeyHex('data/mesh.zx'),
+        isNot(equals(unlocked.dbKeyHex('data/media.zx'))),
       );
     });
 
@@ -94,7 +94,7 @@ void main() {
       final secrets =
           await ProfileCrypto.createProfileSecrets('old pass', nsec);
       final earBefore = secrets.keys.earPassword;
-      final dbBefore = secrets.keys.dbKeyHex('data/media.sqlite3');
+      final dbBefore = secrets.keys.dbKeyHex('data/media.zx');
 
       final changed = await ProfileCrypto.changePassword(
         'old pass',
@@ -109,7 +109,7 @@ void main() {
         changed.keyslot,
       );
       expect(unlocked.earPassword, equals(earBefore));
-      expect(unlocked.dbKeyHex('data/media.sqlite3'), equals(dbBefore));
+      expect(unlocked.dbKeyHex('data/media.zx'), equals(dbBefore));
 
       await expectLater(
         ProfileCrypto.unlock(
@@ -158,8 +158,8 @@ void main() {
       expect(restored.nsec, equals(nsec));
       expect(restored.earPassword, equals(secrets.keys.earPassword));
       expect(
-        restored.dbKeyHex('data/social.sqlite3'),
-        equals(secrets.keys.dbKeyHex('data/social.sqlite3')),
+        restored.dbKeyHex('data/social.zx'),
+        equals(secrets.keys.dbKeyHex('data/social.zx')),
       );
     });
 
@@ -168,7 +168,7 @@ void main() {
           await ProfileCrypto.createProfileSecrets('bye 👋', nsec);
       secrets.keys.dispose();
       expect(() => secrets.keys.earPassword, throwsStateError);
-      expect(() => secrets.keys.dbKey('data/x.sqlite3'), throwsStateError);
+      expect(() => secrets.keys.dbKey('data/x.zx'), throwsStateError);
     });
   });
 }

@@ -801,7 +801,7 @@ class _WappPageState extends State<WappPage>
     if (_convWappOwned) return;
     try {
       _convDb = ConversationDb.open(
-        data.getAbsolutePath('conversations.sqlite3'),
+        data.getAbsolutePath('conversations.zx'),
       );
     } catch (e) {
       // Locked profile, wrong key, corrupt file. Say so — and leave _convDb
@@ -897,7 +897,7 @@ class _WappPageState extends State<WappPage>
         await data.delete(entry.path);
         LogService.instance.add(
           'wapp $_wappName: imported legacy convo field "$field" '
-          '($msgs messages) into conversations.sqlite3',
+          '($msgs messages) into conversations.zx',
         );
       }
     } catch (e) {
@@ -1344,7 +1344,7 @@ class _WappPageState extends State<WappPage>
       final legacyArchive = _activityArchive!;
       _activityArchive = ActivityArchive.forStorage(
         wappData,
-        fileName: 'social_all.sqlite3',
+        fileName: 'social_all.zx',
       );
       _socialFeedFilter =
           PreferencesService.instanceSync?.getWappUiPref(
@@ -1373,7 +1373,7 @@ class _WappPageState extends State<WappPage>
       // on every open is the bug the user hit.)
       _nomadnetArchive = ActivityArchive.forStorage(
         wappData,
-        fileName: 'social_nomadnet2.sqlite3',
+        fileName: 'social_nomadnet2.zx',
       );
       // The NOSTR-over-Reticulum poller is gone with it.
       // No self-note echo: our own status comes back through the spool.

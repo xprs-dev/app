@@ -11,7 +11,6 @@ import 'package:xprs/services/social/relay_event_store.dart';
 import 'package:xprs/util/nostr_crypto.dart';
 import 'package:xprs/util/nostr_event.dart';
 
-import 'sqlite_loader.dart';
 
 int _now = 1_700_000_000; // fixed base so created_at is deterministic
 
@@ -45,7 +44,6 @@ void check(String name, bool ok) {
 }
 
 void main() {
-  ensureSqlite();
   final store = RelayEventStore.open(':memory:');
   final alice = NostrCrypto.generateKeyPair();
   final bob = NostrCrypto.generateKeyPair();

@@ -4,27 +4,19 @@
  * group's own record and not scavenged from the general archive. A restart is
  * simulated by close() + a fresh init() on the same file.
  */
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_group_keys.dart';
 
 void main() {
   late Directory tmp;
   late String path;
 
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('xprsgroupkeys');
-    path = '${tmp.path}/xprs_groups.sqlite3';
+    path = '${tmp.path}/xprs_groups.zx';
     XprsGroupKeys.instance.init(path);
   });
 

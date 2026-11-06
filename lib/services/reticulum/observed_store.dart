@@ -11,7 +11,7 @@
  */
 import 'package:file/file.dart';
 
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb, XRow, XStatement;
 
 import '../../profile/profile_db.dart';
 
@@ -21,7 +21,7 @@ import '../../platform/fs.dart';
 class ObservedStore {
   ObservedStore(this.path);
   final String path;
-  CommonDatabase? _db;
+  XDb? _db;
 
   bool get isOpen => _db != null;
 
@@ -33,8 +33,6 @@ class ObservedStore {
       final parent = fs.file(path).parent;
       if (!parent.existsSync()) parent.createSync(recursive: true);
       final db = openProfileDb(path);
-      db.execute('PRAGMA journal_mode = WAL;');
-      db.execute('PRAGMA synchronous = NORMAL;');
       db.execute('''
         CREATE TABLE IF NOT EXISTS nodes(
           id         TEXT PRIMARY KEY,
@@ -117,7 +115,7 @@ class ObservedStore {
   void upsertMany(Iterable<Map<String, Object?>> rows) {
     final db = _db;
     if (db == null) return;
-    CommonPreparedStatement? stmt;
+    XStatement? stmt;
     try {
       db.execute('BEGIN');
       stmt = db.prepare('''
@@ -202,7 +200,7 @@ class ObservedStore {
   /// The most recently-heard nodes (last_seen ≥ [sinceMs]), newest first, capped
   /// at [limit]. Used on boot to hydrate RnsService's live registry so the wapp's
   /// graph shows the last-known network immediately instead of starting blank;
-  /// live announces then refresh it in the background. Row shape mirrors
+  /// live announces then refresh it in the background. XRow shape mirrors
   /// [upsertMany]'s input so the caller can rebuild nodes without remapping.
   List<Map<String, Object?>> loadRecent(int sinceMs, {int limit = 4096}) {
     final db = _db;

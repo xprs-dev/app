@@ -101,6 +101,32 @@ class SecureProfileFile {
     fs.file(absPath).writeAsBytesSync(out.toBytes());
   }
 
+  /// The key that [writeBytes] encrypts [absPath] with, or null when the
+  /// file is written plain (outside an encrypted profile). For a worker
+  /// isolate that reads a large file itself ([unwrap]): the keyring lives
+  /// on the isolate that unlocked the profile.
+  static Uint8List? fileKeyFor(String absPath) {
+    final keys = _keysFor(absPath);
+    if (keys == null) return null;
+    return keys.fileKey(locateProfileDb(absPath)!.relPath);
+  }
+
+  /// [raw] as [readBytes] returns it, with the key from [fileKeyFor]: pure,
+  /// usable on any isolate. A plain file comes back as it is.
+  static Uint8List unwrap(Uint8List raw, Uint8List? key) {
+    if (!_isWrapped(raw)) return raw;
+    if (key == null) {
+      throw const ArchiveCryptoException(
+          'Encrypted file found outside an unlocked encrypted profile');
+    }
+    final nonce = Uint8List.sublistView(
+        raw, _magic.length, _magic.length + _nonceLen);
+    final ct = Uint8List.sublistView(
+        raw, _magic.length + _nonceLen, raw.length - _tagLen);
+    final tag = Uint8List.sublistView(raw, raw.length - _tagLen);
+    return KeyDerivation.decryptSync(ct, tag, key, nonce);
+  }
+
   static String? readString(String absPath) {
     final bytes = readBytes(absPath);
     return bytes == null ? null : utf8.decode(bytes);

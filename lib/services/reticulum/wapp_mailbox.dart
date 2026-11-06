@@ -22,7 +22,7 @@ import 'dart:convert';
 import 'package:file/file.dart';
 import 'dart:typed_data';
 
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb;
 
 import '../../profile/profile_db.dart';
 
@@ -70,7 +70,7 @@ class WappMailbox {
   WappMailbox._();
   static final WappMailbox instance = WappMailbox._();
 
-  CommonDatabase? _db;
+  XDb? _db;
   String? _path;
   int _dropped = 0;
 
@@ -79,7 +79,7 @@ class WappMailbox {
 
   /// Open (or reopen) the store under [dir]. Safe to call repeatedly.
   void open(String dir) {
-    final path = '$dir/wapp_mailbox.sqlite3';
+    final path = '$dir/wapp_mailbox.zx';
     if (_db != null && _path == path) return;
     close();
     try {

@@ -6,12 +6,10 @@
  * dirs, driven through XprsFileServer.onCommand exactly as the history-server
  * dispatch drives it.
  */
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/mesh/mesh_bulk_spool.dart';
 import 'package:xprs/services/xprs/xprs_file_acl.dart';
 import 'package:xprs/services/xprs/xprs_files.dart';
@@ -27,16 +25,12 @@ void main() {
   late XprsFileServer server;
   late List<int> aired;
 
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('xprshost');
     archive = MediaArchive.forDirectory(tmp.path);
     MeshBulkSpool.instance.init('${tmp.path}/bulk', archive);
-    XprsFileAcl.instance.init('${tmp.path}/xprs_file_acl.sqlite3');
+    XprsFileAcl.instance.init('${tmp.path}/xprs_file_acl.zx');
 
     server = XprsFileServer.instance;
     server.resolver = null; // clears the chain

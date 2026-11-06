@@ -1,11 +1,9 @@
 // What the share server's history may show a visitor, against the real archive:
 // public rows for everybody, and mail only for the callsign the visitor proved.
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/preferences_service.dart';
 import 'package:xprs/services/web_chat_api.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
@@ -16,10 +14,6 @@ void main() {
   late Directory tmp;
   final a = XprsArchive.instance;
 
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({'flutter.xprs.public': true});
@@ -31,7 +25,7 @@ void main() {
       ..keyResolver = null
       ..maxBytes = 500 * 1024 * 1024
       ..maxAgeDays = 365
-      ..init('${tmp.path}/xprs_archive.sqlite3');
+      ..init('${tmp.path}/xprs_archive.zx');
     void put(String w) {
       a.admit(XprsPacket.parse(w)!, bearer: 'lan', nowMs: 1000);
     }

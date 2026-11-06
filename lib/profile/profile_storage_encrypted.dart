@@ -8,8 +8,10 @@
  *     data/<wapp>/kv.json, hal_file_* files, avatar.png, chat JSON, …
  *   - filesystem passthrough: things that MUST be real files —
  *       * wapp packages (`wapps/…`, public software, scope decision)
- *       * every SQLite database (`*.sqlite3*`) — encrypted by SQLCipher
- *         via openProfileDb, live handles can't run inside an archive
+ *       * every database (`*.zx`, zxdb) — encrypted by its own password
+ *         via openProfileDb, live handles can't run inside an archive;
+ *         the media archive's blob files (`data/media/`), encrypted one
+ *         by one through SecureProfileFile
  *       * RNS runtime files bound by absolute path from RnsService
  *         (identity key + folder keystore are individually encrypted via
  *         SecureProfileFile; see _passthroughFiles)
@@ -110,7 +112,6 @@ class EncryptedProfileStorage extends ProfileStorage {
     }
     final path = '$_basePath/$profileArchiveName';
     final earPassword = keys.earPassword;
-    ensureSqlCipherLoaded();
     // The ear password is HKDF output of the profile master key — 256 bits
     // of entropy — so heavy Argon2 stretching buys nothing here and would
     // slow every unlock. Cheap parameters, stored in the archive header.
@@ -181,19 +182,21 @@ class EncryptedProfileStorage extends ProfileStorage {
   };
 
   static const List<String> _passthroughPrefixes = [
-    'wapps/', // wapp packages (public software) + their SQLCipher DBs
+    'wapps/', // wapp packages (public software) + their databases
     'data/partials/', // resumable-download chunks, dart:io dir scans
     'data/mesh/', // mesh bulk custody chunks (dart:io, MeshService)
     'data/share/', // MediaFileSource share dir (dart:io, reticulum)
+    'data/media/', // MediaArchive blob files (SecureProfileFile, reticulum)
   ];
 
   static bool isPassthroughPath(String relativePath) {
     final p = _normalizeRel(relativePath);
     if (p.isEmpty) return false;
     if (p == keyslotFileName || p == profileArchiveName) return true;
-    if (p.startsWith('$profileArchiveName-')) return true; // -wal / -shm
     if (p.startsWith('.seeded')) return true;
-    if (p.contains('.sqlite3')) return true; // DBs + -wal/-shm/-journal
+    // zxdb files and their writer locks (`x.zx`, `x.zx-lock`, and the
+    // archive's own `profile.ear.zx-lock`).
+    if (RegExp(r'\.zx($|-)').hasMatch(p)) return true;
     if (_passthroughFiles.contains(p)) return true;
     for (final prefix in _passthroughPrefixes) {
       if (p.startsWith(prefix) || p == prefix.substring(0, prefix.length - 1)) {

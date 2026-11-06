@@ -1,19 +1,14 @@
 /// Tests for the central profile database opener (Phase 2 of
 /// docs/plan-encrypted-storage.md).
 ///
-/// The path-mapping and plain-profile paths always run. The SQLCipher
-/// (keyed) paths need a real SQLCipher library in the test VM; point
-/// SQLCIPHER_TEST_LIB at one (e.g. built from the same amalgamation the
-/// sqlcipher_flutter_libs plugin pins) — without it those tests are
-/// skipped and the encrypted path must be verified in the running app.
+/// Every database is a zxdb file (pure Dart): the keyed paths run here as
+/// they run in the app, with no native library to provide.
 library;
 
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
-import 'package:sqlite3/sqlite3.dart';
+import 'package:reticulum/reticulum.dart' show XDbException;
 
 import 'package:xprs/profile/profile_crypto.dart';
 import 'package:xprs/profile/profile_db.dart';
@@ -21,31 +16,7 @@ import 'package:xprs/profile/profile_db.dart';
 const _nsec =
     'nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5';
 
-String? _resolveSqlCipherLib() {
-  final env = Platform.environment['SQLCIPHER_TEST_LIB'];
-  if (env != null && env.isNotEmpty && File(env).existsSync()) return env;
-  for (final candidate in [
-    '/usr/lib/x86_64-linux-gnu/libsqlcipher.so.0',
-    '/usr/local/lib/libsqlcipher.so',
-  ]) {
-    if (File(candidate).existsSync()) return candidate;
-  }
-  return null;
-}
-
 void main() {
-  final cipherLib = _resolveSqlCipherLib();
-  final hasCipher = cipherLib != null;
-
-  setUpAll(() {
-    if (Platform.isLinux) {
-      // Test VM has no flutter-bundled library; use SQLCipher when
-      // available so the keyed paths run, else the plain system lib.
-      final lib = cipherLib ?? 'libsqlite3.so.0';
-      open.overrideFor(OperatingSystem.linux, () => DynamicLibrary.open(lib));
-    }
-  });
-
   late Directory tempRoot;
 
   setUp(() {
@@ -66,20 +37,20 @@ void main() {
   group('locateProfileDb', () {
     test('maps devices/<id>/... paths', () {
       final loc =
-          locateProfileDb('${tempRoot.path}/devices/X1ABCD/data/mesh.sqlite3');
+          locateProfileDb('${tempRoot.path}/devices/X1ABCD/data/mesh.zx');
       expect(loc, isNotNull);
       expect(loc!.profileId, equals('X1ABCD'));
-      expect(loc.relPath, equals('data/mesh.sqlite3'));
+      expect(loc.relPath, equals('data/mesh.zx'));
     });
 
     test('maps nested wapp paths', () {
       final loc = locateProfileDb(
-          '${tempRoot.path}/devices/X1ABCD/wapps/social/social.sqlite3');
-      expect(loc!.relPath, equals('wapps/social/social.sqlite3'));
+          '${tempRoot.path}/devices/X1ABCD/wapps/social/social.zx');
+      expect(loc!.relPath, equals('wapps/social/social.zx'));
     });
 
     test('null for paths outside the storage root', () {
-      expect(locateProfileDb('/somewhere/else/db.sqlite3'), isNull);
+      expect(locateProfileDb('/somewhere/else/db.zx'), isNull);
       expect(locateProfileDb('${tempRoot.path}/profiles.json'), isNull);
       expect(locateProfileDb(':memory:'), isNull);
     });
@@ -90,38 +61,18 @@ void main() {
     });
   });
 
-  group('busy timeout', () {
-    // The race that lost a message: a connection opening a file another was
-    // still checkpointing threw SQLITE_BUSY the instant it met the lock, and
-    // the store fell to memory-only. openProfileDb now sets a busy_timeout so
-    // the open waits the lock out. A single Dart isolate cannot reproduce two
-    // connections contending concurrently, so this asserts the pragma is
-    // actually applied — the fix, directly.
-    test('openProfileDb applies a non-zero busy_timeout', () {
-      final dir = Directory('${profileDir('PLAIN2')}/data')
-        ..createSync(recursive: true);
-      final db = openProfileDb('${dir.path}/busy.sqlite3');
-      expect(db.select('PRAGMA busy_timeout;').first.values.first, 4000);
-      db.dispose();
-    });
-  });
-
   group('plain profiles', () {
-    test('openProfileDb behaves like sqlite3.open (no keyslot)', () {
+    test('openProfileDb opens a plain database (no keyslot)', () {
       final dir = Directory('${profileDir('PLAIN1')}/data')
         ..createSync(recursive: true);
-      final path = '${dir.path}/test.sqlite3';
+      final path = '${dir.path}/test.zx';
 
       final db = openProfileDb(path);
       db.execute('CREATE TABLE t(v TEXT);');
       db.execute("INSERT INTO t VALUES ('hello');");
       db.dispose();
 
-      // File is plain SQLite: header magic visible.
-      final header = File(path).openSync().readSync(16);
-      expect(String.fromCharCodes(header.sublist(0, 15)),
-          equals('SQLite format 3'));
-
+      // Opens again without any password.
       final again = openProfileDb(path);
       expect(again.select('SELECT v FROM t').first['v'], equals('hello'));
       again.dispose();
@@ -144,15 +95,15 @@ void main() {
       ProfileKeyring.instance.lock('ENC1');
 
       expect(
-        () => openProfileDb('${profileDir('ENC1')}/data/x.sqlite3'),
+        () => openProfileDb('${profileDir('ENC1')}/data/x.zx'),
         throwsA(isA<ProfileLockedException>()),
       );
     });
 
-    test('keyed round-trip: write, reopen, read; file is not plain SQLite',
+    test('keyed round-trip: write, reopen, read; the file holds no plaintext',
         () async {
       await enableEncryption('ENC2');
-      final path = '${profileDir('ENC2')}/data/enc.sqlite3';
+      final path = '${profileDir('ENC2')}/data/enc.zx';
       Directory('${profileDir('ENC2')}/data').createSync(recursive: true);
 
       final db = openProfileDb(path);
@@ -160,20 +111,20 @@ void main() {
       db.execute("INSERT INTO t VALUES ('secret payload');");
       db.dispose();
 
-      // Encrypted file must NOT carry the plain SQLite header.
-      final header = File(path).openSync().readSync(16);
-      expect(String.fromCharCodes(header.sublist(0, 15)),
-          isNot(equals('SQLite format 3')));
+      // The payload must not be readable in the file.
+      final raw = String.fromCharCodes(File(path).readAsBytesSync());
+      expect(raw.contains('secret payload'), isFalse);
+      expect(raw.contains('CREATE TABLE'), isFalse);
 
       final again = openProfileDb(path);
       expect(again.select('SELECT v FROM t').first['v'],
           equals('secret payload'));
       again.dispose();
-    }, skip: hasCipher ? false : 'no SQLCipher library in test VM');
+    });
 
     test('wrong profile keys fail to open the database', () async {
       await enableEncryption('ENC3');
-      final path = '${profileDir('ENC3')}/data/enc.sqlite3';
+      final path = '${profileDir('ENC3')}/data/enc.zx';
       Directory('${profileDir('ENC3')}/data').createSync(recursive: true);
 
       final db = openProfileDb(path);
@@ -189,15 +140,15 @@ void main() {
 
       expect(
         () => openProfileDb(path),
-        throwsA(isA<SqliteException>()),
+        throwsA(isA<XDbException>()),
       );
-    }, skip: hasCipher ? false : 'no SQLCipher library in test VM');
+    });
 
     test('sibling databases get distinct keys but both open', () async {
       await enableEncryption('ENC4');
       Directory('${profileDir('ENC4')}/data').createSync(recursive: true);
-      final a = '${profileDir('ENC4')}/data/a.sqlite3';
-      final b = '${profileDir('ENC4')}/data/b.sqlite3';
+      final a = '${profileDir('ENC4')}/data/a.zx';
+      final b = '${profileDir('ENC4')}/data/b.zx';
 
       for (final path in [a, b]) {
         final db = openProfileDb(path);
@@ -210,8 +161,8 @@ void main() {
         expect(db.select('SELECT v FROM t').first['v'], equals(path));
         db.dispose();
       }
-      expect(secrets.keys.dbKeyHex('data/a.sqlite3'),
-          isNot(equals(secrets.keys.dbKeyHex('data/b.sqlite3'))));
-    }, skip: hasCipher ? false : 'no SQLCipher library in test VM');
+      expect(secrets.keys.dbKeyHex('data/a.zx'),
+          isNot(equals(secrets.keys.dbKeyHex('data/b.zx'))));
+    });
   });
 }

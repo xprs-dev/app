@@ -59,7 +59,7 @@ import '../util/nostr_crypto.dart';
 import '../util/xprs_crypto.dart';
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:hex/hex.dart';
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb;
 
 import '../profile/profile_db.dart';
 import '../profile/profile_storage_encrypted.dart';
@@ -185,11 +185,11 @@ class _WappStreamState {
 }
 
 /// State for a single hal_sqlite_* handle. Lives in [WappEngine._sqlite] keyed
-/// by handle. Wraps one open [CommonDatabase] (a file under the wapp's private data
+/// by handle. Wraps one open [XDb] (a file under the wapp's private data
 /// dir) and the last error string for hal_sqlite_error.
 class _WappSqliteState {
   _WappSqliteState(this.db);
-  final CommonDatabase db;
+  final XDb db;
   String? lastError;
 }
 
@@ -2629,7 +2629,6 @@ class WappEngine {
           }
           final sw = Stopwatch()..start();
           final db = openProfileDb(p);
-          db.execute('PRAGMA journal_mode=WAL;');
           _noteSlowSql('open', p.substring(slash + 1), sw);
           final h = _nextSqliteHandle++;
           _sqlite[h] = _WappSqliteState(db);

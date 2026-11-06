@@ -18,7 +18,7 @@
  * from it), and its holder is indistinguishable from the admin.
  */
 import 'package:hex/hex.dart';
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb;
 
 import '../../profile/profile_db.dart';
 import '../../util/nostr_crypto.dart';
@@ -41,7 +41,7 @@ class XprsGroupKeys {
   XprsGroupKeys._();
   static final XprsGroupKeys instance = XprsGroupKeys._();
 
-  CommonDatabase? _db;
+  XDb? _db;
 
   bool get ready => _db != null;
 

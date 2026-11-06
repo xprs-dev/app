@@ -13,11 +13,9 @@
 /// (ProfileService.buildFromNsec + saveAndActivate), under
 /// $HOME/.local/share/xprs, with the device-key encryption the app applies
 /// to a new profile. The nsec never touches this repository.
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/profile/profile_service.dart';
 import 'package:xprs/profile/storage_paths.dart';
 
@@ -25,12 +23,6 @@ void main() {
   final nsec = Platform.environment['XPRS_PUBLISHER_NSEC'] ?? '';
   final armed = Platform.environment['AURORA_TEST_HOME'] == '1' && nsec.isNotEmpty;
 
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   test('the publisher identity is in the store and active', () async {
     await initStorageRoot();

@@ -25,9 +25,8 @@
  * piggybacks on inserts, at most once a minute.
  */
 import 'dart:async';
-import '../db_bytes.dart';
 
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb;
 
 import '../../profile/profile_db.dart';
 
@@ -111,7 +110,7 @@ class XprsGossip {
     'hf',
   };
 
-  CommonDatabase? _db;
+  XDb? _db;
   int maxBytes = defaultMaxBytes;
   int accepted = 0, refusedUnsigned = 0, refusedQuota = 0;
 
@@ -127,7 +126,6 @@ class XprsGossip {
   void init(String path) {
     try {
       final db = openPlainDb(path);
-      db.execute('PRAGMA journal_mode=WAL');
       db.execute(
         'CREATE TABLE IF NOT EXISTS gossip_visits('
         'callsign TEXT NOT NULL, gateway TEXT NOT NULL,'
@@ -256,7 +254,7 @@ class XprsGossip {
   void Function(String callsign, String gateway)? onSighting;
 
   void _noteLive(
-    CommonDatabase db,
+    XDb db,
     String call,
     String gw,
     String bearer,
@@ -291,7 +289,7 @@ class XprsGossip {
     }
   }
 
-  void _noteVisit(CommonDatabase db, String call, String gw, String bearer, int now) {
+  void _noteVisit(XDb db, String call, String gw, String bearer, int now) {
     db.execute(
       'INSERT INTO gossip_visits(callsign,gateway,bearer,first_ts,last_ts) '
       'VALUES(?,?,?,?,?) ON CONFLICT(callsign,gateway) DO UPDATE SET '
@@ -309,18 +307,17 @@ class XprsGossip {
 
   /// TTL for L3 and the byte budget, at most once a minute, on the insert
   /// path (no timers — performance.md 8.2).
-  void _maybeSweep(CommonDatabase db, int now) {
+  void _maybeSweep(XDb db, int now) {
     if (now - _lastSweepMs < 60000) return;
     _lastSweepMs = now;
     db.execute('DELETE FROM gossip_live WHERE ts < ?', [
       now - liveTtl.inMilliseconds,
     ]);
     try {
-      // Null means the database would not say (Android answers the pragma with
-      // a STRING, which this used to cast and drop): skip the sweep rather
-      // than compare a made-up zero against the cap and evict nothing forever.
-      final bytes = sqliteDbBytes(db);
-      if (bytes != null && bytes > maxBytes) {
+      // The live data, not the file: a file carries history until its next
+      // compaction, and a budget read from it would evict live rows for it.
+      final bytes = db.liveBytes;
+      if (bytes > maxBytes) {
         // Over budget: L3 stalest-first goes before L2 loses anything
         // (36.9.4 — the visit history is the layer allowed to live forever).
         db.execute(

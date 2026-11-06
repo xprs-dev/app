@@ -215,7 +215,7 @@ class UnlockedProfileKeys {
     );
   }
 
-  /// SQLCipher `PRAGMA key = "x'<hex>'"` value for [relPath].
+  /// The password (hex) of the database at [relPath] (zxdb, AES-256).
   String dbKeyHex(String relPath) => HEX.encode(dbKey(relPath));
 
   /// Raw 32-byte AES-GCM key for an individually-encrypted loose file at

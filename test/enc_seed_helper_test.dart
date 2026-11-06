@@ -4,11 +4,9 @@
 /// if it stops being useful.
 library;
 
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 
 import 'package:xprs/profile/profile_encryption.dart';
 import 'package:xprs/profile/profile_service.dart';
@@ -16,12 +14,6 @@ import 'package:xprs/profile/profile_service.dart';
 void main() {
   final isolated = Platform.environment['AURORA_TEST_HOME'] == '1';
 
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   test('seed locked encrypted profile', () async {
     final remember = Platform.environment['AURORA_SEED_REMEMBER'] == '1';

@@ -349,21 +349,21 @@ class ProfileEncryption {
   }
 
   /// Delete a profile's user data, keeping wapp code, seed markers and the
-  /// keyslot: data/ tree, avatar, profile.ear(+wal/shm), every *.sqlite3*
-  /// under wapps/.
+  /// keyslot: data/ tree, avatar, profile.ear (and its lock), every
+  /// database (`*.zx*`) under wapps/.
   static void _deleteProfileUserData(String id) {
     final base = _profileDir(id);
     _tryDeleteDir('$base/data');
     for (final name in ['avatar.png', 'avatar.jpg']) {
       _tryDelete('$base/$name');
     }
-    for (final suffix in ['', '-wal', '-shm', '-journal']) {
+    for (final suffix in ['', '.zx-lock']) {
       _tryDelete('$base/$profileArchiveName$suffix');
     }
     final wapps = fs.directory('$base/wapps');
     if (wapps.existsSync()) {
       for (final f in wapps.listSync(recursive: true).whereType<File>()) {
-        if (f.path.contains('.sqlite3')) _tryDelete(f.path);
+        if (RegExp(r'\.zx($|-)').hasMatch(f.path)) _tryDelete(f.path);
       }
     }
   }

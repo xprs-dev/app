@@ -22,7 +22,7 @@
  * Lookups are single-row primary-key reads, never a scan — safe on the caller's
  * isolate (docs/architecture.md §2).
  */
-import 'package:sqlite3/common.dart';
+import 'package:reticulum/reticulum.dart' show XDb;
 
 import '../../profile/profile_db.dart';
 import '../../util/media_ref.dart';
@@ -36,7 +36,7 @@ class XprsFileAcl {
   XprsFileAcl._();
   static final XprsFileAcl instance = XprsFileAcl._();
 
-  CommonDatabase? _db;
+  XDb? _db;
   bool get ready => _db != null;
 
   void init(String path) {
