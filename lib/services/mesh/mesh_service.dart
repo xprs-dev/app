@@ -1718,12 +1718,25 @@ class MeshService {
   void _onLineUp(XprsLineClient c) {
     final self = NostrCrypto.bareCallsign(tableCallsign);
     if (self.isEmpty) return;
+    // The key first, then the declaration, then the ask. The archiver puts
+    // a station on its socket only once a signed line verifies against a
+    // key it holds (XprsTcp), and a phone that met it only through this
+    // socket had given it none: without these two lines it answered q:mail
+    // and delivered nothing, ever (docs/performance.md 8.23).
+    final pub = XprsPublisher.instance;
+    final identity = pub.ownIdentityWire();
+    if (identity != null) c.send(identity);
+    final hold = XprsCatchup.instance.mailboxHoldCsv();
+    final decl = hold.isEmpty ? null : pub.mailboxWire(hold);
+    if (decl != null) c.send(decl);
     var ask = XprsPacket.parse(
         't:request f:$self d:${c.callsign} ts:${xprsNowTs()} q:mail only:$self');
     final d = xprsProfileScalar();
     if (ask != null && d != null) ask = xprsSign(ask, d);
     if (ask != null) c.send(ask.encode());
     unawaited(XprsCatchup.instance.tick(self));
+    // What was composed with nowhere to put it goes now.
+    pub.flushDeferredDeposits();
   }
 
   void _reconsiderArchiver() {

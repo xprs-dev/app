@@ -116,6 +116,7 @@ class XprsTcp {
     // `done` is what we can watch.
     unawaited(socket.done.then((_) => XprsLinePeers.instance.unregister(label),
         onError: (_) => XprsLinePeers.instance.unregister(label)));
+    var askedIdentity = false;
 
     void handleLine(String line) {
       final wire = line.trim();
@@ -125,6 +126,14 @@ class XprsTcp {
       final selfCall = MeshService.instance.tableCallsign.trim();
       if (selfCall.isEmpty) return;
       final selfBase = NostrCrypto.bareCallsign(selfCall);
+
+      // `q:mail` is answered on this socket below; said to the history
+      // server FIRST, because the funnel it feeds answers the same ask over
+      // the air a moment later, and the asker got two.
+      if (p.type == 'request' &&
+          (p['q'] ?? '').split(',').map((w) => w.trim()).contains('mail')) {
+        XprsHistoryServer.instance.markAnswered(xprsIdentifier(p));
+      }
 
       final bytes = Uint8List.fromList(utf8.encode(wire));
       if (local) {
@@ -155,6 +164,18 @@ class XprsTcp {
           XprsLinePeers.instance.register(from, label, reply);
           // Deliver what we hold for it now, not at the next minute sweep.
           unawaited(XprsMailbox.instance.sweepHeld());
+        } else if (key == null && !askedIdentity) {
+          // A signed line from a station whose key we do not hold: ask for
+          // the binding on the socket (section 18.1), once per connection.
+          // A phone sends it unasked at line-up; a station that does not is
+          // asked, and the answer lands in the archive through the funnel
+          // above, so the NEXT signed line registers it.
+          askedIdentity = true;
+          var ask = XprsPacket.parse('t:request f:$selfBase d:$from '
+              'ts:${xprsNowTs()} q:identity');
+          final d = xprsProfileScalar();
+          if (ask != null && d != null) ask = xprsSign(ask, d);
+          if (ask != null) reply(ask.encode());
         }
       }
 

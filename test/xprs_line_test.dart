@@ -3,10 +3,12 @@
 // set it was asked for. The funnel side (what a received line does) is the
 // server's `XprsTcp` path and is covered where that is.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xprs/services/xprs/xprs_line.dart';
+import 'package:xprs/services/xprs/xprs_publisher.dart';
 
 void main() {
   group('XprsDial.parse (13.0.2)', () {
@@ -113,6 +115,38 @@ void main() {
       expect(lane.clients.map((c) => c.callsign).toSet(), {'X3B'});
       lane.closeAll();
       expect(lane.clients, isEmpty);
+      await server.close();
+    });
+
+    test(
+        'the line bearer carries t:identity and t:mailbox to every dialled '
+        'archiver (queued, so the radios still air them) and refuses other '
+        'undirected wires', () async {
+      final got = <String>[];
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((s) {
+        s.cast<List<int>>().transform(utf8.decoder).listen((chunk) {
+          got.addAll(chunk.split('\n').where((l) => l.trim().isNotEmpty));
+        });
+      });
+      final lane = XprsLineLane.instance;
+      final d = XprsDial('127.0.0.1', server.port);
+      await lane.wantAll({'X3ARC': d});
+      for (var i = 0; i < 50 && !lane.connectedTo('X3ARC'); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(lane.connectedTo('X3ARC'), isTrue);
+      final line = XprsPublisher.instance.bearers
+          .firstWhere((b) => b.name == 'line');
+      const id = 't:identity f:X3ME ts:2026-11-06_10:00:00 k:npub1abc';
+      const decl = 't:mailbox f:X3ME ts:2026-11-06_10:00:01 hold:X3ARC';
+      const status = 't:status f:X3ME ts:2026-11-06_10:00:02 m:hello';
+      expect(await line.send(id, part: 0), XprsSendResult.queued);
+      expect(await line.send(decl, part: 0), XprsSendResult.queued);
+      expect(await line.send(status, part: 0), XprsSendResult.refused);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(got, [id, decl]);
+      lane.closeAll();
       await server.close();
     });
   });

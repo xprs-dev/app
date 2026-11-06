@@ -551,20 +551,25 @@ class XprsCatchup {
   /// archivers is a valid configuration (36.3): then there is nothing to
   /// announce. Fire-once at start then on the daily period; retry on the next
   /// tick if no bearer took it, exactly like [_airIdentity].
-  Future<void> _airMailbox() async {
-    _mailboxAtMs = nowMs();
-    // Our own movable stations first (9.12, in order of preference): a card
-    // in the owner's pocket meets the owner more often than any archiver,
-    // and holds mail for them because this declaration names it. It is NOT
-    // added to the archiver list: a card cannot serve history (12.9.4), and
-    // that list is also where copies of our publications go.
+  /// Who holds mail for us, in order of preference (9.12), as the `hold:`
+  /// list: our own movable stations first — a card in the owner's pocket
+  /// meets the owner more often than any archiver, and holds mail for them
+  /// because this declaration names it — then the chosen archivers. A card
+  /// is NOT added to the archiver list: it cannot serve history (12.9.4),
+  /// and that list is also where copies of our publications go. Empty when
+  /// there is nobody to name (36.3: a valid configuration).
+  String mailboxHoldCsv() {
     final cards = XprsOwnedStations.instance.portable;
     final chosen = PreferencesService.instanceSync?.xprsArchivers ?? const [];
-    final list = [...cards, ...chosen.where((c) => !cards.contains(c))];
+    return [...cards, ...chosen.where((c) => !cards.contains(c))].join(',');
+  }
+
+  Future<void> _airMailbox() async {
+    _mailboxAtMs = nowMs();
+    final list = mailboxHoldCsv();
     if (list.isEmpty) return;
     try {
-      final report =
-          await XprsPublisher.instance.publishMailboxDecl(list.join(','));
+      final report = await XprsPublisher.instance.publishMailboxDecl(list);
       if (!report.values.any((v) => v == 'sent')) {
         _mailboxAtMs = 0; // nothing took it: retry on the next tick
       }

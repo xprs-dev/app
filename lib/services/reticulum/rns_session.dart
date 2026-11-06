@@ -21,6 +21,7 @@ import '../../wapp/android_foreground_service.dart';
 import '../log_service.dart';
 import '../power_state.dart';
 import '../xprs/xprs_files.dart';
+import '../xprs/xprs_publisher.dart';
 import 'rns_autostart.dart';
 import 'rns_service.dart';
 
@@ -65,6 +66,8 @@ class RnsSession {
       final ok = await connectAnyHub();
       if (ok) {
         sessions++;
+        // Deposits composed while there was no socket and no hub.
+        XprsPublisher.instance.flushDeferredDeposits();
       } else {
         LogService.instance.add('RNS session: no hub answered');
       }
