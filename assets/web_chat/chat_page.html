@@ -51,6 +51,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 .header .logo{font-family:'Wartext',sans-serif;font-size:38px;
         color:var(--accent);letter-spacing:5px;margin-top:-12px;
         transform:scaleY(.72);transform-origin:center}
+.header .stcall{color:var(--muted);font-size:13px;letter-spacing:1px;
+        margin-left:-6px;white-space:nowrap}
 .menu{margin-left:auto;position:relative}
 .my-callsign{color:var(--accent);font-size:12px;font-weight:bold;
         margin-right:8px}
@@ -65,6 +67,99 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
         color:var(--text);padding:10px 12px;text-align:left;cursor:pointer;
         font-size:13px}
 .menu-panel button:hover{background:rgba(255,255,255,.06)}
+.menu-panel .menu-sec{font-size:10px;color:var(--muted);text-transform:uppercase;
+        letter-spacing:1px;padding:8px 12px 2px;border-top:1px solid var(--border)}
+.menu-panel .menu-sec:first-child{border-top:0}
+/* ---- panel kit: Administration, Alerts, and every form inside a view ----
+   One look for everything a visitor fills in, on the chat's own palette:
+   dark fields with an accent focus ring, accent radios, three button
+   weights (outlined, filled, quiet), cards, pills, and roster rows. */
+.view h3{margin:18px 0 8px}
+/* Settings and alerts read as a column, not a banner, on a wide screen. */
+#v-admin>*,#v-alerts>*{max-width:820px;margin-left:auto;margin-right:auto}
+.card{background:#151515;border:1px solid var(--border);border-radius:10px;
+      padding:12px 14px;margin:0 0 10px}
+.card h4{font-size:14px;font-weight:bold;margin:0 0 8px}
+.lead{font-size:13px;color:var(--muted);line-height:1.45}
+.view input:not([type=radio]):not([type=checkbox]),.view select,.card input:not([type=radio]):not([type=checkbox]){
+      background:#1b1b1b;color:var(--text);border:1px solid var(--border);
+      border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;
+      min-height:36px;outline:none;max-width:100%}
+.view input:focus,.view select:focus,.card input:focus{border-color:var(--accent)}
+.view input::placeholder,.card input::placeholder{color:#666}
+.view select{-webkit-appearance:none;appearance:none;padding-right:30px;cursor:pointer;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23ffa86a' stroke-width='1.6'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right 10px center}
+.view select:disabled{opacity:.45;cursor:default}
+.view input[type=radio],.view input[type=checkbox]{accent-color:var(--accent);
+      width:16px;height:16px;margin:2px 10px 0 0;flex-shrink:0}
+.act{background:transparent;border:1px solid var(--accent);color:var(--accent);
+     padding:8px 14px;border-radius:8px;cursor:pointer;font:inherit;font-size:13px;
+     min-height:36px;white-space:nowrap;line-height:1}
+.act:hover{background:rgba(255,168,106,.12)}
+.act.primary{background:var(--accent);color:#101010;font-weight:bold}
+.act.primary:hover{background:#ffb985}
+.act.quiet{border-color:var(--border);color:var(--muted)}
+.act.quiet:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.act.danger{border-color:#c44;color:#ff7a7a}
+.act.danger:hover{background:rgba(255,90,90,.1)}
+.frow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.frow.first{margin-top:0}
+.frow .grow{flex:1;min-width:150px}
+.sp{flex:1}
+.opt{display:flex;align-items:flex-start;padding:8px 10px;border-radius:8px;
+     cursor:pointer;font-size:13px;line-height:1.4}
+.opt:hover{background:rgba(255,255,255,.04)}
+.opt small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.roster .row{display:flex;align-items:center;gap:10px;padding:8px 0;
+     border-top:1px solid var(--border)}
+.roster .row:first-child{border-top:0;padding-top:0}
+.call{font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--accent);
+      font-weight:bold;letter-spacing:.5px}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;
+      border:1px solid var(--border);color:var(--muted);vertical-align:middle;
+      white-space:nowrap}
+.pill.on{color:var(--accent);border-color:var(--accent)}
+.pill.sev-watch{color:#e0c060;border-color:#e0c060}
+.pill.sev-warning{color:#ff9a4a;border-color:#ff9a4a}
+.pill.sev-danger{color:#ff5a5a;border-color:#ff5a5a}
+.pill.sev-notice{color:#7fb0ff;border-color:#7fb0ff}
+.pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.stat{display:flex;gap:18px;flex-wrap:wrap}
+.stat>div{flex:1;min-width:110px}
+.stat .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.stat .v{font-size:15px;margin-top:3px}
+.empty{color:var(--muted);font-size:13px;padding:14px 0;text-align:center}
+.alert{background:#151515;border:1px solid var(--border);border-left:4px solid var(--muted);
+       border-radius:10px;padding:10px 14px;margin:0 0 10px}
+.alert.sev-watch{border-left-color:#e0c060}.alert.sev-warning{border-left-color:#ff9a4a}
+.alert.sev-danger{border-left-color:#ff5a5a}.alert.sev-notice{border-left-color:#7fb0ff}
+.alert .l1{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:bold;
+       text-transform:capitalize}
+.alert .l1 .when{font-weight:normal;font-size:11px;color:var(--muted);text-transform:none}
+.alert .body{margin:6px 0 2px;font-size:14px;line-height:1.4}
+.alert .l2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--muted);
+       font-size:12px;margin-top:6px}
+#side .room .cnt{color:var(--accent);font-weight:bold}
+#side .room.unread{color:var(--text);font-weight:bold}
+#msgs.alerts{display:block}
+#msgs.alerts .alert{max-width:820px;margin-left:auto;margin-right:auto}
+#side .room .lock{font-size:10px;margin-left:4px}
+/* The room's note sits at the top, as a small chip, and the conversation
+   keeps sitting above the composer below it. */
+.roomnote{align-self:center;background:#151515;border:1px solid var(--border);
+       border-radius:14px;max-width:min(520px,92%);line-height:1.4;padding:7px 14px;font-size:12px;color:var(--muted);
+       margin:0 0 4px;text-align:center}
+.roomnote .act{min-height:28px;padding:4px 10px;margin-left:6px;font-size:12px}
+.roomnote.clear{color:#e0c060;border-color:rgba(224,192,96,.4)}
+.call.link,.pill.link{cursor:pointer}
+.call.link:hover{text-decoration:underline}
+#side .room.new{color:var(--accent)}
+#dmnew .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+#dmnew .chips .pill{cursor:pointer;font-size:12px;padding:4px 10px}
+#dmnew .chips .pill:hover{border-color:var(--accent);color:var(--accent)}
+.messages .roomnote{margin-top:0}
+.messages .roomnote+.msg{margin-top:auto}
 #content{flex:1;display:flex;min-height:0}
 #side{width:150px;border-right:1px solid var(--border);overflow-y:auto;
       padding:8px 0;flex-shrink:0}
@@ -113,6 +208,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 #msgmenu button{width:100%;background:transparent;border:0;color:var(--text);
         padding:10px 12px;text-align:left;cursor:pointer;font-size:13px}
 #msgmenu button:hover{background:rgba(255,255,255,.06)}
+#msgmenu .modsep{font-size:10px;color:var(--muted);text-transform:uppercase;
+        letter-spacing:1px;padding:6px 10px 2px;border-top:1px solid var(--border)}
 .msg .quote{font-size:11px;color:var(--muted);border-left:2px solid
         var(--accent);padding:2px 6px;margin-bottom:3px;text-align:left}
 #replybar{display:none;border-top:1px solid var(--border);padding:4px 12px;
@@ -149,7 +246,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
         border:1px solid var(--border);border-radius:4px;padding:8px;
         color:var(--text);font-size:16px;outline:none}
 .input-area input:focus{border-color:var(--accent)}
-.input-area button{flex-shrink:0;font-family:'Wartext',sans-serif;
+.input-area button.seal{font-family:inherit;font-size:16px;font-weight:normal;
+        background:transparent;border:1px solid var(--border);color:var(--text);
+        padding:6px 9px;min-height:38px}
+.input-area button.seal.clear{border-color:#e0c060;color:#e0c060}
+.input-area button.seal svg{display:block;width:18px;height:18px}
+.input-area button:not(.seal){flex-shrink:0;font-family:'Wartext',sans-serif;
         font-size:18px;font-weight:bold;background:var(--accent);
         color:var(--bg);border:none;border-radius:4px;padding:4px 12px;
         cursor:pointer}
@@ -157,6 +259,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
         display:flex;justify-content:space-between}
 .status-bar a{color:var(--muted)}
 #getapp.hide{display:none}
+/* Asked once when a NOSTR extension is present (identity, below). */
+#extask{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;
+        display:flex;align-items:center;justify-content:center;padding:16px}
+#extask .card{background:#151515;border:1px solid var(--border);border-radius:8px;
+        max-width:360px;padding:16px;line-height:1.4}
+#extask .title{color:var(--accent);font-weight:bold;margin-bottom:8px}
+#extask .btns{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+#extask button{padding:10px;border-radius:6px;border:1px solid var(--border);
+        background:transparent;color:var(--text);font:inherit;cursor:pointer}
+#extask button.main{background:var(--accent);border-color:var(--accent);
+        color:#101010;font-weight:bold}
 .snackbar{visibility:hidden;min-width:250px;background:#333;color:#fff;
         text-align:center;border-radius:4px;padding:12px;position:fixed;
         z-index:10;left:50%;bottom:calc(60px + var(--sab));transform:translateX(-50%);
@@ -215,21 +328,39 @@ img.shot{max-width:100%;image-rendering:pixelated;border:1px solid var(--border)
 @keyframes fadeout{from{bottom:60px;opacity:1}to{bottom:0;opacity:0}}
 </style></head><body>
 <div class="header">
-  <span class="logo">XPRS</span>
+  <span class="logo">XPRS</span><span class="stcall" id="stcall" title="the station you are using"></span>
   <div class="menu">
     <span class="my-callsign" id="call"></span>
     <button class="menu-btn" onclick="toggleMenu()">&#9776;</button>
     <div class="menu-panel" id="menu">
-      <button data-view="stats" onclick="openView('stats')">Stats</button>
-      <button data-view="station" onclick="openView('station')">Station</button>
-      <button data-view="settings" onclick="openView('settings')">Settings</button>
-      <button onclick="clearChat()">Clear chat view</button>
+      <div class="menu-sec">Your identity</div>
+      <button onclick="closeMenu();openNewDm()">Private message</button>
       <button id="extbtn" style="display:none" onclick="toggleExtension()">Use my NOSTR extension</button>
       <button onclick="showNpub()">Show my npub</button>
       <button onclick="exportNsec()">Export nsec</button>
       <button onclick="importNsec()">Import another nsec</button>
       <button onclick="newIdentity()">New identity</button>
+      <div class="menu-sec">This station</div>
+      <button data-view="station" onclick="openView('station')">Station</button>
+      <button data-view="stats" onclick="openView('stats')">Stats</button>
+      <button data-view="settings" onclick="openView('settings')">Settings</button>
+      <button id="alertbtn" data-view="alerts" style="display:none" onclick="openView('alerts')">Post an alert</button>
+      <button id="adminbtn" style="display:none" onclick="openView('admin')">Administration</button>
+      <div class="menu-sec">This page</div>
+      <button onclick="clearChat()">Clear chat view</button>
       <button onclick="toggleSound()" id="sndbtn">Sound: on</button>
+    </div>
+  </div>
+</div>
+<div id="extask" style="display:none" role="dialog" aria-modal="true" aria-labelledby="extasktitle">
+  <div class="card">
+    <div class="title" id="extasktitle">Use your NOSTR identity?</div>
+    <div>Your browser has a NOSTR extension. Chat with the identity it holds:
+      the same callsign on every XPRS station, and its key never leaves the
+      extension.</div>
+    <div class="btns">
+      <button class="main" id="extyes" onclick="answerExt(true)">Use my NOSTR identity</button>
+      <button id="extno" onclick="answerExt(false)">Make a new key in this page</button>
     </div>
   </div>
 </div>
@@ -250,6 +381,8 @@ img.shot{max-width:100%;image-rendering:pixelated;border:1px solid var(--border)
     <div id="replybar"><span id="replyinfo"></span>
       <button class="x" onclick="cancelReply()">&#10005;</button></div>
     <div class="input-area">
+      <button id="sealbtn" class="seal" style="display:none" onclick="toggleSeal()"
+              title="Sealed: only they can read it"></button>
       <input id="txt" maxlength="180" placeholder="Message"
              onkeydown="if(event.key==='Enter')sendMsg()">
       <button onclick="sendMsg()">&gt;</button>
@@ -261,6 +394,8 @@ img.shot{max-width:100%;image-rendering:pixelated;border:1px solid var(--border)
   <div class="view hide" id="v-stats">loading&hellip;</div>
   <div class="view hide" id="v-station">loading&hellip;</div>
   <div class="view hide" id="v-settings"></div>
+  <div class="view hide" id="v-admin"></div>
+  <div class="view hide" id="v-alerts"></div>
 </div>
 <div class="snackbar" id="snack"></div>
 <div id="msgmenu"></div>
@@ -687,10 +822,35 @@ function snack(t){
 function toggleMenu(){
   var m=document.getElementById('menu');
   m.className=m.className.indexOf('open')>=0?'menu-panel':'menu-panel open';}
+function closeMenu(){var m=document.getElementById('menu');if(m)m.className='menu-panel';}
+/* The menu closes on a click or tap anywhere outside it, and on Escape. */
+document.addEventListener('click',function(e){
+  var t=e.target;
+  while(t&&t!==document){if(t.className==='menu')return;t=t.parentNode;}
+  closeMenu();
+},true);
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeMenu();});
+/* A section heading shows only when something under it does (a host that
+   serves no Stats, Station or Settings still has Administration). */
+function tidyMenu(){
+  var kids=el('menu').children,i,sec=null,any=false;
+  for(i=0;i<=kids.length;i++){
+    var k=kids[i];
+    if(!k||k.className==='menu-sec'){
+      if(sec)sec.style.display=any?'':'none';
+      sec=k;any=false;continue;
+    }
+    if(k.style.display!=='none')any=true;
+  }
+}
 
-// ---- identity: made silently on first visit; the menu changes it ----
+// ---- identity ----
+// A NOSTR extension, when the browser has one, is offered first (and asked
+// once, see askExtension); otherwise a key is made silently on the first
+// visit. The menu changes either.
 var priv=null,npub='',mycall='';
 function useKey(bytes){
+  hideExtAsk();
   priv=bytes;extMode=false;extPub='';
   npub=npubEncode(pubkeyX(priv));
   mycall=callsignFromNpub(npub);
@@ -754,11 +914,12 @@ function showExtButton(){
   if(!b)return;
   b.style.display=(nostrAvailable()||extMode)?'':'none';
   b.textContent=extMode?'Use the key in this page':'Use my NOSTR extension';
+  tidyMenu();
 }
 function toggleExtension(){
   toggleMenu();
   if(extMode){
-    extMode=false;extPub='';stSet('xprs_ext','');
+    extMode=false;extPub='';stSet('xprs_ext','0');
     var saved=stGet('xprs_nsec'),b=saved?nsecDecode(saved):null;
     useKey(b||randKey());showExtButton();rerenderAll();
     snack('Now chatting as '+mycall);
@@ -766,11 +927,14 @@ function toggleExtension(){
   }
   useExtension(false);
 }
-function useExtension(quiet){
-  if(!nostrAvailable()){if(!quiet)snack('No NOSTR extension found');return;}
+/* [failed] runs when the extension is missing, refuses or gives no key. */
+function useExtension(quiet,failed){
+  var no=function(why){if(!quiet)snack(why);if(failed)failed();};
+  if(!nostrAvailable()){no('No NOSTR extension found');return;}
   var fin=function(h){
     var pub=typeof h==='string'&&h.length===64?unhexBytes(h):null;
-    if(!pub){if(!quiet)snack('The extension gave no usable key');return;}
+    if(!pub){no('The extension gave no usable key');return;}
+    hideExtAsk();
     extMode=true;extPub=h;priv=null;
     npub=npubEncode(pub);mycall=callsignFromNpub(npub);
     stSet('xprs_ext','1');
@@ -782,9 +946,29 @@ function useExtension(quiet){
   };
   try{
     var r=window.nostr.getPublicKey();
-    if(r&&r.then)r.then(fin,function(){if(!quiet)snack('The extension refused');});
+    if(r&&r.then)r.then(fin,function(){no('The extension refused');});
     else fin(r);
-  }catch(e){if(!quiet)snack('The extension refused');}
+  }catch(e){no('The extension refused');}
+}
+/* The visitor has not chosen yet (xprs_ext unset) and an extension is here:
+   ask, with the extension as the default answer. A first-time visitor has no
+   key until they answer; one who already has a key here may keep it. */
+function askExtension(){
+  el('extno').textContent=priv?'Keep '+mycall+', the key in this page':'Make a new key in this page';
+  el('extask').style.display='';
+  try{el('extyes').focus();}catch(e){}
+}
+function hideExtAsk(){var a=el('extask');if(a)a.style.display='none';}
+function answerExt(yes){
+  hideExtAsk();
+  var keep=function(){
+    if(!priv)useKey(randKey());
+    showExtButton();rerenderAll();
+  };
+  if(!yes){stSet('xprs_ext','0');keep();snack('Chatting as '+mycall);return;}
+  /* The extension may ask its own question now; if it says no, the page
+     keeps (or makes) its own key, and the menu can try again later. */
+  useExtension(false,keep);
 }
 /* The room again from what was heard, under the key now in use. */
 function rerenderAll(){plainCache={};switchRoom(curRoom);load();}
@@ -841,7 +1025,12 @@ function ensureSession(tries){
       x.timeout=6000;
       x.onload=function(){
         var j=null;try{j=JSON.parse(x.responseText);}catch(e){}
-        if(x.status===200&&j&&j.session){sess=j.session;chatLoaded=false;load();}
+        if(x.status===200&&j&&j.session){
+          sess=j.session;chatLoaded=false;load();
+          if(tab==='admin')loadAdmin();
+          if(canModerate)loadMyRole();
+          if(canRooms)loadRooms();
+        }
         else if(x.status===409&&(tries||0)<4)
           /* The station has not heard our identity yet. */
           setTimeout(function(){ensureSession((tries||0)+1);},1500);
@@ -892,7 +1081,7 @@ function sendIdentity(){
 function sendMsg(){
   var t=document.getElementById('txt');
   var text=t.value.trim();
-  if(!text||!canSign())return;
+  if(!text||!canSign()||curRoom==='alerts')return;
   text=text.replace(/[\x00-\x1f]/g,' ');
   sendIdentity();
   var thread='';
@@ -904,14 +1093,21 @@ function sendMsg(){
   if(curRoom==='local')where=' scope:local';
   else if(curRoom==='regional')where=' scope:regional';
   else if(curRoom.slice(0,3)==='dm:')where=' d:'+curRoom.slice(3);
+  else if(curRoom.slice(0,2)==='g:')where=' d:'+curRoom.slice(2);
   /* The Social feed publishes a status (27): kept and read later, not a
    * conversation. A reply to a status is itself a status carrying r:. */
   var typ=curRoom==='social'?'t:status':'t:message';
   var peer=curRoom.slice(0,3)==='dm:'?curRoom.slice(3):'';
   t.value='';
   cancelReply();
-  /* A direct message is sealed to the peer's key when we can find it. */
-  if(peer)fetchKey(peer,function(k){dispatch(k);});else dispatch(null);
+  /* A direct message is sealed to the peer's key by default (XPRS.md 6.2);
+     clear text is the visitor's choice for the conversation, and the only
+     form amateur bands allow (6.4). Never in the clear by accident. */
+  if(peer&&!dmClear[peer])fetchKey(peer,function(k){
+    if(!k&&!confirm('No key is known for '+peer+' yet, so this cannot be sealed. Send it in clear text?')){
+      t.value=text;return;}
+    dispatch(k);});
+  else dispatch(null);
   function dispatch(k){
     if(!k){finish(null);return;}
     if(extMode)nostrSeal(hex(k),text,finish);
@@ -922,7 +1118,7 @@ function sendMsg(){
     signAny(sealedBody?head+' x:'+sealedBody:head+' m:'+text,function(wire,why){
       if(!wire){snack('Not sent: '+(why||'not signed'));t.value=text;return;}
       if(u8(wire).length>250){snack('Message too long');t.value=text;return;}
-      if(peer&&!sealedBody)snack('Sent in the clear: no way to seal to '+peer);
+
       sendOut(wire,text,!!sealedBody,peer);
     });
   }
@@ -932,7 +1128,8 @@ function sendOut(wire,text,sealed,peer){
    * the next poll) takes seconds, and a sender should not wait on it.
    * The wire is archived verbatim, so marking it seen dedups the echo. */
   var mine=render({from:mycall,ts:Math.floor(Date.now()/1000),sig:'verified',
-          to:peer||'',wire:wire,plain:text,sealed:sealed});
+          to:peer||(curRoom.slice(0,2)==='g:'?curRoom.slice(2):''),
+          wire:wire,plain:text,sealed:sealed});
   postWire(wire,function(ok,why){
     if(ok)return;
     /* Said on the bubble, where it stays, and not only in a snackbar that
@@ -1049,6 +1246,14 @@ function showMsgMenu(ev,id,from,own){
     '<button onclick="menuAct(\'like\',\''+id+'\',\''+from+'\')">'+
       (myLikes[id]?'Unlike':'Like \u2665')+'</button>';
   if(!own)items+='<button onclick="menuAct(\'dm\',\''+id+'\',\''+from+'\')">Message '+from+'</button>';
+  /* A moderator of this station's rooms (XPRS.md 10.10), on a room message. */
+  if(!own&&myStationRole==='mod'&&curRoom.slice(0,3)!=='dm:'){
+    items+='<div class="modsep">Moderator</div>'+
+      '<button onclick="menuAct(\'mdel\',\''+id+'\',\''+from+'\')">Delete for everyone</button>'+
+      '<button onclick="menuAct(\'mout1\',\''+id+'\',\''+from+'\')">Send '+from+' away for an hour</button>'+
+      '<button onclick="menuAct(\'mout24\',\''+id+'\',\''+from+'\')">Send '+from+' away for a day</button>'+
+      '<button onclick="menuAct(\'mout\',\''+id+'\',\''+from+'\')">Send '+from+' away until lifted</button>';
+  }
   m.innerHTML=items;
   m.style.display='block';
   var x=Math.min(ev.clientX,window.innerWidth-180);
@@ -1061,7 +1266,11 @@ function menuAct(act,id,from){
   document.getElementById('msgmenu').style.display='none';
   if(act==='reply')startReply(id);
   else if(act==='like')sendLike(id);
-  else if(act==='dm')openDm(from);}
+  else if(act==='dm')openDm(from);
+  else if(act==='mdel')modDelete(id);
+  else if(act==='mout1')modSendAway(from,3600);
+  else if(act==='mout24')modSendAway(from,86400);
+  else if(act==='mout')modSendAway(from,0);}
 
 var clearedBefore=parseInt(stGet('xprs_cleared')||'0',10)||0;
 
@@ -1090,6 +1299,7 @@ function roomOf(row){
   if(row.out)return null;
   /* A status (27) is a feed post, not a conversation: its own timeline. */
   if((row.type||'')==='status'||w.indexOf('t:status ')===0)return 'social';
+  if(to&&hostedByCall[baseCall(to)])return 'g:'+baseCall(to);
   if(to&&to[0]!=='#'){
     if(baseCall(to)===baseCall(mycall))return 'dm:'+baseCall(row.from);
     if(baseCall(row.from)===baseCall(mycall))return 'dm:'+baseCall(to);
@@ -1098,41 +1308,103 @@ function roomOf(row){
   return scopeRoom(w);
 }
 function roomLabel(r){
+  if(r==='alerts')return 'Alerts';
+  if(r==='dmnew')return 'Private message';
+  if(r.slice(0,2)==='g:'){var hr=hostedByCall[r.slice(2)];return hr?hr.name:r.slice(2);}
   return r==='local'?'Local':r==='regional'?'Regional':r==='global'?'Global':
          r==='social'?'Social':r.slice(3);}
 function renderSide(){
   var el=document.getElementById('side');
   var htmlp='<div class="roomhead">Rooms</div>';
   var rooms=['local','regional','global'];
-  var peers=Object.keys(dmPeers).sort();
-  var extra=peers.length?'<div class="roomhead">People</div>':'';
+  /* Whoever wrote and was not read yet comes first. */
+  var peers=Object.keys(dmPeers).sort(function(a,b){
+    return ((dmUnread[b]?1:0)-(dmUnread[a]?1:0))||(a<b?-1:a>b?1:0);});
+  var extra='<div class="roomhead">People</div>'+
+    '<div class="room new'+(curRoom==='dmnew'?' on':'')+'" data-r="dmnew">+ Private message</div>';
+  /* Rooms this station hosts (XPRS.md 10.10.1): the ones we may see. */
+  var hosted=hostedRooms.length?'<div class="roomhead">Station rooms</div>'+
+    hostedRooms.map(function(hr){var k='g:'+hr.call;
+      return '<div class="room'+(curRoom===k?' on':'')+'" data-r="'+k+'">'+esc(hr.name)+
+        (hr.visibility==='private'?'<span class="lock" title="private: members only">&#128274;</span>':'')+
+        '</div>';}).join(''):'';
   el.innerHTML=htmlp+
     rooms.map(function(r){return '<div class="room'+(curRoom===r?' on':'')+
       '" data-r="'+r+'">'+roomLabel(r)+'</div>';}).join('')+
     '<div class="roomhead">Feed</div>'+
     '<div class="room'+(curRoom==='social'?' on':'')+
       '" data-r="social">Social</div>'+
-    extra+
+    '<div class="room'+(curRoom==='alerts'?' on':'')+'" data-r="alerts" id="alertsroom">'+
+      alertsLabel()+'</div>'+
+    hosted+extra+
     peers.map(function(p){var r='dm:'+p;
-      return '<div class="room'+(curRoom===r?' on':'')+
-      '" data-r="'+r+'">'+p+'</div>';}).join('');
+      return '<div class="room'+(curRoom===r?' on':'')+(dmUnread[p]?' unread':'')+
+      '" data-r="'+r+'">'+p+(dmUnread[p]?' <span class="cnt">('+dmUnread[p]+')</span>':'')+
+      '</div>';}).join('');
   var items=el.getElementsByClassName('room');
   for(var i=0;i<items.length;i++)
     items[i].onclick=(function(r){return function(){switchRoom(r);};})(
       items[i].getAttribute('data-r'));
 }
+/* Rooms the station keeps from visitors outside its network. */
+var roomPrivate={};
 function switchRoom(r){
   curRoom=r;stSet('xprs_room',r);
   cancelReply();
   seen={};
-  document.getElementById('msgs').innerHTML='';
+  var note='',canPost=true;
+  el('msgs').className='messages'+(r==='alerts'||r==='dmnew'?' alerts':'');
+  el('sealbtn').style.display=r.slice(0,3)==='dm:'?'':'none';
+  if(r==='dmnew'){
+    el('txt').disabled=true;el('txt').placeholder='Choose who to write to';
+    el('msgs').innerHTML=dmNewCard();renderSide();
+    try{el('dm-to').focus();}catch(e){}
+    return;
+  }
+  if(r.slice(0,3)==='dm:'){
+    var pr=r.slice(3);
+    markDmRead(pr);
+    paintSeal(pr);
+    note+=dmClear[pr]?
+      '<div class="roomnote clear">Clear text: anyone who hears it can read it (as amateur radio requires).</div>':
+      '<div class="roomnote">Sealed: only '+esc(pr)+' can read what you write.</div>';
+  }
+  if(r==='alerts'){
+    canPost=false;
+    el('txt').disabled=true;
+    el('txt').placeholder=canAlert()?'Post an alert from the menu (top right)':
+                                      'Alerts are posted by this station\u2019s moderators';
+    document.getElementById('msgs').innerHTML='';
+    renderSide();
+    loadAlertsFeed();
+    return;
+  }
+  if(r.slice(0,2)==='g:'){
+    var hr=hostedByCall[r.slice(2)];
+    if(hr){
+      if(hr.about)note+='<div class="roomnote">'+esc(hr.about)+'</div>';
+      if(hr.role==='invited'&&hr.offer)
+        note+='<div class="roomnote">You were invited to '+esc(hr.name)+'. '+
+          '<button class="act" onclick="acceptRoom(\''+esc(hr.call)+'\',\''+esc(hr.offer)+
+          '\',\''+esc(hr.offer_role||'member')+'\')">Join</button></div>';
+      else if(!hr.can_post){canPost=false;
+        note+='<div class="roomnote">'+(hr.visibility==='private'||hr.posting==='members'?
+          'Only members post in '+esc(hr.name)+'.':'You cannot post here.')+'</div>';}
+    }
+  }
+  el('txt').disabled=!canPost;
+  document.getElementById('msgs').innerHTML=roomPrivate[r]?
+    '<div class="roomnote">This station keeps its Local room private to its '+
+    'own network: join its WiFi or LAN to read it.</div>':note;
   renderSide();
+  if(r.slice(0,2)==='g:')loadHosted();
   for(var i=0;i<allRows.length;i++)render(allRows[i]);
   document.getElementById('txt').placeholder=
     r==='local'?'Message (stays local)':
     r==='regional'?'Message (stays regional)':
     r==='global'?'Message (goes everywhere)':
     r==='social'?'Status update (published to everyone)':
+    r.slice(0,2)==='g:'?'Message to '+roomLabel(r)+' (stays on this station)':
     'Message to '+r.slice(3);
 }
 /* Draw the room again from what was heard (a key arrived, so what was held
@@ -1142,11 +1414,112 @@ function rerender(){
   document.getElementById('msgs').innerHTML='';
   for(var i=0;i<allRows.length;i++)render(allRows[i]);
 }
+// ---- unread private messages ------------------------------------------------
+//
+// One counter per person: messages from them newer than when this browser last
+// had their conversation open. "Read" is kept per origin, so a reload does not
+// bring old mail back as new; a browser that never read anybody starts from
+// its first visit, not from the whole archive.
+var dmUnread={},dmCounted={},dmRead={};
+try{var _dr=stGet('xprs_dm_read');if(_dr)dmRead=JSON.parse(_dr);}catch(e){}
+var dmSince=parseInt(stGet('xprs_dm_since')||'0',10);
+if(!dmSince){dmSince=Math.floor(Date.now()/1000);stSet('xprs_dm_since',''+dmSince);}
+function countDm(peer,row){
+  if(baseCall(row.from||'')===baseCall(mycall))return;      /* ours */
+  var id=wireId(row.wire||'');
+  if(dmCounted[id])return;
+  dmCounted[id]=1;
+  var ts=row.ts||0;
+  if(ts<=(dmRead[peer]||dmSince))return;
+  if(tab==='chat'&&curRoom==='dm:'+peer){markDmRead(peer);return;}
+  dmUnread[peer]=(dmUnread[peer]||0)+1;
+  renderSide();
+}
+function markDmRead(peer){
+  var now=Math.floor(Date.now()/1000);
+  if(dmUnread[peer]){delete dmUnread[peer];renderSide();}
+  if((dmRead[peer]||0)<now){dmRead[peer]=now;stSet('xprs_dm_read',JSON.stringify(dmRead));}
+}
 function openDm(call){
   var p=baseCall(call);
   if(p===baseCall(mycall))return;
   dmPeers[p]=true;
+  if(tab!=='chat')showTab('chat');
   switchRoom('dm:'+p);
+}
+
+// ---- private messages -------------------------------------------------------
+//
+// Sealed to the peer's key by default (XPRS.md 6.2); a conversation may be
+// switched to clear text, which is what amateur bands require (6.4). One is
+// started from a callsign (the key is looked up from its verified identity)
+// or from an npub, which is the key itself: its X1 callsign derives from it.
+var dmClear={};
+try{var _dc=stGet('xprs_dm_clear');if(_dc)dmClear=JSON.parse(_dc);}catch(e){}
+function paintSeal(peer){
+  var b=el('sealbtn'),c=!!dmClear[peer];
+  b.className='seal'+(c?' clear':'');
+  /* Drawn, not an emoji: a captive browser may have no emoji font. */
+  b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '+
+    'stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/>'+
+    (c?'<path d="M8 11V7a4 4 0 0 1 7.5-1.9"/>':'<path d="M8 11V7a4 4 0 0 1 8 0v4"/>')+'</svg>';
+  b.title=c?'Clear text: anyone can read it. Tap to seal':'Sealed: only '+peer+' can read it. Tap for clear text';
+}
+function toggleSeal(){
+  if(curRoom.slice(0,3)!=='dm:')return;
+  var p=curRoom.slice(3);
+  if(dmClear[p])delete dmClear[p];else dmClear[p]=1;
+  stSet('xprs_dm_clear',JSON.stringify(dmClear));
+  snack(dmClear[p]?'Clear text: for amateur radio, anyone can read it':'Sealed to '+p);
+  switchRoom(curRoom);
+}
+/* Who is active in the chat: authors heard recently, newest first. */
+function activeCalls(){
+  var seenC={},out=[],i,c;
+  for(i=allRows.length-1;i>=0&&out.length<24;i--){
+    c=baseCall(allRows[i].from||'');
+    if(!c||c===baseCall(mycall)||seenC[c]||c===stationCall)continue;
+    seenC[c]=1;out.push(c);
+  }
+  return out;
+}
+function dmNewCard(){
+  var a=activeCalls(),h='<div class="card" id="dmnew"><h4>Private message</h4>'+
+    '<p class="lead">A callsign active on this chat, or an npub.</p>'+
+    '<div class="frow"><input id="dm-to" class="grow" placeholder="Callsign or npub1&hellip;" '+
+    'onkeydown="if(event.key===\'Enter\')startDm()">'+
+    '<button class="act primary" onclick="startDm()">Write</button></div>';
+  if(a.length){
+    h+='<div class="chips">';
+    for(var i=0;i<a.length;i++)h+='<span class="pill call" onclick="openDm(\''+esc(a[i])+'\')">'+esc(a[i])+'</span>';
+    h+='</div>';
+  }
+  return h+'<p class="lead" style="margin-top:10px">Sealed by default: only they can read it. '+
+    'The lock beside the message box switches a conversation to clear text, for amateur radio.</p></div>';
+}
+function openNewDm(){if(tab!=='chat')showTab('chat');switchRoom('dmnew');}
+function startDm(){
+  var v=(el('dm-to').value||'').trim();
+  if(!v)return;
+  if(/^npub1/i.test(v)){
+    var k=npubDecode(v.toLowerCase());
+    if(!k)return snack('That is not a valid npub');
+    var c=callsignFromNpub(npubEncode(k));
+    keys[c]=k;            /* the npub is the key: no lookup needed */
+    return openDm(c);
+  }
+  v=v.toUpperCase();
+  if(!/^[A-Z0-9]{3,12}(-[A-Z0-9]{1,3})?$/.test(v))return snack('A callsign or an npub, please');
+  fetchKey(v,function(k){
+    if(!k)snack('No key heard for '+v+' yet: messages to them go in clear text until it is');
+    openDm(v);
+  });
+}
+/* A callsign shown in a panel, as a link that opens a private message. */
+function callLink(c){
+  c=esc(c);
+  return baseCall(c)===baseCall(mycall)?'<span class="call">'+c+'</span>':
+    '<span class="call link" title="Private message" onclick="openDm(\''+c+'\')">'+c+'</span>';
 }
 function render(row){
   var w=row.wire||'';
@@ -1157,7 +1530,7 @@ function render(row){
   }
   var room=roomOf(row);
   if(room===null)return;
-  if(room.slice(0,3)==='dm:')dmPeers[room.slice(3)]=true;
+  if(room.slice(0,3)==='dm:'){dmPeers[room.slice(3)]=true;countDm(room.slice(3),row);}
   if(allRows.indexOf(row)<0)allRows.push(row);
   if(room!==curRoom){renderSide();return;}
   /* One bubble per message (XPRS.md 5): copies that came round by other
@@ -1197,6 +1570,7 @@ function render(row){
   }
   seen[sk]=1;
   if(!text)return;
+  if(modRemoved[sk]||(modAway[baseCall(row.from||'')]&&!SAFETY[row.type]))return;
   if(clearedBefore&&(row.ts||0)<clearedBefore)return;   /* user hit Clear */
   var own=row.from===mycall;
   var id=wireId(w);
@@ -1207,6 +1581,8 @@ function render(row){
              scope:scopeRoom(w)||'global'};
   var d=document.createElement('div');
   d.className='msg '+(own?'local':'remote');
+  d.setAttribute('data-id',id);
+  d.setAttribute('data-from',baseCall(row.from||''));
   var when=row.ts?new Date(row.ts*1000).toLocaleTimeString():'';
   var badge=row.sig==='verified'?'<span class="badge ok">signed</span>'
            :(row.sig==='none'?'<span class="badge bad">unsigned</span>':'');
@@ -1288,6 +1664,7 @@ function backfillRooms(){
     var a=asks[i];
     getJSON('/api/xprs/history?kind='+a[1]+'&room='+a[0]+'&limit=100'+
             (sess?'&session='+sess:''),function(d){
+      if(d&&d.private){roomPrivate[a[0]]=true;if(curRoom===a[0])switchRoom(curRoom);}
       var rows=(d&&d.rows||[]).slice().reverse();
       for(var j=0;j<rows.length;j++)render(rows[j]);
       next(i+1);
@@ -1306,6 +1683,7 @@ function load(){
       try{
         var d=JSON.parse(x.responseText);
         chatLoaded=true;
+        if(d.moderation)applyModeration(d.moderation);
         var rows=(d.rows||[]).slice().reverse();
         setTimeout(backfillRooms,0);
         for(var i=0;i<rows.length;i++){
@@ -1332,7 +1710,7 @@ function load(){
 // reply; four phones polling five endpoints each would be the whole budget
 // spent on nobody looking.
 var tab='chat', tabTimer=null;
-var TAB_MS={chat:3000,traffic:5000,devices:5000,stats:60000,station:10000,settings:5000};
+var TAB_MS={chat:3000,traffic:5000,devices:5000,stats:60000,station:10000,settings:5000,admin:60000,alerts:15000};
 
 function el(id){return document.getElementById(id);}
 function esc(t){return String(t==null?'':t)
@@ -1384,7 +1762,7 @@ function showTab(t){
   for(var i=0;i<bs.length;i++)
     bs[i].className=bs[i].getAttribute('data-tab')===t?'on':'';
   el('chatwrap').className=t==='chat'?'':'hide';
-  var views=['traffic','devices','stats','station','settings'];
+  var views=['traffic','devices','stats','station','settings','admin','alerts'];
   for(var j=0;j<views.length;j++)
     el('v-'+views[j]).className='view'+(views[j]===t?'':' hide');
   if(tabTimer)clearInterval(tabTimer);
@@ -1392,12 +1770,18 @@ function showTab(t){
   tabTimer=setInterval(tick,TAB_MS[t]||10000);
 }
 function tick(){
-  if(tab==='chat')load();
+  if(tab==='chat'){
+    if(curRoom==='alerts')loadAlertsFeed();
+    else if(curRoom.slice(0,2)==='g:')loadHosted();
+    else load();
+  }
   else if(tab==='traffic')loadTraffic();
   else if(tab==='devices')loadDevices();
   else if(tab==='stats')loadStats();
   else if(tab==='station')loadStation();
   else if(tab==='settings')loadSettings();
+  else if(tab==='admin')loadAdmin();
+  else if(tab==='alerts')loadAlerts();
 }
 // Stats, Station and Settings live behind the menu, not in the tab row.
 function openView(t){toggleMenu();showTab(t);}
@@ -1585,8 +1969,9 @@ function loadStation(){
              (d.net.internet?'reachable':'no'));
     if(d.heard!==undefined)
       h+=row('Heard',esc(d.heard)+' packets, '+esc(d.in_reach||0)+' in reach now');
-    if(d.archiver)
-      h+=row('Archive',esc(d.archiver.count)+' packets held');
+    var ar=d.archiver||d.indexer; // "indexer" until 2026-11-06, older builds
+    if(ar)
+      h+=row('Archive',esc(ar.count)+' packets held');
     h+='</table>';
     if(d.lora){
       h+='<h3>LoRa</h3><table class="kv">'+
@@ -1707,9 +2092,18 @@ function wifiJoin(){
 // /api/services says which panels it can fill and whether it hands out the
 // app (`app`: the path of its download page); one that does not (the boards,
 // today) shows everything, as it always has.
+/* The station's callsign beside the title: from /api/services, or from
+   /api/status on a host that does not name itself there (the boards). */
+function showStation(call){
+  if(!call)return;
+  stationCall=String(call).toUpperCase();
+  el('stcall').textContent='('+call+')';
+}
 function applyServices(sv){
+  if(sv&&sv.station)showStation(sv.station);
+  else getJSON('/api/status',function(d){if(d)showStation(d.callsign);});
   var p=sv&&sv.page;
-  if(!p)return;
+  if(!p)return tidyMenu();
   if(p.session){canSession=true;ensureSession(0);}
   var tabs=p.tabs||['chat'];
   var bs=document.querySelectorAll('[data-tab],[data-view]'),i,n;
@@ -1718,23 +2112,528 @@ function applyServices(sv){
     if(tabs.indexOf(n)<0)bs[i].style.display='none';
   }
   if(p.app){el('getapp').href=p.app;el('getapp').className='';}
+  if(p.admin)el('adminbtn').style.display='';
+  if(p.moderation){canModerate=true;if(sess)loadMyRole();}
+  if(p.rooms){canRooms=true;loadRooms();}
+  alertPolicy=p.alerts||'moderators';
+  refreshAlertMenu();
+  tidyMenu();
 }
 
-// ---- boot: an identity exists before the first keystroke ----
+// ---- administration --------------------------------------------------------
+//
+// The station's administrator is a visitor who proved their key (a session).
+// A station with none yet lets the first such visitor on its own network
+// claim it: the moment after a board is flashed or a server installed. The
+// settings say what visitors from outside its network see and who may post.
+function loadAdmin(){
+  if(!sess){
+    el('v-admin').innerHTML='<h3>Administration</h3>'+
+      '<p class="dim">Proving your identity to the station&hellip;</p>';
+    ensureSession(0);
+    return;
+  }
+  getJSON('/api/admin?session='+encodeURIComponent(sess),function(d){
+    if(!d||!d.ok)return fail('v-admin','Administration');
+    drawAdmin(d);
+  });
+}
+function drawAdmin(d){
+  var st=esc(stationCall||d.station||'');
+  var h='<div class="card"><div class="stat">'+
+    (st?'<div><div class="k">Station</div><div class="v call">'+st+'</div></div>':'')+
+    '<div><div class="k">Administrator</div><div class="v">'+
+      (d.admin?callLink(d.admin)+(d.you?' <span class="pill on">you</span>':''):
+       '<span class="dim">none yet</span>')+'</div></div>'+
+    '<div><div class="k">You are</div><div class="v call">'+esc(mycall)+'</div></div></div>';
+  if(!d.admin){
+    h+=d.claimable?
+      '<p class="lead" style="margin-top:12px">This station has no administrator yet. You can '+
+      'become it, with the identity you are using now.</p>'+
+      '<div class="frow"><button class="act primary" id="ad-claim" onclick="adminDo(\'claim\')">'+
+      'Become the administrator</button></div>':
+      '<p class="lead" style="margin-top:12px">This station has no administrator yet. It can be '+
+      'claimed only from its own network (its WiFi or LAN), not over the internet.</p>';
+  }else if(!d.you){
+    h+='<p class="lead" style="margin-top:12px">Only '+callLink(d.admin)+
+      ' can change this station&rsquo;s settings.</p>';
+  }
+  h+='</div>';
+  if(d.admin&&!d.you)h+=drawModeration(d,false);
+  if(d.you){
+    var s=d.settings||{},who=s.who_may_post||'everyone',wa=s.who_may_alert||'moderators';
+    var radio=function(name,v,cur,label,sub,fn){
+      return '<label class="opt"><input type="radio" name="'+name+'" value="'+v+'"'+
+        (cur===v?' checked':'')+' onchange="'+fn+'"><span>'+label+
+        (sub?'<small>'+sub+'</small>':'')+'</span></label>';};
+    h+='<h3>Privacy</h3><div class="card">'+
+      '<label class="opt"><input type="checkbox" id="ad-lp"'+(s.local_private?' checked':'')+
+      ' onchange="adminSet({local_private:this.checked})"><span>Keep the Local room private'+
+      '<small>Visitors from the internet or another network do not see Local conversations; '+
+      'people on this station&rsquo;s own network still do.</small></span></label></div>';
+    h+='<h3>Who may post from this page</h3><div class="card">'+
+      radio('ad-who','everyone',who,'Everyone who opens it','',"adminSet({who_may_post:'everyone'})")+
+      radio('ad-who','local',who,'Only people on this station&rsquo;s network','',"adminSet({who_may_post:'local'})")+
+      radio('ad-who','nobody',who,'Nobody','The page is read-only.',"adminSet({who_may_post:'nobody'})")+'</div>';
+    h+='<h3>Alerts</h3><div class="card">'+
+      radio('ad-alert','moderators',wa,'Only moderators and the administrator post alerts','',"adminSet({who_may_alert:'moderators'})")+
+      radio('ad-alert','everyone',wa,'Anyone may post an alert',
+        'A warning is relayed up to nine times; this lends the station&rsquo;s standing to anybody.',
+        "adminSet({who_may_alert:'everyone'})")+'</div>';
+    h+=drawModeration(d,true);
+    if(canRooms)h+=drawRooms();
+    h+='<h3>Administrator</h3><div class="card"><div class="frow first">'+
+      '<button class="act quiet" onclick="adminRelease()">Give up administration</button>'+
+      '<span class="lead">The next person on this station&rsquo;s network to open this page can then claim it.</span>'+
+      '</div></div>';
+  }
+  el('v-admin').innerHTML=h;
+}
+/* Moderators, invitations and people sent away (XPRS.md 10.10). The
+   administrator appoints, dismisses and lifts; a moderator sees the lists. */
+function drawModeration(d,isAdmin){
+  if(d.role===undefined)return '';
+  stationCall=d.station||stationCall;
+  myStationRole=d.role;myOffer=d.offer||'';
+  var h='';
+  if(d.role==='invited'&&d.offer)
+    h+='<h3>Moderation</h3><div class="card"><p class="lead">You were asked to moderate this '+
+      'station&rsquo;s rooms: delete messages and send people away.</p>'+
+      '<div class="frow"><button class="act primary" id="ad-accept" onclick="acceptModerator()">Accept</button></div></div>';
+  /* An administrator who does not moderate (claimed before moderation, or
+     declined it): the station appoints them, and the page accepts. */
+  if(isAdmin&&d.role==='none')
+    h+='<h3>Moderation</h3><div class="card"><p class="lead">You administer this station but do not '+
+      'moderate its rooms.</p><div class="frow"><button class="act" id="ad-selfmod" '+
+      'onclick="adminDo(\'appoint\',{call:baseCall(mycall)})">Moderate as well</button></div></div>';
+  if(!d.moderators)return h;
+  var i,rows=function(a,btn){
+    if(!a.length)return '<div class="empty">none</div>';
+    var t='<div class="roster">';
+    for(i=0;i<a.length;i++){
+      var c=typeof a[i]==='string'?a[i]:a[i].call;
+      var note=a[i].until?'until '+esc(a[i].until.slice(0,16).replace('T',' '))+' UTC':
+               (typeof a[i]==='string'?'':'until lifted');
+      t+='<div class="row">'+callLink(c)+
+        (note?'<span class="pill">'+note+'</span>':'')+'<span class="sp"></span>'+
+        (isAdmin&&btn?'<button class="act quiet" onclick="adminDo(\''+btn[0]+'\',{call:\''+esc(c)+'\'})">'+btn[1]+'</button>':'')+
+        '</div>';
+    }
+    return t+'</div>';
+  };
+  h+='<h3>Moderators</h3><div class="card">'+rows(d.moderators,['dismiss','Dismiss']);
+  if(d.invited&&d.invited.length)
+    h+='<div class="lead" style="margin-top:8px">Asked, not yet accepted: '+d.invited.map(callLink).join(', ')+'</div>';
+  if(isAdmin)h+='<div class="frow"><input id="ad-newmod" class="grow" placeholder="Callsign" '+
+    'style="text-transform:uppercase"><button class="act" onclick="adminAppoint()">Appoint a moderator</button></div>';
+  h+='</div><h3>Sent away</h3><div class="card">'+rows(d.away||[],['lift','Lift'])+'</div>';
+  return h;
+}
+// ---- rooms this station hosts (XPRS.md 10.10.1) ---------------------------
+//
+// Closed groups whose key the station holds: the administrator creates them
+// (public or private, anyone or members posting), adds members and appoints
+// moderators; the station signs those acts as the room. Members accept with
+// their own signature (10.3.1). Traffic stays on the station.
+var canRooms=false,hostedRooms=[],hostedByCall={};
+function loadRooms(cb){
+  if(!canRooms)return;
+  getJSON('/api/rooms'+(sess?'?session='+encodeURIComponent(sess):''),function(d){
+    if(!d||!d.rooms)return;
+    hostedRooms=d.rooms;hostedByCall={};
+    for(var i=0;i<d.rooms.length;i++)hostedByCall[d.rooms[i].call]=d.rooms[i];
+    renderSide();
+    if(curRoom.slice(0,2)==='g:')switchRoom(curRoom);
+    if(cb)cb(d.rooms);
+  });
+}
+function loadHosted(){
+  if(curRoom.slice(0,2)!=='g:')return;
+  var call=curRoom.slice(2);
+  getJSON('/api/xprs/history?kind=message,reaction&room='+encodeURIComponent(call)+
+          '&limit=100'+(sess?'&session='+encodeURIComponent(sess):''),function(d){
+    if(!d||!d.rows)return;
+    /* Removals are by packet id; who a ROOM sent away is the room's own. */
+    if(d.moderation)applyModeration({removed:d.moderation.removed||[],away:Object.keys(modAway)});
+    var rows=d.rows.slice().reverse();
+    for(var i=0;i<rows.length;i++)render(rows[i]);
+  });
+}
+function acceptRoom(call,offer,role){
+  sendIdentity();
+  signAny('t:moderate f:'+mycall+' d:'+call+' ts:'+tsNow()+' r:'+offer+
+          ' accept:'+(role==='mod'?'mod':'member'),function(w){
+    if(!w)return snack('Not signed');
+    postWire(w,function(ok,why){
+      if(!ok)return snack(why||'The station refused it');
+      snack('Joined '+roomLabel('g:'+call));
+      loadRooms(function(){if(tab==='admin')loadAdmin();});
+    });
+  });
+}
+function roomPost(b,done){
+  b.session=sess;
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/rooms',true);x.timeout=6000;
+  x.onload=function(){
+    var j=null;try{j=JSON.parse(x.responseText);}catch(e){}
+    if(x.status===200&&j&&j.ok)loadRooms(function(){if(tab==='admin')loadAdmin();if(done)done(j);});
+    else snack(j&&j.error||('HTTP '+x.status));
+  };
+  x.onerror=x.ontimeout=function(){snack('The station did not answer');};
+  x.send(JSON.stringify(b));
+}
+function roomCreate(){
+  var name=(el('rn-name').value||'').trim();
+  if(!name)return snack('A room needs a name');
+  roomPost({action:'create',name:name,about:(el('rn-about').value||'').trim(),
+            visibility:el('rn-vis').value,posting:el('rn-post').value},function(j){
+    snack('Room created');
+    /* The station offered us its moderator role: accept it now. */
+    var hr=hostedByCall[j.room];
+    if(hr&&hr.role==='invited'&&hr.offer)acceptRoom(hr.call,hr.offer,hr.offer_role||'mod');
+  });
+}
+function roomDo(action,call){
+  var m=(el('rm-'+call).value||'').trim().toUpperCase();
+  if(!m)return snack('A callsign, please');
+  roomPost({action:action,call:call,member:m},function(){
+    snack(action==='add'?'Asked '+m+' to join':action==='appoint'?'Asked '+m+' to moderate':m+' removed');});
+}
+function roomSet(call){
+  roomPost({action:'update',call:call,visibility:el('rv-'+call).value,posting:el('rp-'+call).value},
+           function(){snack('Saved');});
+}
+function roomRename(call){
+  var hr=hostedByCall[call],name=prompt('Room name:',hr?hr.name:'');
+  if(name===null)return;
+  var about=prompt('About (optional):',hr?hr.about||'':'');
+  if(about===null)return;
+  roomPost({action:'update',call:call,name:name.trim(),about:about.trim()},function(){snack('Saved');});
+}
+function roomClose(call){
+  if(!confirm('Close '+roomLabel('g:'+call)+'? The station stops serving it.'))return;
+  roomPost({action:'close',call:call},function(){snack('Room closed');});
+}
+function drawRooms(){
+  var h='<h3>Rooms this station hosts</h3>',i;
+  var pills=function(label,a){
+    return '<span class="pill'+(a&&a.length?' on':'')+'">'+label+': '+(a&&a.length?a.map(callLink).join(', '):'none')+'</span>';};
+  for(i=0;i<hostedRooms.length;i++){
+    var r=hostedRooms[i],c=esc(r.call),priv=r.visibility==='private';
+    h+='<div class="card roomcard" data-call="'+c+'">'+
+      '<div class="frow first"><b>'+esc(r.name)+'</b><span class="pill">'+c+'</span>'+
+        '<span class="pill'+(priv?' on':'')+'">'+(priv?'&#128274; private':'public')+'</span>'+
+        '<span class="pill">'+(r.posting==='anyone'?'anyone posts':'members post')+'</span>'+
+        (r.role==='invited'&&r.offer?'<span class="sp"></span><button class="act primary" onclick="acceptRoom(\''+c+
+          '\',\''+esc(r.offer)+'\',\''+esc(r.offer_role||'mod')+'\')">Accept moderating</button>':'')+'</div>'+
+      (r.about?'<div class="lead" style="margin-top:6px">'+esc(r.about)+'</div>':'')+
+      '<div class="pills">'+pills('Members',r.members)+pills('Moderators',r.moderators)+
+        (r.invited&&r.invited.length?pills('Invited',r.invited):'')+'</div>'+
+      '<div class="frow"><input id="rm-'+c+'" class="grow" placeholder="Callsign" style="text-transform:uppercase">'+
+        '<button class="act" onclick="roomDo(\'add\',\''+c+'\')">Add member</button>'+
+        '<button class="act" onclick="roomDo(\'appoint\',\''+c+'\')">Appoint moderator</button>'+
+        '<button class="act quiet" onclick="roomDo(\'remove\',\''+c+'\')">Remove</button></div>'+
+      '<div class="frow"><select id="rv-'+c+'" onchange="roomSet(\''+c+'\')">'+
+        '<option value="public"'+(priv?'':' selected')+'>Public: everyone reads</option>'+
+        '<option value="private"'+(priv?' selected':'')+'>Private: members only</option></select>'+
+      '<select id="rp-'+c+'" onchange="roomSet(\''+c+'\')"'+(priv?' disabled':'')+'>'+
+        '<option value="anyone"'+(r.posting==='anyone'?' selected':'')+'>Anyone posts</option>'+
+        '<option value="members"'+(r.posting==='members'?' selected':'')+'>Members post</option></select>'+
+      '<span class="sp"></span><button class="act quiet" onclick="roomRename(\''+c+'\')">Rename</button>'+
+      '<button class="act danger" onclick="roomClose(\''+c+'\')">Close room</button></div></div>';
+  }
+  h+='<div class="card"><h4>New room</h4>'+
+     '<div class="frow first"><input id="rn-name" class="grow" placeholder="Room name">'+
+     '<input id="rn-about" class="grow" placeholder="About (optional)"></div>'+
+     '<div class="frow"><select id="rn-vis"><option value="public">Public: everyone reads</option>'+
+     '<option value="private">Private: members only</option></select>'+
+     '<select id="rn-post"><option value="anyone">Anyone posts</option><option value="members">Members post</option></select>'+
+     '<span class="sp"></span><button class="act primary" onclick="roomCreate()">Create room</button></div>'+
+     '<p class="lead" style="margin-top:10px">A room is a closed group this station holds the key of: '+
+     'its messages stay here and are never put on the air.</p></div>';
+  return h;
+}
+
+// ---- alerts (XPRS.md 10.10.2): the warnings and notices the station holds --
+var alerts={},alertsSeen={},alertTimer=null,alertPolicy='moderators';
+try{var _as=stGet('xprs_alerts_seen');if(_as)alertsSeen=JSON.parse(_as);}catch(e){}
+function parseTs(s){
+  var m=/^(\d{4})-(\d\d)-(\d\d)_(\d\d):(\d\d):(\d\d)$/.exec(s||'');
+  if(!m)return 0;
+  return Math.floor(Date.UTC(+m[1],m[2]-1,+m[3],+m[4],+m[5],+m[6])/1000);}
+/* Active from ts: until until:, or for a day without one. */
+function alertUntil(w,ts){var m=w.match(/ until:(\S+)/);var u=m?parseTs(m[1]):0;return u||((ts||0)+86400);}
+function pollAlerts(cb){
+  getJSON('/api/xprs/history?kind=warning,info&limit=100',function(d){
+    if(!d||!d.rows)return;
+    var now=Math.floor(Date.now()/1000),withdrawn={},active={},i,r,w;
+    for(i=0;i<d.rows.length;i++){r=d.rows[i];w=r.wire||'';
+      var rm=w.match(/ r:([0-9a-f]{6}) remove:(warning|info)/);if(rm)withdrawn[rm[1]]=1;}
+    for(i=0;i<d.rows.length;i++){r=d.rows[i];w=r.wire||'';
+      if(/ remove:/.test(w))continue;
+      var id=r.id||wireId(w);
+      if(withdrawn[id]||alertUntil(w,r.ts)<now)continue;
+      active[id]={id:id,row:r};}
+    alerts=active;
+    if(tab==='alerts'||(tab==='chat'&&curRoom==='alerts'))markAlertsSeen();
+    var a=el('alertsroom');
+    if(a)a.innerHTML=alertsLabel();
+    if(cb)cb();
+  });
+}
+/* "Alerts (2)" while there are alerts this browser has not looked at. */
+function alertsLabel(){
+  var n=0,k;
+  for(k in alerts)if(!alertsSeen[k])n++;
+  return 'Alerts'+(n?' <span class="cnt">('+n+')</span>':'');
+}
+/* "Post an alert" is in the menu only for somebody this station lets post. */
+function refreshAlertMenu(){
+  var b=el('alertbtn');
+  if(b){b.style.display=canAlert()?'':'none';tidyMenu();}
+}
+function markAlertsSeen(){
+  for(var k in alerts)alertsSeen[k]=1;
+  stSet('xprs_alerts_seen',JSON.stringify(alertsSeen));}
+function canAlert(){return alertPolicy==='everyone'||myStationRole==='mod'||isStationAdmin;}
+var ALERT_KINDS=['fire','flood','storm','wind','snow','ice','quake','tsunami','landslide',
+                 'chemical','radiation','outage','road','crowd','animal','other'];
+function alertForm(){
+  var opts=function(a){var o='';for(var i=0;i<a.length;i++)o+='<option value="'+a[i][0]+'"'+(a[i][2]?' selected':'')+'>'+a[i][1]+'</option>';return o;};
+  var kinds=[];for(var i=0;i<ALERT_KINDS.length;i++)kinds.push([ALERT_KINDS[i],ALERT_KINDS[i].charAt(0).toUpperCase()+ALERT_KINDS[i].slice(1)]);
+  return '<div class="card" id="alertform"><h4>Post an alert</h4>'+
+    '<div class="frow first">'+
+    '<select id="al-type" onchange="el(\'al-sev\').style.display=this.value===\'info\'?\'none\':\'\'">'+
+      opts([['warning','Warning: a hazard'],['info','Notice: worth knowing']])+'</select>'+
+    '<select id="al-kind">'+opts(kinds)+'</select>'+
+    '<select id="al-sev">'+opts([['watch','Watch: be ready'],['warning','Warning: act now'],['danger','Danger: leave']])+'</select>'+
+    '<select id="al-hours">'+opts([['1','For an hour'],['6','For 6 hours'],['24','For a day',1],['72','For 3 days']])+'</select></div>'+
+    '<div class="frow"><input id="al-text" class="grow" placeholder="What is happening">'+
+    '<button class="act primary" onclick="postAlert()">Post</button></div>'+
+    '<p class="lead" style="margin-top:10px">Signed by you as an XPRS warning or notice: everyone in reach of this station sees it.</p></div>';
+}
+/* The alerts, newest first, as cards. */
+function alertCards(){
+  var h='',now=Math.floor(Date.now()/1000),list=[],k,i;
+  for(k in alerts)list.push(alerts[k]);
+  list.sort(function(a,b){return (b.row.ts||0)-(a.row.ts||0);});
+  if(!list.length)return '<div class="card"><div class="empty">No active alerts.</div></div>';
+  {
+    for(i=0;i<list.length;i++){
+      var r=list[i].row,w=r.wire||'';
+      var f=function(key){var m=w.match(new RegExp(' '+key+':(\\S+)'));return m?m[1]:'';};
+      var typ=w.indexOf('t:info ')===0?'info':'warning',sev=typ==='info'?'notice':(f('sev')||'watch');
+      var mi=w.indexOf(' m:'),text=mi>=0?w.slice(mi+3):'';
+      var own=baseCall(r.from||'')===baseCall(mycall);
+      h+='<div class="alert sev-'+esc(sev)+'" data-id="'+esc(list[i].id)+'">'+
+        '<div class="l1"><span>'+esc(f('kind')||typ)+'</span><span class="pill sev-'+esc(sev)+'">'+esc(sev)+'</span>'+
+        '<span class="sp"></span><span class="when">'+(r.ts?esc(ago(now-r.ts))+' ago':'')+'</span></div>'+
+        (text?'<div class="body">'+esc(text)+'</div>':'')+
+        '<div class="l2">'+callLink(r.from||'')+
+        (f('until')?'<span>until '+esc(f('until').replace('_',' '))+' UTC</span>':'')+
+        (f('pos')?'<span>at '+esc(f('pos'))+(f('rad')?', '+esc(f('rad')):'')+'</span>':'')+
+        '<span class="sp"></span>'+
+        (own?'<button class="act quiet" onclick="withdrawAlert(\''+esc(list[i].id)+'\',\''+typ+'\')">Withdraw</button>':'')+
+        '</div></div>';
+    }
+  }
+  return h;
+}
+/* The window behind the menu: the form, then the alerts. */
+function loadAlerts(){
+  pollAlerts(function(){
+    el('v-alerts').innerHTML=(canAlert()?alertForm():
+      '<div class="card"><p class="lead">On this station only the moderators and the administrator post alerts.</p></div>')+
+      '<h3>Active alerts</h3>'+alertCards();
+  });
+}
+/* The feed in the conversation column (the Alerts entry on the left). */
+function loadAlertsFeed(){
+  pollAlerts(function(){
+    if(curRoom!=='alerts')return;
+    markAlertsSeen();
+    var a=el('alertsroom');if(a)a.innerHTML=alertsLabel();
+    el('msgs').innerHTML=alertCards();
+  });
+}
+function postAlert(){
+  var typ=el('al-type').value,kind=el('al-kind').value,sev=el('al-sev').value;
+  var hours=parseInt(el('al-hours').value,10)||24;
+  var text=(el('al-text').value||'').trim().replace(/[\x00-\x1f]/g,' ');
+  if(!canSign())return snack('Not ready');
+  sendIdentity();
+  var head='t:'+typ+' f:'+mycall+' kind:'+kind+(typ==='warning'?' sev:'+sev:'')+
+           ' ts:'+tsNow()+' until:'+tsAt(Date.now()+hours*3600000);
+  signAny(text?head+' m:'+text:head,function(w,why){
+    if(!w)return snack('Not sent: '+(why||'not signed'));
+    if(u8(w).length>250)return snack('Too long');
+    postWire(w,function(ok,why2){
+      if(!ok)return snack(why2||'The station refused it');
+      snack('Alert posted');el('al-text').value='';
+      setTimeout(function(){loadAlerts();if(curRoom==='alerts')loadAlertsFeed();},800);
+    });
+  });
+}
+function withdrawAlert(id,typ){
+  if(!confirm('Withdraw this alert?'))return;
+  signAny('t:'+typ+' f:'+mycall+' ts:'+tsNow()+' r:'+id+' remove:'+typ,function(w){
+    if(!w)return snack('Not signed');
+    postWire(w,function(ok,why){
+      if(!ok)return snack(why||'The station refused it');
+      snack('Withdrawn');setTimeout(function(){if(tab==='alerts')loadAlerts();if(curRoom==='alerts')loadAlertsFeed();},800);
+    });
+  });
+}
+function adminDo(action,extra){
+  var b={action:action,session:sess},k;
+  for(k in (extra||{}))b[k]=extra[k];
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/admin',true);
+  x.timeout=6000;
+  x.onload=function(){
+    var j=null;try{j=JSON.parse(x.responseText);}catch(e){}
+    if(x.status===200&&j&&j.ok){
+      drawAdmin(j);
+      snack(action==='claim'?'You are this station\u2019s administrator':
+            action==='release'?'Administration given up':
+            action==='appoint'?'Asked '+extra.call+' to moderate':
+            action==='dismiss'?extra.call+' no longer moderates':
+            action==='lift'?extra.call+' may post again':'Saved');
+      /* The administrator moderates too: accept the role the station offered. */
+      if((action==='claim'||(action==='appoint'&&extra.call===baseCall(mycall)))&&
+         j.role==='invited'&&j.offer){myOffer=j.offer;acceptModerator();}
+    }else{snack(j&&j.error||('HTTP '+x.status));loadAdmin();}
+  };
+  x.onerror=x.ontimeout=function(){snack('The station did not answer');};
+  x.send(JSON.stringify(b));
+}
+function adminSet(settings){adminDo('set',{settings:settings});}
+
+// ---- moderation of this station's rooms (XPRS.md 10.10) --------------------
+//
+// The station is the group of its own rooms: `d:` is its callsign. A
+// moderator signs here, in the browser, and posts the act like any wire:
+// `r:<id> remove:message` deletes a message, `revoke:<call> [until:]` sends
+// somebody away. Appointing, dismissing and lifting are the administrator's,
+// which the station signs (/api/admin). A message gone, or an author sent
+// away, is taken off every page that shows them.
+var stationCall='',canModerate=false,myStationRole='none',myOffer='';
+var modRemoved={},modAway={};
+var SAFETY={sos:1,warning:1,info:1};
+function applyModeration(m){
+  var i,ch=false,box=el('msgs'),k;
+  for(i=0;i<(m.removed||[]).length;i++)
+    if(!modRemoved[m.removed[i]]){modRemoved[m.removed[i]]=1;ch=true;}
+  var away={};
+  for(i=0;i<(m.away||[]).length;i++)away[m.away[i]]=1;
+  for(k in away)if(!modAway[k])ch=true;
+  for(k in modAway)if(!away[k])ch=true;
+  modAway=away;
+  if(!ch)return;
+  var kids=box.querySelectorAll('.msg');
+  for(i=0;i<kids.length;i++){
+    var d=kids[i];
+    if(modRemoved[d.getAttribute('data-id')]||modAway[d.getAttribute('data-from')])
+      d.parentNode.removeChild(d);
+  }
+}
+function loadMyRole(){
+  if(!sess)return;
+  getJSON('/api/admin?session='+encodeURIComponent(sess),function(d){
+    if(!d||!d.ok)return;
+    if(d.station)stationCall=d.station;
+    myStationRole=d.role||'none';
+    isStationAdmin=!!d.you;
+    myOffer=d.offer||'';
+    refreshAlertMenu();
+    if(myStationRole==='invited'&&myOffer&&!adminInvitedSaid){
+      adminInvitedSaid=true;
+      snack('You were asked to moderate '+stationCall+': see Administration');
+    }
+  });
+}
+var adminInvitedSaid=false,isStationAdmin=false;
+function tsAt(ms){
+  var d=new Date(ms),p=function(n){return (n<10?'0':'')+n;};
+  return d.getUTCFullYear()+'-'+p(d.getUTCMonth()+1)+'-'+p(d.getUTCDate())+
+    '_'+p(d.getUTCHours())+':'+p(d.getUTCMinutes())+':'+p(d.getUTCSeconds());}
+/* Sign a t:moderate about this station's rooms and post it. */
+function modAct(body,done){
+  if(!stationCall||!canSign())return snack('Not ready yet');
+  signAny('t:moderate f:'+mycall+' d:'+stationCall+' ts:'+tsNow()+' '+body,function(w){
+    if(!w)return snack('Not signed');
+    postWire(w,function(ok,why){
+      if(!ok){snack(why||'The station refused it');return;}
+      if(done)done();
+    });
+  });
+}
+function modDelete(id){
+  if(!confirm('Delete this message for everyone? This cannot be undone.'))return;
+  modAct('r:'+id+' remove:message',function(){
+    applyModeration({removed:[id],away:Object.keys(modAway)});
+    snack('Deleted');
+  });
+}
+function modSendAway(call,secs){
+  var c=baseCall(call);
+  var until=secs?' until:'+tsAt(Date.now()+secs*1000):'';
+  modAct('revoke:'+c+until,function(){
+    var a=Object.keys(modAway);a.push(c);
+    applyModeration({removed:[],away:a});
+    snack(c+' was sent away'+(secs?'':' until lifted'));
+    if(tab==='admin')loadAdmin();
+  });
+}
+function acceptModerator(){
+  if(!myOffer)return;
+  modAct('r:'+myOffer+' accept:mod',function(){
+    snack('You moderate '+stationCall+' now');
+    myOffer='';loadMyRole();setTimeout(loadAdmin,500);
+  });
+}
+function adminAppoint(){
+  var c=(el('ad-newmod').value||'').trim().toUpperCase();
+  if(!c)return;
+  adminDo('appoint',{call:c});
+}
+function adminRelease(){
+  if(!confirm('Give up administration of this station?'))return;
+  adminDo('release');
+}
+
+// ---- boot: an identity before the first keystroke, the extension first ----
 (function(){
   var saved=stGet('xprs_nsec');
   var b=saved?nsecDecode(saved):null;
-  useKey(b||randKey());
+  /* A returning visitor's key is used at once. A new one gets a key only
+     once it is clear there is no extension to offer (below). */
+  if(b)useKey(b);else el('call').textContent='\u2026';
   renderSide();
   switchRoom(curRoom);
   load();
   tabTimer=setInterval(tick,TAB_MS.chat);
   getJSON('/api/services',applyServices);
-  /* An extension injects `window.nostr` a moment after the page starts. */
+  /* The alerts count in the tab, whatever tab is open: once, then every
+     thirty seconds (one small request; an alert read late is worth less). */
+  pollAlerts();
+  alertTimer=setInterval(pollAlerts,30000);
+  /* An extension injects `window.nostr` a moment after the page starts:
+     look for it for 3 s. Chosen before: use it. Declined before: the page's
+     key. Never asked: ask. No extension: the page's key, made now if new. */
   var tries=0,tm=setInterval(function(){
     showExtButton();
-    if(nostrAvailable()&&stGet('xprs_ext')==='1'&&!extMode){clearInterval(tm);useExtension(true);}
-    else if(++tries>12||(nostrAvailable()&&stGet('xprs_ext')!=='1'))clearInterval(tm);
+    var choice=stGet('xprs_ext');
+    if(nostrAvailable()){
+      clearInterval(tm);
+      if(choice==='1'){if(!extMode)useExtension(true,function(){if(!priv)useKey(randKey());});}
+      else if(choice==='0'||choice===''){if(!priv)useKey(randKey());} /* '' = declined, older pages */
+      else askExtension();
+    }else if(++tries>12){
+      clearInterval(tm);
+      if(!priv&&!extMode)useKey(randKey());
+    }
   },250);
 })();
 // See the html/body rule in the stylesheet: the document is parked one
