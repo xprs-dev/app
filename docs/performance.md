@@ -1419,6 +1419,42 @@ the process was large, the 8.7 log census to see what the station was busy
 with, then every count on `/api/status` and `/api/rns/status`, looking for the
 one that grows with uptime instead of with the network's size.
 
+### 8.19 The empty room, and seven leaks around the tier (2026-11-06)
+
+An audit for the Android battery complaints found the tier of 8.11 reached
+three dials and leaked around the rest. Fixed in one pass, all modes:
+
+| what | where | was | now |
+|---|---|---|---|
+| shared-folder re-advertise | `disk_folder_manager.dart` | every 60 s sync published the folder AND every file to the DHT, changed or not: a lookup plus STOREs, each a link handshake, hundreds a minute for twenty files | only when the sync found a change, or once after start; the 30-min `republishAll` is the refresh |
+| `mesh-dial` hold | `mesh_transfer_scheduler.dart` | the "no dialable peers" return came before the 110 s abort, so a dial to the last peer in range (which then left) pinned `active` forever | the abort runs on that path too |
+| Dart fallback tick | `ble_service_io.dart` | skipped only if the native tick was under 6 s old, so on battery (10 s tick) the whole body ran every 6-8 s anyway | skipped while the native tick is under 3x its tier period |
+| `radioStatus()` | same | a channel round trip every tick for a diagnostics map | once a minute |
+| per-tick wake lock | `BgService.kt` | 3 s flat, 30% of wall time at a 10 s tick | released when Dart answers the tick, 1.5 s cap |
+| `active` re-acquire | same | guarded on `isHeld`, so a timed tick lock still held meant NO standing lock in `active` | unconditional `acquire()`, which cancels the pending timed release |
+| headless screen state | same | `power.screen` sent before Dart's handler existed on a boot start; Dart's default is "screen on" = `active` all night | re-sent on the first answered tick |
+| legacy scan | `Ble5.kt` | hard-coded BALANCED whatever the tier | follows `setScanMode` like the extended scan |
+| advert window | same | a presence refresh (every 30 s) reopened the 5 s window: duty 5 in 30, not 5 in 60 | only traffic (`prio`) reopens it |
+| rotation | same | every 1.2 s forever, `setAdvertisingData` while nothing was on air | 5 s while the window is closed, back to 1.2 s when it opens |
+| silent-scan restart | same | every 2 min in an empty room | 2, 4, 8, 16 min; reset by the first frame |
+| path requests | `rns_transport.dart` | an edge-bridge leaf answered for any path it held, hub A's to hub B's askers | only for destinations heard on an edge bearer (XPRS.md 12.12.3) |
+| engine stats post | `rns_transport_engine.dart` | every 2 s | every 10 s |
+| stall probe | `main.dart` | 2 wake-ups/s for the life of every build | debug and profile builds only |
+| three battery readers | `mesh_service.dart`, `wifi_direct_coordinator.dart`, `capacity_governor.dart` | each its own `battery_plus` subscription; MeshService's percentage refreshed only on a charge event, so `dialBudgetLow()` never fired | `PowerState.isPowered` / `batteryLevel` / `powered`; plugged-in includes `connectedNotCharging` everywhere |
+
+**The empty room.** New: `PowerState.alone`, true when no XPRS radio has been
+heard for five minutes (the scan's last marker frame or a discovered presence
+advert, reported by the BLE tick through `noteAir`). Alone: both scans
+LOW_POWER, the connectable presence advert `ADVERTISE_MODE_LOW_POWER` (about
+one a second instead of ten, still connectable, `setPresenceMode`), the beacon
+every 3 min (docs/mesh.md 7's idle band). Company: the first frame heard
+promotes on the next tick with no dwell, because after five silent minutes the
+scan-start budget is there. Nothing is switched off; the digipeater, the
+scan and the advert all keep running — an empty room is simply listened to
+more slowly.
+
+**Measurement status:** as 8.11's, still owed. The protocol there stands.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile

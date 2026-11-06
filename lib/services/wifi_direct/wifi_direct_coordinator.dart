@@ -21,11 +21,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:battery_plus/battery_plus.dart';
 
 import '../../connections/bluetooth/ble5_bus.dart';
 import '../../connections/wifi_direct/wifi_direct_service.dart';
 import '../log_service.dart';
+import '../power_state.dart';
 import '../reticulum/rns_service.dart';
 
 const int kWfdRnsPortDefault = 4965;
@@ -50,13 +50,13 @@ class WifiDirectCoordinator {
   static final WifiDirectCoordinator instance = WifiDirectCoordinator._();
 
   final WifiDirectService _wfd = WifiDirectService.instance;
-  final Battery _battery = Battery();
 
   bool _started = false;
   bool enabled = true; // user setting (persisted by the caller)
   int port = kWfdRnsPortDefault;
 
-  bool _powered = false;
+  // One battery reader for the whole app (PowerState); see MeshService.
+  bool get _powered => PowerState.instance.isPowered;
   bool _groupUp = false; // we host or joined a group
   bool _isGo = false;
   int _clientCount = 0;
@@ -90,14 +90,6 @@ class WifiDirectCoordinator {
     }
     Ble5Bus.instance.onFrame(Ble5Subtype.wfd, _onFrame);
     _wfdEvents = _wfd.events.listen(_onWfdEvent);
-    // Charging state drives standing-group policy (Phase 4) + role election.
-    try {
-      _powered = (await _battery.batteryState) != BatteryState.discharging;
-      _battery.onBatteryStateChanged
-          .listen((s) => _powered = s != BatteryState.discharging);
-    } catch (_) {
-      _powered = true; // desktop / no battery API
-    }
     LogService.instance.add('WFD: coordinator started (powered=$_powered)');
   }
 

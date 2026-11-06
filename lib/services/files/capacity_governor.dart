@@ -16,9 +16,9 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:battery_plus/battery_plus.dart';
 
 import '../log_service.dart';
+import '../power_state.dart';
 import '../preferences_service.dart';
 import 'capacity_policy.dart';
 
@@ -28,8 +28,6 @@ class CapacityGovernor {
   CapacityGovernor._();
   static final CapacityGovernor instance = CapacityGovernor._();
 
-  final Battery _battery = Battery();
-  StreamSubscription<BatteryState>? _sub;
   Timer? _poll;
   bool _running = false;
   void Function(CapacityProfile)? _apply;
@@ -48,16 +46,15 @@ class CapacityGovernor {
     }
     _running = true;
     await evaluate();
-    try {
-      _sub = _battery.onBatteryStateChanged.listen((_) => evaluate());
-    } catch (_) {}
+    // Power comes from PowerState, the one battery reader; the minute poll
+    // stays for the network kind, which has no event.
+    PowerState.instance.powered.addListener(_onPower);
     _poll = Timer.periodic(const Duration(minutes: 1), (_) => evaluate());
   }
 
   void stop() {
     _running = false;
-    _sub?.cancel();
-    _sub = null;
+    PowerState.instance.powered.removeListener(_onPower);
     _poll?.cancel();
     _poll = null;
   }
@@ -69,27 +66,15 @@ class CapacityGovernor {
     if (_running) evaluate();
   }
 
+  void _onPower() => unawaited(evaluate());
+
   Future<void> evaluate() async {
     final net = _override ?? await detectNetwork();
-    var charging = false;
-    try {
-      final s = await _battery.batteryState;
-      // A battery-less desktop/server reports `unknown` (the plugin doesn't
-      // throw on Linux when there's no battery) — treat it as on mains power so
-      // always-on machines qualify as unlimited providers/archivers. Only a real
-      // battery that is discharging keeps charging=false.
-      // "On power" means PLUGGED IN, not necessarily actively charging. A phone
-      // sitting at 100% on a charger reports `connectedNotCharging` (or `full`) —
-      // it is still mains-powered and should qualify as an archiver, per the role
-      // design ("plugged to electricity + WiFi"). Only a real battery that is
-      // discharging keeps charging=false.
-      charging = s == BatteryState.charging ||
-          s == BatteryState.full ||
-          s == BatteryState.connectedNotCharging ||
-          s == BatteryState.unknown;
-    } catch (_) {
-      charging = true; // no battery (desktop/server) — treat as on power
-    }
+    // "On power" means PLUGGED IN, not necessarily actively charging: a phone
+    // at 100% on a charger (`connectedNotCharging`, `full`) and a battery-less
+    // desktop (`unknown`) both qualify. PowerState applies exactly that rule,
+    // for everybody.
+    final charging = PowerState.instance.isPowered;
     final prefs = PreferencesService.instanceSync;
     final profile = policyFor(
       net,

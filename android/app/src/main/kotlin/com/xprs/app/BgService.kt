@@ -19,6 +19,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import io.flutter.plugin.common.MethodChannel
 
 /**
  * Foreground service that keeps the app process alive (with a persistent
@@ -57,25 +58,54 @@ class BgService : Service() {
     private val ticker = object : Runnable {
         override fun run() {
             // In the saving tiers there is no standing wake lock (see
-            // applyTier), so the tick takes one for itself with a short
-            // timeout: enough for Dart to do its housekeeping, impossible to
-            // leak. Inbound work — a scan result, socket data — wakes the
-            // process on its own and does not depend on this.
+            // applyTier), so the tick takes one for itself: held until Dart
+            // answers the tick (milliseconds), capped so a Dart side that
+            // never answers cannot leak it. It was a flat 3 s, which at a
+            // 10 s tick kept the CPU awake 30% of the time for work that
+            // takes a few milliseconds.
             val transient = if (tickWakeLock) wakeLock else null
             try {
-                transient?.acquire(3_000L)
+                transient?.acquire(TICK_LOCK_CAP_MS)
             } catch (_: Throwable) {
             }
             try {
                 // Prefer the shared channel (set whether the engine is headless
                 // from boot or owned by the Activity); fall back to the Activity's.
                 (XprsApplication.bgChannel ?: MainActivity.channel)
-                    ?.invokeMethod("onTick", null)
+                    ?.invokeMethod("onTick", null, object : MethodChannel.Result {
+                        override fun success(result: Any?) = onTickAnswered(transient)
+                        override fun error(code: String, msg: String?, details: Any?) =
+                            onTickAnswered(transient)
+                        override fun notImplemented() = onTickAnswered(transient)
+                    })
             } catch (_: Throwable) {
             }
             handler.postDelayed(this, tickMs)
         }
     }
+
+    /** Dart finished the tick: give the CPU back, and make sure Dart has the
+     *  screen state. The first `power.screen` is sent from onStartCommand,
+     *  which on a headless boot runs before Dart's handler exists, so the
+     *  message is lost and Dart's default (`screen on`, hence `active`) stands
+     *  all night. The first answered tick is proof the handler is there. */
+    private fun onTickAnswered(transient: PowerManager.WakeLock?) {
+        try {
+            if (transient != null && transient.isHeld && tickWakeLock) transient.release()
+        } catch (_: Throwable) {
+        }
+        if (!screenSynced) {
+            screenSynced = true
+            try {
+                val pm = getSystemService(POWER_SERVICE) as PowerManager
+                (XprsApplication.bgChannel ?: MainActivity.channel)
+                    ?.invokeMethod("power.screen", pm.isInteractive)
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private var screenSynced = false
 
     /**
      * Apply a tier published by Dart's PowerState. Three dials, none of which
@@ -99,7 +129,12 @@ class BgService : Service() {
             // Otherwise: hold it, as this service always did.
             try {
                 if (saving && wl.isHeld) wl.release()
-                if (!saving && !wl.isHeld) wl.acquire()
+                // Unconditional: if a tick's timed acquire is still held at
+                // this moment, a guarded acquire was skipped and the pending
+                // timeout then released the lock, leaving `active` with no
+                // standing lock at all. acquire() without a timeout cancels
+                // that pending release.
+                if (!saving) wl.acquire()
             } catch (_: Throwable) {
             }
         }
@@ -184,6 +219,7 @@ class BgService : Service() {
             }
         }
         live = this
+        screenSynced = false
         // Broadcasts only fire on a CHANGE. A service started at boot in the
         // middle of the night would otherwise sit at the `active` tier until
         // somebody happened to turn the screen on and off again, which is the
@@ -270,6 +306,8 @@ class BgService : Service() {
         // created, and the old channel badged the launcher icon forever.
         private const val CHANNEL_ID = "aurora_service"
         private const val NOTIF_ID = 7001
+        /** The most a tick may hold the CPU if Dart never answers. */
+        private const val TICK_LOCK_CAP_MS = 1_500L
         /** The heartbeat period, set by [applyTier]. 2 s is the active rate
          *  this service always used; the saving tiers stretch it. Riders
          *  tolerate that: the BLE watchdogs trigger on 120-150 s of silence

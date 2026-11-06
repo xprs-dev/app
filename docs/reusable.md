@@ -552,6 +552,25 @@ also fire `ErrorEvent` on `EventBus`.
   the UI; the actual scheduling is done by whatever `Timer.periodic`
   the owner created. The monitor doesn't drive timers.
 
+### PowerState — the one reader of power, screen and the room
+
+**File:** `lib/services/power_state.dart` (singleton, started by `PowerGovernor`).
+
+- `tier` (`ValueNotifier<PowerTier>`: active / idle / battery / low) — what
+  the phone may cost right now; `holdActive(reason)` / `releaseActive` pin
+  it while delivery is in flight. A hold MUST be released on every exit path
+  (the scheduler's early return leaked one for weeks; performance.md 8.19).
+- `isPowered`, `powered` (notifier), `batteryLevel` — plugged in means
+  charging, full, connected-not-charging or no battery. **Never add another
+  `battery_plus` subscription**: three services did, disagreed on
+  "connected, not charging", and one never refreshed its percentage.
+- `alone` (`ValueNotifier<bool>`), `noteAir(lastFrameMs, lastDiscoveredMs)`
+  — no XPRS radio heard for 5 min. Radios read it to run cheaper in an empty
+  room; anything periodic that exists to be heard by a neighbour (a beacon,
+  a presence advert) should consult it before adding a timer of its own.
+- `nativeTickMs` — the native heartbeat period for the tier, for any Dart
+  fallback that must tell "the service is driving" from "it stopped".
+
 ---
 
 ## App authoring

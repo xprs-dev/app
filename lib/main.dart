@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform;
+    show defaultTargetPlatform, TargetPlatform, kDebugMode, kProfileMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -111,15 +111,19 @@ Future<void> _boot() async {
         ..add('Dart VM service: $uri');
     }).catchError((_) {}),
   );
-  var lagExpected = DateTime.now().millisecondsSinceEpoch + 500;
-  Timer.periodic(const Duration(milliseconds: 500), (_) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final drift = now - lagExpected;
-    lagExpected = now + 500;
-    if (drift > 300) {
-      LogService.instance.add('perf: main isolate stalled ~${drift}ms');
-    }
-  });
+  // The stall probe is a development instrument: two wake-ups a second for
+  // the life of the process is not a cost a release build pays in a pocket.
+  if (kDebugMode || kProfileMode) {
+    var lagExpected = DateTime.now().millisecondsSinceEpoch + 500;
+    Timer.periodic(const Duration(milliseconds: 500), (_) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final drift = now - lagExpected;
+      lagExpected = now + 500;
+      if (drift > 300) {
+        LogService.instance.add('perf: main isolate stalled ~${drift}ms');
+      }
+    });
+  }
 
   // Bound the image cache on phones. Flutter's default (100MB / 1000 images)
   // is sized for desktops; this app feeds it full-resolution network photos

@@ -814,9 +814,12 @@ class BleService {
     XblobService.instance.onLinkDown();
     GattPeer.callsign = '';
     _dbg('native GATT client link down ($_ngClientPeer)');
-    _applyScanTier();
+    // The link is DOWN before the scan tier is re-read: the other order
+    // left gattLinkUp true for the check, so the scan stayed BALANCED after
+    // every link on battery.
     _ngClientUp = false;
     _ngClientPeer = null;
+    _applyScanTier();
     MeshSessionManager.instance.onLinkDown(serverSide: false);
     if (_ngServerCentral == null) _resumeBle5Scan();
     _applyScan();
@@ -1081,6 +1084,11 @@ class BleService {
 
   void _onServiceTick() {
     _lastServiceTickMs = DateTime.now().millisecondsSinceEpoch;
+    _tickBody();
+  }
+
+  /// One round of housekeeping, from whichever clock is driving.
+  void _tickBody() {
     _bcastTick();
     _supportWatchdog();
     _environmentWatchdog();
@@ -1088,6 +1096,19 @@ class BleService {
     _gattEndpointWatchdog();
     _refreshRadioSnapshot();
     _rxSummaryTick();
+    _noteNeighbourhood();
+  }
+
+  /// Tell PowerState when another XPRS radio was last heard: the scan's last
+  /// marker frame, or a presence advert the legacy scan discovered. Five
+  /// minutes of neither is an empty room, and the radios are run cheaper in
+  /// one (docs/mesh.md 7, docs/performance.md 8.11).
+  void _noteNeighbourhood() {
+    if (!_ble5) return;
+    PowerState.instance.noteAir(
+      Ble5Bus.instance.lastFrameMs,
+      _lastPeerMs,
+    );
   }
 
   /// The native radio counters, refreshed on the 2 s tick and cached.
@@ -1099,9 +1120,18 @@ class BleService {
   /// why a deaf radio and an empty room looked identical.
   Map<String, dynamic> _radioSnapshot = const {};
   bool _radioSnapshotBusy = false;
+  int _radioSnapshotMs = 0;
+
+  /// At most once a minute: the snapshot feeds diagnostics and the once-a-
+  /// minute summary line, and a platform-channel round trip on every 2 s tick
+  /// was 1,800 trips an hour for a map nobody read that often.
+  static const int _radioSnapshotEveryMs = 60 * 1000;
 
   void _refreshRadioSnapshot() {
     if (!_ble5 || _radioSnapshotBusy) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _radioSnapshotMs < _radioSnapshotEveryMs) return;
+    _radioSnapshotMs = now;
     _radioSnapshotBusy = true;
     unawaited(Ble5Bus.instance.radioStatus().then((m) {
       _radioSnapshot = m;
@@ -1112,16 +1142,16 @@ class BleService {
 
   /// The Dart fallback: skipped while the service tick is doing the work, so a
   /// foreground device isn't running both.
+  ///
+  /// "Doing the work" is judged against the tier's own heartbeat period, not
+  /// a fixed 6 s: on battery the native tick is 10 s (30 s low), and a fixed
+  /// threshold ran this whole body every 6-8 s anyway whenever the CPU was
+  /// awake, which undid the tier (docs/performance.md 8.11).
   void _dartTick() {
     final age = DateTime.now().millisecondsSinceEpoch - _lastServiceTickMs;
-    if (_lastServiceTickMs != 0 && age < 6000) return;
-    _bcastTick();
-    _supportWatchdog();
-    _environmentWatchdog();
-    _scanWatchdog();
-    _gattEndpointWatchdog();
-    _refreshRadioSnapshot();
-    _rxSummaryTick();
+    final alive = 3 * PowerState.instance.nativeTickMs;
+    if (_lastServiceTickMs != 0 && age < alive) return;
+    _tickBody();
   }
 
   /// Re-arm anything the system stopped behind our back. Android kills a long
@@ -1212,29 +1242,46 @@ class BleService {
   // scan starts per thirty seconds.
   static const int _scanModeLowPower = 0;
   static const int _scanModeBalanced = 1;
+  static const int _presenceModeLowLatency = 2;
   int _appliedScanMode = _scanModeBalanced;
+  int _appliedPresenceMode = _presenceModeLowLatency;
   bool _scanTierArmed = false;
 
   void _armScanTier() {
     if (_scanTierArmed || !Platform.isAndroid || !_ble5) return;
     _scanTierArmed = true;
     PowerState.instance.tier.addListener(_applyScanTier);
+    PowerState.instance.alone.addListener(_applyScanTier);
     _applyScanTier();
   }
 
   void _applyScanTier() {
     if (!_ble5) return;
-    final saving = PowerState.instance.isBackgroundSaving &&
-        !PowerState.instance.hasActiveHold &&
-        !gattLinkUp;
-    final want = saving ? _scanModeLowPower : _scanModeBalanced;
+    final ps = PowerState.instance;
+    final saving = ps.isBackgroundSaving && !ps.hasActiveHold && !gattLinkUp;
+    // An empty room is cheap whatever the tier: nobody is there to be slow
+    // for. The first frame heard promotes it again on the next tick.
+    final alone = ps.alone.value && !gattLinkUp;
+    final want = saving || alone ? _scanModeLowPower : _scanModeBalanced;
+    // The connectable presence advert follows the same reading. It stays
+    // connectable in every mode; LOW_POWER is about one advert a second
+    // instead of ten, which only makes an empty room slower to notice us.
+    final presence = alone
+        ? _scanModeLowPower
+        : saving
+            ? _scanModeBalanced
+            : _presenceModeLowLatency;
+    if (presence != _appliedPresenceMode) {
+      _appliedPresenceMode = presence;
+      unawaited(Ble5Bus.instance.setPresenceMode(presence));
+    }
     if (want == _appliedScanMode) return;
     _appliedScanMode = want;
-    debugPrint('BLE5: scan mode -> ${want == _scanModeLowPower ? 'low-power' : 'balanced'} '
-        '(tier ${PowerState.instance.tier.value.name})');
+    final why = alone ? 'alone' : 'tier ${ps.tier.value.name}';
+    debugPrint('BLE5: scan mode -> ${want == _scanModeLowPower ? 'low-power' : 'balanced'} ($why)');
     LogService.instance.add(
       'BLE5: scan mode ${want == _scanModeLowPower ? 'low-power' : 'balanced'} '
-      '(tier ${PowerState.instance.tier.value.name})',
+      '($why)',
     );
     unawaited(Ble5Bus.instance.setScanMode(want));
   }

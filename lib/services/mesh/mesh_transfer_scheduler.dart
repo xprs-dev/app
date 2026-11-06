@@ -188,6 +188,18 @@ class MeshTransferScheduler {
     final dial = hooks.dial;
     final dialable = hooks.dialable?.call();
     if (dial == null || dialable == null || dialable.isEmpty) {
+      // A dial that went out to the LAST peer in range, which then walked
+      // away, used to sit here forever: this return came before the abort
+      // below, so `_dialing` was never cleared and the `mesh-dial` hold kept
+      // the phone at the active tier (standing wake lock, 2 s heartbeat)
+      // until that peer came back. Abort it on the same clock as any other.
+      final d = _dialing;
+      if (d != null &&
+          DateTime.now().difference(_dialStarted) >=
+              const Duration(seconds: 110)) {
+        hooks.dropClientLink?.call();
+        dialResult(d, clean: false);
+      }
       _decide('idle: no dialable peers');
       return;
     }

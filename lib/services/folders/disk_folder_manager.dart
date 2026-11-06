@@ -302,8 +302,19 @@ class DiskFolderManager {
     // wedge sync() (and the /api/rns/folder/rescan call) for minutes after the
     // signed ops had already committed. republishAll() re-advertises every
     // ~30 min, so a missed/slow publish self-heals. Detach + time-bound it.
-    unawaited(_advertise(folderId, desired.values.toList()));
+    //
+    // Only when something CHANGED, or once after a start. This ran on every
+    // sync — every 60 s — and each publish is a DHT lookup plus STOREs, each a
+    // link handshake: a folder of twenty unchanged files cost a phone
+    // hundreds of handshakes a minute, forever. The 30-minute republish is
+    // the refresh; the sync is not.
+    if (changed > 0 || _advertised.add(folderId)) {
+      unawaited(_advertise(folderId, desired.values.toList()));
+    }
   }
+
+  /// Folders advertised at least once since this process started.
+  final Set<String> _advertised = {};
 
   /// Fire-and-forget provider advertisements, each individually time-bounded so
   /// a stuck DHT publish can't leak an unbounded pending future or block sync.

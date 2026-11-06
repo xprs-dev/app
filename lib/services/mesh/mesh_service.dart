@@ -19,7 +19,6 @@ import 'dart:convert';
 import 'package:file/file.dart';
 import 'dart:typed_data';
 
-import 'package:battery_plus/battery_plus.dart';
 
 import '../../connections/bluetooth/ble5_bus.dart';
 import '../../profile/profile_service.dart';
@@ -27,6 +26,7 @@ import '../../profile/storage_paths.dart';
 import '../../util/media_archive.dart';
 import '../../util/media_ref.dart';
 import '../log_service.dart';
+import '../power_state.dart';
 import '../preferences_service.dart';
 import '../xprs/xprs_airtime.dart';
 import '../xprs/xprs_archive.dart';
@@ -95,7 +95,6 @@ class MeshService {
   static const Duration _triggerDebounce = Duration(seconds: 4);
 
   final DateTime _startedAt = DateTime.now();
-  final Battery _battery = Battery();
 
   // `lifetime:` (docs/XPRS.md section 10.5): cumulative service seconds saved
   // by every PREVIOUS run; the current figure is this plus the uptime. Loaded
@@ -115,8 +114,13 @@ class MeshService {
   Timer? _lanBeaconTimer;
   Timer? _sweepTimer;
   Timer? _triggerTimer;
-  bool _powered = false;
-  int _batteryPct = 100;
+  // Power is read in ONE place, PowerState. This service kept its own
+  // battery_plus subscription that disagreed with it on "connected, not
+  // charging", and refreshed the percentage only on a charge-state event, so
+  // a phone unplugged at 90% stayed "90%" until it was plugged in again and
+  // dialBudgetLow() never fired.
+  bool get _powered => PowerState.instance.isPowered;
+  int get _batteryPct => PowerState.instance.batteryLevel;
   int _beaconsSent = 0, _beaconsHeard = 0;
 
   // Channel-load meter: BLE5 frames heard in a sliding minute (fed by
@@ -149,10 +153,17 @@ class MeshService {
   }
 
   /// Effective beacon interval for the current tier.
+  ///
+  /// An empty room (no XPRS radio heard for five minutes, PowerState.alone)
+  /// is beaconed every three minutes, docs/mesh.md 7's "stable/idle" band:
+  /// the beacon is what lets a newcomer find us, and a newcomer looks for a
+  /// while. The first frame heard brings the 30 s cadence back.
   Duration beaconIntervalNow() => switch (politenessTier()) {
         2 => const Duration(minutes: 5),
         1 => const Duration(seconds: 90),
-        _ => _beaconInterval,
+        _ => PowerState.instance.alone.value
+            ? const Duration(minutes: 3)
+            : _beaconInterval,
       };
 
   /// Battery dial policy: on low battery (and not charging) the node stops
@@ -834,21 +845,6 @@ class MeshService {
             _lifeBaseSec + DateTime.now().difference(_startedAt).inSeconds;
       }
     });
-
-    // Track power state for the cond byte (desktops report `unknown` = mains).
-    try {
-      final st = await _battery.batteryState;
-      _powered = st != BatteryState.discharging;
-      _batteryPct = await _battery.batteryLevel;
-      _battery.onBatteryStateChanged.listen((st) async {
-        _powered = st != BatteryState.discharging;
-        try {
-          _batteryPct = await _battery.batteryLevel;
-        } catch (_) {}
-      });
-    } catch (_) {
-      _powered = true; // no battery API → assume powered (desktop)
-    }
 
     try {
       await _sendBeacon().timeout(const Duration(seconds: 5), onTimeout: () {});

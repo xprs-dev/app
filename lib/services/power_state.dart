@@ -76,6 +76,64 @@ class PowerState with WidgetsBindingObserver {
   bool get isBackgroundSaving =>
       tier.value == PowerTier.battery || tier.value == PowerTier.low;
 
+  /// Plugged in: charging, full, connected-not-charging, or no battery at
+  /// all (a desktop). THE definition, for everybody: MeshService, the
+  /// Wi-Fi Direct coordinator and the capacity governor each used to read
+  /// battery_plus on their own and disagreed on "connected, not charging".
+  bool get isPowered => _powered;
+
+  /// [isPowered] as a notifier, for consumers that act on the change.
+  final ValueNotifier<bool> powered = ValueNotifier(true);
+
+  /// Last battery percentage read (two-minute poll plus every charge event).
+  int get batteryLevel => _level;
+
+  /// The native heartbeat period for the current tier (BgService.applyTier),
+  /// so a Dart fallback can tell "the service is driving" from "it stopped".
+  int get nativeTickMs => switch (tier.value) {
+        PowerTier.battery => 10000,
+        PowerTier.low => 30000,
+        PowerTier.active || PowerTier.idle => 2000,
+      };
+
+  // ── The room: is anybody there? ──────────────────────────────────────────
+  //
+  // A radio in an empty room costs the same as one in a crowd, and most of
+  // a phone's day is the empty room. The BLE scan is filtered on our marker,
+  // so "when did the scan last deliver a frame" IS "when was another XPRS
+  // radio last heard"; the legacy scan's discovered presence adverts count
+  // too. Five minutes of neither and the room is empty: the scan, the
+  // presence advert and the beacon go to their cheapest settings
+  // (docs/mesh.md 7). The first frame heard turns it back, on the next tick,
+  // with no dwell — a scan-mode change costs a scan start, and after five
+  // silent minutes the budget for one is there.
+
+  /// True when no XPRS radio has been heard for [aloneAfter].
+  final ValueNotifier<bool> alone = ValueNotifier(false);
+  static const Duration aloneAfter = Duration(minutes: 5);
+  int _lastAirMs = 0;
+
+  /// The BLE service reports, on its tick, when the air last carried a
+  /// neighbour: the scan's last marker frame and the last discovered
+  /// presence advert, as ms since the epoch (0 = never).
+  void noteAir(int lastFrameMs, int lastDiscoveredMs) {
+    final latest = lastFrameMs > lastDiscoveredMs ? lastFrameMs : lastDiscoveredMs;
+    if (latest > _lastAirMs) _lastAirMs = latest;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // Never heard anybody since start: measure from start, not from 1970,
+    // or a fresh process would be "alone" before its scan had a chance.
+    final since = _lastAirMs == 0 ? _startedMs : _lastAirMs;
+    final want = now - since >= aloneAfter.inMilliseconds;
+    if (want != alone.value) {
+      LogService.instance.add(want
+          ? 'power: alone (no XPRS radio heard for ${aloneAfter.inMinutes} min)'
+          : 'power: company (an XPRS radio is in range)');
+      alone.value = want;
+    }
+  }
+
+  final int _startedMs = DateTime.now().millisecondsSinceEpoch;
+
   Future<void> start() async {
     if (_running) return;
     _running = true;
@@ -166,10 +224,15 @@ class PowerState with WidgetsBindingObserver {
       // A device with no battery (most desktops) reports `unknown` and a bogus
       // 0% — that is mains power, not an emergency. Getting this wrong once
       // left desktops permanently throttled at a phantom 0%.
+      // Plugged in, not necessarily charging: a phone at 100% on a charger
+      // reports connectedNotCharging and is on mains as far as any role is
+      // concerned.
       _powered = state == BatteryState.charging ||
           state == BatteryState.full ||
+          state == BatteryState.connectedNotCharging ||
           state == BatteryState.unknown;
       _level = level;
+      if (powered.value != _powered) powered.value = _powered;
       _recompute();
     } catch (_) {}
   }

@@ -474,6 +474,14 @@ on a charger, LOW_POWER on battery in the background. It is a mode change and
 never a stop — §4 above is why — and it is rate-limited by a 60 s dwell,
 because a mode change restarts the scan and Android counts scan starts.
 
+Since 2026-11-06 the mode reaches BOTH scans (the legacy discovery scan was
+hard-coded BALANCED), and the connectable presence advert has its own dial,
+`setPresenceMode` (0 LOW_POWER ~1 s, 1 BALANCED, 2 LOW_LATENCY ~100 ms, the
+rate it always ran at). It never stops being connectable; LOW_POWER only
+makes an empty room slower to find us. The app sets LOW_POWER when
+`PowerState.alone` (no XPRS radio heard for 5 min), BALANCED on battery with
+company, LOW_LATENCY otherwise (performance.md 8.19).
+
 ### 9.5 What an app update over Bluetooth actually costs
 
 **Measured, 2026-08-26: the whole 56,830,760-byte arm64 APK, C61 to TANK2, with
