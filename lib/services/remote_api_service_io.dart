@@ -65,6 +65,8 @@ import 'i2p/i2p_service.dart';
 import 'log_service.dart';
 import 'media/media_fetch.dart';
 import 'reticulum/rns_service.dart';
+import 'reticulum/rns_session.dart';
+import 'power_state.dart';
 import 'folders/folder_event.dart' show FolderShareType;
 import 'folders/disk_folder.dart' show DiskFolderSource;
 import 'xprs/xprs_folder.dart';
@@ -644,6 +646,23 @@ class RemoteApiService {
         }
         final ok = await RnsService.instance.addBootstrap(ep);
         return _json(res, {'ok': ok, 'endpoint': ep});
+      }
+      // A hub session on request (docs/performance.md 8.22): GET shows the
+      // hold, POST {hold: minutes, reason} asks for one. A station answers
+      // the same shape with nothing held, because it needs none.
+      if (path == '/api/rns/session') {
+        if (req.method == 'POST') {
+          final data = await _body(req);
+          final mins = int.tryParse('${data['hold'] ?? ''}') ?? 5;
+          await RnsSession.instance.request(
+              '${data['reason'] ?? 'api'}',
+              hold: Duration(minutes: mins.clamp(1, 120)));
+        }
+        return _json(res, {
+          'ok': true,
+          'profile': PowerState.instance.profile.value.name,
+          ...RnsSession.instance.status,
+        });
       }
       if (req.method == 'POST' && path == '/api/rns/announce') {
         // {"text":"hello"} — one-to-many announce of our chat destination.

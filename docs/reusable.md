@@ -593,6 +593,17 @@ also fire `ErrorEvent` on `EventBus`.
   connected, so a feature that wants "send this to my archiver now" just
   publishes. Received lines enter the funnel as the internet lane.
 
+### RnsSession — a hub, on request, for a phone on battery
+
+**File:** `lib/services/reticulum/rns_session.dart`.
+
+`RnsSession.instance.request('reason', hold: Duration)` is idempotent and
+cheap: it brings one hub up in the normal profile and holds it for the
+duration, a no-op in the station profile. Any feature that needs the shared
+transport for a while (a transfer, a Reticulum-only contact) asks at the
+moment it knows and never checks `connectedHubs` first; the session's
+release is automatic (8.22). Don't connect hubs from a feature directly.
+
 ---
 
 ## App authoring

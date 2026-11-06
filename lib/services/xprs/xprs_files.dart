@@ -35,6 +35,7 @@ import 'package:reticulum/src/services/social/archiver_policy.dart';
 
 import '../../util/media_ref.dart';
 import '../log_service.dart';
+import '../reticulum/rns_session.dart';
 import '../mesh/mesh_bulk_spool.dart';
 import 'xprs_id.dart';
 import 'xprs_airtime.dart';
@@ -273,6 +274,12 @@ class XprsFileServer {
     _inFlight[held.shaHex] = _Served(cmdId, from, selfBase);
     LogService.instance
         .add('XPRS: cmd:file ${held.name} (${held.size}B) -> $from (202)');
+    // A far requester fetches over a Reticulum link to us (the internet
+    // middle, 11.2.2), which needs us announced through a hub: a phone on
+    // battery brings one up for the transfer and drops it after.
+    unawaited(RnsSession.instance
+        .request('serve:${held.shaHex.substring(0, 8)}',
+            hold: const Duration(minutes: 15)));
     air(202);
     return 202;
   }
@@ -528,6 +535,10 @@ class XprsFileFetch {
     // The completer guards against a double-complete, so the loser is a no-op.
     final net = internetFetch;
     if (net != null) {
+      // The internet middle needs a hub; a phone on battery holds one up
+      // for the fetch (RnsSession) and lets it go when the bytes are in.
+      unawaited(RnsSession.instance.request('fetch:${sha.substring(0, 8)}',
+          hold: const Duration(minutes: 15)));
       unawaited(net(sha, ext, archiver, _destDir[sha]).then((path) {
         if (path != null) _completeFromInternet(sha, path);
       }).catchError((_) => null));

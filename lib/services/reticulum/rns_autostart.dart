@@ -195,6 +195,38 @@ Future<void> ensureRnsAutostart() async {
   }
 }
 
+/// One hub, the first that answers, for a session (RnsSession) on a node
+/// that is up on its local bearers and holds no hub. A node that is not up
+/// at all (no BLE5 on this phone) is started on the hub instead.
+Future<bool> connectAnyHub() async {
+  final rns = RnsService.instance;
+  final prefs = await PreferencesService.instance();
+  if (!prefs.rnsAutoStart) return false;
+  final servers = prefs.rnsBootstrapServers;
+  if (!rns.isUp) await ensureRnsAutostart();
+  for (final entry in servers) {
+    final hp = _parseHostPort(entry);
+    if (hp == null) continue;
+    if (rns.isUp) {
+      if (await rns.connectUplink(hp.$1, hp.$2)) return true;
+    } else {
+      final cs =
+          (ProfileService.instance.activeProfile?.wireCallsign ?? '').trim();
+      final ok = await rns.start(
+        mode: 'tcpclient',
+        host: hp.$1,
+        port: hp.$2,
+        announceName: cs.isNotEmpty ? cs : 'xprs',
+      );
+      if (ok || rns.isUp) {
+        await AndroidForegroundService.instance.hold('mesh');
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 /// Parse "host:port" (port optional → 4242). Returns null for blank entries.
 (String, int)? _parseHostPort(String entry) {
   final s = entry.trim();

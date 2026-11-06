@@ -3597,18 +3597,23 @@ class RnsService {
         LogService.instance.add('RNS: station profile — clocks armed');
       case PowerProfile.normal:
         _cancelStationTimers();
-        final hubs = List.of(_clients);
-        for (final c in hubs) {
-          _dropClient(c);
-        }
-        if (hubs.isNotEmpty) {
-          LogService.instance.add(
-              'RNS: normal profile — ${hubs.length} hub uplink(s) released, '
-              'Bluetooth and LAN stay up');
-        } else {
-          LogService.instance.add('RNS: normal profile — no hubs held');
-        }
+        releaseHubs('normal profile');
     }
+  }
+
+  /// Drop every public hub uplink and keep everything else: the local
+  /// bearers, the node, the identity. What the normal profile does on the
+  /// charger going, and what a session (RnsSession) does when its last
+  /// reason has let go. Not a link failure: nothing reconnects after this.
+  void releaseHubs(String why) {
+    final hubs = List.of(_clients);
+    for (final c in hubs) {
+      _dropClient(c);
+    }
+    LogService.instance.add(hubs.isEmpty
+        ? 'RNS: $why — no hubs held'
+        : 'RNS: $why — ${hubs.length} hub uplink(s) released, '
+            'Bluetooth and LAN stay up');
   }
 
   Future<bool> start({

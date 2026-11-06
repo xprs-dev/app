@@ -1518,6 +1518,31 @@ serving a file (Phase 3). Set up by hand today: on the archiver,
 archiver); on a phone that cannot yet hear the announcement,
 `{"dials":{"X3ARC1":"host"}}` plus `X3ARC1` in `archivers`.
 
+### 8.22 A hub on request: RnsSession (2026-11-06)
+
+The last piece of 8.20. A normal-profile phone holds no hub, and three
+things still need one: serving a file a far station asked for (the fetcher
+opens a Reticulum link to us, so we must be announced through a hub),
+fetching one from a far holder, and a directed wire that no socket or radio
+took. `RnsSession.request(reason, hold:)` (`lib/services/reticulum/
+rns_session.dart`) brings ONE hub up (`connectAnyHub`, the first in the list
+that answers) and keeps it while any reason holds it; five minutes after the
+last one lets go, or fifteen for a transfer, `releaseHubs` drops it, unless
+a fetch is still waiting for bytes, which extends a minute at a time. In
+the station profile every request is a no-op.
+
+Callers ask at the moment they know and never check first: `XprsFileServer`
+at its `202`, `XprsFileFetch` when it starts the internet middle, the
+publisher's Reticulum bearer for any directed wire that reached it. The
+bench asks with `POST /api/rns/session {"hold": 10, "reason": "bench"}` and
+reads `GET /api/rns/session`.
+
+What a session costs: one TCP connect, one announce (the hub's grace is
+respected by the paced cadence: `connectUplink` announces on the new
+interface, as it always did), the hub's announce flood for the duration,
+then silence again. Against the day of 8.20 that is minutes an hour at
+most, and only when something was asked for.
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile

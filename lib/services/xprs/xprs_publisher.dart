@@ -36,6 +36,7 @@ import '../../profile/profile_service.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
 import '../reticulum/rns_service.dart';
+import '../reticulum/rns_session.dart';
 import 'xprs_line.dart';
 import 'xprs_tcp.dart';
 import 'xprs_ingest.dart';
@@ -250,6 +251,12 @@ class _ReticulumBearer implements XprsBearer {
     final bytes = Uint8List.fromList(utf8.encode(wire));
     final p = XprsPacket.parse(wire);
     final dest = p?['d']?.trim().toUpperCase() ?? '';
+    // A directed wire that reached this bearer was not taken by a socket or
+    // a radio: on a phone on battery that means the hub, which a session
+    // brings up for a while (RnsSession; a no-op for a station).
+    if (dest.isNotEmpty) {
+      unawaited(RnsSession.instance.request('directed:$dest'));
+    }
     // A group's own announcement (10.1) is undirected, so on this lane it is
     // an announce, and the hubs do not cross-forward those (above). Who needs
     // a group's name and picture is its members, and for a folder (10.2) the
