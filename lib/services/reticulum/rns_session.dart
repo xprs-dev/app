@@ -100,11 +100,25 @@ class RnsSession {
     PowerState.instance.profile.addListener(() {
       // A station needs no session; a hold left over would otherwise drop
       // the hubs the station profile just connected.
-      if (PowerState.instance.profile.value == PowerProfile.station &&
-          _holdUntil != null) {
-        _holdUntil = null;
-        _reasons.clear();
-        _disarm();
+      if (PowerState.instance.profile.value == PowerProfile.station) {
+        if (_holdUntil != null) {
+          _holdUntil = null;
+          _reasons.clear();
+          _disarm();
+        }
+        return;
+      }
+      // Unplugged with a hold still standing (a fetch in flight): the
+      // profile switch released every hub a moment ago, and the fetch would
+      // have sat extending its hold with nothing to extend. One hub comes
+      // back for it; a beat later, so the release has happened first
+      // whatever order the listeners fired in.
+      if (active) {
+        Timer(const Duration(seconds: 2), () {
+          if (active && RnsService.instance.connectedHubs.isEmpty) {
+            unawaited(_bringUp('profile normal, hold standing'));
+          }
+        });
       }
     });
   }

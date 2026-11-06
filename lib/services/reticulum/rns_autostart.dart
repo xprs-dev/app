@@ -28,6 +28,7 @@ import '../preferences_service.dart';
 import '../social/email_resolve_service.dart';
 import '../../util/media_archive.dart';
 import 'rns_service.dart';
+import 'rns_session.dart';
 import '../../platform/platform.dart' as platform;
 
 /// Start the Reticulum node if it isn't already running, connecting to the
@@ -192,6 +193,15 @@ Future<void> ensureRnsAutostart() async {
     if (hp == null) continue;
     if (rns.connectedHubs.contains('${hp.$1}:${hp.$2}')) continue;
     await rns.connectUplink(hp.$1, hp.$2);
+  }
+  // The profile was read at the top and a hub start takes seconds; on a
+  // phone whose charger was read meanwhile the hubs dialled above belong to
+  // a station this is not. applyPowerProfile could not do it: the node was
+  // not up when the profile flipped. A session's hub is left alone.
+  if (PowerState.instance.profile.value == PowerProfile.normal &&
+      !RnsSession.instance.active &&
+      rns.connectedHubs.isNotEmpty) {
+    rns.releaseHubs('normal profile (changed during start)');
   }
 }
 

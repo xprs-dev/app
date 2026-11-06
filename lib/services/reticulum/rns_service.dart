@@ -1053,11 +1053,17 @@ class RnsService {
   /// current network. While other uplinks remain, the periodic autostart top-up
   /// re-adds the dropped hub. Keeps local services + LAN/gateway intact.
   void _onUplinkDown(RnsTcpInterface c, String why) {
-    if (_mode != 'tcpclient') return;
     if (!_clients.contains(c)) return; // already removed
     LogService.instance.add('RNS: uplink ${c.host}:${c.port} down ($why)');
     _dropClient(c);
-    if (_clients.isEmpty) _allLinksDown(why);
+    // A node that lives on its local bearers (ble5 mode: a phone on battery,
+    // whose hub was a session's) keeps running without one; the session
+    // re-dials on its next request. It used to return before the drop in
+    // that mode, so a dead session hub stayed in `_clients`, `connectUplink`
+    // answered true on the stale key and no session could ever bring a hub
+    // up again (docs/performance.md 8.23). Only a node that EXISTS through
+    // its uplinks goes down with the last one.
+    if (_clients.isEmpty && _mode == 'tcpclient') _allLinksDown(why);
   }
 
   /// No uplink left (all sockets dead, or the watchdog saw total silence after a
@@ -1075,6 +1081,25 @@ class RnsService {
     }
     final cb = onLinkDown;
     if (cb != null) cb();
+  }
+
+  /// The silence watchdog, armed once: at a tcpclient start, and by
+  /// [connectUplink] for a hub a session adds to a node that started on its
+  /// local bearers (that node had none, so a half-open session hub was never
+  /// noticed). Idle while there is no uplink.
+  void _armLinkWatchdog() {
+    // Alive only while a hub uplink is held: a station's day, or a phone's
+    // session. The last uplink going cancels it; the next one re-arms it.
+    // arch-ignore: no-sub-minute-poll runs only while a hub is held, never on a phone on its local bearers
+    _linkWatchdog ??= Timer.periodic(const Duration(seconds: 10), (_) {
+      if (_clients.isEmpty) {
+        _linkWatchdog?.cancel();
+        _linkWatchdog = null;
+        return;
+      }
+      if (!_up) return;
+      _watchdogTick();
+    });
   }
 
   /// Watchdog tick (every 10s while up with ≥1 uplink). Two layers of self-heal:
@@ -1109,6 +1134,16 @@ class RnsService {
       }
     }
     if (silentClients.isNotEmpty) {
+      // A session's hub on a node that lives on its local bearers: dropped,
+      // not redialled. The session asks for one again when it needs it.
+      if (_mode != 'tcpclient') {
+        for (final c in silentClients) {
+          LogService.instance.add(
+              'RNS: session hub ${c.host}:${c.port} silent — dropped');
+          _dropClient(c);
+        }
+        return;
+      }
       if (silentClients.length >= _clients.length) {
         _allLinksDown(
           'no inbound on any uplink for '
@@ -1601,6 +1636,7 @@ class RnsService {
     if (_connectedHubs.contains(key)) return true;
     try {
       await _attachTcpUplink(host, port);
+      _armLinkWatchdog();
       LogService.instance.add('RNS: added hub uplink $key (mesh)');
       // Announce on the new interface so this hub (and peers reachable via it)
       // learn our destinations promptly instead of waiting for the next cycle.
@@ -4741,14 +4777,12 @@ class RnsService {
       // clean FIN. Reconnect on that silence (the socket onDisconnect handles the
       // clean-close case faster). Only the tcpclient uplink needs this.
       _linkWatchdog?.cancel();
+      _linkWatchdog = null;
       if (mode == 'tcpclient') {
         _lastInboundPerVia.clear();
         _reachHighWater = 0;
         _reachZeroSinceMs = 0;
-        _linkWatchdog = Timer.periodic(const Duration(seconds: 10), (_) {
-          if (!_up || _clients.isEmpty) return;
-          _watchdogTick();
-        });
+        _armLinkWatchdog();
       }
       return true;
     } catch (e) {

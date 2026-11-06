@@ -243,10 +243,14 @@ class PowerState with WidgetsBindingObserver {
       // Plugged in, not necessarily charging: a phone at 100% on a charger
       // reports connectedNotCharging and is on mains as far as any role is
       // concerned.
+      // `unknown` is mains on a desktop and a passing glitch on a phone:
+      // BatteryManager reports BATTERY_STATUS_UNKNOWN on some devices for a
+      // moment, and reading it as "plugged in" made that phone a station.
       _powered = state == BatteryState.charging ||
           state == BatteryState.full ||
           state == BatteryState.connectedNotCharging ||
-          state == BatteryState.unknown;
+          (state == BatteryState.unknown &&
+              !(platform.isAndroid || platform.isIOS));
       _level = level;
       if (powered.value != _powered) powered.value = _powered;
       _recomputeProfile();
@@ -290,10 +294,16 @@ class PowerState with WidgetsBindingObserver {
 
   // ── The profile ──────────────────────────────────────────────────────────
 
-  /// Station or normal; see [PowerProfile]. Starts as `station` so a desktop,
-  /// which never reads a battery, is one from the first instant; a phone is
-  /// re-read from its charger at [start].
-  final ValueNotifier<PowerProfile> profile = ValueNotifier(PowerProfile.station);
+  /// Station or normal; see [PowerProfile]. A desktop, which never reads a
+  /// battery, is a station from the first instant. A phone starts as
+  /// `normal` and is promoted by its charger at [start]: it used to start as
+  /// a station too, and the Reticulum autostart, which fires four seconds
+  /// into boot, read that default on a slow boot and dialled every public
+  /// hub for a phone that was in a pocket (docs/performance.md 8.23).
+  final ValueNotifier<PowerProfile> profile = ValueNotifier(
+      platform.isAndroid || platform.isIOS
+          ? PowerProfile.normal
+          : PowerProfile.station);
 
   /// The preference: 'auto' (follow the charger), 'station', 'normal'.
   String get profileMode => _profileMode;

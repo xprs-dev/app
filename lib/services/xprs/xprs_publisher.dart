@@ -27,7 +27,6 @@ import 'dart:typed_data';
 import '../../connections/bluetooth/ble5_bus.dart';
 import '../mesh/mesh_custody.dart';
 import '../mesh/mesh_service.dart';
-import '../mesh/mesh_custody.dart';
 import '../mesh/xblob_service.dart';
 import '../mesh/mesh_store.dart';
 import '../mesh/mesh_transfer_scheduler.dart';
@@ -35,6 +34,7 @@ import '../../connections/lora/lora_connection.dart';
 import '../../profile/profile_service.dart';
 import '../log_service.dart';
 import '../preferences_service.dart';
+import '../power_state.dart';
 import '../reticulum/rns_service.dart';
 import '../reticulum/rns_session.dart';
 import 'xprs_line.dart';
@@ -254,8 +254,25 @@ class _ReticulumBearer implements XprsBearer {
     // A directed wire that reached this bearer was not taken by a socket or
     // a radio: on a phone on battery that means the hub, which a session
     // brings up for a while (RnsSession; a no-op for a station).
-    if (dest.isNotEmpty) {
-      unawaited(RnsSession.instance.request('directed:$dest'));
+    //
+    // Only MAIL is worth a hub. The first version asked for one on every
+    // directed wire, and the catch-up asks every known archiver at least
+    // every ten minutes, the hears report runs every five: the "hub on
+    // request" was a hub always on, with a reconnect every ten minutes on
+    // top (docs/performance.md 8.23). A message or a receipt opens a
+    // session; everything else rides a hub that is up anyway, a path the
+    // local bearers hold, or waits — a catch-up ask is asked again on its
+    // cadence, a deposit goes with the next session, and what is in a
+    // pocket is not lost by not being asked for right now.
+    if (dest.isNotEmpty &&
+        PowerState.instance.profile.value == PowerProfile.normal) {
+      final type = p?.type ?? '';
+      if (type == 'message' || type == 'receipt') {
+        unawaited(RnsSession.instance.request('directed:$dest'));
+      } else if (RnsService.instance.connectedHubs.isEmpty &&
+          !RnsService.instance.reachableByCallsign(dest)) {
+        return XprsSendResult.refused;
+      }
     }
     // A group's own announcement (10.1) is undirected, so on this lane it is
     // an announce, and the hubs do not cross-forward those (above). Who needs
@@ -315,6 +332,14 @@ class _ReticulumBearer implements XprsBearer {
             ? XprsSendResult.sent
             : XprsSendResult.queued;
       }
+      // Addressed to a station this node cannot name: no announce from it
+      // has ever been heard, so there is no destination to send to. It used
+      // to fall through to the announce below and answer `sent`, which the
+      // publisher took as done — the wire was filed as carried by `rns` and
+      // reached nobody, since the hubs do not cross-forward announces
+      // (above). `refused` is the truth, and it is what lets the fan-out,
+      // the custody and the archiver deposit keep carrying it.
+      return XprsSendResult.refused;
     }
     return await RnsService.instance.wappBroadcast('xprs', bytes)
         ? XprsSendResult.sent
