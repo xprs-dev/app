@@ -256,12 +256,20 @@ class Ble5ChunkedRnsRadio implements BleRnsRadio {
     // sendOverGatt, NOT enqueueAdvert: the size router airs its payload as an
     // APRS-subtype advert, and the peer's RNS handler only reads the rns
     // subtype — so every RNS packet sent that way was heard by nobody.
+    // An ANNOUNCE over the cap is presence with a payload too big for one
+    // advert (the relay role rides the chat announce). It used to take the
+    // GATT route like traffic: queued for a link, and `_maybeAutoPair`
+    // dialled the last-seen peer for it — a GATT connection every five
+    // minutes in company, for a packet whose fragments were going on the
+    // air anyway (docs/performance.md 8.23). A link that already exists is
+    // free to use; nothing is dialled for presence.
+    final isAnnounce = frame.isNotEmpty && (frame[0] & 0x03) == 0x01;
     if (BleService.instance.gattLinkUp) {
       BleService.instance.sendOverGatt(frame);
       _sent++;
       return true;
     }
-    BleService.instance.sendOverGatt(frame); // queues + dials
+    if (!isAnnounce) BleService.instance.sendOverGatt(frame); // queues + dials
 
     // No link yet — it is being dialled, and dialling takes seconds. Air the
     // packet across adverts as well rather than let it wait: RNS drops the

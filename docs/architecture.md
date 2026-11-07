@@ -270,7 +270,7 @@ nowhere: three hundred of them per meme are not history.
 Reticulum forwards by announce-taught paths keyed on the destination hash, not
 by address: a station that only ever dialled out is a full transport node for
 everything attached to it (XPRS.md §12.12.3). The core takes that role on the
-same capacity gate that makes a node an indexer — mains power plus Wi-Fi or
+same capacity gate that makes a node an archiver — mains power plus Wi-Fi or
 Ethernet, `CapacityProfile.unlimited` — in `RnsService._applyHubRole`:
 
 | | leaf (default) | promoted |

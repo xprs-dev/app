@@ -1,5 +1,5 @@
 // RELAY over a real rnsd: two Aurora nodes connect as leaves through one rnsd.
-// Node B is an indexer (relay + event store). Node A publishes NOSTR events to B,
+// Node B is an archiver (relay + event store). Node A publishes NOSTR events to B,
 // then runs NIP-01 filter queries and a NIP-50 full-text SEARCH against B and
 // gets the matching events back. Exercises RelayNode + RelayProtocol over
 // transport-addressed RnsLinks (request as packet, large RESULT as a Resource).
@@ -88,7 +88,7 @@ class _Node {
 
   Future<void> announce() async {
     final pkt = await RnsAnnounceBuilder.build(id, kRelayApp, kRelayAspects,
-        appData: Uint8List.fromList('indexer'.codeUnits));
+        appData: Uint8List.fromList('archiver'.codeUnits));
     transport.sendOnAll(pkt.pack());
   }
 }
@@ -153,9 +153,9 @@ Future<void> main(List<String> args) async {
       stderr.writeln('FAIL: A never learned B via rnsd');
       exit(1);
     }
-    stdout.writeln('A learned indexer B; publishing events...');
+    stdout.writeln('A learned archiver B; publishing events...');
 
-    // Author + publish events from A to indexer B.
+    // Author + publish events from A to archiver B.
     final author = NostrCrypto.generateKeyPair();
     final posts = <NostrEvent>[
       _ev(author, kind: 1, content: 'Reticulum mesh over LoRa is magic', tags: [['t', 'reticulum']], at: 1_700_000_100),
@@ -171,8 +171,8 @@ Future<void> main(List<String> args) async {
     for (final e in posts) {
       if (await a.relay.publish(bId, e)) published++;
     }
-    check('all events published to indexer', published == posts.length);
-    check('indexer stored events', storeB.count() == posts.length);
+    check('all events published to archiver', published == posts.length);
+    check('archiver stored events', storeB.count() == posts.length);
 
     // Query back from A over the link.
     final kind1 = await a.relay.query(bId, const NostrFilter(kinds: [1]));

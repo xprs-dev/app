@@ -38,7 +38,7 @@ are the ones that were not.
 2. **Archiver: "Mine: 74.8k packets".** Far more than one station plausibly
    wrote. Check what the archive counts as "mine" (own receipts, commands and
    beacons, or rows that are not ours at all).
-3. **Indexer: "36 links, 0 authors".** The Authors tile is the authors this
+3. **Archiver: "36 links, 0 authors".** The Authors tile is the authors this
    station advertises (`advertisedAuthors`), while Links are pointers it stores
    for others, so the pair reads as a contradiction. Rename the tile, or show
    the authors behind the links.
@@ -55,7 +55,7 @@ are the ones that were not.
 7. **System folder: "Functionality Demo" and "Functionalities" share one
    icon**, and the names barely differ.
 8. **Switches use the theme's lavender**, not the app's accent (Archiver,
-   Indexer, Settings).
+   Archiver, Settings).
 9. **A chat row with no last message keeps its name at the top**, a few pixels
    off the avatar's centre (Chat list, X5WAUC).
 

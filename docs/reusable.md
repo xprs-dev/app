@@ -107,6 +107,18 @@ or browser backends.
   encrypted/IndexedDB backend lands the install flow will need to
   unzip into a temp dir then `copyFromExternal` each entry.
 
+### Renaming a preference key — `PreferencesService._migrateArchiverKeys`
+
+**File:** `lib/services/preferences_service.dart` (called right after
+`SharedPreferences.getInstance()` in `load()`).
+
+The pattern for a stored key whose name changes: a `{old: new}` map, walked
+once at startup — copy the value if the new key is absent, then remove the
+old key, preserving the type (`String` / `List<String>`). Written for the
+indexer → archiver rename (2026-11-06); add further pairs to the map rather
+than a second migration method, and keep the pairs for a few releases so an
+install skipping versions still carries its settings across.
+
 ---
 
 ## Events
@@ -543,6 +555,81 @@ also fire `ErrorEvent` on `EventBus`.
 - For `type=periodic` tasks, the `interval` field is metadata for
   the UI; the actual scheduling is done by whatever `Timer.periodic`
   the owner created. The monitor doesn't drive timers.
+
+### PowerState — the one reader of power, screen and the room
+
+**File:** `lib/services/power_state.dart` (singleton, started by `PowerGovernor`).
+
+- `tier` (`ValueNotifier<PowerTier>`: active / idle / battery / low) — what
+  the phone may cost right now; `holdActive(reason)` / `releaseActive` pin
+  it while delivery is in flight. A hold MUST be released on every exit path
+  (the scheduler's early return leaked one for weeks; performance.md 8.19).
+- `isPowered`, `powered` (notifier), `batteryLevel` — plugged in means
+  charging, full, connected-not-charging or no battery. **Never add another
+  `battery_plus` subscription**: three services did, disagreed on
+  "connected, not charging", and one never refreshed its percentage.
+- `alone` (`ValueNotifier<bool>`), `noteAir(lastFrameMs, lastDiscoveredMs)`
+  — no XPRS radio heard for 5 min. Radios read it to run cheaper in an empty
+  room; anything periodic that exists to be heard by a neighbour (a beacon,
+  a presence advert) should consult it before adding a timer of its own.
+- `nativeTickMs` — the native heartbeat period for the tier, for any Dart
+  fallback that must tell "the service is driving" from "it stopped".
+- `profile` (`ValueNotifier<PowerProfile>`: station / normal), `profileMode`,
+  `setProfileMode('auto'|'station'|'normal')` — what the device IS (8.20).
+  Anything that only a plugged-in, always-on node should do (hold a public
+  hub, publish to the DHT, forward for others, run a periodic pull) keys off
+  this, not off `isPowered` directly, so the user's override is honoured.
+  A phone STARTS as `normal` and is promoted by its charger; a service that
+  reads the profile at boot and then does something slow must re-read it
+  afterwards (`ensureRnsAutostart` does; performance.md 8.23).
+
+### XprsLineLane / XprsLineClient / XprsLinePeers — one socket to an archiver
+
+**Files:** `lib/services/xprs/xprs_line.dart` (conditional export),
+`xprs_line_io.dart`, `xprs_line_stub.dart` (web), `xprs_dial.dart` (pure
+`dial:` parsing), `xprs_tcp.dart` (`XprsLinePeers`, the server's registry).
+
+- `XprsDial.parse('host[:port]')` — the one place `dial:` is read.
+- `XprsLineLane.instance.wantAll({callsign: dial})` keeps exactly that set
+  of client sockets (backoff, long keepalive, re-dial on a changed address);
+  `sendTo(call, wire)`, `connectedTo(call)`; `onClientUp` for the first ask.
+- `XprsLinePeers.instance` — who is on a socket to US, registered only after
+  a signed line verifies; `sendTo`, `isConnected`.
+- Reuse the lane rather than opening sockets: any directed wire goes down a
+  socket by itself through the publisher's `line` bearer when the `d:` is
+  connected, so a feature that wants "send this to my archiver now" just
+  publishes. Received lines enter the funnel as the internet lane.
+- The only undirected wires the bearer carries are `t:identity` and
+  `t:mailbox` (to every dialled archiver, as `queued` so the radios still
+  air them): they are what gets a station onto the archiver's socket.
+  `MeshService._onLineUp` sends them, then `q:mail`. Do not add a third
+  undirected type without a reason of that weight.
+- `XprsPublisher.identityWire(call, npub)`, `ownIdentityWire()`,
+  `mailboxWire(holdCsv)` build the signed wires; `XprsCatchup.mailboxHoldCsv()`
+  is the one `hold:` list. The airing, the deposit and the handshake all go
+  through these — never compose a `t:identity` or `t:mailbox` inline.
+- `XprsPublisher.depositArchivers(wires, what:)` tries the socket, then a
+  hub; with neither it keeps the copy (bounded, never presence) and
+  `flushDeferredDeposits()` places it when a socket or a session arrives.
+  A feature that has "something for my archiver" deposits and forgets.
+
+### RnsSession — a hub, on request, for a phone on battery
+
+**File:** `lib/services/reticulum/rns_session.dart`.
+
+`RnsSession.instance.request('reason', hold: Duration)` is idempotent and
+cheap: it brings one hub up in the normal profile and holds it for the
+duration, a no-op in the station profile. Any feature that needs the shared
+transport for a while (a transfer, a Reticulum-only contact) asks at the
+moment it knows and never checks `connectedHubs` first; the session's
+release is automatic (8.22). Don't connect hubs from a feature directly.
+
+Only MAIL is worth a hub (8.23): the publisher's Reticulum bearer opens a
+session for a `t:message` or `t:receipt` and for nothing else. A periodic
+ask (a catch-up, a report, a poll) must never request a session — with a
+ten-minute cadence and a five-minute hold that is a hub always on. It
+sends when a hub is up or a local path exists, and is `refused` otherwise;
+design the caller to be asked again on its cadence, not retried at once.
 
 ---
 

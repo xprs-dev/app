@@ -127,7 +127,7 @@ void main() {
     XprsIngest.reloadPolicy();
     heard('t:observation f:X3R8XX link:ble peers:4');
     expect(admitted, ['observation'],
-        reason: 'an indexer answering for somebody else wants the spool');
+        reason: 'an archiver answering for somebody else wants the spool');
   });
 
   test('presence still reaches the live view either way', () {

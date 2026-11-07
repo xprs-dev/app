@@ -1421,7 +1421,250 @@ the process was large, the 8.7 log census to see what the station was busy
 with, then every count on `/api/status` and `/api/rns/status`, looking for the
 one that grows with uptime instead of with the network's size.
 
-### 8.19 Read, don't only grep: what the 2026-11-04 audit found
+### 8.19 The empty room, and seven leaks around the tier (2026-11-06)
+
+An audit for the Android battery complaints found the tier of 8.11 reached
+three dials and leaked around the rest. Fixed in one pass, all modes:
+
+| what | where | was | now |
+|---|---|---|---|
+| shared-folder re-advertise | `disk_folder_manager.dart` | every 60 s sync published the folder AND every file to the DHT, changed or not: a lookup plus STOREs, each a link handshake, hundreds a minute for twenty files | only when the sync found a change, or once after start; the 30-min `republishAll` is the refresh |
+| `mesh-dial` hold | `mesh_transfer_scheduler.dart` | the "no dialable peers" return came before the 110 s abort, so a dial to the last peer in range (which then left) pinned `active` forever | the abort runs on that path too |
+| Dart fallback tick | `ble_service_io.dart` | skipped only if the native tick was under 6 s old, so on battery (10 s tick) the whole body ran every 6-8 s anyway | skipped while the native tick is under 3x its tier period |
+| `radioStatus()` | same | a channel round trip every tick for a diagnostics map | once a minute |
+| per-tick wake lock | `BgService.kt` | 3 s flat, 30% of wall time at a 10 s tick | released when Dart answers the tick, 1.5 s cap |
+| `active` re-acquire | same | guarded on `isHeld`, so a timed tick lock still held meant NO standing lock in `active` | unconditional `acquire()`, which cancels the pending timed release |
+| headless screen state | same | `power.screen` sent before Dart's handler existed on a boot start; Dart's default is "screen on" = `active` all night | re-sent on the first answered tick |
+| legacy scan | `Ble5.kt` | hard-coded BALANCED whatever the tier | follows `setScanMode` like the extended scan |
+| advert window | same | a presence refresh (every 30 s) reopened the 5 s window: duty 5 in 30, not 5 in 60 | only traffic (`prio`) reopens it |
+| rotation | same | every 1.2 s forever, `setAdvertisingData` while nothing was on air | 5 s while the window is closed, back to 1.2 s when it opens |
+| silent-scan restart | same | every 2 min in an empty room | 2, 4, 8, 16 min; reset by the first frame |
+| path requests | `rns_transport.dart` | an edge-bridge leaf answered for any path it held, hub A's to hub B's askers | only for destinations heard on an edge bearer (XPRS.md 12.12.3) |
+| engine stats post | `rns_transport_engine.dart` | every 2 s | every 10 s |
+| stall probe | `main.dart` | 2 wake-ups/s for the life of every build | debug and profile builds only |
+| three battery readers | `mesh_service.dart`, `wifi_direct_coordinator.dart`, `capacity_governor.dart` | each its own `battery_plus` subscription; MeshService's percentage refreshed only on a charge event, so `dialBudgetLow()` never fired | `PowerState.isPowered` / `batteryLevel` / `powered`; plugged-in includes `connectedNotCharging` everywhere |
+
+**The empty room.** New: `PowerState.alone`, true when no XPRS radio has been
+heard for five minutes (the scan's last marker frame or a discovered presence
+advert, reported by the BLE tick through `noteAir`). Alone: both scans
+LOW_POWER, the connectable presence advert `ADVERTISE_MODE_LOW_POWER` (about
+one a second instead of ten, still connectable, `setPresenceMode`), the beacon
+every 3 min (docs/mesh.md 7's idle band). Company: the first frame heard
+promotes on the next tick with no dwell, because after five silent minutes the
+scan-start budget is there. Nothing is switched off; the digipeater, the
+scan and the advert all keep running — an empty room is simply listened to
+more slowly.
+
+**Measurement status:** as 8.11's, still owed. The protocol there stands.
+
+### 8.20 Two profiles: a station when plugged in, a messenger on battery (2026-11-06)
+
+8.11's tier changes what the phone COSTS; it never changed what the phone
+IS. On battery it stayed a full Reticulum node: four public hubs held open
+(a busy hub streams two announces a second, so the radio never idled), the
+DHT republish every half hour, folder auto-sync, profile retries, the
+edge-bridge transport role. That is a station's day, paid by a phone in a
+pocket.
+
+`PowerState.profile` (`PowerProfile.station` / `normal`) is the switch, and
+the charger throws it: plugged in (charging, full, connected-not-charging, or
+no battery at all) is a station, discharging is normal. The preference
+`power.profile` (`auto` / `station` / `normal`, `/api` key `powerProfile`)
+overrides the charger either way; a desktop is a station.
+
+| | station | normal |
+|---|---|---|
+| public hubs | all configured, topped up every 5 min (`rns_autostart`) | none held; `applyPowerProfile(normal)` releases them |
+| DHT republish, auto-sync, profile retries | armed (`_armStationTimers`) | not armed |
+| Bluetooth, LAN bearers, the node, the identity | up | up, unchanged |
+| BLE presence, scan, digipeater, XPRS beacon | on | on (8.19's empty-room cadence applies) |
+| hub role, archiver volunteering | by `CapacityGovernor` (plugged + Wi-Fi) | off |
+
+What a normal-profile phone does NOT yet have is the way back to the
+internet: the line-protocol client to its archiver (XPRS.md 13.0.2, `dial:`),
+and the on-request session that brings a hub up to serve a file and drops it
+again. Until those land, a phone on battery reaches the internet only when
+plugged in. That is deliberate — the alternative was the day described above —
+and it is the next piece of work.
+
+### 8.21 The line lane: a phone reaches its archiver on one socket (2026-11-06)
+
+8.20 left a normal-profile phone with no way to the internet. This is the
+way: XPRS.md 13.4's one port, used from the client side. An archiver that
+is a public archiver announces `dial:` (its host, port 4242 unless said) and
+`room:` on its observation beacons (`xprsComposeObservation`); a station
+that hears one — on the LAN, or replayed by any archiver — keeps it
+(`XprsStation.dial`, persisted as `xprs.archiverDials`) and, if that archiver
+is among the ones it chose (`xprsArchivers`), dials it: `MeshService
+._dialArchivers`, every minute, at most two sockets (`XprsLineLane`).
+
+On the socket everything is an ordinary packet, one per line. Up: the phone
+sends `q:mail only:ME` (9.12.3) and lets the catch-up run. The archiver side
+(`XprsTcp`) registers the peer once a signed line of its VERIFIES against
+the key held for it (`XprsLinePeers`), answers `q:mail` with `s:mail mail:N`
+on the socket, serves `cmd:history` inline (and marks it answered, so the
+paced replay the funnel would also start does not send the page twice), and
+DELIVERS: `XprsMailbox.reachable` is true for a line peer, `sendTo` tries
+the socket first, a registration sweeps held mail at once, and mail that
+arrives for a connected peer (`onCarry`) is swept at once too. The
+publisher has a `line` bearer, tried first for any directed wire whose
+`d:` is on a socket, either direction. `q:mail` is also answered over the
+other lanes (the history server; the internet lane now hands `t:request`
+to it).
+
+What it costs the phone: one idle TCP socket with a four-minute kernel
+keepalive. 12.9.5 is in too: a public archiver's catch-up asks its peers
+`kind:message,mailbox`, its load is `XprsArchive.caredFor()` (distinct
+declarers naming it), and past `roomStations` (500 by default) it
+announces `room:no`. The on-request hub session is 8.22. Set up by hand today: on the archiver,
+`POST /api/xprs/archiver {"dial":"host[:port]"}` (it must be a public
+archiver); on a phone that cannot yet hear the announcement,
+`{"dials":{"X3ARC1":"host"}}` plus `X3ARC1` in `archivers`.
+
+### 8.22 A hub on request: RnsSession (2026-11-06)
+
+The last piece of 8.20. A normal-profile phone holds no hub, and three
+things still need one: serving a file a far station asked for (the fetcher
+opens a Reticulum link to us, so we must be announced through a hub),
+fetching one from a far holder, and a directed wire that no socket or radio
+took. `RnsSession.request(reason, hold:)` (`lib/services/reticulum/
+rns_session.dart`) brings ONE hub up (`connectAnyHub`, the first in the list
+that answers) and keeps it while any reason holds it; five minutes after the
+last one lets go, or fifteen for a transfer, `releaseHubs` drops it, unless
+a fetch is still waiting for bytes, which extends a minute at a time. In
+the station profile every request is a no-op.
+
+Callers ask at the moment they know and never check first: `XprsFileServer`
+at its `202`, `XprsFileFetch` when it starts the internet middle, the
+publisher's Reticulum bearer for any directed wire that reached it. The
+bench asks with `POST /api/rns/session {"hold": 10, "reason": "bench"}` and
+reads `GET /api/rns/session`.
+
+What a session costs: one TCP connect, one announce (the hub's grace is
+respected by the paced cadence: `connectUplink` announces on the new
+interface, as it always did), the hub's announce flood for the duration,
+then silence again. Against the day of 8.20 that is minutes an hour at
+most, and only when something was asked for.
+
+### 8.23 The second audit: where the normal profile was still defeated (2026-11-06)
+
+A second pass over 8.19–8.22, done against the code as shipped in 1.4.0
+rather than against its own notes, with the native layer, every Dart timer,
+the library's idle work and the messaging paths traced separately. The
+profile of 8.20 was real and defeated in practice by paths the first audit
+had not looked at. Each item below says what was found and what changed;
+the before/after soak of 8.11 is still the only number that counts.
+
+**Sessions.** `_ReticulumBearer.send` asked `RnsSession` for a hub on EVERY
+directed wire. The catch-up asks every known archiver — the named ones plus
+up to 32 X2 and 32 X3 stations learned from announces — at least every ten
+minutes, and the hears report runs every five, so the "hub on request" was
+a hub always up with a reconnect every ten minutes on top. Now only a
+`t:message` or `t:receipt` opens a session. Everything else rides a hub
+that is up anyway or a path the local bearers hold, and is `refused`
+otherwise: a catch-up ask is asked again on its cadence, a deposit waits
+for the next socket or session (`XprsPublisher.flushDeferredDeposits`),
+presence is never kept.
+
+**A wire reported sent into nothing.** A directed wire to a station this
+node could not name fell through to `wappBroadcast` and answered `sent`,
+so the publisher filed it as carried by `rns` and stopped: the hubs do not
+cross-forward announces, so nobody received it. `refused` now, which is
+what lets custody and the deposit keep carrying it.
+
+**The boot race.** `PowerState.profile` defaulted to `station` and was
+corrected only inside `PowerState.start()`, which runs after `runApp`; the
+Reticulum autostart fires four seconds into boot and read the default. On
+a slow boot (shared folders to index) the phone dialled every public hub,
+and `applyPowerProfile` was a no-op while the node was still starting, so
+nothing released them. A phone now starts as `normal` until its charger is
+read, `BatteryState.unknown` is not "plugged in" on a phone, and
+`ensureRnsAutostart` releases hubs it dialled under a profile that changed
+meanwhile (a session's hub is left alone).
+
+**The zombie hub.** A node that booted on battery runs in `ble5` mode.
+`_onUplinkDown` returned on that mode before dropping the client and the
+silence watchdog was armed only for `tcpclient`, so a session hub whose
+socket died stayed in `_clients`, `connectUplink` answered true on the
+stale key, and no session could bring a hub up again until a restart. A
+dead uplink is dropped in any mode; the watchdog is armed per uplink and
+cancels itself while none is held.
+
+**The line lane never completed a first contact.** The archiver puts a
+station on its socket only once a signed line verifies against a key it
+already holds (`XprsTcp`), and the line bearer refused every undirected
+wire, so a phone that met its archiver only through the socket never
+handed over its `t:identity` or its `t:mailbox`: `q:mail` was answered and
+nothing was ever delivered to it. `MeshService._onLineUp` now sends the
+signed identity, then the declaration, then `q:mail`; the line bearer
+carries those two undirected types to every dialled archiver (as `queued`,
+so the radios still air them); the archiver asks `q:identity` once per
+connection on a signed line it cannot verify; `q:mail` is marked answered
+before the funnel so the asker does not get it twice. Deposits try the
+socket first — they went straight to LXMF, which on a battery phone was a
+path request on the radio, a failed delivery and a retry ladder, every
+five minutes.
+
+**Unplugging did not demote the node.** `applyPowerProfile(normal)` only
+released hubs; the transport id and the edge bridge set as a station
+stayed, so an unplugged phone re-aired every BLE announce onto the LAN,
+answered path requests for others and grew its path table, with no hub to
+bridge anything onto. The normal profile sheds the role, the station
+profile restores the BLE edge bridge, and a node started on battery never
+takes it (`_shedTransportRole` / `_restoreTransportRole`).
+
+**Announces over the advert cap dialled a GATT link.** The relay role rides
+the chat announce and puts it past the 248 B advert cap, and
+`Ble5ChunkedRnsRadio.unicast` sent an over-cap announce down the GATT
+route like traffic: queued for a link, with `_maybeAutoPair` dialling the
+last-seen peer for it. A GATT connection every five minutes in company,
+for a packet whose fragments were going on the air anyway. Fragments only
+now; a link that exists is used, none is dialled for presence.
+
+**Two scan watchdogs.** `ble5_bus.dart` restarted a silent scan after
+150 s on a 60 s timer, which in an empty room pre-empted `Ble5.kt`'s own
+2/4/8/16-minute backoff (8.19) every three minutes for the life of the
+process. Thirty minutes now: the net under a native watchdog that died.
+
+**Clocks that ignored the room.** The Reticulum BLE beacon (60 s, three
+signed announces) now follows `PowerState.alone` to three minutes; the LAN
+beacon (90 s) goes to three minutes in the normal profile; the wide
+six-announce cycle stretches from five to fifteen minutes on a phone with
+no hub, where it reaches only the room the beacons already tell. The
+engine's stats post goes to the main isolate on change or once a minute,
+not every 10 s whatever happened.
+
+**The multicast lock.** `BgService` held the WiFi multicast lock for the
+life of the service, in every tier, and `MainActivity` a second one for
+the life of the Activity (the whole night, in the background). The lock
+turns the WiFi chip's broadcast filter off, so every ARP, mDNS and SSDP
+frame on a home LAN woke the SoC — the one wake source left after the
+standing wake lock went. Released in the battery and low tiers: the device
+still sends its LAN beacon (broadcast transmit needs no lock) and still
+receives unicast, so a neighbour that heard it reaches it; it stops
+overhearing the others' broadcasts until the screen or the charger comes
+back. The Activity holds one only when the service is not running, and
+only while in front.
+
+**Two more clocks.** Mail (autostarted) called `hal_relay_dm_fetch` every
+60 s, which with no hub was a path request on the radio — a `prio` frame
+that opened the BLE transmit window every minute — and a 12 s timeout per
+relay; it is answered "not now" until a hub exists. The disk-folder walk
+(an isolate per folder, every file stat'ed, every 60 s) runs on a phone on
+battery only while the screen is on.
+
+What the second audit found and left alone, for the record: the Dart 2 s
+fallback tick on Android (returns early under the native heartbeat; on
+battery it fires only when something else woke the CPU); the presence
+advert at BALANCED whenever a neighbour is in range (that is the modest
+station the owner asked for); GATT links at `CONNECTION_PRIORITY_HIGH` for
+their lifetime (dropped after 25 s idle); the `nostr` engine's own timers
+(off unless NOSTR is enabled). The first contact is now under test on a
+real socket (`test/xprs_tcp_line_test.dart`: asked for its key, not
+registered, then registered and delivered to once the key is held). Still
+owed: the soak of 8.11.
+
+### 8.24 Read, don't only grep: what the 2026-11-04 audit found
 
 The guard reported clean, and a read of the code against this file and
 architecture.md still found the shapes above, under spellings its regexes did

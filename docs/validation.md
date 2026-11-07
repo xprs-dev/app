@@ -207,7 +207,7 @@ the per-bearer byte MIDDLE and the LXMF push. Validate those on hardware:
   a group; confirm the file arrives over the GATT/MSP bulk lane.
 - **Two networks, one hub.** Two phones on different networks through a shared
   Reticulum hub; confirm a `cmd:file` completes over the internet lane.
-- **A large archiver in the middle.** A plugged-in always-on archiver (Indexer
+- **A large archiver in the middle.** A plugged-in always-on archiver (Archiver
   role) mirroring a leaf's media; a third station that never met the holder pings
   its own favourite with `q:have` and is answered `m:try` naming the holder, then
   fetches the bytes.

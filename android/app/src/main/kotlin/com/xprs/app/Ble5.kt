@@ -73,6 +73,9 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         // Long enough for a peer's duty-cycled scan to catch it, short enough to
         // cycle a few frames within a message's TTL.
         private const val ROTATE_MS = 1200L
+        // The rotation's cadence while the transmit window is closed: only
+        // frame expiry needs the clock then.
+        private const val ROTATE_IDLE_MS = 5_000L
 
         // One presence frame (beacon / announce) for every this-many traffic
         // slots. 4 keeps a handshake brisk while guaranteeing presence roughly
@@ -144,6 +147,11 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     // 2-minute threshold keeps restarts far below Android's 5-starts/30 s cap.
     @Volatile private var lastScanResultMs = 0L
     @Volatile private var scanStartedMs = 0L
+    // Silent restarts in a row. An empty room is silent by nature, and
+    // restarting the scan every two minutes in one bought nothing but scan
+    // starts: the threshold doubles per silent restart (2, 4, 8, 16 min) and
+    // the first frame heard resets it.
+    @Volatile private var scanSilentRestarts = 0
     private var scanWatchdogOn = false
     private val scanWatchdog = object : Runnable {
         override fun run() {
@@ -160,8 +168,10 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             if (scanCallback != null) {
                 val now = System.currentTimeMillis()
                 val lastSeen = maxOf(lastScanResultMs, scanStartedMs)
-                if (now - lastSeen > 120_000) {
-                    android.util.Log.w(TAG, "scan silent ${(now - lastSeen) / 1000}s — restarting")
+                val silentFor = 120_000L shl minOf(scanSilentRestarts, 3)
+                if (now - lastSeen > silentFor) {
+                    android.util.Log.w(TAG, "scan silent ${(now - lastSeen) / 1000}s — restarting (#${scanSilentRestarts + 1})")
+                    scanSilentRestarts += 1
                     stopScan(stopWatchdog = false)
                     startScan()
                 }
@@ -311,6 +321,8 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
     private var legacyAdvNextTryMs = 0L
     private var legacyScanner: BluetoothLeScanner? = null
     private var legacyScanCb: ScanCallback? = null
+    // See setPresenceMode. LOW_LATENCY is what this advert always ran at.
+    @Volatile private var presenceMode = AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY
     private var serverCallsign: String = "AURORA"
     // Android GATT writes must be serialized: issue the next only after the
     // previous onCharacteristicWrite (with a watchdog fallback). Queue + pump
@@ -401,6 +413,13 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
                     val m = (call.argument<Int>("mode") ?: ScanSettings.SCAN_MODE_BALANCED)
                         .coerceIn(ScanSettings.SCAN_MODE_LOW_POWER, ScanSettings.SCAN_MODE_LOW_LATENCY)
                     onWorker(result) { setScanMode(m) }
+                }
+                // 0 LOW_POWER, 1 BALANCED, 2 LOW_LATENCY, for the connectable
+                // presence advert. Never off: a peer must be able to dial us.
+                "setPresenceMode" -> {
+                    val m = (call.argument<Int>("mode") ?: AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+                        .coerceIn(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER, AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+                    onWorker(result) { setPresenceMode(m) }
                 }
                 "stopScan" -> onWorker(result) { stopScan(); true }
                 else -> result.notImplemented()
@@ -526,9 +545,12 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         // Rotation still owns the cursor: this is one extra airing, and the next
         // tick continues where it was.
         val aired = airData(mfg)
-        // Somebody just asked for this to go out: open the window now rather
-        // than at the top of the next period. Still bounded, so the duty holds.
-        if (!advWindowOpen) openAdvWindow()
+        // Traffic just asked to go out: open the window now rather than at
+        // the top of the next period. Still bounded, so the duty holds. A
+        // PRESENCE refresh does not: the beacon re-registers every 30 s, and
+        // reopening for it made the duty 5 s in 30 instead of the 5 s in 60
+        // this file specifies.
+        if (prio && !advWindowOpen) openAdvWindow()
         return aired
     }
 
@@ -551,7 +573,10 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             if (!rotating) return
             rotateTick()
             if (frames.isEmpty()) { rotating = false; return }
-            bg.postDelayed(this, ROTATE_MS)
+            // With the window closed the controller is not transmitting, so
+            // advancing the cursor is an HCI command for nothing; tick slowly
+            // to expire frames and come back at speed when the window opens.
+            bg.postDelayed(this, if (advWindowOpen) ROTATE_MS else ROTATE_IDLE_MS)
         }
     }
 
@@ -586,6 +611,12 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         val set = advertisingSet ?: return // not started yet; start airs it once
         advWindowOpen = true
         advWindowAskedAt = System.currentTimeMillis()
+        // The rotation slowed down while the window was closed; bring it
+        // back to speed for the window.
+        if (rotating) {
+            bg.removeCallbacks(rotateRunnable)
+            bg.postDelayed(rotateRunnable, ROTATE_MS)
+        }
         try {
             // Duration is enforced by the controller: it stops on its own, so a
             // missed callback cannot leave us transmitting for the whole minute.
@@ -691,6 +722,10 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         // PRESENCE_EVERY traffic frames. Traffic still dominates — a three-packet
         // handshake still completes inside a couple of rotations — but "I am
         // here, and here is where to write to me" keeps reaching the air.
+        // Window closed and a set alive: nothing is on the air, so nothing to
+        // rotate. (With no set the tick must go on: airData is what creates
+        // one, and a window cannot open on a set that does not exist.)
+        if (!advWindowOpen && advertisingSet != null) return
         val prioKeys = frames.filterValues { it.prio }.keys.toList()
         val presenceKeys = frames.filterValues { !it.prio }.keys.toList()
         val key = cursor.next(prioKeys, presenceKeys) ?: return
@@ -923,6 +958,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
                 val rssi = result.rssi
                 val now = System.currentTimeMillis()
                 lastScanResultMs = now
+                scanSilentRestarts = 0
                 if (!shouldEmitScan("ext:$addr:$subtype:${payload.contentHashCode()}", now)) {
                     rxDedup.incrementAndGet()
                     return
@@ -982,8 +1018,32 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             stopScan(stopWatchdog = false)
             startScan()
         }
+        // The legacy discovery scan is the other half of the duty; it used to
+        // stay BALANCED whatever the tier, so "LOW_POWER on battery" was half
+        // true.
+        if (legacyScanCb != null) {
+            stopLegacyScan()
+            startLegacyScan()
+        }
         android.util.Log.i(TAG, "scan mode -> $mode")
         return scanMode
+    }
+
+    /**
+     * The connectable presence advert's mode (AdvertiseSettings
+     * ADVERTISE_MODE_*: 0 LOW_POWER ~1 s, 1 BALANCED ~250 ms, 2 LOW_LATENCY
+     * ~100 ms). Connectable in every mode; a change restarts the advert, so
+     * the caller changes it rarely.
+     */
+    private fun setPresenceMode(mode: Int): Int {
+        if (mode == presenceMode) return presenceMode
+        presenceMode = mode
+        if (legacyAdvOnAir || legacyAdvCallsign != null) {
+            stopLegacyAdvert()
+            startLegacyAdvert()
+        }
+        android.util.Log.i(TAG, "presence mode -> $mode")
+        return presenceMode
     }
 
     private fun shouldEmitScan(key: String, now: Long): Boolean {
@@ -1633,7 +1693,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
         mfg[1] = deviceId(serverCallsign).toByte()
         System.arraycopy(csBytes, 0, mfg, 2, csBytes.size)
         val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setAdvertiseMode(presenceMode)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .setConnectable(true)
             .build()
@@ -1690,7 +1750,7 @@ class Ble5(context: Context, messenger: BinaryMessenger) {
             .setManufacturerData(COMPANY_ID, byteArrayOf())
             .build()
         val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
+            .setScanMode(scanMode) // the tier's dial, same as the extended scan
             .build()
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult?) {

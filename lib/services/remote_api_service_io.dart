@@ -20,7 +20,9 @@ import 'xprs/xprs_inline_file.dart';
 import 'xprs/xprs_inline_sender.dart';
 import 'receive/wapp_delivery.dart';
 import 'xprs/xprs_lan.dart';
+import 'xprs/xprs_line.dart';
 import 'xprs/xprs_publisher.dart';
+import 'xprs/xprs_tcp.dart';
 import 'mesh/xblob_service.dart';
 import '../connections/bluetooth/ble5_bus.dart';
 import 'xprs/xprs_gossip.dart';
@@ -62,6 +64,8 @@ import 'i2p/i2p_service.dart';
 import 'log_service.dart';
 import 'media/media_fetch.dart';
 import 'reticulum/rns_service.dart';
+import 'reticulum/rns_session.dart';
+import 'power_state.dart';
 import 'folders/folder_event.dart' show FolderShareType;
 import 'folders/disk_folder.dart' show DiskFolderSource;
 import 'xprs/xprs_folder.dart';
@@ -643,6 +647,23 @@ class RemoteApiService {
         final ok = await RnsService.instance.addBootstrap(ep);
         return _json(res, {'ok': ok, 'endpoint': ep});
       }
+      // A hub session on request (docs/performance.md 8.22): GET shows the
+      // hold, POST {hold: minutes, reason} asks for one. A station answers
+      // the same shape with nothing held, because it needs none.
+      if (path == '/api/rns/session') {
+        if (req.method == 'POST') {
+          final data = await _body(req);
+          final mins = int.tryParse('${data['hold'] ?? ''}') ?? 5;
+          await RnsSession.instance.request(
+              '${data['reason'] ?? 'api'}',
+              hold: Duration(minutes: mins.clamp(1, 120)));
+        }
+        return _json(res, {
+          'ok': true,
+          'profile': PowerState.instance.profile.value.name,
+          ...RnsSession.instance.status,
+        });
+      }
       if (req.method == 'POST' && path == '/api/rns/announce') {
         // {"text":"hello"} — one-to-many announce of our chat destination.
         final data = await _body(req);
@@ -757,7 +778,7 @@ class RemoteApiService {
       }
       if (req.method == 'POST' && path == '/api/rns/relay/publish') {
         // {"event": {NIP-01 signed event json}} — store locally + fan out to an
-        // indexer. The event must already be Schnorr-signed by the caller.
+        // archiver. The event must already be Schnorr-signed by the caller.
         final data = await _body(req);
         final ev = data['event'];
         if (ev is! Map) {
@@ -793,7 +814,7 @@ class RemoteApiService {
         return _json(res, {'ok': true, 'count': events.length, 'events': events});
       }
       if (req.method == 'POST' && path == '/api/rns/relay/topic') {
-        // {"topic":"reticulum"} — add a topic to our indexer interest set.
+        // {"topic":"reticulum"} — add a topic to our archiver interest set.
         final data = await _body(req);
         final topic = '${data['topic'] ?? ''}'.trim();
         if (topic.isEmpty) {
@@ -801,7 +822,7 @@ class RemoteApiService {
               status: HttpStatus.badRequest);
         }
         RnsService.instance.addRelayTopic(topic);
-        return _json(res, {'ok': true, 'indexers': RnsService.instance.relayIndexerCount});
+        return _json(res, {'ok': true, 'archivers': RnsService.instance.relayArchiverCount});
       }
       if (req.method == 'POST' && path == '/api/rns/folder/create') {
         // {"name":"My folder","desc":"...","type":"private|readonly|collab"}
@@ -951,7 +972,7 @@ class RemoteApiService {
             .folderOpenFile(fid, sha, name: '${data['name'] ?? ''}');
         return _json(res, {'ok': ok});
       }
-      // Pin/unpin: keep a full copy and advertise ourselves to the Indexers.
+      // Pin/unpin: keep a full copy and advertise ourselves to the Archivers.
       if (req.method == 'POST' && path == '/api/rns/folder/pin') {
         // {"folderId":..,"on":true}
         final data = await _body(req);
@@ -1729,6 +1750,25 @@ class RemoteApiService {
           final v = int.tryParse('${data['maxDays']}');
           if (v != null && v > 0) prefs?.xprsArchiveMaxDays = v;
         }
+        // 13.0.2: where THIS station answers a connection (announced while
+        // it is a public archiver), whether it has room, and the dials of
+        // archivers the operator wants named by hand.
+        if (data.containsKey('dial')) {
+          prefs?.xprsDial = '${data['dial'] ?? ''}';
+        }
+        if (data.containsKey('room')) {
+          prefs?.xprsRoom = data['room'] != false;
+        }
+        if (data.containsKey('roomStations')) {
+          final v = int.tryParse('${data['roomStations']}');
+          if (v != null && v > 0) prefs?.xprsRoomStations = v;
+        }
+        if (data['dials'] is Map) {
+          for (final e in (data['dials'] as Map).entries) {
+            prefs?.rememberArchiverDial(
+                e.key.toString(), e.value == null ? null : '${e.value}');
+          }
+        }
         final beKey = legacy ? 'be' : 'alwaysOn';
         if (data.containsKey(beKey)) {
           final on = data[beKey] == true;
@@ -1759,6 +1799,15 @@ class RemoteApiService {
           'quotaMb': prefs?.xprsArchiveMaxMb ?? 500,
           'maxDays': prefs?.xprsArchiveMaxDays ?? 365,
           'archivers': prefs?.xprsNamedArchivers ?? const <String>[],
+          'dial': prefs?.xprsDial ?? '',
+          'room': prefs?.xprsRoom ?? true,
+          'roomStations': prefs?.xprsRoomStations ?? 500,
+          'caredFor': XprsArchive.instance.caredFor(),
+          'dials': prefs?.xprsArchiverDials ?? const <String, String>{},
+          'line': {
+            'dialled': XprsLineLane.instance.status,
+            'peers': XprsLinePeers.instance.status,
+          },
           'records': {
             'own': counts.own,
             'followed': counts.followed,
@@ -1994,7 +2043,7 @@ class RemoteApiService {
         return _json(res, {'ok': true, 'opened': opened,
             ...XprsFetch.instance.json});
       }
-      // Declare this station's favorite indexers (XPRS 13.12): persists the
+      // Declare this station's favorite archivers (XPRS 13.12): persists the
       // hold list and airs the signed t:mailbox on every bearer now.
       if (req.method == 'POST' && path == '/api/xprs/mailbox') {
         final data = await _body(req);

@@ -23,6 +23,7 @@ import '../services/files/open_path.dart';
 import '../services/flash/flash_service.dart';
 import '../services/flash/serial/serial_android.dart';
 import '../services/location_service.dart';
+import '../services/reticulum/rns_session.dart';
 import 'core_stores_app.dart';
 import 'power_app.dart';
 import 'radio_app.dart';
@@ -56,6 +57,10 @@ void wireCoreHost() {
           holds: AndroidForegroundService.instance);
   CoreHost.anyoneLooking = () => LauncherVisibility.instance.visible.value;
   CoreHost.mediaArchive = sharedMediaArchive;
+  // A phone on battery holds no public hub; the core asks for one when a
+  // transfer or a directed wire needs the shared transport (RnsSession).
+  CoreHost.requestHub = (reason, hold) =>
+      RnsSession.instance.request(reason, hold: hold);
   CoreHost.notify = (n) => NotificationService.instance.show(routeCoreNotification(n));
   CoreHost.openPreferences = SharedPreferencesStore.open;
   CoreHost.secureStore = const FlutterSecureStore(FlutterSecureStorage(

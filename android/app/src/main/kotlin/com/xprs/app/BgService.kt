@@ -19,6 +19,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import io.flutter.plugin.common.MethodChannel
 
 /**
  * Foreground service that keeps the app process alive (with a persistent
@@ -57,36 +58,76 @@ class BgService : Service() {
     private val ticker = object : Runnable {
         override fun run() {
             // In the saving tiers there is no standing wake lock (see
-            // applyTier), so the tick takes one for itself with a short
-            // timeout: enough for Dart to do its housekeeping, impossible to
-            // leak. Inbound work — a scan result, socket data — wakes the
-            // process on its own and does not depend on this.
+            // applyTier), so the tick takes one for itself: held until Dart
+            // answers the tick (milliseconds), capped so a Dart side that
+            // never answers cannot leak it. It was a flat 3 s, which at a
+            // 10 s tick kept the CPU awake 30% of the time for work that
+            // takes a few milliseconds.
             val transient = if (tickWakeLock) wakeLock else null
             try {
-                transient?.acquire(3_000L)
+                transient?.acquire(TICK_LOCK_CAP_MS)
             } catch (_: Throwable) {
             }
             try {
                 // Prefer the shared channel (set whether the engine is headless
                 // from boot or owned by the Activity); fall back to the Activity's.
                 (XprsApplication.bgChannel ?: MainActivity.channel)
-                    ?.invokeMethod("onTick", null)
+                    ?.invokeMethod("onTick", null, object : MethodChannel.Result {
+                        override fun success(result: Any?) = onTickAnswered(transient)
+                        override fun error(code: String, msg: String?, details: Any?) =
+                            onTickAnswered(transient)
+                        override fun notImplemented() = onTickAnswered(transient)
+                    })
             } catch (_: Throwable) {
             }
             handler.postDelayed(this, tickMs)
         }
     }
 
+    /** Dart finished the tick: give the CPU back, and make sure Dart has the
+     *  screen state. The first `power.screen` is sent from onStartCommand,
+     *  which on a headless boot runs before Dart's handler exists, so the
+     *  message is lost and Dart's default (`screen on`, hence `active`) stands
+     *  all night. The first answered tick is proof the handler is there. */
+    private fun onTickAnswered(transient: PowerManager.WakeLock?) {
+        try {
+            if (transient != null && transient.isHeld && tickWakeLock) transient.release()
+        } catch (_: Throwable) {
+        }
+        if (!screenSynced) {
+            screenSynced = true
+            try {
+                val pm = getSystemService(POWER_SERVICE) as PowerManager
+                (XprsApplication.bgChannel ?: MainActivity.channel)
+                    ?.invokeMethod("power.screen", pm.isInteractive)
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private var screenSynced = false
+
     /**
-     * Apply a tier published by Dart's PowerState. Three dials, none of which
+     * Apply a tier published by Dart's PowerState. Four dials, none of which
      * can stop delivery: how often the heartbeat fires, whether the CPU wake
-     * lock stands or is taken per tick, and how hard the WiFi radio is held.
-     * The multicast lock is NOT one of them — Reticulum's LAN discovery is
-     * broadcast, and dropping it makes the device deaf to its neighbours.
+     * lock stands or is taken per tick, how hard the WiFi radio is held, and
+     * whether the WiFi chip's broadcast filter is off.
+     *
+     * The multicast lock used to be held for the life of the service ("the
+     * LAN discovery is broadcast, and dropping it makes the device deaf to
+     * its neighbours"). It also makes the SoC wake for every ARP, mDNS and
+     * SSDP frame on the LAN, several a second on a home network, all night,
+     * which was the one wake source left after the standing wake lock went
+     * (docs/performance.md 8.23). In the saving tiers it is released: the
+     * device still SENDS its LAN beacon (broadcast transmit needs no lock)
+     * and still receives unicast, so a neighbour that heard it reaches it;
+     * it only stops overhearing the others' broadcasts until the screen or
+     * the charger comes back.
      */
     fun applyTier(t: String) {
         tier = t
         val saving = t == "battery" || t == "low"
+        holdMulticast(!saving)
         tickMs = when (t) {
             "battery" -> 10_000L
             "low" -> 30_000L
@@ -99,7 +140,12 @@ class BgService : Service() {
             // Otherwise: hold it, as this service always did.
             try {
                 if (saving && wl.isHeld) wl.release()
-                if (!saving && !wl.isHeld) wl.acquire()
+                // Unconditional: if a tick's timed acquire is still held at
+                // this moment, a guarded acquire was skipped and the pending
+                // timeout then released the lock, leaving `active` with no
+                // standing lock at all. acquire() without a timeout cancels
+                // that pending release.
+                if (!saving) wl.acquire()
             } catch (_: Throwable) {
             }
         }
@@ -134,6 +180,16 @@ class BgService : Service() {
         try { if (old != null && old.isHeld) old.release() } catch (_: Throwable) {}
     }
 
+    /** Hold or release the multicast lock; idempotent, never throws. */
+    private fun holdMulticast(hold: Boolean) {
+        val ml = multicastLock ?: return
+        try {
+            if (hold && !ml.isHeld) ml.acquire()
+            if (!hold && ml.isHeld) ml.release()
+        } catch (_: Throwable) {
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -157,15 +213,15 @@ class BgService : Service() {
         ensureWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF)
         // Reticulum finds peers on the LAN with UDP broadcast, and Android's
         // WiFi chip drops broadcast/multicast frames before userspace unless a
-        // multicast lock is held. MainActivity holds one — but only while the
-        // Activity exists, so with the screen off (or after a boot with no UI)
-        // the device went deaf to its own neighbours: it kept announcing and
-        // stopped hearing anyone. Hold it for as long as this service lives.
+        // multicast lock is held. MainActivity held one — but only while the
+        // Activity existed, so with the screen off (or after a boot with no
+        // UI) the device went deaf to its own neighbours. This service holds
+        // it in the tiers where somebody is there to hear (applyTier).
         if (multicastLock == null) {
             try {
                 val wm = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
                 multicastLock = wm.createMulticastLock("aurora-rns-lan-bg")
-                    .apply { setReferenceCounted(false); acquire() }
+                    .apply { setReferenceCounted(false) }
             } catch (_: Throwable) {
             }
         }
@@ -184,6 +240,7 @@ class BgService : Service() {
             }
         }
         live = this
+        screenSynced = false
         // Broadcasts only fire on a CHANGE. A service started at boot in the
         // middle of the night would otherwise sit at the `active` tier until
         // somebody happened to turn the screen on and off again, which is the
@@ -270,6 +327,8 @@ class BgService : Service() {
         // created, and the old channel badged the launcher icon forever.
         private const val CHANNEL_ID = "aurora_service"
         private const val NOTIF_ID = 7001
+        /** The most a tick may hold the CPU if Dart never answers. */
+        private const val TICK_LOCK_CAP_MS = 1_500L
         /** The heartbeat period, set by [applyTier]. 2 s is the active rate
          *  this service always used; the saving tiers stretch it. Riders
          *  tolerate that: the BLE watchdogs trigger on 120-150 s of silence
@@ -283,8 +342,10 @@ class BgService : Service() {
         /** Last tier published by Dart, re-applied on every (re)start. */
         @Volatile private var tier = "active"
 
-        /** The running service, so a tier can be applied without an Intent. */
-        @Volatile private var live: BgService? = null
+        /** The running service, so a tier can be applied without an Intent;
+         *  read by MainActivity to know whether the service holds the locks. */
+        @Volatile var live: BgService? = null
+            private set
 
         private var screenReceiverOn = false
 

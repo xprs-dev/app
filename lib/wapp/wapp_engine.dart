@@ -24,6 +24,7 @@ import '../services/android_permissions_service.dart';
 import '../services/blossom_server.dart';
 import '../services/preferences_service.dart';
 import '../services/folders/folder_meta.dart';
+import '../services/power_state.dart';
 import '../services/reticulum/rns_service.dart';
 import '../services/log_service.dart';
 import '../services/media/media_fetch.dart';
@@ -3000,6 +3001,17 @@ class WappEngine {
     // from the given relays; results land on _relayDmRx for hal_relay_dm_recv.
     final halRelayDmFetch = WasmFunction(
       (int sinceSec, int relaysPtr, int relaysLen) {
+        // A relay is reached over a Reticulum link, which on a phone on
+        // battery means a hub. Mail (autostarted) asks every minute; with
+        // no hub each ask was a path request on the radio — a `prio` frame
+        // that opens the BLE transmit window — and a 12 s timeout per
+        // relay. Answered `0` ("not now") while there is no hub; the poll
+        // asks again next minute and gets its DMs when a session or the
+        // charger brings one (docs/performance.md 8.23).
+        if (PowerState.instance.profile.value == PowerProfile.normal &&
+            RnsService.instance.connectedHubs.isEmpty) {
+          return 0;
+        }
         final relays = jsonStrList(_readStr(relaysPtr, relaysLen));
         RnsService.instance
             .relayDmFetch(sinceSec, relayDestsHex: relays)

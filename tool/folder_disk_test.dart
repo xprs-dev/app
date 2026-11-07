@@ -1,4 +1,4 @@
-// DISK-BACKED FOLDER over a real rnsd (no indexer, no sqlite copy).
+// DISK-BACKED FOLDER over a real rnsd (no archiver, no sqlite copy).
 // Owner A registers a real on-disk directory as a folder (master key kept in a
 // file inside it). Consumer B, given only the folderId, browses it and downloads
 // a file whose bytes are served straight from A's DISK (A holds no archive). Then

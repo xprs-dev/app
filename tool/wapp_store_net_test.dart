@@ -121,7 +121,7 @@ class _Node {
 
   Future<void> announceRelay() async {
     final pkt = await RnsAnnounceBuilder.build(id, kRelayApp, kRelayAspects,
-        appData: Uint8List.fromList('indexer'.codeUnits));
+        appData: Uint8List.fromList('archiver'.codeUnits));
     transport.sendOnAll(pkt.pack());
   }
 
@@ -167,7 +167,7 @@ Future<void> main(List<String> args) async {
 
   _Node? b, p, c;
   try {
-    b = _Node(await RnsIdentity.generate()); // indexer
+    b = _Node(await RnsIdentity.generate()); // archiver
     p = _Node(await RnsIdentity.generate()); // publisher (store owner)
     c = _Node(await RnsIdentity.generate()); // consumer (the app's store)
 
@@ -224,7 +224,7 @@ Future<void> main(List<String> args) async {
       }
       return bFromP != null && bFromC != null && pFromC != null;
     });
-    check('consumer learned indexer + provider over the wire',
+    check('consumer learned archiver + provider over the wire',
         bFromP != null && bFromC != null && pFromC != null);
     if (bFromP == null || bFromC == null || pFromC == null) {
       bTimer.cancel();

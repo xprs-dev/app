@@ -1,5 +1,5 @@
 // MUTABLE FOLDERS over a real rnsd (slice 3): an owner publishes a folder and
-// edits to an indexer (node B); a separate browser node (C) finds the folder by
+// edits to an archiver (node B); a separate browser node (C) finds the folder by
 // its id and sees the current state. An authorized admin's edit is accepted; a
 // post-revocation edit is rejected while the earlier one remains. Proves the
 // IPNS-like folder works across the network through the relay.
@@ -93,7 +93,7 @@ class _Node {
 
   Future<void> announceRelay() async {
     final pkt = await RnsAnnounceBuilder.build(id, kRelayApp, kRelayAspects,
-        appData: Uint8List.fromList('indexer'.codeUnits));
+        appData: Uint8List.fromList('archiver'.codeUnits));
     transport.sendOnAll(pkt.pack());
   }
 }
@@ -125,7 +125,7 @@ Future<void> main(List<String> args) async {
 
   _Node? b, a, c;
   try {
-    b = _Node(await RnsIdentity.generate()); // indexer
+    b = _Node(await RnsIdentity.generate()); // archiver
     a = _Node(await RnsIdentity.generate()); // owner + admin client
     c = _Node(await RnsIdentity.generate()); // browser
     await b.connect(port);
@@ -147,16 +147,16 @@ Future<void> main(List<String> args) async {
       return bIdFromA != null && bIdFromC != null;
     });
     if (bIdFromA == null || bIdFromC == null) {
-      stderr.writeln('FAIL: clients never learned the indexer');
+      stderr.writeln('FAIL: clients never learned the archiver');
       exit(1);
     }
     final bA = bIdFromA!, bC = bIdFromC!;
-    stdout.writeln('clients learned indexer B');
+    stdout.writeln('clients learned archiver B');
 
     var clk = 1_700_000_000;
     final admin = NostrCrypto.generateKeyPair();
 
-    // Owner + admin publish through A to indexer B; everyone queries B.
+    // Owner + admin publish through A to archiver B; everyone queries B.
     final owner = FolderService(
       keystore: FolderKeystore.open(':memory:'),
       publish: (e) => a!.relay.publish(bA, e),
@@ -171,7 +171,7 @@ Future<void> main(List<String> args) async {
       adminPrivHex: () => admin.privateKeyHex,
       nowSec: () => clk,
     );
-    // The browser only reads, from the SAME indexer, over its own link.
+    // The browser only reads, from the SAME archiver, over its own link.
     final browser = FolderService(
       keystore: FolderKeystore.open(':memory:'),
       publish: (e) => c!.relay.publish(bC, e),

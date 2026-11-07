@@ -477,7 +477,7 @@ class _WappPageState extends State<WappPage>
   NostrAllPoller? _allPoller;
 
   /// The Social "Nomadnet" feed: NOSTR publications fetched over RETICULUM
-  /// (indexers + peers across the hubs) + this device's local store, into its
+  /// (archivers + peers across the hubs) + this device's local store, into its
   /// OWN separate archive (social_nomadnet.sqlite3). Runs only while the Nomadnet
   /// tab is viewed (started/stopped in onFilterChanged) to save battery.
   ActivityArchive? _nomadnetArchive;
@@ -1370,7 +1370,7 @@ class _WappPageState extends State<WappPage>
       );
       // The NOSTR-over-Reticulum poller is gone with it.
       // No self-note echo: our own status comes back through the spool.
-      // Live push trigger: a peer indexer fanned a z=rns event (post or
+      // Live push trigger: a peer archiver fanned a z=rns event (post or
       // reaction) into our store — surface it on the open Nomadnet feed at once,
       // no poll, no socket. Fires regardless of the current tab (cached for the
       // next visit); refreshes live when Nomadnet is on screen.
@@ -1792,7 +1792,7 @@ class _WappPageState extends State<WappPage>
           // Set one field's value from the wapp: the way a settings screen shows
           // what the host currently believes (a read-only stat, or the option
           // that is actually in force). Without this a wapp could only ever
-          // build lists — which is why the Indexer briefly rendered its options
+          // build lists — which is why the Archiver briefly rendered its options
           // as a people-widget, i.e. as tabs.
           final name = '${data['name'] ?? ''}';
           if (name.isNotEmpty) {
