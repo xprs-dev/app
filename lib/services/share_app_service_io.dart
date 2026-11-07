@@ -11,6 +11,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -174,6 +175,8 @@ class ShareAppService {
         selfCallsign: () => MeshService.instance.tableCallsign,
         keyOf: (c) => XprsArchive.instance.keyResolver?.call(c),
         appPath: () => apkShareable ? '/app' : null,
+        // Files by reference (API-HTTP.md): the mesh's own content store.
+        fileStore: () => MeshService.instance.media,
       );
 
   static const String _holder = 'share';
@@ -277,17 +280,45 @@ class ShareAppService {
   Future<void> _serveApi(HttpRequest req) async {
     final res = req.response;
     var body = '';
+    Uint8List? raw;
+    // A file by reference (API-HTTP.md) is bytes, up to the API's own cap.
+    final isFile = req.uri.path.startsWith(WebChatApi.filePath);
+    final cap = isFile ? _api!.fileMax : 8192;
     if (req.method == 'POST') {
-      if (req.contentLength > 8192) {
+      if (req.contentLength > cap) {
         res.statusCode = HttpStatus.requestEntityTooLarge;
         await res.close();
         return;
       }
-      body = await utf8.decoder.bind(req).join();
+      if (isFile) {
+        final b = BytesBuilder(copy: false);
+        await for (final c in req) {
+          b.add(c);
+          if (b.length > cap) {
+            res.statusCode = HttpStatus.requestEntityTooLarge;
+            await res.close();
+            return;
+          }
+        }
+        raw = b.takeBytes();
+      } else {
+        body = await utf8.decoder.bind(req).join();
+      }
     }
     final reply = await _api!.handle(req.method, req.uri.path,
         req.uri.queryParameters, body,
-        peer: req.connectionInfo?.remoteAddress.address ?? '');
+        peer: req.connectionInfo?.remoteAddress.address ?? '', raw: raw);
+    if (reply.bytes != null) {
+      res.statusCode = reply.status;
+      res.headers.set(HttpHeaders.contentTypeHeader, reply.contentType!);
+      res.headers.set('Access-Control-Allow-Origin', '*');
+      reply.headers.forEach(res.headers.set);
+      res.headers.set(HttpHeaders.connectionHeader, 'close');
+      res.contentLength = reply.bytes!.length;
+      if (req.method != 'HEAD') res.add(reply.bytes!);
+      await res.close();
+      return;
+    }
     final bytes = utf8.encode(jsonEncode(reply.json));
     res
       ..statusCode = reply.status
