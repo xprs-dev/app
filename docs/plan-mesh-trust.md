@@ -32,6 +32,20 @@ heard A's alert locally, which the policy treats as its own network by
 design. Following (Phase 2's fetch from afar) is the remaining piece: the
 `follow` list is applied at the door, the standing ask to a followed author's
 own station is not yet made.
+**Mesh groups done, 2026-11-07**: twenty stations are not twenty lists. With
+`peers_mode: mesh` the trusted set is the roster of one closed group (a room
+of kind `mesh`). One station creates it and holds its key; it invites
+stations and appoints co-administrators, who invite and remove with their
+own station's signature; a station joins by mirroring the mesh from any
+member and accepts its invitation with its own signature. The record
+reaches every member through the members' standing asks, and each station
+asks only `WebChatApi.syncFanout` (4) of them, a different few each week,
+since every record is a signed original that every member keeps and serves.
+Verified on three instances: A created the mesh, appointed B and invited C;
+B and C joined and saw their invitations within two minutes, accepted, and
+A had both on its roster a minute later; a category A shared with the mesh
+was mirrored by B and C; B, as co-administrator, removed C and A learned it
+from B's act in two minutes.
 Decisions marked **(T1)…(T5)** are listed at the end. Read `XPRS.md` 9.11, 12, 12.9.3, 13.3,
 24 and `docs/plan-forum.md` first.
 
