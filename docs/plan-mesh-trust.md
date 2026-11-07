@@ -13,6 +13,25 @@ alert or a post has no path at all until Phase 3's standing ask, and an
 answer to that ask is kept by design. The reach cap therefore governs what
 arrives unasked over the internet lane (a phone's broadcast, a hub's
 replay), which the unit test covers and a two-server bench cannot produce.
+**Phase 3 done, 2026-11-07**, with the end state the operator asked for:
+stations that trust each other share the same forum categories, posts and
+alerts. A forum category can be shared with the mesh (`share mesh:true`):
+it is served to every trusted peer, and a peer that meets it in its
+neighbour answer mirrors it on its own and names it from the room's
+identity. Neighbour sync (12.9.3) runs with each trusted peer on the
+mirror's ladder (`MirrorPair` without a group, `kind:info,warning,blog,
+identity`). A trusted peer is not metered by the history budget, and a
+replay channel busy with another asker answers `429 m:busy`, retried after a
+minute. Named mode governs records from other stations; a visitor on the
+station's own network is its own community. Verified on three instances on
+one machine (A and B trusting each other, C trusted by nobody): B mirrored
+A's mesh category in 57 s and named it, listed its topic, and kept A's alert
+and post over the Reticulum lane; A counted B's reply and kept B's alert; C
+got no room and A kept nothing C aired. The bench shares one LAN, so C still
+heard A's alert locally, which the policy treats as its own network by
+design. Following (Phase 2's fetch from afar) is the remaining piece: the
+`follow` list is applied at the door, the standing ask to a followed author's
+own station is not yet made.
 Decisions marked **(T1)…(T5)** are listed at the end. Read `XPRS.md` 9.11, 12, 12.9.3, 13.3,
 24 and `docs/plan-forum.md` first.
 
@@ -149,7 +168,7 @@ reach caps of 3.1. `named` closes the mesh of record to the list:
 - **Serving**: `cmd:history` from a station not on the list is answered with
   this station's own publications only (`XprsArchive.query ownOnly`, which is
   what a stranger gets today), never with what it holds for others.
-- **Keeping, in named mode**: an alert or a post heard on a regional bearer is
+- **Keeping, in named mode**: an alert or a post heard on a regional or global bearer is
   kept only when it is this station's own, its author is followed, its
   author or a station in its `via:` is a named peer, or it answered our ask.
   That is the rule that stops the rogue relay: its packets are heard,
