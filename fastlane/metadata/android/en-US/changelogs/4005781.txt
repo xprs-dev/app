@@ -1,0 +1,3 @@
+* Web chat on the phone's hotspot: a blog post shows the moment it is published, written in Markdown beside a live preview, with images carried by their hash.
+* Stations host rooms, a forum, alerts and moderation, and share rooms across a mesh of trusted stations.
+* The XPRS core is now shared with the server edition: the same code runs on the phone and on an always-on station.
