@@ -1,0 +1,1 @@
+* The menu has an Exit XPRS entry: it stops XPRS completely, background service included, until you open it again.
