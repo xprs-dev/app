@@ -633,6 +633,17 @@ design the caller to be asked again on its cadence, not retried at once.
 
 ---
 
+### `exitApp()` — stop XPRS completely
+
+`lib/boot/app_exit.dart` (conditional export: `app_exit_io.dart`, a no-op
+`app_exit_web.dart`). Flushes the archive's in-memory rows, stops the
+START_STICKY background service through
+`AndroidForegroundService.shutdown()` (else Android restarts it), then ends
+the process. The drawer's "Exit XPRS" calls it after a confirmation; anything
+else that must end the app (a profile lock, an update that restarts) should
+call it rather than `exit(0)` directly, so nothing received in the last
+seconds is lost.
+
 ## App authoring
 
 These components exist so the **App Creator** wapp

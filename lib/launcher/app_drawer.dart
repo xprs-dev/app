@@ -12,6 +12,25 @@ class _AppDrawer extends StatelessWidget {
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
   }
 
+  Future<void> _confirmExit(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('launcher.exit.title')),
+        content: Text(tr('launcher.exit.body')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(tr('common.cancel'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(tr('launcher.exit.confirm'))),
+        ],
+      ),
+    );
+    if (ok == true) await exitApp();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -77,6 +96,18 @@ class _AppDrawer extends StatelessWidget {
               title: Text(tr('common.settings')),
               onTap: onSettings,
             ),
+            // Exit sits apart at the bottom: it stops the background service
+            // too, so nothing is received or relayed until XPRS is opened
+            // again. A browser tab is closed by the browser.
+            if (!kIsWeb) ...[
+              const Spacer(),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.power_settings_new),
+                title: Text(tr('launcher.drawer.exit')),
+                onTap: () => _confirmExit(context),
+              ),
+            ],
           ],
         ),
       ),

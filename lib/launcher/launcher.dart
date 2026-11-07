@@ -29,6 +29,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../platform/platform.dart' as platform;
+import '../boot/app_exit.dart';
 
 import '../wapp/wapp_file_handler.dart';
 import '../profile/welcome_page.dart';

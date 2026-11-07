@@ -159,6 +159,20 @@ class AndroidForegroundService implements KeepAlive {
     await release('wapps');
   }
 
+  /// The person asked to exit: drop every holder and stop the service
+  /// whatever this side believes is running. The service is START_STICKY,
+  /// so a process that died with it still started would be brought back.
+  Future<void> shutdown() async {
+    _holders.clear();
+    if (!_supported) return;
+    try {
+      await _channel.invokeMethod('stop');
+    } catch (e) {
+      debugPrint('AndroidForegroundService: stop failed: $e');
+    }
+    _running = false;
+  }
+
   /// Post a heads-up Android notification for a message/event. No-op off Android.
   Future<void> notify({
     required int id,
