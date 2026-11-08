@@ -167,7 +167,8 @@ request. The same define is the rule for any other store later.
   auto-added version from 1.5.0 on. The fix is a merge request adding
   `srclibs/xprs-core.yml` and the v1.6.0 blocks rendered by
   `tool/fdroid_recipe.py` (then later versions copy blocks that carry core).
-  It needs the `brito500` GitLab token (section 3.1). This is the rule of
+  Opened as fdroiddata !56389 (https://gitlab.com/fdroid/fdroiddata/-/merge_requests/56389,
+  branch `xprs-1.6.0-core` on the fork, commit `3378bdc1`). This is the rule of
   section 7 that was missed: **a change to the build steps goes into
   fdroiddata in the same breath as into the template.**
 
