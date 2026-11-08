@@ -86,6 +86,12 @@ def render(version, code, commit, repo=None, binary=True):
         out = re.sub(r'^Repo: .*$', 'Repo: ' + repo, out, flags=re.M)
     if not binary:
         out = re.sub(r'^    binary: .*\n', '', out, flags=re.M)
+    else:
+        # As `fdroid rewritemeta` writes it (ruamel, 80 columns): a URL
+        # longer than 80 goes on its own line, after "binary: " with its
+        # trailing space. fdroiddata's CI fails a recipe written otherwise.
+        out = re.sub(r'^    binary: (\S{81,})$', r'    binary: \n      \1', out,
+                     flags=re.M)
     left = re.findall(r'@[A-Z_]+@', out)
     if left:
         sys.exit('unfilled placeholders: ' + ', '.join(sorted(set(left))))
