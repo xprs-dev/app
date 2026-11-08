@@ -4011,6 +4011,12 @@ class _WappPageState extends State<WappPage>
       },
       // The row menu. The wapp owns the conversations, so it is the one that
       // archives or deletes; the host only lets go of the room if it was open.
+      // The room's notifications switch (row menu and header bell). The
+      // wapp flips it and restates the row's muted flag.
+      onToggleNotify: (id) {
+        _fieldValues['${field}_convo'] = id;
+        _sendCommand('${field}_notify');
+      },
       onArchive: (id) {
         if (_roomsOpenId == id) setState(() => _roomsOpenId = null);
         _fieldValues['${field}_convo'] = id;

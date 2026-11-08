@@ -84,6 +84,11 @@ class RoomsField extends StatefulWidget {
   final void Function(String id)? onArchive;
   final void Function(String id)? onDelete;
 
+  /// Turn a conversation's notifications on or off. The wapp owns the
+  /// switch and states it as the row's `muted` flag, which is what the menu
+  /// entry, the row's bell and the header's bell draw.
+  final void Function(String id)? onToggleNotify;
+
   /// Statuses at the head of the list, the way Telegram heads it with
   /// stories: this station's callsign, then the newest status of each person
   /// it talks with, `{id, call, text, ts, mine, seen}`. The wapp decides who is
@@ -122,6 +127,7 @@ class RoomsField extends StatefulWidget {
     this.onArchived,
     this.onArchive,
     this.onDelete,
+    this.onToggleNotify,
     this.me = '',
     this.statuses = const [],
     this.onPostStatus,
@@ -376,7 +382,9 @@ class _RoomsFieldState extends State<RoomsField> {
         ],
       );
     }
-    final hasMenu = widget.onArchive != null || widget.onDelete != null;
+    final hasMenu = widget.onArchive != null ||
+        widget.onDelete != null ||
+        widget.onToggleNotify != null;
     final tile = InkWell(
       // Right-click on a desktop, long-press on a phone (below): the same
       // menu as the three dots, which the collapsed rail has no room for.
@@ -468,6 +476,17 @@ class _RoomsFieldState extends State<RoomsField> {
                             ),
                           ),
                         ),
+                        if (item?.muted ?? false)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Tooltip(
+                              message: tr('geoui.rooms.muted'),
+                              child: const Icon(
+                                  Icons.notifications_off_outlined,
+                                  size: 16,
+                                  color: ChatPalette.secondary),
+                            ),
+                          ),
                         if (unread > 0)
                           Container(
                             margin: const EdgeInsets.only(left: 6),
@@ -502,7 +521,7 @@ class _RoomsFieldState extends State<RoomsField> {
                     icon: const Icon(Icons.more_vert,
                         size: 20, color: ChatPalette.secondary),
                     color: ChatPalette.raised,
-                    itemBuilder: (_) => _menuItems(),
+                    itemBuilder: (_) => _menuItems(id),
                     onSelected: (v) => _rowAction(v, id, name),
                   ),
                 ),
@@ -827,7 +846,27 @@ class _RoomsFieldState extends State<RoomsField> {
         : Tooltip(message: 'Archived ($n)', child: tile);
   }
 
-  List<PopupMenuEntry<String>> _menuItems() => [
+  List<PopupMenuEntry<String>> _menuItems(String id) => [
+    if (widget.onToggleNotify != null)
+      PopupMenuItem(
+        value: 'notify',
+        child: Row(children: [
+          Icon(
+              _muted(id)
+                  ? Icons.notifications_outlined
+                  : Icons.notifications_off_outlined,
+              size: 20,
+              color: ChatPalette.secondary),
+          const SizedBox(width: 12),
+          // Flexible: "Benachrichtigungen stummschalten" is wider than the
+          // menu's minimum width.
+          Flexible(
+            child: Text(
+                tr(_muted(id) ? 'geoui.rooms.unmute' : 'geoui.rooms.mute'),
+                style: const TextStyle(color: ChatPalette.text)),
+          ),
+        ]),
+      ),
     if (widget.onArchive != null)
       PopupMenuItem(
         value: 'archive',
@@ -853,12 +892,29 @@ class _RoomsFieldState extends State<RoomsField> {
       context: context,
       color: ChatPalette.raised,
       position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
-      items: _menuItems(),
+      items: _menuItems(id),
     );
     if (v != null) _rowAction(v, id, name);
   }
 
+  bool _muted(String id) => widget.store.items[id]?.muted ?? false;
+
+  /// The bell that turns a conversation's notifications on or off: the row
+  /// menu's entry and the open room's header button are this one switch.
+  Widget _notifyButton(String id) => IconButton(
+        tooltip: tr(_muted(id) ? 'geoui.rooms.unmute' : 'geoui.rooms.mute'),
+        color: ChatPalette.secondary,
+        icon: Icon(_muted(id)
+            ? Icons.notifications_off_outlined
+            : Icons.notifications_outlined),
+        onPressed: () => widget.onToggleNotify?.call(id),
+      );
+
   Future<void> _rowAction(String action, String id, String name) async {
+    if (action == 'notify') {
+      widget.onToggleNotify?.call(id);
+      return;
+    }
     if (action == 'archive') {
       widget.onArchive?.call(id);
       return;
@@ -1028,6 +1084,8 @@ class _RoomsFieldState extends State<RoomsField> {
                   ],
                 ),
               ),
+              if (widget.onToggleNotify != null && open != null)
+                _notifyButton(open),
               IconButton(
                 tooltip: tr('geoui.rooms.members'),
                 color: ChatPalette.secondary,

@@ -1072,6 +1072,19 @@ gets the page from the bubble alone. The wapp side is `info_publish` in
 `apps/chat/main.c`: its stored row and versions, plus the core's archived
 packet by id (`hal_xprs_history {"id":...}`).
 
+### A conversation's notifications switch — the row's `muted` flag
+
+A wapp that lets a person silence a conversation states it as `"muted"` on
+its `ui.convo.upsert` row. `ConversationStore.upsert` takes it, and the
+existing gates do the rest in both engines: `mayNotifyFor` drops the
+`notify`, `totalUnread` leaves the room out of the app badge, and its own
+row still shows its count. `RoomsField(onToggleNotify:)` draws the switch,
+in the row menu and as the open room's header bell (`_notifyButton`), and
+the page sends `<field>_notify` with `<field>_convo`. Chat keeps the choice
+in `rooms.notify`, where NULL means the room's default (`NOTIFY_ON` in
+`apps/chat/room.c`: on everywhere but `#GLOBAL`). Any other wapp gets the
+same switch by stating the flag and answering the command.
+
 ## Archive admission
 
 - **`XprsIngest._isRoomTalk(p, bearer)`** -- "is this a room's conversation,

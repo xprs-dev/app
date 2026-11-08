@@ -71,4 +71,23 @@ void main() {
         reason: 'the notification may be what creates the conversation');
     expect(store.mayNotifyFor(null), isTrue);
   });
+
+  test('the wapp states a room muted: no notification, no app badge', () {
+    final store = ConversationStore();
+    store.upsert({'id': '#GLOBAL', 'title': 'Global chat', 'muted': true});
+    store.addMessage({'id': '#GLOBAL', 'dir': 'in', 'text': 'chatter'});
+    expect(store.mayNotifyFor('#GLOBAL'), isFalse);
+    expect(store.totalUnread, 0);
+    expect(store.items['#GLOBAL']!.unread, 1,
+        reason: 'the row still counts what is waiting');
+
+    store.upsert({'id': '#GLOBAL', 'muted': false});
+    expect(store.mayNotifyFor('#GLOBAL'), isTrue);
+    expect(store.totalUnread, 1);
+
+    // A row stated without the flag keeps what the host had.
+    store.items['#GLOBAL']!.muted = true;
+    store.upsert({'id': '#GLOBAL', 'title': 'Global chat'});
+    expect(store.items['#GLOBAL']!.muted, isTrue);
+  });
 }

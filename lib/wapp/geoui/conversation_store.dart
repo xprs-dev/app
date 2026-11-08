@@ -349,6 +349,10 @@ class ConversationStore {
     if (d.containsKey('badge')) it.badge = (d['badge'] ?? '').toString();
     if (d.containsKey('icon')) it.icon = (d['icon'] ?? 'chat').toString();
     if (d.containsKey('private')) it.private = d['private'] == true;
+    // A wapp that owns a per-room notifications switch (chat) states it on
+    // the row; muted then gates notifications and the app-wide badge
+    // ([mayNotifyFor], [totalUnread]) in both engines.
+    if (d.containsKey('muted')) it.muted = d['muted'] == true;
     // The row is stated whole each time, so absent means no authority.
     it.mod = d['mod'] == true;
     if (d.containsKey('unread')) {
