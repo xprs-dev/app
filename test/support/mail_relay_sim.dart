@@ -172,6 +172,9 @@ class MailRelaySim {
     } catch (_) {}
   }
 
+  /// The x-only key of a bench station, for whoever verifies a signature.
+  Uint8List? keyOf(String call) => _keyOf(call);
+
   Uint8List? _keyOf(String call) {
     final s = stations[call.trim().toUpperCase()];
     if (s == null) return null;
@@ -227,6 +230,14 @@ class MailRelaySim {
       // where the recipient actually is. Collected rather than awaited so
       // a drain stays synchronous; [forwardParked] runs them.
       pendingForwards.add((target, wire));
+      // And, as mesh_service does, 12.8.3 step 1 on a served visitor's
+      // behalf: a browser on this station's page has no archiver, so the
+      // station leaves the copy with its own (XprsMailbox.armDeposit
+      // onBehalf).
+      final author = (p['f'] ?? '').toUpperCase();
+      if (XprsArchive.instance.servesVisitor(author)) {
+        XprsMailbox.instance.armDeposit(wire, onBehalf: true);
+      }
     };
     XprsIngest.onReceipt = (p) {
       final r = XprsReceipt.release(p, selfCallsign: s.call);
@@ -237,7 +248,7 @@ class MailRelaySim {
     };
     // Our own radio is its own witness (12.9.4): a packet that reached us
     // unrelayed over a radio writes "call is at OUR ear" into our table.
-    XprsIngest.onDirectHeard = (call, bearer) =>
+    XprsIngest.onDirectHeard = (call, bearer, {viaApi = false}) =>
         XprsGossip.instance.noteDirect(call, s.call, bearer: bearer);
 
     XprsMailbox.instance
@@ -246,6 +257,7 @@ class MailRelaySim {
       ..sendTo = ((call, wire) async => air.sendTo(call, wire))
       ..publish = ((wire) async => air.broadcast(s.call, sign(s, wire)))
       ..outboxState = ((id) => XprsOutbox.instance.stateOf(id))
+      ..receiptSeen = ((id) => MeshStore.instance.wasReceived(id))
       ..holdersOf = ((call) => XprsArchive.instance.holdersFor(call))
       ..reachable = ((call) => air.reachable(call))
       ..held = (() => [

@@ -161,4 +161,27 @@ void main() {
     final t = g.tryCandidates('X1AAAA', selfBase: 'X3SELF');
     expect(t, ['X3OTHER']);
   });
+
+  // A visitor on the station's web page is heard on `lan` through the API.
+  // From the station's own network that is radio truth; from across the
+  // internet it is a live sighting and nothing more, whatever the bearer
+  // word says (36.9.4: no packet that travelled only the internet writes the
+  // durable layer). The caller says which with `shortRange`.
+  test('noteDirect with shortRange:false writes the live layer only', () {
+    g.noteDirect('X1VIS', 'X3SELF', bearer: 'lan', nowMs: t0, shortRange: false);
+    final w = g.whereIs('X1VIS', nowMs: t0);
+    expect(w, hasLength(1));
+    expect(w.first.live, isTrue);
+    expect(g.statusJson()['live'], 1);
+    expect(g.statusJson()['visits'], 0, reason: 'a browser across the internet is no visit');
+    // The same visitor on the station's own network: both layers, as any
+    // LAN hearing (the debounce is per bearer, so a different one here).
+    g.noteDirect('X1VIS', 'X3SELF', bearer: 'wifi', nowMs: t0 + 1000, shortRange: true);
+    expect(g.statusJson()['visits'], 1);
+    // Null reads the bearer: the default every radio hearing had.
+    g.noteDirect('X1AAAA', 'X3SELF', bearer: 'rns', nowMs: t0);
+    expect(g.statusJson()['visits'], 1);
+    g.noteDirect('X1BBBB', 'X3SELF', bearer: 'ble', nowMs: t0);
+    expect(g.statusJson()['visits'], 2);
+  });
 }

@@ -21,7 +21,10 @@ import 'package:sqlite3/open.dart';
 import 'package:xprs/services/mesh/mesh_store.dart';
 import 'package:xprs/services/preferences_service.dart';
 import 'package:xprs/services/social/retention_tier.dart';
+import 'package:xprs/services/web_chat_api.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
+import 'package:xprs/services/xprs/xprs_gossip.dart';
+import 'package:xprs/services/xprs/xprs_monitor.dart';
 import 'package:xprs/services/xprs/xprs_archive_policy.dart';
 import 'package:xprs/services/xprs/xprs_history_server.dart';
 import 'package:xprs/services/xprs/xprs_ingest.dart';
@@ -447,6 +450,217 @@ void main() {
       final released = XprsReceipt.release(one,
           selfCallsign: 'X3ARCH', keyOf: (_) => null);
       expect(released?.id, partId);
+    });
+  });
+
+  // A visitor on a public archiver's web page (12.7, 12.8.3, API-HTTP.md).
+  // X1VIS is a browser: never on the air, never on the directed lane; it
+  // reads and posts through X3SERV's page (the core's WebChatApi), and
+  // X3SERV is its mailbox. A writes to it from the other side of the
+  // network, with X3ARCH as A's archiver; X3ARC2 is X3SERV's own archiver.
+  group('a visitor on a public archiver\'s web page', () {
+    late MailRelaySim sim2;
+    late SimStation a2, c2, s2, d2, v2;
+
+    setUp(() {
+      XprsMailboxCounters.debugReset();
+      sim2 = MailRelaySim.build(['X1AAAA', 'X3ARCH', 'X3SERV', 'X3ARC2', 'X1VIS']);
+      a2 = sim2['X1AAAA'];
+      c2 = sim2['X3ARCH'];
+      s2 = sim2['X3SERV'];
+      d2 = sim2['X3ARC2'];
+      v2 = sim2['X1VIS'];
+      v2.online = false; // a browser is not a station on the air
+      v2.internet = false;
+      a2.archivers = [c2.call];
+      s2.archivers = [d2.call];
+    });
+
+    tearDown(() {
+      XprsMailbox.instance.depositAfter = const Duration(seconds: 30);
+      sim2.dispose();
+    });
+
+    test('held protected, shown through the page, released by the visitor\'s receipt, '
+        'and the visitor\'s own mail deposited on their behalf', () async {
+      const until = '2026-12-08_00:00:00';
+      const browser = '203.0.113.7'; // across the internet, not on X3SERV's LAN
+      late WebChatApi api;
+      // The page's engine at X3SERV, wired as the hosts wire it: a wire is
+      // heard on `lan` through the API; a proven session is a hearing; the
+      // station offers itself as mailbox (MeshService.offerMailbox on a
+      // public archiver with room).
+      WebChatApi makeApi() => WebChatApi(
+            publicRows: archivePublicRows,
+            held: (_) => 0,
+            receive: (_) => fail('receiveFrom is wired; receive must not be used'),
+            receiveFrom: (w, {required local}) => XprsIngest.heard(
+                XprsPacket.parse(w)!,
+                bearer: 'lan',
+                selfCallsign: s2.call,
+                viaApi: true,
+                localLink: local),
+            onVisitor: (call, {required local}) {
+              XprsMonitor.instance
+                  .noteVisitor(call, nowMs: DateTime.now().millisecondsSinceEpoch);
+              XprsGossip.instance
+                  .noteDirect(call, s2.call, bearer: 'lan', shortRange: local);
+            },
+            mayAir: (_) => true,
+            selfCallsign: () => s2.call,
+            keyOf: sim2.keyOf,
+            appPath: () => null,
+            holdersOf: (c) => XprsArchive.instance.holdersFor(c),
+            offerMailbox: (c) {
+              XprsArchive.instance.noteServed(c);
+              return s2.call;
+            },
+            mailFor: (c) => MeshStore.instance.heldWiresFor(c).length,
+          );
+      Future<Map<String, dynamic>> prove() async {
+        final n = (await api.handle('GET', '/api/session', {}, '', peer: browser))
+            .json['nonce'];
+        final r = await api.handle('POST', '/api/session', {},
+            sim2.sign(v2, 't:session f:X1VIS ts:$_ts m:$n'), peer: browser);
+        expect(r.status, 200, reason: '${r.json}');
+        return r.json;
+      }
+      Future<WebChatReply> post(String wire) => api.handle(
+          'POST', '/api/xprs/send', {}, sim2.sign(v2, wire), peer: browser);
+
+      // ── 1. The visitor opens X3SERV's page and proves its key: nobody
+      //    holds its mail, so the station offers itself (12.7).
+      late String decl;
+      await sim2.as(s2, () async {
+        XprsMonitor.instance.clear();
+        api = makeApi();
+        final first = await prove();
+        expect(first['holders'], isEmpty);
+        expect(first['offer'], 'X3SERV');
+        expect(first['mail'], 0);
+        // Heard on lan through the API: at our ear (`hears:` names it), a
+        // live sighting in gossip and no visit -- a browser across the
+        // internet is not radio truth (12.9.4).
+        expect(XprsMonitor.instance.directlyHeardOn('lan'), contains('X1VIS'));
+        final where = XprsGossip.instance.whereIs('X1VIS');
+        expect(where.single.gateway, 'X3SERV');
+        expect(where.single.live, isTrue);
+        expect(XprsGossip.instance.statusJson()['visits'], 0);
+        // A declaration from a key the station does not know is refused
+        // (9.12: forging one collects somebody else's mail).
+        final stranger = SimStation('X1NOKY', '${sim2.root.path}/X1NOKY');
+        final bad = await api.handle('POST', '/api/xprs/send', {},
+            sim2.sign(stranger, 't:mailbox f:X1NOKY ts:$_ts hold:X3SERV until:$until'),
+            peer: browser);
+        expect(bad.status, 409);
+        // The page accepts the offer: the visitor's signed declaration
+        // (13.12) goes through the page into the funnel and is recorded.
+        final r = await post('t:mailbox f:X1VIS ts:$_ts hold:X3SERV until:$until');
+        expect(r.status, 200, reason: '${r.json}');
+        decl = r.json['wire'] as String;
+        expect(XprsArchive.instance.declCount, 1);
+        expect(XprsArchive.instance.holdersFor('X1VIS'), ['X3SERV']);
+        final second = await prove();
+        expect(second['holders'], ['X3SERV']);
+        expect(second.containsKey('offer'), isFalse);
+      });
+
+      // ── 2. A's archiver learns who holds for X1VIS: the declaration is
+      //    replayed to it by the standing `kind:mailbox` catch-up (12.9.5).
+      await sim2.as(c2, () async {
+        XprsIngest.reticulum('X1VIS', Uint8List.fromList(utf8.encode(decl)));
+        expect(XprsArchive.instance.holdersFor('X1VIS'), ['X3SERV']);
+      });
+
+      // ── 3. A writes to the visitor, leaves a copy with its archiver,
+      //    declares its own mailbox, and goes away.
+      late String dm;
+      await sim2.as(a2, () async {
+        dm = await sim2.send(a2, 't:message f:X1AAAA d:X1VIS ts:$_ts m:hello visitor');
+        expect(await XprsMailbox.instance.depositIfUnanswered(dm), 1);
+        await XprsMailbox.instance.declare();
+      });
+      a2.online = false;
+
+      // ── 4. A's archiver cannot reach the visitor and hands the copy to
+      //    the visitor's declared holder (12.8.1, L1 first).
+      await sim2.as(c2, () async {
+        sim2.drain(c2);
+        expect(MeshStore.instance.heldWiresFor('X1VIS'), hasLength(1));
+        expect(await sim2.forwardParked(c2), ['X3SERV']);
+      });
+
+      // ── 5. The serving station: shelved protected (the stranger policy
+      //    is off here and the row is kept all the same), shown to the
+      //    visitor through the page and to nobody else, never forwarded
+      //    away, never re-aired.
+      XprsMailboxCounters.debugReset();
+      final dmId = xprsIdentifier(XprsPacket.parse(dm)!);
+      await sim2.as(s2, () async {
+        expect(XprsIngest.policy.public, isFalse);
+        sim2.drain(s2);
+        XprsArchive.instance.flush();
+        final mine = archivePublicRows(types: const ['message'], visitor: 'X1VIS', limit: 50);
+        expect(mine.where((r) => '${r['wire']}'.contains('hello visitor')), hasLength(1));
+        expect(archivePublicRows(types: const ['message'], limit: 50), isEmpty,
+            reason: 'mail is never offered to a third party (12.1)');
+        expect(MeshStore.instance.heldWiresFor('X1VIS'), hasLength(1));
+        expect(await sim2.forwardParked(s2), isEmpty,
+            reason: 'the station IS the holder: nothing moves away');
+        expect(await XprsMailbox.instance.sweepHeld(), 0,
+            reason: 'a browser hears no re-air');
+        api = makeApi();
+        expect((await prove())['mail'], 1);
+
+        // ── 6. The visitor read it on the page and posts its signed receipt
+        //    (12.8.3 step 5): the held copy is released; the receipt, being
+        //    mail for the sleeping sender, is held, handed toward A's
+        //    declared holder (step 6) and -- as a served visitor's outgoing
+        //    mail -- deposited with X3SERV's own archiver (step 1, on their
+        //    behalf, after the deposit window).
+        XprsMailbox.instance.depositAfter = const Duration(milliseconds: 1);
+        final r = await post('t:receipt f:X1VIS d:X1AAAA r:$dmId ts:$_ts s:ack');
+        expect(r.status, 200, reason: '${r.json}');
+        expect(MeshStore.instance.heldWiresFor('X1VIS'), isEmpty,
+            reason: 'the verified receipt released the copy (12.7)');
+        expect(MeshStore.instance.heldTargets(), contains('X1AAAA'));
+        expect(await sim2.forwardParked(s2), ['X3ARCH']);
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+      });
+      expect(c2.inbox.where((w) => w.startsWith('t:receipt') && w.contains('via:X3SERV')),
+          hasLength(1), reason: 'toward the sender\'s holder, as custody');
+      expect(d2.inbox.where((w) => w.startsWith('t:receipt') && !w.contains('via:')),
+          hasLength(1), reason: 'deposited verbatim with the serving station\'s archiver');
+      expect(XprsMailboxCounters.deposited, 1);
+
+      // ── 7. The visitor writes back (12.8.3 step 1 on their behalf): parked
+      //    for A, forwarded toward A's holder, and deposited verbatim with
+      //    X3SERV's archiver, which holds it for A.
+      await sim2.as(s2, () async {
+        api = makeApi();
+        XprsMailbox.instance.depositAfter = const Duration(milliseconds: 1);
+        final r = await post('t:message f:X1VIS d:X1AAAA ts:2026-09-08_19:01:00 m:thanks, got it');
+        expect(r.status, 200, reason: '${r.json}');
+        expect(MeshStore.instance.heldWiresFor('X1AAAA').where((w) => w.contains('thanks')),
+            hasLength(1));
+        expect(await sim2.forwardParked(s2), ['X3ARCH']);
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        XprsArchive.instance.flush();
+        expect(
+            archivePublicRows(types: const ['message'], visitor: 'X1VIS', limit: 50)
+                .where((r) => '${r['wire']}'.contains('thanks')),
+            hasLength(1),
+            reason: 'the visitor\'s own words are its mail too, kept protected');
+      });
+      final copies = d2.inbox.where((w) => w.contains('thanks, got it')).toList();
+      expect(copies, hasLength(1));
+      expect(copies.single, isNot(contains('via:')), reason: 'a deposit is not a relay');
+      expect(XprsMailboxCounters.deposited, 2);
+      await sim2.as(d2, () async {
+        sim2.drain(d2);
+        expect(MeshStore.instance.heldWiresFor('X1AAAA').where((w) => w.contains('thanks')),
+            hasLength(1), reason: 'the archiver holds the visitor\'s mail for A');
+      });
     });
   });
 }

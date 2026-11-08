@@ -6,9 +6,13 @@
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:reticulum/reticulum.dart' show XprsCrypto;
 import 'package:xprs/services/xprs/xprs_archive.dart';
+import 'package:xprs/services/xprs/xprs_gossip.dart';
 import 'package:xprs/services/xprs/xprs_history_server.dart';
+import 'package:xprs/services/xprs/xprs_sig.dart';
 import 'package:xprs/services/xprs/xprs_folder.dart';
 import 'package:xprs/services/xprs/xprs_files.dart';
 import 'package:xprs/services/xprs/xprs_id.dart';
@@ -426,6 +430,67 @@ void main() {
           .toList();
       expect(copies, hasLength(1));
       expect(copies.single['own'], isFalse);
+    });
+  });
+
+  // A miss is not a dead end (XPRS.md 12.9): the 404 names who to try, the
+  // callsign's own declared holders first (13.12), then the archivers whose
+  // directories list it, then whoever gossip saw it at.
+  group('a miss names who to try (12.9)', () {
+    late Directory gtmp;
+    final g = XprsGossip.instance;
+    final key = BigInt.parse('abcdef0123456789abcdef0123456789', radix: 16);
+
+    setUp(() {
+      gtmp = Directory.systemTemp.createTempSync('xprshist-gossip');
+      g.init('${gtmp.path}/gossip.sqlite3');
+      g.debugReset();
+      a.keyResolver = (c) => c == 'X1MOBL' ? XprsCrypto.publicKeyXOnly(key) : null;
+    });
+    tearDown(() {
+      g.close();
+      gtmp.deleteSync(recursive: true);
+    });
+
+    test('a replayed t:mailbox is consumed: holdersFor answers it, and the next miss names it first',
+        () {
+      // The declaration, replayed over the hubs by a peer archiver's
+      // `cmd:history kind:mailbox` answer (12.9.5): the original, verifying
+      // on the declaring station's signature.
+      final decl = xprsSign(_p('t:mailbox f:X1MOBL ts:2026-08-13_10:00:00 hold:X3HOLD'), key);
+      XprsIngest.reticulum('X1MOBL', Uint8List.fromList(utf8.encode(decl.encode())));
+      expect(a.holdersFor('X1MOBL'), ['X3HOLD']);
+      // Unverifiable: not acted on (9.12).
+      XprsIngest.reticulum('X1FAKE', Uint8List.fromList(utf8.encode(
+          't:mailbox f:X1FAKE ts:2026-08-13_10:00:00 hold:X3EVIL')));
+      expect(a.holdersFor('X1FAKE'), isEmpty);
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      g.notePointers('X3KEEP', [('X1MOBL', now)]);
+      g.noteHears('X3SEEN', ['X1MOBL'], link: 'ble', verified: true, nowMs: now);
+      // The asker and this station know of it too: neither is named.
+      g.noteHears('X1BBB', ['X1MOBL'], link: 'ble', verified: true, nowMs: now);
+      g.notePointers('X1SELF', [('X1MOBL', now)]);
+
+      ask('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+          'only:X1MOBL since:2027-01-01_00:00:00');
+      final r = results().single;
+      expect(r['code'], '404');
+      expect(r['m'], 'try X3HOLD,X3KEEP,X3SEEN');
+    });
+
+    test('tryFor: each once, never us or the asker, three at most', () {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      g.notePointers('X3ARC1', [('X1MOBL', now)]);
+      g.notePointers('X3ARC2', [('X1MOBL', now - 1000)]);
+      g.noteHears('X3ARC1', ['X1MOBL'], link: 'lan', verified: true, nowMs: now);
+      g.noteHears('X3GW', ['X1MOBL'], link: 'lan', verified: true, nowMs: now);
+      g.noteHears('X3GW2', ['X1MOBL'], link: 'lan', verified: true, nowMs: now - 5000);
+      expect(XprsHistoryServer.tryFor('X1MOBL', selfBase: 'X1SELF', asker: 'X3ARC2'),
+          ['X3ARC1', 'X3GW', 'X3GW2']);
+      expect(XprsHistoryServer.tryFor('X1MOBL', selfBase: 'X3ARC1', asker: 'X1BBB'),
+          ['X3ARC2', 'X3GW', 'X3GW2']);
+      expect(XprsHistoryServer.tryFor('X1NOBODY', selfBase: 'X1SELF'), isEmpty);
     });
   });
 }

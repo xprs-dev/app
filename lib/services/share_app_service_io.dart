@@ -162,15 +162,27 @@ class ShareAppService {
   }
 
   /// The API a visitor's browser gets, wired to the core: what it posts goes
-  /// through the one receive door (as heard on the hotspot, `wifi`), which the
-  /// bridge and digipeater carry on under the owner's policy; what it reads is
-  /// the archive's undirected rows.
+  /// through the one receive door (as heard on the hotspot's network, `lan`,
+  /// through the API), which the bridge and digipeater carry on under the
+  /// owner's policy; what it reads is the archive's undirected rows.
   WebChatApi _liveApi() => WebChatApi(
         publicRows: archivePublicRows,
         held: (t) => XprsArchive.instance.countOf(types: t, undirected: true),
         receive: (w) => PacketGateway.instance.receive(
             Uint8List.fromList(utf8.encode(w)),
-            bearer: 'wifi', lane: RxLane.datagram),
+            bearer: 'lan', lane: RxLane.datagram, viaApi: true),
+        receiveFrom: (w, {required local}) => PacketGateway.instance.receive(
+            Uint8List.fromList(utf8.encode(w)),
+            bearer: 'lan', lane: RxLane.datagram,
+            viaApi: true, localLink: local),
+        // A visitor who proved their key is at this phone's ear (12.8.1),
+        // and the phone may be their mailbox when it is a public archiver
+        // with room (12.7, 13.0.2).
+        onVisitor: (call, {required local}) =>
+            MeshService.instance.visitorHeard(call, local: local),
+        holdersOf: XprsArchive.instance.holdersFor,
+        offerMailbox: MeshService.instance.offerMailbox,
+        mailFor: MeshService.instance.mailFor,
         mayAir: XprsPublisher.instance.mayAir,
         selfCallsign: () => MeshService.instance.tableCallsign,
         keyOf: (c) => XprsArchive.instance.keyResolver?.call(c),
