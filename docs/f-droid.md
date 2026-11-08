@@ -153,6 +153,23 @@ request. The same define is the rule for any other store later.
   https://monitor.f-droid.org/builds/log/com.xprs.app/4005313. The package
   page and https://f-droid.org/api/v1/packages/com.xprs.app answer 404
   until the index carries it. Nothing on our side is pending.
+* **2026-11-08: built.** The cycle of 2026-11-06 20:30 to 2026-11-08 16:26
+  UTC built 4005311, 4005312 and 4005313 (v1.3.8): "compared built binary to
+  supplied reference binary successfully". `checkupdates` had added v1.4.0
+  (4005421-3), not built yet. The package page waits for the next
+  `publish`/`update`.
+* **2026-11-08: the recipe in fdroiddata cannot build v1.5.0 or later.**
+  Since v1.5.0 the app has a path dependency on `../core` (xprs-dev/core),
+  and the template here gained the `xprs-core` srclib, its checkout of
+  `.core-commit` and `cp -r $$xprs-core$$ ../core`, but fdroiddata never got
+  them: it has no `srclibs/xprs-core.yml`, and `checkupdates` copies the last
+  build blocks, which do not copy core in, so `flutter pub get` fails on any
+  auto-added version from 1.5.0 on. The fix is a merge request adding
+  `srclibs/xprs-core.yml` and the v1.6.0 blocks rendered by
+  `tool/fdroid_recipe.py` (then later versions copy blocks that carry core).
+  It needs the `brito500` GitLab token (section 3.1). This is the rule of
+  section 7 that was missed: **a change to the build steps goes into
+  fdroiddata in the same breath as into the template.**
 
 ## 3. Following the review
 
@@ -387,8 +404,8 @@ badging <apk>` (the versionCode).
 ## 7. The recipe
 
 The recipe lives in this repository as a template, `fdroid/com.xprs.app.yml`,
-with the XPRS srclibs next to it (`fdroid/srclibs/xprs-wapps.yml` and
-`xprs-reticulum-dart.yml`; `flutter` and `dav1d` are existing fdroiddata
+with the XPRS srclibs next to it (`fdroid/srclibs/xprs-wapps.yml`,
+`xprs-reticulum-dart.yml` and, since v1.5.0, `xprs-core.yml`; `flutter` and `dav1d` are existing fdroiddata
 srclibs). Its one build block uses placeholders (`@ABI@`, `@VERSION@`, ...);
 `tool/fdroid_recipe.py` turns it into one block per ABI for a release:
 
