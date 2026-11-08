@@ -1,0 +1,4 @@
+* Chat: each room has a notifications switch; the busy Global room is quiet by default.
+* Chat: a direct message to someone whose key is not known yet waits and is sent sealed once the key arrives, or can be sent unsealed now.
+* Chat: Info opens a full page with the original text, the route through relays and how the message was received.
+* XPRS runs with whatever permissions you grant.
