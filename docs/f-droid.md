@@ -168,7 +168,10 @@ request. The same define is the rule for any other store later.
   `srclibs/xprs-core.yml` and the v1.6.0 blocks rendered by
   `tool/fdroid_recipe.py` (then later versions copy blocks that carry core).
   Opened as fdroiddata !56389 (https://gitlab.com/fdroid/fdroiddata/-/merge_requests/56389,
-  branch `xprs-1.6.0-core` on the fork, commit `3378bdc1`). This is the rule of
+  branch `xprs-1.6.0-core` on the fork). Its pipeline 3042452703 passed every
+  job: `fdroid build` built 4005951-3 and matched each to the release APK with
+  the allowed signer. (`rewritemeta` first failed on `binary:` URLs over 80
+  columns; `tool/fdroid_recipe.py` now wraps them.) This is the rule of
   section 7 that was missed: **a change to the build steps goes into
   fdroiddata in the same breath as into the template.**
 
