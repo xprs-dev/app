@@ -1431,6 +1431,8 @@ class BleService {
   /// there is no default.
   void enqueueAdvert(Object owner, Uint8List payload,
       {required int subtype, Duration ttl = const Duration(seconds: 10)}) {
+    // Bluetooth not granted: nowhere to air it, and the OS refuses every try.
+    if (!CoreHost.radioAllowed()) return;
     _ensure();
     // Size router. SMALL → connectionless one-to-many broadcast (one sender,
     // many listeners, aired ONCE, never per-peer). LARGE → point-to-point GATT
@@ -1538,6 +1540,7 @@ class BleService {
   /// APRS subtype, which the peer's RNS handler never reads, so every packet
   /// that took that path was received by nobody.
   void sendOverGatt(Uint8List payload) {
+    if (!CoreHost.radioAllowed()) return;
     _ensure();
     final tagged = Uint8List(_rnsGattTag.length + payload.length)
       ..setAll(0, _rnsGattTag)

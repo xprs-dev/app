@@ -16,7 +16,11 @@ class AppAdvertRadio implements AdvertRadio {
   @override
   int get maxPayload => Ble5Bus.instance.maxPayload;
   @override
-  Future<bool> supported() => Ble5Bus.instance.supported();
+  // Bluetooth not granted reads as "no radio here": every core user (the
+  // publisher's status adverts, the mesh, custody re-airs) already copes with
+  // a phone that has none, and nothing then fails against the OS on a tick.
+  Future<bool> supported() async =>
+      CoreHost.radioAllowed() && await Ble5Bus.instance.supported();
   @override
   Future<bool> adapterOn() => Ble5Bus.instance.adapterOn();
   @override
@@ -34,8 +38,11 @@ class AppAdvertRadio implements AdvertRadio {
   }
   @override
   Future<bool> advertiseFrame(String key, int subtype, Uint8List data,
-          {Duration ttl = const Duration(seconds: 35), bool prio = false}) =>
-      Ble5Bus.instance.advertiseFrame(key, subtype, data, ttl: ttl, prio: prio);
+      {Duration ttl = const Duration(seconds: 35), bool prio = false}) async {
+    if (!CoreHost.radioAllowed()) return false;
+    return Ble5Bus.instance
+        .advertiseFrame(key, subtype, data, ttl: ttl, prio: prio);
+  }
   @override
   void enqueueAdvert(Object owner, Uint8List payload,
           {required int subtype, Duration ttl = const Duration(seconds: 10)}) =>
