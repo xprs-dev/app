@@ -18,6 +18,10 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
   @override
   void initState() {
     super.initState();
+    // A grant made while the app stayed in the foreground (adb, a system
+    // shortcut) brings no resume to notice it; opening Settings is when the
+    // Permissions line has to be right.
+    unawaited(PermissionState.instance.refresh());
     _load();
   }
 
