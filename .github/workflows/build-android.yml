@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
-          git clone --depth 1 -b permissions https://github.com/xprs-dev/core.git ../core
+          git clone --depth 1 https://github.com/xprs-dev/core.git ../core
 
       - uses: actions/setup-java@v4
         with:
@@ -47,14 +47,7 @@ jobs:
           dart run tool/update_version.dart
 
       - run: flutter pub get
-      # Retried: the Gradle distribution download (GitHub releases) has been
-      # answering 504 intermittently.
-      - run: |
-          for i in 1 2 3 4 5; do
-            flutter build apk --release && exit 0
-            echo "build attempt $i failed; retrying in 60 s"; sleep 60
-          done
-          exit 1
+      - run: flutter build apk --release
 
       - name: Rename artifact
         run: |
