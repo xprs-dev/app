@@ -1,14 +1,16 @@
 /*
- * Android runtime permission requests, modelled on xprs's
- * BLEPermissionService. XPRS needs BLE (scan/connect/advertise) for the
- * street mesh + APRS-over-BLE, notifications for background message alerts,
- * and broad file access for the encrypted identity backup that survives an
- * uninstall (restore-on-reinstall).
+ * Android runtime permission requests. XPRS uses BLE (scan/connect/advertise)
+ * for the street mesh, notifications for background message alerts, broad
+ * file access for the encrypted identity backup that survives an uninstall,
+ * and so on.
  *
- * ALL of these are requested up front from the onboarding panel
- * (PermissionsIntroPage), which does not let the user proceed to profile
- * creation until every required permission is granted — nothing should
- * surface a late prompt after the profile exists. No-op on non-Android.
+ * EVERY item is optional. They are offered together at the intro
+ * (PermissionsIntroPage) and again in Settings > Permissions, and the person
+ * may refuse any of them: the app then runs with less (PermissionState says
+ * what is allowed; each feature switches itself off). A prompt comes only
+ * from the intro, the Settings page, or a feature the person just tapped
+ * (backup, "centre on me", a folder) -- never from a background service.
+ * No-op on non-Android.
  */
 
 import 'package:geolocator/geolocator.dart';
@@ -143,12 +145,13 @@ class AndroidPermissionsService {
           'the app goes silently deaf. Also puts your position on the map.',
       icon: 'location',
       perms: [Permission.locationWhenInUse],
-      // NOT optional, however much it looks like a privacy nicety: Android
-      // withholds every BLE scan result while the location master switch is
-      // off, whatever the app declares. A tablet in that state advertised,
-      // scanned, and heard literally nothing for hours while reporting itself
-      // healthy. The permission alone is not enough either — see
-      // [locationServicesOn], which this item's status also requires.
+      // Refusable like every row, but the cost is real: Android 11 and older
+      // gate every BLE scan on this permission (PermissionState.bluetooth),
+      // and some phones withhold scan results while the Location switch is
+      // off whatever the app declares -- a tablet in that state heard nothing
+      // for hours while reporting itself healthy. So a grant here also opens
+      // the location settings when the switch is off, and the radio watchdog
+      // tells the person if it is turned off later.
       needsLocationServices: true,
     ),
     AppPermission(
@@ -173,13 +176,14 @@ class AndroidPermissionsService {
     ),
   ];
 
-  /// Items that BLOCK leaving the intro (excludes informational + optional rows).
+  /// The items "everything granted" is measured against (informational and
+  /// nice-to-have rows excluded). Nothing blocks on them any more: they only
+  /// decide whether the intro and Settings say "all granted".
   List<AppPermission> get required =>
       [for (final i in items) if (!i.info && !i.optional) i];
 
   /// Every item the user can actually grant — including the optional ones, so
-  /// "Grant all" offers them too. Nothing here may be requested outside the
-  /// intro; that is the whole contract of this screen.
+  /// "Grant all" offers them too.
   List<AppPermission> get grantable => [for (final i in items) if (!i.info) i];
 
   /// Whether this OS has [item] at all (see [AppPermission.minSdk] and
@@ -208,9 +212,10 @@ class AndroidPermissionsService {
       for (final p in item.perms) {
         if (!(await p.status).isGranted) return false;
       }
-      if (item.needsLocationServices && !await locationServicesOn()) {
-        return false;
-      }
+      // The Location switch is NOT part of the grant: the permission is what
+      // the person decides, and a row that stayed red with the permission
+      // given read as a refusal. The switch is shown separately (the intro's
+      // hint, the radio watchdog's notice).
       return true;
     } catch (_) {
       return false;
@@ -287,8 +292,8 @@ class AndroidPermissionsService {
     }
   }
 
-  /// True when every required item is granted. Off Android always true (no
-  /// runtime permissions), so the onboarding panel is skipped there.
+  /// True when every item in [required] is granted. Off Android always true
+  /// (no runtime permissions).
   Future<bool> allGranted() async {
     if (!_isAndroid) return true;
     for (final i in required) {

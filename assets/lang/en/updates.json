@@ -30,5 +30,6 @@
   "updates.downloading.phase": "{phase} — {pct}%",
   "updates.install": "Install {version}",
   "updates.download": "Download {version}",
-  "updates.web_notice": "In-app updates are available on the Android, Linux and Windows builds. On the web, reload to get the latest version."
+  "updates.web_notice": "In-app updates are available on the Android, Linux and Windows builds. On the web, reload to get the latest version.",
+  "updates.allow_install": "Allow installing apps from XPRS, then tap Install again."
 }

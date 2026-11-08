@@ -644,6 +644,34 @@ else that must end the app (a profile lock, an update that restarts) should
 call it rather than `exit(0)` directly, so nothing received in the last
 seconds is lost.
 
+### `PermissionState` — may this feature use X? (Android permissions)
+
+`lib/services/permission_state.dart`. Every Android permission is optional:
+the person may refuse any of them at the intro or later in the system
+settings, and XPRS runs with the rest. This is the one place a feature asks
+what it was allowed: `bluetooth` and `nearbyWifi` (`Observable<bool>`,
+synchronous, so the core's `CoreHost.radioAllowed` reads it), `missing` (the
+refused intro-row keys) and `locationSwitch`. `refresh()` runs at boot, on
+app resume (`watchResume()`) and after a grant; within one run only grants
+happen (a revoke kills the process). `PermissionState.capabilities(missing,
+sdk)` is the pure rule (Android 11 and older: Bluetooth also needs Location;
+WiFi Direct needs Location before 13), unit-tested in
+`test/services/permission_state_test.dart`.
+
+A new feature behind a permission: read the matching observable, do nothing
+while it is false (no call that fails on every tick, no plugin call that
+raises the system dialog), and start on the change to true. A prompt comes
+only from the intro, Settings > Permissions, or a tap on the feature itself.
+`BleService.radioGranted()` / `RnsService.radioGranted()` show the pattern.
+
+### `PermissionsPanel` / `PermissionsPage` — the permission rows
+
+`lib/launcher/permissions_panel.dart`. The rows of `AndroidPermissionsService`
+with live state, what each enables, what stops working without it
+(`permissions.<key>.without`) and Grant (Open settings once Android stopped
+asking). The first-run intro and Settings > Permissions both embed it; the
+home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
+
 ## App authoring
 
 These components exist so the **App Creator** wapp

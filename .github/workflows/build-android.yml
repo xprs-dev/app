@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
-          git clone --depth 1 https://github.com/xprs-dev/core.git ../core
+          git clone --depth 1 -b permissions https://github.com/xprs-dev/core.git ../core
 
       - uses: actions/setup-java@v4
         with:

@@ -122,5 +122,6 @@
   "wapp_host.video.none": "Ningún vídeo cargado.",
   "wapp_host.video.none.help": "Usa el menú (arriba a la derecha) para elegir un vídeo.",
   "wapp_host.video.unsupported": "Vídeo no compatible con esta plataforma.",
-  "wapp_host.video.unsupported.help": "Aquí no hay ningún motor multimedia disponible."
+  "wapp_host.video.unsupported.help": "Aquí no hay ningún motor multimedia disponible.",
+  "wapp_host.picker.need_access": "XPRS necesita acceso al almacenamiento para explorar tus archivos."
 }

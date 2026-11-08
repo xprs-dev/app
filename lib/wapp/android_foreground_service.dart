@@ -108,8 +108,11 @@ class AndroidForegroundService implements KeepAlive {
     try {
       if (_holders.isNotEmpty) {
         // 'start' both starts the service and updates the notification text.
-        await _channel.invokeMethod('start', {'text': _composeLabel()});
-        _running = true;
+        // false: Android refused the foreground start (BgBridge). The app
+        // runs on without it; the next hold asks again.
+        final ok = await _channel
+            .invokeMethod<bool>('start', {'text': _composeLabel()});
+        _running = ok ?? true;
       } else if (_running) {
         await _channel.invokeMethod('stop');
         _running = false;

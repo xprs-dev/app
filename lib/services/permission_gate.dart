@@ -10,6 +10,8 @@ import '../services/reticulum/rns_autostart.dart';
 import 'xprs/xprs_identity_adopt.dart';
 import '../wapp/background_wapp_manager.dart';
 import 'android_permissions_service.dart';
+import 'permission_state.dart';
+import 'preferences_service.dart';
 
 /// The gate between "the app has booted" and "the app may touch anything the
 /// user has not consented to yet".
@@ -24,8 +26,10 @@ import 'android_permissions_service.dart';
 /// on its own schedule instead of ours.
 ///
 /// So every service that can trigger a system prompt starts HERE, and only
-/// once [ready] is true. The intro screen is then the single place a permission
-/// dialog can come from, which is the whole point of having an intro screen.
+/// once [ready] is true: after the intro, whatever the person granted there.
+/// A refused permission no longer keeps the whole app down (it used to: one
+/// "deny" left no Reticulum, no wapps and the intro shown forever). Each
+/// service reads PermissionState and leaves out what it was not allowed.
 ///
 /// Non-Android platforms have no runtime prompts, so the gate is always open.
 class PermissionGate {
@@ -33,11 +37,15 @@ class PermissionGate {
 
   static bool _started = false;
 
-  /// True when it is safe to start the permission-guarded services: always on
-  /// desktop, and on Android only once every required permission is granted
-  /// (which is exactly when the intro screen lets the user leave).
+  /// True when it is safe to start the services: always on desktop, and on
+  /// Android once the person has been through the intro -- whatever they
+  /// granted there. Each service then takes only what it was allowed
+  /// (PermissionState). Everything granted also counts, for an install that
+  /// predates the stored flag.
   static Future<bool> get ready async {
     if (platform.platformName() != 'android') return true;
+    final prefs = await PreferencesService.instance();
+    if (prefs.onboardingComplete) return true;
     return AndroidPermissionsService.instance.allGranted();
   }
 
@@ -64,7 +72,14 @@ class PermissionGate {
         return;
       }
     }
-    LogService.instance.add('permissions: granted — starting gated services');
+    // What the person allowed decides what starts: no Bluetooth means no
+    // radio (BleService and Reticulum's BLE side wait for the grant), while
+    // the internet hubs, the stores and the wapps start regardless.
+    await PermissionState.instance.refresh();
+    final missing = PermissionState.instance.missing.value;
+    LogService.instance.add(missing.isEmpty
+        ? 'permissions: granted — starting gated services'
+        : 'permissions: starting services without ${missing.join(", ")}');
 
     // THE CORE STARTS ITS OWN RADIO.
     //

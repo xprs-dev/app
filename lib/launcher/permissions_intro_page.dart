@@ -1,10 +1,10 @@
 part of 'launcher.dart';
 
-/// First-run Android intro: explains and REQUESTS every permission XPRS
-/// needs, showing each one's live granted/missing state. The user cannot
-/// continue to profile creation until all required permissions are granted —
-/// so nothing surfaces a late prompt after a profile exists. Skipped on
-/// non-Android platforms (no runtime permissions).
+/// First-run Android intro: explains and offers every permission XPRS uses,
+/// with each one's live state and what stops working without it. Shown once
+/// (the stored onboarding flag); the person may continue with any subset, and
+/// Settings > Permissions offers the same rows later. Skipped on non-Android
+/// platforms (no runtime permissions).
 class PermissionsIntroPage extends StatefulWidget {
   final Future<void> Function() onComplete;
   const PermissionsIntroPage({super.key, required this.onComplete});
@@ -13,73 +13,18 @@ class PermissionsIntroPage extends StatefulWidget {
   State<PermissionsIntroPage> createState() => _PermissionsIntroPageState();
 }
 
-class _PermissionsIntroPageState extends State<PermissionsIntroPage>
-    with WidgetsBindingObserver {
-  final Map<String, bool> _granted = {};
-  // Rows this Android version actually has; see AppPermission.minSdk.
-  List<AppPermission> _shown = AndroidPermissionsService.items;
+class _PermissionsIntroPageState extends State<PermissionsIntroPage> {
   bool _busy = false;
   bool _allGranted = false;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _refresh();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // The All-files (special-access) grant leaves the app for system settings;
-    // re-check when we come back so the row flips to granted without a manual
-    // refresh, and Continue enables automatically.
-    if (state == AppLifecycleState.resumed) _refresh();
-  }
-
-  Future<void> _refresh() async {
-    final svc = AndroidPermissionsService.instance;
-    final shown = await svc.shownItems();
-    for (final item in shown) {
-      _granted[item.key] = await svc.isGranted(item);
-    }
-    final all = await svc.allGranted();
-    if (mounted) {
-      setState(() {
-        _shown = shown;
-        _allGranted = all;
-      });
-    }
-  }
-
-  Future<void> _grant(AppPermission item) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      await AndroidPermissionsService.instance.requestItem(item);
-    } catch (_) {}
-    await _refresh();
-    if (mounted) setState(() => _busy = false);
-  }
-
-  Future<void> _grantAll() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      await AndroidPermissionsService.instance.requestAll();
-    } catch (_) {}
-    await _refresh();
-    if (mounted) setState(() => _busy = false);
-  }
-
   Future<void> _continue() async {
-    if (!_allGranted) return;
-    await widget.onComplete();
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.onComplete();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -128,40 +73,13 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                   ],
                 ),
                 const SizedBox(height: 28),
-                Row(
-                  children: [
-                    Text(tr('permissions.title'),
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.bold)),
-                    const Spacer(),
-                    Text(
-                      tr(_allGranted ? 'permissions.all_granted' : 'permissions.tap_to_grant'),
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: _allGranted ? Colors.green : cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                PermissionsPanel(
+                  onChanged: (all) {
+                    if (mounted && all != _allGranted) {
+                      setState(() => _allGranted = all);
+                    }
+                  },
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  tr('permissions.intro'),
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: cs.onSurfaceVariant),
-                ),
-                const SizedBox(height: 16),
-                // Grant-all sits ABOVE the list: it is what almost everyone
-                // wants, and below a full-height list it was off-screen.
-                if (!_allGranted)
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _busy ? null : _grantAll,
-                      icon: const Icon(Icons.done_all, size: 18),
-                      label: Text(tr('permissions.grant_all')),
-                    ),
-                  ),
-                if (!_allGranted) const SizedBox(height: 16),
-                for (final item in _shown) _permissionItem(theme, item),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -189,9 +107,10 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    // Disabled until every required permission is granted — the
-                    // gate that stops a late prompt after profile creation.
-                    onPressed: (_allGranted && !_busy) ? _continue : null,
+                    // Never disabled: every permission is optional, and the
+                    // app runs with whatever was granted (PermissionState).
+                    // The label only says which of the two it will be.
+                    onPressed: _busy ? null : _continue,
                     child: _busy
                         ? const SizedBox(
                             width: 20,
@@ -200,7 +119,7 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
                           )
                         : Text(tr(_allGranted
                             ? 'common.continue'
-                            : 'permissions.grant_to_continue')),
+                            : 'permissions.continue_limited')),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -208,79 +127,6 @@ class _PermissionsIntroPageState extends State<PermissionsIntroPage>
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  IconData _iconFor(String name) {
-    switch (name) {
-      case 'bluetooth':
-        return Icons.bluetooth;
-      case 'notifications':
-        return Icons.notifications_outlined;
-      case 'folder':
-        return Icons.folder_outlined;
-      case 'wifi':
-        return Icons.wifi;
-      case 'location':
-        return Icons.location_on_outlined;
-      case 'battery':
-        return Icons.battery_charging_full;
-      default:
-        return Icons.check_circle_outline;
-    }
-  }
-
-  Widget _permissionItem(ThemeData theme, AppPermission item) {
-    final cs = theme.colorScheme;
-    final granted = _granted[item.key] ?? item.info;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(_iconFor(item.icon), size: 20, color: cs.primary),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Rows are named by key: the service keeps the English for
-                // logs and other callers; this screen reads the person's language.
-                Text(tr('permissions.${item.key}.title'),
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600)),
-                Text(tr('permissions.${item.key}.desc'),
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: cs.onSurfaceVariant)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Trailing state: informational rows are already available, required
-          // rows show a green check when granted or a Grant button when not.
-          // Both read as "you have this", so both get the same green check —
-          // a grey one made the internet row look denied.
-          if (item.info || granted)
-            const Icon(Icons.check_circle, size: 22, color: Colors.green)
-          else
-            TextButton(
-              onPressed: _busy ? null : () => _grant(item),
-              style: TextButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                minimumSize: Size.zero,
-              ),
-              child: Text(tr('permissions.grant')),
-            ),
-        ],
       ),
     );
   }

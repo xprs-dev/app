@@ -122,5 +122,6 @@
   "wapp_host.video.none": "No video loaded.",
   "wapp_host.video.none.help": "Use the menu (top-right) to pick a video.",
   "wapp_host.video.unsupported": "Video not supported on this platform.",
-  "wapp_host.video.unsupported.help": "No media backend is available here."
+  "wapp_host.video.unsupported.help": "No media backend is available here.",
+  "wapp_host.picker.need_access": "XPRS needs storage access to browse your files."
 }

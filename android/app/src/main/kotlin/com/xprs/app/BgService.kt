@@ -16,6 +16,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -194,7 +195,17 @@ class BgService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val text = intent?.getStringExtra("text") ?: getString(R.string.bg_running)
-        startAsForeground(text)
+        // A refused foreground start (a background-start restriction, an OEM
+        // rule, a type whose prerequisite permission is missing) must not
+        // crash the process: XPRS keeps running in the foreground without
+        // the service, and Dart asks again on the next hold.
+        try {
+            startAsForeground(text)
+        } catch (e: Throwable) {
+            Log.w(TAG, "startForeground refused: ${e.message}")
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         // There may be no Activity (boot/system restart), so make sure a cached
         // Flutter engine exists and has the native BLE/WiFi bridges attached.
@@ -325,6 +336,7 @@ class BgService : Service() {
     companion object {
         // Renamed from "aurora_bg": channel settings are immutable once
         // created, and the old channel badged the launcher icon forever.
+        private const val TAG = "BgService"
         private const val CHANNEL_ID = "aurora_service"
         private const val NOTIF_ID = 7001
         /** The most a tick may hold the CPU if Dart never answers. */

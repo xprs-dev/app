@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:reticulum/reticulum.dart' show Ble5Frame;
 import 'package:xprs_core/src/platform/advert_radio.dart';
+import 'package:xprs_core/src/platform/core_host.dart';
 
 import '../connections/bluetooth/ble5_bus.dart';
 import '../connections/bluetooth/ble_service.dart';
@@ -26,7 +27,11 @@ class AppAdvertRadio implements AdvertRadio {
   void onFrame(int subtype, void Function(Ble5Frame) handler) =>
       Ble5Bus.instance.onFrame(subtype, handler);
   @override
-  Future<void> startScan() => Ble5Bus.instance.startScan();
+  Future<void> startScan() async {
+    // Not granted: the scan would only be refused (and logged) on every tick.
+    if (!CoreHost.radioAllowed()) return;
+    await Ble5Bus.instance.startScan();
+  }
   @override
   Future<bool> advertiseFrame(String key, int subtype, Uint8List data,
           {Duration ttl = const Duration(seconds: 35), bool prio = false}) =>

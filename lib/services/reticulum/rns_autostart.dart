@@ -31,6 +31,9 @@ import 'package:xprs_core/src/platform/os.dart' as platform;
 import 'package:xprs_core/src/platform/core_host.dart';
 import 'rns_session.dart';
 
+// "No hub and no Bluetooth" is said once per refusal, not on every tick.
+bool _noRadioLogged = false;
+
 /// Start the Reticulum node if it isn't already running, connecting to the
 /// configured public testnet bootstrap as a TCP client. Safe to call repeatedly.
 bool _webRefusalLogged = false;
@@ -163,6 +166,19 @@ Future<void> ensureRnsAutostart() async {
       // never built and it could not exchange a single packet with the device
       // sitting next to it. Come up as a local node over BLE instead, and let
       // the periodic tick attach hub uplinks if the internet ever returns.
+      // Bluetooth refused: there is nothing local to come up on. Say it
+      // once; the next tick tries the hubs again, and a grant brings the
+      // node up over BLE on the tick after it.
+      if (!CoreHost.radioAllowed()) {
+        if (!_noRadioLogged) {
+          _noRadioLogged = true;
+          LogService.instance.add(
+              'RNS autostart: no hub reachable and Bluetooth not granted — '
+              'retrying the hubs on the next tick');
+        }
+        return;
+      }
+      _noRadioLogged = false;
       try {
         final ok = await rns.start(mode: 'ble5', announceName: name);
         if (ok || rns.isUp) {

@@ -30,5 +30,6 @@
   "updates.downloading.phase": "{phase} — {pct} %",
   "updates.install": "Installer {version}",
   "updates.download": "Télécharger {version}",
-  "updates.web_notice": "Les mises à jour dans l'application existent sur Android, Linux et Windows. Sur le web, rechargez la page pour obtenir la dernière version."
+  "updates.web_notice": "Les mises à jour dans l'application existent sur Android, Linux et Windows. Sur le web, rechargez la page pour obtenir la dernière version.",
+  "updates.allow_install": "Autorisez l'installation d'applications depuis XPRS, puis touchez à nouveau Installer."
 }

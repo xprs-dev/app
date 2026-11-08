@@ -332,8 +332,7 @@ class _FileFolderPickerState extends State<FileFolderPicker> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                  'XPRS needs storage access to browse your files.',
+              Text(tr('wapp_host.picker.need_access'),
                   textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton(

@@ -52,8 +52,17 @@ object BgBridge {
                 "start" -> {
                     val text = call.argument<String>("text") ?: "Running in background"
                     val i = Intent(appCtx, BgService::class.java).putExtra("text", text)
-                    ContextCompat.startForegroundService(appCtx, i)
-                    result.success(true)
+                    // Android 12+ refuses a foreground start from the
+                    // background, and an OEM can refuse it for its own
+                    // reasons: the app then runs without the service rather
+                    // than crashing on the platform thread.
+                    try {
+                        ContextCompat.startForegroundService(appCtx, i)
+                        result.success(true)
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "foreground service refused: ${e.message}")
+                        result.success(false)
+                    }
                 }
                 // Dart's PowerState published a new tier: heartbeat period,
                 // wake-lock policy and WiFi-lock strength follow it. Delivery

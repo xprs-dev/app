@@ -529,6 +529,12 @@ class BleService {
 
   Future<void> _ensure() async {
     if (_inited) return;
+    // Bluetooth not granted (the person refused it at the intro or in the
+    // system settings): touch nothing. A scan or advert started now fails on
+    // every heartbeat, and the plugin's authorize() would raise the system
+    // dialog behind the person's back. [radioGranted] starts it all the moment
+    // the permission arrives (PermissionState).
+    if (!CoreHost.radioAllowed()) return;
     _inited = true;
     try {
       _central = CentralManager();
@@ -1286,7 +1292,27 @@ class BleService {
     unawaited(Ble5Bus.instance.setScanMode(want));
   }
 
+  /// Someone asked for the radio while Bluetooth was not granted.
+  bool _wantScan = false;
+
+  /// Bluetooth was just granted (PermissionState): start what was asked for
+  /// while it was refused. Idempotent.
+  Future<void> radioGranted() async {
+    if (!_wantScan || !CoreHost.radioAllowed()) return;
+    _wantScan = false;
+    LogService.instance.add('BLE: Bluetooth granted — starting the radio');
+    await startScan();
+  }
+
   Future<bool> startScan() async {
+    if (!CoreHost.radioAllowed()) {
+      if (!_wantScan) {
+        LogService.instance.add(
+            'BLE: Bluetooth not granted — the radio waits until it is allowed');
+      }
+      _wantScan = true;
+      return false;
+    }
     await _ensure();
     await _holdService();
     _armServiceTick();

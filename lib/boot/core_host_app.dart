@@ -4,6 +4,7 @@
  * The server edition wires its own; tests keep the defaults (see
  * test/flutter_test_config.dart for the ones the app's tests rely on).
  */
+import 'dart:async';
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -14,6 +15,9 @@ import 'package:xprs_core/src/platform/os.dart' as platform;
 import 'package:xprs_core/src/services/notifications/notification.dart';
 
 import '../services/android_permissions_service.dart';
+import '../services/permission_state.dart';
+import '../services/reticulum/rns_service.dart';
+import '../connections/bluetooth/ble_service.dart';
 import '../services/hero/launcher_visibility.dart';
 import '../services/notification_service.dart';
 import '../wapp/android_foreground_service.dart';
@@ -81,6 +85,14 @@ void wireCoreHost() {
   CoreHost.battery = BatteryPlusSource();
   CoreHost.pushPowerTier = pushPowerTierToNative;
   observeLifecycleForPower();
+  // Bluetooth only once the person allowed it (PermissionState); a grant
+  // later in the run brings the radio and Reticulum's BLE side up at once.
+  CoreHost.radioAllowed = () => PermissionState.instance.bluetooth.value;
+  PermissionState.instance.bluetooth.addListener(() {
+    if (!PermissionState.instance.bluetooth.value) return;
+    unawaited(BleService.instance.radioGranted());
+    unawaited(RnsService.instance.radioGranted());
+  });
   CoreHost.radio = const AppAdvertRadio();
   CoreHost.newBle5RnsRadio = Ble5ChunkedRnsRadio.new;
   CoreHost.newGattRnsRadio = BleServiceRnsRadio.new;

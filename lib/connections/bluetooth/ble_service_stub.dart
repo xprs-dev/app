@@ -30,6 +30,7 @@ class BleService {
   Stream<BleInboundFrame> get inbound => _inbound.stream;
 
   Future<bool> startScan() async => false;
+  Future<void> radioGranted() async {}
   Future<void> stopScan() async {}
   void enqueueAdvert(Object owner, Uint8List payload,
       {required int subtype, Duration ttl = const Duration(seconds: 30)}) {}

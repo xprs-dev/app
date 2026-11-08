@@ -913,7 +913,7 @@ class UpdateService {
     final platform = currentUpdatePlatform();
     if (platform == UpdatePlatform.android && !await UpdateNative.canInstall()) {
       await UpdateNative.openInstallSettings();
-      error = 'Allow installing apps from xprs, then tap Install again.';
+      error = tr('updates.allow_install');
       status.value = UpdateStatus.error;
       return false;
     }

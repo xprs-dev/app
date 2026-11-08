@@ -296,6 +296,46 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
           : ListView(
               padding: const EdgeInsets.all(20),
               children: [
+                // ── Permissions (Android) ──
+                //
+                // Every permission is optional; this is where one refused at
+                // the intro is granted later, and where the person sees which
+                // features are off because of it.
+                if (platform.platformName() == 'android') ...[
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+                    ),
+                    color: cs.surfaceContainerLow,
+                    child: ValueListenableBuilder<Set<String>>(
+                      valueListenable:
+                          PermissionState.instance.missing.listenable,
+                      builder: (context, missing, _) => ListTile(
+                        leading: const Icon(Icons.verified_user_outlined),
+                        title: Text(tr('permissions.title')),
+                        subtitle: Text(
+                          missing.isEmpty
+                              ? tr('permissions.all_granted')
+                              : tr('permissions.settings.missing', {
+                                  'list': missing
+                                      .map((k) =>
+                                          tr('permissions.$k.title'))
+                                      .toSet()
+                                      .join(', '),
+                                }),
+                          style: TextStyle(color: cs.onSurfaceVariant),
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const PermissionsPage())),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
                 // ── Muted accounts ──
                 //
                 // Where a mute is taken back. Muting itself happens where the

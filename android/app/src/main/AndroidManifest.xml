@@ -50,8 +50,10 @@
         android:name="android.hardware.usb.host"
         android:required="false"/>
     <!-- Foreground service so autostarted wapps (e.g. APRS) keep receiving
-         over BLE/APRS-IS with the screen off / app backgrounded. The
-         connectedDevice type is gated on BLUETOOTH_CONNECT (granted above). -->
+         over BLE/APRS-IS with the screen off / app backgrounded. On Android 14+
+         the connectedDevice type needs ONE of its prerequisite permissions;
+         CHANGE_WIFI_STATE / CHANGE_WIFI_MULTICAST_STATE below are granted at
+         install, so the service starts even when Bluetooth was refused. -->
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission

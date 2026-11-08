@@ -25,6 +25,7 @@ import 'dart:typed_data';
 import '../../connections/bluetooth/ble5_bus.dart';
 import '../../connections/wifi_direct/wifi_direct_service.dart';
 import '../log_service.dart';
+import '../permission_state.dart';
 import '../power_state.dart';
 import '../reticulum/rns_service.dart';
 
@@ -116,6 +117,9 @@ class WifiDirectCoordinator {
   Future<bool> ensureFastPath(String destHex,
       {Duration wait = const Duration(seconds: 90), bool force = false}) async {
     if (!enabled || !_started) return false;
+    // Nearby WiFi devices not granted: every group call would be refused and
+    // the peer put on a five-minute cooldown for nothing. Stay on Bluetooth.
+    if (!PermissionState.instance.nearbyWifi.value) return false;
     final rns = RnsService.instance;
     // Only worth negotiating when the peer's best path is BLE-only (a bulk
     // transfer would otherwise crawl). [force] bypasses this for bench testing

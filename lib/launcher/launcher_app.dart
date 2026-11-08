@@ -54,8 +54,13 @@ class _IwiAppState extends State<IwiApp> {
   // Load prefs + current permission status, both needed to decide whether the
   // first-run permissions intro is shown.
   Future<void> _loadGate() async {
+    PermissionState.instance.watchResume();
     final prefs = await PreferencesService.instance();
-    final granted = await AndroidPermissionsService.instance.allGranted();
+    // The intro is shown ONCE: the stored flag, or everything already granted
+    // (an install from before the flag). A refused permission no longer
+    // brings it back -- Settings > Permissions is where it is granted later.
+    final granted = prefs.onboardingComplete ||
+        await AndroidPermissionsService.instance.allGranted();
     if (!mounted) return;
     setState(() {
       _prefs = prefs;
@@ -142,28 +147,19 @@ class _IwiAppState extends State<IwiApp> {
     if (!_gateReady || prefs == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    // First-run Android permissions intro: shown whenever the required
-    // permissions are NOT all granted. It gates PURELY on live status (not a
-    // stored flag), so a user who denied cannot slip past to profile creation
-    // — the intro's Continue button is disabled until everything is granted,
-    // which is what keeps any prompt from surfacing later. Already-granted
-    // (e.g. reinstall) skips it entirely.
+    // First-run Android permissions intro, shown once (see _loadGate). Every
+    // permission on it is optional: the person continues with any subset and
+    // the services start with what they got (PermissionState).
     final needIntro =
         platform.platformName() == 'android' && !_permsGranted;
     if (needIntro) {
       return PermissionsIntroPage(onComplete: () async {
-        // Reached only once everything is granted (button was disabled
-        // otherwise). Persist the flag and flip the gate so profile
-        // creation becomes reachable.
         await prefs.setOnboardingComplete(true);
-        final granted = await AndroidPermissionsService.instance.allGranted();
-        // NOW start the services that touch permission-guarded APIs (BLE, GPS,
-        // foreground-service notifications). Boot deliberately did not, so the
-        // OS could not throw its own dialogs at the user before this screen had
-        // explained what they are for — nor again after the callsign screen.
-        // This intro is the only place a permission prompt comes from.
+        // NOW start the services. Boot deliberately did not, so the OS could
+        // not throw its own dialogs at the person before this screen had
+        // explained what they are for.
         unawaited(PermissionGate.startGatedServices());
-        if (mounted) setState(() => _permsGranted = granted);
+        if (mounted) setState(() => _permsGranted = true);
       });
     }
     if (hasProfile) {

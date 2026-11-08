@@ -515,6 +515,8 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
               // Owns the gap under the carousel: the same 20 dp with no
               // reading, the temperature line when there is one.
               const _ClimateGlance(),
+              // Only while Bluetooth is refused (Android); otherwise nothing.
+              const _PermissionBanner(),
               _ModuleBars(
                 entries: entries,
                 onStatusTap: _openStatusWapp,
