@@ -558,6 +558,9 @@ void main() {
       await tester.tap(find.text('Edit history'));
       await tester.pumpAndSettle();
       expect(asked, ['a1']);
+      // Info is a page now (MessageInfoPage): back to the conversation.
+      await tester.pageBack();
+      await tester.pumpAndSettle();
       await tester.longPress(find.text('plain'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Info'));

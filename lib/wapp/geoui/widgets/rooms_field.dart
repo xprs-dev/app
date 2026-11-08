@@ -40,6 +40,11 @@ class RoomsField extends StatefulWidget {
   /// The header's people button: open the members panel for the open room.
   final void Function() onMembers;
   final void Function(String from)? onSenderTap;
+
+  /// A message's Info page opened (ChatViewField.onInfo), and one of ours
+  /// waiting for a key sent unsealed (ChatViewField.onSendPlain).
+  final void Function(Map<String, dynamic> m)? onInfo;
+  final void Function(Map<String, dynamic> m)? onSendPlain;
   final void Function(String mid)? onReveal;
 
   /// Flip the private/plain form for the next message (docs/XPRS.md 9.2).
@@ -105,6 +110,8 @@ class RoomsField extends StatefulWidget {
     this.onNewChat,
     required this.onMembers,
     this.onSenderTap,
+    this.onInfo,
+    this.onSendPlain,
     this.onReveal,
     this.onHide,
     this.onBlock,
@@ -1067,6 +1074,8 @@ class _RoomsFieldState extends State<RoomsField> {
                     canModerate: room?.mod ?? false,
                     privacyOn: widget.privacyOn,
                     onSenderTap: widget.onSenderTap,
+                    onInfo: widget.onInfo,
+                    onSendPlain: widget.onSendPlain,
                     onReveal: widget.onReveal,
                     onHide: widget.onHide == null
                         ? null

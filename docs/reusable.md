@@ -1040,6 +1040,38 @@ rewrite:
   ask (its grace) and nothing while nothing is open — the shape the
   `no-sub-minute-poll` guard rule wants for any user-triggered exchange.
 
+`requestKey(call)` is the same walk for a station's `t:identity`
+(`cmd:history kind:identity`, XPRS.md 12.12.1): one page, not skipped in
+earshot, keyed apart from the message fetch so both can be open. Anything that
+needs ONE kind of record about a station from the archivers (a mailbox
+declaration, a service announcement) is a new `kind` on `_request`, not a new
+fetcher.
+
+### `XprsKeyWait` — words that wait in the core for something to arrive
+
+`../core/lib/src/services/xprs/xprs_key_wait.dart`. A direct message that
+cannot be sealed yet (no key) is kept in the profile's encrypted store under
+a HELD id of the §5 shape, the key is looked for (seam `ask`), and on
+`keyLearned` it is sealed and sent (seam `seal`), the wapp hearing
+`xprs.status.tx` with `newId` so its bubble moves. `release(id)` takes it
+back without airing anything (reached through `hal_xprs_withdraw`). Reuse the
+shape for any send that is blocked on a fact the core will learn later: hold
+under a provisional id, report the real one when it goes, persist, bound,
+expire, and let the person take it back.
+
+### `MessageInfoPage` + `MessageInfoBus` — a message's Info, as a page
+
+`lib/wapp/geoui/widgets/message_info_page.dart`. Opens at once from the
+bubble's map and fills in when the wapp answers `ui.convo.info` (the host's
+`_drainOutbox` publishes it on `MessageInfoBus`). Sections: privacy, the
+words and their versions (`EditHistoryList`), who and when, the route (the
+relays in `via:` as a chain), signature and sealing, delivery, the raw wire.
+Any view that shows a message (`ChatViewField` does) opens it with
+`MessageInfoPage.open(context, m, ...)`; a wapp that sends no details still
+gets the page from the bubble alone. The wapp side is `info_publish` in
+`apps/chat/main.c`: its stored row and versions, plus the core's archived
+packet by id (`hal_xprs_history {"id":...}`).
+
 ## Archive admission
 
 - **`XprsIngest._isRoomTalk(p, bearer)`** -- "is this a room's conversation,

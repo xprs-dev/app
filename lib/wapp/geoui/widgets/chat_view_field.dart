@@ -25,6 +25,7 @@ import '../../../services/i18n/core_i18n.dart';
 import '../conversation_store.dart';
 import 'chat_palette.dart';
 import 'media_view.dart';
+import 'message_info_page.dart';
 
 /// `2026-09-08` as somebody would say it: today and yesterday by name, the
 /// last week by weekday, this year without the year, anything older in full.
@@ -103,7 +104,20 @@ class ChatViewField extends StatefulWidget {
   final void Function(Map<String, dynamic>)? onLocate;
 
   /// Tapping a sender's name on an incoming bubble (e.g. open their profile).
+  /// Null opens the same menu the bubble's ⋮ opens, which already holds
+  /// everything a person can do about somebody's message: message them
+  /// directly, block them, read the message's info.
   final void Function(String from)? onSenderTap;
+
+  /// The message's Info page is opening: ask the wapp for its details (the
+  /// words as first written, the versions, how the packet travelled), which
+  /// it answers with `ui.convo.info` (MessageInfoBus). Null = the page shows
+  /// what the bubble carries.
+  final void Function(Map<String, dynamic> m)? onInfo;
+
+  /// Send one of OUR messages that waits for its recipient's key (status
+  /// `key`) now, unsealed. Offered in its menu and on its Info page.
+  final void Function(Map<String, dynamic> m)? onSendPlain;
 
   /// A person tapped a redacted bubble (docs/XPRS.md 9.2.1): ask the core
   /// to open the message with this section-5 id. Null = not tappable.
@@ -155,6 +169,8 @@ class ChatViewField extends StatefulWidget {
     this.composerAccessory,
     this.onLocate,
     this.onSenderTap,
+    this.onInfo,
+    this.onSendPlain,
     this.onReveal,
     this.onAttach,
     this.onForward,
@@ -567,6 +583,25 @@ class _ChatViewFieldState extends State<ChatViewField> {
         icon = Icons.done;
         color = _onBubbleFg(true, 150);
         break;
+      // Waiting in the core's outbox for the recipient's key: not lost, not
+      // sent, and it leaves sealed when the key arrives.
+      case 'key':
+        return Padding(
+          padding: const EdgeInsets.only(left: 6),
+          child: Tooltip(
+            message: tr('geoui.chat.status.key'),
+            child: Icon(Icons.key, size: 14, color: _onBubbleFg(true, 170)),
+          ),
+        );
+      case 'expired':
+        return Padding(
+          padding: const EdgeInsets.only(left: 6),
+          child: Tooltip(
+            message: tr('geoui.chat.status.expired'),
+            child: const Icon(Icons.error_outline,
+                size: 15, color: Color(0xFFFFB4A9)),
+          ),
+        );
       default:
         // Pending, or a state we do not render: show nothing at all.
         return const SizedBox.shrink();
@@ -1224,7 +1259,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
                       // offers one (onSenderTap).
                       child: InkWell(
                         onTap: widget.onSenderTap == null
-                            ? null
+                            ? () => _showMessageMenu(m, text, from, outgoing)
                             : () => widget.onSenderTap!(from),
                         borderRadius: BorderRadius.circular(4),
                         child: Text(
@@ -1445,6 +1480,20 @@ class _ChatViewFieldState extends State<ChatViewField> {
                 _showInfo(m);
               },
             ),
+            // Ours, waiting for the recipient's key: the one choice that is
+            // the person's -- send it now in the open (still signed).
+            if (outgoing &&
+                (m['status'] ?? '').toString() == 'key' &&
+                widget.onSendPlain != null)
+              ListTile(
+                leading: const Icon(Icons.lock_open),
+                title: Text(tr('geoui.chat.menu.send_plain')),
+                subtitle: Text(tr('geoui.info.send_plain.detail')),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  widget.onSendPlain!(m);
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.copy),
               title: Text(tr('common.copy')),
@@ -1521,117 +1570,19 @@ class _ChatViewFieldState extends State<ChatViewField> {
     );
   }
 
-  /// Message "Info": explain whether the message is public (sent as clear text
-  /// over APRS) or private/encrypted (kept encrypted, Reticulum-only), plus the
-  /// transport it travelled and its signature status. Works for any message —
-  /// group, geochat or 1:1 — since all share this menu.
+  /// Message "Info": a page of its own (MessageInfoPage), opened at once from
+  /// what the bubble carries and filled in when the wapp answers [onInfo] with
+  /// the words as first written, the versions, and how the packet travelled.
+  /// Works for any message -- group, geochat or 1:1 -- since all share this
+  /// menu; a wapp that sends no details still gets the page.
   void _showInfo(Map<String, dynamic> m) {
-    final private = m['private'] == true;
-    final enc = m['enc'] == true;
-    final via = (m['via'] ?? '').toString();
-    final net = (m['net'] ?? '').toString();
-    // The §13 relay chain (who carried it here). For a bridged message this
-    // names the station(s) it came through — "how it arrived and from where".
-    final path = (m['path'] ?? '').toString();
-    final auth = (m['auth'] ?? '').toString();
-    final from = (m['from'] ?? '').toString();
-    final time = (m['time'] ?? '').toString();
-
-    final IconData icon;
-    final Color color;
-    final String title;
-    final String detail;
-    if (private) {
-      icon = Icons.lock;
-      color = ChatPalette.accent;
-      title = tr('geoui.chat.info.private');
-      detail = tr('geoui.chat.info.private.detail');
-    } else if (enc) {
-      icon = Icons.lock;
-      color = const Color(0xFF63B0E8);
-      title = tr('geoui.chat.encrypted');
-      detail = tr('geoui.chat.info.encrypted.detail');
-    } else if (m['plain'] == true) {
-      icon = Icons.lock_open;
-      color = const Color(0xFFE0A030);
-      title = tr('geoui.chat.info.plain');
-      detail = tr('geoui.chat.info.plain.detail');
-    } else {
-      icon = Icons.public;
-      color = const Color(0xFFE0A030);
-      title = tr('geoui.chat.info.public');
-      detail = tr('geoui.chat.info.public.detail');
-    }
-
-    final String? sig = switch (auth) {
-      'verified' => tr('geoui.chat.info.sig.verified'),
-      'bad' => tr('geoui.chat.info.sig.bad'),
-      '' => null,
-      _ => tr('geoui.chat.info.sig.unknown'),
-    };
-
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 8),
-            Text(title, style: TextStyle(color: color)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(detail),
-            const SizedBox(height: 12),
-            if (from.isNotEmpty) _infoRow(tr('geoui.chat.info.from'), from),
-            if (net.isNotEmpty) _infoRow(tr('geoui.chat.info.network'), net),
-            if (via.isNotEmpty)
-              _infoRow(tr('geoui.chat.info.transport'), via.toUpperCase()),
-            // How it reached this device: the relay path on the wire. For a
-            // Meshtastic message this is the bridge (often your own station).
-            if (path.isNotEmpty) _infoRow(tr('geoui.chat.info.relayed'), path),
-            if (time.isNotEmpty) _infoRow(tr('geoui.chat.info.time'), time),
-            if (sig != null) _infoRow(tr('geoui.chat.info.signature'), sig),
-          ],
-        ),
-        actions: [
-          if (m['edited'] == true && widget.onHistory != null)
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                widget.onHistory!(m);
-              },
-              child: Text(tr('geoui.chat.info.history')),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(tr('common.close')),
-          ),
-        ],
-      ),
-    );
+    MessageInfoBus.value.value = null;
+    widget.onInfo?.call(m);
+    MessageInfoPage.open(context, m,
+        onSendPlain: widget.onSendPlain,
+        onHistory: widget.onHistory,
+        asked: widget.onInfo != null);
   }
-
-  Widget _infoRow(String label, String value) => Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 84,
-              child: Text(label,
-                  style: TextStyle(
-                      color: Colors.white.withAlpha(140), fontSize: 12.5)),
-            ),
-            Expanded(
-              child: Text(value, style: const TextStyle(fontSize: 12.5)),
-            ),
-          ],
-        ),
-      );
 
   /// Copy a message's human-readable text (media tokens stripped) to the
   /// clipboard, with a brief confirmation.

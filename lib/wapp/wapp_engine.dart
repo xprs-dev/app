@@ -3920,6 +3920,10 @@ class WappEngine {
     //   returns  1 sealed, 2 plain,
     //            3 plain, to a node of another network (§3.2) through a
     //              gateway: the words cross a channel anybody can read,
+    //            4 held: bit 1 of `want_private` was set and the key is not
+    //              known yet, so the words wait in the core's outbox and leave
+    //              sealed when it arrives; [idOut] is the held id, and
+    //              `xprs.status.tx` later says `sent` with `newId`,
     //           -1 privacy asked for and not possible (the key has not been
     //              heard; the core has just asked for it, §18.1),
     //           -3 privacy asked for a node of another network, which can
@@ -3940,8 +3944,12 @@ class WappEngine {
         final to = _readStr(toPtr, toLen);
         final text = _readStr(txtPtr, txtLen);
         if (to.isEmpty || text.isEmpty) return 0;
-        final r = XprsSend.instance
-            .message(to, text, private: want != 0);
+        // Bit 0 asks for the sealed form; bit 1 asks the core to keep the
+        // message in its outbox while the recipient's key is unknown, rather
+        // than refuse it (return 4, a held id in [idOut]; XprsKeyWait). A wapp
+        // written before bit 1 passes 0 or 1 and is answered exactly as before.
+        final r = XprsSend.instance.message(to, text,
+            private: (want & 1) != 0, holdForKey: (want & 2) != 0);
         if (r.ok && idCap > 0) {
           _writeBytes(idOut, idCap,
               Uint8List.fromList(utf8.encode(r.id)));
@@ -4083,9 +4091,14 @@ class WappEngine {
         List<String>? types;
         List<String>? to;
         String? room;
+        String? id;
         var limit = 200;
         try {
           final q = jsonDecode(_readStr(qPtr, qLen)) as Map<String, dynamic>;
+          // One packet by its section 5 identifier: the primary key, so a
+          // message's Info page reads its own row and nothing else.
+          final i = q['id'];
+          if (i is String && i.isNotEmpty) id = i;
           sinceMs = xprsParseTs(q['since'] as String?);
           untilMs = xprsParseTs(q['until'] as String?);
           only = q['only'] as String?;
@@ -4117,7 +4130,10 @@ class WappEngine {
         // nothing of where they were, and reads them from this same store
         // once they land. Throttled and skipped in earshot by the fetch.
         final about = (from ?? only ?? '').trim();
+        // A lookup by identifier is a question about one row already held,
+        // never a cue to fetch anything.
         if (about.isNotEmpty &&
+            id == null &&
             !badKind &&
             (types == null || types.contains('message')) &&
             xprsAddressesStation(about)) {
@@ -4134,6 +4150,7 @@ class WappEngine {
                 from: from,
                 fromKind: kind,
                 room: room,
+                id: id,
                 limit: limit.clamp(1, 200))));
         if (bytes.length > outCap) return -bytes.length;
         return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));

@@ -46,6 +46,7 @@ import '../services/media/media_preview.dart' show kPreviewSourceMax;
 import '../services/social/nomadnet_poller.dart';
 import 'geoui/widgets/activity_feed.dart';
 import 'geoui/widgets/edit_history_list.dart';
+import 'geoui/widgets/message_info_page.dart';
 import 'geoui/widgets/micron_view.dart';
 import 'geoui/widgets/profile_route.dart';
 import 'geoui/widgets/media_view.dart' show sharedMediaArchive;
@@ -2335,6 +2336,9 @@ class _WappPageState extends State<WappPage>
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _showEditHistory(data);
           });
+        } else if (type == 'ui.convo.info') {
+          // One message's details, for the Info page that asked (onInfo).
+          MessageInfoBus.publish(data);
         } else if (type == 'ui.convo.reveal') {
           // Redacted text opened (docs/XPRS.md 9.2.1): show the plaintext in
           // place for THIS view only. Transient — never persisted, so the
@@ -4045,13 +4049,27 @@ class _WappPageState extends State<WappPage>
         _fieldValues['${field}_mid'] = '${m['mid'] ?? ''}';
         _sendCommand('${field}_history');
       },
+      // A message's Info page: the wapp answers with ui.convo.info, which
+      // fills the page in (MessageInfoBus).
+      onInfo: (m) {
+        _fieldValues['${field}_convo'] = _roomsOpenId ?? '';
+        _fieldValues['${field}_mid'] = '${m['mid'] ?? ''}';
+        _sendCommand('${field}_info');
+      },
+      // One of ours waiting for the recipient's key, sent now unsealed.
+      onSendPlain: (m) {
+        _fieldValues['${field}_convo'] = _roomsOpenId ?? '';
+        _fieldValues['${field}_mid'] = '${m['mid'] ?? ''}';
+        _sendCommand('${field}_sendplain');
+      },
       // The header's people button: the wapp pushes the first page of the
       // room's members and opens its members screen.
       onMembers: () {
         _fieldValues['${field}_convo'] = _roomsOpenId ?? '';
         _sendCommand('${field}_members');
       },
-      onSenderTap: _showProfile,
+      // No onSenderTap: a sender's name opens the bubble's own menu (Info,
+      // Message directly, Block, ...), the one the ⋮ opens.
       onReveal: (mid) {
         // Redacted bubble tapped (9.2.1): ask the wapp to open it by id. The
         // wapp tries remembered passphrases, prompts if none fit, and sends

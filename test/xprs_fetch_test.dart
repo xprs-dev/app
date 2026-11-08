@@ -206,4 +206,43 @@ void main() {
     f.archivers = (() => const []);
     expect(f.requestStation('X1BOA3'), isFalse);
   });
+
+  group('a key (12.12.1)', () {
+    test('the ask is kind:identity for that station, one page', () {
+      expect(f.requestKey('X1BOA3'), isTrue);
+      final ask = lastAsk();
+      expect(ask['d'], 'X3ARC1');
+      expect(ask['cmd'], 'history');
+      expect(ask['kind'], 'identity');
+      expect(ask['only'], 'X1BOA3');
+      // The station's own binding is the row it owns; a 206 is not followed.
+      final id = XprsPacket.parse(
+          't:identity f:X1BOA3 ts:2026-10-24_10:00:00 k:npub1abc')!;
+      expect(f.askedFor(id), isTrue);
+      f.noteHeard(id);
+      final asks = sent.length;
+      answer(206);
+      expect(sent.length, asks, reason: 'the newest binding is the one');
+      expect(f.json['open'], isEmpty);
+    });
+
+    test('asked even in earshot: the station has not answered q:identity', () {
+      earshot = {'X1BOA3'};
+      expect(f.requestKey('X1BOA3'), isTrue);
+    });
+
+    test('a key fetch and a message fetch for one station are two asks', () {
+      expect(f.requestStation('X1BOA3'), isTrue);
+      expect(f.requestKey('X1BOA3'), isTrue);
+      expect(f.json['open'], hasLength(2));
+      expect(f.requestKey('X1BOA3'), isFalse, reason: 'one at a time');
+    });
+
+    test('a key fetch owns no messages, a message fetch no identity', () {
+      f.requestKey('X1BOA3');
+      expect(f.askedFor(XprsPacket.parse(
+              't:message f:X1BOA3 ts:2026-10-24_10:00:00 m:x')!),
+          isFalse);
+    });
+  });
 }

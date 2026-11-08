@@ -12,7 +12,13 @@ import '../../../services/i18n/core_i18n.dart';
 class EditHistoryList extends StatelessWidget {
   final ValueListenable<List<Map<String, dynamic>>> versions;
 
-  const EditHistoryList({super.key, required this.versions});
+  /// False lays the list out inline, inside a page that scrolls itself
+  /// (MessageInfoPage): a nested scrollable would take the person's drag and
+  /// the page would not move.
+  final bool scrollable;
+
+  const EditHistoryList(
+      {super.key, required this.versions, this.scrollable = true});
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +29,8 @@ class EditHistoryList extends StatelessWidget {
         valueListenable: versions,
         builder: (context, list, _) => ListView(
           shrinkWrap: true,
+          physics: scrollable ? null : const NeverScrollableScrollPhysics(),
+          padding: scrollable ? null : EdgeInsets.zero,
           children: [
             for (var i = 0; i < list.length; i++)
               if ((list[i]['note'] ?? '').toString().isNotEmpty)

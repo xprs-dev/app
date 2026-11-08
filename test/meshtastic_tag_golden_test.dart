@@ -102,13 +102,13 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(find.text('Info'));
     await t.pumpAndSettle();
+    // Info is a page of its own now (MessageInfoPage), not a dialog: the
+    // network row, and the relay both in the route chain and in its row.
+    // No pixel golden for it yet: one drawn here would not match the dev
+    // machine's fonts, which is the reason the bubble golden is skipped on CI.
     expect(find.text('Network'), findsOneWidget);
     expect(find.text('Meshtastic'), findsWidgets);
     expect(find.text('Relayed via'), findsOneWidget);
-    expect(find.text('X3SEP2'), findsOneWidget);
-    if (_fontsLoaded) {
-      await expectLater(find.byType(Dialog),
-          matchesGoldenFile('goldens/meshtastic_info.png'));
-    }
+    expect(find.text('X3SEP2'), findsWidgets);
   });
 }
