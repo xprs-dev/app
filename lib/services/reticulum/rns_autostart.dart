@@ -116,7 +116,7 @@ Future<void> ensureRnsAutostart() async {
     // reticulum->mesh boot migration moves it). The store creates the
     // directory if the wapp hasn't written there yet.
     rns.observedStorePath =
-        wappDataStorageFor(prefs, 'mesh').getAbsolutePath('observed.sqlite3');
+        wappDataStorageFor(prefs, 'mesh').getAbsolutePath('observed.zx');
 
     // Announce our callsign so peers/repeaters can show a human name (plaintext
     // presence beacon, same as the manual start path).

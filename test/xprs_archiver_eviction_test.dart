@@ -99,7 +99,9 @@ void main() {
     // Set the cap just under the current size, so the archiver is only
     // moderately over quota (the realistic steady state) and the eviction is a
     // small slice — which must land entirely in the spool.
-    final bytes = a.statusJson()['bytes'] as int;
+    // `data`: the wire bytes held, what the cap measures (`bytes` is the
+    // file on disk, compressed).
+    final bytes = a.statusJson()['data'] as int;
     a.maxBytes = bytes - 1;
     for (var i = 0; i < 30; i++) {
       a.flush(nowMs: 5000000); // the cap fires on a later flush

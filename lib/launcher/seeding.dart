@@ -142,7 +142,7 @@ Future<void> migrateNostrToSocial() => _migrateWappFolder('nostr', 'social');
 Future<void> migrateMessagesToMail() => _migrateWappFolder('messages', 'mail');
 
 /// Rename reticulum -> mesh: the graph wapp now covers Reticulum AND xprs,
-/// and its data dir carries the node's observed.sqlite3 (rns_autostart).
+/// and its data dir carries the node's observed.zx (rns_autostart).
 Future<void> migrateReticulumToMesh() => _migrateWappFolder('reticulum', 'mesh');
 
 /// First-run bootstrap, run as a boot task BEFORE the UI so the launcher

@@ -318,7 +318,7 @@ Future<void> _boot() async {
     name: 'Migrate reticulum wapp to mesh',
     description:
         'One-time rename of the network wapp folder reticulum->mesh (data '
-        'dir — which carries the node\'s observed.sqlite3 — autostart '
+        'dir — which carries the node\'s observed.zx — autostart '
         'preference and offered-set markers included) so existing profiles '
         'transition to the renamed "Mesh" wapp, which now covers Reticulum '
         'and XPRS. Idempotent; runs before seeding + bundled-wapp upgrade '
