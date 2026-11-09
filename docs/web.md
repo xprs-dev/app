@@ -40,8 +40,16 @@ launch row; the Chat wapp opens to `#LOCAL`; the background engines of chat,
 mail and torrents run their wasm; a reload comes back to the launcher with the
 same profile. After that run IndexedDB held 2696 records in the file tree and
 six SQLite files (104 blocks). No uncaught exception, no error toast. (That was
-the dart2js build with SQLite; the WebAssembly build with zx stores has not
-been run through the smoke yet: it does not compile on the Pi, see below.)
+the dart2js build with SQLite.)
+
+**The WebAssembly build with zx stores** (2026-11-09: built by CI, run 42644328522,
+served from the downloaded artifact) boots as WebAssembly; skipping the
+onboarding reaches the launcher with a new profile, and after a reload the
+launcher comes back with the same profile, read from the stores' files in
+IndexedDB (`xprs-zx`: 22 files, 11 chunk records). The log shows only what a
+browser cannot do: no BLE plugin, no UDP for the LAN bearer, no bulk spool
+(`MeshBulkSpool` uses dart:io). A plain web build has no wapps: the launcher
+says "No wapps found" until `launch-web.sh` packs them in.
 
 ## Building and running
 
