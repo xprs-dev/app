@@ -301,6 +301,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 }
 .messages{flex:1;overflow-y:auto;padding:12px;display:flex;
         flex-direction:column;gap:8px}
+/* Scroll bars in the page's own colours wherever something scrolls (a long
+   Blog, the rooms, a view): thin, the thumb in --dim, no track. */
+*{scrollbar-width:thin;scrollbar-color:var(--dim) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--dim);border-radius:8px;
+        border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:var(--muted);background-clip:padding-box}
+::-webkit-scrollbar-corner{background:transparent}
 /* A short conversation sits above the composer, where the eye already is,
    not at the top of an empty screen. margin-top:auto rather than
    justify-content:flex-end, which stops a column from scrolling. */
@@ -1374,7 +1383,8 @@ function ensureSession(tries){
       x.onload=function(){
         var j=null;try{j=JSON.parse(x.responseText);}catch(e){}
         if(x.status===200&&j&&j.session){
-          sess=j.session;chatLoaded=false;load();
+          sess=j.session;chatLoaded=false;chatDeep=false;load();
+          onSession(j);
           if(tab==='admin')loadAdmin();
           if(canModerate)loadMyRole();
           if(canRooms)loadRooms();
@@ -1419,6 +1429,57 @@ function getFallback(wire,fin){
 }
 
 var identSent=0;
+/* ---- the station as this visitor's mailbox (XPRS.md 9.12, 12.8.3) ------
+   The session reply says who holds this callsign's mail (`holders`), whether
+   this station offers to (`offer`: it has no holder yet and the station has
+   room) and how much waits here (`mail`). Only the visitor's own key may say
+   where their mail goes (9.12: a forged declaration collects somebody else's
+   mail), so the PAGE signs the declaration naming the station, once, and
+   again when the station differs or the declaration is a week from its
+   until:. The station serves the visitor from the moment it offers; the
+   declaration is what every other archiver learns from. */
+var sessHolders=null;
+function tsPlus(sec){
+  var d=new Date(Date.now()+sec*1000),p=function(n){return (n<10?'0':'')+n;};
+  return d.getUTCFullYear()+'-'+p(d.getUTCMonth()+1)+'-'+p(d.getUTCDate())+
+    '_'+p(d.getUTCHours())+':'+p(d.getUTCMinutes())+':'+p(d.getUTCSeconds());}
+function onSession(j){
+  sessHolders=j.holders||null;
+  if(j.offer&&canSign()){
+    var rec=null;try{rec=JSON.parse(stGet('xprs_mbox')||'null');}catch(e){}
+    var stale=!rec||rec.station!==j.offer||!rec.at||Date.now()-rec.at>23*86400000;
+    if(stale){
+      signAny('t:mailbox f:'+mycall+' ts:'+tsNow()+' hold:'+j.offer+' until:'+tsPlus(30*86400),function(w){
+        if(!w)return;
+        postWire(w,function(ok){
+          if(ok){stSet('xprs_mbox',JSON.stringify({station:j.offer,at:Date.now()}));
+                 sessHolders=[j.offer];if(tab==='station')loadStation();}
+        });
+      });
+    }
+  }
+  /* Mail that waited while this browser was closed: older than the chat
+     window's first page, so asked for by name, once per session. */
+  if(j.mail>0)getJSON('/api/xprs/mail?call='+encodeURIComponent(mycall)+'&session='+sess,function(d){
+    var rows=(d&&d.rows||[]).slice().reverse();
+    for(var i=0;i<rows.length;i++)render(rows[i]);
+  });
+}
+/* ---- receipts (XPRS.md 9.7.1, 12.8.2) -----------------------------------
+   A message addressed to this callsign is acknowledged once, when it reaches
+   this device: the holders release their copies on the signed receipt, and
+   the sender learns it arrived. The ids acknowledged are remembered so a
+   reload does not thank twice. */
+var ackedIds=null;
+function ackOnce(row,id){
+  if(!canSign()||!id)return;
+  if(ackedIds===null){try{ackedIds=JSON.parse(stGet('xprs_acked')||'[]');}catch(e){ackedIds=[];}}
+  if(ackedIds.indexOf(id)>=0)return;
+  ackedIds.push(id);while(ackedIds.length>200)ackedIds.shift();
+  stSet('xprs_acked',JSON.stringify(ackedIds));
+  signAny('t:receipt f:'+mycall+' d:'+baseCall(row.from)+' ts:'+tsNow()+' r:'+id+' s:ack',function(w){
+    if(w)postWire(w,null);});
+}
 function sendIdentity(){
   var now=Date.now();
   if(now-identSent<86400000)return;
@@ -1467,7 +1528,10 @@ function sendMsg(){
     var head=typ+' f:'+mycall+' ts:'+tsNow()+where+thread;
     signAny(sealedBody?head+' x:'+sealedBody:head+' m:'+text,function(wire,why){
       if(!wire){snack('Not sent: '+(why||'not signed'));t.value=text;return;}
-      if(u8(wire).length>250){snack('Message too long');t.value=text;return;}
+      /* The station re-airs this on its radios with its own via: (XPRS.md
+         9, 12.8.3 step 4): leave it the room, or a full packet goes out
+         bare and neighbours take the visitor for a station in the room. */
+      if(u8(wire).length>250-(stationCall?5+stationCall.length:0)){snack('Message too long');t.value=text;return;}
 
       sendOut(wire,text,!!sealedBody,peer);
     });
@@ -1631,7 +1695,13 @@ var clearedBefore=parseInt(stGet('xprs_cleared')||'0',10)||0;
  * the bearer that delivered it, and a packet the station heard out of range
  * (row.out) is in none of them. A packet with d: naming a person is a 1:1
  * and gets its own room. */
-var curRoom=stGet('xprs_room')||'local';
+/* Local, every time the page opens. It used to come back to the room last
+   used, but the captive-portal WebView gives every station's hotspot the
+   same origin (connectivitycheck.gstatic.com), so a room chosen on one
+   station's page followed the visitor to the next: Regional on a dongle
+   because of an afternoon on another board. The room the visitor is
+   standing in is the one to start in. */
+var curRoom='local';
 var allRows=[];              /* every row heard, for room switches */
 var dmPeers={};              /* callsign -> true */
 function baseCall(c){var i=c.indexOf('-');return i<0?c:c.slice(0,i);}
@@ -1720,7 +1790,7 @@ function renderSide(){
 /* Rooms the station keeps from visitors outside its network. */
 var roomPrivate={};
 function switchRoom(r){
-  curRoom=r;stSet('xprs_room',r);
+  curRoom=r;
   closeSide();
   cancelReply();
   seen={};
@@ -1934,6 +2004,8 @@ function render(row){
    * relays differ only in via:, which the identifier leaves out. */
   var sk=wireId(w);
   if(seen[sk])return;
+  if(room.slice(0,3)==='dm:'&&baseCall(row.to||'')===baseCall(mycall)&&
+     baseCall(row.from)!==baseCall(mycall))ackOnce(row,sk);
   var mi=w.indexOf(' m:');
   var text=mi>=0?w.slice(mi+3):'';
   var sealed=false;
@@ -2099,17 +2171,28 @@ function backfillRooms(){
     });
   })(0);
 }
+var loadBusy=false,chatDeep=false;
 function load(){
+  // Every three seconds, and never two at once: a station without PSRAM
+  // serves 200 rows in five seconds, and a page that asked for them every
+  // three seconds with a four-second timeout queued abandoned requests at
+  // its single-threaded server until nothing was answered at all ("connecting"
+  // forever on the T-Dongle). So: the newest 40 first, which every board
+  // answers in under a second, then once the full 200 in the background
+  // (render() files rows by time and skips ones it has), then 40 a tick.
+  if(loadBusy)return;
+  loadBusy=true;
   try{
     var x=new XMLHttpRequest();
-    // The whole conversation once, then only the newest: this runs every three
-    // seconds, and every read holds the archive against its writer.
+    var deep=chatLoaded&&!chatDeep;
     x.open('GET','/api/xprs/history?kind=message,reaction,status&limit='+
-           (chatLoaded?40:200)+(sess?'&session='+sess:''),true);
-    x.timeout=4000;
+           (deep?200:40)+(sess?'&session='+sess:''),true);
+    x.timeout=deep?20000:8000;
+    x.onloadend=function(){loadBusy=false;};
     x.onload=function(){
       try{
         var d=JSON.parse(x.responseText);
+        if(deep)chatDeep=true;
         chatLoaded=true;
         if(d.moderation)applyModeration(d.moderation);
         var rows=(d.rows||[]).slice().reverse();
@@ -2123,7 +2206,7 @@ function load(){
       }catch(e){}
     };
     x.send();
-  }catch(e){}
+  }catch(e){loadBusy=false;}
 }
 
 // ---- the other four tabs -------------------------------------------------
@@ -2362,18 +2445,21 @@ function loadStats(){
 
 // Station: what the This-device and Settings panels say, plus the screen.
 function row(k,v){return '<tr><td>'+esc(k)+'</td><td>'+v+'</td></tr>';}
+/* A station without /api/status (the server edition) still has a Station
+ * view: its callsign and, from /api/services, where the internet reaches it. */
 function loadStation(){
   getJSON('/api/status',function(d){
-    if(!d)return fail('v-station','Station status');
+    if(!d||d.ok===false)d={};
+    if(!d.callsign&&!stationCall)return fail('v-station','Station status');
     var h='<h3>Station</h3><table class="kv">'+
-      row('Callsign',esc(d.callsign||''))+
+      row('Callsign',esc(d.callsign||stationCall||''))+
       (stationPos?row('Location','<a href="'+esc(posLink(stationPos))+'" target="_blank" rel="noopener">'+esc(posText(stationPos))+'</a>'):'')+
-      row('Board',esc(d.board||''))+
-      row('Uptime',esc(hms(d.uptime_s||0)))+
-      row('Free memory',esc(kb(d.heap_free)))+
-      row('Clock',d.time&&d.time.synced?
+      (d.board!==undefined?row('Board',esc(d.board||'')):'')+
+      (d.uptime_s!==undefined?row('Uptime',esc(hms(d.uptime_s||0))):'')+
+      (d.heap_free!==undefined?row('Free memory',esc(kb(d.heap_free))):'')+
+      (d.time?row('Clock',d.time.synced?
           esc(new Date(d.time.epoch*1000).toISOString().slice(0,19)
-              .replace('T',' '))+' UTC':'<span class="dim">not synced</span>');
+              .replace('T',' '))+' UTC':'<span class="dim">not synced</span>'):'');
     if(d.battery&&d.battery.mv>0){
       // esc() on everything from the wire, exactly as this row did before
       // it grew fields: the surrounding string is raw HTML by design (see
@@ -2401,6 +2487,9 @@ function loadStation(){
     var ar=d.archiver||d.indexer; // "indexer" until 2026-11-06, older builds
     if(ar)
       h+=row('Archive',esc(ar.count)+' packets held');
+    if(sessHolders)
+      h+=row('My mailbox',sessHolders.length?esc(sessHolders.join(', ')):
+             '<span class="dim">none yet</span>');
     h+='</table>';
     if(d.lora){
       h+='<h3>LoRa</h3><table class="kv">'+
@@ -2413,14 +2502,50 @@ function loadStation(){
     el('v-station').innerHTML=h+'<div id="st-more"></div>';
     getJSON('/api/services',function(sv){
       if(!sv||!sv.features)return;
-      var f=sv.features,k,h2='<h3>Roles</h3><table class="kv">';
-      for(k in f)h2+=row(k,f[k]?'on':'<span class="dim">off</span>');
-      h2+='</table>';
+      var f=sv.features,k,h2='',i2;
+      /* Where the internet reaches this station (API-HTTP.md urls,
+       * urls_pending): the links to hand out, and the names still waiting
+       * for the router to let their ports in. */
+      if(sv.urls||sv.urls_pending){
+        var us=sv.urls||[],ps=sv.urls_pending||[];
+        h2+='<h3>Web address</h3><table class="kv">';
+        for(i2=0;i2<us.length;i2++)
+          h2+=row(i2?'':'Reachable at','<a href="'+esc(us[i2])+'">'+esc(us[i2])+'</a>');
+        if(!us.length)h2+=row('Reachable at','<span class="dim">not from the internet yet</span>');
+        for(i2=0;i2<ps.length;i2++)
+          h2+=row(i2?'':'Not reachable yet','<span class="dim">'+esc(ps[i2])+'</span>');
+        h2+='</table>';
+        if(ps.length)h2+='<p class="dim">A name works once the router lets TCP ports 80 and 443 in to this machine '+
+          'for that address; the station tests it again by itself.</p>';
+      }
+      /* The Reticulum node on the station's TCP port (XPRS.md 13.4): whether
+       * the internet reaches it, and what a Reticulum client points at. */
+      if(sv.rns&&sv.rns.port){
+        var rn=sv.rns,dl=rn.dial?String(rn.dial):'',hp=dl.split(':'),host=hp[0],
+            prt=hp.length>1?hp[1]:String(rn.port);
+        h2+='<h3>Reticulum node</h3><table class="kv">'+
+          row('Port','TCP '+esc(rn.port))+
+          row('From the internet',rn.reachable===true?'reachable':
+              rn.reachable===false?'<span class="dim">not reachable</span>':
+              '<span class="dim">not tested yet</span>')+
+          (dl?row('Connect to',esc(host)+' port '+esc(prt)):'')+'</table>';
+        if(dl)h2+='<p class="dim">In a Reticulum configuration: a TCPClientInterface with target_host = '+
+          esc(host)+' and target_port = '+esc(prt)+'.</p>';
+        else if(rn.reachable===false)h2+='<p class="dim">Forward TCP port '+esc(rn.port)+
+          ' on the router to this machine, as for ports 80 and 443; the station tests it again within half an hour.</p>';
+      }
+      var hasF=false;for(k in f){hasF=true;break;}
+      if(hasF){
+        h2+='<h3>Roles</h3><table class="kv">';
+        for(k in f)h2+=row(k,f[k]?'on':'<span class="dim">off</span>');
+        h2+='</table>';
+      }
       if(sv.serve&&sv.serve.length)
         h2+='<p class="dim">Announced to others: '+esc(sv.serve.join(', '))+'</p>';
-      h2+='<h3>Screen</h3><img class="shot" alt="the station screen" '+
+      /* The screen, heading and all, only on a station that has one. */
+      h2+='<div id="st-screen"><h3>Screen</h3><img class="shot" alt="the station screen" '+
           'src="/api/screen?t='+Date.now()+'" '+
-          'onerror="this.parentNode.removeChild(this)">';
+          'onerror="var d=el(\'st-screen\');if(d)d.parentNode.removeChild(d)"></div>';
       var m=el('st-more'); if(m)m.innerHTML=h2;
     });
   });
@@ -2648,6 +2773,13 @@ function drawAdmin(d){
       radio('ad-alert','everyone',wa,'Anyone may post an alert',
         'A warning is relayed up to nine times; this lends the station&rsquo;s standing to anybody.',
         "adminSet({who_may_alert:'everyone'})")+'</div>';
+    /* A switch the station's program defines for itself (API-HTTP.md
+     * host switches): only a station that has it reports it. */
+    if('auto_update' in s)h+='<h3>Updates</h3><div class="card">'+
+      '<label class="opt"><input type="checkbox" id="ad-au"'+(s.auto_update?' checked':'')+
+      ' onchange="adminSet({auto_update:this.checked})"><span>Install new versions automatically'+
+      '<small>Every six hours the station looks for a newer release of its program, installs it and restarts; '+
+      'the old program comes back if the new one does not start.</small></span></label></div>';
     /* The mesh (docs/plan-mesh-trust.md): how far away a kind may come from
      * and still be kept, whose words are fetched from anywhere, and which
      * stations this one exchanges records with. */
