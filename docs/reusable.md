@@ -1184,3 +1184,21 @@ Flutter import in the core.
   thumbnail.
 - **`lib/services/i18n/flutter_locales.dart`** — CoreI18n's language as
   Flutter `Locale`s for MaterialApp.
+
+## Browser interop that compiles under dart2js AND dart2wasm
+
+- **`third_party/wasm_run/lib/src/web/js_helpers.dart`** — `dart:js_interop`
+  helpers used by wasm_run's browser half: `jsifyMixed` (Dart lists/maps/
+  primitives/typed data to JS, JS values passed through, other Dart objects
+  boxed), `dartifyJson` (JSON-like JS to Dart, numbers to `int` when integral,
+  a `BigInt` kept as the JS value), `jsNumberToDart`, `jsBigInt`, `jsString`
+  (works on primitives such as a BigInt), `objectAssign`, `objectKeys`,
+  `jsIsArray`. Reuse these patterns (or lift the file) for any new web-only
+  code instead of `dart:html` / `dart:js_util` / `package:js`, which dart2wasm
+  cannot compile. Key a conditional import on `dart.library.js_interop`, not
+  `dart.library.html` (false under dart2wasm), and put any
+  `if (dart.library.io)` first.
+- **`third_party/wasm_run/lib/src/wasm_bindings/_wasm_js_web.dart`** —
+  extension-type bindings of the WebAssembly JS API
+  (`WebAssembly.Module/Instance/Memory/Table/Global`, `compile`,
+  `instantiate`).

@@ -1,62 +1,65 @@
-@JS()
-library wasm_feature_detect;
-
-import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
+// PATCHED (xprs): ported from package:js to dart:js_interop so it compiles
+// under dart2wasm as well as dart2js. See README.xprs.md.
+import 'dart:js_interop';
 
 @JS('wasmFeatureDetect')
 external WasmFeatureDetect get wasmFeatureDetect;
 
-@JS()
-@anonymous
-abstract class WasmFeatureDetect {
+/// The `wasm-feature-detect` library object; every member resolves to
+/// whether the browser supports that WebAssembly feature.
+extension type WasmFeatureDetect._(JSObject _) implements JSObject {
   /// BigInt integration
-  external Future<bool> bigInt();
+  external JSPromise<JSBoolean> bigInt();
 
   /// Bulk memory operations
-  external Future<bool> bulkMemory();
+  external JSPromise<JSBoolean> bulkMemory();
 
   /// Exception handling
-  external Future<bool> exceptions();
+  external JSPromise<JSBoolean> exceptions();
 
   /// Extented Const Expressesions
-  external Future<bool> extendedConst();
+  external JSPromise<JSBoolean> extendedConst();
 
   /// Garbage Collection
-  external Future<bool> gc();
+  external JSPromise<JSBoolean> gc();
 
   /// JavaScript Promise Integration
-  external Future<bool> jspi();
+  external JSPromise<JSBoolean> jspi();
 
   /// Memory64
-  external Future<bool> memory64();
+  external JSPromise<JSBoolean> memory64();
 
   /// Multi-value
-  external Future<bool> multiValue();
+  external JSPromise<JSBoolean> multiValue();
 
   /// Importable/Exportable mutable globals
-  external Future<bool> mutableGlobals();
+  external JSPromise<JSBoolean> mutableGlobals();
 
   /// Reference Types
-  external Future<bool> referenceTypes();
+  external JSPromise<JSBoolean> referenceTypes();
 
   /// Relaxed SIMD
-  external Future<bool> relaxedSimd();
+  external JSPromise<JSBoolean> relaxedSimd();
 
   /// Non-trapping float-to-int conversions
-  external Future<bool> saturatedFloatToInt();
+  external JSPromise<JSBoolean> saturatedFloatToInt();
 
   /// Sign-extension operators
-  external Future<bool> signExtensions();
+  external JSPromise<JSBoolean> signExtensions();
 
   /// Fixed-Width SIMD
-  external Future<bool> simd();
+  external JSPromise<JSBoolean> simd();
 
   /// Streaming Compilation
-  external Future<bool> streamingCompilation();
+  external JSPromise<JSBoolean> streamingCompilation();
 
   /// Tail call
-  external Future<bool> tailCall();
+  external JSPromise<JSBoolean> tailCall();
 
   /// Threads
-  external Future<bool> threads();
+  external JSPromise<JSBoolean> threads();
 }
+
+/// Awaits one feature check as a Dart bool.
+Future<bool> featureToFuture(JSPromise<JSBoolean> check) =>
+    check.toDart.then((value) => value.toDart);

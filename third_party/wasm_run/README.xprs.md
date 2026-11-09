@@ -127,3 +127,66 @@ CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo generate-lockfile
 # wasmi: the same, in target/wasmi-src after one armeabi-v7a build, then
 cp target/wasmi-src/Cargo.lock Cargo.wasmi.lock
 ```
+
+## 7. Web: dart:js_interop, so dart2wasm can compile it
+
+The dart2wasm web build (`flutter build web --wasm`) needs every library it
+reaches to avoid `dart:html`, `dart:js_util`/`package:js` and `dart:ffi`.
+Under dart2wasm `dart.library.html` and `dart.library.io` are both false, so
+upstream's `if (dart.library.html)` conditionals fell through to the stub or
+`dart:ffi` halves.
+
+* Every conditional is now `if (dart.library.js_interop)` (true under dart2js
+  and dart2wasm, false on the native VM):
+
+  | file | native VM | dart2js | dart2wasm |
+  |---|---|---|---|
+  | `src/ffi.dart` | `ffi/io.dart` | `ffi/web.dart` | `ffi/web.dart` |
+  | `src/bridge_generated.dart` | `bridge_generated.io.dart` | `bridge_generated.web.dart` | `bridge_generated.web.dart` |
+  | `src/int64_bigint/int64_bigint.dart` | `_int64_bigint_native.dart` | `_int64_bigint_web.dart` | `_int64_bigint_web.dart` |
+  | `src/wasm_bindings/wasm.dart`, `wasm_interface.dart` | `_wasm_interop_native.dart` | `_wasm_interop_web.dart` | `_wasm_interop_web.dart` |
+
+  Where an `if (dart.library.io)` came first it still does, so native keeps
+  resolving to the io half.
+* `package:wasm_interop` (package:js based) is replaced by direct bindings of
+  the WebAssembly JS API in `src/wasm_bindings/_wasm_js_web.dart`
+  (`WebAssembly.Module/Instance/Memory/Table/Global`, `compile`,
+  `instantiate`). The dependency is removed from `pubspec.yaml`.
+* `_wasm_interop_web.dart`, `_wasi_web.dart`, `_wasm_worker.dart`,
+  `_wasm_feature_detect_web.dart`, `_atomics_web.dart`,
+  `int64_bigint/_int64_bigint_web.dart` and `ffi/web.dart` are ported to
+  `dart:js_interop`; shared helpers are in `src/web/js_helpers.dart`.
+  `ffi/web.dart` fetches with `fetch()` instead of `HttpRequest` and injects
+  scripts through `document.createElement`.
+* `bridge_generated.web.dart`: the `@JS('wasm_bindgen')` wire module (an
+  `@anonymous` class of `external` members typed `dynamic`) is now an
+  abstract Dart class and the `wasmModule` getter throws, since the browser
+  path never calls Rust.
+* `flutter_rust_bridge` is vendored with the same treatment
+  (`third_party/flutter_rust_bridge/README.xprs.md`).
+
+What changed in behaviour, on the web only (the public API is identical):
+
+* Values crossing the JS boundary are converted by their wasm type instead
+  of relying on dart2js treating a Dart number as a JS number. Exported
+  functions: arguments by the parameter types when the browser reports them
+  (js-types reflection, rarely available), else by Dart type (`int`/`double`
+  to Number, `BigInt` to BigInt, an `I64` passes as is); results: i32 to
+  `int`, f32/f64 to `double`, i64 stays a JS BigInt (`I64`), and an
+  unknown-typed Number becomes `int` when integral, else `double`. Host
+  (imported) functions: **every** import is now wrapped (section 3 wrapped
+  only those with an i64), arguments converted by the declared `params` (i64
+  arrives as `int`, as on native) and the result by the declared `results`.
+  Up to 16 parameters are supported.
+* `WasmFunction.inner` of an export is a Dart closure taking the parameters
+  positionally (under dart2js it used to be the JS function itself).
+* A Dart object that is not a JS value, used as an `externref`, is boxed
+  (`toJSBox`) under dart2wasm and unboxed on the way back; under dart2js it
+  passes through as before.
+* `i64.getInt64/setInt64/...` on the web go through two 32-bit halves in Dart
+  rather than `DataView.getBigInt64` on `ByteData.toJS`, because under
+  dart2wasm that call would act on a copy of a Dart-allocated buffer.
+* `WasmMemory.view` under dart2wasm is a JS-backed `Uint8List` over the
+  memory's `ArrayBuffer` (no copy, but each element access is a JS call).
+* `Atomics.wait`/`notify` are bound now (upstream declared them without
+  `external`, so calling them failed).

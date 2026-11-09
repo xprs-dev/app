@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:wasm_run/src/bridge_generated.dart';
 import 'package:wasm_run/src/ffi/stub.dart'
     if (dart.library.io) 'ffi/io.dart'
-    if (dart.library.html) 'ffi/web.dart';
+    if (dart.library.js_interop) 'ffi/web.dart';
 
 WasmRunDart? _wrapper;
 

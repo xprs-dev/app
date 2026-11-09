@@ -1,65 +1,77 @@
 // ignore_for_file: public_member_api_docs
 
-@JS()
-library bigint;
+// PATCHED (xprs): ported from dart:js_util to dart:js_interop so it compiles
+// under dart2wasm as well as dart2js. The 64-bit reads and writes go through
+// two 32-bit halves in Dart: calling DataView.getBigInt64 on `ByteData.toJS`
+// would, under dart2wasm, act on a copy of a Dart-allocated buffer, so a
+// write would be lost. See README.xprs.md.
 
-import 'dart:js_util';
+import 'dart:js_interop';
 import 'dart:typed_data';
 
-import 'package:flutter_rust_bridge/flutter_rust_bridge.dart' show JS;
-
-@JS('BigInt')
-// ignore: non_constant_identifier_names
-external I64 JsBigInt(Object value);
+import 'package:wasm_run/src/web/js_helpers.dart';
 
 typedef I64 = Object; // JsBigInt
 
 I64 int64FromIntImpl(int value) {
-  return JsBigInt(value);
+  // Through the decimal string: a Dart int is 64-bit under dart2wasm and a
+  // JS Number would drop bits above 2^53.
+  return jsBigInt(value.toString().toJS);
 }
 
 I64 int64FromBigIntImpl(BigInt value) {
-  return JsBigInt(value.toString());
+  return jsBigInt(value.toString().toJS);
+}
+
+String _str(I64 value) {
+  if (value is int || value is BigInt) return value.toString();
+  // ignore: invalid_runtime_check_with_js_interop_types
+  return jsString(value as JSAny).toDart;
 }
 
 int toIntImpl(I64 value) {
-  return int.parse(callMethod(value, 'toString', const []) as String);
+  if (value is int) return value;
+  return BigInt.parse(_str(value)).toSigned(64).toInt();
 }
 
 BigInt toBigIntImpl(I64 value) {
-  return BigInt.parse(callMethod(value, 'toString', const []) as String);
+  return BigInt.parse(_str(value));
+}
+
+final _mask32 = BigInt.from(0xffffffff);
+
+BigInt _read64(ByteData array, int index, Endian endian, {required bool signed}) {
+  final little = endian == Endian.little;
+  final lo = array.getUint32(little ? index : index + 4, endian);
+  final hi = signed
+      ? array.getInt32(little ? index + 4 : index, endian)
+      : array.getUint32(little ? index + 4 : index, endian);
+  return (BigInt.from(hi) << 32) | BigInt.from(lo);
+}
+
+void _write64(ByteData array, int index, Object value, Endian endian) {
+  final little = endian == Endian.little;
+  final v = toBigIntImpl(value).toUnsigned(64);
+  final lo = (v & _mask32).toInt();
+  final hi = ((v >> 32) & _mask32).toInt();
+  array.setUint32(little ? index : index + 4, lo, endian);
+  array.setUint32(little ? index + 4 : index, hi, endian);
 }
 
 I64 getInt64Bytes(ByteData array, int index, Endian endian) {
-  return callMethod(
-    ByteData.sublistView(array),
-    'getBigInt64',
-    [index, endian == Endian.little],
-  );
+  return int64FromBigIntImpl(_read64(array, index, endian, signed: true));
 }
 
 I64 getUint64Bytes(ByteData array, int index, Endian endian) {
-  return callMethod(
-    ByteData.sublistView(array),
-    'getBigUint64',
-    [index, endian == Endian.little],
-  );
+  return int64FromBigIntImpl(_read64(array, index, endian, signed: false));
 }
 
 void setInt64Bytes(ByteData array, int index, Object value, Endian endian) {
-  callMethod<void>(
-    ByteData.sublistView(array),
-    'setBigInt64',
-    [index, value, endian == Endian.little],
-  );
+  _write64(array, index, value, endian);
 }
 
 void setUint64Bytes(ByteData array, int index, Object value, Endian endian) {
-  callMethod<void>(
-    ByteData.sublistView(array),
-    'setBigUint64',
-    [index, value, endian == Endian.little],
-  );
+  _write64(array, index, value, endian);
 }
 
 // @JS('DataView')

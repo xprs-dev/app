@@ -1,9 +1,12 @@
 name: build-web
 
-# The browser build compiles the same lib/ with dart2js, and it is the one
-# target where an unconditional dart:ffi import is a hard compile error rather
-# than a runtime throw. This job exists so that error is found here, not on the
-# next person who runs launch-web.sh (docs/web.md).
+# The browser build compiles the same lib/ to WebAssembly (dart2wasm, --wasm:
+# the stores need 64-bit integers) with a JavaScript fallback (dart2js), and it
+# is the one target where an unconditional dart:ffi import is a hard compile
+# error rather than a runtime throw. This job exists so that error is found
+# here, not on the next person who runs launch-web.sh (docs/web.md). It needs
+# more memory than a Raspberry Pi has: the two compilers run at once and
+# wasm-opt alone takes ~1.6 GB.
 on:
   push:
     branches: [main]
@@ -19,11 +22,9 @@ jobs:
       # pubspec.yaml has a path dependencies on ../reticulum-dart and ../core;
       # clone them next to
       # the workspace so pub get can resolve it.
-      - name: Fetch reticulum-dart and core (path dependencies)
+      - name: Fetch reticulum-dart, core and zx (path dependencies)
         shell: bash
-        run: |
-          git clone --depth 1 https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
-          git clone --depth 1 https://github.com/xprs-dev/core.git ../core
+        run: tool/ci_fetch_siblings.sh
 
       - uses: subosito/flutter-action@v2
         with:
@@ -31,7 +32,7 @@ jobs:
           cache: true
 
       - run: flutter pub get
-      - run: flutter build web --release --no-tree-shake-icons --pwa-strategy=none
+      - run: flutter build web --wasm --release --no-tree-shake-icons --pwa-strategy=none
 
       - uses: actions/upload-artifact@v4
         with:

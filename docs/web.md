@@ -1,9 +1,10 @@
 # XPRS in a browser
 
 The same Dart source that builds the desktop and phone apps also builds as a
-web page (`flutter build web`, dart2js). This page is what that build is, what
-it is not, how it is tested without a screen, and what was found while making
-it compile and boot again (2026-09-07).
+web page (`flutter build web --wasm`: dart2wasm, with a dart2js fallback).
+This page is what that build is, what it is not, how it is tested without a
+screen, and what was found while making it compile and boot again (2026-09-07;
+the stores moved to zx and the build to WebAssembly on 2026-11-09).
 
 [architecture.md](architecture.md) governs here as everywhere: transports are
 CORE and nothing blocks the UI isolate. A browser removes most of the
@@ -16,9 +17,9 @@ those two rules are tested by absence rather than by discipline.
 |---|---|---|
 | GeoUI, launcher, wapp screens, i18n, App Creator | yes | yes, same code |
 | wasm wapps (`wasm_run`) | wasmtime over FFI | the browser's own `WebAssembly` API |
-| SQLite | `package:sqlite3` over FFI, SQLCipher | the same package's `wasm.dart`: `sqlite3.wasm` over an IndexedDB VFS |
+| databases | zx stores (`*.zx`, pure Dart) on the disk | the same zx stores, their files in memory and persisted to IndexedDB (`xprs-zx`); WebAssembly build only (below) |
 | files | the disk | an in-memory tree persisted to IndexedDB |
-| profile encryption | SQLCipher + AES-GCM archive | **no**: a web profile stays plain (see below) |
+| profile encryption | zx store secrets + `profile.zx` | **no**: a web profile stays plain (see below) |
 | NOSTR relays (`wss://`) | yes | yes, same `web_socket_channel` client |
 | Reticulum (TCP, UDP, LAN discovery) | yes | **no**: a page cannot open a socket |
 | BLE5, GATT/MSP, LoRa, WiFi-Direct | yes | **no** |
@@ -37,21 +38,31 @@ run): the launcher boots in about 2 s; Continue on the welcome page creates a
 profile and the launcher appears with hero cards, the wapp list and the quick
 launch row; the Chat wapp opens to `#LOCAL`; the background engines of chat,
 mail and torrents run their wasm; a reload comes back to the launcher with the
-same profile. After that run IndexedDB holds 2696 records in the file tree and
-six SQLite files (104 blocks). No uncaught exception, no error toast.
+same profile. After that run IndexedDB held 2696 records in the file tree and
+six SQLite files (104 blocks). No uncaught exception, no error toast. (That was
+the dart2js build with SQLite; the WebAssembly build with zx stores has not
+been run through the smoke yet: it does not compile on the Pi, see below.)
 
 ## Building and running
 
 ```sh
-~/bin/android-build-locked flutter build web --no-tree-shake-icons --pwa-strategy=none
+~/bin/android-build-locked flutter build web --wasm --no-tree-shake-icons --pwa-strategy=none
 ./launch-web.sh            # builds, packs ../apps, serves on :8080
 ```
 
-Every `flutter build` goes through the lock (CLAUDE.md); dart2js takes about
-55 s here. The bundle is `build/web`: `main.dart.js` (7.8 MB release, 21 MB
-`--profile`), `sqlite3.wasm` (0.7 MB, copied from `web/`), CanvasKit and the
-assets. `.github/workflows/build-web.yml` builds it on every push and pull
-request.
+Every `flutter build` goes through the lock (CLAUDE.md). `--wasm` is required:
+the stores are zx, which needs 64-bit integers, and dart2js has none (numbers
+are doubles). Flutter builds a dart2js fallback beside the WebAssembly
+(`main.dart.js` for a browser without WebAssembly GC); in it the stores refuse
+to open (`storesUnavailable` in the core's `store_db.dart`) and every store
+degrades to no persistence, so the page still runs. The browser floor for
+persistence is WebAssembly GC: Chrome 119, Firefox 120, Safari 18.2.
+
+**It does not build on the Raspberry Pi.** dart2wasm and dart2js run at once
+(about 1 GB each) and wasm-opt then takes about 1.6 GB on its own; on the 3.7 GB
+Pi the memory guard stopped all three after 28 minutes, even at `-O1`.
+`.github/workflows/build-web.yml` builds it (`--wasm`) on every push to main
+and pull request, and on demand (workflow_dispatch).
 
 `--pwa-strategy=none` stays: the service worker cached a stale `main.dart.js`
 across rebuilds, and `web/index.html` still carries the one-shot purge for
@@ -105,56 +116,33 @@ Two assumptions from the survey turned out false, and they shaped the work:
   run (`_Namespace` is a `File`/`Directory`, `Platform._operatingSystem` a
   `Platform.isX`, `ReceivePort.listen` an isolate).
 - `wasm_run`'s browser path needs no FFI fix: `compileWasmModule` dispatches
-  to `wasm_interop` (the browser's `WebAssembly`) and never touches the Rust
-  bridge.
+  to the browser's `WebAssembly` API (bindings in
+  `third_party/wasm_run/lib/src/wasm_bindings/_wasm_js_web.dart`) and never
+  touches the Rust bridge.
 
-### SQLite: one package, two halves
+### Databases: zx stores, the same code in the browser
 
-`package:sqlite3` ships an FFI binding and a wasm binding behind one
-`CommonDatabase` interface. Every store types its handle as `CommonDatabase`
-and imports `package:sqlite3/common.dart`; the FFI import survives in three
-files, each compiled only natively:
+There is no SQLite (it was `sqlite3.wasm` over an IndexedDB VFS here until
+2026-11-09). Every store is a zx store opened through the core's
+`storage/store_db.dart`, the same code as natively:
 
-| seam | native | web |
-|---|---|---|
-| `lib/profile/profile_db.dart` → | `profile_db_io.dart` (SQLCipher, keyring) | `profile_db_web.dart` (`WasmSqlite3.loadFromUrl`, `IndexedDbFileSystem`) |
-| reticulum-dart `db_opener.dart` → | `db_opener_io.dart` (`sqlite3.open`) | `db_opener_stub.dart` (throws until the host injects) |
-| encrypted_archive `sqlite_loader.dart` → | `sqlite_loader_flutter.dart` / `_pure.dart` | `sqlite_loader_stub.dart` (throws until the host injects) |
+- `store_db_host.dart` → `store_db_host_io.dart` (nothing to do) /
+  `store_db_host_web.dart`: zx's `ZxWebFs` keeps the store files in memory,
+  and the changes are written to the IndexedDB database `xprs-zx` (a record
+  per file, its contents in 64 KiB chunks keyed `[id, n]`).
+- `initStoreDb()` is awaited in `initStorageRoot()`: it loads the files from
+  IndexedDB before any store opens. `flushStoreDb()` writes what changed.
+- reticulum-dart's stores open through its injectable `openDb`, which the core
+  points at `openStoreDb`, so the browser needs nothing of its own there.
 
-The host injects where it already did (`ProfileService.load`):
-`reticulum.dbOpener`, `reticulum.dbMemoryOpener`, and on web
-`SQLiteLoader.override`. Natively encrypted_archive keeps its own default,
-because a `profile.ear` inside an encrypted profile must not get a SQLCipher
-key on top of its own encryption.
+**Encrypted profiles do not exist on web**, for want of somewhere to keep the
+device key (`flutter_secure_storage` on web is localStorage). Profile creation
+on web skips the device-key step and logs `encryption: not available on web
+-- profile X stays plain`. zx itself would encrypt the stores the same way in
+a browser.
 
-`openPlainDb` is new: the mailbox spool and the gossip visit table were opened
-with a bare `sqlite3.open` before, deliberately unkeyed even inside an
-encrypted profile, and switching them to `openProfileDb` would have tried to
-key existing plaintext files. They stay plain, through the seam.
-
-`initProfileDb()` is awaited in `initStorageRoot()`: a no-op natively, the
-wasm fetch and VFS open on web. Opening a database before that is a
-`StateError`, never a silent in-memory database.
-
-The web opener sets `PRAGMA temp_store = MEMORY` and `journal_mode = MEMORY`.
-Without the first, SQLite opens its scratch files (the temporary database an
-`ALTER TABLE` uses, statement journals) through the VFS with a NULL name, and
-sqlite3 2.4.5's IndexedDB VFS dereferences it: `Cannot read properties of
-null (reading 'toString')` from inside the wasm import table, which surfaced
-as the wapp mailbox failing to open. WAL needs shared memory the VFS has not.
-
-**`web/sqlite3.wasm` is pinned to the pub version of `package:sqlite3`**
-(2.4.5 today: <https://github.com/simolus3/sqlite3.dart/releases/tag/sqlite3-2.4.5>).
-Bump both together.
-
-**Encrypted profiles do not exist on web.** The stock wasm has no SQLCipher.
-The multi-cipher build (`sqlite3mc.wasm`) exists only from `sqlite3` 2.7 and
-uses a different on-disk format, so a profile encrypted on a phone would not
-open in a browser even then. Profile creation on web therefore skips the
-device-key step and logs `encryption: not available on web -- profile X stays
-plain`; `openProfileDb` on web refuses an encrypted profile with
-`UnsupportedError` rather than open it as plaintext; asking for password
-encryption from the profile page throws the same.
+**One tab.** Two XPRS tabs on one origin would each hold the store files in
+memory and write them back over each other.
 
 ### Files: one seam, two backing stores
 
@@ -166,7 +154,7 @@ door; its one backend (`profile_storage_fs.dart`) sits on `fs` for every
 target, and the localStorage backend is gone. reticulum-dart has the same
 seam (`reticulum.fileSystem`, injected in `initStorageRoot`) for the files it
 keeps itself: follow sets, the relay hub config, partial downloads, the
-parents of its SQLite files.
+parents of its store files.
 
 Persistence on web (`fs_web.dart`): a timer stats the tree every 500 ms and
 commits what changed (mtime, size, kind) to IndexedDB in one transaction;
@@ -227,8 +215,15 @@ Two patches to the vendored copy, both documented in
   the internet to start a wapp. The package's `dist/` (Apache-2.0) sits under
   `lib/assets/browser_wasi_shim/`.
 
-`--wasm` (dart2wasm) stays out: `wasm_run`'s web half and `wasm_interop`
-use `dart:html` and `dart:js_util`, which dart2wasm does not have.
+Its web half, and `flutter_rust_bridge` (also vendored now), are written
+against `dart:js_interop` so that dart2wasm (`--wasm`) can compile them:
+dart2wasm has neither `dart:html` nor `dart:js_util`, and
+`dart.library.html` is false there, so every conditional import is keyed on
+`dart.library.js_interop`. `wasm_interop` is replaced by direct bindings of
+the WebAssembly API. Section 7 of `third_party/wasm_run/README.xprs.md` lists
+what that changed; a standalone smoke program (host imports with i32 and
+i64, exports, memory, globals, sync and async instantiation) passes in
+headless Chromium under both dart2js and dart2wasm.
 
 ## Performance on web
 
@@ -443,10 +438,10 @@ a wapp concern.
 
 Everything in "Next: Reticulum in the browser, with no proxy" above, which is
 designed but not built: the WebSocket bearer, the per-device web host, and the
-Web Workers. Also encrypted profiles on web; `--wasm`; shared
+Web Workers. Also encrypted profiles on web; shared
 folders, torrents, bulk spool, media archive serving; video playback; the PWA
-service worker; a GitHub Pages deployment; multi-tab safety (the IndexedDB
-VFS is single-tab; a second XPRS tab on the same origin corrupts the SQLite
-files); Firefox and Safari; `flutter_secure_storage` on web is localStorage,
+service worker; a GitHub Pages deployment; multi-tab safety (one tab: a
+second XPRS tab on the same origin would write the store files over the
+first's); Firefox and Safari; `flutter_secure_storage` on web is localStorage,
 so the device key would not be hardware-backed there, which is one more
 reason web profiles stay plain.

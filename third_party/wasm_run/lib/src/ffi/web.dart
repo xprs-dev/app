@@ -1,5 +1,8 @@
-import 'dart:html' as html;
-import 'dart:js_util' as js_util;
+// PATCHED (xprs): ported from dart:html / dart:js_util to dart:js_interop so
+// it compiles under dart2wasm as well as dart2js. See README.xprs.md.
+import 'dart:async';
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge.dart' as frb;
@@ -30,7 +33,7 @@ Future<void>? _setUpFeatureDetectFuture;
 Future<void>? _setUpBrowserWasiShimFuture;
 
 Future<void> _setUpWasmFeatureDetect() {
-  if (js_util.hasProperty(js_util.globalThis, 'wasmFeatureDetect')) {
+  if (globalContext.has('wasmFeatureDetect')) {
     return Future.value();
   }
   return _setUpFeatureDetectFuture ??= _injectSrcScript(
@@ -41,7 +44,7 @@ Future<void> _setUpWasmFeatureDetect() {
 }
 
 Future<void> _setUpBrowserWasiShim() {
-  if (js_util.hasProperty(js_util.globalThis, 'browser_wasi_shim')) {
+  if (globalContext.has('browser_wasi_shim')) {
     return Future.value();
   }
   return _setUpBrowserWasiShimFuture ??= _injectSrcScript(
@@ -58,24 +61,41 @@ Future<void> _injectSrcScript(
   String src, {
   String type = 'application/javascript',
 }) {
-  final script = html.ScriptElement();
-  script.type = type;
-  script.src = src;
-  script.defer = true;
+  final document = globalContext['document']! as JSObject;
+  final script =
+      document.callMethod<JSObject>('createElement'.toJS, 'script'.toJS);
+  script['type'] = type.toJS;
+  script['src'] = src.toJS;
+  script['defer'] = true.toJS;
   // script.async = true;
-  assert(html.document.head != null, 'html.document.head is null');
-  html.document.head!.append(script);
-  return script.onLoad.first;
+  final head = document['head'];
+  assert(head != null, 'html.document.head is null');
+  final loaded = Completer<void>();
+  script.callMethod<JSAny?>(
+    'addEventListener'.toJS,
+    'load'.toJS,
+    ((JSAny? _) {
+      if (!loaded.isCompleted) loaded.complete();
+    }).toJS,
+  );
+  // dart:html's onLoad.first never completed on an error either; keep that
+  // (a failed script leaves the future pending, as upstream did).
+  (head! as JSObject).callMethod<JSAny?>('append'.toJS, script);
+  return loaded.future;
 }
 
+@JS('fetch')
+external JSPromise<JSObject> _fetch(JSString url);
+
 Future<Uint8List> getUriBodyBytesImpl(Uri uri) async {
-  final req = await html.HttpRequest.request(
-    uri.toString(),
-    responseType: 'arraybuffer',
-  );
-  final response = req.response;
-  if (response is! ByteBuffer) {
-    throw Exception('Failed to fetch $uri: ${req.status}');
+  final response = await _fetch(uri.toString().toJS).toDart;
+  if (!(response['ok']! as JSBoolean).toDart) {
+    throw Exception(
+      'Failed to fetch $uri: ${(response['status']! as JSNumber).toDartInt}',
+    );
   }
-  return response.asUint8List();
+  final buffer = await response
+      .callMethod<JSPromise<JSArrayBuffer>>('arrayBuffer'.toJS)
+      .toDart;
+  return buffer.toDart.asUint8List();
 }

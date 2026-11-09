@@ -1,14 +1,15 @@
-@JS()
-library wasm_worker;
-
+// PATCHED (xprs): ported from dart:html / dart:js_util to dart:js_interop so
+// it compiles under dart2wasm as well as dart2js. Messages from the worker
+// are read with [dartifyJson] (a BigInt stays a JS BigInt, i.e. an [I64]).
+// See README.xprs.md.
 import 'dart:async';
-import 'dart:html' as html;
-import 'dart:js_util' as js_util;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
-import 'package:flutter_rust_bridge/flutter_rust_bridge.dart' show JS;
 import 'package:wasm_run/src/wasm_bindings/_atomics_web.dart';
 import 'package:wasm_run/src/wasm_bindings/wasm_interface.dart';
+import 'package:wasm_run/src/web/js_helpers.dart';
 
 /// A task that can be run in a [WasmWorker].
 class WorkerTask {
@@ -31,23 +32,26 @@ class WorkerTask {
   }
 }
 
-void postMessageToWorker(html.Worker worker, Object data) {
-  js_util.callMethod<void>(worker, 'postMessage', [data]);
+void postMessageToWorker(JSObject worker, JSAny data) {
+  worker.callMethod<JSAny?>('postMessage'.toJS, data);
 }
 
-/// A wrapper around a [html.Worker] that can be used to run WASM code in a
+JSObject _construct(String constructor, JSAny arg) =>
+    (globalContext[constructor]! as JSFunction).callAsConstructor(arg);
+
+/// A wrapper around a JS `Worker` that can be used to run WASM code in a
 /// separate Web Worker.
 class WasmWorker {
   /// The id of the worker.
   final int workerId;
 
-  /// The underlying [html.Worker].
-  final html.Worker worker;
+  /// The underlying JS `Worker`.
+  final JSObject worker;
 
   final List<WasmFunction> _functions;
   final ByteData _byteData;
 
-  late final StreamSubscription<dynamic> _subscription;
+  late final JSFunction _onMessage;
   final Completer<WasmWorker> _onLoaded = Completer();
 
   final WorkersConfig _workersConfig;
@@ -63,61 +67,66 @@ class WasmWorker {
     this._functions,
     this._byteData,
   ) {
-    _subscription = worker.onMessage.listen(_handleMessage);
+    _onMessage = ((JSObject event) => _handleMessage(event['data'])).toJS;
+    worker.callMethod<JSAny?>(
+      'addEventListener'.toJS,
+      'message'.toJS,
+      _onMessage,
+    );
   }
 
-  /// A wrapper around a [html.Worker] that can be used to run WASM code in a
+  /// A wrapper around a JS `Worker` that can be used to run WASM code in a
   /// separate Web Worker.
   ///
   /// Creates and instantiates a new [WasmWorker] with the given [workerId]
   static Future<WasmWorker> create({
     required int workerId,
     required WorkersConfig workersConfig,
-    required Map<String, Map<String, Object?>> wasmImports,
-    required Object wasmModule,
+    required JSObject wasmImports,
+    required JSObject wasmModule,
     required List<WasmFunction> functions,
   }) {
-    if (!html.Worker.supported) {
+    if (!globalContext.has('Worker')) {
       throw UnsupportedError('Web Workers are not supported');
     }
-    final sharedBuffer = html.SharedArrayBuffer(256);
+    final sharedBuffer = _construct('SharedArrayBuffer', 256.toJS);
     final byteData =
-        js_util.callConstructor<ByteData>(_dataViewConstructor, [sharedBuffer]);
-    final worker = html.Worker(workersConfig.workerScriptUrl);
+        (_construct('DataView', sharedBuffer) as JSDataView).toDart;
+    final worker = _construct('Worker', workersConfig.workerScriptUrl.toJS);
 
     final wasmWorker =
         WasmWorker._(workerId, worker, workersConfig, functions, byteData);
-    worker.onError.listen(wasmWorker._onLoaded.completeError);
-
-    postMessageToWorker(
-      worker,
-      js_util.jsify({
-        'cmd': 'load',
-        'wasmImports': wasmImports,
-        'wasmModule': wasmModule,
-        'workerId': workerId,
-        'sharedBuffer': sharedBuffer,
-        'workerMapImportsScriptUrl': workersConfig.workerMapImportsScriptUrl
-      }) as Object,
+    worker.callMethod<JSAny?>(
+      'addEventListener'.toJS,
+      'error'.toJS,
+      ((JSAny? error) {
+        if (!wasmWorker._onLoaded.isCompleted) {
+          wasmWorker._onLoaded.completeError(error ?? 'Worker error');
+        }
+      }).toJS,
     );
+
+    final message = JSObject()
+      ..['cmd'] = 'load'.toJS
+      ..['wasmImports'] = wasmImports
+      ..['wasmModule'] = wasmModule
+      ..['workerId'] = workerId.toJS
+      ..['sharedBuffer'] = sharedBuffer
+      ..['workerMapImportsScriptUrl'] =
+          workersConfig.workerMapImportsScriptUrl?.toJS;
+    postMessageToWorker(worker, message);
     return wasmWorker._onLoaded.future;
   }
 
   /// Runs the given [task] in the worker.
   Future<List<Object?>> run(WorkerTask task) {
     _tasks[++_lastTaskId] = task;
-    final data = js_util.jsify({
-      'cmd': 'run',
-      'args': <Object?>[],
-      'functionExport': task.functionName,
-      'taskId': _lastTaskId,
-    }) as Object;
-
-    // TODO: we do this to support JsBigInts
-    final args = js_util.getProperty<Object>(data, 'args');
-    for (final arg in task.args) {
-      js_util.callMethod<void>(args, 'push', [arg]);
-    }
+    // jsifyMixed passes an i64 (a JS BigInt) through as it is.
+    final data = JSObject()
+      ..['cmd'] = 'run'.toJS
+      ..['args'] = jsifyMixed(task.args)
+      ..['functionExport'] = task.functionName.toJS
+      ..['taskId'] = _lastTaskId.toJS;
 
     postMessageToWorker(worker, data);
     return task.completer.future;
@@ -125,8 +134,12 @@ class WasmWorker {
 
   /// Terminates the worker.
   void dispose() {
-    _subscription.cancel();
-    worker.terminate();
+    worker.callMethod<JSAny?>(
+      'removeEventListener'.toJS,
+      'message'.toJS,
+      _onMessage,
+    );
+    worker.callMethod<JSAny?>('terminate'.toJS);
   }
 
   @override
@@ -136,12 +149,13 @@ class WasmWorker {
         ' _lastTaskId: $_lastTaskId)';
   }
 
-  void _handleMessage(html.MessageEvent event) {
-    if (event.data is String) {
-      print(event.data);
+  void _handleMessage(JSAny? eventData) {
+    final decoded = dartifyJson(eventData);
+    if (decoded is String) {
+      print(decoded);
       return;
     }
-    final data_ = (event.data as Map).cast<String, Object?>();
+    final data_ = (decoded! as Map).cast<String, Object?>();
     switch (data_['cmd']) {
       case 'loaded':
         _onLoaded.complete(this);
@@ -180,7 +194,7 @@ class WasmWorker {
         atomics.notify(Int32List.sublistView(bytes), 0, 1);
         break;
       case 'event':
-        _workersConfig.onWorkerMessage?.call(js_util.dartify(data_['data']));
+        _workersConfig.onWorkerMessage?.call(data_['data']);
         break;
       case 'result':
         final data = _PostMessageResult.fromJson(data_);
@@ -211,9 +225,6 @@ class WasmWorker {
     }
   }
 }
-
-@JS('DataView')
-external Object get _dataViewConstructor;
 
 class _PostMessageResult {
   final String cmd;

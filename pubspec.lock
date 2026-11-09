@@ -400,12 +400,11 @@ packages:
     source: hosted
     version: "3.3.3"
   flutter_rust_bridge:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: flutter_rust_bridge
-      sha256: "02720226035257ad0b571c1256f43df3e1556a499f6bcb004849a0faaa0e87f0"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/flutter_rust_bridge"
+      relative: true
+    source: path
     version: "1.82.6"
   flutter_secure_storage:
     dependency: "direct main"
@@ -1220,14 +1219,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "15.2.0"
-  wasm_interop:
-    dependency: transitive
-    description:
-      name: wasm_interop
-      sha256: b1b378f07a4cf0103c25faf34d9a64d2c3312135b9efb47e0ec116ec3b14e48f
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.1"
   wasm_run:
     dependency: "direct overridden"
     description:
@@ -1305,6 +1296,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.3"
+  zx:
+    dependency: transitive
+    description:
+      path: "../../x1watt/zx"
+      relative: true
+    source: path
+    version: "0.6.0"
 sdks:
   dart: ">=3.11.0-0 <4.0.0"
   flutter: ">=3.38.0"

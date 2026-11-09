@@ -16,7 +16,7 @@ import 'package:wasm_run/src/bridge_generated.dart'
 import 'package:wasm_run/src/int64_bigint/int64_bigint.dart';
 import 'package:wasm_run/src/wasm_bindings/_wasm_interop_stub.dart'
     if (dart.library.io) '_wasm_interop_native.dart'
-    if (dart.library.html) '_wasm_interop_web.dart' show isVoidReturn;
+    if (dart.library.js_interop) '_wasm_interop_web.dart' show isVoidReturn;
 
 export 'package:wasm_run/src/bridge_generated.dart'
     show

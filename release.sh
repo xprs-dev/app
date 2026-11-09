@@ -77,6 +77,7 @@ pin_of() {
 }
 RD_PIN=$(pin_of ../reticulum-dart)
 CORE_PIN=$(pin_of ../core)
+ZX_PIN=$(pin_of ../../x1watt/zx)
 WAPPS_PIN=$(pin_of ../apps)
 
 # F-Droid shows changelogs/<versionCode>.txt, and each per-ABI APK has its own
@@ -139,6 +140,7 @@ verblob=$(git hash-object -w lib/version.dart)
 declare -A put=( [pubspec.yaml]="$pubblob" [lib/version.dart]="$verblob"
   [.reticulum-dart-commit]=$(echo "$RD_PIN" | git hash-object -w --stdin)
   [.core-commit]=$(echo "$CORE_PIN" | git hash-object -w --stdin)
+  [.zx-commit]=$(echo "$ZX_PIN" | git hash-object -w --stdin)
   [.wapps-commit]=$(echo "$WAPPS_PIN" | git hash-object -w --stdin) )
 drop=()
 if [[ -n "$CL" ]]; then

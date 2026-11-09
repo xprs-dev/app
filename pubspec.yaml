@@ -197,6 +197,12 @@ dependency_overrides:
   # third_party/wasm_run_flutter/README.xprs.md.
   wasm_run_flutter:
     path: third_party/wasm_run_flutter
+  # Vendored (1.82.6, wasm_run's bridge runtime) with its web half ported
+  # from dart:html/package:js to dart:js_interop and its conditional imports
+  # keyed on dart.library.js_interop, so the dart2wasm web build (--wasm)
+  # compiles. See third_party/flutter_rust_bridge/README.xprs.md.
+  flutter_rust_bridge:
+    path: third_party/flutter_rust_bridge
   # Vendored without Google Play Services (play-services-location), which
   # F-Droid does not ship. See third_party/geolocator_android/README.xprs.md.
   geolocator_android:

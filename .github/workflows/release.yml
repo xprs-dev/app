@@ -94,13 +94,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch reticulum-dart and core at the pinned commits (path dependencies)
+      - name: Fetch reticulum-dart, core and zx at the pinned commits (path dependencies)
         shell: bash
-        run: |
-          git clone --filter=blob:none https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
-          git -C ../reticulum-dart checkout -q "$(cat .reticulum-dart-commit)"
-          git clone --filter=blob:none https://github.com/xprs-dev/core.git ../core
-          git -C ../core checkout -q "$(cat .core-commit)"
+        run: tool/ci_fetch_siblings.sh --pinned
       - name: Install Linux build deps
         run: |
           sudo apt-get update
@@ -135,13 +131,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch reticulum-dart and core at the pinned commits (path dependencies)
+      - name: Fetch reticulum-dart, core and zx at the pinned commits (path dependencies)
         shell: bash
-        run: |
-          git clone --filter=blob:none https://github.com/xprs-dev/reticulum-dart.git ../reticulum-dart
-          git -C ../reticulum-dart checkout -q "$(cat .reticulum-dart-commit)"
-          git clone --filter=blob:none https://github.com/xprs-dev/core.git ../core
-          git -C ../core checkout -q "$(cat .core-commit)"
+        run: tool/ci_fetch_siblings.sh --pinned
       - uses: subosito/flutter-action@v2
         with:
           channel: stable

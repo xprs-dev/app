@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:wasm_run/src/bridge_generated.dart';
 import 'package:wasm_run/src/wasm_bindings/_wasm_interop_stub.dart'
     if (dart.library.io) '_wasm_interop_native.dart'
-    if (dart.library.html) '_wasm_interop_web.dart' as platform_impl;
+    if (dart.library.js_interop) '_wasm_interop_web.dart' as platform_impl;
 import 'package:wasm_run/src/wasm_bindings/wasm_interface.dart';
 
 export 'package:wasm_run/src/bridge_generated.dart'

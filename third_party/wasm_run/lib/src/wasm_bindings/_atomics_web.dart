@@ -1,33 +1,35 @@
 // ignore_for_file: lines_longer_than_80_chars
 
-@JS()
-library atomics;
+// PATCHED (xprs): ported from package:js to dart:js_interop so it compiles
+// under dart2wasm as well as dart2js. Typed arrays are passed with `toJS`; for
+// a view of wasm memory (JS-backed) that is the same array, not a copy.
+// `wait` and `notify` were declared without `external` upstream and so could
+// not be called; they are bound here. See README.xprs.md.
 
-import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
+import 'dart:js_interop';
+import 'dart:typed_data';
 
 /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics
 @JS('Atomics')
 external Atomics get atomics;
 
 /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics
-@JS()
-@anonymous
-abstract class Atomics {
+extension type Atomics._(JSObject _) implements JSObject {
   /// Adds a value to the value at the given position in the array, returning the original value.
   /// Until this atomic operation completes, any other read or write operation against the array
   /// will block.
-  external int add(TypedData typedArray, int index, int value);
+  external int add(JSTypedArray typedArray, int index, int value);
 
   /// Stores the bitwise AND of a value with the value at the given position in the array,
   /// returning the original value. Until this atomic operation completes, any other read or
   /// write operation against the array will block.
-  external int and(TypedData typedArray, int index, int value);
+  external int and(JSTypedArray typedArray, int index, int value);
 
   /// Replaces the value at the given position in the array if the original value equals the given
   /// expected value, returning the original value. Until this atomic operation completes, any
   /// other read or write operation against the array will block.
   external int compareExchange(
-    TypedData typedArray,
+    JSTypedArray typedArray,
     int index,
     int expectedValue,
     int replacementValue,
@@ -36,7 +38,7 @@ abstract class Atomics {
   /// Replaces the value at the given position in the array, returning the original value. Until
   /// this atomic operation completes, any other read or write operation against the array will
   /// block.
-  external int exchange(TypedData typedArray, int index, int value);
+  external int exchange(JSTypedArray typedArray, int index, int value);
 
   /// Returns a value indicating whether high-performance algorithms can use atomic operations
   /// (`true`) or must use locks (`false`) for the given number of bytes-per-element of a typed
@@ -45,45 +47,71 @@ abstract class Atomics {
 
   /// Returns the value at the given position in the array. Until this atomic operation completes,
   /// any other read or write operation against the array will block.
-  external int load(TypedData typedArray, int index);
+  external int load(JSTypedArray typedArray, int index);
 
   /// Stores the bitwise OR of a value with the value at the given position in the array,
   /// returning the original value. Until this atomic operation completes, any other read or write
   /// operation against the array will block.
-  external int or(TypedData typedArray, int index, int value);
+  external int or(JSTypedArray typedArray, int index, int value);
 
   /// Stores a value at the given position in the array, returning the new value. Until this
   /// atomic operation completes, any other read or write operation against the array will block.
-  external int store(TypedData typedArray, int index, int value);
+  external int store(JSTypedArray typedArray, int index, int value);
 
   /// Subtracts a value from the value at the given position in the array, returning the original
   /// value. Until this atomic operation completes, any other read or write operation against the
   /// array will block.
-  external int sub(TypedData typedArray, int index, int value);
+  external int sub(JSTypedArray typedArray, int index, int value);
 
   /// If the value at the given position in the array is equal to the provided value, the current
   /// agent is put to sleep causing execution to suspend until the timeout expires (returning
   /// `"timed-out"`) or until the agent is awoken (returning `"ok"`); otherwise, returns
   /// `"not-equal"`.
-  String /* "ok" | "not-equal" | "timed-out" */ wait(
-    TypedData typedArray,
+  @JS('wait')
+  external String /* "ok" | "not-equal" | "timed-out" */ _wait(
+    JSTypedArray typedArray,
     int index,
-    int value,
+    int value, [
     int? timeout,
-  );
+  ]);
+
+  /// See [_wait]; a null [timeout] waits forever.
+  String wait(TypedData typedArray, int index, int value, int? timeout) =>
+      timeout == null
+          ? _wait(typedArray.toJSTyped, index, value)
+          : _wait(typedArray.toJSTyped, index, value, timeout);
 
   /// Wakes up sleeping agents that are waiting on the given index of the array, returning the
   /// number of agents that were awoken.
   /// @param typedArray A shared Int32Array.
   /// @param index The position in the typedArray to wake up on.
   /// @param count The number of sleeping agents to notify. Defaults to +Infinity.
-  int notify(TypedData typedArray, int index, int? count);
+  @JS('notify')
+  external int _notify(JSTypedArray typedArray, int index, [int? count]);
+
+  /// See [_notify]; a null [count] wakes every waiter.
+  int notify(TypedData typedArray, int index, int? count) => count == null
+      ? _notify(typedArray.toJSTyped, index)
+      : _notify(typedArray.toJSTyped, index, count);
 
   /// Stores the bitwise XOR of a value with the value at the given position in the array,
   /// returning the original value. Until this atomic operation completes, any other read or write
   /// operation against the array will block.
-  external int xor(TypedData typedArray, int index, int value);
+  external int xor(JSTypedArray typedArray, int index, int value);
 }
 
 // Int8Array | Uint8Array | Int16Array | Uint16Array | Int32Array | Uint32Array
 // TODO: Uint64 BigInt
+
+extension on TypedData {
+  JSTypedArray get toJSTyped {
+    final self = this;
+    if (self is Int32List) return self.toJS;
+    if (self is Uint8List) return self.toJS;
+    if (self is Int8List) return self.toJS;
+    if (self is Uint16List) return self.toJS;
+    if (self is Int16List) return self.toJS;
+    if (self is Uint32List) return self.toJS;
+    throw UnsupportedError('Atomics: unsupported typed array $runtimeType');
+  }
+}

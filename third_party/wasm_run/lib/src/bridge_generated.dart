@@ -14,7 +14,7 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 import 'bridge_generated.io.dart'
-    if (dart.library.html) 'bridge_generated.web.dart';
+    if (dart.library.js_interop) 'bridge_generated.web.dart';
 
 part 'bridge_generated.freezed.dart';
 
