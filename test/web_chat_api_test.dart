@@ -241,9 +241,16 @@ void main() {
 
     test('a visitor posts conversation and an identity, nothing else', () async {
       final a = make();
-      for (final t in ['command', 'moderate', 'mailbox', 'receipt', 'observation']) {
+      for (final t in ['command', 'moderate', 'observation']) {
         final w = _signed('t:$t f:X3ABCD ts:2026-10-15_12:00:00 m:x');
         expect((await send(a, w, peer: 'p-$t')).status, 403, reason: t);
+      }
+      // A mailbox declaration and a receipt are the visitor's to send
+      // (9.12, 9.7.1), but they are acted on, so only once the station
+      // holds the key they verify against: the identity first (409).
+      for (final t in ['mailbox', 'receipt']) {
+        final w = _signed('t:$t f:X3ABCD ts:2026-10-15_12:00:00 m:x');
+        expect((await send(a, w, peer: 'p-$t')).status, 409, reason: t);
       }
       final id = _signed('t:identity f:X3ABCD ts:2026-10-15_12:00:00 m:x');
       expect((await send(a, id, peer: 'p-id')).status, 200);

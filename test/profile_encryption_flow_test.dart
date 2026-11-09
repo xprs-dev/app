@@ -16,7 +16,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:xprs/profile/profile_crypto.dart';
-import 'package:xprs/profile/profile_db.dart';
+import 'package:xprs/profile/profile_keyring.dart';
 import 'package:xprs/profile/profile_encryption.dart';
 import 'package:xprs/profile/profile_service.dart';
 

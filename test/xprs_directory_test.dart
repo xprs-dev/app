@@ -2,12 +2,10 @@
  * The directory archivers exchange (XPRS.md 12.9): the XDIR1 listing, its
  * announcement, the pointers a consumer keeps, and who a miss names first.
  */
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reticulum/reticulum.dart' show XprsCrypto;
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_directory.dart';
 import 'package:xprs/services/xprs/xprs_gossip.dart';
@@ -18,10 +16,6 @@ import 'package:xprs/services/xprs/xprs_vocab.dart';
 int _ts(String s) => xprsParseTs(s)!;
 
 void main() {
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   group('the listing', () {
     test('compose: sorted by callsign, one line each, the freshest time wins', () {
@@ -75,7 +69,7 @@ void main() {
 
     setUp(() {
       tmp = Directory.systemTemp.createTempSync('xprsdir-gossip');
-      g.init('${tmp.path}/gossip.sqlite3');
+      g.init('${tmp.path}/gossip.zx');
       g.debugReset();
     });
     tearDown(() {
@@ -182,7 +176,7 @@ void main() {
 
     setUp(() {
       tmp = Directory.systemTemp.createTempSync('xprsdir-consume');
-      g.init('${tmp.path}/gossip.sqlite3');
+      g.init('${tmp.path}/gossip.zx');
       g.debugReset();
       XprsDirectoryConsumer.instance.debugReset();
     });
@@ -239,7 +233,7 @@ void main() {
         ..keyResolver = null
         ..maxBytes = 500 * 1024 * 1024
         ..maxAgeDays = 3650
-        ..init('${tmp.path}/archive.sqlite3');
+        ..init('${tmp.path}/archive.zx');
     });
     tearDown(() {
       a.close();
@@ -289,7 +283,7 @@ void main() {
       // Survives a reopen: the served set is read back from the table.
       a.noteServed('X1AGAIN', nowMs: 5000);
       a.close();
-      a.init('${tmp.path}/archive.sqlite3');
+      a.init('${tmp.path}/archive.zx');
       expect(a.servesVisitor('X1AGAIN'), isTrue);
     });
   });

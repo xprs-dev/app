@@ -11,12 +11,10 @@
  *      DIFFERENT favourite; the synced index answers m:try, and it fetches the
  *      bytes and verifies them.
  */
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/mesh/mesh_bulk_spool.dart';
 import 'package:xprs/services/xprs/xprs_files.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
@@ -27,10 +25,6 @@ import 'package:xprs/util/media_ref.dart';
 import 'support/xprs_sim.dart';
 
 void main() {
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   test('50 machines, one group chat, three large archivers', () async {
     const msgsPer = 12;

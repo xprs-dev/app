@@ -31,7 +31,6 @@ import '../services/reticulum/rns_session.dart';
 import 'core_stores_app.dart';
 import 'power_app.dart';
 import 'radio_app.dart';
-import 'sqlite_prepare.dart';
 
 /// Which wapp shows a notification the core raised about a topic. The core
 /// says what a notification is about (`core:nostr`); which wapp handles that
@@ -79,7 +78,6 @@ void wireCoreHost() {
     }
   };
   CoreHost.hasView = () => PlatformDispatcher.instance.views.isNotEmpty;
-  CoreHost.prepareSqlite = prepareAppSqlite;
   CoreHost.hasAllFilesAccess =
       AndroidPermissionsService.instance.hasAllFilesAccess;
   CoreHost.battery = BatteryPlusSource();

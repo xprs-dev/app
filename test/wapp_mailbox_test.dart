@@ -5,26 +5,16 @@
 // gone because the receiving side happened not to have that wapp loaded. It is
 // stored now, and the store is bounded so a device nobody opens cannot fill its
 // disk with mail for a wapp that may never run.
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:xprs/services/reticulum/wapp_mailbox.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 
 Uint8List body(int n, {int seed = 0}) =>
     Uint8List.fromList([for (var i = 0; i < n; i++) (i + seed) & 0xFF]);
 
 void main() {
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-        OperatingSystem.linux,
-        () => DynamicLibrary.open('libsqlite3.so.0'),
-      );
-    }
-  });
 
   late Directory dir;
 

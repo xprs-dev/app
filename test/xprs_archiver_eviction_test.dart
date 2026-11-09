@@ -10,11 +10,9 @@
  * would delete the declared mail first; §12.11 keeps it and drops the spool.
  * This is the regression test for that gap.
  */
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 
@@ -27,10 +25,6 @@ void main() {
   late XprsArchive a;
   late SimKeys keys;
 
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('xprsevict');
@@ -41,7 +35,7 @@ void main() {
       ..keyResolver = keys.resolve
       ..maxBytes = 1 << 30 // no cap while we load
       ..maxAgeDays = 1000000 // no age prune interfering
-      ..init('${tmp.path}/archive.sqlite3');
+      ..init('${tmp.path}/archive.zx');
   });
 
   tearDown(() {

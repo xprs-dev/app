@@ -2,6 +2,23 @@
 
 Status: all five phases implemented (crypto core, SQLCipher databases, profile.ear loose files, unlock UI + enable/disable, headless remember-key + locked notification). Android on-device validation pending. This document specifies how XPRS encrypts each profile's user data at rest.
 
+> **Amendment (2026-11-09): zx stores replace SQLCipher and profile.ear.**
+> Every database is a zx store (`*.zx`, pure Dart, the same on every
+> platform and in the dart2wasm web build), opened through core's
+> `storage/store_db.dart` (`openStoreDb`). Inside an encrypted profile a
+> store is encrypted by zx itself (zx-format §7: AES-256-CTR + HMAC per
+> block) with the store secret
+> `store(p) = hex(HKDF(PMK, info="xprs-zx-v1:" + relPath))`; the secret is
+> random at full strength, so the store's own password stretching is
+> minimal. The loose files that lived in `profile.ear` are in `profile.zx`
+> (KV stores `files`, `dirs`, `parts`; core `EncryptedProfileStorage`).
+> `earPass`, `dbKey` and the `encrypted_archive` package are gone (the sync
+> HKDF/GCM moved to core `profile/key_derivation.dart`); the password, KEK,
+> PMK and keyslot below are unchanged. No data was migrated: the old
+> `*.sqlite3` files and `profile.ear` are deleted once at start
+> (`storage/pre_zx_cleanup.dart`). The SQLCipher and `.ear` parts of this
+> document are history.
+
 > **Amendment (2026-08-02):** the "fingerprint prompt is the lock" doctrine is
 > retired. Device-key profiles now unlock **silently everywhere** (UI and
 > headless) — encryption is at-rest protection, not an app lock — so the

@@ -1,10 +1,8 @@
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/profile/profile_storage_fs.dart';
 import 'package:xprs/services/blossom_server.dart';
 import 'package:xprs/services/torrent_service.dart';
@@ -12,12 +10,6 @@ import 'package:xprs/util/media_archive.dart';
 import 'package:xprs/util/media_ref.dart';
 
 void main() {
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   final temps = <Directory>[];
   (MediaArchive, Directory) freshArchive() {

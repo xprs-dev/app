@@ -4,7 +4,6 @@
  * policy at flush, bounded eviction with protected classes, mailbox
  * declarations (13.12) and the query the history replay runs on.
  */
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -22,7 +21,6 @@ import 'package:xprs/services/xprs/xprs_vocab.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pointycastle/ecc/curves/secp256k1.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_presence.dart';
 import 'package:xprs/services/social/retention_tier.dart';
 
@@ -44,10 +42,6 @@ void main() {
   late Directory tmp;
   late XprsArchive a;
 
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   setUp(() async {
     // This station keeps other people's traffic, which since XPRS.md 12's
@@ -66,7 +60,7 @@ void main() {
       ..admitted = 0
       ..dropped = 0
       ..forged = 0
-      ..init('${tmp.path}/xprs_archive.sqlite3');
+      ..init('${tmp.path}/xprs_archive.zx');
   });
 
   tearDown(() {

@@ -4,7 +4,6 @@
  * metering tiers, one-replay-in-flight, and advert-echo dedup.
  */
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -23,7 +22,6 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:xprs/services/preferences_service.dart';
-import 'package:sqlite3/open.dart';
 
 final BigInt _d =
     BigInt.parse('1234567890abcdef1234567890abcdef', radix: 16);
@@ -60,10 +58,6 @@ void main() {
   late XprsHistoryServer srv;
   late List<(String key, String wire)> aired;
 
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   setUp(() async {
     // This station answers for other people, which since the archiver tiers
@@ -78,7 +72,7 @@ void main() {
       ..keyResolver = null
       ..maxBytes = 500 * 1024 * 1024
       ..maxAgeDays = 365
-      ..init('${tmp.path}/xprs_archive.sqlite3');
+      ..init('${tmp.path}/xprs_archive.zx');
     srv = XprsHistoryServer.instance;
     srv.reset();
     srv.signingKey = () => _d;
@@ -443,7 +437,7 @@ void main() {
 
     setUp(() {
       gtmp = Directory.systemTemp.createTempSync('xprshist-gossip');
-      g.init('${gtmp.path}/gossip.sqlite3');
+      g.init('${gtmp.path}/gossip.zx');
       g.debugReset();
       a.keyResolver = (c) => c == 'X1MOBL' ? XprsCrypto.publicKeyXOnly(key) : null;
     });

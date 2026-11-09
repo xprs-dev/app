@@ -6,13 +6,11 @@
 // completed (docs/performance.md 8.23).
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:hex/hex.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_sig.dart';
@@ -21,10 +19,6 @@ import 'package:xprs/services/xprs/xprs_tcp.dart';
 import 'support/mail_relay_sim.dart';
 
 void main() {
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   test('a station the archiver cannot verify is asked for its key, then put '
       'on the socket once the key is held', () async {
@@ -64,8 +58,21 @@ void main() {
 
       String signedByA(String wire) =>
           xprsSign(XprsPacket.parse(wire)!, a.scalar).encode();
-      Future<void> settle() =>
-          Future<void>.delayed(const Duration(milliseconds: 250));
+      // Until the answers stop coming (400 ms of quiet, 5 s at most): the
+      // first line runs the stores' query code for the first time, which in
+      // the test VM's JIT can take longer than one fixed wait.
+      Future<void> settle() async {
+        var seen = -1, quiet = 0;
+        for (var i = 0; i < 100 && quiet < 8; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          if (got.length == seen) {
+            quiet++;
+          } else {
+            seen = got.length;
+            quiet = 0;
+          }
+        }
+      }
 
       // First contact: the phone's q:mail, signed with a key X3ARCH has
       // never seen.

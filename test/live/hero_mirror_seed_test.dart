@@ -8,12 +8,10 @@
 // hands to other peers. That is the "cache what you follow and serve it" claim,
 // checked from the outside.
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reticulum/reticulum.dart';
-import 'package:sqlite3/open.dart';
 
 const _dir = '/home/brito/.local/share/aurora/devices/X16JK8/data';
 const _priv =
@@ -25,8 +23,6 @@ void main() {
   final live = Directory(_dir).existsSync();
 
   test('seed a followed author post into the hub store', () {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
 
     final pub = NostrCrypto.derivePublicKey(_priv);
     final ev = NostrEvent(

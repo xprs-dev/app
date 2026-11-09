@@ -2,12 +2,10 @@
 // reachability, that a file already held is re-used with no wire, and that a
 // second ask for the same file joins the first rather than starting a
 // duplicate. The lane policy (decide) is pure and tested on its own.
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/media/media_fetch.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_ingest.dart';
@@ -16,12 +14,6 @@ import 'package:xprs/util/media_archive.dart';
 import 'package:xprs/util/media_ref.dart';
 
 void main() {
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   const kb = 1024;
   const packetCap = 32 * 1024;

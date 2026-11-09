@@ -5,11 +5,9 @@
  * an internet-borne claim never writes the visit history, the rings hold
  * their caps.
  */
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/xprs/xprs_gossip.dart';
 import 'package:xprs/services/xprs/xprs_ingest.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
@@ -22,10 +20,8 @@ void main() {
   const t0 = 1700000000000;
 
   setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
     tmp = Directory.systemTemp.createTempSync('xprsgossip');
-    g.init('${tmp.path}/gossip.sqlite3');
+    g.init('${tmp.path}/gossip.zx');
   });
 
   setUp(g.debugReset);

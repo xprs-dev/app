@@ -22,13 +22,13 @@ void main() {
       expect(unlocked.nsec, equals(nsec));
       expect(unlocked.storeSecret('profile.zx'), equals(secrets.keys.storeSecret('profile.zx')));
       expect(
-        unlocked.dbKeyHex('data/mesh.sqlite3'),
-        equals(secrets.keys.dbKeyHex('data/mesh.sqlite3')),
+        unlocked.storeSecret('data/mesh.zx'),
+        equals(secrets.keys.storeSecret('data/mesh.zx')),
       );
       // Distinct DBs get distinct keys.
       expect(
-        unlocked.dbKeyHex('data/mesh.sqlite3'),
-        isNot(equals(unlocked.dbKeyHex('data/media.sqlite3'))),
+        unlocked.storeSecret('data/mesh.zx'),
+        isNot(equals(unlocked.storeSecret('data/media.zx'))),
       );
     });
 
@@ -94,7 +94,7 @@ void main() {
       final secrets =
           await ProfileCrypto.createProfileSecrets('old pass', nsec);
       final zxBefore = secrets.keys.storeSecret('profile.zx');
-      final dbBefore = secrets.keys.dbKeyHex('data/media.sqlite3');
+      final secretBefore = secrets.keys.storeSecret('data/media.zx');
 
       final changed = await ProfileCrypto.changePassword(
         'old pass',
@@ -109,7 +109,7 @@ void main() {
         changed.keyslot,
       );
       expect(unlocked.storeSecret('profile.zx'), equals(zxBefore));
-      expect(unlocked.dbKeyHex('data/media.sqlite3'), equals(dbBefore));
+      expect(unlocked.storeSecret('data/media.zx'), equals(secretBefore));
 
       await expectLater(
         ProfileCrypto.unlock(
@@ -158,8 +158,8 @@ void main() {
       expect(restored.nsec, equals(nsec));
       expect(restored.storeSecret('profile.zx'), equals(secrets.keys.storeSecret('profile.zx')));
       expect(
-        restored.dbKeyHex('data/social.sqlite3'),
-        equals(secrets.keys.dbKeyHex('data/social.sqlite3')),
+        restored.storeSecret('data/social.zx'),
+        equals(secrets.keys.storeSecret('data/social.zx')),
       );
     });
 
@@ -168,7 +168,7 @@ void main() {
           await ProfileCrypto.createProfileSecrets('bye 👋', nsec);
       secrets.keys.dispose();
       expect(() => secrets.keys.storeSecret('profile.zx'), throwsStateError);
-      expect(() => secrets.keys.dbKey('data/x.sqlite3'), throwsStateError);
+      expect(() => secrets.keys.storeSecret('data/x.zx'), throwsStateError);
     });
   });
 }

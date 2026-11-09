@@ -2,7 +2,6 @@
  * MeshStore (SCF sqlite) tests — park/dedup/purge/route-aware pending,
  * have-bloom build+apply, TTL/quota sweep.
  */
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -11,7 +10,6 @@ import 'package:xprs/services/mesh/mesh_bloom.dart';
 import 'package:xprs/services/mesh/mesh_store.dart';
 import 'package:xprs/services/mesh/mesh_table.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 
 Uint8List _wire(String from, String to, String text) =>
     Uint8List.fromList('$from\x1F$to\x1F$text'.codeUnits);
@@ -20,16 +18,11 @@ void main() {
   late Directory tmp;
   late MeshStore store;
 
-  setUpAll(() {
-    // Host test runner: the distro ships libsqlite3.so.0, not the dev symlink.
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('meshstore');
     store = MeshStore.instance;
-    store.init('${tmp.path}/mesh.sqlite3');
+    store.init('${tmp.path}/mesh.zx');
   });
 
   tearDown(() {
@@ -492,7 +485,7 @@ void main() {
     test('the queue survives a reopen — this is the point of persisting it', () {
       final packed = Uint8List.fromList([9, 9, 9, 9]);
       store.txPut('k3', 'dst', packed, 'xprs', 'ack', 2, 42);
-      final path = '${tmp.path}/mesh.sqlite3';
+      final path = '${tmp.path}/mesh.zx';
       store.close();
       store.init(path); // as a restart would
       final rows = store.txLoad();

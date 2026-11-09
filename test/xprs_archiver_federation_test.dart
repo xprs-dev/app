@@ -34,7 +34,6 @@
  *      what achieves the same routing today.)
  */
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -42,7 +41,6 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hex/hex.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/preferences_service.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_cadence.dart';
@@ -91,10 +89,6 @@ void main() {
   late _Keys keys;
   late List<(String key, String wire)> aired;
 
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   setUp(() async {
     // This station keeps other people's traffic, which since XPRS.md 12's
@@ -112,10 +106,10 @@ void main() {
       ..maxBytes = 500 * 1024 * 1024
       ..maxAgeDays = 365
       ..keyResolver = keys.resolve
-      ..init('${tmp.path}/xprs_archive.sqlite3');
+      ..init('${tmp.path}/xprs_archive.zx');
 
     g = XprsGossip.instance;
-    g.init('${tmp.path}/gossip.sqlite3');
+    g.init('${tmp.path}/gossip.zx');
     g.debugReset();
 
     srv = XprsHistoryServer.instance;

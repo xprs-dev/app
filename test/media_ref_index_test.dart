@@ -1,23 +1,17 @@
 // The reference index: what a conversation said about a file, kept by hash so
 // the size, the name, and a preview's original survive the packets going by.
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/services/media/media_ref_index.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 
 void main() {
-  setUpAll(() {
-    open.overrideFor(
-        OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-  });
 
   late Directory tmp;
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('mediarefidx');
-    MediaRefIndex.instance.init('${tmp.path}/media_refs.sqlite3');
+    MediaRefIndex.instance.init('${tmp.path}/media_refs.zx');
   });
   tearDown(() {
     MediaRefIndex.instance.close();

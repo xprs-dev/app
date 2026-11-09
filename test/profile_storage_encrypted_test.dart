@@ -9,7 +9,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:xprs/profile/profile_crypto.dart';
-import 'package:xprs/profile/profile_db.dart';
+import 'package:xprs/profile/profile_keyring.dart';
 import 'package:xprs/profile/profile_storage_encrypted.dart';
 import 'package:xprs/profile/secure_file.dart';
 
@@ -57,13 +57,6 @@ void main() {
       expect(EncryptedProfileStorage.isPassthroughPath('data/mesh.zx'),
           isTrue);
       expect(EncryptedProfileStorage.isPassthroughPath('data/mesh.zx-lock'),
-          isTrue);
-      expect(
-          EncryptedProfileStorage.isPassthroughPath('data/mesh.sqlite3'),
-          isTrue);
-      expect(
-          EncryptedProfileStorage.isPassthroughPath(
-              'data/chat/geochat.sqlite3-wal'),
           isTrue);
       expect(EncryptedProfileStorage.isPassthroughPath('data/rns_identity.key'),
           isTrue);
