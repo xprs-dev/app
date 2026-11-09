@@ -38,7 +38,7 @@ jobs:
         continue-on-error: true
         with:
           repository: xprs-dev/reticulum-dart
-          ref: pure-dart
+          ref: main
           path: reticulum-dart
 
       # core is code that moved out of lib/ and keeps every app rule; without
@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: xprs-dev/core
-          ref: core-move
+          ref: main
           path: core
 
       - uses: dart-lang/setup-dart@v1

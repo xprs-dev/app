@@ -1,9 +1,9 @@
 name: test
 
-# Runs the Aurora unit tests on every push/PR (the content-transfer, folder,
-# media-archive and update suites). Aurora depends on reticulum-dart and core
-# through path dependencies (../reticulum-dart, ../core), so we check those
-# repos out as siblings before resolving packages.
+# Runs the app's unit tests on every push/PR. The app depends on
+# reticulum-dart and core through path dependencies (../reticulum-dart,
+# ../core), and they on zx (../../x1watt/zx); tool/ci_fetch_siblings.sh clones
+# them before packages are resolved.
 on:
   push:
     branches: [main]
@@ -14,24 +14,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout xprs
-        uses: actions/checkout@v4
-        with:
-          path: xprs
+      - uses: actions/checkout@v4
 
-      - name: Checkout reticulum-dart (path dependency)
-        uses: actions/checkout@v4
-        with:
-          repository: xprs-dev/reticulum-dart
-          ref: pure-dart
-          path: reticulum-dart
-
-      - name: Checkout core (path dependency)
-        uses: actions/checkout@v4
-        with:
-          repository: xprs-dev/core
-          ref: core-move
-          path: core
+      - name: Fetch reticulum-dart, core and zx (path dependencies)
+        shell: bash
+        run: tool/ci_fetch_siblings.sh
 
       - uses: subosito/flutter-action@v2
         with:
@@ -39,7 +26,6 @@ jobs:
           cache: true
 
       - name: Test
-        working-directory: xprs
         run: |
           flutter pub get
           flutter test
