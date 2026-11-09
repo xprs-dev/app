@@ -11,11 +11,9 @@
 library;
 
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 
 import 'package:xprs/profile/profile_crypto.dart';
 import 'package:xprs/profile/profile_db.dart';
@@ -25,12 +23,6 @@ import 'package:xprs/profile/profile_service.dart';
 void main() {
   final isolated = Platform.environment['AURORA_TEST_HOME'] == '1';
 
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   test('full encryption lifecycle', () async {
     final service = ProfileService.instance;
@@ -77,7 +69,7 @@ void main() {
     expect(File('$root/devices/$id/data/chat/hello.json').existsSync(),
         isFalse);
     final earBytes =
-        File('$root/devices/$id/profile.ear').readAsBytesSync();
+        File('$root/devices/$id/profile.zx').readAsBytesSync();
     expect(utf8.decode(earBytes, allowMalformed: true).contains('secret'),
         isFalse);
 
@@ -120,7 +112,7 @@ void main() {
     await ProfileEncryption.disable(id, password: 'new🐘pass');
     expect(ProfileEncryption.isEncrypted(id), isFalse);
     expect(File('$root/devices/$id/keyslot.json').existsSync(), isFalse);
-    expect(File('$root/devices/$id/profile.ear').existsSync(), isFalse);
+    expect(File('$root/devices/$id/profile.zx').existsSync(), isFalse);
     final restored = profilesFile.readAsStringSync();
     expect(restored, contains(plainNsec));
     expect(restored.contains('nsec_enc'), isFalse);

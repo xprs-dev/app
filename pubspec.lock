@@ -232,13 +232,6 @@ packages:
       relative: true
     source: path
     version: "0.5.4"
-  encrypted_archive:
-    dependency: "direct main"
-    description:
-      path: "../core/packages/encrypted_archive"
-      relative: true
-    source: path
-    version: "0.1.0"
   equatable:
     dependency: transitive
     description:

@@ -3,12 +3,10 @@
 library;
 
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 
 import 'package:xprs/profile/profile_crypto.dart';
 import 'package:xprs/profile/profile_db.dart';
@@ -19,12 +17,6 @@ const _nsec =
     'nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5';
 
 void main() {
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   late Directory tempRoot;
   late ProfileSecrets secrets;
@@ -56,11 +48,15 @@ void main() {
     test('routes correctly', () {
       // filesystem side
       expect(EncryptedProfileStorage.isPassthroughPath('keyslot.json'), isTrue);
-      expect(EncryptedProfileStorage.isPassthroughPath('profile.ear'), isTrue);
+      expect(EncryptedProfileStorage.isPassthroughPath('profile.zx'), isTrue);
       expect(
-          EncryptedProfileStorage.isPassthroughPath('profile.ear-wal'), isTrue);
+          EncryptedProfileStorage.isPassthroughPath('profile.zx-lock'), isTrue);
       expect(EncryptedProfileStorage.isPassthroughPath('.seeded.json'), isTrue);
       expect(EncryptedProfileStorage.isPassthroughPath('wapps/chat/app.wasm'),
+          isTrue);
+      expect(EncryptedProfileStorage.isPassthroughPath('data/mesh.zx'),
+          isTrue);
+      expect(EncryptedProfileStorage.isPassthroughPath('data/mesh.zx-lock'),
           isTrue);
       expect(
           EncryptedProfileStorage.isPassthroughPath('data/mesh.sqlite3'),
@@ -96,19 +92,54 @@ void main() {
       expect(await st.readString('data/chat/kv.json'), equals('{"hello":"🌍"}'));
       expect(await st.exists('data/chat/kv.json'), isTrue);
 
-      // Nothing plaintext on disk: only keyslot + profile.ear(-wal/shm).
+      // Nothing plaintext on disk: only keyslot + profile.zx (+ its lock).
       final files = Directory('${tempRoot.path}/devices/E1')
           .listSync(recursive: true)
           .whereType<File>()
           .map((f) => f.path.split('/').last)
           .toList();
       expect(files.where((f) => f.contains('kv.json')), isEmpty);
-      expect(files.where((f) => f.startsWith('profile.ear')), isNotEmpty);
+      expect(files.where((f) => f.startsWith('profile.zx')), isNotEmpty);
 
       // Content really is unreadable in the archive file.
       final ear =
-          File('${tempRoot.path}/devices/E1/profile.ear').readAsBytesSync();
+          File('${tempRoot.path}/devices/E1/profile.zx').readAsBytesSync();
       expect(utf8.decode(ear, allowMalformed: true).contains('hello'), isFalse);
+    });
+
+    test('a big file copied in is stored in pieces and comes back whole',
+        () async {
+      final st = await encryptedStorage('E9');
+      // 2.5 pieces of 256 KiB, a pattern that shows any misplaced byte
+      final big = Uint8List.fromList(
+          List<int>.generate(640 * 1024 + 7, (i) => (i * 31 + i ~/ 977) & 0xff));
+      final src = File('${tempRoot.path}/outside/big.bin')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(big);
+
+      await st.copyFromExternal(src.path, 'data/files/big.bin');
+      expect(File('${tempRoot.path}/devices/E9/data/files/big.bin').existsSync(),
+          isFalse);
+      expect(await st.readBytes('data/files/big.bin'), equals(big));
+      expect(st.readBytesSync('data/files/big.bin'), equals(big));
+
+      final listed = (await st.listDirectory('data/files'))
+          .singleWhere((e) => e.name == 'big.bin');
+      expect(listed.size, big.length);
+
+      final out = '${tempRoot.path}/outside/back.bin';
+      await st.copyToExternal('data/files/big.bin', out);
+      expect(File(out).readAsBytesSync(), equals(big));
+
+      // overwritten by a small file, then deleted
+      await st.writeString('data/files/big.bin', 'small');
+      expect(await st.readString('data/files/big.bin'), 'small');
+      await st.copyFromExternal(src.path, 'data/files/big.bin');
+      await st.renameDirectory('data/files', 'data/moved');
+      expect(await st.readBytes('data/moved/big.bin'), equals(big));
+      await st.deleteDirectory('data/moved', recursive: true);
+      expect(await st.exists('data/moved/big.bin'), isFalse);
+      expect(await st.directoryExists('data/moved'), isFalse);
     });
 
     test('passthrough write creates a real file', () async {
@@ -141,17 +172,17 @@ void main() {
 
       await st.writeString('data/w/kv.json', '{}'); // archive
       await st.writeBytes('data/w/blob.bin', Uint8List.fromList([1, 2, 3]));
-      File('${tempRoot.path}/devices/E4/data/w/store.sqlite3')
+      File('${tempRoot.path}/devices/E4/data/w/store.zx')
         ..createSync(recursive: true)
         ..writeAsStringSync('fake-db'); // filesystem
 
       final names = (await st.listDirectory('data/w')).map((e) => e.name).toSet();
-      expect(names, containsAll({'kv.json', 'blob.bin', 'store.sqlite3'}));
+      expect(names, containsAll({'kv.json', 'blob.bin', 'store.zx'}));
 
       // root listing hides the container + keyslot
       final rootNames =
           (await st.listDirectory('')).map((e) => e.name).toSet();
-      expect(rootNames.contains('profile.ear'), isFalse);
+      expect(rootNames.contains('profile.zx'), isFalse);
       expect(rootNames.contains(keyslotFileName), isFalse);
     });
 
