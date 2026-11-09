@@ -301,10 +301,13 @@ it.
 
 What else had to line up:
 
-* **The same sources.** `pubspec.yaml` depends on `../reticulum-dart` by path,
-  and the bundled wapps are rebuilt from `xprs-dev/apps`. `release.sh` pins
-  both by commit in the release itself (`.reticulum-dart-commit`,
-  `.wapps-commit`), and the recipe checks those commits out. It refuses to
+* **The same sources.** `pubspec.yaml` depends on `../reticulum-dart` and
+  `../core` by path, both depend on zx (`x1watt/zx`, the stores' database) at
+  `../../x1watt/zx`, and the bundled wapps are rebuilt from `xprs-dev/apps`.
+  `release.sh` pins them by commit in the release itself
+  (`.reticulum-dart-commit`, `.core-commit`, `.zx-commit`, `.wapps-commit`),
+  and the recipe checks those commits out (zx is the `xprs-zx` srclib, copied
+  to `../../x1watt/zx`). It refuses to
   release while a sibling repository's HEAD is not on its `origin/main`.
 * **The same version.** Tag builds keep the `+N` `release.sh` wrote into
   `pubspec.yaml`. (CI used to rewrite it to the commit count, which was one

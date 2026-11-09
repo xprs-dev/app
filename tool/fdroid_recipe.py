@@ -76,6 +76,7 @@ def render(version, code, commit, repo=None, binary=True):
                          # release's own pins, which a full clone holds.
                          ('@RD_PIN@', pin('.reticulum-dart-commit')),
                          ('@CORE_PIN@', pin('.core-commit')),
+                         ('@ZX_PIN@', pin('.zx-commit')),
                          ('@WAPPS_PIN@', pin('.wapps-commit'))):
             b = b.replace(key, val)
         blocks.append(b)
