@@ -98,7 +98,7 @@ if [[ -z "$CL" ]]; then
 fi
 
 echo ">> current: $current   new: $VERSION+$CODE"
-echo ">> pins: reticulum-dart $RD_PIN, core $CORE_PIN, wapps $WAPPS_PIN; changelog: ${CL:-none}"
+echo ">> pins: reticulum-dart $RD_PIN, core $CORE_PIN, zx $ZX_PIN, wapps $WAPPS_PIN; changelog: ${CL:-none}"
 if [[ "$YES" -ne 1 ]]; then
   read -r -p ">> proceed? [y/N] " ans; [[ "$ans" == "y" || "$ans" == "Y" ]] || exit 1
 fi
