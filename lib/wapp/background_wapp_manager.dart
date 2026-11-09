@@ -184,7 +184,7 @@ class BackgroundWappManager {
       if (prefs != null) {
         try {
           final db = ConversationDb.open(wappDataStorageFor(prefs, wappName)
-              .getAbsolutePath('conversations.sqlite3'));
+              .getAbsolutePath('conversations.zx'));
           try {
             for (final field in db.fields()) {
               final store = ConversationStore()
@@ -330,11 +330,11 @@ class _WappBackgroundService extends BackgroundService {
   /// background was missing from Mesh, and its thread came back empty.
   late final ActivityArchive _socialArchive = ActivityArchive.forStorage(
     wappDataStorageFor(prefs, name),
-    fileName: 'social_all.sqlite3',
+    fileName: 'social_all.zx',
   );
 
   // Conversation history shared with the foreground page through the SAME
-  // `conversations.sqlite3`. Without this, a 1:1 received while running
+  // `conversations.zx`. Without this, a 1:1 received while running
   // headless fires its notification but never lands in the store the page
   // renders — the message "arrives" yet the conversation stays empty. SQLite's
   // own locking makes the two engines safe to interleave; the ownership claim
@@ -361,7 +361,7 @@ class _WappBackgroundService extends BackgroundService {
     final data = wappDataStorageFor(prefs, name);
     try {
       _convDb = ConversationDb.open(
-          data.getAbsolutePath('conversations.sqlite3'));
+          data.getAbsolutePath('conversations.zx'));
     } catch (e) {
       // Locked/corrupt: run memory-only rather than overwrite real history.
       LogService.instance.add(
@@ -387,7 +387,7 @@ class _WappBackgroundService extends BackgroundService {
     }
     // Publish what the disk already holds. Nothing else re-states an unread
     // count after a restart, so the tile read zero until the wapp happened to
-    // say something -- while conversations.sqlite3 held the real number.
+    // say something -- while conversations.zx held the real number.
     _syncBadge();
   }
 

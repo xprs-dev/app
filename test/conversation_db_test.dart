@@ -1,31 +1,21 @@
 // Durable conversation history: the properties that had to hold for a phone
 // to stop losing every message it had ever received.
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:xprs/services/log_service.dart';
 import 'package:xprs/wapp/geoui/conversation_db.dart';
 import 'package:xprs/wapp/geoui/conversation_store.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
-import 'package:sqlite3/sqlite3.dart';
+import 'package:xprs_core/src/storage/store_db.dart' show openStoreDb;
 
 void main() {
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-        OperatingSystem.linux,
-        () => DynamicLibrary.open('libsqlite3.so.0'),
-      );
-    }
-  });
 
   late Directory tmp;
   late String dbPath;
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('convo_db_test');
-    dbPath = '${tmp.path}/conversations.sqlite3';
+    dbPath = '${tmp.path}/conversations.zx';
   });
 
   tearDown(() {
@@ -132,24 +122,6 @@ void main() {
     final check = reopen(db3);
     expect(check.messagesOf('c'), hasLength(1));
     db3.close();
-  });
-
-  test('a database written before the ckey column still opens', () {
-    // Simulate the older schema exactly: no ckey column, one stored message.
-    final legacyDb = ConversationDb.open(dbPath);
-    legacyDb.close();
-    final raw = sqlite3.open(dbPath);
-    raw.execute('DROP INDEX IF EXISTS msg_key');
-    raw.execute('ALTER TABLE messages DROP COLUMN ckey');
-    raw.execute(
-        "INSERT INTO messages(field, convo_id, mid, body) VALUES('conversations','c','', ?)",
-        ['{"dir":"in","text":"older build"}']);
-    raw.dispose();
-
-    final db = ConversationDb.open(dbPath); // must NOT throw
-    final restored = reopen(db);
-    expect(restored.messagesOf('c').single['text'], 'older build');
-    db.close();
   });
 
   test('two engines emitting the same message id show one bubble', () {
@@ -266,7 +238,7 @@ void main() {
     db.close();
 
     // Strip it the way an older build would have left the row.
-    final raw = sqlite3.open(dbPath);
+    final raw = openStoreDb(dbPath);
     raw.execute(
         "UPDATE threads SET meta = json_remove(meta, '\$.lastLine') "
         "WHERE field='conversations'");
@@ -481,9 +453,8 @@ void main() {
   //
   // The empty box: at the page->headless handoff the DB open met a lock and
   // threw, and the store fell to memory-only for good — a message arriving
-  // then was written nowhere while its notification fired. openProfileDb waits
-  // a lock out now, and ConversationDb.open retries a transient SqliteException
-  // rather than giving up. A normal open must be unaffected.
+  // then was written nowhere while its notification fired. The store opener
+  // waits zx's writer lock out now rather than giving up. A normal open must be unaffected.
 
   test('open on a fresh path returns a usable, writable database', () {
     final db = ConversationDb.open(dbPath);
@@ -499,7 +470,7 @@ void main() {
 
   test('reopening a database another handle already holds does not throw', () {
     // Two live handles on one file — the shape of the page/headless overlap.
-    // With busy_timeout set this must not throw SQLITE_BUSY on the second open.
+    // zx admits several handles; only a commit takes the writer lock.
     final a = ConversationDb.open(dbPath);
     attached(a).upsert({'id': '#LOCAL', 'title': 'Local chat'});
     final b = ConversationDb.open(dbPath); // would throw pre-fix

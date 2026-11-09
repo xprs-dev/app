@@ -479,7 +479,7 @@ class _WappPageState extends State<WappPage>
 
   /// The Social "Nomadnet" feed: NOSTR publications fetched over RETICULUM
   /// (archivers + peers across the hubs) + this device's local store, into its
-  /// OWN separate archive (social_nomadnet.sqlite3). Runs only while the Nomadnet
+  /// OWN separate archive (social_nomadnet2.zx). Runs only while the Nomadnet
   /// tab is viewed (started/stopped in onFilterChanged) to save battery.
   ActivityArchive? _nomadnetArchive;
   NomadnetPoller? _nomadPoller;
@@ -766,7 +766,7 @@ class _WappPageState extends State<WappPage>
         return store;
       });
 
-  // Conversation persistence lives in `conversations.sqlite3` under the wapp
+  // Conversation persistence lives in `conversations.zx` under the wapp
   // data dir — a real file even inside an encrypted profile (`.sqlite3` is
   // passthrough), encrypted by SQLCipher with the profile key. Writes are
   // per-row and immediate; there is no debounce and no whole-file rewrite to
@@ -795,7 +795,7 @@ class _WappPageState extends State<WappPage>
     if (_convWappOwned) return;
     try {
       _convDb = ConversationDb.open(
-        data.getAbsolutePath('conversations.sqlite3'),
+        data.getAbsolutePath('conversations.zx'),
       );
     } catch (e) {
       // Locked profile, wrong key, corrupt file. Say so — and leave _convDb
@@ -891,7 +891,7 @@ class _WappPageState extends State<WappPage>
         await data.delete(entry.path);
         LogService.instance.add(
           'wapp $_wappName: imported legacy convo field "$field" '
-          '($msgs messages) into conversations.sqlite3',
+          '($msgs messages) into conversations.zx',
         );
       }
     } catch (e) {
@@ -1338,7 +1338,7 @@ class _WappPageState extends State<WappPage>
       final legacyArchive = _activityArchive!;
       _activityArchive = ActivityArchive.forStorage(
         wappData,
-        fileName: 'social_all.sqlite3',
+        fileName: 'social_all.zx',
       );
       _socialFeedFilter =
           PreferencesService.instanceSync?.getWappUiPref(
@@ -1367,7 +1367,7 @@ class _WappPageState extends State<WappPage>
       // on every open is the bug the user hit.)
       _nomadnetArchive = ActivityArchive.forStorage(
         wappData,
-        fileName: 'social_nomadnet2.sqlite3',
+        fileName: 'social_nomadnet2.zx',
       );
       // The NOSTR-over-Reticulum poller is gone with it.
       // No self-note echo: our own status comes back through the spool.

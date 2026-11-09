@@ -53,7 +53,7 @@ void main() {
     final dir = Directory.systemTemp.createTempSync('activity_route_');
     dirs.add(dir);
     final legacy = archive(dir, 'activity.sqlite3');
-    final all = archive(dir, 'social_all.sqlite3');
+    final all = archive(dir, 'social_all.zx');
     final following = archive(dir, 'social_following.sqlite3');
     final followed = repeated('a', 64);
     final stranger = repeated('b', 64);
@@ -100,7 +100,7 @@ void main() {
   test('All cleanup preserves archived batches but removes mixed sources', () {
     final dir = Directory.systemTemp.createTempSync('activity_cleanup_');
     dirs.add(dir);
-    final all = archive(dir, 'social_all.sqlite3');
+    final all = archive(dir, 'social_all.zx');
     final author = repeated('c', 64);
     all.add(
       note(
@@ -138,7 +138,7 @@ void main() {
   test('independent archives both retain the same event id', () {
     final dir = Directory.systemTemp.createTempSync('activity_dual_');
     dirs.add(dir);
-    final all = archive(dir, 'social_all.sqlite3');
+    final all = archive(dir, 'social_all.zx');
     final following = archive(dir, 'social_following.sqlite3');
     final author = repeated('d', 64);
     final id = repeated('7', 64);
@@ -157,7 +157,7 @@ void main() {
   test('older pages are bounded and returned oldest first', () {
     final dir = Directory.systemTemp.createTempSync('activity_pages_');
     dirs.add(dir);
-    final all = archive(dir, 'social_all.sqlite3');
+    final all = archive(dir, 'social_all.zx');
     final author = repeated('e', 64);
     for (var i = 1; i <= 5; i++) {
       all.add(

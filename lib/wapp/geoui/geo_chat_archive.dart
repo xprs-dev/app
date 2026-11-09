@@ -4,27 +4,23 @@
 // so it survives restarts, and can be queried back by a centre + radius so a
 // wapp can show the older messages for a chosen region.
 //
-// Backed by SQLite (same as wapp_social_store.dart) — chosen over a flat
-// append-log specifically for durability: writes are atomic/WAL-journalled, an
-// app crash mid-write can't shred the file, and a single corrupt row never
-// costs the whole archive (vs. a line-log where one bad line + a rewrite-prune
-// risks the lot). Range queries use an indexed lat/lon bounding-box prefilter
+// Backed by a zx store (geochat.zx; same as wapp_social_store.dart) — chosen
+// over a flat append-log for durability: every commit is atomic and an app
+// crash mid-write can't shred the file (vs. a line-log where one bad line + a
+// rewrite-prune risks the lot). Range queries use an indexed lat/lon bounding-box prefilter
 // plus an exact haversine check, so they stay fast as the table grows.
 //
 // No domain knowledge here (no APRS/callsign/beacon semantics): a wapp decides
 // what to archive (it sends only messages with lat/lon) and when to query a
 // region; this just stores rows and answers haversine range queries.
 //
-// Native only — SQLite needs dart:ffi. Every call is a no-op on web (kIsWeb),
-// matching wapp_social_store.
+// Works natively and in the dart2wasm web build (the store layer persists
+// to IndexedDB there).
 
-import 'package:file/file.dart';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
-import 'package:sqlite3/common.dart';
-
-import '../../profile/profile_db.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:xprs_core/src/storage/store_db.dart';
 
 import '../../profile/profile_storage.dart';
 import '../../platform/fs.dart';
@@ -39,10 +35,10 @@ class GeoChatArchive {
       _instances.putIfAbsent(dataDir.basePath,
           () => GeoChatArchive._(dataDir.getAbsolutePath(_fileName)));
 
-  static const String _fileName = 'geochat.sqlite3';
+  static const String _fileName = 'geochat.zx';
 
   final String _dbPath;
-  CommonDatabase? _db;
+  ZxSqlDb? _db;
   bool _failed = false; // a fatal open error → operate degraded, never wipe
 
   // Keep the archive bounded (pruned with atomic DELETEs, no rewrite).
@@ -57,17 +53,14 @@ class GeoChatArchive {
 
   // ── DB lifecycle ────────────────────────────────────────────────────────
 
-  CommonDatabase? _ensureDb() {
-    if (kIsWeb || _failed) return null;
+  ZxSqlDb? _ensureDb() {
+    if (_failed) return null;
     final existing = _db;
     if (existing != null) return existing;
     try {
-      // sqlite3.open creates the file but not parent dirs.
       final parent = fs.file(_dbPath).parent;
       if (!parent.existsSync()) parent.createSync(recursive: true);
-      final db = openProfileDb(_dbPath);
-      db.execute('PRAGMA journal_mode = WAL;'); // crash-safe, concurrent reads
-      db.execute('PRAGMA synchronous = NORMAL;');
+      final db = openStoreDb(_dbPath);
       db.execute('''
         CREATE TABLE IF NOT EXISTS geochat(
           id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,7 +167,7 @@ class GeoChatArchive {
     final dLon = radiusKm / (111.32 * (cosLat < 1e-6 ? 1e-6 : cosLat));
     final since = sinceMs ?? 0;
 
-    ResultSet rows;
+    ZxRows rows;
     try {
       rows = db.select(
         'SELECT t,dir,from_call,text,kind,via,meta,lat,lon FROM geochat '
@@ -216,17 +209,19 @@ class GeoChatArchive {
 
   /// One prune per session: drop rows older than [_maxAgeMs] and cap the row
   /// count at [_maxRows]. Both are atomic DELETEs — no risky file rewrite.
-  void _pruneOnce(CommonDatabase db) {
+  void _pruneOnce(ZxSqlDb db) {
     if (_prunedThisSession) return;
     _prunedThisSession = true;
     try {
       final cutoff = DateTime.now().millisecondsSinceEpoch - _maxAgeMs;
+      db.transaction(() {
       db.execute('DELETE FROM geochat WHERE t < ?', [cutoff]);
       db.execute(
-        'DELETE FROM geochat WHERE id NOT IN '
-        '(SELECT id FROM geochat ORDER BY t DESC LIMIT ?)',
+        'DELETE FROM geochat WHERE id IN (SELECT id FROM geochat '
+        'ORDER BY t DESC LIMIT 9223372036854775807 OFFSET ?)',
         [_maxRows],
       );
+      });
     } catch (e) {
       debugPrint('GeoChatArchive: prune failed: $e');
     }

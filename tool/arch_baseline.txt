@@ -104,7 +104,7 @@ lib/profile/profile_edit_page.dart :: no-whole-file-read :: final bytes = await 
 lib/profile/vanity_callsign_page.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
 lib/profile/vanity_callsign_page.dart :: no-sub-minute-poll :: _timer = Timer.periodic(const Duration(milliseconds: 200), (_) {
 lib/services/files/open_path.dart :: no-native-import-outside-io-file :: import 'dart:io';
-lib/services/reticulum/rns_autostart.dart :: no-app-logic-in-core :: wappDataStorageFor(prefs, 'mesh').getAbsolutePath('observed.sqlite3');
+lib/services/reticulum/rns_autostart.dart :: no-app-logic-in-core :: wappDataStorageFor(prefs, 'mesh').getAbsolutePath('observed.zx');
 lib/services/torrent_service.dart :: no-native-import-outside-io-file :: import 'dart:io';
 lib/services/torrent_service.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 20), (t) {
 lib/services/torrent_service.dart :: no-whole-file-read :: final data = await f.readAsBytes();

@@ -804,7 +804,7 @@ class WappEngine {
       results: [ValueTy.i32],
     );
     // ── Media archive + sharing HAL (Files wapp; DESIGN.md §4/§5/§6) ──────
-    // The shared content-addressed archive (media.sqlite3) + the Blossom
+    // The shared content-addressed archive (media.zx) + the Blossom
     // provider endpoint + the BitTorrent seeder live host-side; these calls
     // are the wapp-facing control surface.
     MediaArchive? mediaArchive() {

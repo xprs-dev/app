@@ -1,5 +1,5 @@
 /*
- * Durable conversation history — one SQLCipher database per wapp.
+ * Durable conversation history — one zx store per wapp.
  *
  * History used to be a single `messages/<field>.json` rewritten in full on
  * every message. On an encrypted profile that file lives inside `profile.ear`,
@@ -10,11 +10,11 @@
  * kill that Android performs on any paused app. A phone lost every message it
  * had ever received, every single restart.
  *
- * A `.sqlite3` path is passthrough for the encrypted profile store, so this
- * file stays a real file that SQLCipher encrypts with the profile key (see
- * [openProfileDb]). Writes are per-row and transactional: nothing is ever
- * rewritten wholesale, a kill mid-write cannot truncate anything, and a failure
- * to READ can no longer cause a write.
+ * A `.zx` path is passthrough for the encrypted profile store, so this file
+ * stays a real file that zx encrypts with the profile's store secret (see
+ * [openStoreDb]). Writes are per-row and transactional: nothing is ever
+ * rewritten wholesale, a kill mid-write cannot truncate anything (zx is
+ * append-only), and a failure to READ can no longer cause a write.
  *
  * Open failures (locked profile, wrong key, corrupt file) deliberately THROW
  * rather than returning an empty database — the caller has to be able to tell
@@ -22,13 +22,9 @@
  * two is safe to write into.
  */
 import 'dart:convert';
-import 'package:file/file.dart';
 
-import 'package:sqlite3/common.dart';
+import 'package:xprs_core/src/storage/store_db.dart';
 
-import '../../profile/profile_db.dart';
-import '../../services/log_service.dart';
-import '../../services/xprs/xprs_vocab.dart';
 import 'conversation_store.dart';
 import '../../platform/fs.dart';
 
@@ -38,81 +34,34 @@ const int kConvoMaxMessages = 500;
 class ConversationDb {
   ConversationDb._(this._db);
 
-  final CommonDatabase _db;
+  final ZxSqlDb _db;
   bool _closed = false;
 
   /// Open (creating if needed) the conversation database at [absPath].
   ///
   /// Throws [ProfileLockedException] when the profile is locked and
-  /// [SqliteException] when the file is corrupt or the key is wrong. Both are
+  /// [ZxDbException] when the file is corrupt or the key is wrong. Both are
   /// signals the caller MUST NOT treat as "empty".
   static ConversationDb open(String absPath) {
     // A wapp that has never stored anything has no data directory yet, and
-    // sqlite reports that as a bare "unable to open database file".
+    // the store layer would fail to create the file in it.
     final slash = absPath.lastIndexOf('/');
     if (slash > 0) {
       final dir = fs.directory(absPath.substring(0, slash));
       if (!dir.existsSync()) dir.createSync(recursive: true);
     }
-    // openProfileDb sets a busy_timeout, so a lock met at the page->headless
-    // handoff -- the SQLite checkpoint the other engine is finishing -- is
-    // WAITED OUT at the C level rather than thrown. That timeout runs
-    // independently of this isolate (it is the OS releasing a file lock), so it
-    // needs no Dart-level retry, and a Dart sleep here would only block the UI
-    // without letting anything clear. This is where a message used to be lost:
-    // the open threw, the store fell to memory-only, and the bubble went
-    // nowhere while its notification fired.
-    final db = openProfileDb(absPath);
+    // The store opener waits for zx's writer lock (storeLockWaitMs), so a
+    // lock met at the page->headless handoff -- the other engine finishing a
+    // commit -- is WAITED OUT rather than thrown. This is where a message used
+    // to be lost: the open threw, the store fell to memory-only, and the
+    // bubble went nowhere while its notification fired.
+    final db = openStoreDb(absPath);
     final out = ConversationDb._(db);
     out._migrate();
-    out._purgeProtocolBodiesOnce();
     return out;
   }
 
-  /// Delete stored bubbles whose text is an XPRS protocol wire. Runs ONCE per
-  /// database, gated on `user_version` the way `MeshStore` does it.
-  ///
-  /// Filtering the inbound path stops new ones; it cannot un-say what is
-  /// already on disk, and two phones were each holding hundreds of bubbles
-  /// reading `x:<sealed> t:message f:X3ARK d:X1VCVM ts:... n:2/3 sig:...`.
-  ///
-  /// SQL narrows first and Dart decides only on what survives, because the
-  /// predicate cannot run in sqlite and loading every row to filter in Dart is
-  /// exactly the shape docs/performance.md section 8.7 blames for an OOM on
-  /// this hardware. `LIKE` on both markers throws nearly everything away
-  /// before a single body is decoded, and the deletes go in one statement.
-  void _purgeProtocolBodiesOnce() {
-    try {
-      final v = _db.select('PRAGMA user_version').first.columnAt(0) as int;
-      if (v >= 3) return; // bumped whenever the rule below widens
-      final rows = _db.select(
-        "SELECT seq, body FROM messages "
-        "WHERE body LIKE '%t:%' OR body LIKE '%sig:%' OR body LIKE '%x:%' "
-        "   OR body LIKE '%s:ack%' OR body LIKE '%until:%' OR body LIKE '%code:%'",
-      );
-      final doomed = <int>[];
-      for (final r in rows) {
-        final m = _decodeBody(r['body']);
-        if (m == null) continue;
-        if (xprsLooksLikeWire((m['text'] ?? '').toString())) {
-          doomed.add(r['seq'] as int);
-        }
-      }
-      if (doomed.isNotEmpty) {
-        _db.execute(
-            'DELETE FROM messages WHERE seq IN (${doomed.join(",")})');
-        LogService.instance.add(
-            'Chat: removed ${doomed.length} stored protocol wire(s) that had '
-            'been shown as messages');
-      }
-      _db.execute('PRAGMA user_version = 3');
-    } catch (_) {
-      // A purge that fails must not stop the app opening its conversations.
-    }
-  }
-
   void _migrate() {
-    _db.execute('PRAGMA journal_mode = WAL;');
     _db.execute('''
       CREATE TABLE IF NOT EXISTS threads (
         field       TEXT NOT NULL,
@@ -135,17 +84,8 @@ class ConversationDb {
     _db.execute(
         'CREATE INDEX IF NOT EXISTS msg_thread ON messages(field, convo_id, seq);');
     // A message carrying a wapp-assigned id is unique — the same message
-    // arriving over two transports must not become two bubbles.
-    // Older databases predate the content-signature column. CREATE TABLE IF
-    // NOT EXISTS silently leaves them alone, so add it explicitly — without
-    // this the index below fails and the whole history goes memory-only.
-    final cols = _db
-        .select('PRAGMA table_info(messages)')
-        .map((r) => (r['name'] ?? '').toString())
-        .toSet();
-    if (!cols.contains('ckey')) {
-      _db.execute("ALTER TABLE messages ADD COLUMN ckey TEXT NOT NULL DEFAULT ''");
-    }
+    // arriving over two transports must not become two bubbles. (zx keeps
+    // partial indexes for uniqueness only; lookups go through msg_thread.)
     _db.execute('CREATE UNIQUE INDEX IF NOT EXISTS msg_mid '
         "ON messages(field, convo_id, mid) WHERE mid <> '';");
     // Same for the wapp's content signature: an engine restart re-reads the
@@ -188,18 +128,20 @@ class ConversationDb {
     if (_closed) return;
     final mid = (m['mid'] ?? '').toString();
     final ckey = (m['key'] ?? '').toString();
-    _db.execute(
-      'INSERT OR IGNORE INTO messages(field, convo_id, mid, ckey, body) '
-      'VALUES(?,?,?,?,?)',
-      [field, convoId, mid, ckey, jsonEncode(m)],
-    );
-    // Keep the on-disk tail the same length as the in-memory one.
-    _db.execute(
-      'DELETE FROM messages WHERE field=? AND convo_id=? AND seq NOT IN '
-      '(SELECT seq FROM messages WHERE field=? AND convo_id=? '
-      ' ORDER BY seq DESC LIMIT ?)',
-      [field, convoId, field, convoId, kConvoMaxMessages],
-    );
+    _db.transaction(() {
+      _db.execute(
+        'INSERT OR IGNORE INTO messages(field, convo_id, mid, ckey, body) '
+        'VALUES(?,?,?,?,?)',
+        [field, convoId, mid, ckey, jsonEncode(m)],
+      );
+      // Keep the on-disk tail the same length as the in-memory one.
+      _db.execute(
+        'DELETE FROM messages WHERE seq IN (SELECT seq FROM messages '
+        'WHERE field=? AND convo_id=? ORDER BY seq DESC '
+        'LIMIT 9223372036854775807 OFFSET ?)',
+        [field, convoId, kConvoMaxMessages],
+      );
+    });
   }
 
   /// Give a stored message the id a vote named it by. A message sent before
@@ -247,9 +189,11 @@ class ConversationDb {
 
   void removeThread(String field, String id) {
     if (_closed) return;
-    _db.execute('DELETE FROM threads WHERE field=? AND id=?', [field, id]);
-    _db.execute('DELETE FROM messages WHERE field=? AND convo_id=?',
-        [field, id]);
+    _db.transaction(() {
+      _db.execute('DELETE FROM threads WHERE field=? AND id=?', [field, id]);
+      _db.execute('DELETE FROM messages WHERE field=? AND convo_id=?',
+          [field, id]);
+    });
   }
 
   void setReaction(String field, String mid, Map<String, dynamic> body) {
@@ -288,10 +232,12 @@ class ConversationDb {
   void clear(String field, [String? id]) {
     if (_closed) return;
     if (id == null) {
-      _db.execute('DELETE FROM threads WHERE field=?', [field]);
-      _db.execute('DELETE FROM messages WHERE field=?', [field]);
-      _db.execute('DELETE FROM reactions WHERE field=?', [field]);
-      _db.execute('DELETE FROM statuses WHERE field=?', [field]);
+      _db.transaction(() {
+        _db.execute('DELETE FROM threads WHERE field=?', [field]);
+        _db.execute('DELETE FROM messages WHERE field=?', [field]);
+        _db.execute('DELETE FROM reactions WHERE field=?', [field]);
+        _db.execute('DELETE FROM statuses WHERE field=?', [field]);
+      });
       return;
     }
     _db.execute('DELETE FROM messages WHERE field=? AND convo_id=?',
@@ -322,7 +268,7 @@ class ConversationDb {
       "DELETE FROM threads WHERE activity_ts = 0 AND id NOT IN "
       '(SELECT DISTINCT convo_id FROM messages)',
     );
-    return _db.select('SELECT changes() AS c').first['c'] as int;
+    return _db.updatedRows;
   }
 
   /// Every field that has stored rows — the set of conversation stores to
@@ -444,7 +390,10 @@ class ConversationDb {
   }
 
   /// One-time import of a store built from a legacy `messages/<field>.json`.
-  void importStore(String field, ConversationStore store) {
+  void importStore(String field, ConversationStore store) =>
+      _db.transaction(() => _importStore(field, store));
+
+  void _importStore(String field, ConversationStore store) {
     for (final id in store.order) {
       final it = store.items[id];
       if (it == null) continue;

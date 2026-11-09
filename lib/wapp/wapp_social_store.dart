@@ -1,40 +1,36 @@
 /*
- * WappSocialStore — per-wapp SQLite database for reactions and comments.
+ * WappSocialStore — per-wapp zx store for reactions and comments.
  *
- * Each wapp carries its own `social.sqlite3` inside its package
+ * Each wapp carries its own `social.zx` inside its package
  * directory. When the wapp is shared or exported, the social data
  * travels with it. The permissions.json at the wapp root controls
  * who can write reactions/comments.
  *
- * Storage path: <wapp_dir>/social.sqlite3
+ * Storage path: <wapp_dir>/social.zx (encrypted inside an encrypted profile)
  *
  * Reactions are NOSTR kind-7 events (like/emoji). Comments are
  * kind-1111 events. Both are Schnorr-signed.
  */
 
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:sqlite3/common.dart';
-
-import '../profile/profile_db.dart';
+import 'package:xprs_core/src/storage/store_db.dart';
 
 class WappSocialStore {
   WappSocialStore._();
   static final WappSocialStore instance = WappSocialStore._();
 
   /// Cache of open databases keyed by wapp directory path.
-  final Map<String, CommonDatabase> _dbs = {};
+  final Map<String, ZxSqlDb> _dbs = {};
 
   /// Open (or reuse) the social database for a specific wapp.
   /// [wappDirPath] is the absolute path to the wapp's package
   /// directory (e.g. `~/.local/share/xprs/devices/X1/apps/maps/`
   /// or `<repo>/wapps/maps/`).
-  CommonDatabase? open(String wappDirPath) {
-    if (kIsWeb) return null;
+  ZxSqlDb? open(String wappDirPath) {
     if (_dbs.containsKey(wappDirPath)) return _dbs[wappDirPath]!;
 
     try {
-      final dbPath = '$wappDirPath/social.sqlite3';
-      final db = openProfileDb(dbPath);
+      final dbPath = '$wappDirPath/social.zx';
+      final db = openStoreDb(dbPath);
       _migrate(db);
       _dbs[wappDirPath] = db;
       return db;
@@ -43,7 +39,7 @@ class WappSocialStore {
     }
   }
 
-  void _migrate(CommonDatabase db) {
+  void _migrate(ZxSqlDb db) {
     db.execute('''
       CREATE TABLE IF NOT EXISTS reactions (
         id         TEXT PRIMARY KEY,
@@ -173,7 +169,7 @@ class WappSocialStore {
     return [for (final row in r) _rowToMap(row)];
   }
 
-  Map<String, dynamic> _rowToMap(Row row) {
+  Map<String, dynamic> _rowToMap(ZxRow row) {
     final map = <String, dynamic>{};
     for (final col in row.keys) {
       map[col] = row[col];

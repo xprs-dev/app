@@ -1,20 +1,10 @@
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:xprs/profile/profile_storage_fs.dart';
 import 'package:xprs/wapp/geoui/geo_chat_archive.dart';
 
 void main() {
-  // The app bundles SQLite via sqlite3_flutter_libs; the test VM only has the
-  // versioned system lib, so point the loader at it.
-  setUpAll(() {
-    if (Platform.isLinux) {
-      open.overrideFor(
-          OperatingSystem.linux, () => DynamicLibrary.open('libsqlite3.so.0'));
-    }
-  });
 
   final temps = <Directory>[];
   GeoChatArchive freshArchive() {
