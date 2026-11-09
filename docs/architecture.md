@@ -34,7 +34,7 @@ now checked mechanically: see section 5.
   |   identity and keys   profiles, nsec, signing, encryption     |
   |   transports          Reticulum, BLE5, LAN, WiFi-Direct, I2P  |
   |   delivery            LXMF, MeshCourier, custody, retries     |
-  |   storage             sqlite, media archive, folders, spool   |
+  |   storage             zx stores, media archive, folders, spool|
   +--------------------------------------------------------------+
 ```
 
@@ -71,7 +71,7 @@ Measured layout and rationale: [performance.md](performance.md).
 
 | Isolate | Permitted | Not permitted |
 |---|---|---|
-| main / UI | widgets, `setState`, wapp page engines, MethodChannel calls | crypto over large buffers, sqlite scans, file hashing, blocking I/O, unbounded loops |
+| main / UI | widgets, `setState`, wapp page engines, MethodChannel calls | crypto over large buffers, store scans, file hashing, blocking I/O, unbounded loops |
 | rns-crypto | Reticulum sign, verify, encrypt | UI, platform channels |
 | rns-transport | packet routing, links, resources | UI, platform channels |
 | wapp background engines | `module_tick` for background wapps | anything requiring a UI |
@@ -115,7 +115,6 @@ none of it (a test, the server):
 | `secureStore` | flutter_secure_storage | none |
 | `assets` | the Flutter asset bundle | none |
 | `appSupportDir` | path_provider | home directory |
-| `prepareSqlite` | SQLCipher on Android | system SQLite |
 | `hasAllFilesAccess` | Android all-files permission | yes |
 | `mediaArchive` | the shared media store | none |
 | `battery`, `pushPowerTier` | battery_plus; the tier to the native service | on mains |
@@ -757,6 +756,34 @@ disk.
 
 ---
 
+### Storage: zx stores (2026-11-09)
+
+Every database is a **zx store** (`*.zx`: zxdb, pure Dart, the same engine on
+Linux, Android, the server and the dart2wasm web build). There is no SQLite
+anywhere, and no native library to ship.
+
+- **One opener.** The core's `storage/store_db.dart`: `openStoreDb(path)`
+  gives a `ZxSqlDb` (SQL in the SQLite dialect, KV stores, a text index).
+  Inside an encrypted profile the store is encrypted by zx with the store
+  secret `HKDF(PMK, "xprs-zx-v1:" + relPath)`; a locked profile throws
+  `ProfileLockedException`. reticulum-dart opens through its injectable
+  `openDb`, which the core points at `openStoreDb`; an isolate without the
+  keyring gets the secret first (`storeSecretFor`) and opens with
+  `openStoreDbWithSecret`.
+- **One store per owner** (`mesh.zx`, `xprs_archive.zx`, `media.zx`,
+  `conversations.zx`, ...): one writer at a time per file, so separate files
+  keep subsystems from waiting on each other's commits.
+- **A commit is a generation** (KBs of file, ms of time): frequent writers
+  batch (`transaction`, `kv.batch`, write-behind buffers) and big stores call
+  `maybeCompact`. Byte caps count logical bytes, not file pages.
+- **Large content in pieces.** Media bytes (`media_part`) and big files of an
+  encrypted profile (`profile.zx`, KV `parts`) are 256 KiB pieces: ranged reads
+  touch only their pieces, copies stream.
+- **Wapps** get `hal.db` (`hal_db_*`): a zx store under their data dir.
+
+[plan-encrypted-storage.md](plan-encrypted-storage.md) has the key scheme,
+[performance.md](performance.md) the costs.
+
 ## 5. Enforcement
 
 `tool/arch_guard.dart` checks the rules above on every push, via
@@ -794,7 +821,8 @@ lines reappear under `../core/lib/src/...`; that relocation is the one
 legitimate re-baseline. Read the NEW list before running `--baseline`: an
 addition that is not the same rule and line removed elsewhere is a violation,
 and it is fixed. (During the move one was nearly baselined: an unconditional
-`package:sqlite3/open.dart` in boot code, which breaks the web build.)
+`package:sqlite3/open.dart` in boot code, which broke the web build; SQLite
+is gone since, see `no-sqlite`.)
 
 **A clean guard is a floor.** The 2026-11-04 audit found by reading what the
 rules, each matching one spelling, had let through. When a read finds a shape
@@ -838,7 +866,9 @@ Rules enforced:
 | `no-core-calls-from-screen` | a screen (`wapp_page.dart`, `geoui`, launcher, ui) calling a core singleton to publish, relay, fetch, follow, send or judge reachability |
 | `no-sub-minute-interval-constant` | an interval under a minute held in a named constant in a core layer ([performance.md](performance.md) 6.5) |
 | `no-content-in-log` | a person's words (`contentString`, `.content`) written to the log ring `/api/log` serves |
-| `no-native-import-outside-io-file` | an unconditional `dart:io`, `dart:ffi`, `dart:isolate` or FFI `package:sqlite3` import outside a `*_io.dart` file, in `lib/` and in the reticulum-dart sibling: the web build compiles `lib/` with dart2js, where FFI is a compile error and the rest throw at runtime ([web.md](web.md)) |
+| `no-native-import-outside-io-file` | an unconditional `dart:io`, `dart:ffi`, `dart:isolate` or FFI `package:sqlite3` import outside a `*_io.dart` file, in `lib/` and in the reticulum-dart sibling: the web build compiles `lib/` to WebAssembly (and a JavaScript fallback), where FFI is a compile error and the rest throw at runtime ([web.md](web.md)) |
+| `no-sqlite` | an import of `package:sqlite3`, `sqlcipher_flutter_libs`, `sqlite3_flutter_libs` or `encrypted_archive`, here, in the core and in reticulum-dart: every database is a zx store, opened through the core's `storage/store_db.dart` (`openStoreDb`; reticulum-dart's `openDb`) |
+| `no-zx-internals` | an import of `package:zx/src/...`: zx is used through `package:zx/zxdb.dart`, and the stores through the opener, which applies the profile's secret |
 
 To add a rule, extend the table in `tool/arch_guard.dart`. It is a single Dart
 file with no dependencies, which is deliberate.

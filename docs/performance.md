@@ -18,10 +18,10 @@ isolate**. It doesn't any more:
 
 | Isolate | Owns | Spawned by |
 |---|---|---|
-| `main` | UI, wapp engines, LXMF/files/relay subsystems, all the sqlite stores except the NOSTR feed | Flutter |
+| `main` | UI, wapp engines, LXMF/files/relay subsystems, all the zx stores except the NOSTR feed | Flutter |
 | `rns-transport` | RnsTransport: announce validation, dedup, path table, transit forwarding, rebroadcast, passive governor | `RnsTransportClient.spawn` (`rns_transport_engine.dart`) |
 | `rns-crypto` | Every hot Curve25519 op (verify / sign / derive / ECDH / keygen), keypair cache, bounded queue | `_CryptoWorker` (`rns_crypto.dart`) — one per isolate that uses RnsCrypto, so there are normally two |
-| `nostr-engine` | Public-relay firehose: WS receive, decode, verify, `nostr_feed.sqlite3`, like/reply tallies | `NostrClient.spawn` (`nostr_engine.dart`) |
+| `nostr-engine` | Public-relay firehose: WS receive, decode, verify, `nostr_feed.zx`, like/reply tallies | `NostrClient.spawn` (`nostr_engine.dart`) |
 | `i2p` (opt-in) | The I2P node | `i2p_worker.dart` |
 
 Two things follow from this and are easy to forget:
@@ -75,7 +75,8 @@ debug builds** and returns "Profiler is disabled"; `setFlag('profiler', true)`
 reports success but still yields zero samples. Don't burn time on it.
 
 **A profiled isolate showing 0 frames while its thread burns 100% CPU means it
-is inside a native FFI call** (sqlite3, wasmtime) — the Dart profiler cannot see
+is inside a native FFI call** (wasmtime; SQLite was one until the zx stores)
+— the Dart profiler cannot see
 those frames. That signature is itself the clue.
 
 ---
@@ -310,7 +311,7 @@ expensive algorithm:
 Rule of thumb before adding any periodic work: *what does this cost per hour with
 the screen off, and who is awake to see the result?*
 
-**A storage cadence is not a UI cadence.** `XprsArchive` flushes to sqlite
+**A storage cadence is not a UI cadence.** `XprsArchive` flushes to its store
 every 20 s and fires `core.archive` from the flush — right for the disk, and
 it was the only way the Social wapp learned that its own post existed, so a
 person waited up to twenty seconds to see their own words. What a screen needs
@@ -331,7 +332,8 @@ happen on every frame this device hears.
 
 ## 5. Build & device traps (each of these cost real time)
 
-- **A platform difference can turn a budget off, silently.** `PRAGMA
+- **A platform difference can turn a budget off, silently.** (SQLite days;
+  the zx stores count logical bytes now, the lesson stands.) `PRAGMA
   page_count` returns an **INTEGER on desktop sqlite and a STRING on Android**.
   Three callers here read it as `.values.first as num`, caught the cast failure
   and returned **0**: the Archiver screen said "0 B" over 156,000 packets — the
@@ -523,7 +525,7 @@ still on the LAN keeps its fast path despite interleaved hub announces.
 - **`nostr-engine` pushes a relays snapshot every 400ms tick** whether or not it
   changed. Send on change.
 - **`RnsService` still owns the LXMF / files / relay / DHT subsystems and ~10
-  sqlite stores on main.** After the transport migration the main isolate idles,
+  zx stores on main.** After the transport migration the main isolate idles,
   so there is *no measured reason* to move them — recorded here so nobody
   "optimises" it on instinct. Revisit only if a measurement says so.
 
@@ -617,7 +619,7 @@ The decision rule, before writing the work:
   a worker if the *processing* is heavy, exactly as `RnsTransport` registers the
   owner's sockets/radios as *external* interfaces and the worker only ever sends
   `['tx', label, bytes]` back to main for the actual I/O.
-- **Pure CPU (crypto, parsing, sqlite, compression), no plugins?** It belongs on a
+- **Pure CPU (crypto, parsing, large store scans, compression), no plugins?** It belongs on a
   worker isolate. Two idioms already exist — copy one, don't invent a third:
   - **One-shot heavy call inside an existing tick:** `BackgroundService.runOffThread(fn)`
     (= `Isolate.run`) in `services/background_service.dart`. For a *single* offload,
@@ -648,7 +650,7 @@ The decision rule, before writing the work:
 > **Do not move work to an isolate on instinct.** §6.4 is a worked *rejection*:
 > moving the background wapp engine off main would route ~114 singleton touchpoints
 > through port bridges inside the messaging path to reclaim 0.2%. And §6.3 records
-> that `RnsService` keeps ~10 sqlite stores on a *now-idle* main isolate with **no
+> that `RnsService` keeps ~10 stores on a *now-idle* main isolate with **no
 > measured reason** to move them. Off-isolate is for measured hot CPU, not for tidiness.
 
 ### 8.2 Continuous work must survive a suspended phone — the Android background stack
@@ -973,8 +975,8 @@ the biggest legitimate input is, and if the answer is "a file the user chose" or
 and the receiver renames the finished `.part` into place rather than copying it
 through memory into a database.
 
-**The corollary that bit hardest**: `MediaArchive` stores content as a **sqlite
-BLOB**. That is a fine store for thumbnails and a bad one for artifacts, and
+**The corollary that bit hardest**: `MediaArchive` stores content in its
+**database** (zx pieces of 256 KiB now, a SQLite BLOB then). That is a fine store for thumbnails and a bad one for artifacts, and
 "content-addressed store" reads like it will do for both. A large file gets a
 path and a rename; only small content gets a row.
 
@@ -1679,8 +1681,8 @@ not know (`core/docs/audit-2026-11-04.md`). Fixed:
   16 MB, for every `GET_RANGE` and `GET_HAVE` a peer sent, because
   `MediaFileSource` was not a `RangedFileSource` and `RnsService`'s
   `_LiveFileSource` wrapper hid the ranged one behind it. `MediaArchive` now
-  answers `sizeOf` from its size column and `readRange` with SQLite `substr`
-  (§8.9; `media_ranged_read_test`).
+  answers `sizeOf` from its size column and `readRange` from the 256 KiB
+  pieces the range covers (§8.9; `media_ranged_read_test`).
 - **`_lxmfInbox` kept every message's words** with nothing reading them (the
   verb that drained it is gone): bounded to 64 like `_inbox` (§8.18).
 - **A message's words went to the log** on receipt: now who and how long.
@@ -1754,3 +1756,25 @@ runaway was pinned to the Dart heap and to ~330k {Map + index + 2 Lists +
 String} units per 90 s. For the retaining path, reproduce on the Linux desktop
 build and take a DevTools heap-snapshot diff; the device is the wrong place to
 ask that question.
+
+## Stores on zx: what a write and a read cost (2026-11-09)
+
+The stores are zx files (architecture.md, storage). What that changes:
+
+- **A commit is a generation**: a few KB appended and a few ms, whatever its
+  size. A store written per packet batches: `XprsArchive`'s 20 s flush,
+  `XprsGossip`'s write buffer (50 rows / 10 s), reticulum's `ServeStats`
+  (30 s), `MeshStore` methods in one transaction each. A KV write does not
+  join an SQL transaction: group KV writes with `kv.batch`.
+- **The file grows until compacted**: append-only, so a delete frees nothing
+  until `maybeCompact` (fold or vacuum once the file is past twice its live
+  size and 16 MiB over). Caps count logical bytes (`counts` table, wire
+  lengths), never the file size; the UI's "disk used" is the file size.
+- **Cold queries are JIT-compiled once** in debug runs and the test VM: the
+  first line a station answered took ~230 ms on the Pi under the test runner,
+  the next ones 12-17 ms. Release builds are AOT. Never time a store from its
+  first call.
+- **Indexes are what make it fast**: zx keeps partial indexes for uniqueness
+  only, does not flatten FROM subqueries, and a prefix LIKE is a range only
+  when written as one (`>= ? AND < ?`). Write the hot query against an index
+  and check it with EXPLAIN QUERY PLAN.

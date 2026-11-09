@@ -63,8 +63,8 @@ const webBuildRule = Rule(
       'the FFI half of package:sqlite3 are hard compile errors there; '
       'dart:io and dart:isolate compile and then throw on every call. Put '
       'the native half in a *_io.dart behind a conditional export '
-      '(lib/platform/fs.dart, lib/profile/profile_db.dart are the pattern) '
-      'and reach files through `fs`, databases through openProfileDb '
+      '(lib/platform/fs.dart and core\'s storage/store_db_host.dart are the '
+      'pattern) and reach files through `fs`, databases through openStoreDb '
       '(docs/web.md).',
   appliesTo: ['lib/**'],
   exempt: ['lib/**/*_io.dart'],
@@ -72,6 +72,29 @@ const webBuildRule = Rule(
   // in `;`. A conditional one continues on the next line with `if (...)`, so
   // it does not end here and is not matched.
   pattern: r'''^\s*import\s+'(dart:io|dart:ffi|dart:isolate|package:sqlite3/sqlite3\.dart|package:sqlite3/open\.dart)'(\s+(show|hide|as)\s+[^;]*)?;''',
+);
+
+/// The stores are zx stores (docs/architecture.md, storage): no SQLite.
+const noSqliteRule = Rule(
+  id: 'no-sqlite',
+  why: 'Every database is a zx store, opened through the core\'s '
+      'storage/store_db.dart (openStoreDb; reticulum-dart: openDb). SQLite '
+      'and SQLCipher were removed: a native library per platform, another '
+      'engine for the web build, and keys of their own. A new table goes in '
+      'a zx store.',
+  appliesTo: ['lib/**', 'test/**'],
+  pattern: r'''^\s*(import|export)\s+'package:(sqlite3|sqlcipher_flutter_libs|sqlite3_flutter_libs|encrypted_archive)/''',
+);
+
+/// zx is used through its public libraries only, and stores through the
+/// opener.
+const noZxInternalsRule = Rule(
+  id: 'no-zx-internals',
+  why: 'package:zx/src/ is zx\'s inside, free to change between zx versions; '
+      'use package:zx/zxdb.dart (the stores reach it through '
+      'storage/store_db.dart, which also applies the profile\'s secret).',
+  appliesTo: ['lib/**', 'test/**'],
+  pattern: r'''^\s*(import|export)\s+'package:zx/src/''',
 );
 
 const rules = <Rule>[
@@ -425,6 +448,8 @@ const rules = <Rule>[
         'the key.',
   ),
   webBuildRule,
+  noSqliteRule,
+  noZxInternalsRule,
 ];
 
 /// Rules also checked in the reticulum-dart sibling (scanned with its own
@@ -432,6 +457,8 @@ const rules = <Rule>[
 /// unless the library does.
 const siblingRules = <Rule>[
   webBuildRule,
+  noSqliteRule,
+  noZxInternalsRule,
 ];
 
 const wappRules = <Rule>[
