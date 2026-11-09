@@ -35,11 +35,11 @@ void main() {
       kind: 1,
       tags: const [],
       content: 'Mirror test: a post from someone this device follows. It must '
-          'land in social.sqlite3 at the followed tier and be servable to peers.',
+          'land in social.zx at the followed tier and be servable to peers.',
     );
     ev.sign(_priv);
 
-    final hub = RelayEventStore.open('$_dir/nostr_feed.sqlite3');
+    final hub = RelayEventStore.open('$_dir/nostr_feed.zx');
     final stored = hub.put(ev, tier: 1);
     hub.close();
 

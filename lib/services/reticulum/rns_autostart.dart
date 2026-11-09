@@ -86,7 +86,7 @@ Future<void> ensureRnsAutostart() async {
 
     // Persist the social relay/index DB + folder key-store / disk-folder
     // registry / subscriptions under the shared wapp-data root.
-    rns.relayStorePath = ws.getAbsolutePath('social.sqlite3');
+    rns.relayStorePath = ws.getAbsolutePath('social.zx');
     rns.callPeersPath = ws.getAbsolutePath('call_peers.json');
     rns.partialStoreDir = ws.getAbsolutePath('partials'); // resumable downloads
     rns.folderStorePath = ws.getAbsolutePath('folders.json');
@@ -95,13 +95,13 @@ Future<void> ensureRnsAutostart() async {
     // Where a downloaded file is materialised so the OS can open it (the bytes
     // themselves live content-addressed in the archive; a viewer needs a path).
     rns.folderExportDir = ws.getAbsolutePath('opened');
-    rns.serveStatsPath = ws.getAbsolutePath('serve_stats.sqlite3');
+    rns.serveStatsPath = ws.getAbsolutePath('serve_stats.zx');
     // Datagrams that arrive for a wapp which isn't loaded. Opened before the
     // node starts, so the very first inbound datagram already has somewhere to
     // land, and wired to the wapp layer so mail can start the wapp it is for.
     WappMailbox.instance.open(ws.getAbsolutePath('mail'));
     rns.onWappWanted = _startWappForMail;
-    rns.popularityPath = ws.getAbsolutePath('folder_popularity.sqlite3');
+    rns.popularityPath = ws.getAbsolutePath('folder_popularity.zx');
     rns.identityPath = ws.getAbsolutePath('rns_identity.key');
     rns.blossomLoad(); // the user's media servers, not just the shipped ones
     rns.followsPath = ws.getAbsolutePath('host_follows.json');
@@ -109,7 +109,7 @@ Future<void> ensureRnsAutostart() async {
     // sits above RnsService (direct import would cycle). Serves both the WS
     // relay's mailto REQ trigger and hal_relay_resolve for '@' targets.
     rns.emailResolver = (email) => EmailResolveService.instance.resolve(email);
-    rns.diskIndexPath = ws.getAbsolutePath('disk_index.sqlite3');
+    rns.diskIndexPath = ws.getAbsolutePath('disk_index.zx');
 
     // Persistent observed-node cache lives in the mesh wapp's per-profile
     // data folder (user-specific data the mesh wapp surfaces; the

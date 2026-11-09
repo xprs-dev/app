@@ -121,7 +121,7 @@ class CoinHostBridge {
   bool _loaded = false;
 
   static const String _registryFile = 'coins.json';
-  static const String _walletFile = 'coin_wallet.sqlite3';
+  static const String _walletFile = 'coin_wallet.zx';
 
   Future<void> init() async {
     if (_loaded) return;
