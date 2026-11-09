@@ -1,0 +1,6 @@
+* New storage: every database is built into the app (zx). No SQLite library anymore, and the same storage on Android, desktop, the server and the web page.
+* Conversations, archives and media stored by earlier versions are not carried over: the old files are removed on the first start.
+* Encrypted profiles: each store is encrypted with a key from the profile's master key; the files of the profile live in one encrypted store.
+* Media: large files are kept in pieces, so playing or sharing part of a file reads only that part.
+* Chat 0.8.0 and Circles 0.36.0 keep their messages in the new storage.
+* The web version runs as WebAssembly and keeps its profile across reloads.
