@@ -59,9 +59,8 @@ import '../util/nostr_crypto.dart';
 import '../util/xprs_crypto.dart';
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:hex/hex.dart';
-import 'package:sqlite3/common.dart';
 
-import '../profile/profile_db.dart';
+import 'package:xprs_core/src/storage/store_db.dart' show openStoreDb, ZxSqlDb;
 import '../profile/profile_storage_encrypted.dart';
 import 'package:pointycastle/export.dart' as pc;
 import '../platform/fs.dart';
@@ -184,12 +183,12 @@ class _WappStreamState {
   }
 }
 
-/// State for a single hal_sqlite_* handle. Lives in [WappEngine._sqlite] keyed
-/// by handle. Wraps one open [CommonDatabase] (a file under the wapp's private data
-/// dir) and the last error string for hal_sqlite_error.
+/// State for a single hal_db_* handle. Lives in [WappEngine._sqlite] keyed
+/// by handle. Wraps one open zx store ([ZxSqlDb], a `.zx` file under the
+/// wapp's private data dir) and the last error string for hal_db_error.
 class _WappSqliteState {
   _WappSqliteState(this.db);
-  final CommonDatabase db;
+  final ZxSqlDb db;
   String? lastError;
 }
 
@@ -334,7 +333,7 @@ class WappEngine {
   final Map<int, _WappStreamState> _streams = {};
   int _nextStreamHandle = 1;
 
-  // hal_sqlite_* state. Per-wapp databases live under the wapp's private data
+  // hal_db_* state. Per-wapp databases live under the wapp's private data
   // dir; handles are disposed on teardown.
   final Map<int, _WappSqliteState> _sqlite = {};
   int _nextSqliteHandle = 1;
@@ -657,16 +656,22 @@ class WappEngine {
     return n;
   }
 
-  /// Resolve a wapp-supplied sqlite path to an absolute path confined to this
-  /// wapp's private data dir. Rejects absolute paths and any '..' segment so a
-  /// wapp can't escape its sandbox. Returns null if unresolvable/unsafe.
+  /// Resolve a wapp-supplied database path to the absolute path of its zx
+  /// store, confined to this wapp's private data dir: rejects absolute paths
+  /// and any '..' segment so a wapp can't escape its sandbox; the file name
+  /// ends in `.zx` (a `.sqlite3`, `.sqlite` or `.db` ending is replaced).
+  /// Returns null if unresolvable/unsafe.
   String? _wappDbPath(String rel) {
     final s = _storage;
     if (s == null || rel.isEmpty) return null;
     final parts =
         rel.split('/').where((p) => p.isNotEmpty && p != '.').toList();
     if (parts.isEmpty || parts.contains('..')) return null;
-    return s.getAbsolutePath(parts.join('/'));
+    var name = parts.removeLast()
+        .replaceFirst(RegExp(r'\.(sqlite3?|db)$'), '');
+    if (name.isEmpty) return null;
+    if (!name.endsWith('.zx')) name = '$name.zx';
+    return s.getAbsolutePath([...parts, name].join('/'));
   }
 
   /// Decode the optional JSON-array bind parameters for a sqlite call.
@@ -2616,7 +2621,11 @@ class WappEngine {
       params: [], results: [ValueTy.i32],
     );
 
-    // ── SQLite HAL (per-wapp database, scoped to the wapp data dir) ──────────
+    // ── Database HAL (hal.db: per-wapp zx store, scoped to the wapp data dir)
+    // SQL in the SQLite dialect (docs: zx zxdb-sql.md). The store is
+    // `<path>.zx` (a trailing .sqlite3/.db is replaced), encrypted inside an
+    // encrypted profile. The pre-zx `hal_sqlite_*` names are bound to the
+    // same functions until every wapp has moved to `hal_db_*`.
     final halSqliteOpen = WasmFunction(
       (int pathPtr, int pathLen) {
         if (pathLen <= 0) return -1;
@@ -2628,15 +2637,14 @@ class WappEngine {
             fs.directory(p.substring(0, slash)).createSync(recursive: true);
           }
           final sw = Stopwatch()..start();
-          final db = openProfileDb(p);
-          db.execute('PRAGMA journal_mode=WAL;');
+          final db = openStoreDb(p);
           _noteSlowSql('open', p.substring(slash + 1), sw);
           final h = _nextSqliteHandle++;
           _sqlite[h] = _WappSqliteState(db);
           return h;
         } catch (e, st) {
           // The wapp only sees -1; the reason is the host's to keep.
-          LogService.instance.add('hal_sqlite_open $p failed: $e\n$st');
+          LogService.instance.add('hal_db_open $p failed: $e\n$st');
           return -1;
         }
       },
@@ -4897,7 +4905,13 @@ class WappEngine {
       WasmImport('hal', 'event_publish', halEventPublish),
       WasmImport('hal', 'event_available', halEventAvailable),
       WasmImport('hal', 'event_recv', halEventRecv),
-      // SQLite (per-wapp relational storage, scoped to the wapp data dir)
+      // hal.db (per-wapp zx store, SQL, scoped to the wapp data dir)
+      WasmImport('hal', 'db_open', halSqliteOpen),
+      WasmImport('hal', 'db_exec', halSqliteExec),
+      WasmImport('hal', 'db_query', halSqliteQuery),
+      WasmImport('hal', 'db_error', halSqliteError),
+      WasmImport('hal', 'db_close', halSqliteClose),
+      // the pre-zx names of the same calls, until every wapp uses hal_db_*
       WasmImport('hal', 'sqlite_open', halSqliteOpen),
       WasmImport('hal', 'sqlite_exec', halSqliteExec),
       WasmImport('hal', 'sqlite_query', halSqliteQuery),
@@ -5106,7 +5120,7 @@ class WappEngine {
   void _noteSlowSql(String what, String sql, Stopwatch sw) {
     if (sw.elapsedMilliseconds < _slowMs) return;
     LogService.instance.add(
-        'perf: wapp $_appId sqlite $what took ${sw.elapsedMilliseconds}ms: '
+        'perf: wapp $_appId db $what took ${sw.elapsedMilliseconds}ms: '
         '${sql.length > 70 ? sql.substring(0, 70) : sql}');
   }
 
@@ -5215,7 +5229,7 @@ class WappEngine {
       try { s.sub?.cancel(); } catch (_) {}
     }
     _streams.clear();
-    // Close any sqlite databases the wapp left open.
+    // Close any databases the wapp left open.
     for (final s in _sqlite.values) {
       try { s.db.dispose(); } catch (_) {}
     }

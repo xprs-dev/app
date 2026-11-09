@@ -92,7 +92,7 @@ class WappManifest {
 
   /// Who persists this wapp's conversations: `host` (the default -- the
   /// host's `conversations.zx`) or `wapp` (the wapp keeps its own
-  /// history through `hal_sqlite_*`; the host's stores are a render cache).
+  /// history through `hal_db_*`; the host's stores are a render cache).
   final String conversationsOwner;
 
   WappManifest({

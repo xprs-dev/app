@@ -1,0 +1,726 @@
+[
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS rooms(id TEXT PRIMARY KEY,file TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',activity_ts INTEGER NOT NULL DEFAULT 0,unread INTEGER NOT NULL DEFAULT 0,last_line TEXT NOT NULL DEFAULT '',closed INTEGER NOT NULL DEFAULT 0,private INTEGER NOT NULL DEFAULT 0)"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE INDEX IF NOT EXISTS rooms_act ON rooms(activity_ts DESC)"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "ALTER TABLE rooms ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "ALTER TABLE rooms ADD COLUMN plain INTEGER NOT NULL DEFAULT 0"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "ALTER TABLE rooms ADD COLUMN notify INTEGER"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS people(call TEXT PRIMARY KEY)"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS statuses(id TEXT PRIMARY KEY, call TEXT NOT NULL, ts INTEGER NOT NULL,body TEXT NOT NULL, mine INTEGER NOT NULL DEFAULT 0,seen INTEGER NOT NULL DEFAULT 0)"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE INDEX IF NOT EXISTS statuses_ts ON statuses(ts DESC)"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS blocked(call TEXT PRIMARY KEY)"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS hidden(mid TEXT PRIMARY KEY)"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS tx(rid TEXT PRIMARY KEY, room TEXT NOT NULL)"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT)"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS messages(seq INTEGER PRIMARY KEY AUTOINCREMENT,mid TEXT NOT NULL UNIQUE,dir TEXT NOT NULL,sender TEXT NOT NULL,ts INTEGER NOT NULL,body TEXT NOT NULL,parent TEXT NOT NULL DEFAULT '',via TEXT NOT NULL DEFAULT '',auth TEXT NOT NULL DEFAULT '',enc INTEGER NOT NULL DEFAULT 0,rid TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT '',sys INTEGER NOT NULL DEFAULT 0)"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS reactions(mid TEXT, who TEXT, kind TEXT, PRIMARY KEY(mid, who))"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "ALTER TABLE messages ADD COLUMN read_sent INTEGER NOT NULL DEFAULT 0"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "ALTER TABLE messages ADD COLUMN obf INTEGER NOT NULL DEFAULT 0"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "ALTER TABLE messages ADD COLUMN nver INTEGER NOT NULL DEFAULT 0"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "ALTER TABLE messages ADD COLUMN orphan INTEGER NOT NULL DEFAULT 0"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "ALTER TABLE messages ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS versions(vid TEXT PRIMARY KEY,root TEXT NOT NULL,kind INTEGER NOT NULL,sender TEXT NOT NULL,ts INTEGER NOT NULL,body TEXT NOT NULL DEFAULT '',enc INTEGER NOT NULL DEFAULT 0,srole INTEGER NOT NULL DEFAULT 0,rid TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT '')"
+ },
+ {
+  "file": "chat/db.c",
+  "sql": "CREATE INDEX IF NOT EXISTS versions_root ON versions(root)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT OR IGNORE INTO people(call) VALUES(?)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT title,unread,plain,last_line,COALESCE(notify, id<>'#GLOBAL') AS ntf FROM rooms WHERE id=? LIMIT 1"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT sender,ts,body,enc,rid,status,deleted,orphan FROM messages WHERE mid=? LIMIT 1"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT vid,kind,sender,ts,body,enc,srole,rid,status FROM versions WHERE root=? ORDER BY ts ASC, vid ASC LIMIT 60"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT sender,body FROM messages WHERE mid=? LIMIT 1"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT last_line FROM rooms WHERE id=? LIMIT 1"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT body FROM versions WHERE root=? ORDER BY ts DESC LIMIT 60"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE rooms SET last_line=? WHERE id=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE messages SET body='', deleted=1 WHERE mid=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "DELETE FROM versions WHERE root=? AND kind IN (0,2)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT id,title,activity_ts FROM rooms WHERE closed=0 AND archived=0 ORDER BY activity_ts DESC, id LIMIT 64"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT count(*) AS a, COALESCE(SUM(unread>0),0) AS u FROM rooms WHERE closed=0 AND archived=1"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT id,title FROM rooms WHERE closed=0 AND (upper(id) LIKE ? OR upper(title) LIKE ?) ORDER BY activity_ts DESC LIMIT 24"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT id,title FROM rooms WHERE closed=0 ORDER BY activity_ts DESC LIMIT 8"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT mid,sender,substr(body,1,120) AS body FROM messages WHERE sys=0 AND upper(body) LIKE ? ORDER BY ts DESC LIMIT 3"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT call FROM blocked LIMIT 64"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT id FROM rooms WHERE closed=0 AND archived=0 ORDER BY activity_ts DESC LIMIT 64"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT OR IGNORE INTO rooms(id,file,title) VALUES(?,?,?)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE rooms SET title=? WHERE id=? AND title IS NOT ?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE rooms SET activity_ts=? WHERE id=? AND activity_ts<?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE rooms SET activity_ts=? WHERE id=? AND activity_ts=0"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE messages SET dir=?,sender=?,ts=?,body=?,parent=?,via=?,auth=?,enc=?,rid=?,status=?,obf=?,orphan=0 WHERE mid=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT INTO messages(mid,dir,sender,ts,body,parent,via,auth,enc,rid,status,sys,obf) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE messages SET nver=? WHERE mid=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE rooms SET closed=0 WHERE id=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT INTO messages(mid,dir,sender,ts,body,enc,orphan) VALUES(?,?,?,?,?,?,1)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT OR IGNORE INTO versions(vid,root,kind,sender,ts,body,enc,srole,rid,status) VALUES(?,?,?,?,?,?,?,?,?,?)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE messages SET nver=nver+1 WHERE mid=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT sender,deleted FROM messages WHERE mid=? LIMIT 1"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT vid,root FROM versions WHERE kind>=2"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "DELETE FROM versions WHERE vid=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE messages SET nver=nver-1 WHERE mid=? AND nver>0"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT room FROM tx WHERE rid=? LIMIT 1"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE messages SET mid=?, rid=?, status='sent', enc=? WHERE mid=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT OR REPLACE INTO tx(rid,room) VALUES(?,?)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "DELETE FROM tx WHERE rid=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT mid,dir,sender,ts,body,parent,via,auth,enc,rid,status,sys,obf,nver,deleted FROM messages WHERE mid=? LIMIT 1"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT mid,body FROM messages WHERE dir='out' AND status='key' ORDER BY seq ASC LIMIT 8"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT mid,dir,sender,ts,body,parent,via,auth,enc,rid,status,sys,obf,nver,deleted,seq FROM messages WHERE mid=? LIMIT 1"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT mid,dir,sender,ts,body,parent,via,auth,enc,rid,status,sys,obf,nver,deleted FROM (SELECT * FROM messages ORDER BY ts DESC, seq DESC LIMIT ?) ORDER BY ts ASC, seq ASC"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT mid,who FROM reactions WHERE mid IN (SELECT mid FROM messages ORDER BY ts DESC, seq DESC LIMIT ?) LIMIT 200"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT mid FROM messages WHERE dir='in' AND sys=0 AND read_sent=0 ORDER BY seq DESC LIMIT 500"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE messages SET read_sent=1 WHERE mid IN (SELECT mid FROM messages WHERE dir='in' AND sys=0 AND read_sent=0 ORDER BY seq DESC LIMIT 500)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE rooms SET closed=0, unread=0 WHERE id=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE messages SET status=? WHERE rid=? AND status<>'read'"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE versions SET status=? WHERE rid=? AND status<>'read'"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE rooms SET closed=1, unread=0 WHERE id=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE rooms SET plain=? WHERE id=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT OR IGNORE INTO hidden(mid) VALUES(?)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "DELETE FROM messages WHERE mid=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE rooms SET archived=? WHERE id=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE rooms SET notify=? WHERE id=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "DELETE FROM messages"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "DELETE FROM reactions"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT OR REPLACE INTO meta(k,v) VALUES('cleared',?)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "DELETE FROM tx WHERE room=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT OR IGNORE INTO statuses(id,call,ts,body,mine,seen) VALUES(?,?,?,?,?,?)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "UPDATE statuses SET seen=1 WHERE id=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT id,call,ts,body,mine,seen FROM statuses s WHERE ts>? AND ts=(SELECT max(ts) FROM statuses WHERE call=s.call) ORDER BY mine DESC, seen ASC, ts DESC LIMIT 30"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT id,title,last_line,unread FROM rooms WHERE closed=0 AND archived=1 ORDER BY activity_ts DESC LIMIT 64"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT OR IGNORE INTO blocked(call) VALUES(?)"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "DELETE FROM blocked WHERE call=?"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT OR REPLACE INTO meta(k,v) VALUES('kv_cleaned','1')"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT id FROM rooms LIMIT 64"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "SELECT DISTINCT sender AS s FROM messages WHERE dir='in' AND sys=0 AND sender<>'' LIMIT 200"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "INSERT OR REPLACE INTO meta(k,v) VALUES('people_v1','1')"
+ },
+ {
+  "file": "chat/room.c",
+  "sql": "DELETE FROM statuses WHERE ts<?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT body,ts FROM events WHERE body IS NOT NULL ORDER BY ts DESC LIMIT 1"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT v FROM meta WHERE k='epoch'"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO meta(k,v) VALUES(?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT v FROM meta WHERE k=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT master_priv FROM circles WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT name FROM roles LIMIT 1"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO roles(name,created) VALUES('admin',0)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO roles(name,created) VALUES('member',0)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT key FROM epochs WHERE epoch=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO epochs(epoch,key) VALUES(?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT added_epoch FROM members WHERE pub=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT name,description FROM roles ORDER BY name"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT pub,added_epoch,role,status,deliv,prop FROM members ORDER BY pub"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT id,parent,name,type,description,icon,roles,allow,deny,epoch FROM folders ORDER BY created"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT deliv FROM members WHERE pub=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT id FROM events WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO events(id,epoch,author,ts,ct,sig,body) VALUES(?,?,?,?,?,?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT id,author,ts,ct FROM events WHERE epoch=? AND body IS NULL ORDER BY ts"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "UPDATE events SET body=? WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT pub,deliv FROM members WHERE deliv IS NOT NULL AND deliv!=''"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT pub,prop FROM members WHERE prop IS NOT NULL AND prop!=''"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO circles(id,name,master_priv,created) VALUES(?,?,?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "DELETE FROM members"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO members(pub,added_epoch,revoked_epoch,role,status,deliv,prop) VALUES(?,?,NULL,?,?,?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "DELETE FROM roles"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO roles(name,description,created) VALUES(?,?,0)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "DELETE FROM folders"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO folders(id,parent,name,type,description,icon,roles,allow,deny,epoch,created) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT epoch,author,ts,ct,sig FROM events WHERE ts>? ORDER BY ts LIMIT 50"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT id,name FROM circles ORDER BY created"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "UPDATE members SET role='admin' WHERE pub=? AND (role IS NULL OR role='')"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO members(pub,added_epoch,revoked_epoch,role,deliv,prop) VALUES(?,1,NULL,?,?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT INTO audit(ts,action,who) VALUES(?,?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT status FROM members WHERE pub=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT pub FROM members WHERE (status IS NULL OR status='' OR status='active' OR status='inactive')"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO members(pub,added_epoch,revoked_epoch,role,status,deliv,prop) VALUES(?,?,NULL,?,'active',?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "DELETE FROM circles WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT author,ts,body FROM events WHERE body IS NOT NULL ORDER BY ts LIMIT 200"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT id FROM events WHERE body IS NULL LIMIT 1"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT description FROM roles WHERE name=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "UPDATE members SET role=? WHERE role=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "DELETE FROM roles WHERE name=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT name FROM roles ORDER BY name LIMIT 1"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT id FROM circles"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT pub,nick FROM requests ORDER BY ts"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT ts,action,who FROM audit ORDER BY id DESC LIMIT 50"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT name FROM roles ORDER BY name"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "UPDATE members SET role=? WHERE pub=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "DELETE FROM members WHERE pub=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "UPDATE members SET status=? WHERE pub=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT parent,name,type,description,icon,roles,allow,deny,epoch FROM folders WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT role FROM members WHERE pub=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT key FROM folder_keys WHERE folder=? AND epoch=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO folder_keys(folder,epoch,key) VALUES(?,?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT pub FROM members"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "UPDATE folders SET epoch=? WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT id,epoch FROM folders"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO folder_events(id,folder,epoch,author,ts,ct,sig,body) VALUES(?,?,?,?,?,?,?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT id,author,ts,ct FROM folder_events WHERE folder=? AND epoch=? AND body IS NULL ORDER BY ts"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "UPDATE folder_events SET body=? WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT id FROM folder_events WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT epoch FROM folder_keys WHERE folder=? ORDER BY epoch"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT id,name,icon FROM folders WHERE parent=? ORDER BY created"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT pub,role FROM members ORDER BY pub"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT author,ts,body FROM folder_events WHERE folder=? AND body IS NOT NULL ORDER BY ts LIMIT 200"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "UPDATE folders SET name=?,description=?,icon=?,type=? WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "DELETE FROM folders WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "DELETE FROM folder_keys WHERE folder=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "DELETE FROM folder_events WHERE folder=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "UPDATE folders SET roles=? WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "UPDATE folders SET allow=?,deny=? WHERE id=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "INSERT OR REPLACE INTO requests(pub,nick,ts,deliv,prop) VALUES(?,?,?,?,?)"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "SELECT deliv,prop FROM requests WHERE pub=?"
+ },
+ {
+  "file": "circles/circle.c",
+  "sql": "DELETE FROM requests WHERE pub=?"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS circles(id TEXT PRIMARY KEY,name TEXT,master_priv TEXT,created INTEGER)"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS members(pub TEXT PRIMARY KEY,added_epoch INTEGER,revoked_epoch INTEGER,role TEXT,status TEXT)"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "ALTER TABLE members ADD COLUMN role TEXT"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "ALTER TABLE members ADD COLUMN status TEXT"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "ALTER TABLE members ADD COLUMN deliv TEXT"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "ALTER TABLE members ADD COLUMN prop TEXT"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, action TEXT, who TEXT)"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS roles(name TEXT PRIMARY KEY, description TEXT, created INTEGER)"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "ALTER TABLE roles ADD COLUMN description TEXT"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS epochs(epoch INTEGER PRIMARY KEY, key TEXT)"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,epoch INTEGER,author TEXT,ts INTEGER,ct TEXT,sig TEXT,body TEXT)"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS folders(id TEXT PRIMARY KEY,parent TEXT,name TEXT,type TEXT,description TEXT,icon TEXT,roles TEXT,allow TEXT,deny TEXT,epoch INTEGER,created INTEGER)"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "ALTER TABLE folders ADD COLUMN description TEXT"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "ALTER TABLE folders ADD COLUMN icon TEXT"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS folder_keys(folder TEXT, epoch INTEGER, key TEXT,PRIMARY KEY(folder,epoch))"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS folder_events(id TEXT PRIMARY KEY, folder TEXT, epoch INTEGER, author TEXT,ts INTEGER, ct TEXT, sig TEXT, body TEXT)"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "CREATE TABLE IF NOT EXISTS requests(pub TEXT PRIMARY KEY, nick TEXT, ts INTEGER)"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "ALTER TABLE requests ADD COLUMN deliv TEXT"
+ },
+ {
+  "file": "circles/db.c",
+  "sql": "ALTER TABLE requests ADD COLUMN prop TEXT"
+ }
+]

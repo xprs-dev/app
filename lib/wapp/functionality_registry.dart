@@ -203,28 +203,33 @@ class FunctionalityRegistry {
         ParamDef('handle', 'int'),
       ], ReturnDef('void')),
     ]),
-    'hal.sqlite': FunctionalityDef(
-        'hal.sqlite', 'SQLite databases (scoped per module)', [
-      EndpointDef('hal_sqlite_open', 'Open/create a database under the wapp data dir', [
+    'hal.db': FunctionalityDef(
+        'hal.db', 'SQL databases (zx stores, scoped per module)', [
+      EndpointDef('hal_db_open', 'Open/create a database under the wapp data dir (stored as <path>.zx; encrypted in an encrypted profile)', [
         ParamDef('path', 'string', 'Relative path (no leading / or ..)'),
       ], ReturnDef('int', 'Handle (>=0) or -1 on error')),
-      EndpointDef('hal_sqlite_exec', 'Run a non-SELECT statement', [
+      EndpointDef('hal_db_exec', 'Run a non-SELECT statement (SQLite dialect)', [
         ParamDef('handle', 'int'),
         ParamDef('sql', 'string'),
         ParamDef('params', 'string', 'Optional JSON array bound to ? placeholders'),
       ], ReturnDef('int', '0 on success, -1 on error')),
-      EndpointDef('hal_sqlite_query', 'Run a SELECT; rows as a JSON array', [
+      EndpointDef('hal_db_query', 'Run a SELECT; rows as a JSON array', [
         ParamDef('handle', 'int'),
         ParamDef('sql', 'string'),
         ParamDef('params', 'string', 'Optional JSON array bound to ? placeholders'),
       ], ReturnDef('int', 'Bytes written, -1 on error, -2 if buffer too small')),
-      EndpointDef('hal_sqlite_error', 'Read the last error for a handle', [
+      EndpointDef('hal_db_error', 'Read the last error for a handle', [
         ParamDef('handle', 'int'),
       ], ReturnDef('uint32', 'Bytes written')),
-      EndpointDef('hal_sqlite_close', 'Close a database handle', [
+      EndpointDef('hal_db_close', 'Close a database handle', [
         ParamDef('handle', 'int'),
       ], ReturnDef('void')),
     ]),
+    // The pre-zx name of hal.db, so a wapp built before the rename still
+    // passes the requires.hal check; its hal_sqlite_* imports are bound to
+    // the hal.db functions (wapp_engine.dart).
+    'hal.sqlite': FunctionalityDef(
+        'hal.sqlite', 'Old name of hal.db (hal_sqlite_* = hal_db_*)', []),
     'hal.crypto': FunctionalityDef(
         'hal.crypto', 'Generic crypto with caller-supplied keys', [
       EndpointDef('hal_crypto_keygen', 'Generate a secp256k1 keypair', [],
