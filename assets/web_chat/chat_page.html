@@ -88,6 +88,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 .view h3{margin:18px 0 8px}
 /* Settings and alerts read as a column, not a banner, on a wide screen. */
 #v-admin>*{max-width:820px;margin-left:auto;margin-right:auto}
+.galgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:10px auto}
+.galcard{background:var(--card,#fff);border-radius:10px;overflow:hidden;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.galcard img,.galnone{display:block;width:100%;aspect-ratio:1;object-fit:cover;background:#ddd}
+.galnone{display:flex;align-items:center;justify-content:center;font-size:40px}
+.galcap{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:13px}
+.galcap span,.galcap b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.galike{padding:2px 6px}.galike.on{color:#d33}
+#galbox{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
+.galview{max-width:100%;max-height:100%;display:flex;flex-direction:column;gap:8px;background:var(--card,#fff);padding:8px;border-radius:10px}
+.galview img{max-width:92vw;max-height:78vh;object-fit:contain}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
       padding:12px 14px;margin:0 0 10px}
 .card h4{font-size:14px;font-weight:bold;margin:0 0 8px}
@@ -1760,12 +1770,14 @@ function renderSide(){
       return '<div class="room'+(curRoom===k?' on':'')+'" data-r="'+k+'">'+esc(hr.name)+
         (hr.visibility==='private'?'<span class="lock" title="private: members only">&#128274;</span>':'')+
         '</div>';}).join('');}
-  var chatRooms=hostedRooms.filter(function(hr){return hr.kind!=='forum'&&hr.kind!=='mesh';});
+  var chatRooms=hostedRooms.filter(function(hr){return hr.kind!=='forum'&&hr.kind!=='mesh'&&hr.kind!=='gallery';});
   var hosted=chatRooms.length?'<div class="roomhead">Station rooms</div>'+roomEntries(chatRooms,'g:'):'';
   /* The Forum (XPRS.md 18.5) is always on the list: its categories are the
    * station's forum rooms, shown inside, and a category open keeps it lit. */
   var forum='<div class="room'+(curRoom==='forum'||curRoom.slice(0,2)==='f:'?' on':'')+
       '" data-r="forum">Forum</div>';
+  /* The Gallery, where the station keeps photographs (page.gallery). */
+  if(canGallery)forum+='<div class="room'+(curRoom==='gallery'?' on':'')+'" data-r="gallery">Gallery</div>';
   el.innerHTML=htmlp+
     rooms.map(function(r){return '<div class="room'+(curRoom===r?' on':'')+
       '" data-r="'+r+'">'+roomLabel(r)+'</div>';}).join('')+
@@ -1795,8 +1807,8 @@ function switchRoom(r){
   cancelReply();
   seen={};
   var note='',canPost=true;
-  el('msgs').className='messages'+(r==='alerts'||r==='dmnew'||r==='blog'||r==='forum'||r.slice(0,2)==='f:'?' alerts':'');
-  el('chatcol').className=r==='alerts'||r==='blog'||r==='forum'?'feed':'';
+  el('msgs').className='messages'+(r==='alerts'||r==='dmnew'||r==='blog'||r==='forum'||r==='gallery'||r.slice(0,2)==='f:'?' alerts':'');
+  el('chatcol').className=r==='alerts'||r==='blog'||r==='forum'||r==='gallery'?'feed':'';
   fabSet(null);
   el('sealbtn').style.display=r.slice(0,3)==='dm:'?'':'none';
   if(r==='dmnew'){
@@ -1827,6 +1839,14 @@ function switchRoom(r){
     renderSide();
     fabSet('blog'); /* a post is anyone's to write: the page has a key before the first keystroke */
     loadBlogFeed(true);
+    return;
+  }
+  if(r==='gallery'){
+    galCat=null;galEvent=null;galAt=0;
+    el('txt').disabled=true;el('txt').placeholder='The Gallery has no conversation';
+    el('msgs').innerHTML='';
+    renderSide();
+    loadGallery(true);
     return;
   }
   if(r==='forum'){
@@ -2283,6 +2303,7 @@ function tick(){
     if(curRoom==='alerts')loadAlertsFeed();
     else if(curRoom==='blog')loadBlogFeed();
     else if(curRoom==='forum')loadForumIndex();
+    else if(curRoom==='gallery')loadGallery();
     else if(curRoom.slice(0,2)==='f:')loadForum();
     else if(curRoom.slice(0,2)==='g:')loadHosted();
     else load();
@@ -2658,6 +2679,237 @@ function wifiJoin(){
     (sess?'&session='+encodeURIComponent(sess):''));
 }
 
+// ---- the Gallery (API-HTTP.md, gallery rooms) --------------------------
+//
+// Categories are the station's gallery rooms (the administrator makes them);
+// an event is a titled t:blog in one (its moderators make them); a picture is
+// a t:message r:<event> carrying the preview, with a t:file r:<picture>
+// naming the original (XPRS.md 7.7.7); a like is t:reaction add:like. All of
+// it is read from the room's history and put together here.
+var canGallery=false,galCat=null,galEvent=null,galRows=null,galAt=0,galUp=0;
+function wf(w,k){
+  var m=(' '+w).match(new RegExp(' '+k+':(\\S*)'));
+  if(!m)return '';
+  if(k==='m'){var i=(' '+w).indexOf(' m:');return (' '+w).slice(i+3);}
+  return m[1];
+}
+function galStaff(hr){return !!hr&&(hr.role==='mod'||hr.role==='admin'||isStationAdmin);}
+function galRooms(){return hostedRooms.filter(function(hr){return hr.kind==='gallery';});}
+function galOpen(call){galCat=call;galEvent=null;galRows=null;loadGallery(true);}
+function galOpenEvent(id,title){galEvent={id:id,title:title};loadGallery(true);}
+function galBack(){if(galEvent)galEvent=null;else galCat=null;galRows=null;loadGallery(true);}
+function galRoom(){return galCat?hostedByCall[galCat]:null;}
+/* The room's pictures, originals and likes, newest 500, as a tree. */
+function galTree(rows){
+  var t={pics:{},byEvent:{},orig:{},likes:{},mine:{}};
+  for(var i=rows.length-1;i>=0;i--){var r=rows[i],w=r.wire||'',id=r.id||wireId(w);
+    if(r.type==='message'&&wf(w,'file')&&wf(w,'r')){
+      var ev=wf(w,'r');
+      t.pics[id]={id:id,ev:ev,prev:wf(w,'file'),from:r.from,ts:r.ts,cap:wf(w,'m')};
+      (t.byEvent[ev]=t.byEvent[ev]||[]).push(id);
+    }else if(r.type==='file'&&wf(w,'r')){
+      t.orig[wf(w,'r')]={ref:wf(w,'file'),size:wf(w,'size'),name:wf(w,'name')};
+    }else if(r.type==='reaction'&&wf(w,'add')==='like'){
+      var to=wf(w,'r');(t.likes[to]=t.likes[to]||{})[r.from]=1;
+      if(r.from===mycall)t.mine[to]=1;
+    }
+  }
+  return t;
+}
+function galLikes(t,id){return t&&t.likes[id]?Object.keys(t.likes[id]).length:0;}
+function galHeart(t,id){
+  var n=galLikes(t,id),me=t&&t.mine[id];
+  return '<button class="act quiet galike'+(me?' on':'')+'" onclick="event.stopPropagation();galLike(\''+id+'\')"'+
+    ' title="'+(me?'You like this':'Like')+'">'+(me?'&#9829;':'&#9825;')+(n?' '+n:'')+'</button>';
+}
+function galLoadRows(cb){
+  var hr=galRoom();if(!hr)return cb();
+  getJSON('/api/xprs/history?room='+hr.call+'&kind=message,file,reaction&limit=500'+
+    (sess?'&session='+encodeURIComponent(sess):''),function(d){
+    galRows=galTree((d&&d.rows)||[]);galAt=Date.now();cb();
+  });
+}
+function loadGallery(force){
+  var v=el('msgs');if(!v||curRoom!=='gallery')return;
+  if(!force&&Date.now()-galAt<15000)return;
+  /* Never redrawn under a field being typed in or an upload under way. */
+  if(!force&&((document.activeElement&&v.contains(document.activeElement))||(el('gal-up')&&el('gal-up').textContent)))return;
+  if(!galCat){
+    var draw=function(){
+      var list=galRooms(),h='<h3>Gallery</h3>';
+      for(var i=0;i<list.length;i++){var hr=list[i];
+        h+='<div class="alert cat" onclick="galOpen(\''+esc(hr.call)+'\')"><div class="l1"><span>'+esc(hr.name)+'</span>'+
+          (hr.visibility==='private'?'<span class="lock" title="private: members only">&#128274;</span>':'')+'</div>'+
+          (hr.about?'<div class="body">'+esc(hr.about)+'</div>':'')+'</div>';
+      }
+      if(!list.length)h+='<div class="card"><div class="empty">No categories yet.'+
+        (isStationAdmin?'':' The administrator creates them.')+'</div></div>';
+      if(isStationAdmin)h+='<div class="card composer"><h4>New category</h4>'+
+        '<div class="frow first"><input id="gc-name" class="grow" placeholder="Name">'+
+        '<input id="gc-about" class="grow" placeholder="About (optional)"></div>'+
+        '<div class="frow"><select id="gc-vis"><option value="public">Public: everyone sees it</option>'+
+        '<option value="private">Private: members only</option></select>'+
+        '<input type="hidden" id="gc-post" value="members"><span class="sp"></span>'+
+        '<button class="act primary" onclick="galNewCategory()">Create</button></div></div>';
+      v.innerHTML=h;galAt=Date.now();
+    };
+    if(canRooms)loadRooms(draw);else draw();
+    return;
+  }
+  var hr=galRoom();
+  if(!hr){galCat=null;return loadGallery(true);}
+  if(!galEvent){
+    getJSON('/api/rooms?topics='+hr.call+(sess?'&session='+encodeURIComponent(sess):''),function(d){
+      galLoadRows(function(){
+        var evs=(d&&d.topics)||[],t=galRows,h='<div class="frow first"><button class="act quiet" onclick="galBack()">&larr; Gallery</button>'+
+          '<h3 class="grow">'+esc(hr.name)+'</h3></div>';
+        if(hr.about)h+='<p class="lead">'+esc(hr.about)+'</p>';
+        h+='<div class="galgrid">';
+        for(var i=0;i<evs.length;i++){var e=evs[i],ps=(t&&t.byEvent[e.id])||[],cover=ps.length?t.pics[ps[ps.length-1]]:null;
+          h+='<div class="galcard" onclick="galOpenEvent(\''+e.id+'\',\''+esc(e.title)+'\')">'+
+            (cover?'<img loading="lazy" src="/api/xprs/file/'+esc(cover.prev)+'" alt="">':'<div class="galnone">&#128247;</div>')+
+            '<div class="galcap"><b>'+esc(e.title.replace(/-/g,' '))+'</b><span>'+ps.length+' photo'+(ps.length===1?'':'s')+'</span>'+
+            galHeart(t,e.id)+'</div></div>';
+        }
+        h+='</div>';
+        if(!evs.length)h+='<div class="card"><div class="empty">No events yet.'+(galStaff(hr)?'':' The moderators add them.')+'</div></div>';
+        if(galStaff(hr))h+='<div class="card composer"><h4>New event</h4>'+
+          '<div class="frow first"><input id="ge-title" class="grow" maxlength="60" placeholder="Name (field day 2026)">'+
+          '<input id="ge-about" class="grow" placeholder="What it was (optional)"></div>'+
+          '<div class="frow"><span class="sp"></span><button class="act primary" onclick="galNewEvent()">Create</button></div></div>';
+        v.innerHTML=h;
+      });
+    });
+    return;
+  }
+  galLoadRows(function(){
+    var t=galRows,ps=(t&&t.byEvent[galEvent.id])||[],h='<div class="frow first"><button class="act quiet" onclick="galBack()">&larr; '+
+      esc(hr.name)+'</button><h3 class="grow">'+esc(galEvent.title.replace(/-/g,' '))+'</h3>'+galHeart(t,galEvent.id)+'</div>';
+    if(galStaff(hr))h+='<div class="frow"><label class="act primary">Add photos<input type="file" accept="image/*" multiple '+
+      'style="display:none" onchange="galAdd(this)"></label><span class="dim" id="gal-up"></span></div>';
+    h+='<div class="galgrid">';
+    for(var i=ps.length-1;i>=0;i--){var p=t.pics[ps[i]];
+      h+='<div class="galcard" onclick="galView(\''+p.id+'\')"><img loading="lazy" src="/api/xprs/file/'+esc(p.prev)+'" alt="">'+
+        '<div class="galcap"><span>'+esc(p.cap||'')+'</span>'+galHeart(t,p.id)+'</div></div>';
+    }
+    h+='</div>';
+    if(!ps.length)h+='<div class="card"><div class="empty">No photos yet.</div></div>';
+    v.innerHTML=h;
+  });
+}
+function galView(id){
+  var t=galRows,p=t&&t.pics[id];if(!p)return;
+  var o=t.orig[id],src='/api/xprs/file/'+(o&&o.ref?o.ref:p.prev),hr=galRoom();
+  var box=document.createElement('div');box.id='galbox';
+  box.onclick=function(e){if(e.target===box)box.parentNode.removeChild(box);};
+  box.innerHTML='<div class="galview"><img src="'+esc(src)+'" alt="">'+
+    '<div class="frow">'+galHeart(t,id)+'<span class="grow dim">'+esc(p.cap||'')+(o&&o.size?' &middot; '+esc(o.size):'')+
+    ' &middot; '+callLink(p.from)+'</span>'+
+    (o&&o.ref?'<a class="act quiet" href="/api/xprs/file/'+esc(o.ref)+'" download="'+esc(o.name||o.ref)+'">Download</a>':'')+
+    (galStaff(hr)?'<button class="act quiet" onclick="galRemove(\''+id+'\')">Delete</button>':'')+
+    '<button class="act" onclick="var b=el(\'galbox\');b.parentNode.removeChild(b)">Close</button></div></div>';
+  document.body.appendChild(box);
+}
+function galSign(wire,cb){
+  if(!canSign())return snack('Not ready');
+  sendIdentity();
+  signAny(wire,function(w){if(!w)return snack('Not signed');cb(w);});
+}
+/* Post and learn the identifier the station filed it under. */
+function galPost(w,cb){
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/xprs/send',true);
+  x.onload=function(){var j=null;try{j=JSON.parse(x.responseText);}catch(e){}
+    if(x.status===200&&j&&j.ok)cb(j.id||wireId(w));else{snack(replyWhy(x));cb(null);}};
+  x.onerror=function(){snack('No answer');cb(null);};
+  x.send(JSON.stringify({wire:w}));
+}
+function galLike(id){
+  var hr=galRoom();if(!hr)return;
+  if(galRows&&galRows.mine[id])return;
+  if(!sess)return snack('Prove your key to like (menu, top right)');
+  galSign('t:reaction f:'+mycall+' d:'+hr.call+' ts:'+tsNow()+' r:'+id+' add:like',function(w){
+    galPost(w,function(ok){if(ok){var b=el('galbox');if(b)b.parentNode.removeChild(b);galAt=0;loadGallery(true);}});
+  });
+}
+function galNewCategory(){
+  roomCreateFrom('gc-','gallery',function(j){snack('Category created');if(j&&j.room)galOpen(j.room);});
+}
+function galNewEvent(){
+  var hr=galRoom();if(!hr)return;
+  var title=slugOf(el('ge-title').value),about=(el('ge-about').value||'').trim()||title.replace(/-/g,' ');
+  if(!title)return snack('An event needs a name');
+  galSign('t:blog f:'+mycall+' d:'+hr.call+' ts:'+tsNow()+' title:'+title+' m:'+about,function(w){
+    galPost(w,function(id){if(id){snack('Event created');galOpenEvent(id,title);}});
+  });
+}
+function galRemove(id){
+  var hr=galRoom();if(!hr||!confirm('Delete this photo for everyone?'))return;
+  galSign('t:moderate f:'+mycall+' d:'+hr.call+' ts:'+tsNow()+' r:'+id+' remove:message',function(w){
+    galPost(w,function(ok){if(ok){var b=el('galbox');if(b)b.parentNode.removeChild(b);galAt=0;loadGallery(true);}});
+  });
+}
+/* A preview of at most 320 pixels, JPEG. cb(blob) or cb(null). */
+function galThumb(f,cb){
+  var url;try{url=URL.createObjectURL(f);}catch(e){return cb(null);}
+  var im=new Image();
+  im.onerror=function(){cb(null);};
+  im.onload=function(){
+    var r=Math.min(1,320/Math.max(im.naturalWidth,im.naturalHeight));
+    try{
+      var c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*r);c.height=Math.round(im.naturalHeight*r);
+      c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+      c.toBlob(function(b){cb(b);},'image/jpeg',.7);
+    }catch(e){cb(null);}
+  };
+  im.src=url;
+}
+function galBytes(blob,cb){var rd=new FileReader();rd.onload=function(){cb(new Uint8Array(rd.result));};rd.readAsArrayBuffer(blob);}
+function galPut(ref,bytes,preview,cb){
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/xprs/file/'+ref+(preview?'?preview=1':''),true);
+  x.timeout=180000;
+  x.setRequestHeader('Content-Type','image/jpeg');
+  x.onload=function(){cb(x.status===200,replyWhy(x));};
+  x.onerror=x.ontimeout=function(){cb(false,'no answer');};
+  x.send(bytes);
+}
+function galSize(n){return n>=1048576?(n/1048576).toFixed(1)+'MB':Math.max(1,Math.round(n/1024))+'kB';}
+function galAdd(inp){
+  var files=[].slice.call(inp.files||[]);inp.value='';
+  var hr=galRoom(),ev=galEvent;if(!hr||!ev||!files.length)return;
+  var i=0,n=files.length,next=function(){
+    var s=el('gal-up');if(s)s.textContent=i<n?'Sending '+(i+1)+' of '+n+'…':'';
+    if(i>=n){galAt=0;loadGallery(true);return;}
+    var f=files[i++];
+    galThumb(f,function(tb){
+      if(!tb){snack('Not a picture: '+f.name);return next();}
+      mdShrink(f,function(big,name){
+        galBytes(tb,function(tbytes){galBytes(big,function(bbytes){
+          var pref=refOf(tbytes,'jpg'),oref=refOf(bbytes,mdExtOf(name,big.type));
+          galPut(pref,tbytes,true,function(ok,why){
+            if(!ok){snack('The station did not keep the preview: '+why);return next();}
+            galPut(oref,bbytes,false,function(ok2,why2){
+              if(!ok2){snack('The station did not keep the photo: '+why2);return next();}
+              var cap=slugOf((f.name||'').replace(/\.[^.]*$/,''));
+              galSign('t:message f:'+mycall+' d:'+hr.call+' ts:'+tsNow()+' r:'+ev.id+' file:'+pref+(cap?' m:'+cap:''),function(w){
+                galPost(w,function(pid){
+                  if(!pid)return next();
+                  galSign('t:file f:'+mycall+' d:'+hr.call+' ts:'+tsNow()+' r:'+pid+' file:'+oref+' size:'+galSize(bbytes.length)+
+                    ' name:'+(slugOf((name||'photo').replace(/\.[^.]*$/,''))||'photo')+'.'+mdExtOf(name,big.type),function(w2){
+                    galPost(w2,function(){next();});
+                  });
+                });
+              });
+            });
+          });
+        });});
+      });
+    });
+  };
+  next();
+}
+
 // ---- what this station offers --------------------------------------------
 //
 // One page serves every kind of station. A station that lists `page` in
@@ -2723,6 +2975,7 @@ function applyServices(sv){
   }
   if(p.moderation){canModerate=true;if(sess)loadMyRole();}
   if(p.rooms){canRooms=true;loadRooms();}
+  if(p.gallery){canGallery=true;renderSide();}
   alertPolicy=p.alerts||'moderators';
   if(curRoom==='alerts')fabSet(canAlert()?'alert':null);
   bannerHtml=typeof p.banner==='string'?p.banner:'';
