@@ -189,7 +189,7 @@ T-Dongle-S3.
 
 Drawer, Share. The phone serves a web chat to any browser next to it, the same
 page the ESP32 boards give a visitor on their hotspot. The page is developed in
-the sibling repo `webchat` and bundled as plain HTML (`assets/web_chat/`,
+the sibling repo `portal` and bundled as plain HTML (`assets/web_chat/`,
 refreshed by `tool/sync_web_chat.sh`, drift-checked by
 `test/web_chat_page_test.dart`). Not gzipped: F-Droid's scanner refuses any
 archive in the source tree. The share server gzips it once when it starts and
@@ -226,7 +226,7 @@ add that callsign's own mail, both ways, and nobody else's
 (`archivePublicRows`). Anyone can write any callsign; only the key signs.
 
 A direct message is sealed to the peer's key in the page (XPRS.md 6.2, AES-256-CBC
-under the ECDH secret, plain JS in `webchat/page/xprs_seal.js`, tested against
+under the ECDH secret, plain JS in `portal/page/xprs_seal.js`, tested against
 the Dart implementation) when a verified identity gives it, and otherwise sent
 in the clear and marked. Identity is a readable type for that lookup.
 

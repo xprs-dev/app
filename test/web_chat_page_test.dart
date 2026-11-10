@@ -1,5 +1,5 @@
 // The web chat page the share server hands out is built in the sibling repo
-// `webchat` (the same page the firmware serves) and bundled as plain HTML:
+// `portal` (the same page the firmware serves) and bundled as plain HTML:
 // F-Droid's scanner refuses any archive in the source tree, so it is not the
 // .gz the build also produces (the server gzips it when it starts). This fails
 // when the bundled copy has drifted from the source: run tool/sync_web_chat.sh.
@@ -27,10 +27,10 @@ void main() {
     expect(others, isEmpty, reason: 'assets/web_chat holds the page only');
   });
 
-  test('it matches what ../webchat builds, when that is checked out', () {
-    final build = File('../webchat/tool/build.py');
+  test('it matches what ../portal builds, when that is checked out', () {
+    final build = File('../portal/tool/build.py');
     if (!build.existsSync()) {
-      markTestSkipped('webchat is not checked out next to this repo');
+      markTestSkipped('portal is not checked out next to this repo');
       return;
     }
     final out = Directory.systemTemp.createTempSync('webchat_build');

@@ -20,7 +20,7 @@ jobs:
    and BLE) and carries what it hears onto the internet path and back. That's
    the same `XprsBridge` + `PacketGateway` logic the phone runs.
 
-Plus it **serves the web chat page** from `xprs-dev/webchat`, so a browser that
+Plus it **serves the web chat page** from `xprs-dev/portal`, so a browser that
 reaches the server (LAN or internet) can chat with no install, using the same
 `spec/API-HTTP.md` subset the phone's share server answers.
 
@@ -99,8 +99,8 @@ server/
     http/
       web_chat_server.dart      static page + WebChatApi over dart:io HttpServer
       admin_api.dart            loopback-only status/log/bearers, token
-  web/chat_page.html          built from ../webchat (see below), not hand-edited
-  tool/sync_web_chat.sh       same job as the app's: run webchat/tool/build.py
+  web/chat_page.html          built from ../portal (see below), not hand-edited
+  tool/sync_web_chat.sh       same job as the app's: run portal/tool/build.py
   deploy/xprs-server.service  systemd unit
   deploy/config.example.yaml
   docs/reusable.md            per the house rule; seeded from the app's list
@@ -116,13 +116,13 @@ What runs in the MVP:
 | RNS LAN discovery | library (`RnsAutoInterface` / LAN interface) | finds phones and stations on the same network |
 | XPRS LAN bearer, UDP 4242 | core (`xprs_lan`) | reaches ESP32 stations with no Reticulum config |
 | Bridge, dedup, archive | core (`XprsBridge`, `XprsGatewayDedup`, `XprsArchive`) | same rules the phone uses, same receive door |
-| Web chat page + API | webchat repo + core `WebChatApi` | `/api/services` says `tabs: [chat, traffic, devices]`, `session: true` |
+| Web chat page + API | portal repo + core `WebChatApi` | `/api/services` says `tabs: [chat, traffic, devices]`, `session: true` |
 | Admin API | subset of app's remote API | `/api/status`, `/api/log`, `/api/xprs/bearers`, `/api/rns/status`; 127.0.0.1 only + bearer token |
 
 The web page: the server serves `web/chat_page.html`, built from
-`../webchat` by `webchat/tool/build.py`, the same way the app's
+`../portal` by `portal/tool/build.py`, the same way the app's
 `tool/sync_web_chat.sh` does it. A test fails when the bundled copy drifts from
-the webchat repo (the app has the same test). The webchat README gets a third
+the portal repo (the app has the same test). The portal README gets a third
 "edition" row for the server.
 
 HTTPS: the server listens on plain HTTP and `deploy/` documents running it

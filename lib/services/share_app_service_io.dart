@@ -52,7 +52,7 @@ class ShareAppService {
   /// its QR again after the person left it and came back.
   ShareHotspot? hotspot;
 
-  /// The web chat page, built in the `webchat` repo and bundled as plain
+  /// The web chat page, built in the `portal` repo and bundled as plain
   /// HTML: F-Droid's scanner refuses any archive in the source tree, a gzip
   /// included (it failed the v1.2.28 release build). It is gzipped once, when
   /// the server starts, for clients that take gzip.
