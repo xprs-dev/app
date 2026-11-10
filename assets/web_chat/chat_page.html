@@ -2554,18 +2554,31 @@ function loadStation(){
 // ---- settings: the internet WiFi. Any visitor may add a network; none can
 // be removed (docs/esp32.md). Built once and only updated after, so a
 // refresh never closes a phone's keyboard or moves a field being typed in.
-function loadSettings(){
-  var v=el('v-settings');
-  if(!el('wf-st')){
-    v.innerHTML='<h3>Internet WiFi</h3><table class="kv" id="wf-st"></table>'+
-      '<h3>Join a network</h3><div class="wform">'+
+/* The WiFi controls are one node, made once and moved between Settings and
+ * Administration, so a redraw of either never loses what is being typed. */
+var wifiNode=null,canWifi=false,amAdmin=false;
+function wifiBox(){
+  if(!wifiNode){
+    wifiNode=document.createElement('div');
+    wifiNode.innerHTML='<table class="kv" id="wf-st"></table>'+
+      '<p class="dim" id="wf-lock" style="display:none">The station is online. Only its '+
+      'administrator changes its network; anyone may add one while it is offline.</p>'+
+      '<div id="wf-join"><h3>Join a network</h3><div class="wform">'+
       '<button onclick="wifiScan()" id="wf-scan">Search</button></div>'+
       '<table class="kv" id="wf-nets"></table>'+
       '<div class="wform"><input id="wf-ssid" maxlength="32" placeholder="Network name"'+
       ' autocomplete="off" autocapitalize="off"><input id="wf-pass" type="password"'+
       ' maxlength="63" placeholder="Password" autocomplete="off">'+
-      '<button onclick="wifiJoin()">Join</button></div><p class="dim" id="wf-msg"></p>';
+      '<button onclick="wifiJoin()">Join</button></div></div><p class="dim" id="wf-msg"></p>';
   }
+  return wifiNode;
+}
+function loadSettings(){
+  var v=el('v-settings');
+  if(!el('set-wifi')){
+    v.innerHTML='<h3>Internet WiFi</h3><div id="set-wifi"></div>';
+  }
+  el('set-wifi').appendChild(wifiBox());
   wifiShow();
 }
 function wifiShow(){
@@ -2579,6 +2592,10 @@ function wifiShow(){
       row('Connected',w.up?(w.internet?'yes, with internet':w.internet===false?
           'yes, no internet':'yes'):'no')+
       row('Remembered',names.length?names.join(', '):'<span class="dim">none yet</span>');
+    /* A visitor keeps a station online; it does not move a working one. */
+    var locked=w.up&&w.internet!==false&&!amAdmin;
+    el('wf-join').style.display=locked?'none':'';
+    el('wf-lock').style.display=locked?'':'none';
     var m=el('wf-msg');
     if(w.join==='joining')m.textContent='Joining…';
     else if(w.join==='failed')m.textContent='Could not join'+(w.why?': '+w.why:'')+'.';
@@ -2637,7 +2654,8 @@ function wifiJoin(){
   };
   // A join can take the hotspot off its channel for a moment.
   x.onerror=function(){m.textContent='No answer. Reload in a minute.';};
-  x.send('ssid='+encodeURIComponent(s)+'&pass='+encodeURIComponent(p));
+  x.send('ssid='+encodeURIComponent(s)+'&pass='+encodeURIComponent(p)+
+    (sess?'&session='+encodeURIComponent(sess):''));
 }
 
 // ---- what this station offers --------------------------------------------
@@ -2696,7 +2714,13 @@ function applyServices(sv){
     if(tabs.indexOf(n)<0)bs[i].style.display='none';
   }
   if(p.app){el('getapp').href=p.app;el('getapp').className='';}
-  if(p.admin)el('adminbtn').style.display='';
+  canWifi=tabs.indexOf('settings')>=0;
+  if(p.admin){
+    el('adminbtn').style.display='';
+    /* Where there is Administration, WiFi is set up there, by anyone. */
+    var sb=document.querySelector('[data-view="settings"]');
+    if(sb)sb.style.display='none';
+  }
   if(p.moderation){canModerate=true;if(sess)loadMyRole();}
   if(p.rooms){canRooms=true;loadRooms();}
   alertPolicy=p.alerts||'moderators';
@@ -2732,6 +2756,7 @@ function loadAdmin(){
  * banner half written); cleared by a save or by leaving the view. */
 var adminDirty=false;
 function drawAdmin(d){
+  amAdmin=!!d.you;
   var st=esc(stationCall||d.station||'');
   var h='<div class="card"><div class="stat">'+
     (st?'<div><div class="k">Station</div><div class="v call">'+st+'</div></div>':'')+
@@ -2752,6 +2777,11 @@ function drawAdmin(d){
       ' can change this station&rsquo;s settings.</p>';
   }
   h+='</div>';
+  /* The station's internet WiFi, for every visitor: anyone here may add a
+   * network it can use (a hotspot in range), administrator or not. */
+  if(canWifi)h+='<h3>Internet WiFi</h3><div class="card"><p class="lead">Anyone here '+
+    'may give this station a network to reach the internet through.</p>'+
+    '<div id="ad-wifi"></div></div>';
   if(d.admin&&!d.you)h+=drawModeration(d,false);
   if(d.you){
     var s=d.settings||{},who=s.who_may_post||'everyone',wa=s.who_may_alert||'moderators';
@@ -2846,6 +2876,7 @@ function drawAdmin(d){
       '</div></div>';
   }
   el('v-admin').innerHTML=h;
+  if(el('ad-wifi')){el('ad-wifi').appendChild(wifiBox());wifiShow();}
 }
 /* Moderators, invitations and people sent away (XPRS.md 10.10). The
    administrator appoints, dismisses and lifts; a moderator sees the lists. */
