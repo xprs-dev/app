@@ -10,8 +10,18 @@ on:
 jobs:
   linux:
     # Pinned: on ubuntu-26.04 (ubuntu-latest from 2026-10-21) the Linux link
-    # fails, while the same tree links on 24.04.
-    runs-on: ubuntu-24.04
+    # fails, while the same tree links on 24.04. arm64 is for the Raspberry
+    # Pi class of machine (a station's server, a bench), built natively on
+    # GitHub's arm64 runner rather than cross-compiled.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       # Full history: the build number is the commit count, and a
       # depth-1 clone makes that 1 (see release.yml).
@@ -53,11 +63,11 @@ jobs:
           mkdir -p dist
           # Tar the *contents* of the bundle (xprs, data/, lib/ at top level)
           # so apply-update.sh can swap them in place. Reproducible flags.
-          tar -C build/linux/x64/release/bundle \
+          tar -C build/linux/${{ matrix.arch }}/release/bundle \
             --sort=name --owner=0 --group=0 --mtime='1970-01-01' \
-            -czf dist/xprs-linux-x64.tar.gz .
+            -czf dist/xprs-linux-${{ matrix.arch }}.tar.gz .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xprs-linux
-          path: dist/xprs-linux-x64.tar.gz
+          name: xprs-linux-${{ matrix.arch }}
+          path: dist/xprs-linux-${{ matrix.arch }}.tar.gz
