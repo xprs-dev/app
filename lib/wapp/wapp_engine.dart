@@ -40,6 +40,7 @@ import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_fetch.dart';
 import '../services/flash/flash_service.dart';
 import '../services/xprs/xprs_monitor.dart';
+import 'package:xprs_core/src/services/xprs/xprs_shared_position.dart';
 import '../services/xprs/xprs_presence.dart';
 import '../services/xprs/xprs_packet.dart';
 import '../services/xprs/xprs_receipt.dart';
@@ -3614,6 +3615,20 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_position: this station's position as its owner shares it, the
+    // same coarsened pos:/acc: its beacon carries (xprs_shared_position.dart).
+    final halXprsPosition = WasmFunction(
+      (int outPtr, int outCap) {
+        if (outCap <= 0) return 0;
+        final at = XprsSharedPosition.instance.current();
+        if (at == null) return 0;
+        final bytes = utf8.encode(jsonEncode({'pos': at.pos, 'acc': at.acc}));
+        if (bytes.length > outCap) return -bytes.length;
+        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     // hal_xprs_kind: what an address names, decided by the core's one rule
     // (xprsAddressKind) and handed to the wapp, so no wapp keeps a prefix
     // test of its own. Pure: it reads nothing this station holds, so it is
@@ -4975,6 +4990,7 @@ class WappEngine {
       WasmImport('hal', 'mesh_devices', halMeshDevices),
       WasmImport('hal', 'xprs_stations', halXprsStations),
       WasmImport('hal', 'xprs_station', halXprsStation),
+      WasmImport('hal', 'xprs_position', halXprsPosition),
       WasmImport('hal', 'xprs_kind', halXprsKind),
       WasmImport('hal', 'xprs_follow', halXprsFollow),
       WasmImport('hal', 'xprs_followed', halXprsFollowed),

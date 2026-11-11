@@ -352,10 +352,17 @@ class FunctionalityRegistry {
           'hal_xprs_station',
           'One station heard this hour, flat: {call,kind,bearer,bearers,rssi,'
           'lastMs,agoMs,lastDirectMs,packets,peers?,mail?,uptime?,lifetime?,'
-          'fw?,count?,serve?,hears?,sig?,readings?,npub?}; npub is the '
-          'station key the core holds for it, to seal to with hal_encrypt',
+          'fw?,count?,serve?,hears?,sig?,readings?,npub?,pos?,acc?}; npub is the '
+          'station key the core holds for it, to seal to with hal_encrypt; '
+          'pos/acc where it says it is (its beacon, coarsened by its owner)',
           [ParamDef('call', 'string', 'its callsign')],
           ReturnDef('int', 'Bytes written, 0 when not heard, negated required size if too small')),
+      EndpointDef(
+          'hal_xprs_position',
+          'This station\'s position as its owner shares it (Settings > '
+          'Privacy), coarsened to their radius: {pos,acc} (XPRS \u00a715.1)',
+          [],
+          ReturnDef('int', 'Bytes written, 0 when no position is shared, negated required size if too small')),
       EndpointDef(
           'hal_xprs_kind',
           'What an address names, by the core\'s one rule: user, station, '

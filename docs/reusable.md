@@ -677,6 +677,17 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
 - **`lib/wapp/geoui/tile_math.dart`** — pure slippy-map arithmetic:
   `tileX`/`tileY`, `tilesForBox` (coarse first, capped), `viewBox` (the
   area a screen shows), `tileUrl`. Any "which tiles cover this" question.
+- **`xprsCoarsePos` / `XprsSharedPosition` (core `xprs_shared_position.dart`)**
+  — a position snapped to the centre of a fixed grid cell of the owner's
+  radius, written with the decimals that size supports (XPRS.md 15.1) plus
+  `acc:`. Use it for ANY position a station states about itself: a fixed cell
+  leaks nothing more on the hundredth airing (a random offset would average
+  out). A wapp gets the same value with `hal_xprs_position`.
+- **`ui.map.locate` (wapp → host)** — switch to the map's screen and centre on
+  one place: the "Show on map" of any list.
+- **`ui.prompt` with `copy`** — a sheet with a Copy button: coordinates to
+  paste into a navigation app, a file token, a link. `chips` add choices that
+  come back as a `prompt` command (`prompt_id`, `prompt_value`).
 - **`lib/wapp/geoui/tile_recolor.dart`** — `recolorDark(rgba)` repaints an
   OpenStreetMap-carto raster tile in the Protomaps "dark" palette (hue picks
   water/park/sand/road, a luminance ramp maps the rest). Pure Dart on an RGBA

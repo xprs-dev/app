@@ -60,5 +60,16 @@
   "settings.servers.empty": "No servers — tap \"Add server\".",
   "settings.servers.host": "Host",
   "settings.servers.port": "Port",
-  "settings.servers.port_n": "port {port}"
+  "settings.servers.port_n": "port {port}",
+  "settings.privacy.title": "Privacy",
+  "settings.position.share": "Share my station's position",
+  "settings.position.share_help": "Off: your position never leaves this device. On: your beacon says where this station is, as coarsely as you choose below, so people can find it on a map.",
+  "settings.position.radius": "Within {radius}",
+  "settings.position.radius_help": "Your position is snapped to the middle of a square this size, the same square every time, so nobody can narrow it down by listening longer.",
+  "settings.position.fixed": "Position when there is no GPS",
+  "settings.position.fixed_help": "Latitude,longitude, for a station that stays put (a desktop, a server, the box on the roof). A GPS fix, when there is one, is used instead.",
+  "settings.position.fixed_bad": "Write latitude,longitude, for example 38.7077,-9.1365",
+  "settings.position.fixed_saved": "Position saved",
+  "settings.position.none": "Nothing is shared yet: no GPS fix and no position set.",
+  "settings.position.aired": "Your beacon says: {pos} (within {radius})"
 }

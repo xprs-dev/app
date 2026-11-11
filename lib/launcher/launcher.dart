@@ -44,6 +44,7 @@ import '../services/social/note_text.dart';
 import '../services/mesh/mesh_service.dart';
 import '../services/xprs/xprs_climate.dart';
 import '../services/preferences_service.dart';
+import 'position_share_card.dart';
 import '../services/launch_count_store.dart';
 import '../services/new_wapp_tracker.dart';
 import '../services/hero/hero_brightness.dart';

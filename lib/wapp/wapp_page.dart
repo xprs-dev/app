@@ -1852,6 +1852,11 @@ class _WappPageState extends State<WappPage>
           _mapLon = (data['lon'] as num?)?.toDouble() ?? _mapLon;
           _mapZoom = (data['zoom'] as num?)?.toInt() ?? _mapZoom;
           changed = true;
+        } else if (type == 'ui.map.locate') {
+          // Show one place: switch to the screen with the map, leave any open
+          // panel, centre on it and zoom in (a "Show on map" from a list).
+          _locateFromMessage(data);
+          changed = true;
         } else if (type == 'ui.map.prefetch') {
           _prefetchMapArea(data);
         } else if (type == 'ui.map.marker') {
