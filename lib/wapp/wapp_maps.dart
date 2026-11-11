@@ -74,6 +74,9 @@ class _SlippyMap extends StatefulWidget {
   /// for a dark screen. A wapp picks it with `tile-style` on its map group.
   final String tileStyle;
 
+  /// The address search box over the map (map group `search`, default on).
+  final bool showSearch;
+
   /// Optional transparent reference layer drawn over the base tiles to label
   /// places (countries, cities, villages…). The tile service supplies the
   /// zoom-appropriate level of detail.
@@ -159,6 +162,7 @@ class _SlippyMap extends StatefulWidget {
     required this.zoom,
     required this.tileUrl,
     this.tileStyle = '',
+    this.showSearch = true,
     required this.minZoom,
     required this.maxZoom,
     required this.onViewportChanged,
@@ -1128,9 +1132,14 @@ class _SlippyMapState extends State<_SlippyMap>
           ? baseTiles
           : <Widget>[
               Positioned.fill(
-                child: ColorFiltered(
-                  colorFilter: tileFilter,
-                  child: Stack(clipBehavior: Clip.none, children: baseTiles),
+                // Clipped: tiles at the edges reach past the map, and a
+                // filter layer that let them paint there covered whatever sat
+                // above the map (a screen's toolbar row).
+                child: ClipRect(
+                  child: ColorFiltered(
+                    colorFilter: tileFilter,
+                    child: Stack(clipBehavior: Clip.hardEdge, children: baseTiles),
+                  ),
                 ),
               ),
             ];
@@ -1288,6 +1297,7 @@ class _SlippyMapState extends State<_SlippyMap>
                   ),
                 ),
               // Search bar
+              if (widget.showSearch)
               Positioned(
                 top: 12,
                 left: 12,
@@ -1626,11 +1636,19 @@ extension _WappMaps on _WappPageState {
     VoidCallback? onExpand,
     bool isFullscreen = false,
   }) {
+    // What the map carries besides tiles and pins. Each is on unless the map
+    // group says false: `radius` (the coverage circle and its slider),
+    // `chat` (the floating geo-chat), `search` (the address search box). A
+    // map of places (the Check-in wapp's) wants none of them.
+    final showRadius = mapGroup.getBool('radius') ?? true;
+    final showChat = mapGroup.getBool('chat') ?? true;
+    final showSearch = mapGroup.getBool('search') ?? true;
     return _SlippyMap(
       lat: _mapLat,
       lon: _mapLon,
       zoom: _mapZoom,
       tileUrl: _tileUrl,
+      showSearch: showSearch,
       tileStyle: mapGroup.getString('tile-style') ?? '',
       labelUrl: mapGroup.getString('label-url'),
       labelMaxZoom: mapGroup.getNumber('label-max-zoom')?.toInt() ?? 13,
@@ -1656,9 +1674,9 @@ extension _WappMaps on _WappPageState {
         _engine.handleEvent();
         _drainOutbox();
       },
-      radiusKm: _mapDragKm ?? _mapRadiusKm,
-      centerLat: _mapCenterLat,
-      centerLon: _mapCenterLon,
+      radiusKm: showRadius ? (_mapDragKm ?? _mapRadiusKm) : null,
+      centerLat: showRadius ? _mapCenterLat : null,
+      centerLon: showRadius ? _mapCenterLon : null,
       onRadiusChanged: (km) {
         _mapRadiusKm = km;
         // Keep both the slider's value and the Settings field in sync so
@@ -1695,11 +1713,13 @@ extension _WappMaps on _WappPageState {
         }
         if (mounted) setState(() {});
       },
-      onChatSend: (text) {
-        _fieldValues['geochat_input'] = text;
-        _sendCommand('geochat_send');
-        if (mounted) setState(() {});
-      },
+      onChatSend: !showChat
+          ? null
+          : (text) {
+              _fieldValues['geochat_input'] = text;
+              _sendCommand('geochat_send');
+              if (mounted) setState(() {});
+            },
       onLocate: _locateFromMessage,
       highlightLat: _locateLat,
       highlightLon: _locateLon,
@@ -1794,7 +1814,7 @@ extension _WappMaps on _WappPageState {
               children: [for (final a in toolbarActions) _toolbarButton(a)],
             ),
           ),
-        _buildMapRadiusBar(),
+        if (mapGroup.getBool('radius') ?? true) _buildMapRadiusBar(),
         Expanded(
           child: _buildSlippyMap(
             mapGroup,

@@ -103,7 +103,7 @@ they fit signed.
 ## 2.6 The map (0.2.0)
 
 The first tab is a black-and-white map (`tile-style: mono`) with a pin for
-every check-in (white) and every check-in event still running (amber); a pin
+every check-in (black) and every check-in event still running (amber); a pin
 opens its evidence. The map centres on the check-ins. The region around them
 is saved for off-grid use at zooms 3 to 9, once per new area
 (`ui.map.prefetch`, at most 500 tiles); "Save this area offline" saves the
