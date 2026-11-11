@@ -6,7 +6,10 @@
  * Completely data-driven: the wapp pushes the content via `ui.people.set`
  * and receives generic field-derived commands back:
  *   <field>_tap     (row tapped;            <field>_id = row id)
- *   <field>_<name>  (trailing button tapped; <field>_id = row id)
+ *   <action>        (trailing button or menu entry tapped: the row's own
+ *                    `action` string, exactly as the wapp wrote it, so a
+ *                    wapp prefixes it itself if it wants: "profile_follow";
+ *                    <field>_id = row id)
  * The host knows nothing about what the rows or actions mean.
  */
 
