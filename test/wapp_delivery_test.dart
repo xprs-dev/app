@@ -221,6 +221,31 @@ void main() {
     expect(jsonDecode(ev.data)['content'], 'hello');
   });
 
+  // A command signed TO us by a station whose key we have never heard: the
+  // wapp can only say "I cannot tell who you are", so the core asks that
+  // station for its binding at once and the re-aired copy arrives checkable.
+  test('a signed packet for us from an unknown key asks for that key', () {
+    bus.registerEngine('checkin');
+    bus.subscribe('checkin', rxTopicFor('command'));
+    XprsArchive.instance.keyResolver = (_) => null;
+    final asked = <String>[];
+    WappDelivery.onUnknownSigner = asked.add;
+    const wire = 't:command f:X1CHSR-2 d:X3STN1 ts:2026-08-17_09:46:40 '
+        'cmd:checkin scope:local sig:abcdefghij';
+    WappDelivery.instance
+        .deliverPacket(XprsPacket.parse(wire)!, bearer: 'lan', forUs: true);
+    final row = jsonDecode(bus.recv('checkin')!.data) as Map<String, dynamic>;
+    expect(row['sig'], XprsSigState.unverified.name);
+    expect(asked, ['X1CHSR'], reason: 'the person, not the device');
+    WappDelivery.instance
+        .deliverPacket(XprsPacket.parse(wire)!, bearer: 'lan', forUs: false);
+    expect(asked, hasLength(1), reason: 'somebody else\'s mail is not our question');
+    const unsigned = 't:command f:X1CHSR d:X3STN1 ts:2026-08-17_09:46:41 cmd:checkin';
+    WappDelivery.instance
+        .deliverPacket(XprsPacket.parse(unsigned)!, bearer: 'lan', forUs: true);
+    expect(asked, hasLength(1), reason: 'an unsigned packet has no key to find');
+  });
+
   test('a packet is published on its own type, with its provenance', () {
     // XPRS.md 4.2 gives thirty types; the bus uses them directly rather than
     // inventing coarse buckets a wapp would have to filter again.

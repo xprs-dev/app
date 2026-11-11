@@ -994,7 +994,11 @@ class _AppIcon extends StatelessWidget {
     // strokes), and emoji glyphs — which ignore TextStyle.color
     // because they come from a colour font — are wrapped in a
     // ColorFiltered so their alpha mask is repainted white too.
-    const whiteFilter = ColorFilter.mode(Colors.white, BlendMode.srcIn);
+    // The glyph is white on a dark tile and black on a light one (a yellow
+    // wapp colour, say), decided by the tile's own luminance rather than by
+    // a manifest field: the manifest names one colour, and contrast follows.
+    final ink = color.computeLuminance() > 0.45 ? Colors.black : Colors.white;
+    final whiteFilter = ColorFilter.mode(ink, BlendMode.srcIn);
     final hasSvg = svgIconPath != null && svgIconPath!.isNotEmpty;
     final hasText = textIcon != null && textIcon!.isNotEmpty;
     // For the SVG case we read the bytes through the platform
@@ -1015,7 +1019,7 @@ class _AppIcon extends StatelessWidget {
         child: SvgPicture.memory(
           svgBytes,
           fit: BoxFit.contain,
-          theme: const SvgTheme(currentColor: Colors.white),
+          theme: SvgTheme(currentColor: ink),
           placeholderBuilder: (_) => const SizedBox.shrink(),
         ),
       );
@@ -1028,9 +1032,9 @@ class _AppIcon extends StatelessWidget {
             padding: const EdgeInsets.all(8),
             child: Text(
               textIcon!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 32,
-                color: Colors.white,
+                color: ink,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -1038,7 +1042,7 @@ class _AppIcon extends StatelessWidget {
         ),
       );
     } else {
-      inner = Icon(icon, size: 28, color: Colors.white);
+      inner = Icon(icon, size: 28, color: ink);
     }
     return GestureDetector(
       onSecondaryTapDown: onEdit == null

@@ -1,0 +1,35 @@
+name: test-files
+
+# Runs the named test files on GitHub's runner, for machines too small to run
+# them next to everything else.
+#
+#   gh workflow run test-files.yml -f files="test/wapp_delivery_test.dart"
+
+on:
+  workflow_dispatch:
+    inputs:
+      files:
+        description: Space-separated test files
+        required: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch reticulum-dart, core and zx (path dependencies)
+        shell: bash
+        run: tool/ci_fetch_siblings.sh
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Test
+        env:
+          FILES: ${{ inputs.files }}
+        run: flutter test $FILES
