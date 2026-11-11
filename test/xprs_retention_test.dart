@@ -2,7 +2,7 @@
 //
 // Measured on a phone with two stations in earshot: 89% of everything it
 // archived was presence chatter and 3% was messages, at roughly twenty thousand
-// sqlite writes an hour for rows nothing reads. The responder had already
+// store writes an hour for rows nothing reads. The responder had already
 // decided it would not serve those rows -- a `cmd:history` naming no `kind:`
 // is answered from kXprsTalk -- so the archive was paying to store, prune and
 // carry traffic it would never hand to anyone.
@@ -133,7 +133,7 @@ void main() {
   test('presence still reaches the live view either way', () {
     heard('t:observation f:X3R8XX link:ble peers:4');
     expect(XprsMonitor.instance.stations.containsKey('X3R8XX'), isTrue,
-        reason: 'the graph and the station list read the monitor, not sqlite');
+        reason: 'the graph and the station list read the monitor, not the store');
   });
 }
 

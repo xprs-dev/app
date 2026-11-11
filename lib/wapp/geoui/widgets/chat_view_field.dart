@@ -207,7 +207,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
   /// The derivation is 100k rounds of PBKDF2 and takes seconds on a phone, so
   /// the bubble has to SAY it is working -- a tap that answers nothing reads as
   /// a tap that missed, and the next tap buys another derivation. Held here and
-  /// not on the message map: those are written through to sqlite, and this is
+  /// not on the message map: those are written through to the store, and this is
   /// worth exactly as much as the widget that shows it. The State survives the
   /// host's rebuilds (the element is keyed per conversation), so the mark is
   /// still here when the answer lands.

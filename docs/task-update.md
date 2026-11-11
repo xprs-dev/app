@@ -94,7 +94,7 @@ the traps listed at the bottom.
 - `nostr_ws_client.dart` — keepalive `pingInterval: 20 s` +
   `connectTimeout: 12 s` (IOWebSocketChannel), idle watchdog 45 s, `resume()`
   (reconnect now, skip backoff), frame counter `drainFrames()`.
-- `nostr_engine.dart` — `refreshBurst`/`resume` commands; heavy sqlite throttled
+- `nostr_engine.dart` — `refreshBurst`/`resume` commands; heavy database work throttled
   out of the 400 ms tick (`myNotifications` every 25th tick, `relaysJson` every
   5th) — it ran EVERY tick before; periodic `relays:` health log line.
 - `nostr_relay_client.dart` + local/rns clients + test fakes — `drainFrames()` /
@@ -219,7 +219,7 @@ every follow) was removed.
 - `reticulum-dart/lib/src/services/social/nostr_ws_client.dart` — sockets:
   keepalive, idle watchdog, resume, frame counter.
 - `reticulum-dart/lib/src/services/social/nostr_engine.dart` — the isolate:
-  commands, tick (throttled sqlite), snapshots to main.
+  commands, tick (throttled database work), snapshots to main.
 - `aurora/lib/wapp/wapp_engine.dart` — HAL; headless firehose refusal (~:2909);
   event_recv with the too-big log.
 - `aurora/lib/wapp/wapp_page.dart` — feed wiring: onRefresh, mute, follow,

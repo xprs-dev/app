@@ -9,7 +9,7 @@
  * The federation scenarios (group posts copied to favourites, the three large
  * archivers finding each other and syncing via the REAL ProviderRecord/
  * PointerSync, cross-archiver holder resolution) are pure Dart plus real
- * crypto — no sqlite, no platform stubs, no desktop-only sqlite override. So
+ * crypto — no platform stubs and no native libraries. So
  * what passes here is byte-for-byte the code path that runs on the device, and
  * the on-machine desktop run and the on-hardware run exercise the same harness.
  *

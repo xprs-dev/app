@@ -25,10 +25,10 @@ import 'package:xprs_core/src/platform/core_host.dart';
 /// all, so notes are structurally safe. All this class does is put the bytes in
 /// front of them.
 ///
-/// The budget below is not decoration. This writes multi-MB blobs into a sqlite
-/// store that lives on the **main isolate**, so an unbounded ingest would show
-/// up exactly as the pegged-core-inside-native-sqlite signature in
-/// docs/performance.md §4.1.
+/// The budget below is not decoration. This writes multi-MB blobs into the
+/// media store (media.zx), which lives on the **main isolate**, so an
+/// unbounded ingest would show up as a pegged core inside the store's writes
+/// (docs/performance.md §4.1).
 class FollowedMediaCache {
   FollowedMediaCache._();
   static final FollowedMediaCache instance = FollowedMediaCache._();

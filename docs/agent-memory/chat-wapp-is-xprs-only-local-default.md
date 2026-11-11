@@ -1,6 +1,6 @@
 ---
 name: chat-wapp-is-xprs-only-local-default
-description: "Max's rules for the chat wapp: XPRS messages only (no LXMF/NomadNet anything), #LOCAL is the only default room, no pre-created rooms, one sqlite DB per conversation via hal_sqlite"
+description: "Max's rules for the chat wapp: XPRS messages only (no LXMF/NomadNet anything), #LOCAL is the only default room, no pre-created rooms, one zx store per conversation via hal_db"
 metadata: 
   node_type: memory
   type: feedback
@@ -24,7 +24,7 @@ stored nothing itself — membership ×3, dedup ×5, history only in a host DB t
 wapp could not read. Max's decision: *"don't care about history, I want a great
 simplified chat architecture"* — clean slate, no migration.
 
-**How to apply:** one sqlite DB per conversation through `hal_sqlite_*`
+**How to apply:** one zx store per conversation through `hal_db_*`
 (circles is the precedent), `messages.mid` PRIMARY KEY as the only dedup, one
 inbound door (`room_admit`), host `ConversationStore` is a memory-only render
 cache (`"conversations":"wapp"` manifest flag). `hal_kv` keeps only `chan`.

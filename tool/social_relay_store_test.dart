@@ -1,7 +1,7 @@
 // Headless test for RelayEventStore (slice 1 of the distributed NOSTR relay).
 // Authors real Schnorr-signed NOSTR events and exercises ingest/verify, dedup,
 // replaceable semantics, NIP-01 filters, FTS5 search, follow feeds, popularity,
-// and topic streams — all in an in-memory SQLite DB.
+// and topic streams — all in an in-memory zx store.
 //
 //   dart run tool/social_relay_store_test.dart
 import 'dart:io';
@@ -11,7 +11,6 @@ import 'package:xprs/services/social/relay_event_store.dart';
 import 'package:xprs/util/nostr_crypto.dart';
 import 'package:xprs/util/nostr_event.dart';
 
-import 'sqlite_loader.dart';
 
 int _now = 1_700_000_000; // fixed base so created_at is deterministic
 
@@ -45,7 +44,6 @@ void check(String name, bool ok) {
 }
 
 void main() {
-  ensureSqlite();
   final store = RelayEventStore.open(':memory:');
   final alice = NostrCrypto.generateKeyPair();
   final bob = NostrCrypto.generateKeyPair();

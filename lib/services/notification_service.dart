@@ -269,7 +269,7 @@ class NotificationService with WidgetsBindingObserver {
   /// A notification carrying a [XprsNotification.tag] is announced once,
   /// ever, ACROSS RESTARTS: the tag is its identity, persisted per profile by
   /// [AnnouncedTagsStore]. Wapps re-subscribe and re-ingest their backlog on
-  /// every start (Social answers its inbox out of SQLite, Mail replays the
+  /// every start (Social answers its inbox out of its store, Mail replays the
   /// relay backlog), so a process-lifetime guard would re-announce — and
   /// re-mark unread — everything the user already saw.
   ///

@@ -39,7 +39,7 @@ never contains app-specific logic; the Chat wapp is portable C compiled to
 │  • rooms_field.dart  ← Discord layout (rail/chat/members)│
 │  • ConversationStore + chat_view_field.dart (bubbles)   │
 │  • PeopleViewField (member roster)                      │
-│  • HALs: nostr, sqlite, crypto, identity, msg, time,    │
+│  • HALs: nostr, db, crypto, identity, msg, time,    │
 │          sensor/gps, http, ble                          │
 └───────────────▲───────────────────────┬─────────────────┘
                 │ ui.* messages          │ hal_* calls
@@ -63,7 +63,7 @@ never contains app-specific logic; the Chat wapp is portable C compiled to
   plus the Settings actions (`ble_apply`, `pubkey_apply`, …).
 - HALs the wapp leans on: `hal_nostr_post(kind,content,tags)`,
   `hal_nostr_subscribe`/`_event_recv`/`_unsubscribe`, `hal_nostr_self`,
-  `hal_sqlite_*`, `hal_crypto_*`, `hal_identity_sign`, `hal_msg_send`,
+  `hal_db_*`, `hal_crypto_*`, `hal_identity_sign`, `hal_msg_send`,
   `hal_time_epoch`.
 
 **Keep-generic rule:** the `rooms` layout is a *generic* UI primitive
@@ -151,7 +151,7 @@ status guard on the one-time publish).
 message-recorded) · **2** tree changed → refresh rail + re-subscribe · **3**
 approvable proposal → prompt.
 
-**Storage — device-local `rooms.sqlite3`:** `rooms(roomId, adminPub, name,
+**Storage — device-local `rooms.zx`:** `rooms(roomId, adminPub, name,
 description, parentRoomId, access, approvedBy, closed, verified, createdTs)`,
 `room_mods(roomId, pub)`, `ops(...)`, `msgs(id, roomId, author, ts)`,
 `proposals(id, parentRoomId, proposerPub, name, description, ts, status)`,

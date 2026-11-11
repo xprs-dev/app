@@ -369,7 +369,7 @@ outbox row`. The tick was the smaller cost. `stateOf` answering null for a
 message that IS delivered makes the mailbox leave ANOTHER copy with an
 archiver and leaves the retry ladder with nothing to stop it, which is airtime
 rather than a nicety. `XprsOutbox` now keeps its rows in the profile database
-(`xprs_outbox.sqlite3`): the pocket holds the hot 500, the file holds 4000, and
+(`xprs_outbox.zx`): the pocket holds the hot 500, the file holds 4000, and
 a receipt for something older loads its row rather than reporting a status with
 nothing behind it. Re-run on the same three stations: `outbox restored 28 sent
 message(s)`, then `receipt from X1WATT released 1 held copy of 621c47` and

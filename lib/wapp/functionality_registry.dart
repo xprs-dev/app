@@ -208,7 +208,7 @@ class FunctionalityRegistry {
       EndpointDef('hal_db_open', 'Open/create a database under the wapp data dir (stored as <path>.zx; encrypted in an encrypted profile)', [
         ParamDef('path', 'string', 'Relative path (no leading / or ..)'),
       ], ReturnDef('int', 'Handle (>=0) or -1 on error')),
-      EndpointDef('hal_db_exec', 'Run a non-SELECT statement (SQLite dialect)', [
+      EndpointDef('hal_db_exec', 'Run a non-SELECT statement (SQL, the dialect zx shares with SQLite)', [
         ParamDef('handle', 'int'),
         ParamDef('sql', 'string'),
         ParamDef('params', 'string', 'Optional JSON array bound to ? placeholders'),
@@ -225,11 +225,6 @@ class FunctionalityRegistry {
         ParamDef('handle', 'int'),
       ], ReturnDef('void')),
     ]),
-    // The pre-zx name of hal.db, so a wapp built before the rename still
-    // passes the requires.hal check; its hal_sqlite_* imports are bound to
-    // the hal.db functions (wapp_engine.dart).
-    'hal.sqlite': FunctionalityDef(
-        'hal.sqlite', 'Old name of hal.db (hal_sqlite_* = hal_db_*)', []),
     'hal.crypto': FunctionalityDef(
         'hal.crypto', 'Generic crypto with caller-supplied keys', [
       EndpointDef('hal_crypto_keygen', 'Generate a secp256k1 keypair', [],

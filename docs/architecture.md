@@ -866,8 +866,8 @@ Rules enforced:
 | `no-core-calls-from-screen` | a screen (`wapp_page.dart`, `geoui`, launcher, ui) calling a core singleton to publish, relay, fetch, follow, send or judge reachability |
 | `no-sub-minute-interval-constant` | an interval under a minute held in a named constant in a core layer ([performance.md](performance.md) 6.5) |
 | `no-content-in-log` | a person's words (`contentString`, `.content`) written to the log ring `/api/log` serves |
-| `no-native-import-outside-io-file` | an unconditional `dart:io`, `dart:ffi`, `dart:isolate` or FFI `package:sqlite3` import outside a `*_io.dart` file, in `lib/` and in the reticulum-dart sibling: the web build compiles `lib/` to WebAssembly (and a JavaScript fallback), where FFI is a compile error and the rest throw at runtime ([web.md](web.md)) |
-| `no-sqlite` | an import of `package:sqlite3`, `sqlcipher_flutter_libs`, `sqlite3_flutter_libs` or `encrypted_archive`, here, in the core and in reticulum-dart: every database is a zx store, opened through the core's `storage/store_db.dart` (`openStoreDb`; reticulum-dart's `openDb`) |
+| `no-native-import-outside-io-file` | an unconditional `dart:io`, `dart:ffi` or `dart:isolate` import outside a `*_io.dart` file, in `lib/` and in the reticulum-dart sibling: the web build compiles `lib/` to WebAssembly (and a JavaScript fallback), where FFI is a compile error and the rest throw at runtime ([web.md](web.md)) |
+| `no-sqlite` | an import of `package:sqlite3`, `sqlcipher_flutter_libs`, `sqlite3_flutter_libs` or `encrypted_archive`, here (`lib/`, `test/`, `tool/`, `integration_test/`), in the core and in reticulum-dart: every database is a zx store, opened through the core's `storage/store_db.dart` (`openStoreDb`; reticulum-dart's `openDb`) |
 | `no-zx-internals` | an import of `package:zx/src/...`: zx is used through `package:zx/zxdb.dart`, and the stores through the opener, which applies the profile's secret |
 
 To add a rule, extend the table in `tool/arch_guard.dart`. It is a single Dart

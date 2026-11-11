@@ -22,11 +22,11 @@ Social is a NOSTR client shipped as a wapp. Four tabs:
   **Reticulum** (archivers + callsign peers) + this device's own posts. NO
   curation, newest-first. See §11.
 - **Following** — kind-1 notes from the accounts the user follows (their own
-  archive, `social_following.sqlite3`).
+  archive, `social_following.zx`).
 - **Saved** — posts the user bookmarked.
 
-Each of the three feeds has its OWN sqlite DB: `social_all.sqlite3` (Internet),
-`social_following.sqlite3` (Following), `social_nomadnet2.sqlite3` (Nomadnet).
+Each of the three feeds has its OWN zx store: `social_all.zx` (Internet),
+`social_following.zx` (Following), `social_nomadnet2.zx` (Nomadnet).
 
 The protocol is NOSTR (kinds 0/1/6/7, NIP-01 wire, NIP-19 mentions, Schnorr). The
 wapp id/title are "social"; the protocol keeps the "nostr" name. A "publication" =
@@ -72,7 +72,7 @@ is most of the battle.
 | Feed rendering (cards, tabs, compose) | host GeoUI | `aurora/lib/wapp/geoui/widgets/activity_feed.dart` |
 | Feed state, archive, ranking, likes, profiles | host page | `aurora/lib/wapp/wapp_page.dart` |
 | **The All-feed data source** | host, main isolate | `aurora/lib/services/social/nostr_all_poller.dart` |
-| Persisted posts + engagement | host | `aurora/lib/wapp/geoui/activity_archive.dart` (`social_all.sqlite3`, `social_following.sqlite3`) |
+| Persisted posts + engagement | host | `aurora/lib/wapp/geoui/activity_archive.dart` (`social_all.zx`, `social_following.zx`) |
 | Keys, relay list, signed reactions | host | `aurora/lib/services/reticulum/rns_service.dart` |
 | NOSTR engine (relay hub, gate, curator) | **`nostr-engine` isolate** | `reticulum-dart/lib/src/services/social/nostr_relay_hub.dart`, `nostr_engine.dart`, `nostr_ws_client.dart` |
 | Launcher hero (when user follows nobody) | host | `aurora/lib/services/hero/nostr_hero_source.dart` |
@@ -193,7 +193,7 @@ signal, not a claim of freshness.
 
 ## 8. The archive (`ActivityArchive`)
 
-- `social_all.sqlite3` (All) and `social_following.sqlite3` (Following). SQLCipher —
+- `social_all.zx` (All) and `social_following.zx` (Following). Encrypted zx stores —
   keyed by the profile key; a **locked profile** means writes/reads fail (watch for
   `ProfileLockedException` at cold start).
 - `recent(limit)` returns rows **ORDER BY t DESC then reversed** → oldest→newest.
@@ -263,10 +263,10 @@ signal, not a claim of freshness.
       texture memory to ~94MB and OOM'd. Use `avatar_image.dart`
       (`avatarImage`/`bannerImage`, `ResizeImage`); post images use `cacheHeight`.
       The global `imageCache` is capped in `main.dart`.
-    - **Batch archive writes.** The archive is SQLCipher (encrypted) — hundreds of
+    - **Batch archive writes.** The archive is an encrypted zx store — hundreds of
       individual `add`/`setReaction` INSERTs blocked the UI thread for seconds
       (ANR). The poller wraps its whole persist in `ActivityArchive.transact()`.
-    - **Do not do sqlite in `build()`.** `_socialActivityPosts` reads like/reply
+    - **Do not query the database in `build()`.** `_socialActivityPosts` reads like/reply
       counts to rank; unmemoised it ran ~800 queries per build (every scroll frame).
       It is memoised on the archive revision. And remember the **poll decodes every
       collected event's JSON on the main isolate** (sockets can't be on the engine)
@@ -294,13 +294,13 @@ poller), Reticulum NOSTR is already isolate-safe and lives on the MAIN isolate.
   archiver + all reachable relays + callsign peers, parallel, deduped.
 - **Poller**: `nomadnet_poller.dart` (`NomadnetPoller`) — main isolate, NO
   sockets. Verifies signatures in a `compute` isolate, writes newest-first into
-  `social_nomadnet2.sqlite3`, fetches kind-0 profiles. Starts/stops ONLY while the
+  `social_nomadnet2.zx`, fetches kind-0 profiles. Starts/stops ONLY while the
   Nomadnet tab is viewed (`onFilterChanged`), with a `_disposed` guard so an
   in-flight poll can't write after teardown. The archive is **KEPT across
   sessions** (not cleared): on open we show its cached posts instantly, then
   lazily refresh — an empty tab on every open was a bug. Safe to keep because the
   DB is now fed ONLY by tag-filtered (reticulum-native) polls; the old
-  `social_nomadnet.sqlite3` (written by earlier builds that leaked internet posts)
+  `social_nomadnet.sqlite3` (a pre-zx file written by earlier builds that leaked internet posts)
   is abandoned by the `2` filename rather than migrated. Dedup by `mid` (unique
   index + in-memory set) means re-polls never duplicate cached rows.
 - **Publishing**: `publishNote`/`nostrPost` tag every kind-1 note we publish with

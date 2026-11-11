@@ -10,7 +10,7 @@ machine-checked by `tool/arch_guard.dart` (pre-commit + CI):
   called back when one arrives; it never decides how bytes travel. If a wapp
   needs a new `hal_*` to make a transport decision, the design is wrong.
 - **Nothing blocking on the UI isolate.** No `*Sync` I/O, no `sleep`, no heavy
-  crypto/sqlite in a widget or a service the UI awaits. Platform channels
+  crypto/database work in a widget or a service the UI awaits. Platform channels
   (`MethodChannel`, `Ble5Bus`) are main-isolate ONLY.
 
 Run `dart tool/arch_guard.dart` before committing (or `./tool/install-hooks.sh`

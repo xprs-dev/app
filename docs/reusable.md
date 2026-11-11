@@ -40,8 +40,8 @@ non-obvious constraints a future caller needs to know.
 `ProfileStorage`. No `dart:io` `File` / `Directory` calls anywhere else in
 `lib/` — that rule is enforced by code review and the analyser will catch
 slips because the storage call sites do not import `dart:io`. The pillar
-exists so that the backing store can be swapped for an encrypted SQLite
-archive (encrypted profiles), a browser IndexedDB tree (web build), or a
+exists so that the backing store can be swapped for an encrypted zx
+store (encrypted profiles), a browser IndexedDB tree (web build), or a
 plain filesystem (today's desktop) without touching call sites.
 
 **API surface** (mirrors the parent repo's
@@ -57,7 +57,7 @@ later with a single import change):
   `writeStringSync`, `writeBytesSync`, `existsSync`. These exist only
   because WASM imports run synchronously and Dart `Future`s cannot be
   awaited from inside them. `FilesystemProfileStorage` implements them
-  with `dart:io` sync methods. **Non-sync backends** (encrypted SQLite,
+  with `dart:io` sync methods. **Non-sync backends** (encrypted zx store,
   browser IndexedDB) **must throw** `UnsupportedError` for these — and
   callers must fall back to a message-based async API in that case.
 
@@ -672,6 +672,25 @@ with live state, what each enables, what stops working without it
 asking). The first-run intro and Settings > Permissions both embed it; the
 home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
 
+## Wapp building blocks (C, `../apps`)
+
+- **`apps/alerts/util.c` / `util.h`** — strings, `YYYY-MM-DD_HH:MM:SS` time
+  both ways, the little JSON the host speaks, one wire field (`al_field`) and
+  the section 5 identifier (`al_id`, SHA-256 included), with no libc. The
+  Check-in wapp builds the same file (`MODULE_SRCS := ... ../alerts/util.c`,
+  `CFLAGS += -I../alerts`) instead of keeping a copy: reuse it the same way
+  rather than copying it again.
+- **`apps/checkin/tests/native/hal_mock.c`** — a mock HAL with a real
+  zx store behind `hal_db_*` (`sdk/hal_db_zx.c`), an event queue, captures of
+  `hal_xprs_send` / `hal_xprs_message` / `hal_media_fetch`, a station list and
+  an archive answer, and a switchable callsign so one process plays both ends
+  of an exchange. A start for any wapp test that needs storage and two sides.
+- **`apps/checkin/ci.c`** — an operator command and its signed `t:result`
+  as packets: build an ask, decide on an `xprs.command` row (signature verdict,
+  `inRange`, freshness, rules), build a result whose optional fields go in
+  order of worth while they still fit signed (`opt`). The pattern for any
+  "ask a nearby station, get a signed answer" feature.
+
 ## App authoring
 
 These components exist so the **App Creator** wapp
@@ -1174,8 +1193,6 @@ Flutter import in the core.
 - **`lib/boot/power_app.dart`** — `BatteryPlusSource`, the tier push to the
   native service, and the lifecycle observer that feeds `PowerState`.
 - **`lib/boot/radio_app.dart`** — `AppAdvertRadio` (Ble5Bus + BleService).
-- **`lib/boot/sqlite_prepare.dart`** — the conditional io/web split for
-  SQLCipher; the pattern for any boot step that touches FFI.
 - **`lib/util/observable_listenable.dart`** — `observable.listenable`: a core
   `Observable` as a Flutter `ValueListenable` for `ValueListenableBuilder`
   (one cached adapter per value, so builders see a stable object).

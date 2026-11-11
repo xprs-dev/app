@@ -59,8 +59,8 @@ class Rule {
 // ── the web build ───────────────────────────────────────────────────────────
 const webBuildRule = Rule(
   id: 'no-native-import-outside-io-file',
-  why: 'lib/ also compiles with dart2js (flutter build web). dart:ffi and '
-      'the FFI half of package:sqlite3 are hard compile errors there; '
+  why: 'lib/ also compiles with dart2js (flutter build web). dart:ffi is '
+      'a hard compile error there; '
       'dart:io and dart:isolate compile and then throw on every call. Put '
       'the native half in a *_io.dart behind a conditional export '
       '(lib/platform/fs.dart and core\'s storage/store_db_host.dart are the '
@@ -71,7 +71,7 @@ const webBuildRule = Rule(
   // An unconditional import: the URI and its show/hide/as on ONE line ending
   // in `;`. A conditional one continues on the next line with `if (...)`, so
   // it does not end here and is not matched.
-  pattern: r'''^\s*import\s+'(dart:io|dart:ffi|dart:isolate|package:sqlite3/sqlite3\.dart|package:sqlite3/open\.dart)'(\s+(show|hide|as)\s+[^;]*)?;''',
+  pattern: r'''^\s*import\s+'(dart:io|dart:ffi|dart:isolate)'(\s+(show|hide|as)\s+[^;]*)?;''',
 );
 
 /// The stores are zx stores (docs/architecture.md, storage): no SQLite.
@@ -82,7 +82,7 @@ const noSqliteRule = Rule(
       'and SQLCipher were removed: a native library per platform, another '
       'engine for the web build, and keys of their own. A new table goes in '
       'a zx store.',
-  appliesTo: ['lib/**', 'test/**'],
+  appliesTo: ['lib/**', 'test/**', 'tool/**', 'integration_test/**'],
   pattern: r'''^\s*(import|export)\s+'package:(sqlite3|sqlcipher_flutter_libs|sqlite3_flutter_libs|encrypted_archive)/''',
 );
 
@@ -366,14 +366,14 @@ const rules = <Rule>[
   ),
   Rule(
     id: 'no-store-work-in-ui-layer',
-    why: 'sqlite is pure CPU with no plugin behind it, so it belongs to a '
+    why: 'a zx store is pure CPU with no plugin behind it, so it belongs to a '
         'service or a worker, never to a widget or a wapp-engine tick. On the '
         'UI isolate it is a dropped frame; on a tick it is a dropped frame '
         'every tick (docs/performance.md 8.1).',
     appliesTo: ['lib/ui/**', 'lib/launcher/**', 'lib/wapp/**'],
     // A module whose NAME says it owns a store is where the statements
     // belong, wherever it happens to sit in the tree. The rule is about a
-    // widget reaching for sqlite, not about a directory.
+    // widget reaching for a store, not about a directory.
     exempt: [
       'lib/**/*_db.dart',
       'lib/**/*_store.dart',

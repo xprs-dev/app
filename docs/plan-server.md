@@ -154,8 +154,8 @@ behind Caddy or nginx for TLS (**D5**).
   attached to GitHub releases. Releases follow the existing release rules.
 - `.deb` with the systemd unit and a dedicated `xprs` user; a Docker image if
   wanted (**D6**).
-- Runtime dependency: `libsqlite3` from the OS (the `sqlite3` package loads it
-  over FFI). Use `libsqlcipher` if the archive must be encrypted at rest.
+- Runtime dependency: none for storage; the zx stores are pure Dart and
+  encrypt at rest themselves.
 
 ## 4. Testing
 
@@ -177,7 +177,7 @@ behind Caddy or nginx for TLS (**D5**).
 - Hidden Flutter coupling deeper in the dependency graph (e.g. `media/`,
   `folders/`) may surface while moving. Anything that does gets an interface,
   or stays out of the server.
-- The UI-isolate rule still matters on a server: heavy crypto/sqlite in the
+- The UI-isolate rule still matters on a server: heavy crypto/database work in the
   event loop stalls every connection. The same `Isolate.run` discipline
   applies.
 - Two identities on one machine (the operator's phone profile vs the server's

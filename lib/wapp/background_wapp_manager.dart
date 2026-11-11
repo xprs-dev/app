@@ -108,7 +108,8 @@ class BackgroundWappManager {
     // frames then queue into the orphan engine and never reach the one being
     // ticked, so background messages silently vanish.
     // A page owns its wapp while it is on screen: two engines writing the same
-    // conversation database interleave fine at the SQLite level, but they hold
+    // conversation store interleave fine at the store level (zx locks the file),
+    // but they hold
     // independent in-memory stores whose unread counts and open-thread state
     // then disagree. The page claims on open and releases on close/pause.
     if (_claimed.contains(name)) return;
@@ -336,8 +337,8 @@ class _WappBackgroundService extends BackgroundService {
   // Conversation history shared with the foreground page through the SAME
   // `conversations.zx`. Without this, a 1:1 received while running
   // headless fires its notification but never lands in the store the page
-  // renders — the message "arrives" yet the conversation stays empty. SQLite's
-  // own locking makes the two engines safe to interleave; the ownership claim
+  // renders — the message "arrives" yet the conversation stays empty. The zx
+  // store's own file lock makes the two engines safe to interleave; the ownership claim
   // in [BackgroundWappManager.start] keeps them from both running anyway.
   final Map<String, ConversationStore> _convStores = {};
   ConversationDb? _convDb;
@@ -528,7 +529,7 @@ class _WappBackgroundService extends BackgroundService {
         } else if (field == 'activity') {
           // One archive, whoever the post is from: the Following tab is a
           // filter over it, and a row filed anywhere else is a row the feed
-          // and the thread view cannot see. (It also opened a fresh sqlite
+          // and the thread view cannot see. (It also opened a fresh store
           // handle per message.)
           if (msg is Map) {
             (name == 'social' ? _socialArchive : _activityArchive).add(msg);

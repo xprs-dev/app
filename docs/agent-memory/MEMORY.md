@@ -9,9 +9,9 @@
 - [Justify protocol additions](justify-protocol-additions.md) — show why existing fields don't already do the job, quoting the spec
 - [The GATT/MSP lane already exists](gatt-msp-lane-already-exists.md) — reuse it for 1:1; GATT is retired on every ESP32
 - [Fix at the receive point, not the display end](fix-at-the-receive-point-not-the-display-end.md) — one door, delete decision points; patch-stacking gets refused
-- [Chat wapp is XPRS-only, #LOCAL the only default room](chat-wapp-is-xprs-only-local-default.md) — no LXMF anything; no pre-created rooms; one sqlite per conversation via hal_sqlite
+- [Chat wapp is XPRS-only, #LOCAL the only default room](chat-wapp-is-xprs-only-local-default.md) — no LXMF anything; no pre-created rooms; one zx store per conversation via hal_db
 - [Transport fixes live in the core bearer](transport-fixes-live-in-the-core-bearer.md) — one send path, one receive path; repair the bearer's lifecycle, never add a parallel route or a wapp workaround
 - [Chat is XPRS-only, no LXMF in the core delivery path](chat-is-xprs-only-no-lxmf-in-core-path.md) — a t:message goes Gateway→Ingest→Courier→WappDelivery with callsign/body/ts/id/bearer/NOSTR sig, never via injectLxmf or an LXMF hex; the way back is the publisher's local-first ranking
 - [Use RNS diagnostic endpoints, not screenshots](rns-reachability-use-diagnostic-endpoints.md) — haspath/route/whois to judge phone↔phone reachability; Reticulum routes between NAT'd phones via hubs
 - [Closed-group chat rendering](closed-group-chat-rendering.md) — membership is decided in the CORE (receive door + publisher gate), never the wapp; how an invite reaches a cellular-only peer (named targets + identity/acts bundle + rns-lane offer()); the ugrep -a / 20 s archive flush / pidof traps
-- [Durable per-group store, not self-heal](durable-per-group-store-not-selfheal.md) — closed-group membership lost on a mere restart is fixed by a durable per-X5-group sqlite (key + acts), never archiver/admin self-heal machinery
+- [Durable per-group store, not self-heal](durable-per-group-store-not-selfheal.md) — closed-group membership lost on a mere restart is fixed by a durable per-X5-group zx store (key + acts), never archiver/admin self-heal machinery

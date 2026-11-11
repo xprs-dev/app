@@ -626,7 +626,7 @@ class UpdateService {
           selfCallsign: NostrCrypto.bareCallsign(self),
           ext: dot >= 0 ? asset.name.substring(dot + 1) : '',
           // Land it where the installer expects, as a file: an APK that became
-          // a sqlite blob would have to be written back out to be installed.
+          // a database blob would have to be written back out to be installed.
           destDir: await UpdateNative.supportDir(),
           // Seconds to say 202, not the transfer's hour: a station that does
           // not hold the release is asked and left behind, never waited on.

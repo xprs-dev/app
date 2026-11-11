@@ -1,6 +1,6 @@
 // Headless test for DiskFolderSource + CompositeFileSource: index a real temp
 // directory by sha256, serve bytes from disk, exclude the key file/dotfiles, and
-// fall through composite sources. Pure dart:io — no Flutter, no sqlite.
+// fall through composite sources. Pure dart:io — no Flutter, no database.
 //
 //   dart run tool/disk_folder_test.dart
 import 'dart:io';

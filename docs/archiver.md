@@ -188,7 +188,7 @@ here, what did I miss".
 The spool of what this station has heard. On by default: a spool nobody keeps is
 a network nobody can catch up on.
 
-- **SQLite**, WAL, `synchronous = NORMAL`. Two tables: `packets` (the §5
+- **zx store** (`xprs_archive.zx`). Two tables: `packets` (the §5
   identifier as primary key, plus `ts`/`pts`, type, `fromc`, `toc`, bearer,
   rssi, signature state, via-count, heard-count and the wire) and
   `mailbox_decl` (the `t:mailbox` declarations of §13.12).
@@ -233,12 +233,12 @@ no re-signing. An archiver passes on the author's packet.
 
 # The ESP32 implementation (T-Dongle)
 
-`common/xprs_xprsindex/` in xprs-firmware. Same role, no SQLite, and the reasons are
+`common/xprs_xprsindex/` in xprs-firmware. Same role, no database, and the reasons are
 measured rather than aesthetic — see `docs/esp32.md`.
 
 - the app is ~1.86 MB in a 1,966,080 B partition and the board has **no PSRAM**,
   so a page cache would come out of the SRAM already shared with BLE, WiFi and
-  the display. SQLite does not fit, and repartitioning would break OTA for
+  the display. A database does not fit, and repartitioning would break OTA for
   deployed dongles.
 
 **The store:** 320-byte records holding the packet verbatim, in `seg_*.bin`

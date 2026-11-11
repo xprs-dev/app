@@ -21,7 +21,6 @@ import 'package:xprs/services/social/relay_event_store.dart';
 import 'package:xprs/services/social/relay_node.dart';
 import 'package:xprs/util/nostr_crypto.dart';
 
-import 'sqlite_loader.dart';
 
 const _rnsd = '/home/brito/.platformio/penv/bin/rnsd';
 
@@ -118,7 +117,6 @@ Future<bool> _until(bool Function() c, {int tries = 40}) async {
 }
 
 Future<void> main(List<String> args) async {
-  ensureSqlite();
   final port = args.isNotEmpty ? int.parse(args[0]) : 5570;
   final rnsd = await _startRnsd('/tmp/rnsd_folder_test', port);
   await Future<void>.delayed(const Duration(seconds: 3));

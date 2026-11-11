@@ -12,7 +12,6 @@ import 'package:xprs/services/social/relay_event_store.dart';
 import 'package:xprs/util/nostr_crypto.dart';
 import 'package:xprs/util/nostr_event.dart';
 
-import 'sqlite_loader.dart';
 
 int _pass = 0, _fail = 0;
 void check(String name, bool ok) {
@@ -26,7 +25,6 @@ void check(String name, bool ok) {
 }
 
 Future<void> main() async {
-  ensureSqlite();
   final store = RelayEventStore.open(':memory:');
 
   var clk = 1_700_000_000;

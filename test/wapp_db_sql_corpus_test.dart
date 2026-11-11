@@ -34,7 +34,7 @@ void main() {
           db.execute(s['sql'] as String);
         } catch (e) {
           // An upgrade ladder's ADD COLUMN for a column the CREATE already
-          // has: SQLite refuses it the same way, and the wapp ignores it.
+          // has: zx refuses it, and the wapp ignores it.
           if ('$e'.contains('duplicate column name')) continue;
           failures.add('${s['file']}: ${s['sql']}\n  -> $e');
         }

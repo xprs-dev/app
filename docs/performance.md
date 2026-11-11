@@ -47,7 +47,7 @@ needs a debug build.
 | `perf: main isolate stalled ~Nms` | `main.dart` 500ms heartbeat | The UI event loop blocked for N ms. Steady state should be **zero**. |
 | `perf: cpu tasks total …` | `TaskMonitorService.startCpuSummary` | Per-task **main-isolate** CPU, ranked, every 60s. |
 | `perf: crypto-worker edVerify=… x25519Gen=… edSign=…` | `RnsCrypto.drainCryptoStats` | Curve25519 ops per minute **by type**. The composition is the diagnosis (see §3.4). |
-| `perf: nostr-engine seen=… stored=… reactions=… profileLookups=…` | `NostrRelayHub.drainEventStats` | Relay firehose volume + how much sqlite it is provoking. |
+| `perf: nostr-engine seen=… stored=… reactions=… profileLookups=…` | `NostrRelayHub.drainEventStats` | Relay firehose volume + how much database work it is provoking. |
 | `perf: rns-transport announces/s=… paths=… passive=…` | `RnsService` | The announce flood the transport engine is chewing. |
 | `perf: <task> tick took Nms` | `TaskMonitorService.reportSuccess` | Any monitored tick over 48ms. |
 | `vmService` in `GET /api/status` | `main.dart` + `LogService.vmServiceUri` | The Dart VM service URI **with its auth token**. |
@@ -108,16 +108,16 @@ a forged signature can never pass); our own ops queue with backpressure.
 ### 3.2 The pegged core with nothing to show for it (`nostr_engine.dart`)
 
 A DartWorker sat at 100% while *every* counter said idle. Invisible to the Dart
-profiler because it was inside native sqlite. Three causes, all **work redone
+profiler because it was inside native sqlite (before zx). Three causes, all **work redone
 forever**:
 
-- **`_syncMyFollows()` ran on every 400ms tick**: a sqlite query for our kind-3
+- **`_syncMyFollows()` ran on every 400ms tick**: a database query for our kind-3
   contact list, then a re-parse of every `p` tag in it (contact lists routinely
   carry thousands). The dedup guard suppressed only the outbound *message* —
   never the work. Now gated on the stored event: the hub flags it dirty when a
   new kind-3 of ours actually lands.
 - **Profile lookups cached only hits.** Every author whose kind-0 never arrives —
-  most of a public firehose — was re-queried against sqlite on every tick,
+  most of a public firehose — was re-queried against the database on every tick,
   forever. Now misses are remembered too (5-min retry), and lookups per tick are
   bounded.
 - **Reaction receipts were persisted for the entire kind-7 firehose** (a
@@ -238,17 +238,17 @@ Every one of these produced a wrong number that I believed for a while.
    where the release build on the same code, same phone, same window read **5.8%**.
    Profile builds are for *finding* a hot isolate, never for *quantifying* one.
 8. **Let it settle.** Boot is a storm — announce flood, NOSTR history replay,
-   sqlite backfill, wapp seeding. Give it **5 minutes after launch** before the
+   database backfill, wapp seeding. Give it **5 minutes after launch** before the
    measurement window starts, or the number is the startup cost, not the idle cost.
 9. **A wapp's tick time is NOT its cost.** The task monitor reports
    `wapp.bg.messages=103ms(0.2%)` — that is only what the tick burned on the main
    isolate. The work a wapp *provokes* through the HAL (a relay fetch, a profile
-   subscription, a sqlite write) lands in **other isolates** and is invisible in
+   subscription, a database write) lands in **other isolates** and is invisible in
    that line. A wapp can read 0.2% and still be the reason a `DartWorker` is
    pegged. Attribute by bisecting with `force-stop`, not by reading the tick.
 10. **A pegged isolate with ZERO Dart frames is inside native code.** `getStack`
     across every isolate returning nothing, while a `DartWorker` burns a core, is
-    the fingerprint of **FFI — usually sqlite**. The Dart profiler cannot see it.
+    the fingerprint of **FFI — wasmtime (SQLite too, before zx)**. The Dart profiler cannot see it.
     Do not conclude "the profiler shows nothing, so nothing is wrong".
 
 ### 4.1.1 The wapp-page CPU leak — mostly fixed, not fully (2026-07-12)
@@ -963,7 +963,7 @@ code that was correct for the thing it was written for — a chat attachment.
 |---|---|---|
 | `MeshBulkSpool.readAt` | cached the WHOLE archive entry in `_cacheBytes` to serve one window | a photo is 200 kB |
 | `MeshBulkSpool.verify` | `sha256.convert(f.readAsBytesSync())` | same |
-| `MeshBulkSpool.completeInbound` | read the finished file into memory, then wrote it into sqlite as a BLOB | same |
+| `MeshBulkSpool.completeInbound` | read the finished file into memory, then wrote it into the database as a BLOB | same |
 | `UpdateNative.verifyFile` | `sha256.convert(await f.readAsBytes())` on the downloaded APK | it was never true; this one shipped |
 
 Four times 56 MB, on the phone with 3.8 GB of RAM, on the path whose whole
@@ -1677,7 +1677,7 @@ not know (`core/docs/audit-2026-11-04.md`). Fixed:
   anyone can open one. A closed link now goes at once; each accept sweeps links
   idle for 10 minutes and evicts the least recently used past 256 (§8.6, §8.18;
   `lxmf_inbound_bound_test`).
-- **A piece is not the file.** Serving media read the whole SQLite BLOB, up to
+- **A piece is not the file.** Serving media read the whole stored BLOB, up to
   16 MB, for every `GET_RANGE` and `GET_HAVE` a peer sent, because
   `MediaFileSource` was not a `RangedFileSource` and `RnsService`'s
   `_LiveFileSource` wrapper hid the ranged one behind it. `MediaArchive` now

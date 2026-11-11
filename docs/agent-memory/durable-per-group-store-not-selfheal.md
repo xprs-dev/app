@@ -1,6 +1,6 @@
 ---
 name: durable-per-group-store-not-selfheal
-description: "Max's fix for closed-group membership lost on restart — a durable per-X5-group sqlite, NOT archiver/self-heal machinery"
+description: "Max's fix for closed-group membership lost on restart — a durable per-X5-group zx store, NOT archiver/self-heal machinery"
 metadata: 
   node_type: memory
   type: feedback
@@ -10,9 +10,9 @@ metadata:
 
 When closed-group membership is lost after a mere **restart** (not a wipe
 reinstall), the fix Max wants is the simple, durable one: **each X5 group's
-state (its key + `t:moderate` acts) lives in an sqlite store** so the roster
+state (its key + `t:moderate` acts) lives in a zx store** so the roster
 survives a restart — mirroring how each chat conversation already has its own
-sqlite. Reuse `XprsGroupKeys`'s existing `xprs_groups.sqlite3`.
+zx store. Reuse `XprsGroupKeys`'s existing `xprs_groups.zx`.
 
 **Why:** the roster (`XprsGroups._acts`) is memory-only and was scavenged back
 from the general archive, where a cellular member's group `t:identity` (key)

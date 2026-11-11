@@ -1,6 +1,6 @@
 // Headless test for the mutable-folder reducer (slice 1): authorization window,
 // revocation keeping past edits, last-writer-wins, and rejection of unauthorized
-// or tampered ops. Pure — no SQLite, no Flutter.
+// or tampered ops. Pure — no database, no Flutter.
 //
 //   dart run tool/folder_model_test.dart
 import 'dart:io';

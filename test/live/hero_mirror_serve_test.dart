@@ -2,7 +2,7 @@
 //
 // The other half of "cache what you follow and SERVE it": connect to the running
 // device's own NOSTR relay endpoint as an outside client and ask for the post
-// the mirror stored. It answers out of social.sqlite3 — the same store RelayNode
+// the mirror stored. It answers out of social.zx — the same store RelayNode
 // serves to Reticulum peers — so a hit here is the serving path, checked from
 // outside the app.
 import 'dart:async';

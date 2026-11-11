@@ -27,7 +27,7 @@ are the ones that were not.
 
 1c. **The C61's native heap is 140 MB twenty minutes after start** (170 MB at
    ten hours). Not the announce leak (that was Dart heap, fixed in `576d5c0`),
-   and present from start-up, so likely baseline: sqlite page caches (the
+   and present from start-up, so likely baseline: database caches (the
    archive holds 217k backfilled messages), 18 wapp engines' linear memory,
    decoded images. Attribute it with a profile build and heapprofd by mapping
    (performance.md, "Profiling native memory on a stock device"), then soak

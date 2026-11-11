@@ -4,7 +4,7 @@
 // It seeds the NOSTR hub's own store with a signed post from an author this
 // device follows: exactly what the hub would be holding after pulling that post
 // off a relay. On the next app start the follows mirror should copy it into the
-// SERVED store (social.sqlite3) at the followed tier, which is what RelayNode
+// SERVED store (social.zx) at the followed tier, which is what RelayNode
 // hands to other peers. That is the "cache what you follow and serve it" claim,
 // checked from the outside.
 import 'dart:convert';

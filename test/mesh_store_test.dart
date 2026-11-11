@@ -1,5 +1,5 @@
 /*
- * MeshStore (SCF sqlite) tests — park/dedup/purge/route-aware pending,
+ * MeshStore (SCF store, mesh.zx) tests — park/dedup/purge/route-aware pending,
  * have-bloom build+apply, TTL/quota sweep.
  */
 import 'dart:io';

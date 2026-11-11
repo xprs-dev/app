@@ -1,6 +1,6 @@
 /// The same notification, announced twice, is still ONE notification.
 ///
-/// The social inbox is answered out of SQLite, so every app start replays the
+/// The social inbox is answered out of its store, so every app start replays the
 /// stored reactions through the announce path. Without a durable identity for a
 /// notification, each replay minted a new card and re-lit the bell — which is
 /// exactly the "always a 1, always the same notification" the user saw.
