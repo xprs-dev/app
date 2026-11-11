@@ -2593,6 +2593,29 @@ class _WappPageState extends State<WappPage>
               }
             }());
           }
+        } else if (type == 'ui.snack') {
+          // A short answer to what the person just did, on this page and only
+          // here: "Saved", "Zoom in first", "Asking X3RLY7". Not a
+          // notification: the bell is for what happens while nobody looks,
+          // and a page's own feedback sent there was never seen. A headless
+          // engine has no page, so it never gets one.
+          final text = (data['text'] ?? '').toString();
+          final level = (data['level'] ?? 'info').toString();
+          if (text.isNotEmpty && mounted) {
+            final cs = Theme.of(context).colorScheme;
+            ScaffoldMessenger.maybeOf(context)
+              ?..hideCurrentSnackBar()
+              ..showSnackBar(SnackBar(
+                content: Text(text,
+                    style: level == 'warning'
+                        ? TextStyle(color: cs.onErrorContainer)
+                        : null),
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: level == 'warning' ? 5 : 3),
+                backgroundColor:
+                    level == 'warning' ? cs.errorContainer : null,
+              ));
+          }
         } else if (type == 'ui.toast') {
           // Legacy message shape — route through the unified service
           // so old wapps inherit system-tray delivery + history.
@@ -5045,14 +5068,18 @@ class _WappPageState extends State<WappPage>
                   tabAlignment: _tabScreens.length > 4
                       ? TabAlignment.start
                       : TabAlignment.fill,
-                  // Compact label so wider names (e.g. "Messages") fit a
-                  // quarter-width tab without being clipped.
-                  labelPadding: const EdgeInsets.symmetric(horizontal: 2),
-                  labelStyle: const TextStyle(
-                    fontSize: 11.5,
+                  // Up to four tabs share the width, so the label is compact
+                  // to fit a quarter-width tab ("Messages"). More than four
+                  // scroll: then each tab gets room of its own and a smaller
+                  // label, or icons and names run into each other.
+                  labelPadding: EdgeInsets.symmetric(
+                      horizontal: _tabScreens.length > 4 ? 12 : 2),
+                  labelStyle: TextStyle(
+                    fontSize: _tabScreens.length > 4 ? 10.5 : 11.5,
                     fontWeight: FontWeight.w600,
                   ),
-                  unselectedLabelStyle: const TextStyle(fontSize: 11.5),
+                  unselectedLabelStyle: TextStyle(
+                      fontSize: _tabScreens.length > 4 ? 10.5 : 11.5),
                   onTap: (i) {
                     _mapAutoFit =
                         true; // manual nav → frame the coverage circle
