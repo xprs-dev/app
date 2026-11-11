@@ -6683,14 +6683,8 @@ class _WappPageState extends State<WappPage>
             ),
           ),
         if (toolbarActions.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [for (final a in toolbarActions) _toolbarButton(a)],
-            ),
-          ),
+          _toolbarRow(toolbarActions,
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 4)),
         if (screen.getBool('search') == true)
           _buildSearchBar(name,
               autofocus: screen.getBool('hidden') == true),
@@ -6774,6 +6768,25 @@ class _WappPageState extends State<WappPage>
           ],
         },
     ];
+  }
+
+  /// A screen's actions as ONE row of buttons. On a phone they did not fit
+  /// and wrapped into a stack, three rows deep over a map; one row that
+  /// scrolls sideways keeps the content where the person looks, and on a
+  /// wide screen it is the same row it always was.
+  Widget _toolbarRow(List<GeoUiBlock> actions, {required EdgeInsets padding}) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: padding,
+      child: Row(
+        children: [
+          for (var i = 0; i < actions.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            _toolbarButton(actions[i]),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _toolbarButton(GeoUiBlock a) {

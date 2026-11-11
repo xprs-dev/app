@@ -1809,14 +1809,8 @@ extension _WappMaps on _WappPageState {
     final map = Column(
       children: [
         if (toolbarActions.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [for (final a in toolbarActions) _toolbarButton(a)],
-            ),
-          ),
+          _toolbarRow(toolbarActions,
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8)),
         if (mapGroup.getBool('radius') ?? true) _buildMapRadiusBar(),
         Expanded(
           child: _buildSlippyMap(
