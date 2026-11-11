@@ -32,6 +32,10 @@ const _kDefaultSeedNames = {
   // Sets up a station you just flashed (XPRS.md 11.10): the one way a person
   // without a serial cable gets a new board onto their network.
   'firmwares',
+  // Chasing stations in person for their check-ins and badges, and giving
+  // check-ins from your own station. Clockless, and it listens to nothing
+  // until a check-in is out or its owner turns the station on.
+  'checkin',
 };
 
 /// One-time migration for a wapp FOLDER rename ([oldName] -> [newName]).
@@ -329,7 +333,7 @@ Future<int> _seedDefaultsFromFilesystem() async {
 /// the upgrade pass only touches already-installed wapps. So backfill each of
 /// these exactly ONCE per profile, recorded in `.seeded.json['offered']` so a
 /// wapp the user later uninstalls is never resurrected.
-const _kBackfillDefaults = {'mp4player', 'mesh', 'firmwares', 'alerts'};
+const _kBackfillDefaults = {'mp4player', 'mesh', 'firmwares', 'alerts', 'checkin'};
 
 /// Install any [_kBackfillDefaults] not yet offered to this profile. Runs every
 /// launch (cheap: a marker read + a set check). Returns the count installed.

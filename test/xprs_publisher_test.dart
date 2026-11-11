@@ -468,6 +468,58 @@ void _archiverDeposit() {
     PreferencesService.resetForTest();
   });
 
+  test('the bytes behind a publication go to the same archivers, once (12.9.2)', () async {
+    SharedPreferences.setMockInitialValues({
+      'flutter.xprs.namedArchivers': ['X3ARC1', 'X3ARC2'],
+    });
+    PreferencesService.resetForTest();
+    await PreferencesService.instance();
+    final pub = XprsPublisher.instance;
+    final files = <String>[];
+    var accept = false;
+    pub.depositTo = (call, wire) {};
+    pub.depositFileTo = (call, file) async {
+      files.add('$call|$file');
+      return accept;
+    };
+    addTearDown(() {
+      pub.depositTo = null;
+      pub.depositFileTo = null;
+    });
+    const ref = 'Uc3nRw8kFa5xPd1qGz7mYb0tJe6vHs2iLoA9XfCqK4E.png';
+    const badge = 't:file f:X1TEST ts:2026-09-10_10:00:00 file:$ref size:640B m:badge';
+
+    // Refused: tried, and tried again on the next airing.
+    pub.depositArchivers([badge], what: 'file');
+    await Future<void>.delayed(Duration.zero);
+    expect(files, ['X3ARC1|$ref', 'X3ARC2|$ref']);
+    files.clear();
+    accept = true;
+    pub.depositArchivers([badge], what: 'file');
+    await Future<void>.delayed(Duration.zero);
+    expect(files, ['X3ARC1|$ref', 'X3ARC2|$ref'],
+        reason: 'a refusal leaves the pair free to be placed again');
+
+    // Taken: an event revised with the same picture sends nothing again.
+    files.clear();
+    pub.depositArchivers(
+        ['t:event f:X1TEST ts:2026-09-10_11:00:00 title:fd file:$ref m:again'],
+        what: 'event');
+    await Future<void>.delayed(Duration.zero);
+    expect(files, isEmpty, reason: 'already placed with both archivers');
+
+    // Mail and Local-room publications never reach an archiver, nor their files.
+    const other = 'Zc3nRw8kFa5xPd1qGz7mYb0tJe6vHs2iLoA9XfCqK4E.png';
+    pub.depositArchivers([
+      't:result f:X1TEST d:X1FRND ts:2026-09-10_12:00:00 r:abc123 code:200 file:$other',
+      't:event f:X1TEST ts:2026-09-10_12:00:01 scope:local title:x file:$other',
+    ], what: 'result');
+    await Future<void>.delayed(Duration.zero);
+    expect(files, isEmpty);
+
+    PreferencesService.resetForTest();
+  });
+
   test('airing a status deposits the very wires that went on the air', () async {
     // The whole path a wapp's post takes through the core, minus the radio:
     // compose, fan out over the bearers, hand a copy to the archiver. The
