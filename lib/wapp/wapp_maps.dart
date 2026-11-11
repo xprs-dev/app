@@ -5,8 +5,37 @@
 
 part of 'wapp_page.dart';
 
+/// The most tiles one `ui.map.prefetch` saves: a city at street level, not a
+/// country (see _prefetchMapArea).
+const int _kPrefetchCap = 1500;
+
 // Log-scale radius mapping bounds (km), used by the slider helpers.
 const double _rMin = 1, _rMid = 100, _rMax = 1000;
+
+/// The colour filter for a map's `tile-style`, or null to draw tiles as
+/// served. Luminance (Rec. 601 weights) with the contrast pushed 25% about the
+/// middle grey; 'mono-dark' inverts it, so land goes black and labels white.
+ColorFilter? _tileFilter(String style) {
+  const c = 1.25, o = 128 * (1 - c);
+  const r = 0.299 * c, g = 0.587 * c, b = 0.114 * c;
+  switch (style) {
+    case 'mono':
+      return const ColorFilter.matrix(<double>[
+        r, g, b, 0, o, //
+        r, g, b, 0, o,
+        r, g, b, 0, o,
+        0, 0, 0, 1, 0,
+      ]);
+    case 'mono-dark':
+      return const ColorFilter.matrix(<double>[
+        -r, -g, -b, 0, 255 - o, //
+        -r, -g, -b, 0, 255 - o,
+        -r, -g, -b, 0, 255 - o,
+        0, 0, 0, 1, 0,
+      ]);
+  }
+  return null;
+}
 
 /// Paints the coverage/filter radius circle on the map.
 class _RadiusCirclePainter extends CustomPainter {
@@ -39,6 +68,11 @@ class _SlippyMap extends StatefulWidget {
   final double lat, lon;
   final int zoom, minZoom, maxZoom;
   final String tileUrl;
+
+  /// How the base tiles are coloured: '' as served, 'mono' black and white
+  /// (grey levels with a touch of contrast), 'mono-dark' the same inverted
+  /// for a dark screen. A wapp picks it with `tile-style` on its map group.
+  final String tileStyle;
 
   /// Optional transparent reference layer drawn over the base tiles to label
   /// places (countries, cities, villages…). The tile service supplies the
@@ -124,6 +158,7 @@ class _SlippyMap extends StatefulWidget {
     required this.lon,
     required this.zoom,
     required this.tileUrl,
+    this.tileStyle = '',
     required this.minZoom,
     required this.maxZoom,
     required this.onViewportChanged,
@@ -1087,7 +1122,18 @@ class _SlippyMapState extends State<_SlippyMap>
         return out;
       }
 
-      final tiles = buildTiles(widget.tileUrl, transparent: false);
+      final baseTiles = buildTiles(widget.tileUrl, transparent: false);
+      final tileFilter = _tileFilter(widget.tileStyle);
+      final tiles = tileFilter == null
+          ? baseTiles
+          : <Widget>[
+              Positioned.fill(
+                child: ColorFiltered(
+                  colorFilter: tileFilter,
+                  child: Stack(clipBehavior: Clip.none, children: baseTiles),
+                ),
+              ),
+            ];
       final labelTiles = (widget.labelUrl == null || widget.labelUrl!.isEmpty)
           ? const <Widget>[]
           : buildLabelTiles(widget.labelUrl!);
@@ -1510,6 +1556,66 @@ class _SearchResult {
 }
 
 extension _WappMaps on _WappPageState {
+  /// `ui.map.prefetch`: save an area's tiles into the disk cache so the map
+  /// works off-grid there. {bbox:[south,west,north,east]?, minZoom, maxZoom,
+  /// max?}; without a bbox, the area on screen. At most [_kPrefetchCap] tiles
+  /// however many are asked for, and one save at a time: a tile server is
+  /// shared, and OpenStreetMap's own refuses bulk downloads, so this is for
+  /// the area a person asked for, not for preloading the world. Progress goes
+  /// back to the wapp as {type:"map.prefetch", state, done, total, held}.
+  void _prefetchMapArea(Map<String, dynamic> data) {
+    if (_mapPrefetching) {
+      _sendMapPrefetch('busy', 0, 0, 0);
+      return;
+    }
+    final minZ = ((data['minZoom'] as num?)?.toInt() ?? _mapZoom).clamp(0, 19);
+    final maxZ = ((data['maxZoom'] as num?)?.toInt() ?? minZ + 2).clamp(minZ, 19);
+    final cap = ((data['max'] as num?)?.toInt() ?? _kPrefetchCap)
+        .clamp(1, _kPrefetchCap);
+    double s0, w0, n0, e0;
+    final bbox = data['bbox'];
+    if (bbox is List && bbox.length == 4 && bbox.every((v) => v is num)) {
+      s0 = (bbox[0] as num).toDouble();
+      w0 = (bbox[1] as num).toDouble();
+      n0 = (bbox[2] as num).toDouble();
+      e0 = (bbox[3] as num).toDouble();
+    } else {
+      final size = MediaQuery.maybeOf(context)?.size ?? const Size(1280, 800);
+      (s0, w0, n0, e0) =
+          tiles.viewBox(_mapLat, _mapLon, _mapZoom, size.width, size.height);
+    }
+    final list = tiles.tilesForBox(s0, w0, n0, e0, minZ, maxZ, cap: cap);
+    final urls = [for (final t in list) tiles.tileUrl(_tileUrl, t)];
+    if (urls.isEmpty) {
+      _sendMapPrefetch('done', 0, 0, 0);
+      return;
+    }
+    _mapPrefetching = true;
+    _sendMapPrefetch('running', 0, urls.length, 0);
+    var last = 0;
+    prefetchTiles(urls, cancelled: () => !mounted, onProgress: (done, total) {
+      if (done - last >= 25 && done < total) {
+        last = done;
+        _sendMapPrefetch('running', done, total, 0);
+      }
+    }).then((held) {
+      _mapPrefetching = false;
+      if (mounted) _sendMapPrefetch('done', urls.length, urls.length, held);
+    });
+  }
+
+  void _sendMapPrefetch(String state, int done, int total, int held) {
+    _engine.sendMessage(jsonEncode({
+      'type': 'map.prefetch',
+      'state': state,
+      'done': done,
+      'total': total,
+      'held': held,
+    }));
+    _engine.handleEvent();
+    _drainOutbox();
+  }
+
   /// Build the slippy map wired to all the host callbacks. Shared by the
   /// embedded map (inside the map screen) and the full-screen map page so both
   /// drive the exact same state and behaviour. [onExpand]/[isFullscreen]
@@ -1525,6 +1631,7 @@ extension _WappMaps on _WappPageState {
       lon: _mapLon,
       zoom: _mapZoom,
       tileUrl: _tileUrl,
+      tileStyle: mapGroup.getString('tile-style') ?? '',
       labelUrl: mapGroup.getString('label-url'),
       labelMaxZoom: mapGroup.getNumber('label-max-zoom')?.toInt() ?? 13,
       minZoom: mapGroup.getNumber('min-zoom')?.toInt() ?? 2,
@@ -1669,8 +1776,24 @@ extension _WappMaps on _WappPageState {
             c.type == 'chat' &&
             (c.name ?? '') == 'geochat')
         .firstOrNull;
+    // `"toolbar": true` puts the screen's actions in a row over the map, as a
+    // list screen does; without it they are only in the options menu.
+    final toolbarActions = screen.getBool('toolbar') == true
+        ? screen.children
+            .where((c) => c.keyword == 'action' && (c.name ?? '').isNotEmpty)
+            .toList()
+        : const <GeoUiBlock>[];
     final map = Column(
       children: [
+        if (toolbarActions.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [for (final a in toolbarActions) _toolbarButton(a)],
+            ),
+          ),
         _buildMapRadiusBar(),
         Expanded(
           child: _buildSlippyMap(

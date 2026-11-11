@@ -64,6 +64,7 @@ import 'geoui/widgets/members_panel_field.dart';
 import 'geoui/widgets/rooms_field.dart';
 import 'shared_media_fetch.dart';
 import 'geoui/tile_cache.dart';
+import 'geoui/tile_math.dart' as tiles;
 import 'background_wapp_manager.dart';
 import 'android_foreground_service.dart';
 import '../profile/iwi_profile.dart';
@@ -403,6 +404,8 @@ class _WappPageState extends State<WappPage>
   // Map state
   double _mapLat = 0, _mapLon = 0;
   int _mapZoom = 2;
+  // An area being saved for off-grid use (ui.map.prefetch): one at a time.
+  bool _mapPrefetching = false;
   // OpenStreetMap, not Esri/ArcGIS: the default has to be a service whose data
   // and terms are free (ODbL), because it is what every user hits without
   // choosing anything. A wapp that wants aerial imagery can still point at its
@@ -1849,6 +1852,8 @@ class _WappPageState extends State<WappPage>
           _mapLon = (data['lon'] as num?)?.toDouble() ?? _mapLon;
           _mapZoom = (data['zoom'] as num?)?.toInt() ?? _mapZoom;
           changed = true;
+        } else if (type == 'ui.map.prefetch') {
+          _prefetchMapArea(data);
         } else if (type == 'ui.map.marker') {
           // Upsert a pin on the map keyed by id (e.g. a callsign). The
           // wapp pushes one of these per position it wants shown; the
@@ -5428,7 +5433,9 @@ class _WappPageState extends State<WappPage>
     // Screens whose body is a full-bleed field (people list or chat feed) can't
     // show inline action buttons, so their actions surface in the options menu.
     final fullBleed = s.children.any(
-      (c) => c.keyword == 'field' && (c.type == 'people' || c.type == 'chat'),
+      (c) =>
+          (c.keyword == 'field' && (c.type == 'people' || c.type == 'chat')) ||
+          (c.keyword == 'group' && c.type == 'map'),
     );
     if (!fullBleed) return const [];
     return s.children.where((c) => c.keyword == 'action').toList();

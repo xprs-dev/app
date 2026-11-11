@@ -672,6 +672,17 @@ with live state, what each enables, what stops working without it
 asking). The first-run intro and Settings > Permissions both embed it; the
 home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
 
+## Maps
+
+- **`lib/wapp/geoui/tile_math.dart`** — pure slippy-map arithmetic:
+  `tileX`/`tileY`, `tilesForBox` (coarse first, capped), `viewBox` (the
+  area a screen shows), `tileUrl`. Any "which tiles cover this" question.
+- **`prefetchTiles` (`lib/wapp/geoui/tile_cache.dart`)** — saves tiles into
+  the same disk cache the map reads, two at a time with a pause, with an
+  identifying User-Agent. Wapps reach it through `ui.map.prefetch`.
+- **`tile-style` on a map group** (`_tileFilter` in `wapp_maps.dart`) —
+  `mono` / `mono-dark` colour matrices over any tile source.
+
 ## Wapp building blocks (C, `../apps`)
 
 - **`apps/alerts/util.c` / `util.h`** — strings, `YYYY-MM-DD_HH:MM:SS` time

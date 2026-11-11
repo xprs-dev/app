@@ -89,6 +89,29 @@ chasers far away can see it before they set out. Between `since:` and
 `until:` the bot puts `title:` and the event badge's hash on every
 certificate.
 
+## 2.5 Every check-in is a place (0.2.0)
+
+A certificate without `pos:` is not a check-in: the chaser's wapp refuses to
+log one, and a station that does not know where it stands gives none (it
+answers `code:500`, and its owner cannot turn it on). The position is the
+station's GPS fix, or the one its owner set (My station, or "Set my station
+here" on the map), written with four decimals. `pos:` goes right after
+`link:`, then `route:` when the ask came through relays (required then, since
+it decides the grade), then the badge, the event and the signal as far as
+they fit signed.
+
+## 2.6 The map (0.2.0)
+
+The first tab is a black-and-white map (`tile-style: mono`) with a pin for
+every check-in (white) and every check-in event still running (amber); a pin
+opens its evidence. The map centres on the check-ins. The region around them
+is saved for off-grid use at zooms 3 to 9, once per new area
+(`ui.map.prefetch`, at most 500 tiles); "Save this area offline" saves the
+area on screen three levels closer, at most 1500 tiles. The host paces and
+caps both, because OpenStreetMap's tile server, the default, refuses bulk
+downloads: a self-hosted or licensed tile source belongs in `tile-url` for
+heavier use.
+
 ## 3. Badges: a hash, fetched through the core
 
 The badge is an ordinary file in the media store, referenced by hash:
