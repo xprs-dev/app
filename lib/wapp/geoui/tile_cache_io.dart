@@ -73,6 +73,29 @@ String _cacheDir() {
   return '$home/.local/share/xprs/cache/tiles';
 }
 
+/// A tile's bytes as served: from the disk cache, else from the network
+/// (then kept on disk for next time and for off-grid use).
+Future<Uint8List> tileBytes(String url) async {
+  final file = _tileFile(url);
+  try {
+    if (await file.exists()) {
+      final bytes = await file.readAsBytes();
+      if (bytes.isNotEmpty) return bytes;
+    }
+  } catch (_) {/* fall through to network */}
+  final resp = await http.get(Uri.parse(url), headers: _tileHeaders);
+  final bytes = resp.bodyBytes;
+  if (resp.statusCode == 200 && bytes.isNotEmpty) {
+    try {
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(bytes);
+    } catch (_) {/* cache write is best-effort */}
+    return bytes;
+  }
+  throw NetworkImageLoadException(
+      statusCode: resp.statusCode, uri: Uri.parse(url));
+}
+
 class _DiskTile extends ImageProvider<_DiskTile> {
   final String url;
   _DiskTile(this.url);
@@ -90,32 +113,8 @@ class _DiskTile extends ImageProvider<_DiskTile> {
     );
   }
 
-  Future<ui.Codec> _load(ImageDecoderCallback decode) async {
-    final file = _tileFile(url);
-
-    // 1) disk cache
-    try {
-      if (await file.exists()) {
-        final bytes = await file.readAsBytes();
-        if (bytes.isNotEmpty) {
-          return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
-        }
-      }
-    } catch (_) {/* fall through to network */}
-
-    // 2) network, then persist for next time / off-grid
-    final resp = await http.get(Uri.parse(url), headers: _tileHeaders);
-    final bytes = resp.bodyBytes;
-    if (resp.statusCode == 200 && bytes.isNotEmpty) {
-      try {
-        await file.parent.create(recursive: true);
-        await file.writeAsBytes(bytes);
-      } catch (_) {/* cache write is best-effort */}
-      return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
-    }
-    throw NetworkImageLoadException(
-        statusCode: resp.statusCode, uri: Uri.parse(url));
-  }
+  Future<ui.Codec> _load(ImageDecoderCallback decode) async =>
+      decode(await ui.ImmutableBuffer.fromUint8List(await tileBytes(url)));
 
   @override
   bool operator ==(Object other) => other is _DiskTile && other.url == url;

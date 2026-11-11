@@ -71,7 +71,9 @@ class _SlippyMap extends StatefulWidget {
 
   /// How the base tiles are coloured: '' as served, 'mono' black and white
   /// (grey levels with a touch of contrast), 'mono-dark' the same inverted
-  /// for a dark screen. A wapp picks it with `tile-style` on its map group.
+  /// for a dark screen, 'dark' repainted in the Protomaps dark palette
+  /// (geoui/tile_recolor.dart). A wapp picks it with `tile-style` on its map
+  /// group.
   final String tileStyle;
 
   /// The address search box over the map (map group `search`, default on).
@@ -1070,7 +1072,8 @@ class _SlippyMapState extends State<_SlippyMap>
               width: _tileSize,
               height: _tileSize,
               child: Image(
-                image: tileImageProvider(url),
+                image: tileImageProvider(url,
+                    style: transparent ? '' : widget.tileStyle),
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
                 errorBuilder: (_, __, ___) => transparent
