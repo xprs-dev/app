@@ -12,11 +12,15 @@
  */
 
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/services.dart';
 
 import '../services/i18n/core_i18n.dart';
+import '../profile/profile_service.dart';
 import '../services/power_state.dart';
+import '../services/xprs/xprs_monitor.dart';
 import 'background_wapp_manager.dart';
 import '../platform/platform.dart' as platform;
 import 'package:xprs_core/src/platform/core_host.dart' show KeepAlive;
@@ -55,6 +59,7 @@ class AndroidForegroundService implements KeepAlive {
       for (final listener in List<void Function()>.of(_tickListeners)) {
         listener();
       }
+      unawaited(_refreshLabel());
     } else if (call.method == 'power.screen') {
       // The native service saw ACTION_SCREEN_ON/OFF. This is the only screen
       // signal a headless engine ever gets.
@@ -89,19 +94,43 @@ class AndroidForegroundService implements KeepAlive {
     }
   }
 
-  /// What the persistent notification says under the title.
+  /// What the persistent notification says under the title: who this device
+  /// is on the air, and how many XPRS stations it can reach without the
+  /// internet -- "Active as X1ABCD · 3 reachable". Tapping it opens the Mesh
+  /// wapp, which lists them (BgService.buildNotification).
   ///
-  /// It used to enumerate the machinery: "Mesh node, Mail, Torrents running in
-  /// background". That is the wrong thing to put on somebody's lock screen all
-  /// day -- it reads as a list of things the phone is busy with rather than as
-  /// what the app is for, and it named wapps the user may not have thought
-  /// about since installing them. Android requires a foreground service to say
-  /// something; this says what XPRS does.
-  // The first start can precede the translation tables (a headless boot);
-  // the English tagline then stands until the next sync, which rewrites it.
-  String _composeLabel() => CoreI18n.instance.ready
-      ? tr('wapp_host.service.label')
-      : 'Internet without internet';
+  /// It once enumerated the machinery ("Mesh node, Mail, Torrents running in
+  /// background"), then became the tagline "Internet without internet". The
+  /// tagline stays for a start with no profile yet (a headless boot, the
+  /// welcome screen) and before the translation tables load.
+  String _composeLabel() {
+    final call = ProfileService.instance.activeProfile?.wireCallsign ?? '';
+    if (!CoreI18n.instance.ready) {
+      return call.isEmpty ? 'Internet without internet' : 'Active as $call';
+    }
+    if (call.isEmpty) return tr('wapp_host.service.label');
+    final n = XprsMonitor.instance.reachableCount();
+    final active = tr('wapp_host.service.active', {'callsign': call});
+    return n == 0 ? active : '$active · ${trn('wapp_host.service.reachable', n)}';
+  }
+
+  /// The text the notification shows now, so a tick only crosses the
+  /// channel when it changed.
+  String? _shownLabel;
+
+  /// Re-reads the label on every native tick: stations come and go (and age
+  /// out without any event), and the profile can switch.
+  Future<void> _refreshLabel() async {
+    if (!_supported || !_running || _holders.isEmpty) return;
+    final label = _composeLabel();
+    if (label == _shownLabel) return;
+    _shownLabel = label;
+    try {
+      await _channel.invokeMethod('text', {'text': label});
+    } catch (e) {
+      debugPrint('AndroidForegroundService: text failed: $e');
+    }
+  }
 
   Future<void> _sync() async {
     if (!_supported) return;
@@ -110,9 +139,11 @@ class AndroidForegroundService implements KeepAlive {
         // 'start' both starts the service and updates the notification text.
         // false: Android refused the foreground start (BgBridge). The app
         // runs on without it; the next hold asks again.
-        final ok = await _channel
-            .invokeMethod<bool>('start', {'text': _composeLabel()});
+        final label = _composeLabel();
+        final ok =
+            await _channel.invokeMethod<bool>('start', {'text': label});
         _running = ok ?? true;
+        _shownLabel = label;
       } else if (_running) {
         await _channel.invokeMethod('stop');
         _running = false;

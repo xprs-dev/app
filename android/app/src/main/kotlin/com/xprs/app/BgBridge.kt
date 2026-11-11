@@ -64,6 +64,13 @@ object BgBridge {
                         result.success(false)
                     }
                 }
+                // The notification text changed (profile, stations in reach):
+                // redraw it in place. Re-sending "start" would re-run the
+                // whole foreground start on every change.
+                "text" -> {
+                    BgService.setText(call.argument<String>("text") ?: "")
+                    result.success(true)
+                }
                 // Dart's PowerState published a new tier: heartbeat period,
                 // wake-lock policy and WiFi-lock strength follow it. Delivery
                 // does not — the scan, the service and the multicast lock are

@@ -288,6 +288,16 @@ class BgService : Service() {
         super.onDestroy()
     }
 
+    /** Redraws the ongoing notification with [text], without a new start. */
+    private fun showText(text: String) {
+        val nm = getSystemService(NotificationManager::class.java) ?: return
+        try {
+            nm.notify(NOTIF_ID, buildNotification(text))
+        } catch (e: Throwable) {
+            Log.w(TAG, "notification update failed: ${e.message}")
+        }
+    }
+
     private fun startAsForeground(text: String) {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
@@ -318,10 +328,18 @@ class BgService : Service() {
                 nm.deleteNotificationChannel("aurora_bg")
             }
         }
+        // A tap opens the Mesh wapp, which lists the stations the text counts
+        // ("3 reachable"): the same xprs://open link event notifications use
+        // (BgBridge.notify), so it lands through DeepLinkService.
+        val open = (packageManager.getLaunchIntentForPackage(packageName)
+            ?: Intent(this, MainActivity::class.java)).apply {
+            action = Intent.ACTION_VIEW
+            data = android.net.Uri.parse("xprs://open?wapp=mesh")
+        }
         val pi = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java),
+            open,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -360,6 +378,13 @@ class BgService : Service() {
             private set
 
         private var screenReceiverOn = false
+
+        /** Called from the bg_service channel when the notification text
+         *  changes: "Active as X1ABCD · 3 reachable". */
+        fun setText(t: String) {
+            if (t.isEmpty()) return
+            live?.let { s -> s.handler.post { s.showText(t) } }
+        }
 
         /** Called from the bg_service channel when Dart's PowerState changes. */
         fun setTier(t: String) {
