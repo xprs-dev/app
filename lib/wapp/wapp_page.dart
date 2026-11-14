@@ -4333,10 +4333,12 @@ class _WappPageState extends State<WappPage>
     final idx = _tabScreens.indexWhere(
       (s) => s.children.any((c) => c.keyword == 'group' && c.type == 'map'),
     );
+    var switching = false;
     if (idx >= 0) {
       if (_panelScreen != null) _panelScreen = null; // leave any open panel
       if (_tabController != null && _tabController!.index != idx) {
         _tabController!.animateTo(idx);
+        switching = true;
       }
     }
     // Centre directly on the target and zoom in so it's clearly visible. The
@@ -4349,16 +4351,27 @@ class _WappPageState extends State<WappPage>
           (max((myLat - lat).abs(), (myLon - lon).abs()) * 2.2) + 0.003;
       zoom = (log(360 * 700 / (256 * span)) / log(2)).clamp(12, 16).floor();
     }
-    setState(() {
-      _mapLat = lat;
-      _mapLon = lon;
-      _mapZoom = zoom;
-      _locateLat = lat;
-      _locateLon = lon;
-      // Show the located station, not the fitted coverage circle, when the
-      // map (re)mounts for this navigation.
-      _mapAutoFit = false;
-    });
+    void apply() => setState(() {
+          _mapLat = lat;
+          _mapLon = lon;
+          _mapZoom = zoom;
+          _locateLat = lat;
+          _locateLon = lon;
+          // Show the located station, not the fitted coverage circle, when
+          // the map (re)mounts for this navigation.
+          _mapAutoFit = false;
+        });
+    apply();
+    // Coming from another tab, the map is built during the tab animation and
+    // reports the view it was built with, which overwrote this one: the
+    // person landed on the default view with only a ring on the place. Say
+    // it again once the map is on screen.
+    if (switching) {
+      Future<void>.delayed(kTabScrollDuration + const Duration(milliseconds: 80),
+          () {
+        if (mounted) apply();
+      });
+    }
   }
 
   // Generic prompt dialog requested by a wapp via ui.prompt. Shows a title,
