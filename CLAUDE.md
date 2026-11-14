@@ -85,7 +85,8 @@ a signature mismatch.** The key exists: `~/.secrets/xprs/xprs-release.jks`
 built WITHOUT that key: fix the build (or re-sign it with `apksigner` and the
 keystore), never `adb uninstall`, which wipes the person's profile, chats and
 keys on the phone. Check before installing:
-`keytool -printcert -jarfile x.apk | grep SHA256` must start `2A:4B:46:25`.
+`python3 tool/apk_cert.py x.apk` must print `2a4b4625…` (keytool reads only
+v1 JAR signatures and prints nothing for these APKs).
 
 Android installs need a versionCode above the installed one (`adb shell
 dumpsys package com.xprs.app | grep versionCode`), and other sessions may be
