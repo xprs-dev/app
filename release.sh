@@ -179,13 +179,15 @@ branch=$(git rev-parse --abbrev-ref HEAD)
 git push origin "$branch"
 git push origin "v${VERSION}"
 
-# From here it is automatic. release.yml attaches the artifacts to a GitHub
-# Release; xprs-dev/downloads (cron hourly) publishes them on
-# https://xprs.dev/downloads/<tag>/; the site repo's sync.yml (cron every 3h)
-# then hashes them into https://xprs.dev/updates/{stable,beta}.json, once the
-# files are there; an always-on archiver with the mirror on downloads each
-# artifact once and seeds it by content address.
-echo ">> done. release.yml is building v${VERSION}. Once it has published:"
-echo ">>   files:  gh workflow run publish.yml -R xprs-dev/downloads"
-echo ">>   feed:   gh workflow run sync.yml -R xprs-dev/xprs-dev.github.io"
-echo ">>   verify: curl -s https://xprs.dev/updates/beta.json | jq .version"
+# release.yml attaches the artifacts to a GitHub Release; xprs-dev/downloads
+# publishes them on https://xprs.dev/downloads/<tag>/; the site repo's sync.yml
+# hashes them into https://xprs.dev/updates/{stable,beta}.json; an always-on
+# archiver with the mirror on downloads each artifact once and seeds it by
+# content address. Those two repositories only run on a schedule (GitHub drops
+# scheduled runs when busy, and no token here can dispatch across repos), so
+# tool/release_follow.sh drives them with the local gh login as soon as the
+# release is built. Without it, phones are told the old version for hours.
+log="${TMPDIR:-/tmp}/xprs-release-follow-v${VERSION}.log"
+nohup tool/release_follow.sh "v${VERSION}" >"$log" 2>&1 &
+echo ">> done. release.yml is building v${VERSION}; the feed follows on its own"
+echo ">>   (tool/release_follow.sh, log: $log)."

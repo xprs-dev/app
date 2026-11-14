@@ -81,6 +81,13 @@ no folder id, no npub, no station name.
 - Asset names carry the version. `versionFromAssetName()` parses
   `xprs-<version>-<platform>`; a versionless name parses as a version and offers
   a release that does not exist.
+- A release reaches the feed in three steps in three repositories: app's
+  `release.yml` builds, `xprs-dev/downloads` serves, the site's `sync.yml`
+  writes the feed. The last two only run on a schedule and cannot be
+  dispatched from another repository's workflow, so `release.sh` starts
+  `tool/release_follow.sh`, which dispatches each with the local `gh` login
+  as soon as the step before it is done. Run it by hand to finish a release
+  that stalled. (v1.9.0 waited hours behind a skipped scheduled run.)
 
 **Checking is cheap and hosting is not.** One ~1 KB GET answers "is there
 something newer"; the megabytes are a separate decision on a separate lane.
