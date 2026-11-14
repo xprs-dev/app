@@ -1011,9 +1011,17 @@ class RemoteApiService {
         if (data['fdroidOnly'] != null) {
           await u.setFdroidOnly(data['fdroidOnly'] == true);
         }
+        if (data['autoUpdate'] != null) {
+          await u.setAutoUpdate(data['autoUpdate'] == true);
+        }
+        if (data['overMetered'] != null) {
+          await u.setOverMetered(data['overMetered'] == true);
+        }
         return _json(res, {
           'ok': true,
           'fdroidOnly': u.fdroidOnly,
+          'autoUpdate': u.autoUpdate,
+          'overMetered': u.overMetered,
           'betaFolder': u.betaFolder,
           'stableFolder': u.stableFolder,
           'betaEnabled': u.betaEnabled,
@@ -1075,6 +1083,12 @@ class RemoteApiService {
           'buildNumber': kBuildNumber,
           'betaEnabled': u.betaEnabled,
           'autoCheck': u.autoCheck,
+          'autoUpdate': u.autoUpdate,
+          'overMetered': u.overMetered,
+          'lastCheck': u.lastCheck?.toUtc().toIso8601String(),
+          'nextCheck': u.nextCheck?.toUtc().toIso8601String(),
+          'readyVersion': u.readyVersion,
+          'notice': u.notice.value.name,
           'fdroidOnly': u.fdroidOnly,
           'feedBase': u.feedBase,
           'stableFolder': u.stableFolder,
@@ -1094,15 +1108,22 @@ class RemoteApiService {
           'error': u.error,
         });
       }
+      if (req.method == 'POST' && path == '/api/update/auto') {
+        // One automatic round now (check, then download in the background if
+        // newer), as the six-hourly timer would run it. Returns at once.
+        final u = UpdateService.instance;
+        if (!u.autoUpdate) {
+          return _json(res, {'ok': false, 'error': 'automatic updates are off'},
+              status: HttpStatus.conflict);
+        }
+        unawaited(u.runAutomatic());
+        return _json(res, {'ok': true});
+      }
       if (req.method == 'POST' && path == '/api/update/install') {
         // The verb that was missing: without it the chain check -> download ->
         // install could not be driven end to end without a human tapping.
         final u = UpdateService.instance;
         final sel = u.selectedRelease;
-        if (sel == null) {
-          return _json(res, {'ok': false, 'error': 'no release selected'},
-              status: HttpStatus.badRequest);
-        }
         if (u.downloadedPath == null) {
           return _json(res, {'ok': false, 'error': 'nothing downloaded'},
               status: HttpStatus.conflict);
@@ -1110,7 +1131,7 @@ class RemoteApiService {
         final ok = await u.install(sel);
         return _json(res, {
           'ok': ok,
-          'version': sel.version,
+          'version': u.readyVersion ?? sel?.version,
           'status': u.status.value.name,
           'error': u.error,
         });

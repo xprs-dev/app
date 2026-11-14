@@ -7,6 +7,11 @@
  * taps behave identically by construction. The launcher grid keeps its own
  * richer path (dependency gate, launch counters); this is the lightweight
  * "just open it" door, same as the remote API's /api/launch.
+ *
+ * A notification raised by a host service rather than a wapp names its source
+ * (`host:updates`) where a wapp notification names its folder;
+ * [openNotificationTarget] sends those to the page registered in
+ * [hostNotificationPages], and everything else here.
  */
 
 import 'dart:convert';
@@ -17,6 +22,34 @@ import '../profile/storage_paths.dart';
 import '../services/log_service.dart';
 import '../services/wapp_unread_service.dart';
 import 'wapp_page.dart';
+
+/// The page a host service's notification opens, keyed by its source
+/// (`host:updates`). Registered at boot, so this file needs no import of any
+/// host page.
+final Map<String, Widget Function()> hostNotificationPages = {};
+
+/// Whether [target] is a registered host page rather than a wapp folder.
+bool isHostNotificationTarget(String target) =>
+    hostNotificationPages.containsKey(target);
+
+/// Open what a tapped notification is about: a registered host page, or the
+/// wapp at [target] (on [convo] / [view]). Every tap door goes through here --
+/// the Android shade (xprs://open), the desktop toast, the in-app card.
+Future<bool> openNotificationTarget(
+  String target, {
+  String? convo,
+  String? view,
+  required NavigatorState? navigator,
+}) async {
+  final page = hostNotificationPages[target];
+  if (page == null) {
+    return openWappByFolder(target,
+        convo: convo, view: view, navigator: navigator);
+  }
+  if (navigator == null) return false;
+  await navigator.push(MaterialPageRoute(builder: (_) => page()));
+  return true;
+}
 
 /// Open the wapp installed at `wapps/<folder>` in the active profile.
 /// [convo], when given, opens that conversation inside the wapp (mail: the

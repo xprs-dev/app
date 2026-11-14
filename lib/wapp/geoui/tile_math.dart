@@ -73,3 +73,34 @@ String tileUrl(String template, Tile t) => template
     .replaceAll('{z}', '${t.z}')
     .replaceAll('{x}', '${t.x}')
     .replaceAll('{y}', '${t.y}');
+
+/// What a slippy map shows: whole tile [zoom], the world pixel ([x], [y], at
+/// that zoom) at the view's top-left corner, and the [scale] the tiles are
+/// drawn at. [scale] is 1 at rest and between about 0.7 and 1.4 while a pinch
+/// sits between two zoom levels.
+typedef MapView = ({int zoom, double x, double y, double scale});
+
+/// The zoom [v] shows, with the pinch's fraction: zoom 12 drawn at 1.41 is
+/// 12.5.
+double viewZoom(MapView v) => v.zoom + math.log(v.scale) / math.ln2;
+
+/// The point under screen position ([sx], [sy]) as a fraction of the whole
+/// world (0..1 each way), which does not change with zoom.
+(double, double) viewPoint(MapView v, double sx, double sy) {
+  final world = 256.0 * math.pow(2, v.zoom);
+  return ((v.x + sx / v.scale) / world, (v.y + sy / v.scale) / world);
+}
+
+/// The view at [zoom] (any fraction, clamped to [minZoom]..[maxZoom]) that
+/// keeps the world point ([nx], [ny]) (from [viewPoint]) under screen
+/// position ([fx], [fy]). A pinch, a double tap, the mouse wheel and a fling
+/// are all this with different numbers: the point between the fingers stays
+/// between the fingers.
+MapView viewAt(double nx, double ny, double fx, double fy, double zoom,
+    int minZoom, int maxZoom) {
+  final zc = zoom.clamp(minZoom.toDouble(), maxZoom.toDouble());
+  final z = zc.round();
+  final s = math.pow(2, zc - z).toDouble();
+  final world = 256.0 * math.pow(2, z);
+  return (zoom: z, x: nx * world - fx / s, y: ny * world - fy / s, scale: s);
+}

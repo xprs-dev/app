@@ -1,18 +1,17 @@
 /*
- * UpdatePage — the in-app Updates panel (drawer → Updates).
+ * UpdatePage — the Updates panel (drawer → Updates).
  *
- * Shows the running version, a stable + beta release "table" pulled from the xprs.dev feed
- * (xprs-dev/app), release notes, and a Download → Install action for the
- * selected channel. Mirrors xprs's update page; the beta toggle opts into
- * pre-releases. On Android, "Updates only from F-Droid" replaces both channels
- * with the version F-Droid publishes and hands the update to the F-Droid
- * client. Disabled on web (managed by the store/package manager).
+ * One status line (up to date / available / downloading / ready), one button
+ * (Check now / Download / Install), the new version's notes, and the four
+ * settings. Checking, downloading and the "ready" notice happen on their own
+ * (UpdateService.start); this page only shows them and takes the person's
+ * own requests. Disabled on web.
  */
 
 import 'package:flutter/material.dart';
 
-import '../services/update_models.dart';
 import '../services/update_service.dart';
+import '../util/time_ago.dart';
 import '../version.dart';
 import '../services/i18n/core_i18n.dart';
 
@@ -29,363 +28,150 @@ class _UpdatePageState extends State<UpdatePage> {
   @override
   void initState() {
     super.initState();
+    _svc.pageOpen = true;
     _init();
+  }
+
+  @override
+  void dispose() {
+    _svc.pageOpen = false;
+    super.dispose();
   }
 
   Future<void> _init() async {
     await _svc.load();
     if (mounted) setState(() {});
-    if (_svc.supported) {
-      // Re-attach to a download still running (or finished) in the background
-      // before kicking off a fresh channel check.
-      _svc.resumeActiveDownload();
-      _svc.checkForUpdates();
-    }
-  }
-
-  /// Prompt for a channel's signed-folder address (npub or hex folderId),
-  /// persist it, and re-check. Blank resets to the built-in pin.
-  Future<void> _editFolder({
-    required String title,
-    required String current,
-    required Future<String> Function(String) save,
-  }) async {
-    final controller = TextEditingController(text: current);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(tr('updates.folder.help')),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(
-                hintText: 'npub1…',
-                border: OutlineInputBorder(),
-              ),
-              onSubmitted: (v) => Navigator.pop(ctx, v),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: Text(tr('common.cancel'))),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text),
-              child: Text(tr('common.save'))),
-        ],
-      ),
-    );
-    if (result == null) return; // cancelled
-    await save(result);
+    if (!_svc.supported) return;
+    // Re-attach to a download still running (or finished) in the background,
+    // then look for a newer release.
+    await _svc.resumeActiveDownload();
+    await _svc.checkForUpdates();
     if (mounted) setState(() {});
-    _svc.checkForUpdates();
   }
 
-  String _folderLabel(String v) => v.isEmpty ? tr('updates.folder.unset') : v;
+  Future<void> _set(Future<void> Function() change, {bool recheck = false}) async {
+    await change();
+    if (mounted) setState(() {});
+    if (recheck) await _svc.checkForUpdates();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(tr('updates.title'))),
       body: !_svc.supported
           ? const _WebNotice()
-          : ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                // Current version + check.
-                Card(
-                  elevation: 0,
-                  color: cs.surfaceContainerLow,
-                  child: ListTile(
-                    leading: const Icon(Icons.verified),
-                    title: const Text('XPRS'),
-                    subtitle: Text(tr('updates.installed',
-                        {'version': kAppVersion, 'build': kBuildNumber})),
-                    trailing: ValueListenableBuilder<UpdateStatus>(
-                      valueListenable: _svc.status,
-                      builder: (context, st, _) => st == UpdateStatus.checking
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2))
-                          : IconButton(
-                              icon: const Icon(Icons.refresh),
-                              tooltip: tr('updates.check'),
-                              onPressed: _svc.checkForUpdates,
-                            ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // ── Releases first: this is what the user came here to act on ──
-                Text(tr('updates.releases'),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: cs.primary, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                if (_svc.fdroidOnly)
-                  ValueListenableBuilder<ReleaseInfo?>(
-                    valueListenable: _svc.fdroid,
-                    builder: (context, rel, _) => _ReleaseCard(
-                      channel: 'F-Droid',
-                      icon: Icons.storefront_outlined,
-                      release: rel,
-                      active: true,
-                      fdroid: true,
-                    ),
-                  )
-                else ...[
-                  // Stable + beta cards.
-                  ValueListenableBuilder<ReleaseInfo?>(
-                    valueListenable: _svc.stable,
-                    builder: (context, rel, _) => _ReleaseCard(
-                      channel: tr('updates.channel.stable'),
-                      icon: Icons.check_circle_outline,
-                      release: rel,
-                      active: !_svc.betaEnabled,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ValueListenableBuilder<ReleaseInfo?>(
-                    valueListenable: _svc.beta,
-                    builder: (context, rel, _) => _ReleaseCard(
-                      channel: tr('updates.channel.beta'),
-                      icon: Icons.science_outlined,
-                      release: rel,
-                      active: _svc.betaEnabled,
-                    ),
-                  ),
+          : AnimatedBuilder(
+              animation: Listenable.merge([
+                _svc.status,
+                _svc.checking,
+                _svc.progress,
+                _svc.phase,
+                _svc.errorNote,
+                _svc.stable,
+                _svc.beta,
+                _svc.fdroid,
+              ]),
+              builder: (context, _) => ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  _statusCard(context),
+                  ..._notes(context),
+                  const SizedBox(height: 24),
+                  ..._settings(context),
                 ],
-                const SizedBox(height: 8),
-                // Error line.
-                ValueListenableBuilder<UpdateStatus>(
-                  valueListenable: _svc.status,
-                  builder: (context, st, _) =>
-                      (st == UpdateStatus.error && _svc.error != null)
-                          ? Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(_svc.error!,
-                                  style: TextStyle(color: cs.error)),
-                            )
-                          : const SizedBox.shrink(),
-                ),
-                const SizedBox(height: 24),
-                // ── Settings last: source + channel knobs the user rarely touches ──
-                Text(tr('common.settings'),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                // F-Droid ships this same APK, so either updater can install
-                // over the other; this decides which one the phone listens to.
-                if (_svc.fdroidAvailable) ...[
-                  Card(
-                    elevation: 0,
-                    color: cs.surfaceContainerLow,
-                    child: SwitchListTile(
-                      secondary: const Icon(Icons.storefront_outlined),
-                      title: Text(tr('updates.fdroid_only.title')),
-                      subtitle: Text(tr('updates.fdroid_only.desc')),
-                      value: _svc.fdroidOnly,
-                      onChanged: (v) async {
-                        await _svc.setFdroidOnly(v);
-                        if (mounted) setState(() {});
-                        _svc.checkForUpdates();
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                if (!_svc.fdroidOnly) ..._channelSettings(cs),
-              ],
+              ),
             ),
     );
   }
 
-  /// Where the self-updater looks: meaningless while F-Droid is the updater.
-  List<Widget> _channelSettings(ColorScheme cs) => [
-                // Beta opt-in.
-                Card(
-                  elevation: 0,
-                  color: cs.surfaceContainerLow,
-                  child: SwitchListTile(
-                    secondary: const Icon(Icons.science_outlined),
-                    title: Text(tr('updates.beta.title')),
-                    subtitle: Text(tr('updates.beta.desc')),
-                    value: _svc.betaEnabled,
-                    onChanged: (v) async {
-                      await _svc.setBetaEnabled(v);
-                      if (mounted) setState(() {});
-                      _svc.checkForUpdates();
-                    },
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Release source — the two signed Reticulum folders (one per
-                // channel). Editable so self-hosters can point at their own.
-                Card(
-                  elevation: 0,
-                  color: cs.surfaceContainerLow,
-                  child: ListTile(
-                    leading: const Icon(Icons.folder_shared_outlined),
-                    title: Text(tr('updates.folder.stable')),
-                    subtitle: Text(_folderLabel(_svc.stableFolder),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.edit_outlined),
-                      tooltip: tr('updates.folder.stable.change'),
-                      onPressed: () => _editFolder(
-                        title: tr('updates.folder.stable'),
-                        current: _svc.stableFolder,
-                        save: _svc.setStableFolder,
-                      ),
-                    ),
-                  ),
-                ),
-                Card(
-                  elevation: 0,
-                  color: cs.surfaceContainerLow,
-                  child: ListTile(
-                    leading: const Icon(Icons.folder_shared_outlined),
-                    title: Text(tr('updates.folder.beta')),
-                    subtitle: Text(_folderLabel(_svc.betaFolder),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.edit_outlined),
-                      tooltip: tr('updates.folder.beta.change'),
-                      onPressed: () => _editFolder(
-                        title: tr('updates.folder.beta'),
-                        current: _svc.betaFolder,
-                        save: _svc.setBetaFolder,
-                      ),
-                    ),
-                  ),
-                ),
-      ];
-}
-
-class _ReleaseCard extends StatefulWidget {
-  final String channel;
-  final IconData icon;
-  final ReleaseInfo? release;
-  final bool active; // is this the channel the action targets
-  final bool fdroid; // the F-Droid client installs it, not this panel
-
-  const _ReleaseCard({
-    required this.channel,
-    required this.icon,
-    required this.release,
-    required this.active,
-    this.fdroid = false,
-  });
-
-  @override
-  State<_ReleaseCard> createState() => _ReleaseCardState();
-}
-
-class _ReleaseCardState extends State<_ReleaseCard> {
-  bool _expanded = false;
-
-  String _date(String? iso) {
-    if (iso == null) return '';
-    final d = DateTime.tryParse(iso);
-    if (d == null) return '';
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${d.year}-${two(d.month)}-${two(d.day)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _statusCard(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final svc = UpdateService.instance;
-    final r = widget.release;
+    final text = Theme.of(context).textTheme;
+    final st = _svc.status.value;
+    final sel = _svc.selectedRelease;
+    final newer = _svc.isNewer(sel);
+    final ready = st == UpdateStatus.downloaded &&
+        _svc.readyVersion != null &&
+        !_svc.fdroidOnly;
+    final downloading = st == UpdateStatus.downloading;
+    final pct = (_svc.progress.value * 100).round();
+
+    final String line;
+    if (ready) {
+      line = tr('updates.state.ready', {'version': _svc.readyVersion});
+    } else if (downloading) {
+      final ph = _svc.phase.value;
+      line = ph.isEmpty
+          ? tr('updates.state.downloading', {'pct': pct})
+          : tr('updates.downloading.phase', {'phase': ph, 'pct': pct});
+    } else if (_svc.checking.value) {
+      line = tr('updates.state.checking');
+    } else if (newer) {
+      line = tr(_svc.fdroidOnly ? 'updates.state.fdroid' : 'updates.state.available',
+          {'version': sel!.version});
+    } else {
+      final last = _svc.lastCheck;
+      line = last == null
+          ? tr('updates.state.up_to_date')
+          : tr('updates.state.checked', {'ago': timeAgo(last)});
+    }
+
+    Widget? action;
+    if (ready) {
+      action = FilledButton.icon(
+        icon: const Icon(Icons.system_update_alt, size: 18),
+        label: Text(tr('updates.install', {'version': _svc.readyVersion})),
+        onPressed: () => _svc.install(sel),
+      );
+    } else if (downloading) {
+      action = null;
+    } else if (newer && _svc.fdroidOnly) {
+      action = FilledButton.icon(
+        icon: const Icon(Icons.storefront_outlined, size: 18),
+        label: Text(tr('updates.fdroid.update')),
+        onPressed: _svc.openFdroid,
+      );
+    } else if (newer) {
+      action = FilledButton.icon(
+        icon: const Icon(Icons.download, size: 18),
+        label: Text(tr('updates.download', {'version': sel!.version})),
+        onPressed: () => _svc.download(sel),
+      );
+    } else {
+      action = OutlinedButton.icon(
+        icon: const Icon(Icons.refresh, size: 18),
+        label: Text(tr('updates.check')),
+        onPressed: _svc.checking.value ? null : _svc.checkForUpdates,
+      );
+    }
+
     return Card(
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: widget.active
-              ? cs.primary.withAlpha(120)
-              : cs.outlineVariant.withAlpha(80),
-          width: widget.active ? 1.5 : 1,
-        ),
-      ),
       color: cs.surfaceContainerLow,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(widget.icon, size: 20, color: cs.primary),
-                const SizedBox(width: 8),
-                Text(widget.channel,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                const Spacer(),
-                if (r != null)
-                  Text(_date(r.publishedAt),
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            if (r == null) ...[
-              Text(
-                  widget.fdroid
-                      ? tr('updates.fdroid.unreachable')
-                      : tr('updates.none'),
-                  style: TextStyle(color: cs.onSurfaceVariant)),
-              if (widget.fdroid)
-                TextButton(
-                    onPressed: svc.openFdroid,
-                    child: Text(tr('updates.fdroid.open'))),
-            ] else ...[
-              Row(
-                children: [
-                  Text(r.version,
-                      style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15)),
-                  const SizedBox(width: 8),
-                  _statusChip(context, r),
-                ],
-              ),
-              if ((r.body ?? '').trim().isNotEmpty) ...[
-                const SizedBox(height: 6),
-                InkWell(
-                  onTap: () => setState(() => _expanded = !_expanded),
-                  child: Row(
-                    children: [
-                      Text(_expanded ? tr('updates.notes.hide') : tr('updates.notes.show'),
-                          style: TextStyle(
-                              fontSize: 12, color: cs.primary)),
-                      Icon(_expanded ? Icons.expand_less : Icons.expand_more,
-                          size: 16, color: cs.primary),
-                    ],
-                  ),
-                ),
-                if (_expanded)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: SelectableText(
-                      r.body!.trim(),
-                      style:
-                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                    ),
-                  ),
-              ],
-              if (widget.active) ...[
-                const SizedBox(height: 10),
-                _action(context, svc, r),
-              ],
+            Text('XPRS ${_svc.currentVersion}',
+                style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            Text(tr('updates.installed', {'build': kBuildNumber}),
+                style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+            const SizedBox(height: 14),
+            Text(line, style: text.bodyLarge),
+            if (downloading) ...[
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                  value: _svc.progress.value > 0 ? _svc.progress.value : null),
+            ],
+            if (_svc.error != null) ...[
+              const SizedBox(height: 8),
+              Text(_svc.error!, style: TextStyle(color: cs.error)),
+            ],
+            if (action != null) ...[
+              const SizedBox(height: 14),
+              action,
             ],
           ],
         ),
@@ -393,75 +179,69 @@ class _ReleaseCardState extends State<_ReleaseCard> {
     );
   }
 
-  Widget _statusChip(BuildContext context, ReleaseInfo r) {
-    final svc = UpdateService.instance;
+  /// The notes of the version on offer: the one ready to install, or the
+  /// newer one on the selected channel.
+  List<Widget> _notes(BuildContext context) {
+    final sel = _svc.selectedRelease;
+    if (sel == null || !_svc.isNewer(sel)) return const [];
+    final body = (sel.body ?? '').trim();
+    if (body.isEmpty) return const [];
     final cs = Theme.of(context).colorScheme;
-    final (label, color) = svc.isNewer(r)
-        ? (tr('updates.status.new'), cs.primary)
-        : (r.version == svc.currentVersion
-            ? (tr('updates.status.installed'), cs.tertiary)
-            : (tr('updates.status.older'), cs.onSurfaceVariant));
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withAlpha(40),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(label, style: TextStyle(fontSize: 11, color: color)),
-    );
+    return [
+      const SizedBox(height: 20),
+      Text(tr('updates.notes', {'version': sel.version}),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: cs.primary, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      SelectableText(body,
+          style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+    ];
   }
 
-  Widget _action(BuildContext context, UpdateService svc, ReleaseInfo r) {
-    if (!svc.isNewer(r)) {
-      return Text(tr('updates.up_to_date'),
-          style: TextStyle(
-              fontSize: 12, color: Theme.of(context).colorScheme.tertiary));
-    }
-    if (widget.fdroid) {
-      return FilledButton.icon(
-        icon: const Icon(Icons.storefront_outlined, size: 18),
-        label: Text(tr('updates.fdroid.update', {'version': r.version})),
-        onPressed: svc.openFdroid,
-      );
-    }
-    return ValueListenableBuilder<UpdateStatus>(
-      valueListenable: svc.status,
-      builder: (context, st, _) {
-        if (st == UpdateStatus.downloading) {
-          return ValueListenableBuilder<double>(
-            valueListenable: svc.progress,
-            builder: (context, p, _) => Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                LinearProgressIndicator(value: p),
-                const SizedBox(height: 4),
-                ValueListenableBuilder<String>(
-                  valueListenable: svc.phase,
-                  builder: (context, ph, _) => Text(
-                      ph.isEmpty
-                          ? tr('updates.downloading', {'pct': (p * 100).round()})
-                          : tr('updates.downloading.phase',
-                              {'phase': ph, 'pct': (p * 100).round()}),
-                      style: const TextStyle(fontSize: 12)),
-                ),
-              ],
-            ),
-          );
-        }
-        if (st == UpdateStatus.downloaded) {
-          return FilledButton.icon(
-            icon: const Icon(Icons.system_update_alt, size: 18),
-            label: Text(tr('updates.install', {'version': r.version})),
-            onPressed: () => svc.install(r),
-          );
-        }
-        return FilledButton.icon(
-          icon: const Icon(Icons.download, size: 18),
-          label: Text(tr('updates.download', {'version': r.version})),
-          onPressed: () => svc.download(r),
-        );
-      },
-    );
+  List<Widget> _settings(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final self = !_svc.fdroidOnly;
+    return [
+      Text(tr('common.settings'),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 4),
+      if (self)
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(tr('updates.auto.title')),
+          subtitle: Text(tr('updates.auto.desc')),
+          value: _svc.autoUpdate,
+          onChanged: (v) => _set(() => _svc.setAutoUpdate(v)),
+        ),
+      if (self && _svc.fdroidAvailable)
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(tr('updates.metered.title')),
+          value: _svc.overMetered,
+          onChanged: _svc.autoUpdate
+              ? (v) => _set(() => _svc.setOverMetered(v))
+              : null,
+        ),
+      if (self)
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(tr('updates.beta.title')),
+          value: _svc.betaEnabled,
+          onChanged: (v) =>
+              _set(() => _svc.setBetaEnabled(v), recheck: true),
+        ),
+      // F-Droid ships this same APK, so either updater can install over the
+      // other; this decides which one the phone listens to.
+      if (_svc.fdroidAvailable)
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(tr('updates.fdroid_only.title')),
+          subtitle: Text(tr('updates.fdroid_only.desc')),
+          value: _svc.fdroidOnly,
+          onChanged: (v) => _set(() => _svc.setFdroidOnly(v), recheck: true),
+        ),
+    ];
   }
 }
 

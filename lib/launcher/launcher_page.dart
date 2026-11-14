@@ -517,6 +517,8 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
               const _ClimateGlance(),
               // Only while Bluetooth is refused (Android); otherwise nothing.
               const _PermissionBanner(),
+              // Only while an update is downloaded and waiting to be installed.
+              const _UpdateReadyBanner(),
               _ModuleBars(
                 entries: entries,
                 onStatusTap: _openStatusWapp,

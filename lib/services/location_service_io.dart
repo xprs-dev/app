@@ -7,6 +7,7 @@
 // back to their configured position.
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:geolocator/geolocator.dart';
@@ -20,6 +21,10 @@ class LocationService {
   double? _lat;
   double? _lon;
   bool _started = false;
+
+  /// geolocator has no Linux implementation: every call there throws
+  /// MissingPluginException, once per beacon and per wapp read. Ask nothing.
+  static final bool _noGps = Platform.isLinux;
   StreamSubscription<Position>? _sub;
   DateTime _lastRead = DateTime.now();
   Timer? _idleCheck;
@@ -58,6 +63,7 @@ class LocationService {
   }
 
   Future<void> _start() async {
+    if (_noGps) return;
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return;
       // NEVER prompt from here. This runs when a background wapp first reaches
@@ -101,6 +107,7 @@ class LocationService {
   /// failure — no GPS, denied permission, or no location plugin on this platform
   /// (e.g. desktop Linux).
   Future<({double lat, double lon})?> currentPosition() async {
+    if (_noGps) return null;
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return null;
       var perm = await Geolocator.checkPermission();
@@ -131,6 +138,7 @@ class LocationService {
     Duration maxAge = const Duration(minutes: 5),
     Duration timeLimit = const Duration(seconds: 20),
   }) async {
+    if (_noGps) return null;
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return null;
       final perm = await Geolocator.checkPermission();

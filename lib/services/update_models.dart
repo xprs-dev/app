@@ -284,3 +284,98 @@ int compareSemver(String a, String b) {
   }
   return aId.length.compareTo(bId.length).clamp(-1, 1);
 }
+
+// ── Automatic updates: the decisions, pure so they can be tested ──────────
+
+/// What the launcher shows about updates without opening the Updates page.
+enum UpdateNotice { none, available, downloading, ready }
+
+/// Package names of the F-Droid clients (keep in step with the manifest's
+/// `queries` and UpdateBridge.FDROID_CLIENTS).
+const Set<String> fdroidClientPackages = {
+  'org.fdroid.fdroid',
+  'org.fdroid.basic',
+  'com.looker.droidify',
+  'com.machiav3lli.fdroid',
+};
+
+/// Whether automatic updates are on before the user has chosen.
+///
+/// - Desktop: on.
+/// - Android installed by an F-Droid client: off. That install defaults to
+///   "Updates only from F-Droid" and the F-Droid client notifies.
+/// - Android installed by anything else that names itself (the system package
+///   installer after a download from xprs.dev, a browser, a store): on.
+/// - Android with no installer on record (`adb install`): follows
+///   [storeDefine], the `AUTO_UPDATE_CHECK` define. Release APKs carry
+///   `false` because F-Droid ships the same file, and its reviewer's case was
+///   exactly this one: the F-Droid APK installed over adb.
+bool defaultAutoUpdate({
+  required bool android,
+  required String? installer,
+  required bool storeDefine,
+}) {
+  if (!android) return true;
+  final who = installer ?? '';
+  if (fdroidClientPackages.contains(who)) return false;
+  if (who.isEmpty) return storeDefine;
+  return true;
+}
+
+/// Whether a scheduled check is due: never checked, the clock went backwards,
+/// or [interval] has passed since [lastCheckMs].
+bool updateCheckDue({
+  required int? lastCheckMs,
+  required int nowMs,
+  required Duration interval,
+}) {
+  if (lastCheckMs == null || lastCheckMs <= 0) return true;
+  if (nowMs < lastCheckMs) return true;
+  return nowMs - lastCheckMs >= interval.inMilliseconds;
+}
+
+/// How long until the next scheduled check, never less than [minDelay] so a
+/// start-up or a resume does not race the rest of the app for the network.
+Duration updateNextCheckIn({
+  required int? lastCheckMs,
+  required int nowMs,
+  required Duration interval,
+  required Duration minDelay,
+}) {
+  if (updateCheckDue(
+      lastCheckMs: lastCheckMs, nowMs: nowMs, interval: interval)) {
+    return minDelay;
+  }
+  final left = Duration(milliseconds: lastCheckMs! + interval.inMilliseconds - nowMs);
+  return left < minDelay ? minDelay : left;
+}
+
+/// Whether the verified download on record ([readyVersion]) can be installed
+/// in place of downloading [wanted] again: same version, and newer than what
+/// runs.
+bool readyCovers({
+  required String? readyVersion,
+  required String wanted,
+  required String running,
+}) =>
+    readyVersion != null &&
+    readyVersion.isNotEmpty &&
+    compareSemver(readyVersion, wanted) == 0 &&
+    compareSemver(readyVersion, running) > 0;
+
+/// Whether a kept download is stale: installed already, or older than what
+/// runs. A stale file is deleted at start-up.
+bool readyIsStale({required String readyVersion, required String running}) =>
+    compareSemver(readyVersion, running) <= 0;
+
+/// What the launcher shows.
+UpdateNotice updateNoticeFor({
+  required bool newerKnown,
+  required bool downloading,
+  required bool ready,
+}) {
+  if (ready) return UpdateNotice.ready;
+  if (downloading) return UpdateNotice.downloading;
+  if (newerKnown) return UpdateNotice.available;
+  return UpdateNotice.none;
+}

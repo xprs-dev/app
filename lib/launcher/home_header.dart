@@ -23,10 +23,20 @@ class _HomeHeader extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      leading: IconButton(
-        icon: const Icon(Icons.menu),
-        tooltip: tr('launcher.header.menu'),
-        onPressed: onMenu,
+      // A dot on the menu while an update is waiting: the Updates entry in
+      // the drawer says which.
+      leading: ValueListenableBuilder<UpdateNotice>(
+        valueListenable: UpdateService.instance.notice,
+        builder: (context, n, _) => IconButton(
+          icon: Badge(
+            isLabelVisible:
+                n == UpdateNotice.ready || n == UpdateNotice.available,
+            smallSize: 9,
+            child: const Icon(Icons.menu),
+          ),
+          tooltip: tr('launcher.header.menu'),
+          onPressed: onMenu,
+        ),
       ),
       titleSpacing: 0,
       // No connection dot here. A small glowing green circle beside the bell

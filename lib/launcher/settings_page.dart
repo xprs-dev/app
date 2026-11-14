@@ -479,6 +479,16 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 ),
                 const SizedBox(height: 24),
 
+                // ── This device ──
+                Text(tr('settings.device.title'),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: cs.primary,
+                          fontWeight: FontWeight.w600,
+                        )),
+                const SizedBox(height: 12),
+                const DeviceIdentityCard(),
+                const SizedBox(height: 24),
+
                 // ── Privacy ──
                 Text(tr('settings.privacy.title'),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(

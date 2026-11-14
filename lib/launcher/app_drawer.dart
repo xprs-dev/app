@@ -68,11 +68,30 @@ class _AppDrawer extends StatelessWidget {
             // The panels people reach for often, one tap from the home
             // screen. Settings still holds everything else.
             if (UpdateService.selfUpdateEnabled)
-              ListTile(
-                leading: const Icon(Icons.system_update),
-                title: Text(tr('launcher.drawer.updates')),
-                subtitle: Text(tr('launcher.drawer.version', {'version': kAppVersion})),
-                onTap: () => _open(context, const UpdatePage()),
+              ValueListenableBuilder<UpdateNotice>(
+                valueListenable: UpdateService.instance.notice,
+                builder: (context, n, _) {
+                  final lit = n == UpdateNotice.ready ||
+                      n == UpdateNotice.available;
+                  return ListTile(
+                    leading: Badge(
+                      isLabelVisible: lit,
+                      smallSize: 9,
+                      child: const Icon(Icons.system_update),
+                    ),
+                    title: Text(tr('launcher.drawer.updates')),
+                    subtitle: Text(
+                      n == UpdateNotice.ready
+                          ? tr('launcher.drawer.update_ready')
+                          : n == UpdateNotice.available
+                              ? tr('launcher.drawer.update_available')
+                              : tr('launcher.drawer.version',
+                                  {'version': kAppVersion}),
+                      style: lit ? TextStyle(color: cs.primary) : null,
+                    ),
+                    onTap: () => _open(context, const UpdatePage()),
+                  );
+                },
               ),
             ListTile(
               leading: const Icon(Icons.memory),

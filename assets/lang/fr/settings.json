@@ -60,5 +60,21 @@
   "settings.servers.empty": "Aucun serveur — touchez \"Ajouter un serveur\".",
   "settings.servers.host": "Hôte",
   "settings.servers.port": "Port",
-  "settings.servers.port_n": "port {port}"
+  "settings.servers.port_n": "port {port}",
+  "settings.privacy.title": "Confidentialité",
+  "settings.position.share": "Partager la position de cet appareil",
+  "settings.position.share_help": "Visible sur les cartes pour trouver cette station.",
+  "settings.position.radius": "À {radius} près",
+  "settings.position.radius_help": "Arrondie à un carré fixe de cette taille.",
+  "settings.position.fixed": "Position sans GPS",
+  "settings.position.fixed_help": "Latitude,longitude. Utilisée sans GPS.",
+  "settings.position.fixed_bad": "Saisir latitude,longitude, ex. 38.7077,-9.1365",
+  "settings.position.fixed_saved": "Position enregistrée",
+  "settings.position.none": "Pas de GPS et aucune position définie.",
+  "settings.position.aired": "Partagé : {pos} (à {radius} près)",
+  "settings.device.title": "Cet appareil",
+  "settings.device.owner": "Indicatif de l'appareil · propriétaire {owner}",
+  "settings.device.no_owner": "Indicatif de l'appareil",
+  "settings.device.copy": "Copier",
+  "settings.device.copied": "Copié"
 }

@@ -36,4 +36,30 @@ void main() {
     expect(tileUrl('https://t/{z}/{x}/{y}.png', (z: 3, x: 4, y: 5)),
         'https://t/3/4/5.png');
   });
+
+  test('a pinch keeps the point between the fingers where it was', () {
+    const MapView v = (zoom: 12, x: 1000.0, y: 2000.0, scale: 1.0);
+    final (nx, ny) = viewPoint(v, 150, 300);
+    // Spread the fingers to 1.6x: half-way-ish to 13, still under them.
+    final p = viewAt(nx, ny, 150, 300, viewZoom(v) + 0.678, 2, 18);
+    expect(p.zoom, 13);
+    expect(viewZoom(p), closeTo(12.678, 1e-9));
+    final (mx, my) = viewPoint(p, 150, 300);
+    expect(mx, closeTo(nx, 1e-12));
+    expect(my, closeTo(ny, 1e-12));
+    // The fingers move while pinching: the same point follows them.
+    final q = viewAt(nx, ny, 190, 260, 12.3, 2, 18);
+    expect(q.zoom, 12);
+    final (qx, qy) = viewPoint(q, 190, 260);
+    expect(qx, closeTo(nx, 1e-12));
+    expect(qy, closeTo(ny, 1e-12));
+  });
+
+  test('a whole zoom draws tiles at their own size, and the limits hold', () {
+    final v = viewAt(0.5, 0.5, 200, 200, 14, 2, 18);
+    expect(v.scale, 1.0);
+    expect(viewAt(0.5, 0.5, 0, 0, 25, 2, 18).zoom, 18);
+    expect(viewAt(0.5, 0.5, 0, 0, -3, 2, 18).zoom, 2);
+    expect(viewZoom(viewAt(0.5, 0.5, 0, 0, 25, 2, 18)), 18);
+  });
 }

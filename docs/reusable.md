@@ -367,6 +367,36 @@ center. See `docs/notifications.md`.
   code or from services; always go through `NotificationService` so
   the behaviour stays uniform.
 
+### A host notification that opens a page — `hostNotificationPages` / `openNotificationTarget`
+
+**File:** `lib/wapp/wapp_open.dart`
+
+A wapp notification's tap opens its wapp; a host service's notification can
+open a page of its own. Register the page under the notification's source at
+boot, then raise the notification with that source:
+
+```dart
+hostNotificationPages['host:updates'] = () => const UpdatePage(); // main.dart
+NotificationService.instance.show(XprsNotification(
+    source: 'host:updates', scope: NotificationScope.both, ...));
+```
+
+Every tap door (Android shade via `xprs://open?wapp=<source>`, the Linux toast,
+the in-app card, the notifications page) calls `openNotificationTarget`, which
+opens the registered page or else the wapp. No Kotlin change per page.
+
+### Periodic work without a poll — the update scheduler
+
+**Files:** `lib/services/update_models.dart` (`updateCheckDue`,
+`updateNextCheckIn`), `lib/services/update_service.dart` (`_arm`,
+`didChangeAppLifecycleState`)
+
+Persist the last run's time, arm ONE one-shot `Timer` for
+`last + interval` (never sooner than a floor), re-arm after each run, retry
+sooner after a failure, and re-arm a few seconds out on resume when overdue.
+The two helpers are pure and tested (`test/update_auto_test.dart`); reuse them
+for any "every N hours while the app runs" job instead of a `Timer.periodic`.
+
 ---
 
 ## Widgets
@@ -677,6 +707,23 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
 - **`lib/wapp/geoui/tile_math.dart`** — pure slippy-map arithmetic:
   `tileX`/`tileY`, `tilesForBox` (coarse first, capped), `viewBox` (the
   area a screen shows), `tileUrl`. Any "which tiles cover this" question.
+  Also the view under a gesture: `MapView` (whole zoom + top-left world
+  pixel + the scale tiles are drawn at), `viewPoint` (the world point under
+  a screen position), `viewAt` (the view at any fractional zoom that keeps
+  that point under a screen position) and `viewZoom`. Pinch, double tap,
+  wheel and fling in `SlippyMap` are all `viewAt`; any other zoomable
+  canvas over tiles should reuse it rather than redo the Mercator sums.
+- **`SlippyMap` (`lib/wapp/geoui/widgets/slippy_map.dart`)** — the wapp map
+  widget in its own library (tiles, pins, clusters, circle, search, gestures);
+  `wapp_maps.dart` only wires it to the page. Gestures: one `onScale*` recogniser
+  for pan and pinch (never pan callbacks next to it: a pinch then reads as a
+  drag of whichever finger moved last), a double tap on the tile layer only
+  (so pins and buttons keep instant taps), and `_easeTo` to settle on a whole
+  zoom. `slippyMapForTest` builds it bare for widget tests
+  (`test/wapp_map_gestures_test.dart` drives a two-finger pinch).
+- **Map framing in a wapp (`fit_box` in `apps/checkin/main.c`)** — a box
+  of positions to a `ui.map.viewport` that fits it on a phone (about 340 px,
+  latitude stretch allowed for). Frame "near me" first, "Show all" on demand.
 - **`xprsCoarsePos` / `XprsSharedPosition` (core `xprs_shared_position.dart`)**
   — a position snapped to the centre of a fixed grid cell of the owner's
   radius, written with the decimals that size supports (XPRS.md 15.1) plus

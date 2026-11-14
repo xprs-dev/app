@@ -40,6 +40,7 @@ import 'geoui/widgets/log_view_field.dart';
 import 'geoui/widgets/stats_grid_field.dart';
 import 'geoui/widgets/chat_palette.dart';
 import 'geoui/widgets/chat_view_field.dart';
+import 'geoui/widgets/slippy_map.dart';
 import '../services/social/nostr_all_poller.dart';
 import '../services/media/media_fetch.dart';
 import '../services/media/media_preview.dart' show kPreviewSourceMax;
@@ -422,7 +423,7 @@ class _WappPageState extends State<WappPage>
   final ValueNotifier<List<dynamic>?> _graphHubs =
       ValueNotifier<List<dynamic>?>(null);
   // Pins pushed by the wapp via `ui.map.marker`, keyed by id (e.g. a
-  // callsign). Rendered as an overlay by [_SlippyMap]; tapping a pin
+  // callsign). Rendered as an overlay by [SlippyMap]; tapping a pin
   // dispatches a `marker_tap` command back to the wapp.
   final Map<String, Map<String, dynamic>> _mapMarkers = {};
 
@@ -1862,7 +1863,7 @@ class _WappPageState extends State<WappPage>
         } else if (type == 'ui.map.marker') {
           // Upsert a pin on the map keyed by id (e.g. a callsign). The
           // wapp pushes one of these per position it wants shown; the
-          // _SlippyMap overlay renders them. Re-sending the same id
+          // SlippyMap overlay renders them. Re-sending the same id
           // moves/relabels the existing pin.
           final id = data['id'] as String? ?? '';
           final lat = (data['lat'] as num?)?.toDouble();

@@ -5,9 +5,10 @@
 # a release's version, versionCode and commit. F-Droid rebuilds each APK and
 # ships it only if it matches ours byte for byte (reproducible build), so a
 # change to the build steps here must reach fdroiddata in the same release.
-# AUTO_UPDATE_CHECK=false turns off the start-up update check and its notice:
-# an APK a store ships must not announce versions from anywhere else
-# (fdroiddata !48456, 2026-10-15). Keep it on every store build.
+# AUTO_UPDATE_CHECK=false keeps automatic updates off for an install with no
+# installer on record (adb), the case F-Droid's reviewer hit (fdroiddata
+# !48456, 2026-10-15). An F-Droid client install has them off regardless; an
+# install from xprs.dev has them on. Keep the define on every store build.
 # See docs/f-droid.md.
 Categories:
   - Connectivity

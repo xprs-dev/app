@@ -83,7 +83,11 @@ class SystemTrayNotificationBackend implements NotificationBackend {
     // platform abstraction so this file stays dart:io-free and the
     // web build can compile it. On web the call is a no-op; the
     // in-app NotificationLayer is the only source of truth.
-    final wapp = n.source.startsWith('wapp:') ? n.source.substring(5) : null;
+    // A host notification with a page of its own (`host:updates`) is routed
+    // like a wapp: Android carries it in xprs://open?wapp=.
+    final wapp = n.source.startsWith('wapp:')
+        ? n.source.substring(5)
+        : (isHostNotificationTarget(n.source) ? n.source : null);
     // NOT awaited: a toast with a button stays up until it is answered or
     // times out, and the notification service has other backends to run.
     unawaited(platform
@@ -106,7 +110,7 @@ class SystemTrayNotificationBackend implements NotificationBackend {
           'Notification opened: wapp=$wapp view=${n.view ?? ''}');
       // The same door the in-app card and the Android tray tap go through.
       await platform.raiseAppWindow();
-      await openWappByFolder(
+      await openNotificationTarget(
         wapp,
         convo: n.convo,
         view: n.view,
@@ -499,7 +503,9 @@ class _NotificationCard extends StatelessWidget {
     // it takes you to that something. The Android tray tap already routes
     // through xprs://open -> openWappByFolder; the in-app card was a dead
     // rectangle, so a like told you it happened and then left you to find it.
-    final wapp = n.source.startsWith('wapp:') ? n.source.substring(5) : '';
+    final wapp = n.source.startsWith('wapp:')
+        ? n.source.substring(5)
+        : (isHostNotificationTarget(n.source) ? n.source : '');
     final canOpen = wapp.isNotEmpty;
     return Material(
       color: color,
@@ -510,7 +516,7 @@ class _NotificationCard extends StatelessWidget {
         onTap: canOpen
             ? () {
                 onDismiss();
-                unawaited(openWappByFolder(
+                unawaited(openNotificationTarget(
                   wapp,
                   convo: n.convo,
                   view: n.view,

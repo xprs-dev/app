@@ -81,7 +81,8 @@ object UpdateBridge {
                     result.error("ARG", "url and filename required", null)
                 } else {
                     val title = call.argument<String>("title") ?: "XPRS update"
-                    result.success(enqueueDownload(app, url, name, title))
+                    val overMetered = call.argument<Boolean>("overMetered") ?: true
+                    result.success(enqueueDownload(app, url, name, title, overMetered))
                 }
             }
             "queryDownload" -> {
@@ -89,6 +90,7 @@ object UpdateBridge {
                 if (id == null) result.error("ARG", "id required", null)
                 else result.success(queryDownload(app, id))
             }
+            "isMetered" -> result.success(isMetered(app))
             "removeDownload" -> {
                 val id = (call.argument<Number>("id"))?.toLong()
                 if (id != null) removeDownload(app, id)
@@ -122,6 +124,7 @@ object UpdateBridge {
         url: String,
         filename: String,
         title: String,
+        overMetered: Boolean,
     ): Long {
         return try {
             val dir = ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
@@ -129,20 +132,33 @@ object UpdateBridge {
             val req = DownloadManager.Request(Uri.parse(url))
                 .setTitle(title)
                 .setDescription(filename)
+                // Progress only: the app posts its own "ready to install"
+                // once the file is verified, and tapping that opens Updates.
                 .setNotificationVisibility(
-                    DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED,
+                    DownloadManager.Request.VISIBILITY_VISIBLE,
                 )
                 .setDestinationInExternalFilesDir(
                     ctx, Environment.DIRECTORY_DOWNLOADS, filename,
                 )
-                .setAllowedOverMetered(true)
-                .setAllowedOverRoaming(true)
+                // False for an automatic download unless the user allowed
+                // mobile data: the job then waits for Wi-Fi by itself.
+                .setAllowedOverMetered(overMetered)
+                .setAllowedOverRoaming(overMetered)
                 .addRequestHeader("User-Agent", "xprs-updater")
             dm(ctx).enqueue(req)
         } catch (e: Exception) {
             Log.e(TAG, "enqueueDownload failed: ${e.message}")
             -1L
         }
+    }
+
+    /** Whether the active network is metered (mobile data). */
+    private fun isMetered(ctx: Context): Boolean = try {
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE)
+            as android.net.ConnectivityManager
+        cm.isActiveNetworkMetered
+    } catch (e: Exception) {
+        false
     }
 
     /**

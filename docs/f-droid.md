@@ -66,17 +66,20 @@ the F-Droid client on XPRS to install it. For geogram, F-Droid's only objection
 to the updater was downloading binaries from github.com; the update feed's
 files are on xprs.dev/downloads.
 
-**The automatic check at start-up is compiled out of every store build**, with
-its "Update available" notice: the recipe template passes
-`--dart-define=AUTO_UPDATE_CHECK=false` (`UpdateService.autoCheckEnabled`).
+**Automatic updates are off for an F-Droid install.** The recipe template
+passes `--dart-define=AUTO_UPDATE_CHECK=false` (`UpdateService.autoCheckEnabled`).
 `linsui` asked for it on 2026-10-15 after a community reviewer, who had
 installed the F-Droid-built APK with adb rather than an F-Droid client, saw
 the notice for a newer release: an APK a store ships must not announce
 versions from anywhere else, whoever installed it. Since F-Droid ships the APK
 the release pipeline builds from the same template, every Android release
-carries the define; the desktop builds keep the start-up check. The Updates
-panel stays in all of them, because a check from there is the user's own
-request. The same define is the rule for any other store later.
+carries the define, the one on xprs.dev too. It used to switch the check off
+for every install, so no Android release ever looked for updates by itself.
+Since 2026-11 the define decides only an install with no installer on record
+(adb, the reviewer's case); an F-Droid client install is off because of who
+installed it, and an install from xprs.dev checks every six hours and
+downloads in the background ([updates.md](updates.md) §6.2, which also lists
+the alternatives if F-Droid objects). Keep the define on every store build.
 
 ## 2. Current state
 
@@ -518,10 +521,10 @@ What each part is for, and what taught it:
   defaults to "Updates only from F-Droid" (section 1). The first submission
   compiled it out with `--dart-define=SELF_UPDATE=false` and deleted the
   permission with `sed`; the define still exists for anyone repackaging XPRS.
-* **The start-up check is compiled out** with
-  `--dart-define=AUTO_UPDATE_CHECK=false` on the `flutter build` line, since
-  2026-10-15 (section 1). The define must stay on every store build, and it
-  reaches the release pipeline through the same template.
+* **`--dart-define=AUTO_UPDATE_CHECK=false`** is on the build line since
+  2026-10-15 (section 1): no automatic updates where Android names no
+  installer. The define must stay on every store build, and it reaches the
+  release pipeline through the same template.
 * **reticulum-dart is copied next to the app**, because `pubspec.yaml`
   depends on it by path. `$$srclib$$` expands to an absolute path.
 * **The scanner refuses any WebAssembly file** in the source tree, and it runs
@@ -677,7 +680,7 @@ profile is created; before that the app opens no sockets at all):
 | Host | Purpose |
 |---|---|
 | `rns.wisco.network`, `rns.birdsnet.com.br`, `sydney.reticulum.au`, `use.inertia.chat` (all `:4242`) | Community Reticulum TCP hubs, tried in order until one answers. Editable in Settings; `rns.autoStart` turns the node off. |
-| `xprs.dev` (`/updates/*.json`, then `/downloads/...`) | The update feed, and an update's files when no station holds them, when the user opens Updates. The desktop builds also check it at start-up; the Android (store) builds do not (`AUTO_UPDATE_CHECK=false`, section 1). xprs.dev is our site, served by GitHub Pages; the app never contacts github.com. |
+| `xprs.dev` (`/updates/*.json`, then `/downloads/...`) | The update feed, and an update's files when no station holds them, when the user opens Updates. Also checked every six hours by the desktop builds and by an Android install that did not come from an F-Droid client (section 1); never by an F-Droid install. xprs.dev is our site, served by GitHub Pages; the app never contacts github.com. |
 
 Watched for 100 seconds after creating a profile, the desktop build opened only
 a UDP listener on port 4242 (the LAN transport) besides the update feed. NOSTR

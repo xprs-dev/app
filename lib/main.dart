@@ -38,6 +38,8 @@ import 'services/task_monitor_service.dart';
 
 import 'launcher/boot_splash.dart';
 import 'launcher/launcher.dart';
+import 'launcher/update_page.dart';
+import 'wapp/wapp_open.dart';
 import 'boot/core_host_app.dart';
 
 /// Entry point.
@@ -472,11 +474,19 @@ Future<void> _boot() async {
     unawaited(PermissionGate.startGatedServices());
   }
 
+  // A tap on the updater's notification ("XPRS 1.3.0 is ready to install")
+  // opens the Updates page. Registered before deep links start, because the
+  // tap that launched the app arrives as the initial link.
+  hostNotificationPages[UpdateService.notificationSource] =
+      () => const UpdatePage();
+
   // Deep links (Android): open xprs.dev/circle/<key> straight on the
   // circles "apply to join" flow. Needs the navigator live (after runApp).
   unawaited(DeepLinkService.instance.start());
 
-  // Check the xprs.dev feed for a newer XPRS release and, if found, surface one
-  // notification (Settings → Updates does the install). Best-effort, off web.
-  unawaited(UpdateService.instance.backgroundCheck());
+  // Automatic updates: check the feed a minute after start-up and every six
+  // hours after, download a newer release in the background, and post one
+  // "ready to install" notification. Off for an F-Droid install (the F-Droid
+  // client updates it) and off the web. docs/updates.md section 6.
+  unawaited(UpdateService.instance.start());
 }

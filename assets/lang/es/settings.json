@@ -60,5 +60,21 @@
   "settings.servers.empty": "No hay servidores — toca \"Añadir servidor\".",
   "settings.servers.host": "Servidor",
   "settings.servers.port": "Puerto",
-  "settings.servers.port_n": "puerto {port}"
+  "settings.servers.port_n": "puerto {port}",
+  "settings.privacy.title": "Privacidad",
+  "settings.position.share": "Compartir la ubicación de este dispositivo",
+  "settings.position.share_help": "Se muestra en mapas para que encuentren esta estación.",
+  "settings.position.radius": "A {radius}",
+  "settings.position.radius_help": "Redondeada a un cuadrado fijo de este tamaño.",
+  "settings.position.fixed": "Ubicación sin GPS",
+  "settings.position.fixed_help": "Latitud,longitud. Se usa cuando no hay GPS.",
+  "settings.position.fixed_bad": "Usa latitud,longitud, p. ej. 38.7077,-9.1365",
+  "settings.position.fixed_saved": "Ubicación guardada",
+  "settings.position.none": "Sin GPS y sin ubicación definida.",
+  "settings.position.aired": "Compartido: {pos} (a {radius})",
+  "settings.device.title": "Este dispositivo",
+  "settings.device.owner": "Indicativo del dispositivo · dueño {owner}",
+  "settings.device.no_owner": "Indicativo del dispositivo",
+  "settings.device.copy": "Copiar",
+  "settings.device.copied": "Copiado"
 }

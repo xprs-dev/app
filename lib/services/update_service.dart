@@ -19,12 +19,13 @@
  */
 
 import 'dart:async';
-import 'package:file/file.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart'
+    show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -47,8 +48,12 @@ import '../platform/fs.dart';
 
 enum UpdateStatus { idle, checking, available, downloading, downloaded, error }
 
-class UpdateService {
-  UpdateService._();
+class UpdateService with WidgetsBindingObserver {
+  UpdateService._() {
+    for (final n in <Listenable>[status, stable, beta, fdroid]) {
+      n.addListener(_refreshNotice);
+    }
+  }
   static final UpdateService instance = UpdateService._();
 
   // Release source — two signed Reticulum mutable folders (the publisher holds
@@ -86,8 +91,17 @@ class UpdateService {
 
   // Persisted settings keys (SharedPreferences, "flutter." prefixed on disk).
   static const _kBeta = 'update.betaEnabled';
-  static const _kAutoCheck = 'update.autoCheck';
+  // Absent until the user flips the switch: the default follows the installer
+  // (defaultAutoUpdate).
+  static const _kAuto = 'update.auto';
+  static const _kOverMetered = 'update.overMetered';
+  static const _kLastCheck = 'update.lastCheck';
   static const _kNotified = 'update.lastNotifiedVersion';
+  // The verified download waiting to be installed, so a restart neither
+  // downloads it again nor hashes it again.
+  static const _kReadyPath = 'update.ready.path';
+  static const _kReadyVersion = 'update.ready.version';
+  static const _kReadySize = 'update.ready.size';
   static const _kStableFolder = 'update.folder.stable';
   static const _kBetaFolder = 'update.folder.beta';
   static const _kFeedBase = 'update.feed.base';
@@ -110,7 +124,11 @@ class UpdateService {
   final ValueNotifier<ReleaseInfo?> beta = ValueNotifier(null);
   /// The newest version F-Droid publishes, when [fdroidOnly] is on.
   final ValueNotifier<ReleaseInfo?> fdroid = ValueNotifier(null);
-  String? error;
+  /// The last thing that went wrong, for the Updates page; null when nothing
+  /// did. A notifier so the page shows it without the status changing.
+  final ValueNotifier<String?> errorNote = ValueNotifier(null);
+  String? get error => errorNote.value;
+  set error(String? v) => errorNote.value = v;
   String? _downloadedPath;
 
   /// Which path carried the last download: 'reticulum', 'https', or null when
@@ -177,25 +195,75 @@ class UpdateService {
   bool _tracking = false;
 
   bool _betaEnabled = false;
-  bool _autoCheck = true;
+  bool? _autoChoice; // null until the user chooses
+  bool _autoDefault = true;
+  bool _overMetered = false;
   bool _fdroidOnly = false;
+  int? _lastCheckMs;
+  String? _readyVersion;
   bool get betaEnabled => _betaEnabled;
 
-  /// Whether the start-up check runs: the compile-time switch below, then the
-  /// user's own setting (on unless turned off through the remote API).
-  bool get autoCheck => autoCheckEnabled && _autoCheck;
+  /// Automatic updates: check every [checkInterval] while the app runs,
+  /// download a newer release in the background, and say once that it is
+  /// ready to install. Never while F-Droid is the updater.
+  bool get autoUpdate =>
+      supported && !fdroidOnly && (_autoChoice ?? _autoDefault);
 
-  /// Compile-time switch for the automatic check at start-up and its "Update
-  /// available" notice. Off in every store build:
+  /// The old name, still read by the remote API.
+  bool get autoCheck => autoUpdate;
+
+  /// Whether an automatic download may use mobile data. Off by default: the
+  /// system DownloadManager then waits for Wi-Fi by itself. A download the
+  /// user starts from the Updates page always may.
+  bool get overMetered => _overMetered;
+
+  DateTime? get lastCheck => _lastCheckMs == null
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(_lastCheckMs!);
+
+  /// When the next automatic check is armed for, or null when none is.
+  DateTime? get nextCheck => _nextAt;
+  DateTime? _nextAt;
+
+  /// The version of the verified download waiting to be installed.
+  String? get readyVersion => _readyVersion;
+
+  /// What the launcher shows (a dot on the menu and the drawer entry, a
+  /// banner when an update is ready to install).
+  final ValueNotifier<UpdateNotice> notice = ValueNotifier(UpdateNotice.none);
+
+  /// A check is running. Separate from [status] so that checking while a
+  /// download runs (or waits to be installed) does not hide either.
+  final ValueNotifier<bool> checking = ValueNotifier(false);
+
+  /// Set while the Updates page is on screen: no "ready" notification then.
+  bool pageOpen = false;
+
+  /// How often the running app looks for a newer release. Releases ship at
+  /// most weekly; the feed is ~1 KB.
+  static const Duration checkInterval = Duration(hours: 6);
+
+  /// A failed check (no network) is retried sooner than [checkInterval].
+  static const Duration retryAfterFailure = Duration(minutes: 30);
+
+  /// The first check after start-up waits this long, so it never competes
+  /// with the app coming up.
+  static const Duration startDelay = Duration(minutes: 1);
+
+  Timer? _timer;
+  bool _started = false;
+
+  /// Compile-time default for automatic updates when Android names no
+  /// installer (an `adb install`). Every Android release is built with
   ///
   ///     flutter build apk --dart-define=AUTO_UPDATE_CHECK=false
   ///
-  /// F-Droid asked for it on fdroiddata !48456: an APK a store ships must not
-  /// announce versions from anywhere else, whoever installed it. The recipe
-  /// template (fdroid/com.xprs.app.yml) passes it, and since F-Droid ships the
-  /// very APK the release pipeline builds from that template, every Android
-  /// release carries it. Desktop builds keep the start-up check. The Updates
-  /// panel stays either way: a check from there is the user's own request.
+  /// because F-Droid asked for it (fdroiddata !48456) and F-Droid ships the
+  /// very APK the release pipeline builds from fdroid/com.xprs.app.yml. It
+  /// used to switch the start-up check off for every install of that APK, so
+  /// a phone that installed it from xprs.dev never looked for an update. It
+  /// now decides only the installer-less case; see [defaultAutoUpdate] and
+  /// docs/updates.md section 6.
   static const bool autoCheckEnabled =
       bool.fromEnvironment('AUTO_UPDATE_CHECK', defaultValue: true);
 
@@ -211,12 +279,7 @@ class UpdateService {
 
   /// Package names of the F-Droid clients (keep in step with the manifest's
   /// `queries` and UpdateBridge.FDROID_CLIENTS).
-  static const fdroidClients = {
-    'org.fdroid.fdroid',
-    'org.fdroid.basic',
-    'com.looker.droidify',
-    'com.machiav3lli.fdroid',
-  };
+  static const fdroidClients = fdroidClientPackages;
 
   /// F-Droid's public index entry for XPRS: the versions it publishes.
   static const String fdroidApi =
@@ -230,9 +293,8 @@ class UpdateService {
   ///
   /// makes this report unsupported, so every check, download and install path
   /// short-circuits and the Updates panel hides itself. Official builds keep it
-  /// on, F-Droid's included (it rebuilds the release byte for byte); store
-  /// builds turn off the start-up check instead ([autoCheckEnabled]), and an
-  /// F-Droid install defaults to [fdroidOnly].
+  /// on, F-Droid's included (it rebuilds the release byte for byte); an
+  /// F-Droid install defaults to [fdroidOnly] instead.
   static const bool selfUpdateEnabled =
       bool.fromEnvironment('SELF_UPDATE', defaultValue: true);
 
@@ -247,7 +309,9 @@ class UpdateService {
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
     _betaEnabled = p.getBool(_kBeta) ?? false;
-    _autoCheck = p.getBool(_kAutoCheck) ?? true;
+    _autoChoice = p.getBool(_kAuto);
+    _overMetered = p.getBool(_kOverMetered) ?? false;
+    _lastCheckMs = p.getInt(_kLastCheck);
     final s = p.getString(_kStableFolder);
     final b = p.getString(_kBetaFolder);
     _stableFolder =
@@ -257,8 +321,14 @@ class UpdateService {
     _feedBase = (f != null && f.isNotEmpty) ? f : defaultUpdateFeedBase;
     // Not stored until the user chooses, so the default keeps following the
     // installer: F-Droid installed it, F-Droid updates it.
+    final installer = fdroidAvailable ? await _installer() : null;
     _fdroidOnly = p.getBool(_kFdroidOnly) ??
-        (fdroidAvailable && fdroidClients.contains(await _installer()));
+        (fdroidAvailable && fdroidClients.contains(installer));
+    _autoDefault = defaultAutoUpdate(
+        android: fdroidAvailable,
+        installer: installer,
+        storeDefine: autoCheckEnabled);
+    _refreshNotice();
   }
 
   // Asked once per process: only an install replaces the installer, and an
@@ -270,6 +340,8 @@ class UpdateService {
   Future<void> setFdroidOnly(bool v) async {
     _fdroidOnly = v;
     await _prefs((p) => p.setBool(_kFdroidOnly, v));
+    _arm();
+    _refreshNotice();
   }
 
   /// Hand the update to the F-Droid client (or f-droid.org when none is
@@ -308,9 +380,15 @@ class UpdateService {
     return _betaFolder;
   }
 
-  Future<void> setAutoCheck(bool v) async {
-    _autoCheck = v;
-    await _prefs((p) => p.setBool(_kAutoCheck, v));
+  Future<void> setAutoUpdate(bool v) async {
+    _autoChoice = v;
+    await _prefs((p) => p.setBool(_kAuto, v));
+    _arm();
+  }
+
+  Future<void> setOverMetered(bool v) async {
+    _overMetered = v;
+    await _prefs((p) => p.setBool(_kOverMetered, v));
   }
 
   /// The release the user should be offered: F-Droid's when [fdroidOnly],
@@ -323,37 +401,76 @@ class UpdateService {
   bool isNewer(ReleaseInfo? r) =>
       r != null && compareSemver(r.version, kAppVersion) > 0;
 
-  /// Browse both channel folders over Reticulum and pick the newest release on
-  /// each. Safe to call from the Updates panel on open and from a background
-  /// check. An empty/unconfigured folder, or one we can't reach yet, is treated
-  /// as "no release on that channel", not an error.
-  Future<void> checkForUpdates() async {
-    if (!supported) return;
-    status.value = UpdateStatus.checking;
+  /// Read the feed (website first, the signed Reticulum folder as fallback)
+  /// and pick the newest release on each channel; with [fdroidOnly], ask
+  /// F-Droid's index instead. Returns whether any source answered, so the
+  /// scheduler knows to retry sooner. A running download, or one waiting to
+  /// be installed, keeps its status.
+  Future<bool> checkForUpdates() async {
+    if (!supported) return false;
+    if (checking.value) return false;
+    checking.value = true;
+    if (_statusIsQuiet) status.value = UpdateStatus.checking;
     error = null;
-    if (fdroidOnly) {
-      fdroid.value = await _newestFromFdroid();
-      status.value =
-          isNewer(fdroid.value) ? UpdateStatus.available : UpdateStatus.idle;
-      return;
-    }
+    var answered = false;
     try {
-      // Website first (preferred, authoritative), Reticulum folder as fallback.
-      stable.value =
-          await _newestFromFeed('stable.json', prereleaseOk: false) ??
-              await _newestFromFolder(_stableFolder, prereleaseOk: false);
-      // The beta channel falls back to the newest stable when there's no beta
-      // build on either source.
-      beta.value = await _newestFromFeed('beta.json', prereleaseOk: true) ??
-          await _newestFromFolder(_betaFolder, prereleaseOk: true) ??
-          stable.value;
-      final sel = selectedRelease;
-      status.value =
-          isNewer(sel) ? UpdateStatus.available : UpdateStatus.idle;
+      if (fdroidOnly) {
+        fdroid.value = await _newestFromFdroid();
+        answered = fdroid.value != null;
+      } else {
+        stable.value =
+            await _newestFromFeed('stable.json', prereleaseOk: false) ??
+                await _newestFromFolder(_stableFolder, prereleaseOk: false);
+        // The beta channel falls back to the newest stable when there's no
+        // beta build on either source.
+        final b = await _newestFromFeed('beta.json', prereleaseOk: true) ??
+            await _newestFromFolder(_betaFolder, prereleaseOk: true);
+        beta.value = b ?? stable.value;
+        answered = stable.value != null || b != null;
+      }
+      if (answered) {
+        _lastCheckMs = DateTime.now().millisecondsSinceEpoch;
+        await _prefs((p) => p.setInt(_kLastCheck, _lastCheckMs!));
+      }
+      _settleStatus();
     } catch (e) {
       error = e.toString();
-      status.value = UpdateStatus.error;
+      if (_statusIsQuiet) status.value = UpdateStatus.error;
+    } finally {
+      checking.value = false;
     }
+    return answered;
+  }
+
+  /// Not downloading and nothing waiting to be installed.
+  bool get _statusIsQuiet =>
+      status.value != UpdateStatus.downloading &&
+      status.value != UpdateStatus.downloaded;
+
+  /// Status after a check: a running download stays; a verified download
+  /// that is still worth installing reads "downloaded"; otherwise available
+  /// or idle.
+  void _settleStatus() {
+    if (status.value == UpdateStatus.downloading) return;
+    if (_hasReady) {
+      status.value = UpdateStatus.downloaded;
+    } else {
+      status.value =
+          isNewer(selectedRelease) ? UpdateStatus.available : UpdateStatus.idle;
+    }
+  }
+
+  bool get _hasReady =>
+      _downloadedPath != null &&
+      _readyVersion != null &&
+      compareSemver(_readyVersion!, kAppVersion) > 0;
+
+  void _refreshNotice() {
+    notice.value = updateNoticeFor(
+      newerKnown: isNewer(selectedRelease),
+      downloading: status.value == UpdateStatus.downloading,
+      ready: _hasReady && !fdroidOnly,
+    );
   }
 
   /// One channel of the feed, for a caller that wants the document rather than
@@ -431,44 +548,182 @@ class UpdateService {
     return best;
   }
 
-  /// Background check at startup: refresh channels and, if a newer version is
-  /// out (and we haven't already nagged about it), surface one notification.
-  Future<void> backgroundCheck() async {
-    if (!supported) return;
+  // ── Automatic updates ─────────────────────────────────────────────────
+
+  /// Start the updater: restore a download waiting to be installed, re-attach
+  /// to one still running, and arm the periodic check. Called once at boot;
+  /// safe to call again.
+  Future<void> start() async {
+    if (!supported || _started) return;
+    _started = true;
     await load();
-    // Re-attach to any download left running/finished by a prior session even
-    // when auto-check is off — the user already asked for that download.
+    await _restoreReady();
     await resumeActiveDownload();
-    // The F-Droid client tells its users about updates itself; asking F-Droid
-    // again at every start would only be a request nobody made. Store builds
-    // compile the start-up check out altogether (autoCheckEnabled).
-    if (!autoCheck || fdroidOnly) return;
-    await checkForUpdates();
+    try {
+      WidgetsBinding.instance.addObserver(this);
+    } catch (_) {}
+    _arm();
+  }
+
+  /// Arm the next automatic check: at [checkInterval] after the last one, no
+  /// sooner than [minDelay]. One one-shot timer, re-armed after every check;
+  /// nothing runs while automatic updates are off.
+  void _arm({Duration minDelay = startDelay, Duration? after}) {
+    _timer?.cancel();
+    _timer = null;
+    _nextAt = null;
+    if (!_started || !autoUpdate) return;
+    final d = after ??
+        updateNextCheckIn(
+            lastCheckMs: _lastCheckMs,
+            nowMs: DateTime.now().millisecondsSinceEpoch,
+            interval: checkInterval,
+            minDelay: minDelay);
+    _nextAt = DateTime.now().add(d);
+    _timer = Timer(d, () => unawaited(runAutomatic()));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !autoUpdate) return;
+    // Back from the background after a long sleep (the timer may not have
+    // fired while the process was frozen): check soon, if a check is due.
+    if (updateCheckDue(
+        lastCheckMs: _lastCheckMs,
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+        interval: checkInterval)) {
+      _arm(minDelay: const Duration(seconds: 5));
+    }
+  }
+
+  /// One automatic round: check, and when a newer release is out, download
+  /// it in the background and say once that it is ready. Also what
+  /// POST /api/update/auto runs.
+  Future<void> runAutomatic() async {
+    if (!autoUpdate) return;
+    final answered = await checkForUpdates();
+    // Re-arm before the download: a download waiting for Wi-Fi can take hours.
+    _arm(after: answered ? checkInterval : retryAfterFailure);
     final sel = selectedRelease;
-    if (!isNewer(sel)) return;
+    if (sel == null || !isNewer(sel)) return;
+    if (readyCovers(
+        readyVersion: _readyVersion, wanted: sel.version, running: kAppVersion)) {
+      _notifyReady(sel.version);
+      return;
+    }
+    if (status.value == UpdateStatus.downloading || _tracking) return;
+    LogService.instance.add('update: ${sel.version} found, downloading');
+    await download(sel, auto: true);
+  }
+
+  /// Post "XPRS `version` is ready to install" once per version. Its tap opens
+  /// the Updates page (the `host:updates` notification target).
+  Future<void> _notifyReady(String version) async {
+    if (pageOpen) return;
     final p = await SharedPreferences.getInstance();
-    if (p.getString(_kNotified) == sel!.version) return;
-    await p.setString(_kNotified, sel.version);
+    if (p.getString(_kNotified) == version) return;
+    await p.setString(_kNotified, version);
     NotificationService.instance.show(XprsNotification(
       level: NotificationLevel.info,
-      title: tr('notifications.update.available'),
-      body: tr('notifications.update.body', {'version': sel.version}),
-      source: 'host:updates',
+      title: tr('notifications.update.ready', {'version': version}),
+      body: tr('notifications.update.ready.body'),
+      source: notificationSource,
       scope: NotificationScope.both,
     ));
+  }
+
+  /// The notification source whose tap opens the Updates page.
+  static const String notificationSource = 'host:updates';
+
+  /// A verified artifact is on disk: remember it, so a restart neither
+  /// downloads nor hashes it again, and tell the user.
+  Future<void> _markReady(String path, String version) async {
+    final old = _downloadedPath;
+    _downloadedPath = path;
+    _readyVersion = version;
+    progress.value = 1;
+    status.value = UpdateStatus.downloaded;
+    var size = 0;
+    try {
+      size = await fs.file(path).length();
+    } catch (_) {}
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kReadyPath, path);
+    await p.setString(_kReadyVersion, version);
+    await p.setInt(_kReadySize, size);
+    if (old != null && old != path) unawaited(_deleteQuietly(old));
+    _refreshNotice();
+    unawaited(_notifyReady(version));
+  }
+
+  /// Bring back the download that was waiting to be installed. Deletes it
+  /// once it is installed (or older than what runs), and forgets it when the
+  /// file is gone or no longer the size it was verified at.
+  Future<void> _restoreReady() async {
+    final p = await SharedPreferences.getInstance();
+    final path = p.getString(_kReadyPath);
+    final version = p.getString(_kReadyVersion);
+    if (path == null || version == null) return;
+    var keep = false;
+    try {
+      final f = fs.file(path);
+      if (await f.exists()) {
+        if (readyIsStale(readyVersion: version, running: kAppVersion)) {
+          await _deleteQuietly(path);
+        } else {
+          keep = await f.length() == (p.getInt(_kReadySize) ?? -1);
+        }
+      }
+    } catch (_) {}
+    if (!keep) {
+      for (final k in [_kReadyPath, _kReadyVersion, _kReadySize]) {
+        await p.remove(k);
+      }
+      return;
+    }
+    _downloadedPath = path;
+    _readyVersion = version;
+    progress.value = 1;
+    status.value = UpdateStatus.downloaded;
+    _refreshNotice();
+  }
+
+  Future<void> _deleteQuietly(String path) async {
+    try {
+      final f = fs.file(path);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
   }
 
   /// Download the artifact for [release] on the current platform. A website
   /// (http/https) asset is streamed over HTTPS from xprs.dev; a Reticulum
   /// asset (sha256 handle) is fetched peer-to-peer and sha-verified. The right
   /// per-ABI split APK is chosen on Android.
-  Future<bool> download(ReleaseInfo release) async {
+  ///
+  /// [auto] is a download nobody asked for in person: it may not use mobile
+  /// data unless [overMetered] says so (the Reticulum lane is skipped and the
+  /// DownloadManager waits for Wi-Fi). A release already downloaded and
+  /// verified is not downloaded again, and a DownloadManager job for it that
+  /// was interrupted is resumed rather than restarted.
+  Future<bool> download(ReleaseInfo release, {bool auto = false}) async {
     if (!supported) return false;
     if (fdroidOnly) {
       error = 'Updates come from F-Droid on this device';
       status.value = UpdateStatus.error;
       return false;
     }
+    if (_downloadedPath != null &&
+        readyCovers(
+            readyVersion: _readyVersion,
+            wanted: release.version,
+            running: kAppVersion) &&
+        await fs.file(_downloadedPath!).exists()) {
+      progress.value = 1;
+      status.value = UpdateStatus.downloaded;
+      return true;
+    }
+    final allowData = !auto || _overMetered;
+    final metered = allowData ? false : await UpdateNative.isMetered();
     final platform = currentUpdatePlatform();
     final abis =
         platform == UpdatePlatform.android ? await _abis() : const <String>[];
@@ -497,7 +752,7 @@ class UpdateService {
     // come peer-to-peer and this device never makes an HTTPS request for a
     // 60 MB binary. The URL below is the fallback for a device that cannot
     // reach any mirror.
-    if (asset.sha256.isNotEmpty) {
+    if (asset.sha256.isNotEmpty && !metered) {
       if (await _downloadOverReticulum(release, asset)) return true;
       // No provider yet, or the fetch timed out. Not an error — fall through to
       // the web and say afterwards which path actually carried it.
@@ -515,7 +770,7 @@ class UpdateService {
       phase.value = 'Downloading from xprs.dev';
     }
     if (isHttp0 && UpdateNative.hasDownloadManager) {
-      return _downloadViaManager(release, asset);
+      return _downloadViaManager(release, asset, overMetered: allowData);
     }
 
     status.value = UpdateStatus.downloading;
@@ -543,6 +798,13 @@ class UpdateService {
         path = await UpdateNative.download(asset.url, asset.name, onProgress);
         if (path == null) {
           error = 'Could not download the update from the website';
+          status.value = UpdateStatus.error;
+          return false;
+        }
+        if (!await UpdateNative.verifyFile(path,
+            expectedSize: asset.size, expectedSha: asset.sha256)) {
+          await _deleteQuietly(path);
+          error = 'Update failed its integrity check';
           status.value = UpdateStatus.error;
           return false;
         }
@@ -576,9 +838,7 @@ class UpdateService {
           return false;
         }
       }
-      _downloadedPath = path;
-      progress.value = 1;
-      status.value = UpdateStatus.downloaded;
+      await _markReady(path, release.version);
       return true;
     } finally {
       UpdateNative.serviceStop();
@@ -633,9 +893,7 @@ class UpdateService {
           acceptWithin: meshAcceptWithin,
         );
         if (path == null) continue; // 404 / refused / timed out: try the next
-        _downloadedPath = path;
-        progress.value = 1;
-        status.value = UpdateStatus.downloaded;
+        await _markReady(path, release.version);
         LogService.instance.add(
             'update: ${release.version} arrived from $station over the mesh');
         return path;
@@ -686,10 +944,8 @@ class UpdateService {
         final dir = await UpdateNative.supportDir();
         final dest = '$dir${pathSeparator}${asset.name}';
         await fs.file(mine).copy(dest);
-        _downloadedPath = dest;
-        progress.value = 1;
         lastSource = 'mirror';
-        status.value = UpdateStatus.downloaded;
+        await _markReady(dest, release.version);
         LogService.instance
             .add('update: ${release.version} taken from our own mirror');
         return true;
@@ -752,11 +1008,9 @@ class UpdateService {
         status.value = UpdateStatus.error;
         return false;
       }
-      _downloadedPath = path;
-      progress.value = 1;
-      status.value = UpdateStatus.downloaded;
       LogService.instance.add(
           'update: ${release.version} fetched over Reticulum (${bytes.length} B)');
+      await _markReady(path, release.version);
       return true;
     } catch (e) {
       lastSource = null;
@@ -770,18 +1024,40 @@ class UpdateService {
   // ── Android DownloadManager path ────────────────────────────────────
 
   /// Enqueue [asset] with the system DownloadManager, persist the job so it can
-  /// be re-attached later, and start mirroring its progress.
-  Future<bool> _downloadViaManager(
-      ReleaseInfo release, ReleaseAsset asset) async {
+  /// be re-attached later, and start mirroring its progress. A job already
+  /// running for this very artifact is re-attached, not restarted: the
+  /// DownloadManager resumes it where it stopped.
+  Future<bool> _downloadViaManager(ReleaseInfo release, ReleaseAsset asset,
+      {required bool overMetered}) async {
     status.value = UpdateStatus.downloading;
     progress.value = 0;
     error = null;
-    _downloadedPath = null;
-    // Drop any previous job so a re-download doesn't leave an orphan behind.
     final prev = await _activeDownloadId();
-    if (prev != null) await UpdateNative.removeDownload(prev);
+    if (prev != null) {
+      final p = await SharedPreferences.getInstance();
+      final same = p.getString(_kDlVersion) == release.version &&
+          p.getString(_kDlName) == asset.name;
+      final r = await UpdateNative.pollDownload(prev);
+      final st = (r['status'] as String?) ?? 'unknown';
+      final reason = (r['reason'] as num?)?.toInt() ?? 0;
+      final alive = st == 'pending' ||
+          st == 'running' ||
+          st == 'paused' ||
+          st == 'success';
+      // A person asking now gets it now: an automatic job held back for Wi-Fi
+      // is replaced by one that may use mobile data.
+      final heldForWifi = overMetered &&
+          (st == 'pending' ||
+              (st == 'paused' && (reason == 2 || reason == 3)));
+      if (same && alive && !heldForWifi) {
+        return _trackManagedDownload(prev, release, asset);
+      }
+      await UpdateNative.removeDownload(prev);
+      await _clearActiveDownload();
+    }
     final id = await UpdateNative.enqueueDownload(
-        asset.url, asset.name, 'Downloading XPRS ${release.version}');
+        asset.url, asset.name, 'XPRS ${release.version}',
+        overMetered: overMetered);
     if (id == null) {
       error = 'Could not start the download';
       status.value = UpdateStatus.error;
@@ -791,8 +1067,15 @@ class UpdateService {
     return _trackManagedDownload(id, release, asset);
   }
 
+  static bool get _onScreen =>
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+
   /// Poll a DownloadManager job to completion, mirroring bytes into [progress]
   /// and verifying the finished file before marking it installable.
+  ///
+  /// The DownloadManager does the work in its own process; this only reads its
+  /// counters. Every second while someone can see the bar, every 30 s with the
+  /// screen off, and once a minute while the job waits for a network.
   Future<bool> _trackManagedDownload(
       int id, ReleaseInfo release, ReleaseAsset asset) async {
     if (_tracking) return false;
@@ -811,9 +1094,20 @@ class UpdateService {
             progress.value = (downloaded / total).clamp(0.0, 1.0);
           }
           status.value = UpdateStatus.downloading;
-          await Future<void>.delayed(const Duration(milliseconds: 700));
+          final reason = (r['reason'] as num?)?.toInt() ?? 0;
+          final waiting = st != 'running';
+          phase.value = !waiting
+              ? ''
+              : reason == 3
+                  ? tr('updates.phase.wifi')
+                  : tr('updates.phase.network');
+          final delay = waiting
+              ? (_onScreen ? const Duration(seconds: 3) : const Duration(minutes: 1))
+              : (_onScreen ? const Duration(seconds: 1) : const Duration(seconds: 30));
+          await Future<void>.delayed(delay);
           continue;
         }
+        phase.value = '';
         if (st == 'success') {
           final path = r['localPath'] as String?;
           if (path == null) {
@@ -823,17 +1117,17 @@ class UpdateService {
           final ok = await UpdateNative.verifyFile(path,
               expectedSize: asset.size, expectedSha: asset.sha256);
           if (!ok) {
-            return _failManaged(
-                id, 'Update failed its integrity check — tap Download to retry');
+            return _failManaged(id, 'Update failed its integrity check');
           }
-          _downloadedPath = path;
-          progress.value = 1;
-          status.value = UpdateStatus.downloaded;
+          lastSource ??= 'https';
+          // Verified and remembered: the job record is no longer needed, and
+          // keeping it would hash the file again at every start.
+          await _clearActiveDownload();
+          await _markReady(path, release.version);
           return true;
         }
         // 'failed' / 'unknown'
-        return _failManaged(id, 'Download failed — check your connection and '
-            'tap Download to retry');
+        return _failManaged(id, 'Download failed');
       }
     } finally {
       _tracking = false;
@@ -872,6 +1166,13 @@ class UpdateService {
       isPrerelease: p.getBool(_kDlPre) ?? false,
       assets: const [],
     );
+    if (version.isEmpty ||
+        readyIsStale(readyVersion: version, running: kAppVersion)) {
+      // Installed meanwhile (or never named): nothing left to fetch.
+      await UpdateNative.removeDownload(id);
+      await _clearActiveDownload();
+      return;
+    }
     final r = await UpdateNative.pollDownload(id);
     final st = (r['status'] as String?) ?? 'unknown';
     if (st == 'unknown') {
@@ -908,19 +1209,20 @@ class UpdateService {
 
   /// Apply the downloaded artifact. On Android, ensures the install permission
   /// first (opens settings if missing). Quits the app on desktop to swap files.
-  Future<bool> install(ReleaseInfo release) async {
+  ///
+  /// The download stays on record until the new version runs: the person may
+  /// cancel the system installer and tap Install again.
+  Future<bool> install([ReleaseInfo? release]) async {
     if (!supported || fdroidOnly || _downloadedPath == null) return false;
     final platform = currentUpdatePlatform();
     if (platform == UpdatePlatform.android && !await UpdateNative.canInstall()) {
       await UpdateNative.openInstallSettings();
+      // The download stays ready: Install works once the permission is given.
       error = tr('updates.allow_install');
-      status.value = UpdateStatus.error;
       return false;
     }
+    error = null;
     await UpdateNative.apply(platform, _downloadedPath!);
-    // The installer now owns the file; forget the DownloadManager record so a
-    // later reopen doesn't re-offer an already-applied build.
-    await _clearActiveDownload();
     return true;
   }
 

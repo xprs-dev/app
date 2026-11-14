@@ -165,19 +165,19 @@ class _NotificationRow extends StatelessWidget {
       NotificationLevel.error => const Color(0xFFda3633),
       NotificationLevel.info => Theme.of(context).colorScheme.primary,
     };
-    // Rows route by source: a wapp notification opens its wapp, the updater's
-    // rows open Settings (which hosts Updates). Other host rows have nowhere
-    // meaningful to go and stay inert (null onTap = no splash, no promise).
+    // Rows route by source: a wapp notification opens its wapp, a host
+    // notification with a page of its own (the updater's) opens that page.
+    // Other host rows have nowhere meaningful to go and stay inert (null
+    // onTap = no splash, no promise).
     final source = notification.source;
     VoidCallback? onTap;
     if (source.startsWith('wapp:')) {
       onTap = () => unawaited(
           _openWappBySource(context, source,
               convo: notification.convo, view: notification.view));
-    } else if (source == 'host:updates') {
-      onTap = () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const IwiSettingsPage()),
-          );
+    } else if (isHostNotificationTarget(source)) {
+      onTap = () => unawaited(openNotificationTarget(source,
+          navigator: Navigator.of(context)));
     }
     return Card(
       margin: const EdgeInsets.only(bottom: 10),

@@ -66,7 +66,7 @@ class DeepLinkService {
     if (lower.startsWith('xprs://open') || lower.startsWith('xprs://open')) {
       final uri = Uri.tryParse(url);
       if (uri == null) return;
-      await openWappByFolder(
+      await openNotificationTarget(
         uri.queryParameters['wapp'] ?? '',
         convo: uri.queryParameters['convo'],
         view: uri.queryParameters['view'],

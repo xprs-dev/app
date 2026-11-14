@@ -23,7 +23,7 @@
   "notifications.cleanup.freed": "{size} libérés",
   "notifications.cleanup.deleted.one": "{n} fichier conservé pour d'autres a été supprimé. Vos propres fichiers n'ont pas été touchés.",
   "notifications.cleanup.deleted.other": "{n} fichiers conservés pour d'autres ont été supprimés. Vos propres fichiers n'ont pas été touchés.",
-  "notifications.update.available": "Mise à jour disponible",
-  "notifications.update.body": "XPRS {version} est disponible. Ouvrez Réglages → Mises à jour pour l'installer.",
+  "notifications.update.ready": "XPRS {version} est prêt à être installé",
+  "notifications.update.ready.body": "Touchez pour installer.",
   "notifications.liked": "{from} a aimé votre message"
 }

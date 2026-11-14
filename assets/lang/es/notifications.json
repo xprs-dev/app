@@ -23,7 +23,7 @@
   "notifications.cleanup.freed": "Liberados {size}",
   "notifications.cleanup.deleted.one": "Se eliminó {n} archivo guardado para otras personas. Tus archivos no se tocaron.",
   "notifications.cleanup.deleted.other": "Se eliminaron {n} archivos guardados para otras personas. Tus archivos no se tocaron.",
-  "notifications.update.available": "Actualización disponible",
-  "notifications.update.body": "XPRS {version} está disponible. Abre Ajustes → Actualizaciones para instalar.",
+  "notifications.update.ready": "XPRS {version} está listo para instalar",
+  "notifications.update.ready.body": "Toca para instalar.",
   "notifications.liked": "A {from} le gustó tu mensaje"
 }

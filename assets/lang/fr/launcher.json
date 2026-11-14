@@ -5,6 +5,8 @@
   },
   "launcher.drawer.updates": "Mises à jour",
   "launcher.drawer.version": "Version {version}",
+  "launcher.drawer.update_ready": "Mise à jour prête à installer",
+  "launcher.drawer.update_available": "Mise à jour disponible",
   "launcher.drawer.hardware": "Matériel",
   "launcher.drawer.groups": "Groupes",
   "launcher.drawer.exit": "Quitter XPRS",

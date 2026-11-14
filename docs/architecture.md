@@ -563,6 +563,33 @@ decision). What ships is the device rule above, for a TYPE:
 The wapp reads `hal_xprs_history` and subscribes to `xprs.<type>` only to
 redraw. Another wapp following polls, offers or warnings uses the same verb.
 
+### The device and its people (2026-11-14)
+
+Every install holds two kinds of name, as an ESP32 station and its owner do
+(XPRS.md 3, 11.9):
+
+- **the device's `X3`**, one per install, made on first start by
+  `DeviceIdentity` (core `lib/src/profile/device_identity.dart`) and shared by
+  every profile on it. Its owners are those profiles' wire callsigns, active
+  first, at most four;
+- **the person's `X1`**, the profile, as before.
+
+| signed by the `X3` (facts about the machine) | signed by the `X1` (the person) |
+|---|---|
+| its observation: `serve:`, `dial:`, `room:`, `uptime:`, its place `pos:`/`acc:` | the presence beacon with `lx:` and `mail:` |
+| its key binding (`t:identity f:X3…`), aired with the person's | identity, decoration, chat, DMs, posts, check-ins, mail |
+| the answer to `q:policy` / `q:identity` addressed to it (`s:policy owner:`) | everything else addressed to the profile |
+
+On the LAN both observations go out each interval; on Bluetooth they share
+the one advert frame, the device's every fourth airing. Both are deposited
+with the archivers. A packet addressed to the `X3` is ours (mesh aliases), and
+the profile records the device as its own station (`XprsOwnedStations`).
+
+Not moved yet: the Reticulum transport identity, `cmd:history` and
+`cmd:file` answers, and the update mirror still run under the profile. A
+headless server whose profile is already an `X3` is its own device and airs
+one observation, as before.
+
 ### A cable is a lane too (2026-09-12)
 
 The Firmwares wapp writes an image to a board on a USB cable. Everything

@@ -306,19 +306,35 @@ nohup "\$APPDIR/xprs" >/dev/null 2>&1 &
 
   /// Enqueue [url] as [filename]; returns the DownloadManager id, or null on
   /// failure. Poll it with [pollDownload].
+  ///
+  /// With [overMetered] false the DownloadManager holds the job until the
+  /// device is on an unmetered network (Wi-Fi), and resumes it by itself.
   static Future<int?> enqueueDownload(
-      String url, String filename, String title) async {
+      String url, String filename, String title,
+      {bool overMetered = true}) async {
     if (!Platform.isAndroid) return null;
     try {
       final id = await _channel.invokeMethod<int>('enqueueDownload', {
         'url': url,
         'filename': filename,
         'title': title,
+        'overMetered': overMetered,
       });
       return (id == null || id < 0) ? null : id;
     } catch (e) {
       debugPrint('UpdateNative.enqueueDownload failed: $e');
       return null;
+    }
+  }
+
+  /// Whether the active network is metered (mobile data, a metered hotspot).
+  /// False off Android, and when it cannot be told.
+  static Future<bool> isMetered() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      return (await _channel.invokeMethod<bool>('isMetered')) ?? false;
+    } catch (_) {
+      return false;
     }
   }
 

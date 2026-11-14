@@ -23,7 +23,7 @@
   "notifications.cleanup.freed": "Libertados {size}",
   "notifications.cleanup.deleted.one": "Foi apagado {n} ficheiro guardado para outras pessoas. Os seus ficheiros não foram tocados.",
   "notifications.cleanup.deleted.other": "Foram apagados {n} ficheiros guardados para outras pessoas. Os seus ficheiros não foram tocados.",
-  "notifications.update.available": "Atualização disponível",
-  "notifications.update.body": "O XPRS {version} está disponível. Abra Definições → Atualizações para instalar.",
+  "notifications.update.ready": "O XPRS {version} está pronto a instalar",
+  "notifications.update.ready.body": "Toque para instalar.",
   "notifications.liked": "{from} gostou da sua mensagem"
 }

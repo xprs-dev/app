@@ -21,6 +21,14 @@
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# dart comes with Flutter; a non-interactive shell often lacks it on PATH.
+if ! command -v dart >/dev/null 2>&1; then
+  for d in "${FLUTTER_ROOT:-}/bin" "$HOME/flutter/bin" "$(dirname "$(command -v flutter 2>/dev/null || echo /x)")"; do
+    [[ -x "$d/dart" ]] && { PATH="$d:$PATH"; break; }
+  done
+  command -v dart >/dev/null 2>&1 || { echo "error: dart not found (install Flutter or set FLUTTER_ROOT)"; exit 1; }
+fi
+
 YES=0
 VERSION=""
 LOCK_CHANGED=0

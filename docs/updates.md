@@ -22,7 +22,7 @@ Related: [architecture.md](architecture.md) §4 (which lane carries what),
         ▼
    https://xprs.dev/updates/{stable,beta}.json     ~1 KB, JSON only
         │
-        ├──────────────► every phone: "is there a newer version?"  (one GET)
+        ├──────────────► every phone: "is there a newer version?"  (one GET, every 6 h)
         │
         └──────────────► a SUPER-ARCHIVER downloads the artifacts ONCE
                               │
@@ -186,30 +186,120 @@ uses this; it is the fallback for a device that has internet but no mesh.
 
 ---
 
-## 6. Installing
+## 6. Automatic updates, and installing
+
+### 6.1 What runs on its own
+
+`UpdateService.start()` (called once at boot, `lib/main.dart`):
+
+1. restores a verified download that is waiting to be installed
+   (`update.ready.*` in preferences: path, version, size), deleting it once that
+   version runs;
+2. re-attaches to a DownloadManager job left running by an earlier process;
+3. arms ONE one-shot timer for the next check: a minute after start-up when a
+   check is due, otherwise at `lastCheck + 6 h` (`update.lastCheck`). A check
+   that reached no source retries after 30 minutes. Coming back to the
+   foreground re-arms it 5 s out when a check is overdue, because a frozen
+   process may have slept through the timer.
+
+Each round (`runAutomatic`): read the feed, and when the selected channel has a
+newer version, `download(release, auto: true)`. Once the artifact is verified
+(size + sha256, on a worker isolate), ONE notification: "XPRS <version> is ready
+to install" (once per version, `update.lastNotifiedVersion`), source
+`host:updates`. Its tap opens the Updates page on Android (`xprs://open?wapp=host:updates`),
+on the desktop toast and on the in-app card alike (`openNotificationTarget`,
+`hostNotificationPages` in `lib/wapp/wapp_open.dart`). The launcher shows a dot
+on the menu and on Updates while a newer version is known, and a banner while one
+is ready (`UpdateService.notice`).
+
+An automatic download:
+
+- is not repeated when the same version is already downloaded and verified;
+- re-attaches to an interrupted DownloadManager job instead of restarting it
+  (the DownloadManager resumes it by itself);
+- does not use mobile data unless "Download over mobile data" is on: the
+  Reticulum lane is skipped on a metered network, and the DownloadManager job is
+  enqueued with `setAllowedOverMetered(false)`, so it waits for Wi-Fi. The
+  Bluetooth lane is always allowed. A download the person starts from the page
+  may always use mobile data, and replaces a job held back for Wi-Fi.
+
+While a job waits, its counters are read once a minute with the screen off
+(every 3 s while someone looks); while it runs, every 30 s screen off, every
+second on screen.
+
+### 6.2 Who gets automatic updates
+
+`defaultAutoUpdate` (`update_models.dart`), until the person flips the switch
+(`update.auto`):
+
+| install | default |
+|---|---|
+| desktop | on |
+| Android, installed by an F-Droid client | off; "Updates only from F-Droid" is on |
+| Android, installed by anything that names itself (the system package installer after a download from xprs.dev, a browser, the app's own updater) | on |
+| Android, no installer on record (`adb install`) | the `AUTO_UPDATE_CHECK` define |
+
+**The F-Droid situation.** F-Droid asked (fdroiddata !48456, 2026-10-15) that
+the APK it ships not announce versions from anywhere else: a reviewer installed
+the F-Droid-built APK with `adb` and saw our notice. The recipe template
+(`fdroid/com.xprs.app.yml`) therefore passes `--dart-define=AUTO_UPDATE_CHECK=false`,
+and because F-Droid reproduces the APK the release pipeline builds from that same
+template (`release.yml`), every Android release carries it, including the one
+downloaded from xprs.dev. Until this change the define switched the check off
+for every install, so no released Android build ever looked for an update by
+itself.
+
+The define is still passed and still honoured, but it now decides only the
+installer-less case (the reviewer's `adb` install). An F-Droid client install is
+off by the installer rule; an install from xprs.dev is on. If F-Droid objects to
+the installer rule, the alternatives are a different APK for xprs.dev (breaks
+"F-Droid ships our APK", `f-droid.md` §5) or reading the define as "off unless
+the user turns it on". Do not drop the define from the recipe.
+
+### 6.3 Installing
 
 `UpdateNative.apply` hands the APK to the system package installer through a
 FileProvider URI. It needs `REQUEST_INSTALL_PACKAGES`, and on API ≥ O the app
 must be allowed to install unknown apps — `canInstall()` reports it and
-`openInstallSettings()` takes the user there.
+`openInstallSettings()` takes the user there. Installing is always the
+person's tap: Android asks for confirmation anyway. The download stays on record
+after Install, so a cancelled installer can be retried; it is deleted when the
+new version first starts.
 
 The artifact is verified before the installer ever sees it: size and sha256
-against the feed, hashed in chunks off the UI isolate.
+against the feed, hashed in chunks off the UI isolate — on every lane, the
+desktop HTTPS one included.
 
 **"Updates only from F-Droid" does none of this.** The switch (Android, in
 Updates; on by default when an F-Droid client installed the app) replaces both
 channels with the version F-Droid's index publishes
 (`https://f-droid.org/api/v1/packages/com.xprs.app`), refuses every download
 and install, and turns the action into "Update in F-Droid", which opens the
-F-Droid client on XPRS (`UpdateBridge.openFdroid`). There is no start-up check
-in that mode: the F-Droid client notifies about updates itself. F-Droid ships
-the same signed APK as the release (reproducible build, `docs/f-droid.md`), so
-the switch can be flipped either way at any time.
+F-Droid client on XPRS (`UpdateBridge.openFdroid`). No automatic check runs in
+that mode: the F-Droid client notifies about updates itself. F-Droid ships the
+same signed APK as the release (reproducible build, `docs/f-droid.md`), so the
+switch can be flipped either way at any time.
 
 `--dart-define=SELF_UPDATE=false` still compiles the whole path out: every
 check, download and install short-circuits, the Updates panel hides itself, and
 the build refuses to act as a mirror. Official builds, F-Droid's included, keep
 it on.
+
+### 6.4 The page
+
+Drawer → Updates: the running version, one status line (up to date · checked
+2 hours ago / downloading 45% / ready to install), one button (Check now /
+Download / Install / Update in F-Droid), the new version's notes, and four
+switches: Automatic updates, Download over mobile data (Android), Beta
+versions, Updates only from F-Droid (Android). The channel folder addresses
+moved out of it; they stay in Settings.
+
+### 6.5 Not done
+
+- The check runs only while the process is alive (the foreground service keeps
+  it alive on most phones). A WorkManager job would also wake a killed app.
+- The update mirror and the updater share the DownloadManager directory; a
+  mirror station enqueueing the same artifact name replaces the updater's file.
 
 ---
 
@@ -253,9 +343,10 @@ No screenshots required. Over `adb forward tcp:3499 tcp:3456`:
 
 | | |
 |---|---|
-| `GET /api/update/status` | the whole read-only picture: version, buildNumber, betaEnabled, feedBase, stable/beta/selected, `updateAvailable`, progress, `source`, canInstall, error |
+| `GET /api/update/status` | the whole read-only picture: version, buildNumber, betaEnabled, `autoUpdate`, `overMetered`, `lastCheck`, `nextCheck`, `readyVersion`, `notice`, feedBase, stable/beta/selected, `updateAvailable`, progress, `source`, canInstall, error |
 | `POST /api/update/check` | run a check now (has a side effect; status does not) |
-| `POST /api/update/config` | `{"betaEnabled":true}`, `{"feedBase":"…"}` — aim a device at a staging feed |
+| `POST /api/update/auto` | run one automatic round now (check, then download in the background); 409 when automatic updates are off |
+| `POST /api/update/config` | `{"betaEnabled":true}`, `{"feedBase":"…"}` — aim a device at a staging feed; `{"autoUpdate":true}`, `{"overMetered":true}`, `{"fdroidOnly":false}` |
 | `POST /api/update/download` | fetch the selected release |
 | `POST /api/update/install` | apply it |
 | `GET /api/update/mirror` | what this station holds and seeds |

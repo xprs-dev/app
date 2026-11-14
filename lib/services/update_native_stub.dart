@@ -39,8 +39,10 @@ class UpdateNative {
 
   static bool get hasDownloadManager => false;
   static Future<int?> enqueueDownload(
-          String url, String filename, String title) async =>
+          String url, String filename, String title,
+          {bool overMetered = true}) async =>
       null;
+  static Future<bool> isMetered() async => false;
   static Future<Map<String, dynamic>> pollDownload(int id) async =>
       const {'status': 'unknown'};
   static Future<bool> verifyFile(String path,
