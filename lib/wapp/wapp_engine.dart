@@ -3876,7 +3876,17 @@ class WappEngine {
       (int ptr, int len) {
         final wire = _readStr(ptr, len).trim();
         final p = XprsPacket.parse(wire);
-        if (p == null || !p.fits) return -1;
+        if (p == null) return -1;
+        // A packet whose `m:` does not fit is the core's to split (6.6):
+        // publishWire airs it as parts, signed once over the whole (9.1.1),
+        // and every receiver rejoins it before a wapp sees it. Only an
+        // envelope that does not fit on its own is refused.
+        if (!p.fits) {
+          final head = p.fields.where((f) => f.key != 'm' && f.key != 'sig');
+          final env = XprsPacket.parse(
+              [for (final f in head) '${f.key}:${f.value}'].join(' '));
+          if (!p.has('m') || env == null || !env.fits) return -1;
+        }
         // The core's answer, given at once: -2 is "not a member of that
         // closed group" (26.7). publishWire applies the same rule for every
         // caller; this lets the wapp say why instead of "could not send".
