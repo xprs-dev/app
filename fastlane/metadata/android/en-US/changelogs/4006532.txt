@@ -1,0 +1,4 @@
+* New app: Check-in. Visit stations in person for a signed check-in and their badge; a logbook, a badge wall, events and a dark map of where you have been.
+* Explore: stations giving check-ins nearby, with distance, an intro, and coordinates to copy into a navigation app.
+* Settings > Privacy: share your station's position, as coarsely as you choose (10 m to 10 km). Off by default.
+* Map buttons fit a phone screen.
