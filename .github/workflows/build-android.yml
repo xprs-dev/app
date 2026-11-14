@@ -45,6 +45,25 @@ jobs:
           sed -i "s/^version:.*/version: ${VER}+${CODE}/" pubspec.yaml
           dart run tool/update_version.dart
 
+      # Signed with the XPRS release key (docs/f-droid.md §5), the same one
+      # release.yml uses, so a CI build installs over a release and over the
+      # build before it. Without the secrets (a fork) gradle falls back to
+      # debug signing and the build still runs.
+      - name: Release key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::warning::no release keystore: debug-signed APK"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/release.jks" "$KS_PASS" "$KEY_ALIAS" "$KEY_PASS" > android/key.properties
+
       - run: flutter pub get
       - run: flutter build apk --release
 
