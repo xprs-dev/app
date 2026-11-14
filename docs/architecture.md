@@ -588,8 +588,9 @@ the profile records the device as its own station (`XprsOwnedStations`).
 Not moved yet: the Reticulum transport identity, `cmd:history` and
 `cmd:file` answers, and the update mirror still run under the profile, so
 `serve:`, `dial:` and `room:` stay on the profile's beacon and the `X3`
-claims none (it did once, and other stations polled it for history it could
-only refuse). A command sent to the `X3` gets `code:404` at once. A
+claims none. Stations still ask every neighbour in earshot, the `X3`
+included, and a command sent to it gets a signed `code:404` at once, on a
+TCP line too. A
 headless server whose profile is already an `X3` is its own device and airs
 one observation, as before.
 
