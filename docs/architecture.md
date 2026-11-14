@@ -540,6 +540,29 @@ archiver carried anything. The device kind itself is `xprsKindOf`, the one
 callsign rule, and the monitor hands it to the wapp as `kind` rather than
 letting it test a prefix.
 
+### A packet type is followed the same way (2026-11-14)
+
+Check-in needs check-in events from stations nobody follows yet: the ones
+announced in earshot and the ones announced while the phone was elsewhere.
+The tempting shapes were the wapp keeping its own table of what it heard
+(store in a wapp) and the wapp asking archivers itself (a transport
+decision). What ships is the device rule above, for a TYPE:
+
+- **`hal_xprs_follow_kind(kind, on)`**, per wapp, on
+  `PreferencesService.xprsFollowedKindsByWapp`; `XprsIngest.followKind` reloads
+  the policy, whose `followedKinds` is the union.
+- **Kept from anyone, on every lane.** `xprsAdmitTier(followedKind: true)`
+  admits an undirected packet of a followed type to the strangers' shelf, under
+  its quota; presence never. Heard here and replayed by an archiver are the same
+  row (the section 5 identifier), so the two sources MERGE: whatever either
+  one has, the archive has.
+- **The catch-up fetches it.** `XprsCatchup` treats `kind:<type>` as one more
+  followed target: `cmd:history kind:<type> since:<newest held of it>` to the
+  chosen archivers, on the followed-device cadence, gate and paging.
+
+The wapp reads `hal_xprs_history` and subscribes to `xprs.<type>` only to
+redraw. Another wapp following polls, offers or warnings uses the same verb.
+
 ### A cable is a lane too (2026-09-12)
 
 The Firmwares wapp writes an image to a board on a USB cable. Everything

@@ -3660,6 +3660,20 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_follow_kind: follow a packet TYPE. The core keeps its
+    // publications from anyone, heard here or replayed by an archiver, and
+    // asks the chosen archivers for what is new of it; the wapp reads the
+    // archive (hal_xprs_history) and is told none of how it got there.
+    final halXprsFollowKind = WasmFunction(
+      (int kindPtr, int kindLen, int on) {
+        if (kindLen <= 0) return -1;
+        return XprsIngest.followKind(_appId, _readStr(kindPtr, kindLen), on != 0)
+            ? 0
+            : -1;
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     final halXprsFollowed = WasmFunction(
       (int outPtr, int outCap) {
         if (outCap <= 0) return 0;
@@ -5003,6 +5017,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_position', halXprsPosition),
       WasmImport('hal', 'xprs_kind', halXprsKind),
       WasmImport('hal', 'xprs_follow', halXprsFollow),
+      WasmImport('hal', 'xprs_follow_kind', halXprsFollowKind),
       WasmImport('hal', 'xprs_followed', halXprsFollowed),
       WasmImport('hal', 'xprs_discover', halXprsDiscover),
       WasmImport('hal', 'flash_scan', halFlashScan),

@@ -381,6 +381,18 @@ class FunctionalityRegistry {
           ],
           ReturnDef('int', '0 ok, -1 empty, malformed or a group')),
       EndpointDef(
+          'hal_xprs_follow_kind',
+          'Follow (on=1) or stop following (on=0) a packet TYPE by its t: '
+          'word: its undirected publications are kept from anyone, heard here '
+          'or replayed by the chosen archivers (cmd:history kind:<type> '
+          'since:<newest held>), one row per packet; read them with '
+          'hal_xprs_history. Per wapp. The core decides how.',
+          [
+            ParamDef('kind', 'string', 'the packet type, e.g. event'),
+            ParamDef('on', 'int', '1 follow, 0 stop'),
+          ],
+          ReturnDef('int', '0 ok, -1 not a packet type')),
+      EndpointDef(
           'hal_xprs_followed',
           'The stations followed by callsign, a JSON array of bare callsigns',
           [],

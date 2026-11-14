@@ -683,6 +683,11 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   `acc:`. Use it for ANY position a station states about itself: a fixed cell
   leaks nothing more on the hundredth airing (a random offset would average
   out). A wapp gets the same value with `hal_xprs_position`.
+- **`hal_xprs_follow_kind(kind, on)`** — a wapp that needs a packet type from
+  anyone (check-in events, polls, offers) follows the TYPE: the core keeps it
+  from every lane and asks archivers for what is new, merged in one archive;
+  the wapp reads `hal_xprs_history`. Never a wapp-side copy, never a wapp
+  asking archivers (docs/architecture.md, 2026-11-14).
 - **`ui.map.locate` (wapp → host)** — switch to the map's screen and centre on
   one place: the "Show on map" of any list.
 - **`ui.prompt` with `copy`** — a sheet with a Copy button: coordinates to
