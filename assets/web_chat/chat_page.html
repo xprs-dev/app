@@ -3250,7 +3250,29 @@ function showStation(call){
 // chosen radius (its side twice the radius), so the exact place never
 // reaches the station; 0 is exact. Shown beside the station's name, a link
 // to the map, and on the Station view.
-var stationPos=null;
+//
+// Also announced: the same choice goes to the settings pos and acc, which
+// the station carries in its beacon as pos: and acc: (XPRS.md 15.1, the
+// decimals being the precision claimed), so other stations and the map at
+// xprs.dev/in/ see where it is. A station with no exact place can give
+// just its country: the country's centre and its radius (from the area).
+var stationPos=null,posCountry=null;
+var COUNTRIES='AD,42.5,1.5,40;AE,23.4,53.8,163;AF,33.9,67.7,456;AG,17.1,-61.8,40;AI,18.2,-63.1,40;AL,41.2,20.2,95;AM,40.1,45.0,97;AO,-11.2,17.9,630;AQ,-77.8,166.6,40;AR,-38.4,-63.6,941;AS,-14.3,-170.7,40;AT,47.5,14.6,163;AU,-25.3,133.8,1566;AW,12.5,-70.0,40;AX,60.1,19.9,40;AZ,40.1,47.6,166;BA,43.9,17.7,128;BB,13.1,-59.6,40;BD,23.7,90.4,217;BE,50.5,4.5,98;BF,12.2,-1.6,295;BG,42.7,25.5,188;BH,26.4,50.6,40;BI,-3.4,29.9,94;BJ,9.3,2.3,191;BL,17.9,-62.9,40;BM,32.3,-64.8,40;BN,4.9,114.9,40;BO,-16.3,-63.6,591;BQ,12.2,-68.3,40;BR,-14.2,-51.9,1645;BS,25.0,-77.4,66;BT,27.5,90.4,110;BW,-22.3,24.7,430;BY,53.7,27.9,257;BZ,17.2,-88.5,85;CA,56.1,-106.3,1784;CC,-12.2,96.9,40;CD,-4.0,21.8,863;CF,6.6,20.9,445;CG,-0.2,15.8,330;CH,46.8,8.2,115;CI,7.5,-5.5,320;CK,-21.2,-159.8,40;CL,-35.7,-71.5,491;CM,7.4,12.4,389;CN,35.9,104.2,1748;CO,4.6,-74.3,602;CR,9.7,-83.8,127;CU,21.5,-77.8,187;CV,14.9,-23.5,40;CW,12.2,-69.0,40;CX,-10.4,105.7,40;CY,35.1,33.4,54;CZ,49.8,15.5,158;DE,51.2,10.4,337;DJ,11.8,42.6,86;DK,56.3,9.5,117;DM,15.3,-61.4,40;DO,18.7,-70.2,124;DZ,28.0,1.7,870;EC,-1.8,-78.2,300;EE,58.6,25.0,120;EG,26.8,30.8,564;EH,27.1,-13.2,40;ER,15.2,39.8,193;ES,40.4,-3.7,401;ET,9.1,40.5,593;FI,64.0,26.0,328;FJ,-17.7,178.1,76;FK,-51.7,-57.9,40;FM,7.4,151.8,40;FO,62.0,-6.8,40;FR,46.6,2.2,419;GA,-0.8,11.6,292;GB,54.0,-2.5,278;GD,12.1,-61.8,40;GE,42.3,43.4,149;GF,4.9,-52.3,40;GG,49.5,-2.5,40;GH,7.9,-1.0,275;GI,36.1,-5.3,40;GL,64.2,-51.7,40;GM,13.4,-15.3,59;GN,9.9,-9.7,280;GP,16.2,-61.5,40;GQ,1.7,10.3,94;GR,39.1,22.0,205;GS,-54.3,-36.5,40;GT,15.8,-90.2,186;GU,13.5,144.8,40;GW,11.8,-15.2,107;GY,4.9,-58.9,262;HK,22.3,114.2,40;HN,15.2,-86.2,189;HR,45.1,15.2,134;HT,19.0,-72.3,93;HU,47.2,19.5,172;ID,-0.8,113.9,778;IE,53.4,-8.2,150;IL,31.0,34.9,83;IM,54.1,-4.5,40;IN,20.6,79.0,1023;IO,-7.3,72.4,40;IQ,33.2,43.7,373;IR,32.4,53.7,724;IS,65.0,-19.0,181;IT,42.8,12.6,310;JE,49.2,-2.1,40;JM,18.1,-77.3,59;JO,30.6,36.2,168;JP,36.2,138.3,347;KE,0.0,37.9,430;KG,41.2,74.8,252;KH,12.6,105.0,240;KI,1.4,173.0,40;KM,-11.7,43.3,40;KN,17.3,-62.7,40;KP,40.3,127.5,196;KR,35.9,127.8,178;KW,29.3,47.5,75;KY,19.3,-81.4,40;KZ,48.0,66.9,931;LA,19.9,102.5,275;LB,33.9,35.9,57;LC,14.0,-61.0,40;LI,47.1,9.5,40;LK,7.9,80.8,144;LR,6.4,-9.4,188;LS,-29.6,28.2,98;LT,55.2,23.9,144;LU,49.6,6.2,40;LV,56.9,24.6,143;LY,26.3,17.2,748;MA,31.8,-7.1,377;MC,43.7,7.4,40;MD,47.4,28.4,104;ME,42.7,19.4,66;MF,18.1,-63.1,40;MG,-18.8,46.9,432;MH,7.2,171.2,40;MK,41.6,21.7,90;ML,17.6,-4.0,628;MM,21.9,95.9,464;MN,46.9,103.8,705;MO,22.2,113.5,40;MP,15.2,145.8,40;MQ,14.6,-61.1,40;MR,21.0,-10.9,573;MS,16.7,-62.2,40;MT,35.9,14.5,40;MU,-20.2,57.5,40;MV,4.2,73.5,40;MW,-13.3,34.3,194;MX,23.6,-102.6,790;MY,4.2,102.0,324;MZ,-18.7,35.5,505;NA,-22.9,18.5,512;NC,-22.3,166.4,40;NE,17.6,8.1,636;NF,-29.1,168.0,40;NG,9.1,8.7,542;NI,12.9,-85.2,203;NL,52.1,5.3,115;NO,64.5,11.5,350;NP,28.4,84.1,216;NR,-0.5,166.9,40;NU,-19.0,-169.9,40;NZ,-41.0,174.0,292;OM,21.5,55.9,314;PA,8.5,-80.8,155;PE,-9.2,-75.0,640;PF,-17.5,-149.6,40;PG,-6.3,143.9,384;PH,12.9,121.8,309;PK,30.4,69.3,530;PL,51.9,19.1,315;PM,47.0,-56.3,40;PN,-25.1,-130.1,40;PR,18.2,-66.6,54;PS,31.5,34.5,40;PT,39.6,-8.0,171;PW,7.3,134.5,40;PY,-23.4,-58.4,360;QA,25.4,51.2,61;RE,-20.9,55.5,40;RO,45.9,25.0,275;RS,44.0,21.0,167;RU,61.5,105.3,2333;RW,-1.9,29.9,92;SA,23.9,45.1,827;SB,-9.6,160.2,95;SC,-4.7,55.5,40;SD,12.9,30.2,770;SE,60.1,18.6,378;SG,1.3,103.8,40;SH,-15.9,-5.7,40;SI,46.2,15.0,80;SJ,78.0,16.0,40;SK,48.7,19.7,125;SL,8.5,-11.8,151;SM,43.9,12.5,40;SN,14.5,-14.5,250;SO,5.2,46.2,451;SR,4.0,-56.0,228;SS,6.9,31.3,453;ST,0.3,6.7,40;SV,13.8,-88.9,82;SX,18.1,-63.0,40;SY,34.8,39.0,243;SZ,-26.5,31.5,74;TC,21.5,-71.1,40;TD,15.5,18.7,638;TF,-49.4,70.2,40;TG,8.6,0.8,134;TH,15.9,100.9,404;TJ,38.9,71.3,213;TK,-9.4,-171.2,40;TL,-8.9,125.7,69;TM,39.0,59.6,394;TN,34.0,9.5,228;TO,-21.1,-175.2,40;TR,39.0,35.2,499;TT,10.7,-61.5,40;TV,-8.5,179.2,40;TW,23.7,121.0,107;TZ,-6.4,34.9,549;UA,48.4,31.2,438;UG,1.4,32.3,277;UM,28.2,-177.4,40;US,39.8,-98.6,1767;UY,-32.5,-55.8,237;UZ,41.4,64.6,377;VA,41.9,12.5,40;VC,13.2,-61.2,40;VE,6.4,-66.6,540;VG,18.4,-64.6,40;VI,18.4,-64.9,40;VN,14.1,108.3,325;VU,-15.4,167.0,62;WF,-13.3,-176.2,40;WS,-13.8,-171.7,40;YE,15.6,48.5,410;YT,-12.8,45.2,40;ZA,-30.6,22.9,623;ZM,-13.1,27.8,489;ZW,-19.0,29.2,353';
+function countryList(){
+  var dn=null;try{dn=new Intl.DisplayNames([navigator.language||'en','en'],{type:'region'});}catch(e){}
+  return COUNTRIES.split(';').map(function(x){var f=x.split(',');
+    return {code:f[0],lat:+f[1],lon:+f[2],r:+f[3],name:(dn&&dn.of(f[0]))||f[0]};})
+    .sort(function(a,b){return a.name.localeCompare(b.name);});}
+function posCountryPick(code){
+  posCountry=null;if(!code)return;
+  countryList().forEach(function(c){if(c.code===code)posCountry=c;});
+  if(!posCountry)return;
+  el('ps-lat').value=posCountry.lat;el('ps-lon').value=posCountry.lon;adminDirty=true;
+  snack(posCountry.name+': its centre, within '+posCountry.r+' km. Save to keep it.');
+}
+// What the beacon carries for a choice: decimals as the radius allows.
+function posWire(p){var d=p.r===0?5:p.r<5?2:p.r<50?1:0;
+  return {pos:(+p.lat.toFixed(d))+','+(+p.lon.toFixed(d)),acc:Math.round(p.r*1000)};}
 function parsePos(s){
   var m=/^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:,(\d+(?:\.\d+)?))?$/.exec(String(s||'').replace(/\s+/g,''));
   if(!m)return null;var lat=+m[1],lon=+m[2],r=+(m[3]||0);
@@ -3402,8 +3424,12 @@ function drawAdmin(d){
       '<button class="act" onclick="posFromDevice()">Use this device&rsquo;s location</button></div>'+
       '<div class="frow"><select id="ps-r">'+[[0,'Exact'],[1,'Within 1 km'],[5,'Within 5 km'],[10,'Within 10 km'],[25,'Within 25 km']].map(function(o){
         return '<option value="'+o[0]+'"'+((pp?pp.r:5)==o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
-      '<span class="sp"></span><button class="act quiet" onclick="adminSet({page_pos:\'\'})">Remove</button>'+
-      '<button class="act primary" onclick="posSave()">Save</button></div></div>';
+      '</div><div class="frow"><span class="lead" style="min-width:180px">Or only its country</span>'+
+      '<select id="ps-country" onchange="posCountryPick(this.value)"><option value="">&mdash;</option>'+
+      countryList().map(function(c){return '<option value="'+c.code+'">'+esc(c.name)+'</option>';}).join('')+'</select>'+
+      '<span class="sp"></span><button class="act quiet" onclick="adminSet({page_pos:\'\',pos:\'\',acc:0})">Remove</button>'+
+      '<button class="act primary" onclick="posSave()">Save</button></div>'+
+      '<p class="lead">Saved, other stations hear it in this station&rsquo;s beacon, and it appears on the map of stations at xprs.dev/in/.</p></div>';
     h+='<h3>Mesh</h3><div class="card">'+
       '<p class="lead">How far away an alert, a post or a message may come from and still be kept here, shown and relayed. '+
       'Chat is a conversation; alerts and posts are a record, so they stop at the radio unless you say otherwise.</p>'+
@@ -4538,8 +4564,10 @@ function posFromDevice(){
 function posSave(){
   var lat=parseFloat(el('ps-lat').value),lon=parseFloat(el('ps-lon').value),r=+el('ps-r').value;
   if(isNaN(lat)||isNaN(lon)||lat<-90||lat>90||lon<-180||lon>180)return snack('A latitude and a longitude, please');
-  var p=snapPos(lat,lon,r);adminDirty=false;
-  adminSet({page_pos:p.lat+','+p.lon+','+p.r});
+  var p=posCountry&&+posCountry.lat===lat&&+posCountry.lon===lon?
+    {lat:posCountry.lat,lon:posCountry.lon,r:posCountry.r}:snapPos(lat,lon,r);
+  adminDirty=false;var w=posWire(p);
+  adminSet({page_pos:p.lat+','+p.lon+','+p.r,pos:w.pos,acc:w.acc});
 }
 // ---- the mesh group (docs/plan-mesh-trust.md): its roster is the trusted
 // stations. Created here, or joined by mirroring it from any member; one
