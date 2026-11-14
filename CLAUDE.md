@@ -75,6 +75,18 @@ concurrent builds freeze it). Launch the **built bundle** directly rather than
 `flutter run` — `flutter run` holds the build lock until the app quits, so a
 queued APK build waits on it.
 
+**Every APK is signed with the XPRS release key. Never uninstall to get past
+a signature mismatch.** The key exists: `~/.secrets/xprs/xprs-release.jks`
+(passwords in `xprs-release-keystore.secrets.txt` beside it) and the repo's
+`ANDROID_KEYSTORE_*` / `ANDROID_KEY_*` secrets, used by `release.yml` and
+`build-android.yml` alike (`docs/f-droid.md` §5, certificate SHA-256
+`2a4b4625…f7ec2d2`). A local build signs with it through
+`android/key.properties`. `INSTALL_FAILED_UPDATE_INCOMPATIBLE` means an APK was
+built WITHOUT that key: fix the build (or re-sign it with `apksigner` and the
+keystore), never `adb uninstall`, which wipes the person's profile, chats and
+keys on the phone. Check before installing:
+`keytool -printcert -jarfile x.apk | grep SHA256` must start `2A:4B:46:25`.
+
 Android installs need a versionCode above the installed one (`adb shell
 dumpsys package com.xprs.app | grep versionCode`), and other sessions may be
 installing to the same phone. A split APK's versionCode is `--build-number` x
