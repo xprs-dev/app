@@ -3667,7 +3667,7 @@ class WappEngine {
     final halXprsFollowKind = WasmFunction(
       (int kindPtr, int kindLen, int on) {
         if (kindLen <= 0) return -1;
-        return XprsIngest.followKind(_appId, _readStr(kindPtr, kindLen), on != 0)
+        return XprsIngest.followKind(_appId ?? "", _readStr(kindPtr, kindLen), on != 0)
             ? 0
             : -1;
       },
