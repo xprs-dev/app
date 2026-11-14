@@ -1,0 +1,4 @@
+* Updates check by themselves every 6 hours, download in the background (Wi-Fi only unless you allow mobile data) and tell you once when one is ready to install.
+* This device has its own X3 callsign, owned by your X1 profile (Settings > This device).
+* Maps: pinch and double-tap zoom.
+* Check-in: opens on where you are, "Show all" frames everything, simpler My station screen and wording.
