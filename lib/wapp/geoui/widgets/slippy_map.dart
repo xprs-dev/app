@@ -1392,6 +1392,11 @@ class _SlippyMapState extends State<SlippyMap>
         // second finger joining a pan turns it into a pinch without a jump.
         // (Pan callbacks alone saw a pinch as a drag of whichever finger
         // moved last, and the map jumped between the two.)
+        // Measured from where the fingers went DOWN, not from where the
+        // gesture won the arena: with the default (start) the spread before
+        // acceptance is lost, and a pinch from 80 px to 320 px zoomed by
+        // one and a third levels instead of two.
+        dragStartBehavior: DragStartBehavior.down,
         onScaleStart: (d) => _onScaleStart(d, w, h),
         onScaleUpdate: _onScaleUpdate,
         onScaleEnd: _onScaleEnd,
