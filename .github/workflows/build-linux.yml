@@ -53,6 +53,7 @@ jobs:
         if: matrix.arch == 'x64'
         with:
           channel: stable
+          flutter-version: 3.47.9
           cache: true
 
       # Flutter publishes no prebuilt Linux arm64 SDK, which is what the
@@ -61,7 +62,7 @@ jobs:
       - name: Flutter stable from git (arm64)
         if: matrix.arch == 'arm64'
         run: |
-          git clone -q --depth 1 -b stable https://github.com/flutter/flutter.git "$HOME/flutter"
+          git clone -q --depth 1 -b 3.47.9 https://github.com/flutter/flutter.git "$HOME/flutter"
           echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
           "$HOME/flutter/bin/flutter" --disable-analytics
           "$HOME/flutter/bin/flutter" precache --linux
