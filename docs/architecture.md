@@ -576,7 +576,7 @@ Every install holds two kinds of name, as an ESP32 station and its owner do
 
 | signed by the `X3` (facts about the machine) | signed by the `X1` (the person) |
 |---|---|
-| its observation: `serve:`, `dial:`, `room:`, `uptime:`, its place `pos:`/`acc:` | the presence beacon with `lx:` and `mail:` |
+| its observation: `hears:`, `uptime:`, its place `pos:`/`acc:` | the presence beacon with `lx:` and `mail:` |
 | its key binding (`t:identity f:X3…`), aired with the person's | identity, decoration, chat, DMs, posts, check-ins, mail |
 | the answer to `q:policy` / `q:identity` addressed to it (`s:policy owner:`) | everything else addressed to the profile |
 
@@ -586,7 +586,10 @@ with the archivers. A packet addressed to the `X3` is ours (mesh aliases), and
 the profile records the device as its own station (`XprsOwnedStations`).
 
 Not moved yet: the Reticulum transport identity, `cmd:history` and
-`cmd:file` answers, and the update mirror still run under the profile. A
+`cmd:file` answers, and the update mirror still run under the profile, so
+`serve:`, `dial:` and `room:` stay on the profile's beacon and the `X3`
+claims none (it did once, and other stations polled it for history it could
+only refuse). A command sent to the `X3` gets `code:404` at once. A
 headless server whose profile is already an `X3` is its own device and airs
 one observation, as before.
 
