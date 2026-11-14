@@ -1474,6 +1474,15 @@ function fetchKey(call,cb){
 // addressed to this callsign and no one else's. Anyone can write any callsign;
 // only the key signs.
 var sess='',canSession=false;
+/* A file by reference, as this visitor may have it: a file posted in a
+ * private room is served to its members (XPRS.md 11.2), so the session goes
+ * with the ask. */
+function fileUrl(ref){return '/api/xprs/file/'+ref+(sess?'?session='+encodeURIComponent(sess):'');}
+/* The hosted room the open conversation is, for an upload to name. */
+function fileRoom(){
+  var k=curRoom.slice(0,2),c=k==='g:'||k==='f:'?curRoom.slice(2):'';
+  return c&&hostedByCall[c]?c:'';
+}
 function ensureSession(tries){
   if(!canSession||sess||!canSign())return;
   sendIdentity();
@@ -2948,7 +2957,7 @@ function loadGallery(force){
             h+='<div class="galcard galshelf" '+open+'>'+galFolderIcon()+'<div class="galcap"><b>'+esc(galName(e.title))+'</b><span>'+galCount(t,ps)+'</span></div>'+galHeart(t,e.id)+'</div>';
           }else{
             h+='<div class="galcard" '+open+'>'+
-              (cover?'<img loading="lazy" src="/api/xprs/file/'+esc(cover.prev)+'" alt="">':galCover(e.title,galKind==='music'?'&#9835;':'&#128247;'))+
+              (cover?'<img loading="lazy" src="'+esc(fileUrl(cover.prev))+'" alt="">':galCover(e.title,galKind==='music'?'&#9835;':'&#128247;'))+
               (galKind==='gallery'?'<div class="galover"><b>'+esc(galName(e.title))+'</b><span>'+galCount(t,ps)+'</span></div>'+galHeart(t,e.id):
                '<div class="galcap"><b>'+esc(galName(e.title))+'</b><span>'+galCount(t,ps)+'</span>'+galHeart(t,e.id)+'</div>')+'</div>';
           }
@@ -2982,7 +2991,7 @@ function loadGallery(force){
       var order=ps.slice().reverse();
       for(var i=0;i<order.length;i++){var p=t.pics[order[i]],o=t.orig[p.id]||{},vid=galIsVideo(o.ref);
         h+='<div class="galcard'+(vid?' galvid':'')+'" onclick="galView(\''+p.id+'\')">'+
-          (p.prev?'<img loading="lazy" src="/api/xprs/file/'+esc(p.prev)+'" alt="'+esc(galName(p.cap))+'">':'<div class="galnone">'+fileIcon(o.ref)+'</div>')+
+          (p.prev?'<img loading="lazy" src="'+esc(fileUrl(p.prev))+'" alt="'+esc(galName(p.cap))+'">':'<div class="galnone">'+fileIcon(o.ref)+'</div>')+
           galHeart(t,p.id)+'</div>';
       }
       h+='</div>';
@@ -2990,7 +2999,7 @@ function loadGallery(force){
       h+='<div class="gallist gallist-'+galKind+'">';
       var list=galKind==='library'?ps.slice().sort(function(a,b){return galName(t.pics[a].cap).localeCompare(galName(t.pics[b].cap));}):ps;
       for(var i2=0;i2<list.length;i2++){var p2=t.pics[list[i2]],o2=t.orig[p2.id]||{},nm=galName(p2.cap)||o2.name||K.item;
-        var href=o2.ref?'/api/xprs/file/'+esc(o2.ref):'';
+        var href=o2.ref?esc(fileUrl(o2.ref)):'';
         h+='<div class="galrow" data-id="'+p2.id+'"'+(galKind==='music'?' ondblclick="galPlay(\''+p2.id+'\')"':'')+'>'+
           (galKind==='music'?'<button class="act quiet galplay" onclick="galPlay(\''+p2.id+'\')" title="Play"><span class="n">'+(i2+1)+'</span><span class="p">&#9654;</span></button>':fileIcon(o2.ref))+
           '<div class="grow galname">'+(galKind==='library'&&href&&galViewable(o2.ref)?'<a href="'+href+'" target="_blank" rel="noopener">'+esc(nm)+'</a>':'<b>'+esc(nm)+'</b>')+
@@ -3050,7 +3059,7 @@ function galPlay(id){
   galPlayerBar();
   var a=el('gal-player');
   galQueue=(t.byEvent[t.pics[id].ev]||[]).slice();
-  a.src='/api/xprs/file/'+o.ref;a.setAttribute('data-id',id);
+  a.src=fileUrl(o.ref);a.setAttribute('data-id',id);
   el('gal-now').textContent=galName(t.pics[id].cap)+' — '+galName(galEvent?galEvent.title:'');
   el('galbar-player').className='';
   try{var pr=a.play();if(pr&&pr.catch)pr.catch(function(){});}catch(e){}
@@ -3070,17 +3079,17 @@ function galView(id){
   var t=galRows,p=t&&t.pics[id];if(!p)return;
   var old=el('galbox');if(old)old.parentNode.removeChild(old);
   var order=(t.byEvent[p.ev]||[]).slice().reverse(),k=order.indexOf(id);
-  var o=t.orig[id],src='/api/xprs/file/'+(o&&o.ref?o.ref:p.prev),hr=galRoom();
+  var o=t.orig[id],src=fileUrl(o&&o.ref?o.ref:p.prev),hr=galRoom();
   var box=document.createElement('div');box.id='galbox';
   box.onclick=function(e){if(e.target===box||e.target.className==='galstage')galClose();};
-  var media=o&&o.ref&&galIsVideo(o.ref)?'<video src="'+esc(src)+'" poster="/api/xprs/file/'+esc(p.prev)+'" controls playsinline preload="metadata"></video>':
+  var media=o&&o.ref&&galIsVideo(o.ref)?'<video src="'+esc(src)+'" poster="'+esc(fileUrl(p.prev))+'" controls playsinline preload="metadata"></video>':
     '<img src="'+esc(src)+'" alt="'+esc(galName(p.cap))+'">';
   box.innerHTML='<div class="galstage">'+media+'</div>'+
     (k>0?'<button class="galnav prev" onclick="galView(\''+order[k-1]+'\')" title="Previous">&lsaquo;</button>':'')+
     (k<order.length-1?'<button class="galnav next" onclick="galView(\''+order[k+1]+'\')" title="Next">&rsaquo;</button>':'')+
     '<div class="galinfo">'+galHeart(t,id)+'<span class="grow"><b>'+esc(galName(p.cap))+'</b> <span class="dim">'+(k+1)+' of '+order.length+
     (o&&o.size?' &middot; '+esc(o.size):'')+' &middot; '+callLink(p.from)+'</span></span>'+
-    (o&&o.ref?'<a class="act quiet" href="/api/xprs/file/'+esc(o.ref)+'" download="'+esc(o.name||o.ref)+'">Download</a>':'')+
+    (o&&o.ref?'<a class="act quiet" href="'+esc(fileUrl(o.ref))+'" download="'+esc(o.name||o.ref)+'">Download</a>':'')+
     (galStaff(hr)?'<button class="act quiet" onclick="galRemove(\''+id+'\')">Delete</button>':'')+
     '<button class="act" onclick="galClose()">Close</button></div>';
   document.body.appendChild(box);
@@ -3175,7 +3184,7 @@ function galRefOf(f,ext,progress,cb){
  * makes it the station's own (a moderator's), kept and not limited. */
 function galPut(ref,blob,preview,progress,cb){
   var x=new XMLHttpRequest();
-  x.open('POST','/api/xprs/file/'+ref+'?'+(preview?'preview=1&':'')+(sess?'session='+encodeURIComponent(sess):''),true);
+  x.open('POST','/api/xprs/file/'+ref+'?'+(preview?'preview=1&':'')+(galCat?'room='+encodeURIComponent(galCat)+'&':'')+(sess?'session='+encodeURIComponent(sess):''),true);
   if(x.upload&&progress)x.upload.onprogress=function(e){if(e.lengthComputable)progress(e.loaded/e.total);};
   x.setRequestHeader('Content-Type',blob.type||'application/octet-stream');
   x.onload=function(){cb(x.status===200,replyWhy(x));};
@@ -4185,7 +4194,8 @@ function mdUpload(ref,bytes,type){
   var done=function(ok,why){mdUploading--;snack(ok?'Image stored on the station':'The station did not keep the image: '+why);};
   try{
     var x=new XMLHttpRequest();
-    x.open('POST','/api/xprs/file/'+ref,true);
+    var room=fileRoom();
+    x.open('POST','/api/xprs/file/'+ref+'?'+(room?'room='+encodeURIComponent(room)+'&':'')+(sess?'session='+encodeURIComponent(sess):''),true);
     x.timeout=120000;
     x.setRequestHeader('Content-Type',type||'application/octet-stream');
     x.onload=function(){done(x.status===200,replyWhy(x));};
@@ -4199,7 +4209,7 @@ function mdHtml(text){return mdRender(text,{img:mdImgHtml,file:mdFileHtml,mentio
 function mdImgHtml(ref,alt){
   if(!mdBlobs[ref]&&!fileCaps.get)return mdPh(ref,alt);
   return '<img class="mdimg" loading="lazy" alt="'+mdEsc(alt)+'" title="'+mdEsc(alt)+'" data-ref="'+ref+
-    '" src="'+(mdBlobs[ref]||'/api/xprs/file/'+ref)+'" onerror="mdImgFail(this)">';
+    '" src="'+(mdBlobs[ref]||fileUrl(ref))+'" onerror="mdImgFail(this)">';
 }
 function mdPh(ref,alt){
   return '<span class="mdph" data-ref="'+ref+'" data-alt="'+mdEsc(alt)+'" onclick="mdImgTry(this)">&#128444; '+
@@ -4208,10 +4218,10 @@ function mdPh(ref,alt){
 function mdImgFail(img){img.outerHTML=mdPh(img.getAttribute('data-ref'),img.getAttribute('alt'));}
 function mdImgTry(sp){
   var ref=sp.getAttribute('data-ref'),alt=sp.getAttribute('data-alt')||'';
-  sp.outerHTML='<img class="mdimg" alt="'+mdEsc(alt)+'" data-ref="'+ref+'" src="/api/xprs/file/'+ref+'" onerror="mdImgFail(this)">';
+  sp.outerHTML='<img class="mdimg" alt="'+mdEsc(alt)+'" data-ref="'+ref+'" src="'+fileUrl(ref)+'" onerror="mdImgFail(this)">';
 }
 function mdFileHtml(ref,label){
-  return '<a class="pill link" href="/api/xprs/file/'+ref+'" target="_blank" rel="noopener" download="'+mdEsc(label)+'" title="'+ref+'">&#128206; '+mdEsc(label)+'</a>';
+  return '<a class="pill link" href="'+fileUrl(ref)+'" target="_blank" rel="noopener" download="'+mdEsc(label)+'" title="'+ref+'">&#128206; '+mdEsc(label)+'</a>';
 }
 // ---- blog (XPRS.md 18): the posts the station holds, newest first --------
 // A post is a t:blog packet: published, kept, listed and read later by people
