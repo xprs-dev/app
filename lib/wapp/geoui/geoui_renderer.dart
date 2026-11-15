@@ -12,6 +12,7 @@ import '../i18n_context.dart';
 import '../../services/i18n/core_i18n.dart';
 import '../../services/i18n/format.dart';
 import 'geoui_ast.dart';
+import '../wapp_open.dart' show openNotificationTarget;
 import '../../editor/code_editor_field.dart';
 import 'widgets/icon_field.dart';
 import 'widgets/media_view.dart' show MediaThumbnail, GalleryMediaTile;
@@ -87,6 +88,14 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
 
   @override
   void dispose() {
+    // A typed value whose save was still waiting goes out now: leaving the
+    // screen is not a reason to lose it.
+    for (final apply in _applyDue.values) {
+      widget.onAction?.call(apply);
+    }
+    for (final t in _applyTimers.values) {
+      t.cancel();
+    }
     for (final c in _controllers.values) {
       c.dispose();
     }
@@ -1481,8 +1490,14 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
           ? const TextStyle(fontFamily: 'monospace', fontSize: 13)
           : null,
       controller: _controllerFor(name, val),
+      onSubmitted: (_) => _applyNow(name),
       onChanged: (v) {
         widget.bindings.setValue(name, v);
+        // `"apply": "<command>"` — the same contract as a bool's: the value
+        // is saved as it is changed, never by a separate Save button. Sent
+        // once the typing pauses, or at once when the field is left.
+        final apply = field.getString('apply');
+        if (apply != null && apply.isNotEmpty) _applyLater(name, apply);
         // `"live": true` — the wapp wants to react to every keystroke (search
         // as you type). Debounced, so a fast typist does not fire a relay
         // query per letter; the action is named "<field>_changed".
@@ -1498,6 +1513,24 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
   }
 
   Timer? _liveDebounce;
+
+  /// Text fields with an `apply` command whose save is still waiting for the
+  /// typing to pause, by field name.
+  final Map<String, Timer> _applyTimers = {};
+  final Map<String, String> _applyDue = {};
+
+  void _applyLater(String name, String apply) {
+    _applyDue[name] = apply;
+    _applyTimers[name]?.cancel();
+    _applyTimers[name] =
+        Timer(const Duration(milliseconds: 800), () => _applyNow(name));
+  }
+
+  void _applyNow(String name) {
+    _applyTimers.remove(name)?.cancel();
+    final apply = _applyDue.remove(name);
+    if (apply != null) widget.onAction?.call(apply);
+  }
 
   /// Secret fields the person has chosen to see, by name.
   final Set<String> _revealed = {};
@@ -1563,7 +1596,20 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
     // about to happen. `confirm-text` is the sentence that says it.
     final confirmText = _t(action.getString('confirm-text'));
 
+    // `"open": "<target>"` — a link to a page the HOST owns (`host:position`,
+    // the position settings) or to another wapp by folder: the place where
+    // the setting this screen depends on is changed. When the person comes
+    // back, the action's own command is sent, so the wapp re-reads whatever
+    // they changed there.
+    final open = action.getString('open') ?? '';
     final onPressed = () {
+      if (open.isNotEmpty) {
+        openNotificationTarget(open, navigator: Navigator.maybeOf(context))
+            .then((_) {
+          if (mounted) widget.onAction?.call(name);
+        });
+        return;
+      }
       if (confirm) {
         showDialog(
           context: context,

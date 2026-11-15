@@ -6814,7 +6814,16 @@ class _WappPageState extends State<WappPage>
     final icon = a.getString('icon');
     final primary = (a.getString('style') ?? '') == 'primary';
     final ico = icon != null ? Icon(geoUiResolveIcon(icon), size: 18) : null;
-    void onTap() => _sendCommand(name);
+    // `"open"`: the same link to a host page or another wapp as a button in
+    // the body (geoui_renderer `_renderAction`).
+    final open = a.getString('open') ?? '';
+    void onTap() {
+      if (open.isEmpty) return _sendCommand(name);
+      openNotificationTarget(open, navigator: Navigator.maybeOf(context))
+          .then((_) {
+        if (mounted) _sendCommand(name);
+      });
+    }
     if (primary) {
       return ico != null
           ? FilledButton.icon(onPressed: onTap, icon: ico, label: Text(label))

@@ -25,7 +25,9 @@ import 'wapp_page.dart';
 
 /// The page a host service's notification opens, keyed by its source
 /// (`host:updates`). Registered at boot, so this file needs no import of any
-/// host page.
+/// host page. A wapp button links to the same pages with
+/// `"open": "host:<name>"` (geoui_renderer `_renderAction`): `host:position`
+/// is where a wapp that needs this station's place sends the person.
 final Map<String, Widget Function()> hostNotificationPages = {};
 
 /// Whether [target] is a registered host page rather than a wapp folder.

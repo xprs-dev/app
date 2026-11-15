@@ -38,6 +38,7 @@ import 'services/task_monitor_service.dart';
 
 import 'launcher/boot_splash.dart';
 import 'launcher/launcher.dart';
+import 'launcher/position_share_card.dart' show PositionSharePage;
 import 'launcher/update_page.dart';
 import 'wapp/wapp_open.dart';
 import 'boot/core_host_app.dart';
@@ -479,6 +480,9 @@ Future<void> _boot() async {
   // tap that launched the app arrives as the initial link.
   hostNotificationPages[UpdateService.notificationSource] =
       () => const UpdatePage();
+  // A wapp that needs this station's place links straight to the switch.
+  hostNotificationPages[PositionSharePage.target] =
+      () => const PositionSharePage();
 
   // Deep links (Android): open xprs.dev/circle/<key> straight on the
   // circles "apply to join" flow. Needs the navigator live (after runApp).

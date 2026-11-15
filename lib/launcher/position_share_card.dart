@@ -2,6 +2,8 @@
 // beacon, and how coarsely. The core decides what is aired
 // (xprs_shared_position.dart); this card only records the owner's choice.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:xprs_core/src/services/xprs/xprs_shared_position.dart';
 
@@ -23,28 +25,40 @@ class PositionShareCard extends StatefulWidget {
 
 class _PositionShareCardState extends State<PositionShareCard> {
   PreferencesService? get _prefs => PreferencesService.instanceSync;
-  late final TextEditingController _fixed =
-      TextEditingController(text: _prefs?.positionFixed ?? '');
+  late final TextEditingController _fixed = TextEditingController(
+    text: _prefs?.positionFixed ?? '',
+  );
   String? _fixedError;
+  Timer? _fixedDue;
 
   @override
   void dispose() {
+    // Left before the typing paused: the value still counts.
+    if (_fixedDue?.isActive ?? false) _saveFixed();
+    _fixedDue?.cancel();
     _fixed.dispose();
     super.dispose();
   }
 
+  /// Saved as it is typed, once the typing pauses: a valid position (or an
+  /// empty field) is stored at once, and only a malformed one is pointed out.
+  void _fixedChanged(String _) {
+    _fixedDue?.cancel();
+    _fixedDue = Timer(const Duration(milliseconds: 800), _saveFixed);
+  }
+
   void _saveFixed() {
+    _fixedDue?.cancel();
     final v = _fixed.text.trim();
-    if (v.isNotEmpty && xprsParseLatLon(v) == null) {
-      setState(() => _fixedError = tr('settings.position.fixed_bad'));
-      return;
+    final bad = v.isNotEmpty && xprsParseLatLon(v) == null;
+    if (!bad && v != (_prefs?.positionFixed ?? '')) {
+      _prefs?.positionFixed = v;
+      if (_prefs?.positionShare ?? false) XprsSharedPosition.instance.refresh();
     }
-    _prefs?.positionFixed = v;
-    setState(() => _fixedError = null);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(tr('settings.position.fixed_saved')),
-      duration: const Duration(seconds: 2),
-    ));
+    if (!mounted) return;
+    setState(
+      () => _fixedError = bad ? tr('settings.position.fixed_bad') : null,
+    );
   }
 
   @override
@@ -68,8 +82,10 @@ class _PositionShareCardState extends State<PositionShareCard> {
           SwitchListTile(
             secondary: const Icon(Icons.place_outlined),
             title: Text(tr('settings.position.share')),
-            subtitle: Text(tr('settings.position.share_help'),
-                style: TextStyle(color: cs.onSurfaceVariant)),
+            subtitle: Text(
+              tr('settings.position.share_help'),
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
             value: on,
             onChanged: (v) {
               _prefs?.positionShare = v;
@@ -81,8 +97,9 @@ class _PositionShareCardState extends State<PositionShareCard> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
               child: Text(
-                tr('settings.position.radius',
-                    {'radius': positionRadiusLabel(kPositionRadiiM[idx])}),
+                tr('settings.position.radius', {
+                  'radius': positionRadiusLabel(kPositionRadiiM[idx]),
+                }),
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ),
@@ -99,39 +116,31 @@ class _PositionShareCardState extends State<PositionShareCard> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(tr('settings.position.radius_help'),
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: cs.onSurfaceVariant)),
+              child: Text(
+                tr('settings.position.radius_help'),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _fixed,
-                      keyboardType: const TextInputType.numberWithOptions(
-                          signed: true, decimal: true),
-                      decoration: InputDecoration(
-                        labelText: tr('settings.position.fixed'),
-                        hintText: '38.7077,-9.1365',
-                        helperText: tr('settings.position.fixed_help'),
-                        helperMaxLines: 3,
-                        errorText: _fixedError,
-                        border: const OutlineInputBorder(),
-                      ),
-                      onSubmitted: (_) => _saveFixed(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filledTonal(
-                    tooltip: tr('common.save'),
-                    icon: const Icon(Icons.check),
-                    onPressed: _saveFixed,
-                  ),
-                ],
+              child: TextField(
+                controller: _fixed,
+                keyboardType: const TextInputType.numberWithOptions(
+                  signed: true,
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: tr('settings.position.fixed'),
+                  hintText: '38.7077,-9.1365',
+                  helperText: tr('settings.position.fixed_help'),
+                  helperMaxLines: 3,
+                  errorText: _fixedError,
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: _fixedChanged,
+                onSubmitted: (_) => _saveFixed(),
               ),
             ),
             Padding(
@@ -143,10 +152,9 @@ class _PositionShareCardState extends State<PositionShareCard> {
                         'pos': shared.pos,
                         'radius': positionRadiusLabel(shared.acc),
                       }),
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: cs.primary),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: cs.primary),
               ),
             ),
           ],
@@ -154,4 +162,23 @@ class _PositionShareCardState extends State<PositionShareCard> {
       ),
     );
   }
+}
+
+/// The card on a page of its own: what a wapp's "Share my location" button
+/// opens (`"open": "host:position"`), so the person lands on the switch itself
+/// rather than being told where in Settings to find it.
+class PositionSharePage extends StatelessWidget {
+  const PositionSharePage({super.key});
+
+  /// The name a wapp links to.
+  static const String target = 'host:position';
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(tr('settings.privacy.title'))),
+    body: const SingleChildScrollView(
+      padding: EdgeInsets.all(16),
+      child: PositionShareCard(),
+    ),
+  );
 }

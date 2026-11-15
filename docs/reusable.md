@@ -385,6 +385,37 @@ Every tap door (Android shade via `xprs://open?wapp=<source>`, the Linux toast,
 the in-app card, the notifications page) calls `openNotificationTarget`, which
 opens the registered page or else the wapp. No Kotlin change per page.
 
+### A wapp button that opens a host settings page — `"open": "host:<name>"`
+
+**Files:** `lib/wapp/geoui/geoui_renderer.dart` (`_renderAction`),
+`lib/wapp/wapp_page.dart` (`_toolbarButton`), `lib/launcher/position_share_card.dart`
+(`PositionSharePage`, target `host:position`)
+
+A wapp that depends on a host setting links to it instead of describing where
+it is. The action names a page from the same registry as above:
+
+```json
+{"$":"action","name":"share_location","label":"Share my location","open":"host:position"}
+```
+
+The host opens the page, and sends the action's own command when the person
+comes back, so the wapp re-reads what changed. To offer another settings page
+to wapps, give it a `static const target = 'host:<name>'` and register it in
+`main.dart`. `PositionSharePage` is the pattern: the existing settings card on
+a page of its own.
+
+### Settings save as they are typed — `"apply"` on a text field
+
+**Files:** `lib/wapp/geoui/geoui_renderer.dart` (`_applyLater`, `_applyNow`),
+`lib/launcher/position_share_card.dart` (`_fixedChanged`, `_saveFixed`)
+
+No Save button. A GeoUI string field with `"apply": "<command>"` sends that
+command 800 ms after the typing pauses, on Enter, and when the screen closes
+with a change pending (bool and enum fields already applied at once). A host
+settings field does the same with a `Timer` cancelled and restarted in
+`onChanged`, flushed in `dispose`; an invalid value is pointed out and not
+stored.
+
 ### Periodic work without a poll — the update scheduler
 
 **Files:** `lib/services/update_models.dart` (`updateCheckDue`,
