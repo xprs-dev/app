@@ -54,10 +54,23 @@ class RouteField extends StatelessWidget {
             style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
       );
     }
+    // A station heard here on several radios is one card with a line per
+    // radio, not a card each.
+    final direct = [
+      for (final r in routes)
+        if ((r['hops'] as List? ?? const []).length == 1) r,
+    ];
+    final relayed = [for (final r in routes) if (!direct.contains(r)) r];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final r in routes) _route(context, r),
+        if (direct.isNotEmpty)
+          _route(context, {
+            'sure': direct.every((r) => r['sure'] != false),
+            'hops': [for (final r in direct) (r['hops'] as List).first],
+            'parallel': true,
+          }),
+        for (final r in relayed) _route(context, r),
         if (value['busy'] == true)
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -115,7 +128,7 @@ class RouteField extends StatelessWidget {
           child: Row(
             children: [
               CustomPaint(
-                size: const Size(2, 34),
+                size: const Size(2, 26),
                 painter: _Line(c, dashed: guess),
               ),
               const SizedBox(width: 14),
@@ -154,10 +167,14 @@ class RouteField extends StatelessWidget {
                   style: tt.labelSmall?.copyWith(color: cs.tertiary)),
             ),
           station(tr('geoui.route.you')),
-          for (var i = 0; i < hops.length; i++) ...[
-            link(hops[i]),
-            station('${hops[i]['to'] ?? '?'}', end: i == hops.length - 1),
-          ],
+          if (r['parallel'] == true) ...[
+            for (final h in hops) link(h),
+            station('${hops.first['to'] ?? '?'}', end: true),
+          ] else
+            for (var i = 0; i < hops.length; i++) ...[
+              link(hops[i]),
+              station('${hops[i]['to'] ?? '?'}', end: i == hops.length - 1),
+            ],
         ],
       ),
     );
