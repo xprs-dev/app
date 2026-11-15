@@ -109,6 +109,7 @@ const Map<String, String> kGatedImports = {
   'xprs_traffic': HalPermission.spool,
   'xprs_stations': HalPermission.spool,
   'xprs_station': HalPermission.spool,
+  'station_read': HalPermission.spool,
   // What this station follows by callsign decides what the spool keeps.
   'xprs_follow': HalPermission.spool,
   'xprs_follow_kind': HalPermission.spool,

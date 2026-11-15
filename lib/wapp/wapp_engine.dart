@@ -40,6 +40,8 @@ import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_fetch.dart';
 import '../services/flash/flash_service.dart';
 import '../services/xprs/xprs_monitor.dart';
+import 'package:xprs_core/src/services/station/station_browse.dart';
+import 'package:xprs_core/src/services/station/station_routes.dart';
 import 'package:xprs_core/src/services/xprs/xprs_shared_position.dart';
 import '../services/xprs/xprs_presence.dart';
 import '../services/xprs/xprs_packet.dart';
@@ -3600,6 +3602,53 @@ class WappEngine {
       },
       params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
     );
+    // hal_station_read: what another station offers through its visitor API
+    // (rooms, a room's folders, a folder's items), as the last visit learned
+    // it. Answers at once; the visit runs in the core and `core.station`
+    // says when to read again. How the station is reached is the core's.
+    final halStationRead = WasmFunction(
+      (int reqPtr, int reqLen, int outPtr, int outCap) {
+        if (outCap <= 0 || reqLen <= 0) return 0;
+        Map<String, dynamic> q;
+        try {
+          q = (jsonDecode(_readStr(reqPtr, reqLen)) as Map).cast<String, dynamic>();
+        } catch (_) {
+          return 0;
+        }
+        final call = '${q['call'] ?? ''}';
+        final get = '${q['get'] ?? 'offers'}';
+        if (call.isEmpty && get != 'list') return 0;
+        final room = '${q['room'] ?? ''}';
+        final b = StationBrowse.instance;
+        final Map<String, dynamic> a;
+        switch (get) {
+          case 'list':
+            a = b.list(
+                scope: '${q['scope'] ?? 'all'}',
+                search: '${q['search'] ?? ''}',
+                offset: q['offset'] is int ? q['offset'] as int : 0);
+          case 'offers':
+            a = b.offers(call);
+          case 'folders':
+            a = b.folders(call, room);
+          case 'items':
+            a = b.items(call, room, '${q['folder'] ?? ''}',
+                offset: q['offset'] is int ? q['offset'] as int : 0);
+          case 'ways':
+            a = StationRoutes.instance.read(call);
+          case 'forget':
+            b.forget(call);
+            a = const {'state': 'forgotten'};
+          default:
+            return 0;
+        }
+        final bytes = utf8.encode(jsonEncode(a));
+        if (bytes.length > outCap) return -bytes.length;
+        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     // hal_xprs_station: one station's facts, flat, for a wapp that is
     // looking at one station rather than at the room. Empty when the
     // monitor has not heard it this hour.
@@ -5014,6 +5063,7 @@ class WappEngine {
       WasmImport('hal', 'mesh_devices', halMeshDevices),
       WasmImport('hal', 'xprs_stations', halXprsStations),
       WasmImport('hal', 'xprs_station', halXprsStation),
+      WasmImport('hal', 'station_read', halStationRead),
       WasmImport('hal', 'xprs_position', halXprsPosition),
       WasmImport('hal', 'xprs_kind', halXprsKind),
       WasmImport('hal', 'xprs_follow', halXprsFollow),

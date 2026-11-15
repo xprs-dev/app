@@ -249,5 +249,17 @@
   "geoui.info.waiting.detail": "Esta mensagem está na caixa de saída. Será selada para que só o destinatário a possa ler, e enviada assim que chegar a chave. Os arquivadores já foram consultados.",
   "geoui.chat.menu.send_plain": "Enviar já, sem selar",
   "geoui.chat.status.key": "À espera da chave do destinatário",
-  "geoui.chat.status.expired": "Não enviada: a chave nunca chegou"
+  "geoui.chat.status.expired": "Não enviada: a chave nunca chegou",
+  "geoui.route.none": "Ainda não se conhece nenhum caminho até esta estação.",
+  "geoui.route.asking": "A perguntar às estações intermédias…",
+  "geoui.route.unknown": "estação desconhecida",
+  "geoui.route.partly_guess": "Em parte é uma suposição",
+  "geoui.route.you": "Você",
+  "geoui.route.know.heard": "ouvido aqui",
+  "geoui.route.know.asked": "confirmado por essa estação",
+  "geoui.route.know.said": "segundo essa estação",
+  "geoui.route.know.guess": "suposição: ninguém reportou este salto",
+  "geoui.route.ago_s": "há {n} s",
+  "geoui.route.ago_m": "há {n} min",
+  "geoui.route.ago_h": "há {n} h"
 }

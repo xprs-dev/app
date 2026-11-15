@@ -24,6 +24,7 @@ import 'share_app_types.dart';
 import 'web_chat_api.dart';
 import '../wapp/android_foreground_service.dart';
 import 'xprs/xprs_archive.dart';
+import 'xprs/xprs_monitor.dart';
 import 'xprs/xprs_publisher.dart';
 
 export 'share_app_types.dart';
@@ -166,6 +167,7 @@ class ShareAppService {
   /// through the API), which the bridge and digipeater carry on under the
   /// owner's policy; what it reads is the archive's undirected rows.
   WebChatApi _liveApi() => WebChatApi(
+        devices: () => XprsMonitor.instance.devicesForApi(),
         publicRows: archivePublicRows,
         held: (t) => XprsArchive.instance.countOf(types: t, undirected: true),
         receive: (w) => PacketGateway.instance.receive(

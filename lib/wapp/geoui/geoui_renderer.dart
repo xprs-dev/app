@@ -14,6 +14,8 @@ import '../../services/i18n/format.dart';
 import 'geoui_ast.dart';
 import '../wapp_open.dart' show openNotificationTarget;
 import '../../editor/code_editor_field.dart';
+import 'widgets/media_shelf_field.dart';
+import 'widgets/route_field.dart';
 import 'widgets/icon_field.dart';
 import 'widgets/media_view.dart' show MediaThumbnail, GalleryMediaTile;
 import '../../util/media_ref.dart' show MediaRef;
@@ -446,6 +448,8 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
       'stats' => _renderStatsField(fieldName),
       'details' => _renderDetailsField(fieldName, field),
       'popularity' => _renderPopularityField(fieldName),
+      'route' => RouteField(value: _jsonValue(fieldName)),
+      'media' => MediaShelfField(value: _jsonValue(fieldName)),
       'image' => _renderImageField(fieldName, label, tip, field),
       'gallery' => _renderGalleryField(fieldName, label, tip, field),
       'secret' => _renderSecretField(fieldName, label, tip, field),
@@ -483,6 +487,20 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
   /// `$type:"details"` — one thing explained field by field (details_field.dart).
   /// The wapp sets the field value (ui.field.set) to
   /// `[{title, items:[{label, value, key, mono}]}]`.
+  /// A field's value as a JSON object: what `ui.field.set` stored, decoded
+  /// already or still text. Empty when it is neither.
+  Map<String, dynamic> _jsonValue(String name) {
+    final v = widget.bindings.getValue(name);
+    if (v is Map) return v.cast<String, dynamic>();
+    if (v is String && v.startsWith('{')) {
+      try {
+        final d = jsonDecode(v);
+        if (d is Map) return d.cast<String, dynamic>();
+      } catch (_) {}
+    }
+    return const {};
+  }
+
   Widget _renderDetailsField(String name, GeoUiBlock field) {
     final stored = widget.bindings.getValue(name);
     final sections = stored is List

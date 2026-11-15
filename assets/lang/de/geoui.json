@@ -249,5 +249,17 @@
   "geoui.info.waiting.detail": "Diese Nachricht liegt im Postausgang. Sie wird so versiegelt, dass nur der Empfänger sie lesen kann, und gesendet, sobald sein Schlüssel eintrifft. Die Archivierer wurden gefragt.",
   "geoui.chat.menu.send_plain": "Jetzt unversiegelt senden",
   "geoui.chat.status.key": "Wartet auf den Schlüssel des Empfängers",
-  "geoui.chat.status.expired": "Nicht gesendet: der Schlüssel kam nie an"
+  "geoui.chat.status.expired": "Nicht gesendet: der Schlüssel kam nie an",
+  "geoui.route.none": "Noch kein Weg zu dieser Station bekannt.",
+  "geoui.route.asking": "Die Stationen dazwischen werden gefragt…",
+  "geoui.route.unknown": "unbekannte Station",
+  "geoui.route.partly_guess": "Teilweise vermutet",
+  "geoui.route.you": "Du",
+  "geoui.route.know.heard": "hier gehört",
+  "geoui.route.know.asked": "von dieser Station bestätigt",
+  "geoui.route.know.said": "laut dieser Station",
+  "geoui.route.know.guess": "vermutet: niemand hat diesen Abschnitt gemeldet",
+  "geoui.route.ago_s": "vor {n} s",
+  "geoui.route.ago_m": "vor {n} min",
+  "geoui.route.ago_h": "vor {n} h"
 }

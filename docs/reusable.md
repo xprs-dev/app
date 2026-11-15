@@ -404,6 +404,37 @@ to wapps, give it a `static const target = 'host:<name>'` and register it in
 `main.dart`. `PositionSharePage` is the pattern: the existing settings card on
 a page of its own.
 
+### Browsing another station from a wapp — `hal_station_read`
+
+**Files:** `lib/wapp/wapp_engine.dart` (`halStationRead`), core
+`services/station/` (`StationBrowse`, `StationRoutes`, `StationVisits`,
+`StationVisit`; see `../core/docs/reusable.md`), `../apps/mesh/browse.c`
+
+One HAL call reads what another station offers through its visitor API
+(spec/API-HTTP.md), the same rooms, galleries, music and files its web page
+shows, as this profile: `get:"list"` (the stations by scope and page),
+`"offers"` (rooms), `"folders"`, `"items"`, `"ways"` (how a message gets
+there, hop by hop). It answers at once from what the last visit learned and
+`core.station` says when to read again; the wapp never names a bearer or a
+transport. Files come back as media tokens, fetched by the ordinary media
+door (`MediaFetch` knows which station listed them). `browse.c` in the Mesh
+wapp is the pattern for a paged list and a drill-down built on it.
+
+### Showing a route and showing files — `$type:"route"`, `$type:"media"`
+
+**Files:** `lib/wapp/geoui/widgets/route_field.dart` (`RouteField`),
+`lib/wapp/geoui/widgets/media_shelf_field.dart` (`MediaShelfField`)
+
+Two GeoUI field types any wapp can use, set with `ui.field.set`:
+
+- `route`: `{"routes":[{"sure":bool,"hops":[{"from","to","bearer","know":
+  "heard|asked|said|guess","age_s","rssi"}]}]}`, drawn station, bearer,
+  station. A `guess` hop is dashed and labelled; the widget decides nothing.
+  On a people screen it is drawn above the list (`wapp_page.dart`).
+- `media`: `{"layout":"grid|list","items":[{"token","preview","title",
+  "subtitle"}]}`. A grid of pictures or a list of named files; every tile is
+  a `MediaThumbnail`, so fetching, progress and the viewer are the shared ones.
+
 ### Settings save as they are typed — `"apply"` on a text field
 
 **Files:** `lib/wapp/geoui/geoui_renderer.dart` (`_applyLater`, `_applyNow`),

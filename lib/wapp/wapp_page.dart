@@ -36,6 +36,7 @@ import 'geoui/geoui_parser.dart';
 import 'geoui/geoui_renderer.dart';
 import 'geoui/avatar_image.dart';
 import '../editor/code_editor_field.dart';
+import 'geoui/widgets/route_field.dart';
 import 'geoui/widgets/log_view_field.dart';
 import 'geoui/widgets/stats_grid_field.dart';
 import 'geoui/widgets/chat_palette.dart';
@@ -6678,6 +6679,24 @@ class _WappPageState extends State<WappPage>
                   _fieldValues['${f.name!}_id'] = id;
                   _sendCommand('${f.name!}_tap');
                 },
+              ),
+            ),
+        // And a `$type:"route"` field: how the station this list is about is
+        // reached, over the list of what it offers.
+        for (final f in screen.children.where((c) =>
+            c.keyword == 'field' && c.type == 'route' && (c.name ?? '').isNotEmpty))
+          if (_fieldValues[f.name!] is Map)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+              // Several ways can be long: the list under it keeps its room.
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.42),
+                child: SingleChildScrollView(
+                  child: RouteField(
+                      value: (_fieldValues[f.name!] as Map)
+                          .cast<String, dynamic>()),
+                ),
               ),
             ),
         for (final f in switchFields)

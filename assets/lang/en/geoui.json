@@ -249,5 +249,17 @@
   "geoui.info.waiting.detail": "This message is in the outbox. It will be sealed so only the recipient can read it, and sent the moment their key arrives. The archivers have been asked for it.",
   "geoui.chat.menu.send_plain": "Send now, unsealed",
   "geoui.chat.status.key": "Waiting for the recipient's key",
-  "geoui.chat.status.expired": "Not sent: the key never arrived"
+  "geoui.chat.status.expired": "Not sent: the key never arrived",
+  "geoui.route.none": "No way to this station is known yet.",
+  "geoui.route.asking": "Asking the stations in between…",
+  "geoui.route.unknown": "unknown station",
+  "geoui.route.partly_guess": "Partly a guess",
+  "geoui.route.you": "You",
+  "geoui.route.know.heard": "heard here",
+  "geoui.route.know.asked": "confirmed by that station",
+  "geoui.route.know.said": "as that station says",
+  "geoui.route.know.guess": "a guess: nobody reported this hop",
+  "geoui.route.ago_s": "{n} s ago",
+  "geoui.route.ago_m": "{n} min ago",
+  "geoui.route.ago_h": "{n} h ago"
 }

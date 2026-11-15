@@ -349,6 +349,22 @@ class FunctionalityRegistry {
           [],
           ReturnDef('int', 'Bytes written, negated required size if too small')),
       EndpointDef(
+          'hal_station_read',
+          'What another station offers through its visitor API, as the last '
+          'visit learned it; answers at once and core.station says when to '
+          'read again. Request {call, get:"offers"|"folders"|"items"|"ways"|"forget", '
+          'room?, folder?, offset?}. Every answer carries state '
+          '(loading|ready|failed), busy and why?. offers: {serve, tabs, known, '
+          'rooms:[{call,name,about,kind,private,role,can_post,members}]}; '
+          'folders: {folders:[{id,title,count,cover}]}; items: {total, offset, '
+          'items:[{id,caption,name,size,from,ts,likes,liked,preview,file}]}, '
+          'preview/file/cover being media tokens for hal_media_fetch; '
+          'get:"ways" (a diagnostic, nothing to decide from): {self, busy, '
+          'routes:[{sure, hops:[{from,to,bearer,reach,know:heard|asked|said|'
+          'guess,age_s?,rssi?}]}]}',
+          [ParamDef('request', 'string', 'the JSON request')],
+          ReturnDef('int', 'Bytes written, 0 on a bad request, negated required size if too small')),
+      EndpointDef(
           'hal_xprs_station',
           'One station heard this hour, flat: {call,kind,bearer,bearers,rssi,'
           'lastMs,agoMs,lastDirectMs,packets,peers?,mail?,uptime?,lifetime?,'

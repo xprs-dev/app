@@ -249,5 +249,17 @@
   "geoui.info.waiting.detail": "Ce message est dans la boîte d’envoi. Il sera scellé pour que seul le destinataire puisse le lire, et envoyé dès que sa clé arrivera. Les archiveurs ont été interrogés.",
   "geoui.chat.menu.send_plain": "Envoyer maintenant, non scellé",
   "geoui.chat.status.key": "En attente de la clé du destinataire",
-  "geoui.chat.status.expired": "Non envoyé : la clé n’est jamais arrivée"
+  "geoui.chat.status.expired": "Non envoyé : la clé n’est jamais arrivée",
+  "geoui.route.none": "Aucun chemin vers cette station n'est encore connu.",
+  "geoui.route.asking": "Les stations intermédiaires sont interrogées…",
+  "geoui.route.unknown": "station inconnue",
+  "geoui.route.partly_guess": "En partie une supposition",
+  "geoui.route.you": "Vous",
+  "geoui.route.know.heard": "entendu ici",
+  "geoui.route.know.asked": "confirmé par cette station",
+  "geoui.route.know.said": "d'après cette station",
+  "geoui.route.know.guess": "supposition : personne n'a signalé ce saut",
+  "geoui.route.ago_s": "il y a {n} s",
+  "geoui.route.ago_m": "il y a {n} min",
+  "geoui.route.ago_h": "il y a {n} h"
 }
