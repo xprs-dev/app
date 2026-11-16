@@ -297,6 +297,10 @@ class ConversationStore {
     blockedFrom
       ..clear()
       ..addAll(next);
+    // And every heart's count, which leaves the blocked out.
+    for (final mid in reactions.keys.toList()) {
+      _applyReaction(mid);
+    }
     for (final e in items.entries) {
       final vis = _visible(messagesOf(e.key));
       if (vis.isEmpty) {
@@ -753,7 +757,10 @@ class ConversationStore {
   void _applyReaction(String mid) {
     final r = reactions[mid];
     if (r == null) return;
-    final count = (r['likers'] as List).length;
+    // A blocked person's heart is not counted, as their words are not shown.
+    final count = (r['likers'] as List)
+        .where((who) => !blockedFrom.contains(who.toString()))
+        .length;
     final mine = r['mine'] == true;
     for (final it in items.values) {
       for (final m in it.messages) {

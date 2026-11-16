@@ -38,6 +38,19 @@ void main() {
     expect(m['liked'], isNot(true)); // theirs, not ours
   });
 
+  test("a blocked person's heart is not counted, and comes back unblocked", () {
+    store.react({'mid': 'aa11', 'from': 'X1A33T'});
+    store.react({'mid': 'aa11', 'from': 'X1SPAM'});
+    int likes() => store.items.values
+        .expand((it) => it.messages)
+        .firstWhere((m) => m['mid'] == 'aa11')['likes'] as int;
+    expect(likes(), 2);
+    store.setBlocked(['X1SPAM']);
+    expect(likes(), 1);
+    store.setBlocked(const []);
+    expect(likes(), 2);
+  });
+
   test('our own vote is not reported back to us', () {
     expect(store.react({'mid': 'aa11', 'from': 'me', 'mine': true}), isNull);
     expect(store.items['c']!.messages.first['liked'], true);

@@ -1558,7 +1558,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
             if (widget.onDirectMessage != null && !outgoing && from.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.alternate_email),
-                title: Text(tr('geoui.chat.menu.dm', {'from': from})),
+                title: Text(tr('geoui.chat.menu.dm', {'from': ChatViewField.senderLabel(from)})),
                 onTap: () {
                   Navigator.pop(sheet);
                   widget.onDirectMessage!(from);
@@ -1568,7 +1568,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
             if (widget.onBlock != null && !outgoing && from.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.block, color: Colors.red),
-                title: Text(tr('geoui.chat.menu.block', {'from': from}),
+                title: Text(tr('geoui.chat.menu.block', {'from': ChatViewField.senderLabel(from)}),
                     style: const TextStyle(color: Colors.red)),
                 onTap: () {
                   Navigator.pop(sheet);
