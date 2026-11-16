@@ -40,6 +40,7 @@ import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_fetch.dart';
 import '../services/flash/flash_service.dart';
 import '../services/xprs/xprs_monitor.dart';
+import '../services/xprs/xprs_profiles.dart';
 import 'package:xprs_core/src/services/receive/core_state.dart';
 import 'package:xprs_core/src/services/station/station_browse.dart';
 import 'package:xprs_core/src/services/station/station_host.dart';
@@ -4381,12 +4382,25 @@ class WappEngine {
         // Not `npubFor`: a member keeps the group's public key too, and was
         // listed here as the admin.
         final weHoldKey = XprsGroupKeys.instance.holdsKey(g);
-        if (weHoldKey && me.isNotEmpty && !out.any((m) => m['call'] == me)) {
+        if (weHoldKey && me.isNotEmpty) {
+          // Holding the key IS being the admin (26.1); the self-grant at
+          // creation only made us a member on the record, which is what the
+          // panel showed for the one person who runs the group.
+          out.removeWhere((m) => m['call'] == me);
           out.insert(0, {'call': me, 'role': 'admin', 'state': 'member'});
         }
         for (final k in r.offers.keys) {
           if (!out.any((m) => m['call'] == k)) {
             out.add({'call': k, 'role': 'invited', 'state': 'invited'});
+          }
+        }
+        // The name each person gave themselves (their verified t:identity),
+        // so the panel reads "Bea (X13SUZ)". One keyed read per callsign,
+        // cached after; a very large roster stays callsign-only.
+        if (out.length <= 300) {
+          for (final m in out) {
+            final n = XprsProfiles.instance.nickFor(m['call']!);
+            if (n != null && n.isNotEmpty) m['nick'] = n;
           }
         }
         final bytes = utf8.encode(jsonEncode(out));

@@ -4491,6 +4491,9 @@ class _WappPageState extends State<WappPage>
     // no reachable answer but Cancel. A wapp naming its own label still wins.
     final confirmLabel =
         (data['confirm'] ?? (input != null ? 'OK' : '')).toString();
+    // And the other answer's words, when "Cancel" is not what it means (an
+    // invitation is put off, not cancelled).
+    final cancelLabel = (data['cancel'] ?? '').toString();
     // Optional boolean toggle (e.g. a Local/Global scope switch). Generic: the
     // wapp gets its state back as prompt_toggle.
     final toggle = data['toggle'] as Map?;
@@ -4740,7 +4743,7 @@ class _WappPageState extends State<WappPage>
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: Text(tr('common.cancel')),
+                child: Text(cancelLabel.isNotEmpty ? cancelLabel : tr('common.cancel')),
               ),
               if (confirmLabel.isNotEmpty)
                 FilledButton(

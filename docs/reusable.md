@@ -801,7 +801,9 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   one place: the "Show on map" of any list.
 - **`ui.prompt` with `copy`** — a sheet with a Copy button: coordinates to
   paste into a navigation app, a file token, a link. `chips` add choices that
-  come back as a `prompt` command (`prompt_id`, `prompt_value`).
+  come back as a `prompt` command (`prompt_id`, `prompt_value`). `confirm`
+  and `cancel` name the two buttons when "OK" and "Cancel" are not what they
+  mean (an invitation is "Join" / "Not now").
 - **`lib/wapp/geoui/tile_recolor.dart`** — `recolorDark(rgba)` repaints an
   OpenStreetMap-carto raster tile in the Protomaps "dark" palette (hue picks
   water/park/sand/road, a luminance ramp maps the rest). Pure Dart on an RGBA
@@ -826,6 +828,11 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   `hal_xprs_send` / `hal_xprs_message` / `hal_media_fetch`, a station list and
   an archive answer, and a switchable callsign so one process plays both ends
   of an exchange. A start for any wapp test that needs storage and two sides.
+- **`apps/hal/people_finder.h`** — the "find a callsign" picker every wapp
+  includes (`pf_render`, `pf_pick`). A person's own name leads each row
+  ("Bea (X13SUZ)") and a search matches it. `pf_hide_groups` drops X5 groups;
+  `pf_people_only` keeps only people (`kind:user`), for a picker whose choice
+  must sign something itself, such as an invitation to a closed group.
 - **`apps/checkin/ci.c`** — an operator command and its signed `t:result`
   as packets: build an ask, decide on an `xprs.command` row (signature verdict,
   `inRange`, freshness, rules), build a result whose optional fields go in
