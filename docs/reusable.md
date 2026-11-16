@@ -828,6 +828,10 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   `hal_xprs_send` / `hal_xprs_message` / `hal_media_fetch`, a station list and
   an archive answer, and a switchable callsign so one process plays both ends
   of an exchange. A start for any wapp test that needs storage and two sides.
+- **`ChatViewField.nameOf` / `senderLabel(call)`** (`lib/wapp/geoui/widgets/
+  chat_view_field.dart`) — the name a sender gave themselves, "Bea (X13SUZ)";
+  set once by the wapp page from `XprsProfiles`. The rooms list uses it for
+  its "CALL: text" previews.
 - **`apps/hal/people_finder.h`** — the "find a callsign" picker every wapp
   includes (`pf_render`, `pf_pick`). A person's own name leads each row
   ("Bea (X13SUZ)") and a search matches it. `pf_hide_groups` drops X5 groups;

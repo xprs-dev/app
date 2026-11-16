@@ -66,6 +66,17 @@ Color viaTagColor(String s) {
 }
 
 class ChatViewField extends StatefulWidget {
+  /// The name a sender gave themselves (their verified `t:identity`), set by
+  /// the host: a bubble reads "Bea (X13SUZ)" rather than the callsign alone.
+  /// Null, or a null answer, keeps the callsign.
+  static String? Function(String call)? nameOf;
+
+  /// What a bubble calls [from].
+  static String senderLabel(String from) {
+    final n = from.isEmpty ? null : nameOf?.call(from);
+    return (n == null || n.isEmpty) ? from : '$n ($from)';
+  }
+
   final String fieldName;
   final String label;
   final String? tip;
@@ -958,7 +969,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
                 Row(children: [
                   if (from.isNotEmpty)
                     Flexible(
-                      child: Text(from,
+                      child: Text(ChatViewField.senderLabel(from),
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                               color: ChatPalette.accent,
@@ -1263,7 +1274,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
                             : () => widget.onSenderTap!(from),
                         borderRadius: BorderRadius.circular(4),
                         child: Text(
-                          from,
+                          ChatViewField.senderLabel(from),
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                               color: ChatPalette.senderColor(from),

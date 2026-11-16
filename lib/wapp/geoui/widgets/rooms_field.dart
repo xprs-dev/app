@@ -339,6 +339,12 @@ class _RoomsFieldState extends State<RoomsField> {
     var sub = lastMsg.isNotEmpty
         ? lastMsg
         : (item?.subtitle.isNotEmpty ?? false ? item!.subtitle : '');
+    // "X13SUZ: text" reads "Bea: text" once the sender has named themselves.
+    final lead = RegExp(r'^([A-Z0-9][A-Z0-9/-]{2,15}): ').firstMatch(sub);
+    if (lead != null) {
+      final n = ChatViewField.nameOf?.call(lead.group(1)!);
+      if (n != null && n.isNotEmpty) sub = '$n: ${sub.substring(lead.end)}';
+    }
     if (sub.isEmpty && people > 0) {
       sub = trn('geoui.rooms.people_seen', people);
     }

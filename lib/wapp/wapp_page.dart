@@ -1058,6 +1058,8 @@ class _WappPageState extends State<WappPage>
   @override
   void initState() {
     super.initState();
+    // A bubble names its sender as they named themselves (t:identity).
+    ChatViewField.nameOf ??= (c) => XprsProfiles.instance.nickFor(c);
     WidgetsBinding.instance.addObserver(this);
     // Restore the selected feed tab SYNCHRONOUSLY, before the first build, so
     // ActivityFeed seeds its filter from the right value. If we waited for the
