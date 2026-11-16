@@ -2360,6 +2360,13 @@ class _WappPageState extends State<WappPage>
         } else if (type == 'ui.convo.remove') {
           final field = data['field'] as String? ?? 'conversations';
           _convStore(field).remove(data);
+          // A whole conversation gone (no `key`: not one message) while it is
+          // on screen, as when the person leaves a group: back to the list,
+          // not an empty pane titled with the conversation's internal id.
+          final key = data['key'] as String?;
+          if ((key == null || key.isEmpty) && data['id'] == _convOpenId) {
+            _convOpenId = null;
+          }
           changed = true;
         } else if (type == 'ui.convo.react') {
           final field = data['field'] as String? ?? 'conversations';
