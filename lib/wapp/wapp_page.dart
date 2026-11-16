@@ -2766,6 +2766,13 @@ class _WappPageState extends State<WappPage>
           // Share a folder (or one file) from this phone as its own station:
           // the person picks, the core files it in the room of that kind.
           unawaited(_handleStationShare(data));
+        } else if (type == 'station.manage') {
+          // The owner changes a room of this phone: who sees it, a person
+          // added or removed, or the share ended. The core does it and says
+          // so on `core.station`.
+          unawaited(StationShare.instance.manage(
+              '${data['room'] ?? ''}', '${data['action'] ?? ''}',
+              member: '${data['member'] ?? ''}'));
         } else if (type == 'qr.scan') {
           // Open the camera QR scanner and deliver the decoded text back as
           // qr.scanned {text}. Android only — desktop has no easy webcam grab.
