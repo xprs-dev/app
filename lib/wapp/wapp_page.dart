@@ -2364,8 +2364,10 @@ class _WappPageState extends State<WappPage>
           // on screen, as when the person leaves a group: back to the list,
           // not an empty pane titled with the conversation's internal id.
           final key = data['key'] as String?;
-          if ((key == null || key.isEmpty) && data['id'] == _convOpenId) {
-            _convOpenId = null;
+          if (key == null || key.isEmpty) {
+            if (data['id'] == _convOpenId) _convOpenId = null;
+            // The rooms layout (Chat) keeps its own focus.
+            if (data['id'] == _roomsOpenId) _roomsOpenId = null;
           }
           changed = true;
         } else if (type == 'ui.convo.react') {
