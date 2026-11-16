@@ -186,6 +186,47 @@ void main() {
           reason: 'two tiers is the whole hierarchy (26.3)');
     });
 
+    // 10.3 as amended: a moderator lets people in (somebody who asked to
+    // join), but appointing stays the admin's.
+    void appointMod(String who, String at, String acceptAt) {
+      final ap = _act(g, at, 'grant:$who role:mod');
+      m.offer(ap, nowMs: now);
+      m.offer(_accept(who, acceptAt, xprsIdentifier(ap), role: 'mod'),
+          nowMs: now);
+    }
+
+    test('a moderator may grant membership, which the person accepts', () {
+      appointMod('X32DVA', '2026-08-08_10:00:00', '2026-08-08_10:30:00');
+      final gr = _act('X32DVA', '2026-08-09_10:00:00', 'grant:X1PZ4Q');
+      m.offer(gr, nowMs: now);
+      expect(m.mayPost(g, 'X1PZ4Q', nowMs: now), isFalse,
+          reason: 'an offer, not membership (26.3.1)');
+      m.offer(_accept('X1PZ4Q', '2026-08-09_10:30:00', xprsIdentifier(gr)),
+          nowMs: now);
+      expect(m.mayPost(g, 'X1PZ4Q', nowMs: now), isTrue);
+    });
+
+    test('a moderator may not appoint another moderator', () {
+      appointMod('X32DVA', '2026-08-08_10:00:00', '2026-08-08_10:30:00');
+      final gr = _act('X32DVA', '2026-08-09_10:00:00', 'grant:X1PZ4Q role:mod');
+      m.offer(gr, nowMs: now);
+      m.offer(
+          _accept('X1PZ4Q', '2026-08-09_10:30:00', xprsIdentifier(gr),
+              role: 'mod'),
+          nowMs: now);
+      expect(m.rosterOf(g, nowMs: now).roles['X1PZ4Q'],
+          isNot(XprsRole.mod));
+      expect(m.mayPost(g, 'X1PZ4Q', nowMs: now), isFalse);
+    });
+
+    test("a moderator's grant cannot demote another moderator", () {
+      appointMod('X32DVA', '2026-08-08_10:00:00', '2026-08-08_10:30:00');
+      appointMod('X1OTHR', '2026-08-08_11:00:00', '2026-08-08_11:30:00');
+      m.offer(_act('X32DVA', '2026-08-09_10:00:00', 'grant:X1OTHR'),
+          nowMs: now);
+      expect(m.rosterOf(g, nowMs: now).roles['X1OTHR'], XprsRole.mod);
+    });
+
     test('a stranger may do nothing', () {
       final gr = _act(g, '2026-08-08_10:00:00', 'grant:X1RD89');
       m.offer(gr, nowMs: now);

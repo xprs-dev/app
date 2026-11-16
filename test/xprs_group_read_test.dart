@@ -86,7 +86,10 @@ void main() {
       ..init('${tmp.path}/r.zx')
       ..self = (() => admin)
       ..keyOf = ((c) => keys[c])
-      ..air = ((w) async => aired.add(w));
+      ..air = ((w) async => aired.add(w))
+      ..autoTend = false;
+    // Family is private: these tests are about its reading keys.
+    XprsGroupRead.instance.setPrivate(g, true);
   });
 
   tearDown(() {
@@ -207,6 +210,56 @@ void main() {
     rows.clear();
     WappDelivery.instance.deliverPacket(post, bearer: 'lan', forUs: false);
     expect(rows.where((r) => r['content'] != null), isEmpty);
+  });
+
+  // 10.7.1: a group is public until its admin says otherwise. Members are
+  // told so with `nsec:-`; making it private hands out a key; public again
+  // tells them `nsec:-` once more.
+  test('public by default, private on the switch, public again', () async {
+    XprsGroupRead.instance.close();
+    XprsGroupRead.instance.init('${tmp.path}/pub.zx');
+    XprsGroupRead.instance.autoTend = false;
+    final fresh = XprsGroupKeys.instance.create(nick: 'Choir')!;
+    final c = fresh.callsign;
+    final cd = XprsGroupKeys.instance.scalarFor(c)!;
+    keys[c] = NostrCrypto.decodeNpub(fresh.npub);
+    final grant = xprsSign(
+        XprsPacket.parse('t:moderate f:$c d:$c ts:${at(100)} grant:X1BEA')!, cd);
+    XprsGroups.instance.offer(grant);
+    XprsGroups.instance.offer(xprsSign(
+        XprsPacket.parse('t:moderate f:X1BEA d:$c ts:${at(90)} '
+            'r:${xprsIdentifier(grant)} accept:member')!,
+        bea.d));
+    String read(String wire) => xprsReadBody(XprsPacket.parse(wire)!,
+                ownKey: bea.d, senderKeyHex: keys[c])
+            .clear ??
+        '';
+    List<String> toBea() =>
+        aired.where((w) => w.startsWith('t:message f:$c d:X1BEA ')).toList();
+
+    expect(XprsGroupRead.instance.isPublic(c), isTrue);
+    await XprsGroupRead.instance.tend();
+    expect(toBea().map(read), ['nsec:-']);
+    expect(XprsGroupRead.instance.currentPubHex(c), isNull);
+
+    aired.clear();
+    expect(XprsGroupRead.instance.setPrivate(c, true), isTrue);
+    await XprsGroupRead.instance.tend();
+    expect(read(toBea().single), startsWith('nsec:nsec1'));
+    expect(XprsGroupRead.instance.currentPubHex(c), isNotNull);
+
+    aired.clear();
+    XprsGroupRead.instance.setPrivate(c, false);
+    await XprsGroupRead.instance.tend();
+    expect(toBea().map(read), ['nsec:-']);
+  });
+
+  test('a member told nsec:- knows the group is public', () {
+    expect(XprsGroupRead.instance.takeKeyMessage(g, 'nsec:-'), isTrue);
+    expect(XprsGroupRead.instance.isPublic(g), isTrue);
+    final kp = NostrCrypto.generateKeyPair();
+    XprsGroupRead.instance.takeKeyMessage(g, 'nsec:${kp.nsec}');
+    expect(XprsGroupRead.instance.isPublic(g), isFalse);
   });
 
   test('a key message is taken only from a group, and only as nsec:', () {

@@ -10,6 +10,7 @@ import 'dart:typed_data';
 import 'package:reticulum/reticulum.dart' show XprsCrypto;
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_gossip.dart';
+import 'package:xprs/services/xprs/xprs_group_read.dart';
 import 'package:xprs/services/xprs/xprs_groups.dart';
 import 'package:xprs/util/nostr_crypto.dart';
 import 'package:hex/hex.dart';
@@ -223,6 +224,23 @@ void main() {
     test('somebody outside the group does not', () {
       fakeAsync((async) {
         expect(replayed(async, 'X1EVE'), isEmpty);
+      });
+    });
+
+    // 10.7.1: a public group is read by anyone, so a member serves its talk
+    // to whoever asks; a private one still goes to members only.
+    test('a public group is served to anybody', () {
+      final tmpR = Directory.systemTemp.createTempSync('xprsread');
+      addTearDown(() {
+        XprsGroupRead.instance.close();
+        tmpR.deleteSync(recursive: true);
+      });
+      XprsGroupRead.instance
+        ..init('${tmpR.path}/r.zx')
+        ..autoTend = false;
+      XprsGroupRead.instance.takeKeyMessage(g, 'nsec:-');
+      fakeAsync((async) {
+        expect(replayed(async, 'X1EVE').single, contains('m:lunch on sunday'));
       });
     });
   });

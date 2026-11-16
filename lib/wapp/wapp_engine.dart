@@ -34,6 +34,7 @@ import '../services/social/node_role_api.dart';
 import '../services/mesh/mesh_carry_broker.dart';
 import '../services/mesh/mesh_service.dart';
 import '../services/xprs/xprs_group_keys.dart';
+import '../services/xprs/xprs_group_read.dart';
 import '../services/xprs/xprs_group_ops.dart';
 import '../services/xprs/xprs_groups.dart';
 import '../services/xprs/xprs_archive.dart';
@@ -4055,8 +4056,12 @@ class WappEngine {
         // message in its outbox while the recipient's key is unknown, rather
         // than refuse it (return 4, a held id in [idOut]; XprsKeyWait). A wapp
         // written before bit 1 passes 0 or 1 and is answered exactly as before.
+        // Bit 2 (4): a message to a closed group ASKING TO JOIN (10.3), sent
+        // by somebody who is not a member yet.
         final r = XprsSend.instance.message(to, text,
-            private: (want & 1) != 0, holdForKey: (want & 2) != 0);
+            private: (want & 1) != 0,
+            holdForKey: (want & 2) != 0,
+            joinRequest: (want & 4) != 0);
         if (r.ok && idCap > 0) {
           _writeBytes(idOut, idCap,
               Uint8List.fromList(utf8.encode(r.id)));
@@ -4341,6 +4346,8 @@ class WappEngine {
                 .length,
             'candidates': r.offers.length,
             'verified': r.verified,
+            // 10.7.1: anyone reads a public group; a private one is sealed.
+            'public': XprsGroupRead.instance.isPublic(c),
             if (tree[c] != null) 'parent': tree[c],
           });
         }
@@ -4493,6 +4500,19 @@ class WappEngine {
         }
       },
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_private(group, on): the admin makes a group private
+    // (on=1: sealed with a reading key, members read) or public (on=0: anyone
+    // reads, members post), XPRS.md 10.7.1. 0 = done, -1 = not the admin.
+    final halXprsGroupPrivate = WasmFunction(
+      (int gPtr, int gLen, int on) {
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        if (g.isEmpty) return -1;
+        return XprsGroupRead.instance.setPrivate(g, on != 0) ? 0 : -1;
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
     // hal_xprs_group_leave(group): this station leaves a closed group
@@ -5157,6 +5177,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_group_invite', halXprsGroupInvite),
       WasmImport('hal', 'xprs_group_remove', halXprsGroupRemove),
       WasmImport('hal', 'xprs_group_leave', halXprsGroupLeave),
+      WasmImport('hal', 'xprs_group_private', halXprsGroupPrivate),
       WasmImport('hal', 'xprs_group_moderation', halXprsGroupModeration),
       WasmImport('hal', 'xprs_group_role_at', halXprsGroupRoleAt),
       WasmImport('hal', 'xprs_group_moderate', halXprsGroupModerate),

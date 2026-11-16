@@ -484,6 +484,16 @@ class FunctionalityRegistry {
           ],
           ReturnDef('int', '0 removed, -1 refused (not the admin)')),
       EndpointDef(
+          'hal_xprs_group_private',
+          'Make a closed group private (sealed with a reading key; members '
+          'read) or public (anyone reads; members post), XPRS \u00a710.7.1. '
+          'Only the admin',
+          [
+            ParamDef('group', 'string', 'The group, "X5..." or "#X5..."'),
+            ParamDef('on', 'int', '1 private, 0 public'),
+          ],
+          ReturnDef('int', '0 done, -1 refused (not the admin)')),
+      EndpointDef(
           'hal_xprs_group_leave',
           'Leave a closed group (XPRS \u00a726.3.1, leave:group), signed with '
           'this station\'s own key: the member\'s own decision, on the record',
