@@ -21,6 +21,11 @@ import 'package:xprs/services/xprs/xprs_publisher.dart';
 import 'package:xprs/services/xprs/xprs_monitor.dart';
 import 'package:xprs/services/xprs/xprs_id.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
+import 'dart:typed_data';
+import 'package:hex/hex.dart';
+import 'package:xprs/services/xprs/xprs_groups.dart';
+import 'package:xprs/services/xprs/xprs_sig.dart';
+import 'package:xprs/util/nostr_crypto.dart';
 
 /// A short-range bearer that is up. Without one the poller correctly refuses
 /// to ask anything at all, and every test below would pass for the wrong
@@ -428,6 +433,74 @@ void main() {
     expect(st['station'], 'X3SUPR');
     expect(st['target'], XprsCatchup.backfillMessages);
     expect(st['days'], XprsCatchup.backfillWindow.inDays);
+  });
+
+  // ── A closed group we belong to (26.4) ─────────────────────────────────
+  //
+  // A member who joined late, or was away, reads what was said from the other
+  // members: the group is fetched like a followed station, its talk and acts.
+  group('a group we are in', () {
+    const g = 'X5FAM1';
+    const archiver = 'X3ARK';
+    final keys = <String, ({BigInt d, Uint8List pub})>{};
+    ({BigInt d, Uint8List pub}) keyFor(String c) => keys.putIfAbsent(c, () {
+          final kp = NostrCrypto.generateKeyPair();
+          var d = BigInt.zero;
+          for (final b in HEX.decode(kp.privateKeyHex)) {
+            d = (d << 8) | BigInt.from(b);
+          }
+          return (d: d, pub: Uint8List.fromList(HEX.decode(kp.publicKeyHex)));
+        });
+
+    setUp(() {
+      PreferencesService.instanceSync!.xprsNamedArchivers = const [archiver];
+      final groups = XprsGroups.instance..clear();
+      groups.keyResolver = (c) => keyFor(c).pub;
+      final t = xprsNowTs(now - 60000);
+      final grant = xprsSign(
+          XprsPacket.parse('t:moderate f:$g d:$g ts:$t grant:$_self')!,
+          keyFor(g).d);
+      groups.offer(grant, nowMs: now);
+      groups.offer(
+          xprsSign(
+              XprsPacket.parse('t:moderate f:$_self d:$g '
+                  'ts:${xprsNowTs(now - 30000)} r:${xprsIdentifier(grant)} '
+                  'accept:member')!,
+              keyFor(_self).d),
+          nowMs: now);
+    });
+    tearDown(() {
+      PreferencesService.instanceSync!.xprsNamedArchivers = const [];
+      XprsGroups.instance.clear();
+    });
+
+    List<String> fetches() =>
+        aired.where((w) => w.contains('only:$g')).toList();
+
+    test('its talk is asked for, a week back the first time', () async {
+      expect(XprsGroups.instance.memberGroups(_self), [g]);
+      await XprsCatchup.instance.tick(_self);
+      final ask = fetches().single;
+      expect(ask, contains('d:$archiver'));
+      expect(ask, contains('cmd:history kind:identity,moderate,message,reaction'));
+      final since = RegExp(r'since:(\S+)').firstMatch(ask)!.group(1)!;
+      expect(xprsParseTs(since), now - XprsCatchup.maxWindow.inMilliseconds);
+    });
+
+    test('once answered, the next ask starts where that one did', () async {
+      await XprsCatchup.instance.tick(_self);
+      final asked = now;
+      final ask = XprsPacket.parse(fetches().single)!;
+      XprsCatchup.instance.onResult(XprsPacket.parse(
+          't:result f:$archiver d:$_self ts:x r:${xprsIdentifier(ask)} '
+          'code:200')!);
+      now += XprsCatchup.followEveryHidden.inMilliseconds +
+          const Duration(minutes: 1).inMilliseconds;
+      await XprsCatchup.instance.tick(_self);
+      final next = fetches().last;
+      final since = RegExp(r'since:(\S+)').firstMatch(next)!.group(1)!;
+      expect(xprsParseTs(since), asked ~/ 1000 * 1000);
+    });
   });
 
   // ── A station followed by callsign (XPRS.md 12.12.2) ────────────────────

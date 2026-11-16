@@ -10,6 +10,9 @@ import 'dart:typed_data';
 import 'package:reticulum/reticulum.dart' show XprsCrypto;
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_gossip.dart';
+import 'package:xprs/services/xprs/xprs_groups.dart';
+import 'package:xprs/util/nostr_crypto.dart';
+import 'package:hex/hex.dart';
 import 'package:xprs/services/xprs/xprs_history_server.dart';
 import 'package:xprs/services/xprs/xprs_sig.dart';
 import 'package:xprs/services/xprs/xprs_folder.dart';
@@ -157,6 +160,70 @@ void main() {
       ];
       expect(tail, hasLength(2));
       expect(results().last['code'], '200');
+    });
+  });
+
+  // 26.4: a member who joined late, or was away, reads a closed group's talk
+  // from another member. A private station (Public archiver off) keeps that
+  // talk as its own mail, and serves it to a fellow member asking `only:` the
+  // group; anybody else still gets this station's own publications only.
+  group('a closed group, asked by a member', () {
+    const g = 'X5FAM1';
+    final keys = <String, ({BigInt d, Uint8List pub})>{};
+    ({BigInt d, Uint8List pub}) keyFor(String c) => keys.putIfAbsent(c, () {
+          final kp = NostrCrypto.generateKeyPair();
+          var d = BigInt.zero;
+          for (final b in HEX.decode(kp.privateKeyHex)) {
+            d = (d << 8) | BigInt.from(b);
+          }
+          return (d: d, pub: Uint8List.fromList(HEX.decode(kp.publicKeyHex)));
+        });
+    void join(String who, String at) {
+      final grant = xprsSign(
+          _p('t:moderate f:$g d:$g ts:2026-08-13_09:00:00 grant:$who'), keyFor(g).d);
+      XprsGroups.instance.offer(grant);
+      XprsGroups.instance.offer(xprsSign(
+          _p('t:moderate f:$who d:$g ts:$at r:${xprsIdentifier(grant)} accept:member'),
+          keyFor(who).d));
+    }
+
+    setUp(() async {
+      await PreferencesService.instanceSync!.setXprsPublicArchiver(false);
+      XprsGroups.instance
+        ..clear()
+        ..keyResolver = (c) => keyFor(c).pub;
+      join('X1SELF', '2026-08-13_09:01:00');
+      join('X1CAI', '2026-08-13_09:02:00');
+      a.admit(_p('t:message f:X1BEA d:$g ts:2026-08-13_10:00:00 m:lunch on sunday'),
+          bearer: 'ble', nowMs: 1000);
+      a.flush(nowMs: 100000);
+    });
+    tearDown(() async {
+      XprsGroups.instance.clear();
+      await PreferencesService.instanceSync!.setXprsPublicArchiver(true);
+    });
+
+    List<String> replayed(FakeAsync async, String asker) {
+      aired.clear();
+      ask('t:command f:$asker d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+          'kind:message only:$g until:2026-08-13_11:00:00');
+      async.elapse(const Duration(seconds: 30));
+      return [
+        for (final e in aired)
+          if (!e.$1.startsWith('xprs-hist:c')) e.$2
+      ];
+    }
+
+    test('a fellow member gets what was said', () {
+      fakeAsync((async) {
+        expect(replayed(async, 'X1CAI').single, contains('m:lunch on sunday'));
+      });
+    });
+
+    test('somebody outside the group does not', () {
+      fakeAsync((async) {
+        expect(replayed(async, 'X1EVE'), isEmpty);
+      });
     });
   });
 
