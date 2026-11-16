@@ -1365,5 +1365,5 @@ Flutter import in the core.
   the wapp reads `hal_station_read {"get":"host"}`, flips
   `hal_xprs_set_pref("hostStation=…")` and asks the host to pick and share
   with the message `station.share {kind}` (`_handleStationShare` in
-  wapp_page.dart: folder picker, files of that kind, `StationShare.add`).
+  wapp_page.dart: the system file picker, a name for the folder, `StationShare.add`).
   Reuse the message from any wapp that wants "share this folder".

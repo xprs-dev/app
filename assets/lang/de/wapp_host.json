@@ -127,12 +127,13 @@
   "wapp_host.video.unsupported": "Video wird auf dieser Plattform nicht unterstützt.",
   "wapp_host.video.unsupported.help": "Hier ist kein Medien-Backend verfügbar.",
   "wapp_host.picker.need_access": "XPRS braucht Speicherzugriff, um deine Dateien zu durchsuchen.",
-  "wapp_host.share.pick_gallery": "Ein Ordner mit Fotos zum Teilen",
-  "wapp_host.share.pick_music": "Ein Ordner mit Musik zum Teilen",
-  "wapp_host.share.pick_library": "Ein Ordner oder eine Datei zum Teilen",
+  "wapp_host.share.pick_gallery": "Fotos und Filme zum Teilen",
+  "wapp_host.share.pick_music": "Musik zum Teilen",
+  "wapp_host.share.pick_library": "Dateien zum Teilen",
   "wapp_host.share.busy": "Die letzten werden noch geteilt.",
-  "wapp_host.share.none": "Nichts dieser Art im Ordner.",
+  "wapp_host.share.none": "Nichts dieser Art ausgewählt.",
   "wapp_host.share.started": "{n} Dateien werden geteilt…",
   "wapp_host.share.done": "{n} Dateien geteilt.",
-  "wapp_host.share.failed": "{n} geteilt, {f} konnten nicht hinzugefügt werden."
+  "wapp_host.share.failed": "{n} geteilt, {f} konnten nicht hinzugefügt werden.",
+  "wapp_host.share.name": "Ein Name für das, was du teilst"
 }

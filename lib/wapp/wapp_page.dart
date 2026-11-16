@@ -3682,9 +3682,8 @@ class _WappPageState extends State<WappPage>
     'music': {'mp3', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'wav', 'aac'},
   };
 
-  /// data: {kind: "gallery"|"music"|"library", private: bool}. A folder
-  /// shares the files of that kind directly in it, under its name; a file
-  /// goes into a folder named after the one it lies in. Progress reaches the
+  /// data: {kind: "gallery"|"music"|"library", private: bool}. The person
+  /// picks files of that kind and names the folder they go in. Progress reaches the
   /// wapp as `core.station` (StationShare.state).
   Future<void> _handleStationShare(Map<String, dynamic> data) async {
     final kind = '${data['kind'] ?? ''}';
@@ -3696,36 +3695,48 @@ class _WappPageState extends State<WappPage>
     }
     if (StationShare.instance.busy) return say('wapp_host.share.busy');
     try {
-      final res = await FileFolderPicker.show(context,
-          title: tr('wapp_host.share.pick_$kind'));
-      if (res == null) return;
+      // The system's own picker: several files at once, and no storage
+      // permission to grant (the folder navigator needs all-files access).
       final want = _shareExts[kind];
-      final paths = <String>[];
-      var folder = '';
-      if (res.isDir) {
-        folder = res.path.split('/').where((x) => x.isNotEmpty).last;
-        await for (final e in fs.directory(res.path).list(followLinks: false)) {
-          if (e is! File) continue;
-          final name = e.path.split('/').last;
-          if (name.startsWith('.')) continue;
-          final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
-          if (want != null && !want.contains(ext)) continue;
-          paths.add(e.path);
-          if (paths.length >= 500) break;
-        }
-        paths.sort();
-      } else {
-        final parts = res.path.split('/').where((x) => x.isNotEmpty).toList();
-        folder = parts.length > 1 ? parts[parts.length - 2] : 'shared';
-        paths.add(res.path);
-      }
+      final picked = await openFiles(acceptedTypeGroups: [
+        if (want != null)
+          XTypeGroup(label: tr('wapp_host.share.pick_$kind'), extensions: want.toList()),
+      ]);
+      if (picked.isEmpty || !mounted) return;
+      final paths = <String>[
+        for (final f in picked.take(500))
+          if (f.path.isNotEmpty &&
+              (want == null || want.contains(f.name.split('.').last.toLowerCase())))
+            f.path,
+      ];
       if (paths.isEmpty) return say('wapp_host.share.none');
+      final now = DateTime.now();
+      final name = TextEditingController(
+          text: '${now.year}-${'${now.month}'.padLeft(2, '0')}-${'${now.day}'.padLeft(2, '0')}');
+      final folder = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr('wapp_host.share.name')),
+          content: TextField(controller: name, autofocus: true, maxLength: 40),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('common.cancel'))),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, name.text.trim()),
+                child: Text(tr('common.share'))),
+          ],
+        ),
+      );
+      if (folder == null || folder.isEmpty) return;
       say('wapp_host.share.started', {'n': '${paths.length}'});
       final ok = await StationShare.instance.add(
           kind: kind,
           folder: folder,
           paths: paths,
           private: data['private'] == true);
+      // The picker handed over copies in the app's cache: filed now, not kept twice.
+      for (final p in paths) {
+        if (p.contains('/cache/')) unawaited(fs.file(p).delete().catchError((_) => fs.file(p)));
+      }
       say(ok ? 'wapp_host.share.done' : 'wapp_host.share.failed', {
         'n': '${StationShare.instance.done}',
         'f': '${StationShare.instance.failed}',
