@@ -962,12 +962,15 @@ class _RoomsFieldState extends State<RoomsField> {
     // A rail of identical '#' circles distinguished only by hash-colour was
     // unusable — nobody knows what to click.
     var label = '';
-    for (var i = 0; i < name.length && label.length < 4; i++) {
-      final ch = name[i];
+    // A folder is titled by its path, "Family › Travel": its own name is the
+    // last step, or every folder of one group wears the group's letters.
+    final own = name.contains('\u203A') ? name.split('\u203A').last.trim() : name;
+    for (var i = 0; i < own.length && label.length < 4; i++) {
+      final ch = own[i];
       if (ch == ' ' || ch == '(') break; // scope tag: not part of the name
       if (RegExp(r'[A-Za-z0-9]').hasMatch(ch)) label += ch.toUpperCase();
     }
-    if (label.isEmpty) label = name.isNotEmpty ? name[0].toUpperCase() : '#';
+    if (label.isEmpty) label = own.isNotEmpty ? own[0].toUpperCase() : '#';
     final hue = (id.hashCode & 0xff) / 255.0;
     final bg = HSLColor.fromAHSL(1, hue * 360, 0.5, 0.45).toColor();
     final border =

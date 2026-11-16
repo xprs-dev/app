@@ -4279,7 +4279,7 @@ class WappEngine {
     // window — otherwise a group whose announcement has not arrived is
     // re-queried on every poll for the life of the process, which is the shape
     // docs/performance.md 3.2 calls "work redone forever".
-    const nickRetryMs = 5 * 60 * 1000;
+    const nickRetryMs = 10 * 1000;
     String groupNick(String call) {
       final now = DateTime.now().millisecondsSinceEpoch;
       final hit = _groupNickCache[call];

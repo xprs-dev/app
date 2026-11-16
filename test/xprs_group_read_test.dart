@@ -109,9 +109,13 @@ void main() {
     expect(body, startsWith('nsec:'));
     expect(opened(mine.single, cai.d), isEmpty,
         reason: 'sealed to the member it names');
+    // And the group says its name again, for a member who never heard it.
+    expect(aired.where((w) => w.startsWith('t:identity f:$g ') && w.contains('nick:Family')),
+        hasLength(1));
     // Once handed over, not again.
+    aired.clear();
     await XprsGroupRead.instance.tend();
-    expect(to('X1BEA'), hasLength(1));
+    expect(aired, isEmpty);
   });
 
   test('a member post sealed to the reading key opens for every holder',
