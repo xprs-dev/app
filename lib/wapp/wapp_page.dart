@@ -31,6 +31,7 @@ import 'native/wasm_audio_output.dart';
 import 'native/wasm_video_session.dart';
 
 import 'file_folder_picker.dart';
+import 'package:xprs_core/src/services/station/station_share.dart';
 import 'geoui/geoui_ast.dart';
 import 'geoui/geoui_parser.dart';
 import 'geoui/geoui_renderer.dart';
@@ -2761,6 +2762,10 @@ class _WappPageState extends State<WappPage>
           // wapp "Add / Share"). Show the file/folder navigator; deliver the
           // result back as fs.picked {path, dir}.
           unawaited(_handleFsPick(data));
+        } else if (type == 'station.share') {
+          // Share a folder (or one file) from this phone as its own station:
+          // the person picks, the core files it in the room of that kind.
+          unawaited(_handleStationShare(data));
         } else if (type == 'qr.scan') {
           // Open the camera QR scanner and deliver the decoded text back as
           // qr.scanned {text}. Android only — desktop has no easy webcam grab.
@@ -3670,6 +3675,64 @@ class _WappPageState extends State<WappPage>
       _fieldValues['picture_token'] = token;
       _sendCommand('picture_picked');
     } catch (_) {}
+  }
+
+  static const Map<String, Set<String>> _shareExts = {
+    'gallery': {'jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'webm', 'mov', 'm4v'},
+    'music': {'mp3', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'wav', 'aac'},
+  };
+
+  /// data: {kind: "gallery"|"music"|"library", private: bool}. A folder
+  /// shares the files of that kind directly in it, under its name; a file
+  /// goes into a folder named after the one it lies in. Progress reaches the
+  /// wapp as `core.station` (StationShare.state).
+  Future<void> _handleStationShare(Map<String, dynamic> data) async {
+    final kind = '${data['kind'] ?? ''}';
+    if (!StationShare.roomNames.containsKey(kind)) return;
+    void say(String key, [Map<String, String>? a]) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(tr(key, a ?? const {}))));
+    }
+    if (StationShare.instance.busy) return say('wapp_host.share.busy');
+    try {
+      final res = await FileFolderPicker.show(context,
+          title: tr('wapp_host.share.pick_$kind'));
+      if (res == null) return;
+      final want = _shareExts[kind];
+      final paths = <String>[];
+      var folder = '';
+      if (res.isDir) {
+        folder = res.path.split('/').where((x) => x.isNotEmpty).last;
+        await for (final e in fs.directory(res.path).list(followLinks: false)) {
+          if (e is! File) continue;
+          final name = e.path.split('/').last;
+          if (name.startsWith('.')) continue;
+          final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+          if (want != null && !want.contains(ext)) continue;
+          paths.add(e.path);
+          if (paths.length >= 500) break;
+        }
+        paths.sort();
+      } else {
+        final parts = res.path.split('/').where((x) => x.isNotEmpty).toList();
+        folder = parts.length > 1 ? parts[parts.length - 2] : 'shared';
+        paths.add(res.path);
+      }
+      if (paths.isEmpty) return say('wapp_host.share.none');
+      say('wapp_host.share.started', {'n': '${paths.length}'});
+      final ok = await StationShare.instance.add(
+          kind: kind,
+          folder: folder,
+          paths: paths,
+          private: data['private'] == true);
+      say(ok ? 'wapp_host.share.done' : 'wapp_host.share.failed', {
+        'n': '${StationShare.instance.done}',
+        'f': '${StationShare.instance.failed}',
+      });
+    } catch (e) {
+      LogService.instance.add('wapp/$_wappName: share failed (${e.runtimeType})');
+    }
   }
 
   /// Browse and pick a file OR folder; return it to the wapp as fs.picked.

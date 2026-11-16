@@ -126,5 +126,13 @@
   "wapp_host.video.none.help": "Use the menu (top-right) to pick a video.",
   "wapp_host.video.unsupported": "Video not supported on this platform.",
   "wapp_host.video.unsupported.help": "No media backend is available here.",
-  "wapp_host.picker.need_access": "XPRS needs storage access to browse your files."
+  "wapp_host.picker.need_access": "XPRS needs storage access to browse your files.",
+  "wapp_host.share.pick_gallery": "A folder of photos to share",
+  "wapp_host.share.pick_music": "A folder of music to share",
+  "wapp_host.share.pick_library": "A folder or file to share",
+  "wapp_host.share.busy": "Still sharing the last ones.",
+  "wapp_host.share.none": "Nothing of that kind in the folder.",
+  "wapp_host.share.started": "Sharing {n} files…",
+  "wapp_host.share.done": "Shared {n} files.",
+  "wapp_host.share.failed": "Shared {n}, {f} could not be added."
 }

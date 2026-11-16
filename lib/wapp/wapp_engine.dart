@@ -40,7 +40,10 @@ import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_fetch.dart';
 import '../services/flash/flash_service.dart';
 import '../services/xprs/xprs_monitor.dart';
+import 'package:xprs_core/src/services/receive/core_state.dart';
 import 'package:xprs_core/src/services/station/station_browse.dart';
+import 'package:xprs_core/src/services/station/station_host.dart';
+import 'package:xprs_core/src/services/station/station_share.dart';
 import 'package:xprs_core/src/services/station/station_routes.dart';
 import 'package:xprs_core/src/services/xprs/xprs_shared_position.dart';
 import '../services/xprs/xprs_presence.dart';
@@ -3617,7 +3620,7 @@ class WappEngine {
         }
         final call = '${q['call'] ?? ''}';
         final get = '${q['get'] ?? 'offers'}';
-        if (call.isEmpty && get != 'list') return 0;
+        if (call.isEmpty && get != 'list' && get != 'host') return 0;
         final room = '${q['room'] ?? ''}';
         final b = StationBrowse.instance;
         final Map<String, dynamic> a;
@@ -3636,6 +3639,14 @@ class WappEngine {
                 offset: q['offset'] is int ? q['offset'] as int : 0);
           case 'ways':
             a = StationRoutes.instance.read(call);
+          case 'host':
+            // This phone as a station: who it is, whether it answers
+            // visitors, and the share in hand.
+            a = {
+              'call': MeshService.instance.tableCallsign.toUpperCase().split('-').first,
+              'serving': StationHost.instance.serving,
+              'share': StationShare.instance.state,
+            };
           case 'forget':
             b.forget(call);
             a = const {'state': 'forgotten'};
@@ -4701,6 +4712,13 @@ class WappEngine {
             unawaited(prefs.setXprsPublicArchiver(on).then((_) {
               XprsIngest.reloadPolicy();
             }));
+            return 0;
+          // This phone as a station: answer visitors over Reticulum.
+          case 'hostStation':
+            unawaited(prefs
+                .setXprsHostStation(on)
+                .then((_) => StationHost.instance.serve(on))
+                .then((_) => CoreState.instance.changed(CoreState.station)));
             return 0;
           case 'alwaysOn':
             unawaited(prefs.setXprsAlwaysOn(on).then((_) {

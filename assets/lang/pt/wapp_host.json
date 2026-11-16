@@ -126,5 +126,13 @@
   "wapp_host.video.none.help": "Use o menu (canto superior direito) para escolher um vídeo.",
   "wapp_host.video.unsupported": "Vídeo não suportado nesta plataforma.",
   "wapp_host.video.unsupported.help": "Não há aqui nenhum motor multimédia disponível.",
-  "wapp_host.picker.need_access": "O XPRS precisa de acesso ao armazenamento para navegar nos seus ficheiros."
+  "wapp_host.picker.need_access": "O XPRS precisa de acesso ao armazenamento para navegar nos seus ficheiros.",
+  "wapp_host.share.pick_gallery": "Uma pasta de fotos para partilhar",
+  "wapp_host.share.pick_music": "Uma pasta de música para partilhar",
+  "wapp_host.share.pick_library": "Uma pasta ou um ficheiro para partilhar",
+  "wapp_host.share.busy": "Ainda a partilhar os anteriores.",
+  "wapp_host.share.none": "Nada desse tipo na pasta.",
+  "wapp_host.share.started": "A partilhar {n} ficheiros…",
+  "wapp_host.share.done": "{n} ficheiros partilhados.",
+  "wapp_host.share.failed": "{n} partilhados, {f} não puderam ser adicionados."
 }

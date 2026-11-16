@@ -1988,6 +1988,22 @@ IconData geoUiResolveIcon(String name) {
     case 'music':
     case 'queue_music':
       return Icons.library_music;
+    case 'photo_library':
+      return Icons.photo_library;
+    case 'add_photo_alternate':
+      return Icons.add_photo_alternate;
+    case 'library_add':
+      return Icons.library_add;
+    case 'note_add':
+      return Icons.note_add;
+    case 'smartphone':
+      return Icons.smartphone;
+    case 'toggle_on':
+      return Icons.toggle_on;
+    case 'toggle_off':
+      return Icons.toggle_off;
+    case 'hourglass_empty':
+      return Icons.hourglass_empty;
     case 'audiotrack':
     case 'music_note':
     case 'audio':

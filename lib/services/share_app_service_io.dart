@@ -18,14 +18,11 @@ import 'package:flutter/services.dart';
 
 import 'background_service.dart';
 import 'log_service.dart';
-import 'mesh/mesh_service.dart';
-import 'receive/packet_gateway.dart';
 import 'share_app_types.dart';
+import 'package:xprs_core/src/services/preferences_service.dart';
+import 'package:xprs_core/src/services/station/station_host.dart';
 import 'web_chat_api.dart';
 import '../wapp/android_foreground_service.dart';
-import 'xprs/xprs_archive.dart';
-import 'xprs/xprs_monitor.dart';
-import 'xprs/xprs_publisher.dart';
 
 export 'share_app_types.dart';
 
@@ -134,6 +131,9 @@ class ShareAppService {
     _abi = abi;
     if (_server != null) return _server!.port;
     _api = api ?? _liveApi();
+    // The owner administers this phone before the first visitor of its own
+    // network (a hotspot guest) could claim it.
+    if (api == null) await StationHost.instance.ensureOwner();
     visitorCount.value = 0;
     _api!.onVisitors = (n) => visitorCount.value = n;
     final html = _chatHtml = chatPage ??
@@ -166,32 +166,19 @@ class ShareAppService {
   /// through the one receive door (as heard on the hotspot's network, `lan`,
   /// through the API), which the bridge and digipeater carry on under the
   /// owner's policy; what it reads is the archive's undirected rows.
-  WebChatApi _liveApi() => WebChatApi(
-        devices: () => XprsMonitor.instance.devicesForApi(),
-        publicRows: archivePublicRows,
-        held: (t) => XprsArchive.instance.countOf(types: t, undirected: true),
-        receive: (w) => PacketGateway.instance.receive(
-            Uint8List.fromList(utf8.encode(w)),
-            bearer: 'lan', lane: RxLane.datagram, viaApi: true),
-        receiveFrom: (w, {required local}) => PacketGateway.instance.receive(
-            Uint8List.fromList(utf8.encode(w)),
-            bearer: 'lan', lane: RxLane.datagram,
-            viaApi: true, localLink: local),
-        // A visitor who proved their key is at this phone's ear (12.8.1),
-        // and the phone may be their mailbox when it is a public archiver
-        // with room (12.7, 13.0.2).
-        onVisitor: (call, {required local}) =>
-            MeshService.instance.visitorHeard(call, local: local),
-        holdersOf: XprsArchive.instance.holdersFor,
-        offerMailbox: MeshService.instance.offerMailbox,
-        mailFor: MeshService.instance.mailFor,
-        mayAir: XprsPublisher.instance.mayAir,
-        selfCallsign: () => MeshService.instance.tableCallsign,
-        keyOf: (c) => XprsArchive.instance.keyResolver?.call(c),
+  WebChatApi _liveApi() => StationHost.instance.api ??= stationWebChatApi(
         appPath: () => apkShareable ? '/app' : null,
-        // Files by reference (API-HTTP.md): the mesh's own content store.
-        fileStore: () => MeshService.instance.media,
+        store: PreferencesService.instanceSync?.store,
       );
+
+  /// This phone as a station: the same API the hotspot page uses, answered
+  /// over Reticulum links while its owner has said so (Settings). Its owner
+  /// is made its administrator before anybody else can ask.
+  Future<void> hostBoot() async {
+    _liveApi();
+    await StationHost.instance
+        .serve(PreferencesService.instanceSync?.xprsHostStation ?? false);
+  }
 
   static const String _holder = 'share';
 

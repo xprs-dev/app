@@ -1360,3 +1360,10 @@ Flutter import in the core.
   extension-type bindings of the WebAssembly JS API
   (`WebAssembly.Module/Instance/Memory/Table/Global`, `compile`,
   `instantiate`).
+
+- **This phone as a station** (Mesh wapp, core `StationHost`/`StationShare`):
+  the wapp reads `hal_station_read {"get":"host"}`, flips
+  `hal_xprs_set_pref("hostStation=…")` and asks the host to pick and share
+  with the message `station.share {kind}` (`_handleStationShare` in
+  wapp_page.dart: folder picker, files of that kind, `StationShare.add`).
+  Reuse the message from any wapp that wants "share this folder".

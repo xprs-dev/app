@@ -12,6 +12,7 @@ import '../wapp/background_wapp_manager.dart';
 import 'android_permissions_service.dart';
 import 'permission_state.dart';
 import 'preferences_service.dart';
+import 'share_app_service.dart';
 
 /// The gate between "the app has booted" and "the app may touch anything the
 /// user has not consented to yet".
@@ -126,5 +127,7 @@ class PermissionGate {
     }
     _started = true;
     unawaited(BackgroundWappManager.instance.startAutostart());
+    // This phone as a station, when its owner switched that on.
+    unawaited(ShareAppService.instance.hostBoot());
   }
 }

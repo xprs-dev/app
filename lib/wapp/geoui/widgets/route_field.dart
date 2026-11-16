@@ -47,6 +47,8 @@ class RouteField extends StatelessWidget {
         .whereType<Map>()
         .map((m) => m.cast<String, dynamic>())
         .toList();
+    // The station is this very device: there is no way to draw.
+    if (value['here'] == true) return const SizedBox.shrink();
     if (routes.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),

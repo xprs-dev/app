@@ -20,6 +20,7 @@ class ShareAppService {
   final ValueNotifier<bool> hotspotUp = ValueNotifier<bool>(false);
 
   bool get running => false;
+  Future<void> hostBoot() async {}
   int get port => 0;
   String get apkName => 'xprs.apk';
 
