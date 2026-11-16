@@ -130,6 +130,7 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
     // default set is installed once at boot by [ensureProfileSeeded];
     // the shared ../apps library is the catalog, never shown directly.
     final wapps = <WappManifest>[];
+    final hidden = <WappManifest>[];
     final seen = <String>{};
 
     final installed = installedAppsStorage();
@@ -143,9 +144,12 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
         if (entry.name == 'app-creator') continue;
         // Temporarily hidden wapps (unfinished) — kept out of the grid even on
         // profiles that already have them installed.
-        if (_kHiddenWapps.contains(entry.name)) continue;
+        // Hidden from the grid, not from the host: what it provides (the
+        // Player's file handlers, a functionality) is still registered below,
+        // or a song in a chat or on a station's shelf had "no media player".
         final pkg = wappPackageStorage(installed.getAbsolutePath(entry.path));
-        await _scanManifest(pkg, wapps, seen);
+        await _scanManifest(
+            pkg, _kHiddenWapps.contains(entry.name) ? hidden : wapps, seen);
       }
     }
 
@@ -154,7 +158,7 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
     // newly installed ones immediately become available.
     FunctionalityRegistry.instance.clear();
     FunctionalityRegistry.instance.registerCore();
-    for (final m in wapps) {
+    for (final m in [...wapps, ...hidden.where((m) => m.fileHandlers.isNotEmpty)]) {
       FunctionalityRegistry.instance.register(m);
     }
 
