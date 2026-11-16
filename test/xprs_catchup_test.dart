@@ -517,6 +517,18 @@ void main() {
     expect(ask, contains('message'));
   });
 
+  test('with no archiver named, a group is asked of the stations in earshot',
+      () async {
+    PreferencesService.instanceSync!.xprsNamedArchivers = const [];
+    XprsArchive.instance.followedGroups = {'PICNIC'};
+    addTearDown(() => XprsArchive.instance.followedGroups = const {});
+    _beacon(now, count: 0);
+    await XprsCatchup.instance.tick(_self);
+    final ask = aired.where((w) => w.contains('only:PICNIC')).toList();
+    expect(ask, isNotEmpty);
+    expect(ask.first, contains('d:$_station'));
+  });
+
   // ── A station followed by callsign (XPRS.md 12.12.2) ────────────────────
   //
   // On the internet there is no broadcast to hear: a device's status reaches
