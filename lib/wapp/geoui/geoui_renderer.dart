@@ -1931,6 +1931,10 @@ IconData geoUiResolveIcon(String name) {
       return Icons.favorite_border;
     case 'person_add':
       return Icons.person_add_alt_1;
+    // An open group's name (#PICNIC) in a people list: it fell through to
+    // the default and wore the menu icon.
+    case 'tag':
+      return Icons.tag;
     case 'group_add':
       return Icons.group_add_outlined;
     case 'person_remove':

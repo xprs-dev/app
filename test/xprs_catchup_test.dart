@@ -503,6 +503,20 @@ void main() {
     });
   });
 
+  // ── An open group followed by name (7.3) ───────────────────────────────
+  test('an open group this station follows is asked for by its name', () async {
+    PreferencesService.instanceSync!.xprsNamedArchivers = const ['X3ARK'];
+    XprsArchive.instance.followedGroups = {'PICNIC'};
+    addTearDown(() {
+      XprsArchive.instance.followedGroups = const {};
+      PreferencesService.instanceSync!.xprsNamedArchivers = const [];
+    });
+    await XprsCatchup.instance.tick(_self);
+    final ask = aired.where((w) => w.contains('only:PICNIC')).single;
+    expect(ask, contains('cmd:history kind:'));
+    expect(ask, contains('message'));
+  });
+
   // ── A station followed by callsign (XPRS.md 12.12.2) ────────────────────
   //
   // On the internet there is no broadcast to hear: a device's status reaches

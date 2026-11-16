@@ -227,6 +227,48 @@ void main() {
     });
   });
 
+  // 7.3: an open group is public. A private station that follows one serves
+  // what it kept of it to whoever asks for it by name -- and naming a PERSON
+  // in only: still serves none of their mail.
+  group('an open group this station follows', () {
+    setUp(() async {
+      await PreferencesService.instanceSync!.setXprsPublicArchiver(false);
+      XprsArchive.instance.followedGroups = {'PICNIC'};
+      a.admit(_p('t:message f:X1BEA d:PICNIC ts:2026-08-13_10:00:00 m:picnic on saturday'),
+          bearer: 'ble', nowMs: 1000);
+      a.admit(_p('t:message f:X1CAI d:X1BEA ts:2026-08-13_10:01:00 m:a private word'),
+          bearer: 'ble', nowMs: 1001);
+      a.flush(nowMs: 100000);
+    });
+    tearDown(() async {
+      XprsArchive.instance.followedGroups = const {};
+      await PreferencesService.instanceSync!.setXprsPublicArchiver(true);
+    });
+
+    List<String> replayed(FakeAsync async, String only) {
+      aired.clear();
+      ask('t:command f:X1EVE d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+          'kind:message only:$only until:2026-08-13_11:00:00');
+      async.elapse(const Duration(seconds: 30));
+      return [
+        for (final e in aired)
+          if (!e.$1.startsWith('xprs-hist:c')) e.$2
+      ];
+    }
+
+    test('its talk is served to anybody asking by its name', () {
+      fakeAsync((async) {
+        expect(replayed(async, 'PICNIC').single, contains('m:picnic on saturday'));
+      });
+    });
+
+    test("a person's callsign in only: serves none of their mail", () {
+      fakeAsync((async) {
+        expect(replayed(async, 'X1BEA'), isEmpty);
+      });
+    });
+  });
+
   test('a direct cmd:history kind:mailbox replays the station own t:mailbox (13.12/36.5)',
       () {
     // The station's own declaration, archived like its daily airing would.
