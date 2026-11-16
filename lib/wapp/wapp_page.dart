@@ -4468,6 +4468,9 @@ class _WappPageState extends State<WappPage>
   // optional body, optional chips (single-select), and an optional text
   // input, then returns the result as a "prompt" command with fields
   // prompt_id / prompt_value / prompt_input. No app knowledge here.
+  /// A screen's text that may be an `@key`: translated, or null when unset.
+  String? _resolveOrNull(String? v) => v == null ? null : _i18n.resolve(v);
+
   void _showWappPrompt(Map<String, dynamic> data) {
     final id = (data['id'] ?? '').toString();
     final title = (data['title'] ?? '').toString();
@@ -6674,7 +6677,7 @@ class _WappPageState extends State<WappPage>
       data: held is Map ? Map<String, dynamic>.from(held) : const {},
       query: _membersQuery[name] ?? '',
       filter: _membersFilter[name] ?? '',
-      emptyText: field.getString('empty'),
+      emptyText: _resolveOrNull(field.getString('empty')),
       onSearch: (q) {
         setState(() => _membersQuery[name] = q);
         page(0);
@@ -6823,8 +6826,8 @@ class _WappPageState extends State<WappPage>
           child: PeopleViewField(
             fieldName: name,
             sections: displaySections,
-            emptyText: field.getString('empty'),
-            emptyTitle: field.getString('empty_title'),
+            emptyText: _resolveOrNull(field.getString('empty')),
+            emptyTitle: _resolveOrNull(field.getString('empty_title')),
             emptyArt: field.getString('empty_art'),
             loadAsset: _readWappArt,
             onTap: (id) {

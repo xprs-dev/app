@@ -511,7 +511,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
         : const <Map<String, dynamic>>[];
     return DetailsField(
       sections: sections,
-      emptyText: field.getString('empty'),
+      emptyText: _t(field.getString('empty')),
     );
   }
 
@@ -1105,8 +1105,8 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
           child: PeopleViewField(
             fieldName: name,
             sections: sections,
-            emptyText: field.getString('empty'),
-            emptyTitle: field.getString('empty_title'),
+            emptyText: _t(field.getString('empty')),
+            emptyTitle: _t(field.getString('empty_title')),
             onTap: (id) {
               widget.bindings.setValue('${name}_id', id);
               widget.onAction?.call('${name}_tap');
