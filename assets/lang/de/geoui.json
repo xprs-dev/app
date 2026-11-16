@@ -261,5 +261,7 @@
   "geoui.route.know.guess": "vermutet: niemand hat diesen Abschnitt gemeldet",
   "geoui.route.ago_s": "vor {n} s",
   "geoui.route.ago_m": "vor {n} min",
-  "geoui.route.ago_h": "vor {n} h"
+  "geoui.route.ago_h": "vor {n} h",
+  "geoui.media.fetching": "Datei wird geholt…",
+  "geoui.media.fetching_pct": "Datei wird geholt… {pct}% von {size}"
 }

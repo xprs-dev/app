@@ -841,7 +841,26 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
     _originalRef = o == null ? null : MediaRef.parse('file:${o.sha}.${o.ext}');
     final r = _originalRef;
     if (r != null && (sharedMediaArchive()?.has(r.sha256) ?? false)) _ref = r;
+    // Opened on a file this device does not hold (a track or a document in a
+    // station's listing): opening it IS the tap, so it is fetched, through
+    // the one door, and shown when it lands.
+    if (r == null && !(sharedMediaArchive()?.has(_ref.sha256) ?? false)) {
+      _getting = true;
+      final want = _ref;
+      _events = MediaFetch.instance.events.listen((e) {
+        if (e.sha != want.sha256 || !mounted) return;
+        setState(() {
+          if (e.state == MediaState.failed) _getting = false;
+        });
+      });
+      unawaited(MediaFetch.instance.want(want, userTapped: true).then((ok) {
+        if (mounted) setState(() => _getting = false);
+      }).catchError((_) {}));
+    }
   }
+
+  /// The opened file itself is being fetched (see [initState]).
+  bool _getting = false;
 
   @override
   void dispose() {
@@ -925,6 +944,17 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
 
   Widget _body(MediaArchive? archive, MediaMeta? meta) {
     if (archive == null || meta == null) {
+      if (_getting) {
+        final p = MediaFetch.instance.progress(_ref.sha256);
+        return _fallback(
+            Icons.downloading,
+            p.total > 0 && p.received > 0
+                ? tr('geoui.media.fetching_pct', {
+                    'pct': (100 * p.received / p.total).clamp(0, 100).round(),
+                    'size': formatBytes(p.total),
+                  })
+                : tr('geoui.media.fetching'));
+      }
       return _fallback(Icons.help_outline, tr('geoui.media.not_local'));
     }
     switch (_ref.kind) {

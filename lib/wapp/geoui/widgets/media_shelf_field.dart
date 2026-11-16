@@ -59,7 +59,7 @@ class MediaShelfField extends StatelessWidget {
               fit: BoxFit.cover,
               clipBehavior: Clip.hardEdge,
               child: MediaThumbnail(
-                  ref: shown, fetchSmallOnSight: true, tapOnly: true, showSize: false),
+                  ref: shown, showSize: false),
             ),
           );
         },
