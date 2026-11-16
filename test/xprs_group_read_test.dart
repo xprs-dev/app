@@ -11,6 +11,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hex/hex.dart';
 import 'package:xprs/services/receive/wapp_delivery.dart';
+import 'package:xprs_core/src/services/events/wapp_event_broker.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
 import 'package:xprs/services/xprs/xprs_body.dart';
 import 'package:xprs/services/xprs/xprs_group_keys.dart';
@@ -260,6 +261,26 @@ void main() {
     final kp = NostrCrypto.generateKeyPair();
     XprsGroupRead.instance.takeKeyMessage(g, 'nsec:${kp.nsec}');
     expect(XprsGroupRead.instance.isPublic(g), isFalse);
+  });
+
+  // 10.4: a message is judged by its author's role when they wrote it. A
+  // request to join, replayed after its author was let in, stays a request
+  // for the admin, and is not a post.
+  test('a request to join replayed after acceptance is still a request', () {
+    XprsArchive.instance.keyResolver = (c) =>
+        keys[c] == null ? null : Uint8List.fromList(HEX.decode(keys[c]!));
+    final rows = <Map<String, dynamic>>[];
+    WappDelivery.onPublish = (topic, row) => rows.add(row);
+    addTearDown(() => WappDelivery.onPublish = null);
+    WappEventBroker.instance.registerEngine('test');
+    WappEventBroker.instance.subscribe('test', 'xprs.message');
+    addTearDown(() => WappEventBroker.instance.unregisterEngine('test'));
+    final ask = xprsSign(
+        XprsPacket.parse('t:message f:X1CAI d:$g ts:${at(300)} m:may I join?')!,
+        cai.d);
+    join('X1CAI', cai.d, 200); // let in afterwards
+    WappDelivery.instance.deliverPacket(ask, bearer: 'lan', forUs: false);
+    expect(rows.single['request'], isTrue);
   });
 
   test('a key message is taken only from a group, and only as nsec:', () {
