@@ -4998,7 +4998,7 @@ class _WappPageState extends State<WappPage>
               tooltip: tr('common.back'),
               onPressed: _closePanelScreen,
             ),
-            title: Text(_panelTitle ?? _panelName),
+            title: Text(_panelTitle ?? _i18n.resolve(_panelName)),
             actions: [
               if (panelActions.isNotEmpty)
                 PopupMenuButton<String>(
@@ -5846,7 +5846,7 @@ class _WappPageState extends State<WappPage>
               // only knows a few well-known screens (Search and Relay servers
               // both came out as a generic grid).
               leading: Icon(_panelIcon(i)),
-              title: Text(_menuNames[i]),
+              title: Text(_i18n.resolve(_menuNames[i])),
               contentPadding: EdgeInsets.zero,
               dense: true,
             ),
