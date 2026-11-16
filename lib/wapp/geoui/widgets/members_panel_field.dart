@@ -117,6 +117,8 @@ class _MembersPanelFieldState extends State<MembersPanelField> {
         'create_new_folder' => Icons.create_new_folder_outlined,
         'image' => Icons.image_outlined,
         'logout' => Icons.logout,
+        'lock' => Icons.lock_outline,
+        'public' => Icons.public,
         'group' => Icons.group_outlined,
         'person' => Icons.person_outline,
         'admin_panel_settings' => Icons.admin_panel_settings_outlined,

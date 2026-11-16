@@ -529,6 +529,26 @@ void main() {
     expect(ask.first, contains('d:$_station'));
   });
 
+  test('a group just opened is asked for at once, past the archiver floor',
+      () async {
+    PreferencesService.instanceSync!.xprsNamedArchivers = const [];
+    XprsArchive.instance.followedGroups = {'PICNIC'};
+    addTearDown(() => XprsArchive.instance.followedGroups = const {});
+    _beacon(now, count: 0);
+    await XprsCatchup.instance.tick(_self);
+    final first = XprsPacket.parse(
+        aired.where((w) => w.contains('only:PICNIC')).single)!;
+    XprsCatchup.instance.onResult(XprsPacket.parse(
+        't:result f:$_station d:$_self ts:x r:${xprsIdentifier(first)} code:200')!);
+    // A second group, opened a minute later: the station was asked a minute
+    // ago, which the floor alone would make wait ten.
+    now += const Duration(minutes: 1).inMilliseconds;
+    XprsArchive.instance.followedGroups = {'PICNIC', 'CHOIR'};
+    XprsCatchup.instance.askNow('CHOIR');
+    await XprsCatchup.instance.tick(_self);
+    expect(aired.where((w) => w.contains('only:CHOIR')), hasLength(1));
+  });
+
   // ── A station followed by callsign (XPRS.md 12.12.2) ────────────────────
   //
   // On the internet there is no broadcast to hear: a device's status reaches
