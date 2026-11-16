@@ -928,7 +928,11 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
   Widget build(BuildContext context) {
     final archive = sharedMediaArchive();
     final meta = archive?.getMeta(_ref.sha256);
-    final title = meta?.name ?? 'file.${_ref.ext}';
+    // The name the message that carried it gave (a listing's `name:`), when
+    // the archive holds none.
+    final title = meta?.name ??
+        MediaFetch.instance.describe(_ref.sha256)?.name ??
+        'file.${_ref.ext}';
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -997,11 +1001,26 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
           ),
         );
       case MediaKind.file:
-        return _fallback(
-            Icons.insert_drive_file_outlined,
-            '${meta.name ?? 'file'}.${meta.ext}\n'
-            '${formatBytes(meta.size)}'
-            '${meta.description == null ? '' : '\n${meta.description}'}');
+        final said = MediaFetch.instance.describe(_ref.sha256)?.name;
+        final name = meta.name ?? said ?? 'file.${meta.ext}';
+        // A document, an archive, an app: this device's own viewer for the
+        // type shows it. The bytes go from the store to it, off this isolate.
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _fallback(
+                Icons.insert_drive_file_outlined,
+                '$name\n${formatBytes(meta.size)}'
+                '${meta.description == null ? '' : '\n${meta.description}'}'),
+            FilledButton.icon(
+              onPressed: () => unawaited(RnsService.instance
+                  .openArchivedFile(_ref.sha256, name: name)
+                  .catchError((_) => false)),
+              icon: const Icon(Icons.open_in_new),
+              label: Text(tr('common.open')),
+            ),
+          ],
+        );
     }
   }
 
