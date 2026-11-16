@@ -4475,6 +4475,46 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_group_remove(group, call): the group takes a member's place
+    // away (26.3, a revoke). Signed with the group key, so only the admin;
+    // no acceptance needed (10.3.1). Same door as the Groups page.
+    // 0 = removed, -1 = refused (not the admin).
+    final halXprsGroupRemove = WasmFunction(
+      (int gPtr, int gLen, int cPtr, int cLen) {
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        final c = _readStr(cPtr, cLen).trim().toUpperCase();
+        if (g.isEmpty || c.isEmpty) return -1;
+        try {
+          return XprsGroupOps.revoke(g, [c]).ok ? 0 : -1;
+        } catch (e) {
+          LogService.instance.add('xprs: group remove failed (${e.runtimeType})');
+          return -1;
+        }
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_leave(group): this station leaves a closed group
+    // (10.3.1's `leave:group`), signed with the PROFILE key: the member's
+    // own decision, recorded so the roster says they went. 0 = left, -1 =
+    // refused (not a member).
+    final halXprsGroupLeave = WasmFunction(
+      (int gPtr, int gLen) {
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        final me = MeshService.instance.tableCallsign.trim().toUpperCase();
+        if (g.isEmpty || me.isEmpty) return -1;
+        try {
+          return XprsGroupOps.leave(g, me).ok ? 0 : -1;
+        } catch (e) {
+          LogService.instance.add('xprs: group leave failed (${e.runtimeType})');
+          return -1;
+        }
+      },
+      params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     // hal_xprs_group_moderation(group, out, cap): the edits and removals of
     // other people's publications that are in force in ONE closed group
     // (XPRS.md 10.4.1), as a JSON array
@@ -5115,6 +5155,8 @@ class WappEngine {
       WasmImport('hal', 'xprs_group_roster', halXprsGroupRoster),
       WasmImport('hal', 'xprs_group_create', halXprsGroupCreate),
       WasmImport('hal', 'xprs_group_invite', halXprsGroupInvite),
+      WasmImport('hal', 'xprs_group_remove', halXprsGroupRemove),
+      WasmImport('hal', 'xprs_group_leave', halXprsGroupLeave),
       WasmImport('hal', 'xprs_group_moderation', halXprsGroupModeration),
       WasmImport('hal', 'xprs_group_role_at', halXprsGroupRoleAt),
       WasmImport('hal', 'xprs_group_moderate', halXprsGroupModerate),

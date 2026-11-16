@@ -474,6 +474,24 @@ class FunctionalityRegistry {
           ],
           ReturnDef('int', '0 offered, -1 refused (not the admin)')),
       EndpointDef(
+          'hal_xprs_group_remove',
+          'Take a member\'s place in a closed group away (XPRS \u00a726.3, a '
+          'revoke). Signed by the core with the group key; only the admin '
+          'holds it. Needs no acceptance (\u00a726.3.1)',
+          [
+            ParamDef('group', 'string', 'The group, "X5..." or "#X5..."'),
+            ParamDef('call', 'string', 'The callsign to remove'),
+          ],
+          ReturnDef('int', '0 removed, -1 refused (not the admin)')),
+      EndpointDef(
+          'hal_xprs_group_leave',
+          'Leave a closed group (XPRS \u00a726.3.1, leave:group), signed with '
+          'this station\'s own key: the member\'s own decision, on the record',
+          [
+            ParamDef('group', 'string', 'The group, "X5..." or "#X5..."'),
+          ],
+          ReturnDef('int', '0 left, -1 refused (not a member)')),
+      EndpointDef(
           'hal_xprs_group_folder',
           'Make a folder inside a closed group: a subgroup (XPRS \u00a710.2) '
           'with its own key and roster, listed by the parent with role:sub. '
