@@ -503,6 +503,33 @@ void main() {
     });
   });
 
+  // One station's answer says nothing about what another holds: a public
+  // group's reader got the admin's post from one and never the member's that
+  // only another kept (the Book club round, 2026-11-17).
+  test("one station's answer does not close a group at the next", () async {
+    PreferencesService.instanceSync!.xprsNamedArchivers = const ['X3ARK', 'X3BOX'];
+    XprsArchive.instance.followedGroups = {'PICNIC'};
+    addTearDown(() {
+      XprsArchive.instance.followedGroups = const {};
+      PreferencesService.instanceSync!.xprsNamedArchivers = const [];
+    });
+    XprsCatchup.instance.askNow('PICNIC');
+    await XprsCatchup.instance.tick(_self);
+    final first = XprsPacket.parse(
+        aired.where((w) => w.contains('only:PICNIC')).single)!;
+    XprsCatchup.instance.onResult(XprsPacket.parse(
+        't:result f:${first['d']} d:$_self ts:x r:${xprsIdentifier(first)} code:200')!);
+    now += const Duration(seconds: 10).inMilliseconds;
+    await XprsCatchup.instance.tick(_self);
+    final asks = aired.where((w) => w.contains('only:PICNIC')).toList();
+    expect(asks, hasLength(2));
+    final second = XprsPacket.parse(asks.last)!;
+    expect(second['d'], isNot(first['d']));
+    expect(xprsParseTs(second['since']),
+        now - XprsCatchup.maxWindow.inMilliseconds,
+        reason: 'the second station is asked for the whole window');
+  });
+
   // ── An open group followed by name (7.3) ───────────────────────────────
   test('an open group this station follows is asked for by its name', () async {
     PreferencesService.instanceSync!.xprsNamedArchivers = const ['X3ARK'];

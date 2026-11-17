@@ -15,6 +15,7 @@ import 'package:xprs/services/xprs/xprs_id.dart';
 import 'package:xprs/services/xprs/xprs_packet.dart';
 import 'package:xprs/services/xprs/xprs_publisher.dart';
 import 'package:xprs/services/xprs/xprs_sig.dart';
+import 'package:xprs/services/xprs/xprs_vocab.dart';
 import 'package:xprs/util/nostr_crypto.dart';
 import 'package:pointycastle/ecc/curves/secp256k1.dart';
 
@@ -82,6 +83,20 @@ void main() {
     expect(XprsPublisher.namedInAct(null), isEmpty);
   });
 
+  // 11.4: a command past its window is refused where it lands, so nobody
+  // relays or holds it.
+  test('an expired command is not carried', () {
+    final now = DateTime.utc(2026, 11, 17, 7).millisecondsSinceEpoch;
+    XprsPacket cmd(int ageS) => XprsPacket.parse('t:command f:X12X3T d:X3APDH '
+        'ts:${xprsNowTs(now - ageS * 1000)} cmd:history kind:message')!;
+    expect(xprsCommandExpired(cmd(60), nowMs: now), isFalse);
+    expect(xprsCommandExpired(cmd(900), nowMs: now), isTrue);
+    final msg = XprsPacket.parse('t:message f:X12X3T d:X3APDH '
+        'ts:${xprsNowTs(now - 900000)} m:hi')!;
+    expect(xprsCommandExpired(msg, nowMs: now), isFalse,
+        reason: 'mail is held for its recipient however old');
+  });
+
   // 26.7's sending side, decided in the core for every caller: a post to a
   // closed group this station is proven not to belong to is not aired. A
   // roster we cannot verify refuses nothing.
@@ -117,6 +132,8 @@ void main() {
     expect(pub.mayAir(post('X1RD89', grp)), isTrue, reason: 'a member');
     XprsArchive.instance.selfCallsign = 'X1PZ4Q';
     expect(pub.mayAir(post('X1PZ4Q', grp)), isFalse, reason: 'a stranger');
+    expect(pub.mayAir(post('X1RD89', grp)), isTrue,
+        reason: "a member's post this non-member only relays is carried");
     expect(pub.mayAir(post('X1PZ4Q', 'X5ZZZZ')), isTrue,
         reason: 'no record of that group: nothing to verify, fails open');
     expect(pub.mayAir(post('X1PZ4Q', 'X1RD89')), isTrue,

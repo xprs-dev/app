@@ -494,6 +494,17 @@ class FunctionalityRegistry {
           ],
           ReturnDef('int', '0 done, -1 refused (not the admin)')),
       EndpointDef(
+          'hal_xprs_group_appoint',
+          'Make a member a moderator (an offer they accept, staying a member '
+          'meanwhile) or take the role back (at once), XPRS \u00a710.3. Only '
+          'the admin appoints',
+          [
+            ParamDef('group', 'string', 'The group, "X5..." or "#X5..."'),
+            ParamDef('call', 'string', 'The member'),
+            ParamDef('on', 'int', '1 appoint, 0 take the role back'),
+          ],
+          ReturnDef('int', '0 done, -1 refused (not the admin)')),
+      EndpointDef(
           'hal_xprs_group_leave',
           'Leave a closed group (XPRS \u00a726.3.1, leave:group), signed with '
           'this station\'s own key: the member\'s own decision, on the record',

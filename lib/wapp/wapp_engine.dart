@@ -33,6 +33,7 @@ import '../services/social/email_resolve_service.dart';
 import '../services/social/node_role_api.dart';
 import '../services/mesh/mesh_carry_broker.dart';
 import '../services/mesh/mesh_service.dart';
+import '../services/xprs/xprs_group_act.dart' show xprsGroupNickShown;
 import '../services/xprs/xprs_group_keys.dart';
 import '../services/xprs/xprs_group_read.dart';
 import '../services/xprs/xprs_group_ops.dart';
@@ -4300,7 +4301,7 @@ class WappEngine {
         if (w is! String) continue;
         final p = XprsPacket.parse(w);
         if (p == null || (p['f'] ?? '').toUpperCase() != call) continue;
-        nick = (p['nick'] ?? '').trim();
+        nick = xprsGroupNickShown(p['nick'] ?? '');
       }
       _groupNickCache[call] =
           (nick: nick, retryAtMs: now + nickRetryMs);
@@ -4327,11 +4328,15 @@ class WappEngine {
           // role straight out of the roster reported `none` for the one
           // station that can sign for it: the admin got no room in Chat for
           // the group they had just created.
+          final held = r.roles[me] ?? XprsRole.none;
+          final holds = held == XprsRole.member || held == XprsRole.mod;
+          // A member offered the moderator role stays a member while the
+          // offer waits (10.3); `offer` says what they are being asked.
           final role = mine.containsKey(c)
               ? XprsRole.admin
-              : r.offers.containsKey(me)
+              : r.offers.containsKey(me) && !holds
                   ? XprsRole.invited
-                  : (r.roles[me] ?? XprsRole.none);
+                  : held;
           out.add({
             'call': c,
             'nick': (mine[c]?.isNotEmpty ?? false) ? mine[c]! : groupNick(c),
@@ -4348,6 +4353,7 @@ class WappEngine {
             'verified': r.verified,
             // 10.7.1: anyone reads a public group; a private one is sealed.
             'public': XprsGroupRead.instance.isPublic(c),
+            if (holds && r.offerRoles[me] == XprsRole.mod) 'offer': 'mod',
             if (tree[c] != null) 'parent': tree[c],
           });
         }
@@ -4379,7 +4385,13 @@ class WappEngine {
           if (e.value == XprsRole.member ||
               e.value == XprsRole.mod ||
               e.value == XprsRole.admin) {
-            out.add({'call': e.key, 'role': e.value.name, 'state': 'member'});
+            out.add({
+              'call': e.key,
+              'role': e.value.name,
+              'state': 'member',
+              // Asked to moderate and not yet answered (10.3).
+              if (r.offerRoles[e.key] == XprsRole.mod) 'offer': 'mod',
+            });
           }
         }
         // The key-holder belongs even when an old group never recorded it.
@@ -4500,6 +4512,30 @@ class WappEngine {
         }
       },
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_appoint(group, call, on): the admin makes a member a
+    // moderator (on=1: a `grant role:mod` offer they accept) or takes the
+    // role back (on=0: a plain grant, which makes a member, at once), XPRS.md 10.3. Only the
+    // admin appoints. 0 = done, -1 = refused.
+    final halXprsGroupAppoint = WasmFunction(
+      (int gPtr, int gLen, int cPtr, int cLen, int on) {
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        final c = _readStr(cPtr, cLen).trim().toUpperCase();
+        if (g.isEmpty || c.isEmpty || !XprsGroupKeys.instance.holdsKey(g)) {
+          return -1;
+        }
+        try {
+          return XprsGroupOps.grant(g, [c], role: on != 0 ? 'mod' : '').ok
+              ? 0
+              : -1;
+        } catch (e) {
+          LogService.instance.add('xprs: group appoint failed (${e.runtimeType})');
+          return -1;
+        }
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
     // hal_xprs_group_private(group, on): the admin makes a group private
@@ -4694,7 +4730,10 @@ class WappEngine {
               haveKey: XprsGroups.instance.keyResolver?.call(g) != null);
           final offer = r.offers[me];
           if (offer == null) return -1;
-          return XprsGroupOps.accept(g, me, offer).ok ? 0 : -1;
+          // The offered role is the word of the answer (26.3.1): `accept:mod`
+          // takes up a moderator's place, `accept:member` a member's.
+          final role = r.offerRoles[me] == XprsRole.mod ? 'mod' : 'member';
+          return XprsGroupOps.accept(g, me, offer, role: role).ok ? 0 : -1;
         } catch (e) {
           LogService.instance.add('xprs: group accept failed (${e.runtimeType})');
           return -1;
@@ -5178,6 +5217,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_group_remove', halXprsGroupRemove),
       WasmImport('hal', 'xprs_group_leave', halXprsGroupLeave),
       WasmImport('hal', 'xprs_group_private', halXprsGroupPrivate),
+      WasmImport('hal', 'xprs_group_appoint', halXprsGroupAppoint),
       WasmImport('hal', 'xprs_group_moderation', halXprsGroupModeration),
       WasmImport('hal', 'xprs_group_role_at', halXprsGroupRoleAt),
       WasmImport('hal', 'xprs_group_moderate', halXprsGroupModerate),

@@ -227,6 +227,47 @@ void main() {
       expect(m.rosterOf(g, nowMs: now).roles['X1OTHR'], XprsRole.mod);
     });
 
+    // 10.3: the admin's grant to somebody already in changes their role,
+    // never their place.
+    test('a member asked to moderate keeps posting until they accept', () {
+      final gr = _act(g, '2026-08-08_10:00:00', 'grant:X1PZ4Q');
+      m.offer(gr, nowMs: now);
+      m.offer(_accept('X1PZ4Q', '2026-08-08_10:30:00', xprsIdentifier(gr)),
+          nowMs: now);
+      final ap = _act(g, '2026-08-09_10:00:00', 'grant:X1PZ4Q role:mod');
+      m.offer(ap, nowMs: now);
+      var r = m.rosterOf(g, nowMs: now);
+      expect(r.roles['X1PZ4Q'], XprsRole.member);
+      expect(r.offerRoles['X1PZ4Q'], XprsRole.mod);
+      expect(m.mayPost(g, 'X1PZ4Q', nowMs: now), isTrue);
+      m.offer(
+          _accept('X1PZ4Q', '2026-08-09_10:30:00', xprsIdentifier(ap),
+              role: 'mod'),
+          nowMs: now);
+      r = m.rosterOf(g, nowMs: now);
+      expect(r.roles['X1PZ4Q'], XprsRole.mod);
+      expect(r.offers.containsKey('X1PZ4Q'), isFalse);
+    });
+
+    test("the admin's plain grant takes the moderator role back at once", () {
+      appointMod('X32DVA', '2026-08-08_10:00:00', '2026-08-08_10:30:00');
+      m.offer(_act(g, '2026-08-09_10:00:00', 'grant:X32DVA'),
+          nowMs: now);
+      final r = m.rosterOf(g, nowMs: now);
+      expect(r.roles['X32DVA'], XprsRole.member);
+      expect(r.offers.containsKey('X32DVA'), isFalse,
+          reason: 'taking power away needs no consent');
+    });
+
+    test('the admin re-inviting a member does not unseat them', () {
+      final gr = _act(g, '2026-08-08_10:00:00', 'grant:X1PZ4Q');
+      m.offer(gr, nowMs: now);
+      m.offer(_accept('X1PZ4Q', '2026-08-08_10:30:00', xprsIdentifier(gr)),
+          nowMs: now);
+      m.offer(_act(g, '2026-08-09_10:00:00', 'grant:X1PZ4Q'), nowMs: now);
+      expect(m.mayPost(g, 'X1PZ4Q', nowMs: now), isTrue);
+    });
+
     test('a stranger may do nothing', () {
       final gr = _act(g, '2026-08-08_10:00:00', 'grant:X1RD89');
       m.offer(gr, nowMs: now);
