@@ -141,7 +141,7 @@ but an always-on archiver answers many askers at once on directed lanes.
 | `xprs_names.dart` | `XprsNames.find`: Search's people / stations / groups from the names table, and pokes the pull (at most once a minute) |
 | `xprs_directory.dart` | composes XDIR1 from what this station keeps, announces it, and consumes peers' directories into bounded pointers |
 | `xprs_gossip.dart` | L2/L3 tables, caps, per-signer quotas, the miss-path ask |
-| `xprs_mailbox.dart`, `xprs_forwarder.dart` | holding mail, release on hearing or on a verified receipt, forwarding toward fresh sightings |
+| `xprs_mailbox.dart`, `xprs_forwarder.dart` | holding mail, release on hearing or on a verified receipt, forwarding toward fresh sightings. A held ask (`cmd:history`, `cmd:file`) never gets a receipt, so `sweepHeld` hands it over once and drops it, and drops older copies of the same question from the same asker unsent (12.8.2) |
 | `xprs_publisher.dart` (`depositArchivers`) | pushes every own publication to each chosen archiver as a directed copy: socket first, else LXMF, else a bounded queue |
 | `xprs_archiver_choice.dart` | which archivers this station uses (named, adopted, always-on) |
 | `xprs_line_io.dart` | the `dial:` socket lane (13.0.2): at most two sockets; the archiver delivers on it unasked |
