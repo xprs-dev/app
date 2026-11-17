@@ -1,0 +1,4 @@
+Groups: public by default (anyone reads, members post) or private. Outsiders ask to join; the admin or a moderator accepts. The admin appoints moderators.
+Group folders are folded in the chat list.
+Visit other stations from the Mesh app and share a folder of photos, music or files from your phone.
+Fixes: lower memory use, history from more than one station, group names with spaces.
