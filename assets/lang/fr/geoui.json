@@ -263,5 +263,8 @@
   "geoui.route.ago_m": "il y a {n} min",
   "geoui.route.ago_h": "il y a {n} h",
   "geoui.media.fetching": "Récupération du fichier…",
-  "geoui.media.fetching_pct": "Récupération du fichier… {pct}% de {size}"
+  "geoui.media.fetching_pct": "Récupération du fichier… {pct}% de {size}",
+  "geoui.rooms.show_folders.one": "Afficher {n} dossier",
+  "geoui.rooms.show_folders.other": "Afficher {n} dossiers",
+  "geoui.rooms.hide_folders": "Masquer les dossiers"
 }

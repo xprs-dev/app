@@ -277,7 +277,43 @@ class _RoomsFieldState extends State<RoomsField> {
       return seen > 0 ? seen * 1000 : 0; // wapp reports epoch SECONDS
     }
 
-    return roomsTreeByRank(rows, rank);
+    final tree = roomsTreeByRank(rows, rank);
+    // The folder open now: the groups above it unfold, so the person sees
+    // where they are and the chevron says so.
+    final parentOf = {
+      for (final r in rows) '${r['id'] ?? ''}': '${r['parent'] ?? ''}'
+    };
+    var up = parentOf[widget.openId ?? ''] ?? '';
+    for (var i = 0; i < 8 && up.isNotEmpty; i++) {
+      _unfolded.add(up);
+      up = parentOf[up] ?? '';
+    }
+    return roomsFolded(tree, _unfolded, keepOpen: widget.openId);
+  }
+
+  /// Rooms whose folders are shown. Folded is the default: a group with a
+  /// dozen topics is one row until somebody asks to see them. Kept for the
+  /// session across rebuilds and re-entries of the list.
+  static final Set<String> _unfolded = {};
+
+  /// Rows listed under [id] (any depth): what folding it hides, and whose
+  /// unread a folded row carries so nothing waiting goes unseen.
+  List<Map<String, dynamic>> _below(String id) {
+    final out = <Map<String, dynamic>>[];
+    final rows = widget.rooms;
+    var frontier = {id};
+    for (var depth = 0; depth < 8 && frontier.isNotEmpty; depth++) {
+      final next = <String>{};
+      for (final r in rows) {
+        final rid = '${r['id'] ?? ''}';
+        if (frontier.contains('${r['parent'] ?? ''}') && rid != id) {
+          out.add(r);
+          next.add(rid);
+        }
+      }
+      frontier = next;
+    }
+    return out;
   }
 
 
@@ -303,8 +339,16 @@ class _RoomsFieldState extends State<RoomsField> {
     // The wapp rarely knows the unread count — the conversation store does
     // (it tracks arrivals against the open room). Fall back to it, so a room
     // or channel with waiting messages actually says so on the rail.
-    final unread =
-        (r['unread'] as num?)?.toInt() ?? widget.store.items[id]?.unread ?? 0;
+    final below = _below(id);
+    final folds = below.isNotEmpty;
+    final folded = folds && !_unfolded.contains(id);
+    int unreadOf(Map<String, dynamic> x) =>
+        (x['unread'] as num?)?.toInt() ??
+        widget.store.items['${x['id'] ?? ''}']?.unread ??
+        0;
+    // A folded row counts what waits in its folders too.
+    final unread = unreadOf(r) +
+        (folded ? below.fold<int>(0, (n, x) => n + unreadOf(x)) : 0);
     final selected = r['selected'] == true || id == widget.openId;
     final item = widget.store.items[id];
     // Reachability is the core's, not the wapp's: a callsign room is "live"
@@ -518,6 +562,31 @@ class _RoomsFieldState extends State<RoomsField> {
                   ],
                 ),
               ),
+              if (folds)
+                SizedBox(
+                  width: 40,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    tooltip: folded
+                        ? trn('geoui.rooms.show_folders', below.length)
+                        : tr('geoui.rooms.hide_folders'),
+                    icon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (folded)
+                          Text('${below.length}',
+                              style: const TextStyle(
+                                  fontSize: ChatPalette.rowMetaSize,
+                                  color: ChatPalette.secondary)),
+                        Icon(folded ? Icons.expand_more : Icons.expand_less,
+                            size: 20, color: ChatPalette.secondary),
+                      ],
+                    ),
+                    onPressed: () => setState(() {
+                      if (!_unfolded.remove(id)) _unfolded.add(id);
+                    }),
+                  ),
+                ),
               if (hasMenu)
                 SizedBox(
                   width: 28,
@@ -1167,6 +1236,33 @@ class _RoomsFieldState extends State<RoomsField> {
 /// message put it. Siblings are ordered the same way the roots are, and a
 /// branch moves up with its busiest row. A row whose parent is not on the
 /// list is a root. Pure, so the order is a test rather than a screenshot.
+/// [rows] (in tree order, `parent` naming the row above) without the rows
+/// under a folded one. A row is shown when every row above it is in
+/// [unfolded]; the room open now ([keepOpen]) and the rows above it stay
+/// shown, so folding never hides where the person is.
+List<Map<String, dynamic>> roomsFolded(
+    List<Map<String, dynamic>> rows, Set<String> unfolded,
+    {String? keepOpen}) {
+  final parentOf = {
+    for (final r in rows) '${r['id'] ?? ''}': '${r['parent'] ?? ''}'
+  };
+  final keep = <String>{};
+  var c = keepOpen ?? '';
+  for (var i = 0; i < 8 && c.isNotEmpty && keep.add(c); i++) {
+    c = parentOf[c] ?? '';
+  }
+  bool shown(String id) {
+    var up = parentOf[id] ?? '';
+    for (var i = 0; i < 8 && up.isNotEmpty && parentOf.containsKey(up); i++) {
+      if (!unfolded.contains(up) && !keep.contains(up)) return false;
+      up = parentOf[up] ?? '';
+    }
+    return true;
+  }
+
+  return [for (final r in rows) if (shown('${r['id'] ?? ''}')) r];
+}
+
 List<Map<String, dynamic>> roomsTreeByRank(
     List<Map<String, dynamic>> rows, int Function(Map<String, dynamic>) rank) {
   final idx = {for (var i = 0; i < rows.length; i++) '${rows[i]['id']}': i};

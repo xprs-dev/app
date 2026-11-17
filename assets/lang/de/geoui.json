@@ -263,5 +263,8 @@
   "geoui.route.ago_m": "vor {n} min",
   "geoui.route.ago_h": "vor {n} h",
   "geoui.media.fetching": "Datei wird geholt…",
-  "geoui.media.fetching_pct": "Datei wird geholt… {pct}% von {size}"
+  "geoui.media.fetching_pct": "Datei wird geholt… {pct}% von {size}",
+  "geoui.rooms.show_folders.one": "{n} Ordner zeigen",
+  "geoui.rooms.show_folders.other": "{n} Ordner zeigen",
+  "geoui.rooms.hide_folders": "Ordner ausblenden"
 }

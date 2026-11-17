@@ -45,4 +45,30 @@ void main() {
     ];
     expect(roomsTreeByRank(loop, rankOf), hasLength(2));
   });
+
+  // Folders are folded until asked for: a group with topics is one row.
+  group('folding', () {
+    final rows = <Map<String, dynamic>>[
+      {'id': '#G'},
+      {'id': '#A', 'parent': '#G'},
+      {'id': '#A1', 'parent': '#A'},
+      {'id': '#B', 'parent': '#G'},
+      {'id': 'GLOBAL'},
+    ];
+    List<String> ids(List<Map<String, dynamic>> r) =>
+        [for (final x in r) '${x['id']}'];
+
+    test('folded by default: only the roots', () {
+      expect(ids(roomsFolded(rows, {})), ['#G', 'GLOBAL']);
+    });
+    test('unfolding a group shows its folders, not theirs', () {
+      expect(ids(roomsFolded(rows, {'#G'})), ['#G', '#A', '#B', 'GLOBAL']);
+      expect(ids(roomsFolded(rows, {'#G', '#A'})),
+          ['#G', '#A', '#A1', '#B', 'GLOBAL']);
+    });
+    test('a folder open now is never hidden', () {
+      expect(ids(roomsFolded(rows, {}, keepOpen: '#A1')),
+          ['#G', '#A', '#A1', '#B', 'GLOBAL']);
+    });
+  });
 }
