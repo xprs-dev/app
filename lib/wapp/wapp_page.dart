@@ -4512,6 +4512,21 @@ class _WappPageState extends State<WappPage>
     // wapp gets its state back as prompt_toggle.
     final toggle = data['toggle'] as Map?;
     final toggleLabel = (toggle?['label'] ?? '').toString();
+    // Optional: one value out of several the wapp offers, shown one at a time
+    // with a "next" button and a "back" to the one shown before (e.g. the
+    // callsign a new group will wear). Generic: the wapp gets the value shown
+    // back as prompt_cycle.
+    final cycle = data['cycle'] as Map?;
+    final cycleValues = [
+      for (final v in (cycle?['values'] as List? ?? const [])) v.toString(),
+    ];
+    final cycleLabel = (cycle?['label'] ?? '').toString();
+    final cycleNext = (cycle?['next'] ?? '').toString();
+    final cycleBack = (cycle?['back'] ?? '').toString();
+    var cycleAt = 0;
+    // What "back" returns to: every value shown before, newest last, so it
+    // still walks back after "next" wrapped round the list.
+    final cycleShown = <int>[];
 
     final controller = TextEditingController(
       text: (input?['value'] ?? '').toString(),
@@ -4529,6 +4544,8 @@ class _WappPageState extends State<WappPage>
       _fieldValues['prompt_value'] = value;
       _fieldValues['prompt_input'] = text;
       _fieldValues['prompt_toggle'] = toggleOn;
+      _fieldValues['prompt_cycle'] =
+          cycleValues.isEmpty ? '' : cycleValues[cycleAt];
       _sendCommand('prompt');
     }
 
@@ -4565,6 +4582,47 @@ class _WappPageState extends State<WappPage>
                 title: Text(toggleLabel, style: const TextStyle(fontSize: 14)),
                 value: toggleOn,
                 onChanged: (v) => setLocal(() => toggleOn = v),
+              ),
+            ),
+          if (cycleValues.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  if (cycleLabel.isNotEmpty)
+                    Text(cycleLabel,
+                        style: TextStyle(
+                            color: cs.onSurfaceVariant, fontSize: 13)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SelectableText(
+                      cycleValues[cycleAt],
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'monospace',
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.undo),
+                    tooltip: cycleBack.isNotEmpty ? cycleBack : null,
+                    onPressed: cycleShown.isNotEmpty
+                        ? () => setLocal(() => cycleAt = cycleShown.removeLast())
+                        : null,
+                  ),
+                  IconButton.filledTonal(
+                    icon: const Icon(Icons.autorenew),
+                    tooltip: cycleNext.isNotEmpty ? cycleNext : null,
+                    onPressed: cycleValues.length > 1
+                        ? () => setLocal(() {
+                              cycleShown.add(cycleAt);
+                              cycleAt = (cycleAt + 1) % cycleValues.length;
+                            })
+                        : null,
+                  ),
+                ],
               ),
             ),
           if (body.isNotEmpty)

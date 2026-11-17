@@ -4466,6 +4466,49 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_group_candidates(count, out, cap): callsigns a new group could
+    // have, comma separated -- each from a key the core mints now and holds
+    // in memory until hal_xprs_group_create_as picks one. The callsign
+    // derives from the key (26.1), so letting the person choose it means
+    // offering keys; the wapp sees the callsigns, never the keys.
+    // Bytes written, negated size if `out` is small, -1 with no profile open.
+    final halXprsGroupCandidates = WasmFunction(
+      (int count, int outPtr, int outCap) {
+        if (!XprsGroupKeys.instance.ready) return -1;
+        final s = XprsGroupKeys.instance.candidates(count).join(',');
+        final n = utf8.encode(s).length;
+        if (n > outCap) return -n;
+        return _writeStr(outPtr, outCap, s);
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_create_as(nick, call, out, cap): hal_xprs_group_create
+    // with the callsign the person picked among hal_xprs_group_candidates.
+    // A callsign that was not offered (or no longer is) mints a fresh key, so
+    // what comes back in `out` is the group's callsign either way.
+    final halXprsGroupCreateAs = WasmFunction(
+      (int nPtr, int nLen, int cPtr, int cLen, int outPtr, int outCap) {
+        if (outCap <= 0) return -1;
+        final nick = nLen > 0 ? _readStr(nPtr, nLen) : '';
+        final call = cLen > 0 ? _readStr(cPtr, cLen) : '';
+        final ({String callsign, String npub, String nick})? g;
+        try {
+          g = XprsGroupOps.create(
+              nick: nick, callsign: call.isEmpty ? null : call);
+        } catch (e) {
+          LogService.instance.add('xprs: group create failed (${e.runtimeType})');
+          return -1;
+        }
+        if (g == null) return -1;
+        return _writeStr(outPtr, outCap, g.callsign);
+      },
+      params: [
+        ValueTy.i32, ValueTy.i32, ValueTy.i32,
+        ValueTy.i32, ValueTy.i32, ValueTy.i32,
+      ],
+      results: [ValueTy.i32],
+    );
     // hal_xprs_group_invite(group, call): the group offers membership to one
     // station (26.3, a grant with role member). Signed with the group's key,
     // which only the admin holds, so the wapp asks and the core signs; the
@@ -5220,6 +5263,8 @@ class WappEngine {
       WasmImport('hal', 'xprs_groups', halXprsGroups),
       WasmImport('hal', 'xprs_group_roster', halXprsGroupRoster),
       WasmImport('hal', 'xprs_group_create', halXprsGroupCreate),
+      WasmImport('hal', 'xprs_group_candidates', halXprsGroupCandidates),
+      WasmImport('hal', 'xprs_group_create_as', halXprsGroupCreateAs),
       WasmImport('hal', 'xprs_group_invite', halXprsGroupInvite),
       WasmImport('hal', 'xprs_group_remove', halXprsGroupRemove),
       WasmImport('hal', 'xprs_group_leave', halXprsGroupLeave),

@@ -463,6 +463,25 @@ class FunctionalityRegistry {
           ],
           ReturnDef('int', 'Bytes written, -1 when no group could be minted')),
       EndpointDef(
+          'hal_xprs_group_candidates',
+          'Callsigns a new closed group could have (XPRS \u00a726.1), comma '
+          'separated. The core mints a key for each and holds it in memory '
+          'until hal_xprs_group_create_as picks one; the wapp sees only the '
+          'callsigns',
+          [
+            ParamDef('count', 'int', 'How many to offer (1..64)'),
+          ],
+          ReturnDef('int', 'Bytes written, negated required size if too small, -1 with no profile')),
+      EndpointDef(
+          'hal_xprs_group_create_as',
+          'hal_xprs_group_create with the callsign picked among '
+          'hal_xprs_group_candidates; one not offered mints a fresh key',
+          [
+            ParamDef('nick', 'string', 'Readable name for the group, may be empty'),
+            ParamDef('call', 'string', 'The X5 callsign picked, may be empty'),
+          ],
+          ReturnDef('int', 'Bytes written, -1 when no group could be minted')),
+      EndpointDef(
           'hal_xprs_group_invite',
           'Offer membership of a closed group to one station (XPRS \u00a726.3, '
           'a grant with role member). Signed by the core with the group key; '

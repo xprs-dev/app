@@ -804,6 +804,11 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   come back as a `prompt` command (`prompt_id`, `prompt_value`). `confirm`
   and `cancel` name the two buttons when "OK" and "Cancel" are not what they
   mean (an invitation is "Join" / "Not now").
+- **`ui.prompt` with `cycle`** — `{"label","values":[...],"next","back"}`:
+  one value shown at a time with ↻ (next, wraps) and ↶ (back to the one
+  shown before, a real history). The value on screen when the person
+  confirms comes back as `prompt_cycle`. First used for a new group's X5
+  callsign (`hal_xprs_group_candidates` + `hal_xprs_group_create_as`).
 - **`lib/wapp/geoui/tile_recolor.dart`** — `recolorDark(rgba)` repaints an
   OpenStreetMap-carto raster tile in the Protomaps "dark" palette (hue picks
   water/park/sand/road, a luminance ramp maps the rest). Pure Dart on an RGBA

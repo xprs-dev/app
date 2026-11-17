@@ -79,4 +79,32 @@ void main() {
     expect(k.npubFor(g), isNull);
     expect(k.followedGroups(), isNot(contains(g)));
   });
+
+  test('the person picks the callsign among offered keys', () {
+    final k = XprsGroupKeys.instance;
+    final sw = Stopwatch()..start();
+    final offer = k.candidates(24);
+    sw.stop();
+    expect(offer, hasLength(24));
+    expect(offer.toSet(), hasLength(24), reason: 'no callsign offered twice');
+    expect(offer.every((c) => c.startsWith('X5')), isTrue);
+    // ignore: avoid_print
+    print('24 candidates in ${sw.elapsedMilliseconds} ms');
+    // Nothing is stored for a callsign nobody picked yet.
+    expect(k.mine(), isEmpty);
+
+    final pick = offer[7];
+    final g = k.create(nick: 'chosen', callsign: '#$pick')!;
+    expect(g.callsign, pick, reason: 'the group wears the chosen callsign');
+    expect(k.holdsKey(pick), isTrue);
+    expect(k.mine().map((e) => e.callsign), [pick],
+        reason: 'only the picked key is kept');
+
+    // The pool is spent: the same pick again mints a fresh key instead.
+    final again = k.create(nick: 'other', callsign: pick);
+    expect(again?.callsign, isNot(pick));
+    // A callsign that was never offered mints a fresh key too.
+    final fresh = k.create(callsign: 'X5ZZZZ')!;
+    expect(fresh.callsign, isNot('X5ZZZZ'));
+  });
 }
