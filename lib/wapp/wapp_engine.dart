@@ -4314,7 +4314,14 @@ class WappEngine {
         final mine = {
           for (final g in XprsGroupKeys.instance.mine()) g.callsign: g.nick
         };
-        final calls = <String>{...mine.keys, ...XprsGroups.instance.known};
+        // And the closed groups this station only READS (followed by name,
+        // 10.7.1): their rooms are named like any other.
+        final calls = <String>{
+          ...mine.keys,
+          ...XprsGroups.instance.known,
+          for (final f in XprsArchive.instance.followedGroups)
+            if (f.startsWith('X5')) f,
+        };
         // Folders (26.2): the group each one is listed under, decided once
         // in the core so every wapp draws the same tree.
         final tree = XprsGroups.instance.parents();
