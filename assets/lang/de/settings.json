@@ -75,6 +75,7 @@
   "settings.device.title": "Dieses Gerät",
   "settings.device.owner": "Geräte-Rufzeichen · Besitzer {owner}",
   "settings.device.no_owner": "Geräte-Rufzeichen",
+  "settings.device.archiver": "Öffentlicher Archivierer unter diesem Rufzeichen",
   "settings.device.copy": "Kopieren",
   "settings.device.copied": "Kopiert"
 }

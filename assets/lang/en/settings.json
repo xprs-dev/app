@@ -75,6 +75,7 @@
   "settings.device.title": "This device",
   "settings.device.owner": "Device callsign · owner {owner}",
   "settings.device.no_owner": "Device callsign",
+  "settings.device.archiver": "Public archiver under this callsign",
   "settings.device.copy": "Copy",
   "settings.device.copied": "Copied"
 }

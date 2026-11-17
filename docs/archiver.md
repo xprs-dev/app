@@ -34,6 +34,13 @@ mistake this file exists to prevent (spec 12, 12.9.6).
   station keeps everything it hears and announces `serve:archive`. An always-on
   internet machine does the same with bigger budgets. `serve:archive` is the only
   word for it, and the role behaves identically on every bearer.
+- **The archiver is the station, not the person.** A phone or a desktop holds
+  two names: the person's `X1` and the device's own `X3` (`DeviceIdentity`).
+  The archive answers, announces `serve:archive`, offers mailboxes and is
+  named in `hold:` as the `X3`, signed with the device key. Asks to the old
+  `X1` are still served for stations that chose it before the move. A
+  headless server's profile already is its `X3`. Details in
+  `docs/architecture.md`, "The device and its people".
 - **Three settings, named for people:** **mine** (always kept), **people I
   follow** (kept while followed), and **public archiver** (strangers' packets,
   under a byte cap and a maximum age). Only the third announces `serve:archive`.

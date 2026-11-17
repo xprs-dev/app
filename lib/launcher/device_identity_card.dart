@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:xprs_core/src/profile/device_identity.dart';
 
 import '../services/i18n/core_i18n.dart';
+import '../services/preferences_service.dart';
 
 class DeviceIdentityCard extends StatelessWidget {
   const DeviceIdentityCard({super.key});
@@ -28,9 +29,18 @@ class DeviceIdentityCard extends StatelessWidget {
                 style: const TextStyle(
                     fontFamily: 'monospace', fontWeight: FontWeight.w600)),
             subtitle: Text(
-              owners.isEmpty
-                  ? tr('settings.device.no_owner')
-                  : tr('settings.device.owner', {'owner': owners.join(', ')}),
+              [
+                owners.isEmpty
+                    ? tr('settings.device.no_owner')
+                    : tr('settings.device.owner',
+                        {'owner': owners.join(', ')}),
+                // The device's X3 is the archiver: say so where the person
+                // switched the role on, so the callsign others choose is
+                // the one shown here.
+                if (PreferencesService.instanceSync?.xprsPublicArchiver ??
+                    false)
+                  tr('settings.device.archiver'),
+              ].join('\n'),
               style: TextStyle(color: cs.onSurfaceVariant),
             ),
             trailing: IconButton(

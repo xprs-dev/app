@@ -1813,6 +1813,9 @@ class RemoteApiService {
         final counts = XprsArchive.instance.countsByTier();
         return _json(res, {
           'ok': true,
+          // The callsign the archive answers and announces under: the
+          // device's X3 (DeviceIdentity) where the install has one.
+          'archiver': XprsArchive.instance.archiverName,
           'public': prefs?.xprsPublicArchiver ?? false,
           'alwaysOn': prefs?.xprsAlwaysOn ?? false,
           'alwaysOnStored': prefs?.xprsAlwaysOnStored ?? false,

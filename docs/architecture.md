@@ -585,14 +585,27 @@ the one advert frame, the device's every fourth airing. Both are deposited
 with the archivers. A packet addressed to the `X3` is ours (mesh aliases), and
 the profile records the device as its own station (`XprsOwnedStations`).
 
-Not moved yet: the Reticulum transport identity, `cmd:history` and
-`cmd:file` answers, and the update mirror still run under the profile, so
-`serve:`, `dial:` and `room:` stay on the profile's beacon and the `X3`
-claims none. Stations still ask every neighbour in earshot, the `X3`
-included, and a command sent to it gets a signed `code:404` at once, on a
-TCP line too. A
-headless server whose profile is already an `X3` is its own device and airs
-one observation, as before.
+The `X3` is the archiver (2026-11-18). A `cmd:history`, `cmd:file`,
+`cmd:put` or `q:mail` addressed to it is served by the history server as
+the `X3` and signed with the device key; the publisher signs any other wire
+`f:<X3>` with that key too. Its observation carries the archiver's fields
+(`serve:`, `dial:`, `room:`, the `mail:` it holds for others) and the
+install's `lx:`, and the person's beacon no longer claims them. The
+directory (`t:service`, XDIR1), the `q:policy` answer, the mailbox a web
+visitor is offered and the `hold:` an archive admits all use the `X3`
+(`XprsArchive.archiverName`). Askers reach it at the install's one LXMF
+address: a station name beaconed on an address already paired with a person
+is kept as an alias (`RnsService._lxmfAlias`), and a station's own signed
+wire arriving over LXMF teaches the same pairing to an internet-only peer.
+Asks still naming the person's `X1` are served as before, for the stations
+that chose it before the move; the person and the `X3` asking each other are
+one station and never metered.
+
+Still under the profile: the Reticulum transport identity itself, the
+update mirror, and the archive and custody stores, which are per profile, so
+a device with two profiles archives from the active one. A headless server
+whose profile is already an `X3` is its own device and airs one observation,
+as before.
 
 ### A cable is a lane too (2026-09-12)
 

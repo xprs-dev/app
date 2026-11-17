@@ -75,6 +75,7 @@
   "settings.device.title": "Cet appareil",
   "settings.device.owner": "Indicatif de l'appareil · propriétaire {owner}",
   "settings.device.no_owner": "Indicatif de l'appareil",
+  "settings.device.archiver": "Archiveur public sous cet indicatif",
   "settings.device.copy": "Copier",
   "settings.device.copied": "Copié"
 }
