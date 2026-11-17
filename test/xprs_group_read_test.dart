@@ -283,6 +283,22 @@ void main() {
     expect(rows.single['request'], isTrue);
   });
 
+  // Somebody outside is never told a group's mode; what they read tells
+  // them, newest post first.
+  test('an outsider learns public or private from what it reads', () {
+    const other = 'X5OTHR';
+    final r = XprsGroupRead.instance;
+    expect(r.modeOf(other), isNull);
+    r.noteSeen(other, sealed: false, tsMs: 100000);
+    expect(r.isPublic(other), isTrue);
+    r.noteSeen(other, sealed: true, tsMs: 50000);
+    expect(r.isPublic(other), isTrue, reason: 'an older post changes nothing');
+    r.noteSeen(other, sealed: true, tsMs: 200000);
+    expect(r.modeOf(other), 'private');
+    r.noteSeen(g, sealed: false, tsMs: 300000);
+    expect(r.modeOf(g), 'private', reason: "the admin's own say stands");
+  });
+
   test('a key message is taken only from a group, and only as nsec:', () {
     expect(XprsGroupRead.instance.takeKeyMessage('X1BEA', 'nsec:x'), isFalse);
     expect(XprsGroupRead.instance.takeKeyMessage(g, 'hello'), isFalse);
