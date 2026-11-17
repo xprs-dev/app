@@ -64,7 +64,7 @@ that builds a body, rather than remembered by whoever adds an HF bearer.
 for the recipient, no key of our own, any exception. A message the operator
 believed was sealed went out readable, and nothing said so.
 
-That is not a weaker message. §36.8:
+That is not a weaker message. §12.8:
 
 > **Sealed mail travels on the strength of the seal.** … An archiver releases
 > sealed mail to a station whose own published observation currently lists the
@@ -138,9 +138,9 @@ ignores a repeated part number, accepts any order, and **never displays a partia
 message**. A part that cannot be decrypted is not a part that arrived — a hole in
 the middle must not close silently.
 
-## 6. Which radio carries it — §36.0, and two ways to get it wrong
+## 6. Which radio carries it — §12.0, and two ways to get it wrong
 
-§36.0 is the rule, and it is not "prefer a lane":
+§12.0 is the rule, and it is not "prefer a lane":
 
 > The one place a bearer legitimately decides anything is choosing among several
 > paths to the **SAME station**… picks one: the path with the highest usable
@@ -240,7 +240,7 @@ Bench, 2026-08-27, three stations: C61 (`X3ARK`, phone), TANK2 (`X1VCVM`, phone,
 
 - **Validated.** Both wire forms byte-exact against §9.2 and §6.2. Private and
   plain 1:1 over BLE with the recipient offline, and over the LAN, with the same
-  packet forms on both — the bearer changed and nothing else, which is §36.0's
+  packet forms on both — the bearer changed and nothing else, which is §12.0's
   point. Switching form on consecutive messages in one conversation. Decryption
   end to end: the desktop ingested 8 sealed messages with `sealedUnreadable`
   unchanged at 0. Multi-part sealed messages on the air

@@ -1,4 +1,4 @@
-// The catch-up poller against section 36.10.1.
+// The catch-up poller against section 12.10.1.
 //
 // The behaviours that had to be wrong for a station's held mail to never
 // arrive, each of which cost a real replay:
@@ -74,7 +74,7 @@ void main() {
     await PreferencesService.instance();
     final prefs = PreferencesService.instanceSync!;
     prefs.xprsCatchupMinutes = 1;
-    // The ordinary floor is section 36.10.1's ten minutes whatever this knob
+    // The ordinary floor is section 12.10.1's ten minutes whatever this knob
     // says (it may only slow polling down), so the clock steps below are a
     // period apart in the cadence that actually applies.
     // Non-zero, or the first tick just plants the mark and returns.
@@ -126,7 +126,7 @@ void main() {
     expect(aired, hasLength(2), reason: 'count: moved — ask');
   });
 
-  // `only:` is a CALLSIGN (36.6). Sending a type in it matched a station named
+  // `only:` is a CALLSIGN (12.6). Sending a type in it matched a station named
   // MESSAGE, which answers 404 — and 404 counts as "window done".
   test('the ask names a type in kind:, never in only:', () async {
     _beacon(now, count: 3);
@@ -161,7 +161,7 @@ void main() {
     XprsCatchup.instance.onResult(XprsPacket.parse(
         't:result f:$_station d:$_self ts:x r:${xprsIdentifier(ask)} code:206')!);
 
-    // The continuation goes out at once — that part is deliberate (36.10.1:
+    // The continuation goes out at once — that part is deliberate (12.10.1:
     // the next ask is the continuation of this one).
     await XprsCatchup.instance.tick(_self);
     expect(aired, hasLength(2), reason: 'the continuation should follow');
@@ -369,7 +369,7 @@ void main() {
         before);
   });
 
-  // ── A fresh install (36.9.4 + 36.10.1 rule 4) ───────────────────────────
+  // ── A fresh install (12.9.4 + 12.10.1 rule 4) ───────────────────────────
   //
   // The report that started this: XPRS installed on a new phone showed an
   // empty Global chat. Not a failed fetch — an absent one. The operator's

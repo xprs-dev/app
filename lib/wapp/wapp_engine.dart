@@ -3054,8 +3054,8 @@ class WappEngine {
     // Both directions are the core's. A message arrives on the event bus,
     // reassembled and unsealed, with its §5 identifier; a message leaves
     // through hal_xprs_message, which seals when it can, refuses out loud when
-    // it cannot (§36.8 — plaintext is disclosure, never a silent fallback),
-    // splits per §6.6, ranks the bearers per §36.0 and parks a custody copy.
+    // it cannot (§12.8 — plaintext is disclosure, never a silent fallback),
+    // splits per §6.6, ranks the bearers per §12.0 and parks a custody copy.
     final halRelayDmRecv = WasmFunction(
       (int outPtr, int outCap) {
         if (_relayDmRx.isEmpty || outCap <= 0) return 0;
@@ -4052,7 +4052,7 @@ class WappEngine {
     //
     // The wapp supplies the words and the recipient. The core composes the
     // packet, seals it (§9.2) when `want_private` and it holds the recipient's
-    // key, signs it, splits it (§6.6), ranks the bearers on §36.0 evidence,
+    // key, signs it, splits it (§6.6), ranks the bearers on §12.0 evidence,
     // parks a custody copy and remembers the §5 identifier so a receipt can
     // find it. None of that is the wapp's business and all of it used to be
     // spread across one.
@@ -4070,7 +4070,7 @@ class WappEngine {
     //              never be sealed (§9.11.5); nothing was sent,
     //            0 malformed.
     //
-    // -1 is an ANSWER, not an error, and never a downgrade: §36.8 makes
+    // -1 is an ANSWER, not an error, and never a downgrade: §12.8 makes
     // plaintext a disclosure, so a request to seal that cannot be met is
     // refused and said out loud rather than quietly sent in the clear.
     //

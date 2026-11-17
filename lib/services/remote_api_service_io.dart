@@ -1506,7 +1506,7 @@ class RemoteApiService {
               unawaited(XprsPublisher.instance.askIdentity(dest));
             }
             // Never silently downgraded: the caller asked for a sealed body and
-            // gets told why it could not have one (section 36.8 -- plaintext is
+            // gets told why it could not have one (section 12.8 -- plaintext is
             // disclosure, and the two forms are released under different rules).
             return _json(res, {
               'ok': false,
@@ -1564,12 +1564,12 @@ class RemoteApiService {
           }, status: HttpStatus.badRequest);
         }
         // Through the publisher: every bearer this station has, not a radio
-        // this endpoint happens to name (36.0). The publisher also signs and
-        // files the wire in our own spool (36.5).
+        // this endpoint happens to name (12.0). The publisher also signs and
+        // files the wire in our own spool (12.5).
         final report = await XprsPublisher.instance.publishWire(p.encode());
         // Mail is not fire-and-forget: park our own copy for custody
-        // (36.7) and let the forwarder move it toward where the recipient
-        // actually is (36.8.1) -- the airing above was an attempt, the
+        // (12.7) and let the forwarder move it toward where the recipient
+        // actually is (12.8.1) -- the airing above was an attempt, the
         // receipt is what ends the obligation.
         if (dest.isNotEmpty) {
           final signed = XprsPublisher.instance.lastWire ?? p.encode();
@@ -1589,7 +1589,7 @@ class RemoteApiService {
           'wire': p.encode(),
         });
       }
-      // What this station is carrying for OTHER people (36.7, 13.3).
+      // What this station is carrying for OTHER people (12.7, 13.3).
       //
       // Exposed because custody is invisible when it does not happen: nothing
       // errors and nothing is refused, so "am I a carrier?" had no answer from
@@ -1738,7 +1738,7 @@ class RemoteApiService {
           'disabled': pub.disabledBearers.toList(),
         });
       }
-      // Configure the always-on archivers this station leans on (36.9.4).
+      // Configure the always-on archivers this station leans on (12.9.4).
       // What this station keeps, and for whom (XPRS.md 12). Reads and writes
       // the three tiers; every field optional, so a caller may flip one.
       if (path == '/api/xprs/archiver' || path == '/api/xprs/super') {
@@ -1852,7 +1852,7 @@ class RemoteApiService {
           },
         });
       }
-      // Where can a callsign be reached (36.9.4 gossip + 13.12): the
+      // Where can a callsign be reached (12.9.4 gossip + 13.12): the
       // internet sender's question, answered in layers.
       // Mint a group (section 26.1): a keypair, the X5 callsign it produces,
       // and the ordinary t:identity that says so. "A group needs no
@@ -1957,7 +1957,7 @@ class RemoteApiService {
           // directed packet silently becomes a broadcast announce -- and the
           // public hubs throttle those -- so "can I actually address this
           // station" is the first question when a peer is heard but never
-          // answers (36.12.1).
+          // answers (12.12.1).
           'lxmfDest': RnsService.instance.lxmfDestForCallsign(call),
           // What the station said about itself (6.3.2), as this one kept it,
           // and whether the picture's bytes are here.
@@ -2038,7 +2038,7 @@ class RemoteApiService {
         }
         // The publisher signs (our own wire, no sig: yet) and airs on every
         // bearer -- BLE for the bench, LAN for an ESP32 on this network, and
-        // the reticulum hub lane for an archiver across the internet (36.0).
+        // the reticulum hub lane for an archiver across the internet (12.0).
         // `bearer` names one lane, to test it alone (a station heard on the
         // LAN is otherwise always asked on the LAN).
         final only = (data['bearer'] ?? '').toString().trim();

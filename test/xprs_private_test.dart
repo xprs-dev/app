@@ -5,7 +5,7 @@
  *
  *  - The wire form IS the privacy statement. `x:` replaces `m:` (9.2), so a
  *    reader needs no prior state and either side may switch on any message.
- *  - A private send NEVER quietly becomes a plain one. Section 36.8: sealed and
+ *  - A private send NEVER quietly becomes a plain one. Section 12.8: sealed and
  *    clear mail are released under different rules, so a downgrade is not a
  *    weaker message, it is a message under rules its author did not choose.
  *  - A partial message is never displayed (6.6).
@@ -167,7 +167,7 @@ void main() {
           head: _head(), text: 'secret', private: true, signingKey: dA);
       expect(r.ok, isFalse);
       expect(r.refusal, XprsSealRefusal.noRecipientKey);
-      expect(r.packets, isEmpty, reason: '36.8: plaintext is disclosure');
+      expect(r.packets, isEmpty, reason: '12.8: plaintext is disclosure');
     });
 
     test('a malformed recipient key refuses', () {
@@ -388,7 +388,7 @@ void main() {
 }
 
 /*
- * Path evidence (docs/XPRS.md section 36.0).
+ * Path evidence (docs/XPRS.md section 12.0).
  *
  * These exist because the bench caught the bug they pin: a private message to a
  * phone with no WiFi went out over the LAN and reached nobody, because another

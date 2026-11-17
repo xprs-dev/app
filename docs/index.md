@@ -61,7 +61,7 @@ Pictures for all of this live in **[diagrams/](diagrams/README.md)**.
 
 | doc | the sections that matter |
 |---|---|
-| [relay-gateway-flow.md](diagrams/relay-gateway-flow.md) | **Read before touching relaying or gatewaying.** The app does NOT digipeat on any bearer, and nobody digipeats BLE at all — `xprsMayRelay`/`xprsWouldLoop` are dead code, and §13.2.1's jitter-and-cancel is unimplemented outside the firmware. Also the §36.3 gate on the internet lane, which governs the archive only. |
+| [relay-gateway-flow.md](diagrams/relay-gateway-flow.md) | **Read before touching relaying or gatewaying.** The app does NOT digipeat on any bearer, and nobody digipeats BLE at all — `xprsMayRelay`/`xprsWouldLoop` are dead code, and §13.2.1's jitter-and-cancel is unimplemented outside the firmware. Also the §12.3 gate on the internet lane, which governs the archive only. |
 | [transports-flow.md](diagrams/transports-flow.md) | **Start here if you want the shape before the prose.** Seven diagrams: the component map, the send sequence, the per-bearer decision, the receive demux and funnel, the message lifecycle, and the bench instrument. |
 | [transports.md](transports.md) | **§2** the three answers a bearer gives, and why `queued` had to exist. **§4** the receive funnel and the third-party mail nobody was carrying — the defect that motivated the whole thing. **§5** the bearer switchboard for testing. **§7** the eight hardware cases. **§8** what is deliberately not done. |
 | [message-receive-flow.md](diagrams/message-receive-flow.md) + [message-receive.md](message-receive.md) | **Read before touching anything that receives.** Six figures for the inbound path, and the audit behind them. **§3** a message gets a new identity on every retry, so dedup, receipts and custody release all miss. **§4** an XPRS 1:1 over Reticulum is archived and never delivered. **§5** the raw BLE lane sends a delivery receipt for a message it then drops. **§7** sending to a bare-callsign thread id returns silently. |
@@ -73,7 +73,7 @@ errors and nothing is refused. `GET /api/xprs/held` is the observable.
 
 | doc | the sections that matter |
 |---|---|
-| [private-messages.md](private-messages.md) | **§1** privacy is one field (`x:` replaces `m:`) and therefore per packet — no flag, no negotiation, no mode. **§2** a private send is never quietly downgraded, and why §36.8 makes that correctness. **§4** the half-hour key-discovery hole and its two fixes. **§6** choosing a bearer under §36.0, and the two ways "recent evidence" was got wrong on the bench. **§9** what is validated and what is not. |
+| [private-messages.md](private-messages.md) | **§1** privacy is one field (`x:` replaces `m:`) and therefore per packet — no flag, no negotiation, no mode. **§2** a private send is never quietly downgraded, and why §12.8 makes that correctness. **§4** the half-hour key-discovery hole and its two fixes. **§6** choosing a bearer under §12.0, and the two ways "recent evidence" was got wrong on the bench. **§9** what is validated and what is not. |
 
 **Before you start**: the arrival bearer of a packet is not evidence of a path to
 its sender, and `via:` cannot tell you otherwise because nothing transmits it.
@@ -82,7 +82,7 @@ its sender, and `via:` cannot tell you otherwise because nothing transmits it.
 
 | doc | the sections that matter |
 |---|---|
-| [XPRS.md](XPRS.md) | The specification. **Do not edit it** — it is byte-identical to `xprs-dev/spec` and `test/xprs_packet_test.dart` checks the corpus against it. **§4** the packet grammar and the 250-byte limit on every transport. **§6.7** files. **§25.2** `cmd:file`/`cmd:put`, and **§25.2.2** the transfer drawn end to end. **§31.2** what a station owes a stranger. **§36.9.4** always-on archivers (a setting, never a word on the wire). **§37** implementation status — currently understates `cmd:file`, which is built. |
+| [XPRS.md](XPRS.md) | The specification. **Do not edit it** — it is byte-identical to `xprs-dev/spec` and `test/xprs_packet_test.dart` checks the corpus against it. **§4** the packet grammar and the 250-byte limit on every transport. **§6.7** files. **§25.2** `cmd:file`/`cmd:put`, and **§25.2.2** the transfer drawn end to end. **§31.2** what a station owes a stranger. **§12.9.4** always-on archivers (a setting, never a word on the wire). **§37** implementation status — currently understates `cmd:file`, which is built. |
 | [aprs.md](aprs.md) / [aprs-xt.md](aprs-xt.md) / [ble.md](ble.md) | The older APRS transport and the conventions layered on it. |
 | [spectrum.md](spectrum.md) / [QO-100.md](QO-100.md) | Where packets go on each bearer, and reaching a satellite. Both proposals; nothing implemented. |
 

@@ -318,11 +318,11 @@ void _oversizeWires() {
 }
 
 
-// Section 36.0's path choice, isolated from the radios: a lane whose route is
+// Section 12.0's path choice, isolated from the radios: a lane whose route is
 // PROVEN is never suppressed by one a peer only CLAIMS. These drive the pure
 // decision directly, so no transport, GATT peer or monitor is needed.
 void _pathChoice() {
-  group('choosePreferredBearer (§36.0: proven beats claimed)', () {
+  group('choosePreferredBearer (§12.0: proven beats claimed)', () {
     String? pick({
       bool session = false,
       bool net = false,
@@ -439,7 +439,7 @@ void _statusIdentity() {
 }
 
 /// A station keeps its own publications and hands a COPY to the archivers its
-/// operator chose (XPRS.md 12, 34.3, 36.3).
+/// operator chose (XPRS.md 12, 34.3, 12.3).
 ///
 /// THE CORE does this, for every publication type and every wapp, and no wapp
 /// is involved or told: where copies of a person's words are kept is a

@@ -42,7 +42,7 @@ void main() {
     expect(pong['d'], 'X1QZ3N');
     expect(aired.single.bearer, 'ble',
         reason: 'the packet that just arrived is the freshest evidence of a '
-            'path back (36.0)');
+            'path back (12.0)');
   });
 
   test('r: names the ping, so the asker needs no nonce of its own', () {

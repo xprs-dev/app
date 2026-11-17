@@ -1,4 +1,4 @@
-// The local topology, walked (docs/XPRS.md 10.6.3, 10.6.5, 36.0).
+// The local topology, walked (docs/XPRS.md 10.6.3, 10.6.5, 12.0).
 //
 // The one thing worth testing hardest is the DIRECTION. `hears:` is about
 // reception, so an edge "B hears A" is what lets A transmit to B, and walking
@@ -54,9 +54,9 @@ void main() {
     expect(g.pathTo('X16JK8', from: 'X1VCVM'), isNull);
   });
 
-  test('reliability outranks hop count (36.0)', () {
+  test('reliability outranks hop count (12.0)', () {
     // A two-hop path resting on a fifty-minute-old claim, against a three-hop
-    // path every link of which was confirmed seconds ago. 36.0: "a fast path
+    // path every link of which was confirmed seconds ago. 12.0: "a fast path
     // that has not carried anything lately is a guess, and a slower one that
     // answered a minute ago is knowledge."
     final g = XprsGraph([

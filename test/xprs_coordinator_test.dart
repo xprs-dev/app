@@ -196,7 +196,7 @@ void main() {
   _funnel();
   _queued();
 
-  group('preferring one path (36.0)', () {
+  group('preferring one path (12.0)', () {
     test('a carried preference leaves the others unused', () async {
       final r = await pub.publishWire(_wire(d: 'X1RD89'),
           verbatim: true, prefer: 'lan');
@@ -207,7 +207,7 @@ void main() {
     });
 
     test('a preference that CANNOT carry falls back to everyone', () async {
-      // 36.0: "if the arrival bearer cannot carry the answer it does not give
+      // 12.0: "if the arrival bearer cannot carry the answer it does not give
       // up". A preference that can become silence is not a preference.
       lan.up = false;
       final r = await pub.publishWire(_wire(d: 'X1RD89'),

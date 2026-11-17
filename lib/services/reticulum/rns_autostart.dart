@@ -273,7 +273,7 @@ bool _profileWatch = false;
 /// `announceName` is read once, at `rns.start(...)`, so the name a node
 /// announces is whichever profile happened to be active when the node came up.
 /// Switch profile afterwards and the node goes on announcing the old callsign
-/// -- and since a peer can only address what it heard announced (36.12.2), the
+/// -- and since a peer can only address what it heard announced (12.12.2), the
 /// station becomes unreachable under the name every other layer now uses,
 /// with nothing anywhere reporting a fault. A phone here carries two profiles,
 /// so this is a switch away at any time.
@@ -292,7 +292,7 @@ void _watchProfileForAnnounce() {
   // A profile SWITCH changes the id and fires the notifier above. Setting a
   // licensed callsign does NOT change the id (it is the folder on disk), so it
   // fires nothing there: the station went on announcing the name it came up
-  // with while every other layer had moved on, which is 36.12.2's
+  // with while every other layer had moved on, which is 12.12.2's
   // unreachable-under-the-new-name failure with nothing reporting a fault.
   ProfileService.instance.wireCallsignNotifier
       .addListener(() => reAnnounce('callsign'));

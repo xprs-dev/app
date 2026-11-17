@@ -31,7 +31,7 @@ flowchart TB
     subgraph XPRS["what XPRS has"]
         direction LR
         X1["relay §13.1–13.2.1<br/><i>repeat, with via: and a hop budget</i>"]
-        X3["carrier §13.3, §36.7<br/><b>hold it until they turn up</b>"]
+        X3["carrier §13.3, §12.7<br/><b>hold it until they turn up</b>"]
         X2["gateway §13.11.3<br/><i>republish off-protocol</i>"]
     end
 
@@ -73,10 +73,10 @@ things, and the distinction is the whole design:
 So on the busiest off-grid lane there is still no digipeater — but the lane is
 no longer a dead end, because the station that hears it now passes it on.
 
-**Which is enough to bridge bearers, and does.** §36.12: *"It can cross the
+**Which is enough to bridge bearers, and does.** §12.12: *"It can cross the
 internet on one hop and a LoRa hill on the next; every hop is a holder."* A
 BLE-only phone reaches a LAN-only desktop because a station that hears both
-takes custody and hands it on — and §36.8.1 makes that hand-off a relay in every
+takes custody and hands it on — and §12.8.1 makes that hand-off a relay in every
 respect that matters: the author's bytes and signature travel untouched, `via:`
 gains the carrier, and the §13.1 budget and §13.2 loop check apply. Measured:
 
@@ -108,7 +108,7 @@ and neither was:
 
 - **The carrier has to say what it hears.** The BLE beacon built `hears:` from
   `MeshTable.neighbors`, a table nothing fills, so this station had never told
-  anyone who it could reach. §36.9.4's gossip resolves "who can reach X" from
+  anyone who it could reach. §12.9.4's gossip resolves "who can reach X" from
   exactly that field. It now reads the monitor, like the LAN beacon.
 - **And sign it.** Gossip refuses an unsigned claim outright, so a populated
   `hears:` on an unsigned beacon still fed nothing. The BLE beacon is signed
@@ -244,7 +244,7 @@ The app does not digipeat, and says so itself — a decision rather than a gap
 > implementing section 13.2.1 in full (the 200–1200 ms jitter AND the
 > cancel-on-hearing), so it is a **deliberate omission rather than an oversight**.
 
-**Where the §13 rules DO apply is the custody hand-off**, which §36.8.1 requires
+**Where the §13 rules DO apply is the custody hand-off**, which §12.8.1 requires
 them for: *"`via:` gains the holder's callsign, the section 13.1 budget and the
 section 13.2 loop check apply"*. Both the release and `XprsForwarder` call
 `xprsMayRelay` and `xprsWouldLoop` before appending `via:`. Until recently the
@@ -273,13 +273,13 @@ sequenceDiagram
     participant O as other custodians
 
     S-->>H: t:message d:R — overheard, not for us
-    Note over H: §36.12.1 — the sender parked its own copy too;<br/>an airing is an ATTEMPT, not a delivery
+    Note over H: §12.12.1 — the sender parked its own copy too;<br/>an airing is an ATTEMPT, not a delivery
     H->>H: park in custody §13.3<br/>bounded: 7-day TTL + byte quota, evict ORDER BY urg, ts
 
     Note over H,R: …hours pass. The recipient is somewhere else…
 
     R-->>H: any packet from R, heard DIRECTLY (no via:)
-    Note over H: §36.8.1 — the trigger is the packet itself.<br/>NOT a poll: "a station that checks every ten seconds<br/>spends its battery asking a question the air already answered"
+    Note over H: §12.8.1 — the trigger is the packet itself.<br/>NOT a poll: "a station that checks every ten seconds<br/>spends its battery asking a question the air already answered"
     H->>R: release held mail, on the bearer R was heard on
     R-->>H: t:receipt s:ack §13.7
     H->>H: purge our copy
@@ -300,7 +300,7 @@ does not verify must release nothing.
 
 ---
 
-## Fig. 6 — Handing mail toward where the recipient actually is (§36.8.1)
+## Fig. 6 — Handing mail toward where the recipient actually is (§12.8.1)
 
 Waiting is not the only option. A holder may move the mail closer while both
 parties sleep.
@@ -317,7 +317,7 @@ flowchart TD
     L3 -- found --> PICK
     L3 -- none --> L2{"L2 · visit history<br/>100-ring, never expires,<br/>RADIO sightings only"}
     L2 -- found --> PICK
-    L2 -- none --> MISS["ask a super-archiver §36.9.4<br/>and meanwhile DEPOSIT with one<br/><i>rather than sitting on it</i>"]
+    L2 -- none --> MISS["ask a super-archiver §12.9.4<br/>and meanwhile DEPOSIT with one<br/><i>rather than sitting on it</i>"]
 
     PICK["append our callsign to via:"] --> LANE{"can the network<br/>name this gateway?"}
     LANE -- yes --> LX["LXMF, addressed<br/><b>a deliberate crossing</b>"]
@@ -380,13 +380,13 @@ gateway, and the history server's LXMF copy to whoever asked. Everything else
 reaches the internet because `_fanOut` puts the wire on every bearer that is up,
 and `scope:local` is the only brake.
 
-That is not necessarily wrong — §36.0 says a station that cannot tell which path
+That is not necessarily wrong — §12.0 says a station that cannot tell which path
 reaches the asker *"answers on every bearer it can transmit on"* — but it is
 worth knowing that it is the fallback doing the work, not a routing decision.
 
 ---
 
-## Fig. 8 — The gate on the way in from the internet (§36.3)
+## Fig. 8 — The gate on the way in from the internet (§12.3)
 
 Radio traffic is bounded by radio range. Internet traffic is not, so the internet
 lane has an admission rule the radio lanes do not.
@@ -424,9 +424,9 @@ stranger's traffic is not refusing to *carry* it.
 | 13.2 | loop check | **applied** on the same two paths |
 | 13.2.1 | random wait, cancel on hearing | **not implemented in the app at all**; complete in firmware for LAN, LoRa, ESP-NOW |
 | 13.11.3 | a gateway treats `scope:` as binding | honoured — `scope:local` is checked in the fan-out and in the chat wapp's APRS path |
-| 36.8.1 | release on hearing, forward toward a gateway, once per holder | implemented |
+| 12.8.1 | release on hearing, forward toward a gateway, once per holder | implemented |
 | 13.7.1 | receipts without asking, signed | **implemented** — composed on delivery under the exclusion table, always signed, and a receipt that does not verify releases nothing. `XPRS.md` §37 still records this as "specified, not yet on the air" |
-| 10.6 | `hears:` — who this station can reach | **implemented on both beacons.** The BLE one built it from a table nothing fills, so it was absent from every advert ever sent; §36.9.4's gossip resolves gateways from exactly that field, and an unsigned claim is refused, so the BLE beacon is signed now too |
+| 10.6 | `hears:` — who this station can reach | **implemented on both beacons.** The BLE one built it from a table nothing fills, so it was absent from every advert ever sent; §12.9.4's gossip resolves gateways from exactly that field, and an unsigned claim is refused, so the BLE beacon is signed now too |
 | 9.4.1 | no self-generated callsign onto licensed spectrum | **violated**: the ESP32 iGate computes an APRS-IS passcode for an `X3` callsign |
 
 The last row is the one that matters outside this codebase, because it is the

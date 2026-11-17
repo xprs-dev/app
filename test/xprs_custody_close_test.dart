@@ -171,8 +171,8 @@ void main() {
     });
   });
 
-  group('a release is a relay (36.8.1) and obeys section 13', () {
-    // 36.8.1: "via: gains the holder's callsign, the section 13.1 budget and
+  group('a release is a relay (12.8.1) and obeys section 13', () {
+    // 12.8.1: "via: gains the holder's callsign, the section 13.1 budget and
     // the section 13.2 loop check apply".
 
     test('a packet that already came through us is not released again', () {
@@ -389,7 +389,7 @@ void _hearsClaim() {
       // The BLE beacon built `hears:` from `MeshTable.neighbors`, which is
       // filled only by the 0x4D mesh beacon this station deliberately never
       // airs — so the table is permanently empty and `hears:` was absent from
-      // every BLE beacon ever sent. §36.9.4's gossip resolves "who can reach X"
+      // every BLE beacon ever sent. §12.9.4's gossip resolves "who can reach X"
       // from exactly that field, so a BLE-only station could not learn that a
       // dual-homed neighbour reaches the LAN, and mail for a LAN-only peer had
       // nowhere to go.

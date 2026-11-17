@@ -465,7 +465,7 @@ in a wapp again, the first mistake this file names.
 
 `XprsCommandCourier` is the core half. `hal_xprs_send` hands it any
 `t:command` addressed to one station; it airs the wire once on the path
-section 36.0 chooses, airs the same signed bytes again on every bearer at
+section 12.0 chooses, airs the same signed bytes again on every bearer at
 30, 60, 100 and 160 s (the identifier is how a station knows a repeat, and
 silence is evidence against the path that was chosen), stops at a final code
 (a 202 keeps it going, because a repeat is what asks a station where it

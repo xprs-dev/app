@@ -59,7 +59,7 @@ void main() {
       expect(built.packets, hasLength(1));
       final p = built.packets.first;
       expect(p['d'], isNull,
-          reason: 'a d: would make it mail, not a publication (§36.1)');
+          reason: 'a d: would make it mail, not a publication (§12.1)');
       expect(p['scope'], 'local');
       expect(xprsScope(p).scope, XprsScope.local);
       expect(p.fits, isTrue);

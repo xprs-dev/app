@@ -100,7 +100,7 @@ ask which of the two questions it is asking.
 
 `lxmfDestForCallsign` matches on `callsign` **or** `lxmfName`. The first
 version of `announcedCallsigns()` read only `callsign`, so it returned nothing
-for a peer the resolver could resolve — the same bug XPRS.md 36.12.2 warns
+for a peer the resolver could resolve — the same bug XPRS.md 12.12.2 warns
 about, where address→name and name→address grow apart and the second fails
 silently. If two code paths name the same peer, they must read the same fields.
 
@@ -115,7 +115,7 @@ track a setting has the same shape of bug.
 
 ### The two lanes, and what follows from them
 
-36.12.1: a shared transport reliably carries **identity announcements** and
+12.12.1: a shared transport reliably carries **identity announcements** and
 **directed messages**, nothing else. Everything built on top has to be one of
 those two. In practice that means:
 

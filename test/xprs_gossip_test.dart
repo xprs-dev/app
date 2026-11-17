@@ -1,5 +1,5 @@
 /*
- * Gossip (docs/XPRS.md 36.9.4): the layered whereabouts table, its validity
+ * Gossip (docs/XPRS.md 12.9.4): the layered whereabouts table, its validity
  * walls, and the consumers that route by it. The DoS probes of the section
  * are here as tests: unsigned feeds nothing, one signer stops at its quota,
  * an internet-borne claim never writes the visit history, the rings hold
@@ -30,7 +30,7 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  // ── The two halves of the `via:` gate (36.9.4) ─────────────────────────
+  // ── The two halves of the `via:` gate (12.9.4) ─────────────────────────
   //
   // They used to share one guard, and the cost was that a station could never
   // see past its own neighbours. The distinction is not a nicety:
@@ -40,7 +40,7 @@ void main() {
   //   hears:      is about the OBSERVER, and 9.1 computes `sig:` with `via:`
   //               removed -- a relay cannot alter what was signed, so a
   //               relayed observation carries exactly the claim its author
-  //               made. 36.9.4 asks for "a verified observation whose `link:`
+  //               made. 12.9.4 asks for "a verified observation whose `link:`
   //               names a short-range bearer" and says nothing about how it
   //               arrived.
   //
@@ -53,7 +53,7 @@ void main() {
         'via:X3GSLC ts:2026-08-27_20:32:39 m:');
     XprsIngest.heard(p!, bearer: 'lan', selfCallsign: 'X16JK8');
 
-    // It REACHED the intake. Unsigned here, so 36.9.4's wall turns it away —
+    // It REACHED the intake. Unsigned here, so 12.9.4's wall turns it away —
     // but being turned away by the wall and never arriving are different
     // things, and only the counter can tell them apart.
     expect(g.refusedUnsigned, 1,
@@ -96,7 +96,7 @@ void main() {
   });
 
   test('an internet-borne claim never writes the visit history', () {
-    // Even VERIFIED, an rns-link claim is L3 only (36.9.4: radio truth).
+    // Even VERIFIED, an rns-link claim is L3 only (12.9.4: radio truth).
     g.noteHears('X3GATE', ['X1AAAA'],
         link: 'rns', verified: true, nowMs: t0);
     expect(g.statusJson()['live'], 1, reason: 'sighting recorded');
@@ -161,7 +161,7 @@ void main() {
   // A visitor on the station's web page is heard on `lan` through the API.
   // From the station's own network that is radio truth; from across the
   // internet it is a live sighting and nothing more, whatever the bearer
-  // word says (36.9.4: no packet that travelled only the internet writes the
+  // word says (12.9.4: no packet that travelled only the internet writes the
   // durable layer). The caller says which with `shortRange`.
   test('noteDirect with shortRange:false writes the live layer only', () {
     g.noteDirect('X1VIS', 'X3SELF', bearer: 'lan', nowMs: t0, shortRange: false);

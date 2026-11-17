@@ -1963,7 +1963,7 @@ class _WappPageState extends State<WappPage>
         // Both halves are gone. A wapp that wants a person messaged uses
         // mesh.message below, which names a CALLSIGN and hands the
         // conversation to Chat, whose send goes through the core's own door
-        // and its §36.0 bearer ranking.
+        // and its §12.0 bearer ranking.
         } else if (type == 'mesh.message') {
           // Bluetooth wapp envelope button: jump into the Chat wapp's 1:1
           // conversation with that callsign (deep link via initialConvo).

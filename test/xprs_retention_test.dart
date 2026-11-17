@@ -117,7 +117,7 @@ void main() {
         bearer: 'ble');
     XprsIngest.own('t:observation f:$_self link:ble peers:0', bearer: 'ble');
     expect(admitted, ['message'],
-        reason: 'section 36.5 keeps our log, not our heartbeat');
+        reason: 'section 12.5 keeps our log, not our heartbeat');
   });
 
   test('a public archiver that wants chatter can still spool presence',

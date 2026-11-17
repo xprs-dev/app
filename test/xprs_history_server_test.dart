@@ -287,7 +287,7 @@ void main() {
     });
   });
 
-  test('a direct cmd:history kind:mailbox replays the station own t:mailbox (13.12/36.5)',
+  test('a direct cmd:history kind:mailbox replays the station own t:mailbox (13.12/12.5)',
       () {
     // The station's own declaration, archived like its daily airing would.
     a.admit(_p('t:mailbox f:X1SELF ts:2026-08-13_10:30:00 hold:X3RLY7,X32DVA'),
@@ -503,6 +503,108 @@ void main() {
     });
   });
 
+  group('an always-on archiver answers askers at once (12.9.4)', () {
+    late List<(String to, String wire)> directed;
+    setUp(() async {
+      SharedPreferences.setMockInitialValues(
+          {'flutter.xprs.public': true, 'flutter.xprs.alwaysOn': true});
+      PreferencesService.resetForTest();
+      await PreferencesService.instance();
+      directed = [];
+      srv.directedPathOverride = (to) => to != 'X1RADIO';
+      srv.directedTxOverride = (to, wire) async {
+        directed.add((to, wire));
+        return true;
+      };
+    });
+
+    tearDown(PreferencesService.resetForTest);
+
+    List<String> codesTo(String c) => [
+          for (final e in directed)
+            if (_p(e.$2).type == 'result' && _p(e.$2)['d'] == c)
+              _p(e.$2)['code']!
+        ];
+
+    test('a second asker with a directed path is served beside the radio',
+        () {
+      seed(14);
+      fakeAsync((async) {
+        ask('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+            'until:2026-08-13_11:00:00');
+        async.elapse(const Duration(seconds: 2));
+        ask2('t:command f:X1CCC d:X1SELF ts:2026-08-13_12:00:05 cmd:history '
+            'until:2026-08-13_11:00:00');
+        async.elapse(const Duration(seconds: 8));
+        // X1CCC: 202, a full page on its own lane, 206; nothing of it aired.
+        expect(codesTo('X1CCC'), ['202', '206']);
+        expect(
+            directed.where((e) => e.$1 == 'X1CCC' && _p(e.$2).type == 'info'),
+            hasLength(XprsHistoryServer.pageSize));
+        expect(results().where((r) => r['d'] == 'X1CCC'), isEmpty,
+            reason: 'a directed replay keeps off the radio (12.0)');
+        // X1BBB's radio replay is still running, not cancelled.
+        expect(srv.replaying, isTrue);
+        async.elapse(const Duration(seconds: 30));
+        expect(results().where((r) => r['d'] == 'X1BBB').map((r) => r['code']),
+            ['202', '206']);
+      });
+    });
+
+    test('an asker with no directed path is told busy', () {
+      seed(14);
+      fakeAsync((async) {
+        ask('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+            'until:2026-08-13_11:00:00');
+        async.elapse(const Duration(seconds: 2));
+        ask('t:command f:X1RADIO d:X1SELF ts:2026-08-13_12:00:05 cmd:history '
+            'until:2026-08-13_11:00:00');
+        final r = results().where((r) => r['d'] == 'X1RADIO').single;
+        expect(r['code'], '429');
+        expect(r['m'], 'busy');
+        async.elapse(const Duration(seconds: 30));
+      });
+    });
+
+    test('one asker: a different question runs beside it, a third is busy',
+        () {
+      seed(14);
+      fakeAsync((async) {
+        ask('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+            'until:2026-08-13_11:00:00');
+        async.elapse(const Duration(seconds: 2));
+        // Another question (a kind:) from the same asker: beside it.
+        ask2('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:03 cmd:history '
+            'kind:info until:2026-08-13_11:00:00');
+        async.elapse(const Duration(milliseconds: 600));
+        expect(codesTo('X1BBB'), ['202']);
+        // A third question would exceed two per asker: busy.
+        ask2('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:04 cmd:history '
+            'only:X1AAA until:2026-08-13_11:00:00');
+        expect(results().where((r) => r['d'] == 'X1BBB').last['m'], 'busy');
+        async.elapse(const Duration(seconds: 40));
+        expect(codesTo('X1BBB'), ['202', '206']);
+      });
+    });
+
+    test('an ordinary archiver keeps one replay: a stranger waits', () async {
+      SharedPreferences.setMockInitialValues({'flutter.xprs.public': true});
+      PreferencesService.resetForTest();
+      await PreferencesService.instance();
+      seed(14);
+      fakeAsync((async) {
+        ask('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+            'until:2026-08-13_11:00:00');
+        async.elapse(const Duration(seconds: 2));
+        ask2('t:command f:X1CCC d:X1SELF ts:2026-08-13_12:00:05 cmd:history '
+            'until:2026-08-13_11:00:00');
+        expect(results().where((r) => r['d'] == 'X1CCC').single['code'], '429');
+        expect(directed, isEmpty);
+        async.elapse(const Duration(seconds: 30));
+      });
+    });
+  });
+
   // The bug this pins: _air used to call Ble5Bus directly, so a station that
   // asked over the LAN got its answer aired on Bluetooth and heard nothing.
   // Every other test here installs txOverride, which replaces exactly the
@@ -549,7 +651,7 @@ void main() {
       expect(ble.ttls.first!.inSeconds, lessThan(60));
     });
 
-    test('an ask off the internet lane is served like any other (36.0)',
+    test('an ask off the internet lane is served like any other (12.0)',
         () async {
       // The bug this pins: bearer 'rns' used to be refused outright -- the
       // guard predated the bearer-abstract _air, so an archiver on the hubs
@@ -576,7 +678,7 @@ void main() {
 
       final record = lan.sent.firstWhere((w) => w.contains('packet number'));
       // Byte for byte: no signature added, so the identifier still matches
-      // the row the asker will page against with until: (25.2.1, 36.2).
+      // the row the asker will page against with until: (25.2.1, 12.2).
       expect(record, equals(stored['wire']));
       expect(record, contains('f:X1AAA'));
       // Re-airing another station's packet must not file a second copy of it

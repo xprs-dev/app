@@ -48,7 +48,7 @@ because the whole point of it is to answer *where did this actually go*.
 `queued` names the lane for the archive, but it does **not** satisfy a path
 preference: choosing one path is only worth doing if it worked.
 
-## 3. Choosing one path — §36.0
+## 3. Choosing one path — §12.0
 
 > The one place a bearer legitimately decides anything is choosing among several
 > paths to the **SAME station**… the path with the highest usable bandwidth among
@@ -56,7 +56,7 @@ preference: choosing one path is only worth doing if it worked.
 > speed.**
 
 Ranked by bandwidth: **LAN > BLE5 > Reticulum**. A broadcast has no single
-station to rank paths for, so it still fans out — that is §36.0's own fallback
+station to rank paths for, so it still fans out — that is §12.0's own fallback
 for "cannot tell". If the chosen bearer does not carry it, every bearer is tried:
 a preference that can become silence is not a preference.
 
@@ -127,7 +127,7 @@ things to whoever reads the report.
 **In memory only.** A forgotten switch cannot outlive the process.
 
 Alongside it, `GET /api/xprs/held` answers "is this station actually carrying?" —
-held rows grouped by target, with our own outbound (§36.12.1, a sender is its own
+held rows grouped by target, with our own outbound (§12.12.1, a sender is its own
 first holder) separated from mail we are carrying for other people. Custody had
 no observable at all before this, which is precisely why it could be absent for
 so long.
@@ -164,7 +164,7 @@ is the one that fails silently.
 For a day the store carried and never finished: `parked 1739, custodyOut 0,
 purged 0, delivered 0`. Three faults, one per file.
 
-**The receipt.** Nothing composed a `t:receipt`, so §36.8.1's only terminal
+**The receipt.** Nothing composed a `t:receipt`, so §12.8.1's only terminal
 state had nothing to fire on. `xprs_receipt.dart` composes and reads one under
 §13.7.1's exclusions — never for a group, a broadcast, a regional message, a
 receipt, or a station never exchanged with — and **always signed**, because a
@@ -179,7 +179,7 @@ target, newest first, **carried mail before own**, bounded in bytes, skipping
 anything inside its backoff. A release is an attempt; `relts`/`reln` stop the
 recipient's 30-second beacon re-airing the same mail for ever.
 
-**The release was not a relay.** §36.8.1 requires `via:`, the §13.1 budget and
+**The release was not a relay.** §12.8.1 requires `via:`, the §13.1 budget and
 the §13.2 loop check. It re-aired verbatim. `xprsMayRelay` and `xprsWouldLoop`
 had zero callers since they were written; they have callers now, here and in
 `XprsForwarder`, which appended `via:` while checking only half the rule.

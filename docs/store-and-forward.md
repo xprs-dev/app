@@ -99,13 +99,13 @@ sealed body already proves who the copy is for.
 **The stations carry mail too, and differently.** An ESP32 keeps no separate
 custody queue: a record with `d:` is flagged mail in the ordinary archive
 (`common/xprs_index`), and delivery is triggered by hearing the recipient
-directly — §36.8.1, not a poll. It then airs that callsign's newest messages
+directly — §12.8.1, not a poll. It then airs that callsign's newest messages
 with itself appended to `via:`, paced, and stops re-airing an id once it has
 verified a `t:receipt s:ack` for it. What is held is announced two ways: as
 `mail:<n>` on the ten-minute `t:service` beacon (§10.6.5), and as a one-packet
 answer to `q:mail only:<call>` (§13.12.3).
 
-Retention when the store fills is XPRS.md §36.11: declared mail last, other
+Retention when the store fills is XPRS.md §12.11: declared mail last, other
 people's mail before it, the spool first. A station signs what it originates,
 and dates packets `epoch:<boots>.<uptime>` (§10.7) until it has a clock — a
 receiver that has one anchors that epoch and dates the packets from it, so a

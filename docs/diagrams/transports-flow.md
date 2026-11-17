@@ -49,7 +49,7 @@ flowchart LR
 
 ## Fig. 2 — Sending a 1:1
 
-`§36.0` allows choosing **one** path when there is recent evidence of several to
+`§12.0` allows choosing **one** path when there is recent evidence of several to
 the same station. When there is no evidence, it fans out — that is the same
 section's own fallback, not a shortcut.
 
@@ -78,7 +78,7 @@ sequenceDiagram
         Note over Rest: reported "unused"
     else not carried
         Best-->>Fan: refused / inactive / disabled
-        Note over Fan: §36.0 — "it does not give up"
+        Note over Fan: §12.0 — "it does not give up"
         Fan->>Rest: send on every bearer
         Rest-->>Fan: sent / queued / refused
     end
@@ -187,7 +187,7 @@ flowchart TD
     MBX -- yes --> REC["record the declaration §13.12"]
     MBX -- no --> VIA{"carries via:?"}
     REC --> VIA
-    VIA -- "no — heard directly" --> GOS["gossip noteDirect<br/>+ release-on-hearing §36.8.1"]
+    VIA -- "no — heard directly" --> GOS["gossip noteDirect<br/>+ release-on-hearing §12.8.1"]
     VIA -- yes --> IDT{"t:identity?"}
     GOS --> IDT
     IDT -- yes --> BIND["bind callsign → key §9.3"]
@@ -200,7 +200,7 @@ flowchart TD
     ISMSG -- no --> CMD
 
     FORUS -- no --> CARRY{"t:message to a STATION?<br/><i>a group is aired, not couriered §6.3</i>"}
-    CARRY -- yes --> PARK["<b>carry</b><br/>park in custody · forward §36.7"]
+    CARRY -- yes --> PARK["<b>carry</b><br/>park in custody · forward §12.7"]
     CARRY -- no --> RCPT
     DELIVER --> ACK["<b>acknowledge</b><br/>signed t:receipt s:ack §13.7.1"]
     ACK --> RCPT
@@ -242,12 +242,12 @@ stateDiagram-v2
     Composed --> Clear: switched to plain, per packet §9.2
     note right of Sealed
         no recipient key ⇒ REFUSE
-        never silently downgrade §36.8
+        never silently downgrade §12.8
     end note
 
     Sealed --> Parked
     Clear --> Parked
-    Parked: parked in custody — a sender is its own first holder §36.12.1
+    Parked: parked in custody — a sender is its own first holder §12.12.1
 
     Parked --> Aired: fan-out places it
     Parked --> Waiting: no bearer took it

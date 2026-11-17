@@ -151,7 +151,7 @@ void main() {
   });
 
   group('the read receipt rides the lane the message arrived on', () {
-    // §36.0: answer down the freshest evidence of a path to the sender, not
+    // §12.0: answer down the freshest evidence of a path to the sender, not
     // whatever bearer they last DECLARED. A peer reachable only over Reticulum
     // but wearing a stale `link:ble` would otherwise have its read receipt aired
     // at a radio it cannot hear, and the sender's second tick would never land.

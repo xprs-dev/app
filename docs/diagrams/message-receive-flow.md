@@ -152,7 +152,7 @@ flowchart TD
 > the far side drained it straight into `ble_handle`. Transmit is now one
 > `hal_xprs_send` — and everything the wapp did by hand around it, a per-device
 > table with its own staleness TTL and a broadcast backstop for a peer behind
-> NAT, is `XprsPublisher`'s §36.0 bearer ranking, for every bearer rather than
+> NAT, is `XprsPublisher`'s §12.0 bearer ranking, for every bearer rather than
 > for Reticulum alone. Receive is the bus.
 >
 > `hal_lxmf_recv` was a cursor over every private message on the device, with no
@@ -428,7 +428,7 @@ flowchart TD
     H["a packet arrives"] --> D{"which re-air path?"}
 
     D --> DIGI["digipeater §13.2.1<br/><i>jitter · cancel-on-hearing</i>"]
-    D --> REL["custody release §36.8.1"]
+    D --> REL["custody release §12.8.1"]
     D --> SUP["suppressed re-air<br/><code>sweepSuppressed</code>"]
     D --> FWD["XprsForwarder<br/><i>mail migration</i>"]
     D --> HIST["history replay<br/><i>author's packet, by design</i>"]
