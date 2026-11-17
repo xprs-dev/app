@@ -44,6 +44,7 @@ import '../services/flash/flash_service.dart';
 import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_profiles.dart';
 import 'package:xprs_core/src/services/receive/core_state.dart';
+import 'package:xprs_core/src/services/xprs/xprs_names.dart';
 import 'package:xprs_core/src/services/station/station_browse.dart';
 import 'package:xprs_core/src/services/station/station_host.dart';
 import 'package:xprs_core/src/services/station/station_share.dart';
@@ -3608,6 +3609,36 @@ class WappEngine {
       },
       params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
     );
+    // hal_xprs_names(query, out, cap): Search's one question, who is there
+    // by name -- people, stations and groups known by a verified t:identity,
+    // heard here or replayed by the archivers (XprsNames). `{"q","kind",
+    // "limit","ask"}`; `ask` lets the core poke its archivers for names now
+    // (it bounds how often). `core.names` says when to read again. Reply:
+    // [{call,nick,kind,ts}], newest first. Bytes written, negated size if
+    // `out` is small.
+    final halXprsNames = WasmFunction(
+      (int qPtr, int qLen, int outPtr, int outCap) {
+        if (outCap <= 0) return 0;
+        Map<String, dynamic> q = const {};
+        if (qLen > 0) {
+          try {
+            q = (jsonDecode(_readStr(qPtr, qLen)) as Map).cast<String, dynamic>();
+          } catch (_) {}
+        }
+        final rows = XprsNames.find(
+          query: '${q['q'] ?? ''}',
+          kind: '${q['kind'] ?? ''}',
+          limit: q['limit'] is int ? q['limit'] as int : 60,
+          self: MeshService.instance.tableCallsign,
+          ask: q['ask'] == true,
+        );
+        final bytes = utf8.encode(jsonEncode(rows));
+        if (bytes.length > outCap) return -bytes.length;
+        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     // hal_station_read: what another station offers through its visitor API
     // (rooms, a room's folders, a folder's items), as the last visit learned
     // it. Answers at once; the visit runs in the core and `core.station`
@@ -5247,6 +5278,7 @@ class WappEngine {
       WasmImport('hal', 'station_read', halStationRead),
       WasmImport('hal', 'xprs_position', halXprsPosition),
       WasmImport('hal', 'xprs_kind', halXprsKind),
+      WasmImport('hal', 'xprs_names', halXprsNames),
       WasmImport('hal', 'xprs_follow', halXprsFollow),
       WasmImport('hal', 'xprs_follow_kind', halXprsFollowKind),
       WasmImport('hal', 'xprs_followed', halXprsFollowed),

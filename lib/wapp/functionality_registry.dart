@@ -463,6 +463,18 @@ class FunctionalityRegistry {
           ],
           ReturnDef('int', 'Bytes written, -1 when no group could be minted')),
       EndpointDef(
+          'hal_xprs_names',
+          'Who is there by name: people, stations and groups known by a '
+          'verified t:identity, heard here or replayed by the archivers '
+          '(XPRS \u00a712.9.4). [{call,nick,kind,ts}], newest first; '
+          '`core.names` says when to read again',
+          [
+            ParamDef('query', 'string',
+                'JSON {"q": text, "kind": "group"|"user"|"station"|"", '
+                '"limit": n, "ask": true to ask the archivers now}'),
+          ],
+          ReturnDef('int', 'Bytes written, negated required size if too small')),
+      EndpointDef(
           'hal_xprs_group_candidates',
           'Callsigns a new closed group could have (XPRS \u00a726.1), comma '
           'separated. The core mints a key for each and holds it in memory '

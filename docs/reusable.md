@@ -842,6 +842,15 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   ("Bea (X13SUZ)") and a search matches it. `pf_hide_groups` drops X5 groups;
   `pf_people_only` keeps only people (`kind:user`), for a picker whose choice
   must sign something itself, such as an invitation to a closed group.
+  Rows sort into three tabs, `People`, `Stations` and `Groups` (the screen's
+  `tabs`), and besides who was heard, every tab has a "Found by name"
+  section from `hal_xprs_names`: everybody known by a verified identity,
+  which the core also asks its archivers for. `pf_names_on = 0` for a picker
+  that wants only who is in earshot; `pf_t_*` are the section words.
+- **`hal_xprs_names` / `XprsNames.find` / `core.names`** — the one way to find
+  a person, station or group by name. Never build a finder on
+  `hal_xprs_stations` alone: that is who THIS device heard in the last hour,
+  and the archivers know everybody else (XPRS.md 12.9.4, 12.12.2).
 - **`apps/checkin/ci.c`** — an operator command and its signed `t:result`
   as packets: build an ask, decide on an `xprs.command` row (signature verdict,
   `inRange`, freshness, rules), build a result whose optional fields go in

@@ -11,6 +11,7 @@ import 'dart:convert';
 
 import 'package:xprs/services/preferences_service.dart';
 import 'package:xprs/services/xprs/xprs_archive.dart';
+import 'package:xprs_core/src/storage/store_db.dart';
 import 'package:xprs/services/xprs/xprs_groups.dart';
 import 'package:xprs/services/xprs/xprs_id.dart';
 import 'package:xprs/services/xprs/xprs_ingest.dart';
@@ -155,6 +156,71 @@ void main() {
     expect(byFrom['X1AAA']!['sig'], 'verified');
     expect(byFrom['X1BBB']!['sig'], 'unsigned');
     expect(a.forged, 1);
+  });
+
+  // Search's names (XprsArchive.names): who is known by a verified identity,
+  // found by any part of the callsign or the name.
+  group('names', () {
+    final k2 = BigInt.parse('abcdef0123456789abcdef0123456789', radix: 16);
+    final k3 = BigInt.parse('5555aaaa5555aaaa5555aaaa5555aaaa', radix: 16);
+    setUp(() {
+      a.keyResolver = (c) => switch (c) {
+            'X5BOOK' => _pubOf(_d),
+            'X1ANA' => _pubOf(k2),
+            'X1EVE' => _pubOf(k3),
+            _ => null,
+          };
+    });
+
+    void id(String call, BigInt key, String rest, String ts, {bool sign = true}) {
+      final p = _p('t:identity f:$call ts:$ts $rest');
+      a.admit(sign ? xprsSign(p, key) : p, bearer: 'rns', nowMs: 1000);
+    }
+
+    test('a verified identity is found by its name, folded', () {
+      id('X5BOOK', _d, 'nick:Book-club', '2026-08-13_10:00:00');
+      id('X1ANA', k2, 'nick:Ana_Lima', '2026-08-13_11:00:00');
+      a.flush(nowMs: 2000);
+      expect(a.names(query: 'book club').map((r) => r.call), ['X5BOOK'],
+          reason: '`-` reads as a space, and any case');
+      expect(a.names(query: 'ana lima').single.nick, 'Ana_Lima');
+      expect(a.names(query: 'x1an').single.call, 'X1ANA',
+          reason: 'the callsign matches too');
+      expect(a.names().map((r) => r.call), ['X1ANA', 'X5BOOK'],
+          reason: 'most recently announced first');
+      expect(a.names(prefix: 'X5').map((r) => r.call), ['X5BOOK']);
+    });
+
+    test('an unchecked name is not offered', () {
+      id('X1EVE', k3, 'nick:Eve', '2026-08-13_10:00:00', sign: false);
+      a.flush(nowMs: 2000);
+      expect(a.names(query: 'eve'), isEmpty);
+    });
+
+    test('a newer announcement renames, and the names survive a restart', () {
+      id('X5BOOK', _d, 'nick:Book-club', '2026-08-13_10:00:00');
+      a.flush(nowMs: 2000);
+      id('X5BOOK', _d, 'nick:Readers', '2026-08-14_10:00:00');
+      a.flush(nowMs: 3000);
+      expect(a.names(query: 'club'), isEmpty,
+          reason: 'the old name is gone (the callsign still says BOOK)');
+      expect(a.names(query: 'readers').single.call, 'X5BOOK');
+      a.close();
+      a.init('${tmp.path}/xprs_archive.zx');
+      expect(a.names(query: 'readers').single.call, 'X5BOOK');
+    });
+
+    test('identities stored before the table existed are found', () {
+      id('X1ANA', k2, 'nick:Ana', '2026-08-13_11:00:00');
+      a.flush(nowMs: 2000);
+      a.close();
+      // An archive from before this table: drop it, as an older app had none.
+      final db = openStoreDb('${tmp.path}/xprs_archive.zx');
+      db.execute('DROP TABLE names');
+      db.dispose();
+      a.init('${tmp.path}/xprs_archive.zx');
+      expect(a.names(query: 'ana').single.call, 'X1ANA');
+    });
   });
 
   test('own and mine survive the byte cap; age cap takes everything', () {

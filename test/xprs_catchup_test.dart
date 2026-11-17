@@ -663,6 +663,138 @@ void main() {
     });
   });
 
+  // ── Names (12.9.4: bulk gossip is the history replay) ───────────────────
+  // Search finds people, stations and groups this device never heard because
+  // the archivers it leans on are asked for every identity they hold, from
+  // where that archiver's last answer ended.
+  group('names', () {
+    const archiver = 'X3ARK';
+
+    setUp(() {
+      PreferencesService.instanceSync!
+        ..xprsNamedArchivers = const [archiver]
+        ..xprsCatchupMarks = {};
+    });
+    tearDown(() {
+      PreferencesService.instanceSync!.xprsNamedArchivers = const [];
+    });
+
+    /// Answer every ask still out, so the next one is not held behind it
+    /// (one ask in flight per station, 12.10.2).
+    void answerAll(int code) {
+      for (final w in aired) {
+        final p = XprsPacket.parse(w)!;
+        XprsCatchup.instance.onResult(XprsPacket.parse(
+            't:result f:${p['d']} d:$_self ts:x r:${xprsIdentifier(p)} '
+            'code:$code')!);
+      }
+    }
+
+    List<String> asks() =>
+        aired.where((w) => w.contains('cmd:history kind:identity since:')).toList();
+
+    test('an archiver is asked for every identity, a year back the first time',
+        () async {
+      await XprsCatchup.instance.tick(_self);
+      final ask = asks().single;
+      expect(ask, contains('d:$archiver'));
+      expect(ask, isNot(contains('only:')),
+          reason: 'every callsign it knows, not one');
+      expect(ask, isNot(contains('scope:local')));
+      final since = RegExp(r'since:(\S+)').firstMatch(ask)!.group(1)!;
+      expect(xprsParseTs(since),
+          now - XprsCatchup.namesFirstWindow.inMilliseconds);
+    });
+
+    test('an answer is remembered across a restart, per archiver', () async {
+      await XprsCatchup.instance.tick(_self);
+      final ask = XprsPacket.parse(asks().single)!;
+      final askedAt = now;
+      XprsCatchup.instance.onResult(XprsPacket.parse(
+          't:result f:$archiver d:$_self ts:x r:${xprsIdentifier(ask)} '
+          'code:200')!);
+      expect(PreferencesService.instanceSync!.xprsCatchupMarks['names@$archiver'],
+          askedAt ~/ 1000);
+      // A restart forgets everything in memory; the mark stays.
+      XprsCatchup.instance.debugReset();
+      now += XprsCatchup.namesEvery.inMilliseconds;
+      await XprsCatchup.instance.tick(_self);
+      final next = asks().last;
+      expect(asks(), hasLength(2));
+      expect(xprsParseTs(RegExp(r'since:(\S+)').firstMatch(next)!.group(1)!),
+          askedAt ~/ 1000 * 1000);
+    });
+
+    test('not asked again inside the period, unless somebody is searching',
+        () async {
+      await XprsCatchup.instance.tick(_self);
+      final ask = XprsPacket.parse(asks().single)!;
+      XprsCatchup.instance.onResult(XprsPacket.parse(
+          't:result f:$archiver d:$_self ts:x r:${xprsIdentifier(ask)} '
+          'code:404')!);
+      now += const Duration(minutes: 11).inMilliseconds;
+      await XprsCatchup.instance.tick(_self);
+      expect(asks(), hasLength(1), reason: 'names are re-announced half-hourly');
+      answerAll(200);
+      XprsCatchup.instance.askNames();
+      await XprsCatchup.instance.tick(_self);
+      expect(asks(), hasLength(2), reason: 'a person is looking at Search');
+    });
+
+    test("a 206 continues from the page's oldest row, not from noise heard "
+        'meanwhile', () async {
+      await XprsCatchup.instance.tick(_self);
+      final ask = XprsPacket.parse(asks().single)!;
+      final pageOldest = now - const Duration(hours: 2).inMilliseconds;
+      // The page: two identities the archiver replayed.
+      for (final t in [now - const Duration(minutes: 30).inMilliseconds, pageOldest]) {
+        XprsCatchup.instance.noteHeard(XprsPacket.parse(
+            't:identity f:X1P${t % 97} ts:${xprsNowTs(t)} nick:p')!);
+      }
+      // Heard meanwhile: a neighbour's identity relayed, and a clockless
+      // board's stamped years ago. Neither is on the page.
+      XprsCatchup.instance.noteHeard(XprsPacket.parse(
+          't:identity f:X1REL ts:${xprsNowTs(now - const Duration(days: 3).inMilliseconds)} '
+          'via:X1WATT')!);
+      XprsCatchup.instance.noteHeard(XprsPacket.parse(
+          't:identity f:X3OLD ts:2001-01-01_00:00:00')!);
+      XprsCatchup.instance.onResult(XprsPacket.parse(
+          't:result f:$archiver d:$_self ts:x r:${xprsIdentifier(ask)} '
+          'code:206')!);
+      now += const Duration(minutes: 11).inMilliseconds;
+      await XprsCatchup.instance.tick(_self);
+      final next = asks().last;
+      expect(asks(), hasLength(2));
+      expect(xprsParseTs(RegExp(r'until:(\S+)').firstMatch(next)!.group(1)!),
+          pageOldest ~/ 1000 * 1000);
+    });
+
+    test('a names ask lost on the way is asked again soon, not in half an hour',
+        () async {
+      await XprsCatchup.instance.tick(_self);
+      expect(asks(), hasLength(1));
+      // No answer at all: the packet never reached the archiver.
+      now += XprsCatchup.followEveryHidden.inMilliseconds +
+          const Duration(minutes: 1).inMilliseconds;
+      expect(XprsCatchup.followEveryHidden < XprsCatchup.namesEvery, isTrue);
+      await XprsCatchup.instance.tick(_self);
+      expect(asks(), hasLength(2));
+    });
+
+    test('a 429 holds it back', () async {
+      await XprsCatchup.instance.tick(_self);
+      final ask = XprsPacket.parse(asks().single)!;
+      XprsCatchup.instance.onResult(XprsPacket.parse(
+          't:result f:$archiver d:$_self ts:x r:${xprsIdentifier(ask)} '
+          'code:429')!);
+      XprsCatchup.instance.askNames();
+      await XprsCatchup.instance.tick(_self);
+      expect(asks(), hasLength(1), reason: "the archiver's authority (12.10.2)");
+      expect(PreferencesService.instanceSync!.xprsCatchupMarks
+          .containsKey('names@$archiver'), isFalse);
+    });
+  });
+
   // ── The C61, 2026-09-15 ─────────────────────────────────────────────────
   //
   // A phone polled its archiver every 25 s and never received the one reply

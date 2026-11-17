@@ -310,6 +310,42 @@ void main() {
     });
   });
 
+  // 10.9 / 12.9.4: a station that never heard a group finds it by its name
+  // because an archiver replays the group's identity with everybody else's.
+  // A station with a web API (hostedRoom set) used to strip every group's
+  // identity from such an answer; only its own unshared rooms are held back.
+  test('a bulk identity ask carries groups, but not an unshared hosted room',
+      () {
+    a.admit(_p('t:identity f:X5BOOK ts:2026-08-13_10:00:00 nick:Book-club'),
+        bearer: 'rns', nowMs: 1000);
+    a.admit(_p('t:identity f:X5ROOM ts:2026-08-13_10:01:00 nick:Our_room'),
+        bearer: 'rns', nowMs: 1000);
+    a.admit(_p('t:identity f:X1ANA ts:2026-08-13_10:02:00 nick:Ana'),
+        bearer: 'rns', nowMs: 1000);
+    a.flush(nowMs: 100000);
+    srv.hostedRoom = (g, asker) => g == 'X5ROOM' ? false : null;
+    addTearDown(() => srv.hostedRoom = null);
+    fakeAsync((async) {
+      ask('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:00 '
+          'cmd:history kind:identity since:2026-08-01_00:00:00');
+      async.elapse(const Duration(seconds: 30));
+      final wires = [
+        for (final e in aired)
+          if (!e.$1.startsWith('xprs-hist:c')) e.$2
+      ];
+      expect(wires.where((w) => w.contains('f:X5BOOK')), hasLength(1));
+      expect(wires.where((w) => w.contains('f:X1ANA')), hasLength(1));
+      expect(wires.where((w) => w.contains('f:X5ROOM')), isEmpty);
+    });
+    // The socket lane answers the same, from the same rule.
+    final inline = srv.serveInline(
+        _p('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:01 '
+            'cmd:history kind:identity since:2026-08-01_00:00:00'),
+        selfBase: 'X1SELF');
+    expect(inline.where((w) => w.contains('f:X5BOOK')), hasLength(1));
+    expect(inline.where((w) => w.contains('f:X5ROOM')), isEmpty);
+  });
+
   test('only: filters by sender or addressee', () {
     seed(3, from: 'X1AAA');
     seed(2, from: 'X1CCC', startMin: 30);
