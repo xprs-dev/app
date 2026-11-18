@@ -1,0 +1,4 @@
+Updates find and download themselves in the background: XPRS checks every hour, keeps working while the app is closed, and remembers a new version across restarts.
+New Updates page: it names the version that is coming, shows progress clearly, and draws the release notes with formatting.
+Archiver: change your station's callsign (Archive tab or Settings > This device): roll a new one, go back, save.
+The menu's exit item now reads Exit.
