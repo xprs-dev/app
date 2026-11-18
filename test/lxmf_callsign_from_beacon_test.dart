@@ -55,8 +55,19 @@ void main() {
   test('a later beacon corrects the name', () {
     const moved = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
     rns.noteLxmfCallsign(moved, 'X10LD1');
-    rns.noteLxmfCallsign(moved, 'X2NEW2');
-    expect(rns.callsignForLxmfDest(moved), 'X2NEW2');
+    rns.noteLxmfCallsign(moved, 'X1NEW2');
+    expect(rns.callsignForLxmfDest(moved), 'X1NEW2');
+  });
+
+  test('a station name on a person\'s address is a second name, not a rename',
+      () {
+    // A phone's device X3 shares the person's LXMF address: the address
+    // keeps naming the person, and the X3 still resolves to it.
+    const shared = 'b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0';
+    rns.noteLxmfCallsign(shared, 'X1PERS');
+    rns.noteLxmfCallsign(shared, 'X3DEVC');
+    expect(rns.callsignForLxmfDest(shared), 'X1PERS');
+    expect(rns.lxmfDestForCallsign('X3DEVC'), shared);
   });
 
   test('an unknown destination simply has no name', () {

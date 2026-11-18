@@ -648,6 +648,16 @@ class RemoteApiService {
         final ok = await RnsService.instance.addBootstrap(ep);
         return _json(res, {'ok': ok, 'endpoint': ep});
       }
+      // ...and forget one again: drop the uplink and the bootstrap entry.
+      if (req.method == 'DELETE' && path == '/api/rns/uplink') {
+        final ep = (req.uri.queryParameters['endpoint'] ?? '').trim();
+        if (ep.isEmpty) {
+          return _json(res, {'ok': false, 'error': 'need ?endpoint=host[:port]'},
+              status: HttpStatus.badRequest);
+        }
+        RnsService.instance.removeBootstrap(ep);
+        return _json(res, {'ok': true, 'endpoint': ep});
+      }
       // A hub session on request (docs/performance.md 8.22): GET shows the
       // hold, POST {hold: minutes, reason} asks for one. A station answers
       // the same shape with nothing held, because it needs none.
@@ -1775,6 +1785,8 @@ class RemoteApiService {
           'roomStations': prefs?.xprsRoomStations ?? 500,
           'caredFor': XprsArchive.instance.caredFor(),
           'dials': prefs?.xprsArchiverDials ?? const <String, String>{},
+          'dialsByHand':
+              prefs?.xprsArchiverDialsByHand ?? const <String, String>{},
           'line': {
             'dialled': XprsLineLane.instance.status,
             'peers': XprsLinePeers.instance.status,

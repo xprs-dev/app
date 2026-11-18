@@ -22,7 +22,9 @@
  *   dial          String        host[:port] this archiver answers on (13.0.2)
  *   room          bool          take new stations (12.9.5)
  *   roomStations  int > 0
- *   dials         Map<String, String?>  dials of other archivers, by hand
+ *   dials         Map<String, String?>  dials of other archivers, by hand;
+ *                               they outrank what the archiver announces, and
+ *                               null clears one back to the announced dial
  *   alwaysOn      bool          only takes effect on a public archiver
  */
 import '../mesh/mesh_service.dart';
@@ -64,10 +66,12 @@ Future<bool> applyArchiverSettings(Map<String, dynamic> data,
   if (positive(data['roomStations']) case final v?) prefs.xprsRoomStations = v;
   if (data['dials'] is Map) {
     for (final e in (data['dials'] as Map).entries) {
-      prefs.rememberArchiverDial(
+      prefs.setArchiverDialByHand(
           e.key.toString(), e.value == null ? null : '${e.value}');
     }
   }
+  // A changed list or dial re-dials now, not on the next minute tick.
+  final redial = data.containsKey('archivers') || data['dials'] is Map;
   if (data.containsKey('alwaysOn')) {
     final on = data['alwaysOn'] == true;
     if (legacy && on) await prefs.setXprsPublicArchiver(true);
@@ -89,5 +93,6 @@ Future<bool> applyArchiverSettings(Map<String, dynamic> data,
   // gets) follow the preferences.
   XprsIngest.reloadPolicy();
   if (data.isNotEmpty) MeshService.instance.applyArchiveLimits();
+  if (redial) MeshService.instance.redialArchivers();
   return true;
 }

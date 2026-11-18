@@ -54,4 +54,22 @@ void main() {
     await applyArchiverSettings({'quotaMb': -1});
     expect(p.xprsArchiveMaxMb, 2000);
   });
+
+  test('a dial typed by hand outranks the announced one; null falls back',
+      () async {
+    final p = PreferencesService.instanceSync!;
+    p.rememberArchiverDial('X3ARC9', 'arc9.example');
+    await applyArchiverSettings({
+      'dials': {'x3arc9': '127.0.0.1'},
+    });
+    // The archiver announcing again does not undo the person's choice.
+    p.rememberArchiverDial('X3ARC9', 'arc9.example:4243');
+    expect(p.xprsArchiverDials['X3ARC9'], '127.0.0.1');
+    expect(p.xprsArchiverDialsHeard['X3ARC9'], 'arc9.example:4243');
+    await applyArchiverSettings({
+      'dials': {'X3ARC9': null},
+    });
+    expect(p.xprsArchiverDials['X3ARC9'], 'arc9.example:4243');
+    expect(p.xprsArchiverDialsByHand, isEmpty);
+  });
 }
