@@ -535,6 +535,28 @@ class WappEngine {
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
+  /// Start a wapp's HTTP request into [s]: method 0=GET 1=POST 2=PUT
+  /// 3=DELETE (anything else is a GET), through the core's one general
+  /// request so PUT and DELETE are what they say.
+  void _httpStart(_WappHttpState s, int method, Uri uri,
+      {Map<String, String>? headers,
+      List<int>? body,
+      required Duration timeout}) {
+    const names = ['GET', 'POST', 'PUT', 'DELETE'];
+    final m = method >= 0 && method < names.length ? names[method] : 'GET';
+    HttpTransport.shared
+        .request(m, uri,
+            headers: headers, body: m == 'GET' ? null : body, timeout: timeout)
+        .then((r) {
+      s.status = r.statusCode;
+      s.body = r.bodyBytes;
+      s.done = true;
+    }).catchError((Object _) {
+      s.failed = true;
+      s.done = true;
+    });
+  }
+
   String _readStr(int ptr, int len) {
     final mem = _memory!.view;
     // Wapp strings are UTF-8 (post/DM text carry emoji + non-Latin scripts);
@@ -2098,30 +2120,58 @@ class WappEngine {
         final h = _nextHttpHandle++;
         final s = _WappHttpState();
         _https[h] = s;
-        const transport = HttpTransport.shared;
-        const timeout = Duration(seconds: 30);
-        Future<HttpResult> req;
-        switch (method) {
-          case 1:
-            req = transport.post(uri, body: body, timeout: timeout);
-            break;
-          case 0:
-          default:
-            // GET (and any unmapped method) — the store only needs GET.
-            req = transport.get(uri, timeout: timeout);
-            break;
-        }
-        req.then((r) {
-          s.status = r.statusCode;
-          s.body = r.bodyBytes;
-          s.done = true;
-        }).catchError((Object _) {
-          s.failed = true;
-          s.done = true;
-        });
+        _httpStart(s, method, uri,
+            // What http.post set for a String body before: unchanged for
+            // the wapps already using this call.
+            headers: body == null
+                ? null
+                : const {'content-type': 'text/plain; charset=utf-8'},
+            body: body == null ? null : utf8.encode(body),
+            timeout: const Duration(seconds: 30));
         return h;
       },
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_http_request2: the same request with the wapp's headers
+    // ("Name: value" lines), a byte body and its own timeout. An API that
+    // takes its key in a header (every AI service does) and answers
+    // slowly is reachable only this way. Polled and read like the above.
+    final halHttpRequest2 = WasmFunction(
+      (int method, int urlPtr, int urlLen, int hdrPtr, int hdrLen,
+          int bodyPtr, int bodyLen, int timeoutMs) {
+        final url = _readStr(urlPtr, urlLen);
+        if (url.isEmpty) return -1;
+        final Uri uri;
+        try {
+          uri = Uri.parse(url);
+        } catch (_) {
+          return -1;
+        }
+        final headers = <String, String>{};
+        if (hdrLen > 0) {
+          for (final line in _readStr(hdrPtr, hdrLen).split('\n')) {
+            final i = line.indexOf(':');
+            if (i <= 0) continue;
+            headers[line.substring(0, i).trim()] =
+                line.substring(i + 1).trim();
+          }
+        }
+        final h = _nextHttpHandle++;
+        final s = _WappHttpState();
+        _https[h] = s;
+        // 1 s to 10 min; 0 means the default of 30 s.
+        final ms = timeoutMs <= 0 ? 30000 : timeoutMs.clamp(1000, 600000);
+        _httpStart(s, method, uri,
+            headers: headers,
+            body: bodyLen > 0 ? _readBytes(bodyPtr, bodyLen) : null,
+            timeout: Duration(milliseconds: ms));
+        return h;
+      },
+      params: [
+        ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32,
+        ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32,
+      ],
       results: [ValueTy.i32],
     );
     final halHttpPoll = WasmFunction(
@@ -5140,6 +5190,7 @@ class WappEngine {
       // HTTP HAL — real, backed by HttpTransport (so the Wapp Store can
       // fetch its remote catalog). Defined above; replaces the old stubs.
       WasmImport('hal', 'http_request', halHttpRequest),
+      WasmImport('hal', 'http_request2', halHttpRequest2),
       WasmImport('hal', 'http_poll', halHttpPoll),
       WasmImport('hal', 'http_read_response', halHttpReadResponse),
       WasmImport('hal', 'http_status', halHttpStatus),
