@@ -1,5 +1,8 @@
 {
-  "_meta": {"language": "Deutsch", "reviewed": false},
+  "_meta": {
+    "language": "Deutsch",
+    "reviewed": false
+  },
   "groups.title": "Gruppen",
   "groups.new": "Neue Gruppe",
   "groups.name": "Name",
@@ -51,5 +54,6 @@
   "groups.muted.empty": "Niemand ist stummgeschaltet.\n\nSchalte ein Konto über das ⋯-Menü an einem seiner Beiträge stumm. Seine Beiträge werden nicht mehr gezeigt — und nicht mehr gespeichert.",
   "groups.muted.count": "{n} stummgeschaltet. Jeder Schlüssel wird einzeln stummgeschaltet — Name und Avatar sind frei kopierbar, ein Kontoschlüssel nicht.",
   "groups.muted.unmuted": "{key} nicht mehr stummgeschaltet",
-  "groups.muted.unmute": "Stummschaltung aufheben"
+  "groups.muted.unmute": "Stummschaltung aufheben",
+  "groups.actions": "Gruppenaktionen"
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -52,6 +53,28 @@ void main() {
 
   Future<List<int>> body(HttpClientResponse r) async =>
       (await r.toList()).expand((e) => e).toList();
+
+  test('starts with a live API that holds a Timer (the archive does)',
+      () async {
+    // The live API's callbacks reach XprsArchive, which holds a Timer. Share
+    // compressed the page on a worker isolate with a closure that captured
+    // the service, and with it the Timer: "object is unsendable", and the
+    // Share page showed the exception instead of sharing.
+    final timer = Timer(const Duration(hours: 1), () {});
+    addTearDown(timer.cancel);
+    final held = WebChatApi(
+      publicRows: ({sinceMs, untilMs, required types, from, visitor, room, required limit}) => const [],
+      held: (_) => timer.isActive ? 1 : 0,
+      receive: sent.add,
+      mayAir: (_) => true,
+      selfCallsign: () => 'X1SELF',
+      keyOf: (_) => null,
+      appPath: () => null,
+    );
+    final port = await svc.start(port: 0, api: held, chatPage: chatHtml);
+    final r = await get(port, '/');
+    expect(r.statusCode, 200);
+  });
 
   test('serves the page, the apk, a resumed range, and nothing else', () async {
     final port = await svc.start(

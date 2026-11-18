@@ -140,8 +140,7 @@ class ShareAppService {
         (await rootBundle.load(chatAsset)).buffer.asUint8List();
     // 80 KB deflated once per start, off the UI isolate (performance.md:
     // compression is worker work).
-    _chatGz = await BackgroundService.runOffThread(
-        () async => Uint8List.fromList(gzip.encode(html)));
+    _chatGz = await _gzipOffThread(html);
     HttpServer server;
     try {
       server = await HttpServer.bind(
@@ -161,6 +160,14 @@ class ShareAppService {
     LogService.instance.add('share-app: serving on port ${server.port}');
     return server.port;
   }
+
+  /// Deflate [bytes] on a worker isolate. Static on purpose: a closure made
+  /// inside an instance method captures `this`, and this service reaches the
+  /// archive and its Timer, which no isolate message may carry -- Share failed
+  /// with "object is unsendable ... _Timer" for exactly that reason.
+  static Future<Uint8List> _gzipOffThread(Uint8List bytes) =>
+      BackgroundService.runOffThread(
+          () async => Uint8List.fromList(gzip.encode(bytes)));
 
   /// The API a visitor's browser gets, wired to the core: what it posts goes
   /// through the one receive door (as heard on the hotspot's network, `lan`,

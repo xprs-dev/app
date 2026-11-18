@@ -127,11 +127,7 @@ class _GroupsPageState extends State<GroupsPage> {
       key: ValueKey(call),
       direction: DismissDirection.endToStart,
       confirmDismiss: (_) => _confirmForget(call, nick, mine),
-      onDismissed: (_) {
-        XprsGroupOps.forget(call);
-        setState(() {});
-        _say(tr('groups.forgot', {'call': call}));
-      },
+      onDismissed: (_) => _forgotten(call),
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
@@ -156,14 +152,77 @@ class _GroupsPageState extends State<GroupsPage> {
         ].join('  ·  '),
         style: TextStyle(color: cs.onSurfaceVariant),
       ),
-      trailing: _roleChip(role, pending: r.offers.containsKey(_me)),
-      onTap: () => Navigator.of(context)
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ?_roleChip(role, pending: r.offers.containsKey(_me)),
+          // What a swipe does, and the rest, where it can be found: one menu
+          // per group.
+          PopupMenuButton<String>(
+            tooltip: tr('groups.actions'),
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) async {
+              switch (v) {
+                case 'open':
+                  _openGroup(call, nick);
+                case 'leave':
+                  final res = XprsGroupOps.leave(call, _me);
+                  if (mounted) setState(() {});
+                  _say(res.ok
+                      ? tr('groups.left', {'group': nick.isEmpty ? call : nick})
+                      : res.error!);
+                case 'delete':
+                  if (await _confirmForget(call, nick, mine)) _forgotten(call);
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'open',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.open_in_new),
+                  title: Text(tr('common.open')),
+                ),
+              ),
+              if (_isMember(role))
+                PopupMenuItem(
+                  value: 'leave',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.logout),
+                    title: Text(tr('groups.leave')),
+                  ),
+                ),
+              PopupMenuItem(
+                value: 'delete',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.delete_outline, color: cs.error),
+                  title: Text(tr('common.delete'),
+                      style: TextStyle(color: cs.error)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      onTap: () => _openGroup(call, nick),
+    ),
+    );
+  }
+
+  void _openGroup(String call, String nick) => Navigator.of(context)
           .push(MaterialPageRoute(builder: (_) => GroupDetailPage(call, nick)))
           .then((_) {
         if (mounted) setState(() {});
-      }),
-    ),
-    );
+      });
+
+  /// The group is gone from this device (after the confirmation).
+  void _forgotten(String call) {
+    XprsGroupOps.forget(call);
+    if (!mounted) return;
+    setState(() {});
+    _say(tr('groups.forgot', {'call': call}));
   }
 
   /// Say what forgetting actually does before doing it. It is local, it is not

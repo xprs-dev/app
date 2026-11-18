@@ -1,5 +1,8 @@
 {
-  "_meta": {"language": "Français", "reviewed": false},
+  "_meta": {
+    "language": "Français",
+    "reviewed": false
+  },
   "groups.title": "Groupes",
   "groups.new": "Nouveau groupe",
   "groups.name": "Nom",
@@ -51,5 +54,6 @@
   "groups.muted.empty": "Personne n'est masqué.\n\nMasquez un compte depuis le menu ⋯ de l'une de ses publications. Ses publications cessent d'être affichées — et d'être stockées.",
   "groups.muted.count": "{n} masqués. Chaque clé est masquée séparément — un nom et un avatar se copient librement, une clé de compte non.",
   "groups.muted.unmuted": "{key} n'est plus masqué",
-  "groups.muted.unmute": "Réafficher"
+  "groups.muted.unmute": "Réafficher",
+  "groups.actions": "Actions du groupe"
 }

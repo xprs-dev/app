@@ -1,5 +1,8 @@
 {
-  "_meta": {"language": "Español", "reviewed": false},
+  "_meta": {
+    "language": "Español",
+    "reviewed": false
+  },
   "groups.title": "Grupos",
   "groups.new": "Nuevo grupo",
   "groups.name": "Nombre",
@@ -51,5 +54,6 @@
   "groups.muted.empty": "Nadie está silenciado.\n\nSilencia una cuenta desde el menú ⋯ de cualquiera de sus publicaciones. Sus publicaciones dejan de mostrarse — y de guardarse.",
   "groups.muted.count": "{n} silenciadas. Cada clave se silencia por separado — un nombre y un avatar se copian libremente, una clave de cuenta no.",
   "groups.muted.unmuted": "{key} ya no está silenciada",
-  "groups.muted.unmute": "Reactivar"
+  "groups.muted.unmute": "Reactivar",
+  "groups.actions": "Acciones del grupo"
 }

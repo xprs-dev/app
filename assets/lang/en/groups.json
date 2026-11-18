@@ -1,5 +1,8 @@
 {
-  "_meta": {"language": "English", "reviewed": true},
+  "_meta": {
+    "language": "English",
+    "reviewed": true
+  },
   "groups.title": "Groups",
   "groups.new": "New group",
   "groups.name": "Name",
@@ -51,5 +54,6 @@
   "groups.muted.empty": "Nobody is muted.\n\nMute an account from the ⋯ menu on any of its posts. Its posts stop being shown — and stop being stored.",
   "groups.muted.count": "{n} muted. Each key is muted on its own — a name and an avatar are free to copy, an account key is not.",
   "groups.muted.unmuted": "Unmuted {key}",
-  "groups.muted.unmute": "Unmute"
+  "groups.muted.unmute": "Unmute",
+  "groups.actions": "Group actions"
 }

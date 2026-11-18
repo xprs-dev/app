@@ -67,6 +67,12 @@ class _AppDrawer extends StatelessWidget {
             const Divider(height: 1),
             // The panels people reach for often, one tap from the home
             // screen. Settings still holds everything else.
+            // The archiver first: it is what this device gives the network.
+            ListTile(
+              leading: const Icon(Icons.inventory_2_outlined),
+              title: Text(tr('launcher.drawer.archiver')),
+              onTap: () => _open(context, const ArchiverPage()),
+            ),
             if (UpdateService.selfUpdateEnabled)
               ValueListenableBuilder<UpdateNotice>(
                 valueListenable: UpdateService.instance.notice,
@@ -102,11 +108,6 @@ class _AppDrawer extends StatelessWidget {
               leading: const Icon(Icons.groups),
               title: Text(tr('launcher.drawer.groups')),
               onTap: () => _open(context, const GroupsPage()),
-            ),
-            ListTile(
-              leading: const Icon(Icons.inventory_2_outlined),
-              title: Text(tr('launcher.drawer.archiver')),
-              onTap: () => _open(context, const ArchiverPage()),
             ),
             if (platform.platformName() == 'android')
               ListTile(
