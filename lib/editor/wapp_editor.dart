@@ -676,22 +676,8 @@ extension _WappEditor on _WappPageState {
   /// and the compiler a phone lacks. Optional and not shipped with the app,
   /// so the editor only opens it, on the wapp being edited, when it is
   /// installed. It is an ordinary wapp, installed and shared like any other.
-  static const compilerWappId = 'tools.xprs.compiler';
-
   Future<void> _openCompilerAi() async {
-    final installed = installedAppsStorage();
-    String? dir;
-    if (await installed.directoryExists('')) {
-      for (final e in await installed.listDirectory('')) {
-        if (!e.isDirectory) continue;
-        final abs = installed.getAbsolutePath(e.path);
-        final m = await wappPackageStorage(abs).readJson('manifest.json');
-        if (m?['id'] == compilerWappId) {
-          dir = abs;
-          break;
-        }
-      }
-    }
+    final dir = await compilerAddonDir();
     if (!mounted) return;
     if (dir == null) {
       ScaffoldMessenger.of(
@@ -707,13 +693,17 @@ extension _WappEditor on _WappPageState {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => WappPage(
-          wappDir: dir!,
+          wappDir: dir,
           // arch-ignore: no-raw-ui-string the add-on's proper name
           title: 'Compiler',
           editWappDir: target,
         ),
       ),
     );
+    // The AI may have changed the files: read them again.
+    if (mounted && _singleTargetEdit && widget.editWappDir != null) {
+      await _autoEditTarget();
+    }
   }
 
   /// The subset of [_screens] shown inside the App Creator editor

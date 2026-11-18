@@ -13,9 +13,15 @@ import 'dart:io'
     show Directory, File, Platform, Process, ProcessResult;
 
 import '../profile/profile_storage.dart';
+import 'wapp_compiler_backend_addon_io.dart';
 import 'wapp_compiler_service.dart';
 
-CompilerBackend makeCompilerBackend() => const NativeWasiSdkBackend();
+/// A desktop with wasi-sdk builds with it (the developer's own toolchain);
+/// everywhere else, a phone above all, the Compiler add-on builds.
+CompilerBackend makeCompilerBackend() =>
+    const NativeWasiSdkBackend().isAvailable
+        ? const NativeWasiSdkBackend()
+        : const AddonCompilerBackend();
 
 class NativeWasiSdkBackend implements CompilerBackend {
   const NativeWasiSdkBackend();
