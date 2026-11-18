@@ -312,6 +312,26 @@ class WappManifest {
   /// Parse a manifest colour string ("#RRGGBB", "RRGGBB", "0xAARRGGBB" or
   /// "AARRGGBB") into a [Color], or null if absent/malformed. 6-digit values are
   /// assumed fully opaque.
+  /// The title and description of a raw manifest, either schema: the
+  /// current one (`title` + `description`) or the legacy one, where
+  /// `description` was the title and `summary` the description. The one
+  /// reading of it, shared by [WappManifest.fromJson], the App Creator and
+  /// the installer, so an edited wapp keeps its name.
+  static ({String title, String description}) titleAndDescription(
+      Map<String, dynamic>? json) {
+    final t = json?['title'];
+    if (t is String && t.trim().isNotEmpty) {
+      return (
+        title: t.trim(),
+        description: (json?['description'] as String?) ?? '',
+      );
+    }
+    return (
+      title: (json?['description'] as String?) ?? '',
+      description: (json?['summary'] as String?) ?? '',
+    );
+  }
+
   static Color? _parseHexColor(String? raw) {
     if (raw == null) return null;
     var s = raw.trim().replaceAll('#', '');

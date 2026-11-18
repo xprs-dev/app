@@ -27,6 +27,7 @@ import '../services/reticulum/rns_service.dart';
 import '../profile/profile_storage.dart';
 import '../profile/storage_paths.dart';
 import 'wapp_signing_service.dart';
+import '../launcher/launcher.dart' show WappManifest;
 
 /// Where an installed wapp came from, persisted as `source.json` inside
 /// the install so it can be re-run ("Reload") from its origin without
@@ -220,16 +221,15 @@ class WappInstallerService {
       }
     }
 
-    // Manifest — matches the hand-written shapes in
-    // wapps/*/manifest.json. `description` carries the short
-    // title (what the launcher grid shows); `summary` carries the
-    // longer prose.
+    // Manifest — the current schema of apps/*/manifest.json: `title` is
+    // the name the launcher shows, `description` the one-line explanation
+    // (WappManifest.titleAndDescription still reads the legacy shape).
     final manifest = <String, dynamic>{
       'id': id,
       'version': version,
       'kind': const {'app', 'system', 'addon'}.contains(kind) ? kind : 'app',
-      'description': title.isNotEmpty ? title : folder,
-      'summary': description,
+      'title': title.isNotEmpty ? title : folder,
+      'description': description,
       'icon': manifestIcon,
       'tags': const ['user'],
       // Flag wapps the user authored/edited via the App Creator so the
@@ -573,7 +573,8 @@ class WappInstallerService {
     final manifest = await installed.readJson('$folder/manifest.json');
     final id = (manifest?['id'] as String?) ?? fallbackId;
     final version = (manifest?['version'] as String?) ?? '1.0.0';
-    final title = (manifest?['description'] as String?) ?? folder;
+    final t = WappManifest.titleAndDescription(manifest).title;
+    final title = t.isEmpty ? folder : t;
     await WappSigningService.instance.signPackage(
       ScopedProfileStorage(installed, folder),
       wappId: id,

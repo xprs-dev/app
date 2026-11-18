@@ -338,8 +338,9 @@ extension _WappEditor on _WappPageState {
       return;
     }
     final id = manifest['id'] as String? ?? '';
-    final title = manifest['description'] as String? ?? '';
-    final description = manifest['summary'] as String? ?? '';
+    final td = WappManifest.titleAndDescription(manifest);
+    final title = td.title;
+    final description = td.description;
     // Normalise manifest.icon into the shape the IconField binding
     // expects (see widgets/icon_field.dart):
     //   - empty                → empty binding
@@ -524,8 +525,8 @@ extension _WappEditor on _WappPageState {
           _ProjectEntry(
             folder: entry.name,
             id: id,
-            title: (manifest['description'] as String?) ?? '',
-            description: (manifest['summary'] as String?) ?? '',
+            title: WappManifest.titleAndDescription(manifest).title,
+            description: WappManifest.titleAndDescription(manifest).description,
             dirPath: installed.getAbsolutePath(entry.name),
             isBuiltIn: false,
           ),
@@ -557,8 +558,8 @@ extension _WappEditor on _WappPageState {
           _ProjectEntry(
             folder: entry.name,
             id: id,
-            title: (manifest['description'] as String?) ?? '',
-            description: (manifest['summary'] as String?) ?? '',
+            title: WappManifest.titleAndDescription(manifest).title,
+            description: WappManifest.titleAndDescription(manifest).description,
             dirPath: pkgDir,
             isBuiltIn: true,
           ),
@@ -632,8 +633,8 @@ extension _WappEditor on _WappPageState {
     final entry = _ProjectEntry(
       folder: folder,
       id: manifest['id'] as String? ?? '',
-      title: manifest['description'] as String? ?? '',
-      description: manifest['summary'] as String? ?? '',
+      title: WappManifest.titleAndDescription(manifest).title,
+      description: WappManifest.titleAndDescription(manifest).description,
       dirPath: dir,
       isBuiltIn: !norm.startsWith(installedBase),
     );
@@ -666,6 +667,50 @@ extension _WappEditor on _WappPageState {
           // arch-ignore: no-raw-ui-string the wapp's proper name, not a sentence
           title: 'App Creator',
           editWappDir: widget.wappDir,
+        ),
+      ),
+    );
+  }
+
+  /// The Compiler add-on (`tools.xprs.compiler`): the AI that edits wapps
+  /// and the compiler a phone lacks. Optional and not shipped with the app,
+  /// so the editor only opens it, on the wapp being edited, when it is
+  /// installed, and says where to get it when not.
+  static const compilerWappId = 'tools.xprs.compiler';
+
+  Future<void> _openCompilerAi() async {
+    final installed = installedAppsStorage();
+    String? dir;
+    if (await installed.directoryExists('')) {
+      for (final e in await installed.listDirectory('')) {
+        if (!e.isDirectory) continue;
+        final abs = installed.getAbsolutePath(e.path);
+        final m = await wappPackageStorage(abs).readJson('manifest.json');
+        if (m?['id'] == compilerWappId) {
+          dir = abs;
+          break;
+        }
+      }
+    }
+    if (!mounted) return;
+    if (dir == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(tr('editor.ai.missing'))));
+      return;
+    }
+    final target =
+        widget.editWappDir ??
+        installedAppsStorage().getAbsolutePath(
+          (_fieldValues['wapp_name'] as String?) ?? '',
+        );
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WappPage(
+          wappDir: dir!,
+          // arch-ignore: no-raw-ui-string the add-on's proper name
+          title: 'Compiler',
+          editWappDir: target,
         ),
       ),
     );
@@ -966,8 +1011,15 @@ extension _WappEditor on _WappPageState {
   /// The file-list + full-height code editor split used by the editor's
   /// Code/Files tab (via [_buildScreen]'s split path). Uses Row +
   /// Expanded so it fills the available height and never overflows.
+  /// The editor's phone layout: below this width a side column leaves the
+  /// code a strip (a 360 dp portrait phone gave the file list half the
+  /// screen). Bottom navigation, chips for files, sheets for the palette.
+  static bool _editorNarrow(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 600;
+
   Widget _filesEditorBody() {
     final cs = Theme.of(context).colorScheme;
+    final narrow = _editorNarrow(context);
 
     GeoUiBlock? settingsScreen;
     for (final s in _screens) {
@@ -1040,7 +1092,7 @@ extension _WappEditor on _WappPageState {
     );
 
     Widget right;
-    if (_activeEditFile == 'settings' && settingsScreen != null) {
+    if (!narrow && _activeEditFile == 'settings' && settingsScreen != null) {
       right = _buildSettingsScreen(settingsScreen);
     } else {
       final active = files.firstWhere(
@@ -1050,37 +1102,75 @@ extension _WappEditor on _WappPageState {
       final content = (_fieldValues[active.field] as String?) ?? '';
       final readOnly =
           active.field == 'source' && _fieldValues['source__readonly'] == true;
+      final canCompile = active.field == 'source' && !readOnly;
       right = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                Icon(active.icon, size: 16, color: cs.primary),
-                const SizedBox(width: 8),
-                Text(
-                  active.label,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const Spacer(),
-                if (active.field == 'source' && !readOnly)
-                  TextButton.icon(
-                    onPressed: () => _handleCompile({
-                      'source': (_fieldValues['source'] as String?) ?? '',
-                    }),
-                    icon: const Icon(Icons.build, size: 18),
-                    label: Text(tr('editor.compile')),
+          if (narrow)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final f in files)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                avatar: Icon(f.icon, size: 16),
+                                label: Text(f.label),
+                                selected: f.field == active.field,
+                                onSelected: (_) =>
+                                    setState(() => _activeEditFile = f.field),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: _settingsSaveToDisk,
-                  icon: const Icon(Icons.save, size: 18),
-                  label: Text(tr('common.save')),
-                ),
-              ],
+                  if (canCompile)
+                    IconButton(
+                      tooltip: tr('editor.compile'),
+                      onPressed: () => _handleCompile({
+                        'source': (_fieldValues['source'] as String?) ?? '',
+                      }),
+                      icon: const Icon(Icons.build),
+                    ),
+                ],
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(active.icon, size: 16, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    active.label,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const Spacer(),
+                  if (active.field == 'source' && !readOnly)
+                    TextButton.icon(
+                      onPressed: () => _handleCompile({
+                        'source': (_fieldValues['source'] as String?) ?? '',
+                      }),
+                      icon: const Icon(Icons.build, size: 18),
+                      label: Text(tr('editor.compile')),
+                    ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: _settingsSaveToDisk,
+                    icon: const Icon(Icons.save, size: 18),
+                    label: Text(tr('common.save')),
+                  ),
+                ],
+              ),
             ),
-          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -1096,21 +1186,46 @@ extension _WappEditor on _WappPageState {
               ),
             ),
           ),
-          SizedBox(
-            height: 160,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: LogViewField(
-                fieldName: 'output',
-                label: tr('editor.output'),
-                lines: _resolveLogBuffer('output'),
+          if (narrow)
+            InkWell(
+              onTap: () => setState(() => _outputOpen = !_outputOpen),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      _outputOpen ? Icons.expand_more : Icons.expand_less,
+                      size: 20,
+                      color: cs.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      tr('editor.output'),
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
+          if (!narrow || _outputOpen)
+            SizedBox(
+              height: 160,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: LogViewField(
+                  fieldName: 'output',
+                  label: narrow ? '' : tr('editor.output'),
+                  lines: _resolveLogBuffer('output'),
+                ),
+              ),
+            ),
         ],
       );
     }
 
+    // A phone has no room for a file column beside the code: the files are
+    // chips above it, and the app's settings are their own tab.
+    if (narrow) return right;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1177,6 +1292,14 @@ extension _WappEditor on _WappPageState {
     final backTooltip = tr(
       _singleTargetEdit ? 'common.done' : 'editor.back_to_projects',
     );
+    if (_editorNarrow(context)) {
+      return _narrowEditorScaffold(
+        editorScreens,
+        editorNames,
+        currentName,
+        backTooltip,
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -1197,6 +1320,83 @@ extension _WappEditor on _WappPageState {
         children: [for (final screen in editorScreens) _buildScreen(screen)],
       ),
     );
+  }
+
+  /// The editor on a phone: the wapp's own name on top (not "Edit —" and a
+  /// sentence cut off at the edge), the one Save, and the tabs at the
+  /// bottom with an icon and a short word each, all five in reach.
+  Widget _narrowEditorScaffold(
+    List<GeoUiBlock> editorScreens,
+    List<String> editorNames,
+    String name,
+    String backTooltip,
+  ) {
+    final tc = _editorTabController!;
+    final dests = [
+      for (final n in editorNames) _editorDestination(_i18n.resolve(n)),
+    ];
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: backTooltip,
+          onPressed: _exitEditorMode,
+        ),
+        titleSpacing: 0,
+        title: Text(
+          name.isEmpty ? tr('common.edit') : name,
+          overflow: TextOverflow.ellipsis,
+        ),
+        actions: [
+          IconButton(
+            tooltip: tr('editor.ai.open'),
+            icon: const Icon(Icons.auto_awesome),
+            onPressed: _openCompilerAi,
+          ),
+          IconButton(
+            tooltip: tr('common.save'),
+            icon: const Icon(Icons.save_outlined),
+            onPressed: _settingsSaveToDisk,
+          ),
+        ],
+      ),
+      body: TabBarView(
+        controller: tc,
+        physics: const NeverScrollableScrollPhysics(),
+        children: [for (final screen in editorScreens) _buildScreen(screen)],
+      ),
+      bottomNavigationBar: AnimatedBuilder(
+        animation: tc,
+        builder: (context, _) => NavigationBar(
+          selectedIndex: tc.index,
+          height: 64,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          onDestinationSelected: (i) => setState(() => tc.index = i),
+          destinations: [
+            for (final d in dests)
+              NavigationDestination(icon: Icon(d.$1), label: d.$2),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// An icon and a one-word label for an editor tab, by the tab's name.
+  (IconData, String) _editorDestination(String resolved) {
+    switch (resolved.trim().toLowerCase()) {
+      case 'files':
+      case 'code':
+        return (Icons.code, tr('editor.tab.code'));
+      case 'ui':
+        return (Icons.dashboard_customize_outlined, tr('editor.tab.ui'));
+      case 'translations':
+        return (Icons.translate, tr('editor.tab.text'));
+      case 'settings':
+        return (Icons.tune, tr('editor.tab.app'));
+      case 'tests':
+        return (Icons.science_outlined, tr('editor.tab.tests'));
+    }
+    return (Icons.circle_outlined, resolved);
   }
 
   /// Install wapp Settings tab — a list of configured repositories
@@ -1225,6 +1425,7 @@ extension _WappEditor on _WappPageState {
   Widget _buildUiEditorScreen() {
     final cs = Theme.of(context).colorScheme;
     final raw = (_fieldValues['source_ui'] as String?) ?? '';
+    final narrow = _editorNarrow(context);
 
     // Header row: Code | Visual toggle + context-dependent actions.
     Widget header = Padding(
@@ -1236,12 +1437,14 @@ extension _WappEditor on _WappPageState {
               ButtonSegment(
                 value: _UiEditorMode.visual,
                 icon: const Icon(Icons.account_tree, size: 18),
-                label: Text(tr('editor.ui.visual')),
+                label: narrow ? null : Text(tr('editor.ui.visual')),
+                tooltip: tr('editor.ui.visual'),
               ),
               ButtonSegment(
                 value: _UiEditorMode.code,
                 icon: const Icon(Icons.code, size: 18),
-                label: Text(tr('editor.ui.code')),
+                label: narrow ? null : Text(tr('editor.ui.code')),
+                tooltip: tr('editor.ui.code'),
               ),
             ],
             selected: {_uiEditorMode},
@@ -1249,7 +1452,18 @@ extension _WappEditor on _WappPageState {
             showSelectedIcon: false,
           ),
           const Spacer(),
-          if (_uiEditorMode == _UiEditorMode.visual)
+          if (_uiEditorMode == _UiEditorMode.visual && narrow) ...[
+            IconButton(
+              tooltip: tr('editor.ui.new_screen'),
+              onPressed: _uiNewScreen,
+              icon: const Icon(Icons.add_to_photos_outlined),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: _uiAddBlockSheet,
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(tr('editor.ui.add_block')),
+            ),
+          ] else if (_uiEditorMode == _UiEditorMode.visual)
             FilledButton.tonalIcon(
               onPressed: _uiNewScreen,
               icon: const Icon(Icons.add, size: 16),
@@ -1389,7 +1603,9 @@ extension _WappEditor on _WappPageState {
             separatorBuilder: (_, _) => const SizedBox(width: 6),
             itemBuilder: (_, i) {
               final screen = screens[i];
-              final label = (screen['name'] as String?) ?? 'Screen ${i + 1}';
+              final raw = (screen['name'] as String?) ?? 'Screen ${i + 1}';
+              // `@screen.tasks` is a key: show what the wapp shows.
+              final label = _uiResolveName(raw);
               final selected = i == _uiActiveScreenIndex;
               return ChoiceChip(
                 label: Text(label),
@@ -1408,23 +1624,41 @@ extension _WappEditor on _WappPageState {
         ),
         Divider(height: 1, color: cs.outlineVariant.withAlpha(80)),
 
-        // Three-pane editor: palette | canvas | inspector. The
-        // palette holds draggable block templates, the canvas
-        // renders the active screen as clickable mock widgets with
-        // drop zones between children, and the inspector edits the
-        // attributes of whatever is selected on the canvas.
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(width: 200, child: _buildUiPalette(cs)),
-              VerticalDivider(width: 1, color: cs.outlineVariant.withAlpha(80)),
-              Expanded(flex: 3, child: _buildUiCanvas(screens, cs)),
-              VerticalDivider(width: 1, color: cs.outlineVariant.withAlpha(80)),
-              SizedBox(width: 300, child: _buildUiInspector(screens, cs)),
-            ],
+        // A phone: the canvas has the width, blocks are added from a
+        // sheet, and the selected block's properties sit under it.
+        if (_editorNarrow(context)) ...[
+          Expanded(child: _buildUiCanvas(screens, cs)),
+          if (_uiSelectedPath != null) ...[
+            Divider(height: 1, color: cs.outlineVariant.withAlpha(80)),
+            SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.38,
+              child: _buildUiInspector(screens, cs),
+            ),
+          ],
+        ] else
+          // Three-pane editor: palette | canvas | inspector. The
+          // palette holds draggable block templates, the canvas
+          // renders the active screen as clickable mock widgets with
+          // drop zones between children, and the inspector edits the
+          // attributes of whatever is selected on the canvas.
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(width: 200, child: _buildUiPalette(cs)),
+                VerticalDivider(
+                  width: 1,
+                  color: cs.outlineVariant.withAlpha(80),
+                ),
+                Expanded(flex: 3, child: _buildUiCanvas(screens, cs)),
+                VerticalDivider(
+                  width: 1,
+                  color: cs.outlineVariant.withAlpha(80),
+                ),
+                SizedBox(width: 300, child: _buildUiInspector(screens, cs)),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -2059,6 +2293,78 @@ extension _WappEditor on _WappPageState {
     setState(() => _uiSelectedPath = [...parentPath, adjustedInsert]);
   }
 
+  /// A name as the edited wapp shows it: an `@key` looked up in its
+  /// English (or first) translation, the key without `@` when missing.
+  String _uiResolveName(String raw) {
+    if (!raw.startsWith('@')) return raw;
+    final key = raw.substring(1);
+    final t = _fieldValues['translations'];
+    if (t is Map) {
+      final en = t['en'] ?? (t.isEmpty ? null : t.values.first);
+      final v = en is Map ? en[key] : null;
+      if (v is String && v.isNotEmpty) return v;
+    }
+    return key;
+  }
+
+  /// The palette as a sheet (a phone has no room for it beside the
+  /// canvas, and dragging across a small screen misses). The block goes
+  /// into the selected container, or after the selected block, or at the
+  /// end of the screen.
+  Future<void> _uiAddBlockSheet() async {
+    final cs = Theme.of(context).colorScheme;
+    final picked = await showModalBottomSheet<_UiPaletteEntry>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(ctx).height * 0.7,
+          child: ListView(
+            children: [
+              for (final e in _uiPaletteEntries())
+                ListTile(
+                  leading: Icon(e.icon, color: cs.primary),
+                  title: Text(tr(e.label)),
+                  subtitle: e.subLabel == null ? null : Text(tr(e.subLabel!)),
+                  onTap: () => Navigator.pop(ctx, e),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final raw = (_fieldValues['source_ui'] as String?) ?? '[]';
+    dynamic parsed;
+    try {
+      parsed = jsonDecode(raw);
+    } catch (_) {
+      return;
+    }
+    final screens = _uiScreensOf(parsed);
+    if (_uiActiveScreenIndex >= screens.length) return;
+    final screen = screens[_uiActiveScreenIndex];
+    var parent = <int>[];
+    var index = 1 << 30;
+    final sel = _uiSelectedPath;
+    if (sel != null && sel.isNotEmpty) {
+      final block = _uiLookup(screen, sel);
+      if (block != null && block['children'] is List) {
+        parent = sel;
+      } else {
+        parent = sel.sublist(0, sel.length - 1);
+        index = sel.last + 1;
+      }
+    }
+    final p = _uiLookup(screen, parent);
+    final kids = p?['children'];
+    final at = index > (kids is List ? kids.length : 0)
+        ? (kids is List ? kids.length : 0)
+        : index;
+    _uiHandleDrop(_UiDragPayload.fromPalette(picked.template), parent, at);
+  }
+
   void _uiInsertBlockAt(
     Map<String, dynamic> activeScreen,
     List<int> parentPath,
@@ -2282,128 +2588,59 @@ extension _WappEditor on _WappPageState {
       () => <String, String>{},
     );
 
+    final narrow = _editorNarrow(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       children: [
-        Text(
-          'Translations',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Each locale becomes a lang/<code>.json sidecar inside '
-          'the wapp package. Strings in the UI prefixed with @key '
-          'resolve to the value below at runtime — the fallback '
-          'chain is exact tag → language-only → en → the literal '
-          'key.',
-          style: TextStyle(color: cs.onSurfaceVariant, height: 1.35),
-        ),
-        const SizedBox(height: 12),
-
-        // Persistence banner + save button. Typing into the rows
-        // below only mutates the in-memory bindings — the actual
-        // lang/*.json sidecars are written by the installer, which
-        // also writes everything else (source, UI, icon, …). The
-        // Save button is a convenience that triggers the same code
-        // path Install on the Code tab does, so the author can
-        // commit translations without tab-hopping.
-        Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-          decoration: BoxDecoration(
-            color: cs.primaryContainer.withAlpha(80),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: cs.outlineVariant.withAlpha(100)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.info_outline, color: cs.primary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  tr('editor.translations.note'),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: cs.onPrimaryContainer,
-                    height: 1.35,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: _translationsSaveToDisk,
-                icon: const Icon(Icons.save, size: 16),
-                label: Text(tr('common.save')),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Locale picker + add / remove buttons.
-        Row(
+        // The languages, as chips: one tap to switch, and nothing to
+        // overflow on a phone (the dropdown and three buttons in one row
+        // ran off a 360 dp screen and showed an empty box).
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                initialValue: activeLocale,
-                decoration: InputDecoration(
-                  labelText: tr('editor.translations.locale'),
-                  isDense: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                items: [
-                  for (final code in locales)
-                    DropdownMenuItem(
-                      value: code,
-                      child: Text(
-                        '$code  (${trn('editor.translations.keys', translations[code]?.length ?? 0)})',
-                      ),
-                    ),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => _translationsLocale = v);
-                },
+            for (final code in locales)
+              ChoiceChip(
+                label: Text('$code · ${translations[code]?.length ?? 0}'),
+                selected: code == activeLocale,
+                onSelected: (_) => setState(() => _translationsLocale = code),
               ),
-            ),
-            const SizedBox(width: 10),
-            OutlinedButton.icon(
-              onPressed: _translationsAddLocale,
-              icon: const Icon(Icons.add, size: 16),
+            ActionChip(
+              avatar: const Icon(Icons.add, size: 18),
               label: Text(tr('editor.translations.add_locale')),
+              onPressed: _translationsAddLocale,
             ),
-            const SizedBox(width: 6),
-            OutlinedButton.icon(
-              onPressed: activeLocale == 'en'
-                  ? null
-                  : () => _translationsRemoveLocale(activeLocale),
-              icon: Icon(Icons.delete_outline, size: 16, color: cs.error),
-              label: Text(
-                tr('common.remove'),
-                style: TextStyle(color: cs.error),
+            if (activeLocale != 'en')
+              IconButton(
+                tooltip: tr('common.remove'),
+                onPressed: () => _translationsRemoveLocale(activeLocale),
+                icon: Icon(Icons.delete_outline, color: cs.error),
               ),
-            ),
           ],
         ),
-        const SizedBox(height: 14),
-
-        // Toolbar: extract @keys from UI + add a blank key.
-        Row(
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
             FilledButton.tonalIcon(
               onPressed: () => _translationsExtractKeys(activeLocale),
               icon: const Icon(Icons.auto_fix_high, size: 16),
               label: Text(tr('editor.translations.extract')),
             ),
-            const SizedBox(width: 8),
             OutlinedButton.icon(
               onPressed: () => _translationsAddKey(activeLocale),
               icon: const Icon(Icons.add, size: 16),
               label: Text(tr('editor.translations.add_key')),
             ),
+            // A phone saves from the top bar; a desktop has room here.
+            if (!narrow)
+              FilledButton.icon(
+                onPressed: _translationsSaveToDisk,
+                icon: const Icon(Icons.save, size: 16),
+                label: Text(tr('common.save')),
+              ),
           ],
         ),
         const SizedBox(height: 14),
@@ -2677,56 +2914,63 @@ extension _WappEditor on _WappPageState {
     final providesList = _fieldValues['wapp_provides_functionalities'];
     final provides = providesList is List<String> ? providesList : <String>[];
 
+    final narrow = _editorNarrow(context);
     return Column(
       children: [
-        // ── Save banner ──
-        Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-          decoration: BoxDecoration(
-            color: cs.primaryContainer.withAlpha(80),
-            border: Border(
-              bottom: BorderSide(color: cs.outlineVariant.withAlpha(100)),
+        // ── Save banner ── (a phone saves from the top bar)
+        if (!narrow)
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer.withAlpha(80),
+              border: Border(
+                bottom: BorderSide(color: cs.outlineVariant.withAlpha(100)),
+              ),
             ),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.info_outline, color: cs.primary, size: 18),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  tr('editor.settings.note'),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: cs.onPrimaryContainer,
-                    height: 1.35,
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: cs.primary, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    tr('editor.settings.note'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onPrimaryContainer,
+                      height: 1.35,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: _settingsSaveToDisk,
-                icon: const Icon(Icons.save, size: 16),
-                label: Text(tr('common.save')),
-              ),
-            ],
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: _settingsSaveToDisk,
+                  icon: const Icon(Icons.save, size: 16),
+                  label: Text(tr('common.save')),
+                ),
+              ],
+            ),
           ),
-        ),
 
-        // ── Signing identity ──
-        _buildSigningIdentitySection(cs, profile, npub),
+        // ── Signing identity ── (scrolls with the rest on a phone)
+        if (!narrow) _buildSigningIdentitySection(cs, profile, npub),
 
         // ── Scrollable body: GeoUI identity + runtime + deps ──
         Expanded(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(0, 0, 0, 24),
             children: [
+              if (narrow) _buildSigningIdentitySection(cs, profile, npub),
               // Identity fields via GeoUI renderer (title, name, id,
               // version, description, icon). SizedBox must be tall
               // enough to fit all fields without internal scrolling,
               // otherwise the renderer's SingleChildScrollView
               // swallows scroll events and prevents the outer
               // ListView from reaching Category / HAL / Provides.
-              SizedBox(height: 700, child: identityRenderer),
+              // Larger system text needs a taller box (130% on the C61).
+              SizedBox(
+                height: MediaQuery.textScalerOf(context).scale(700),
+                child: identityRenderer,
+              ),
 
               // ── Category ──
               Padding(

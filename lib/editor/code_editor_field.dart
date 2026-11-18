@@ -177,35 +177,81 @@ class _CodeEditorFieldState extends State<CodeEditorField> {
     // layout below, which grows with content, so it's used only in the
     // capped non-fill box.)
     if (fill) {
+      // Code does not wrap: a wrapped line reads as two statements, and on
+      // a phone a C line broke every two or three words. The box is as wide
+      // as the longest line and scrolls sideways; text is capped at its
+      // normal size (a 130% system font made every line wrap).
       return Container(
         width: double.infinity,
         decoration: decoration,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: TextField(
-          controller: _controller,
-          expands: true,
-          maxLines: null,
-          minLines: null,
-          readOnly: widget.readOnly,
-          enableInteractiveSelection: true,
-          keyboardType: TextInputType.multiline,
-          textAlignVertical: TextAlignVertical.top,
-          cursorColor: Colors.white,
-          scrollPhysics: const ClampingScrollPhysics(),
-          style: TextStyle(
-            fontFamily: _fontFamily,
-            fontSize: _fontSize,
-            height: _lineHeight,
-            color: widget.readOnly ? Colors.white54 : Colors.white,
-          ),
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            isDense: true,
-            isCollapsed: true,
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.0,
+          child: LayoutBuilder(
+            builder: (context, box) {
+              final width = box.maxWidth.isFinite
+                  ? (_longestLine * _fontSize * 0.62 + 24)
+                        .clamp(box.maxWidth, 20000.0)
+                        .toDouble()
+                  : 2000.0;
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: width,
+                  height: box.maxHeight,
+                  child: _fillField(),
+                ),
+              );
+            },
           ),
         ),
       );
     }
+    return _cappedBox(cs, decoration);
+  }
+
+  /// Characters in the longest line, for the unwrapped width.
+  int get _longestLine {
+    var longest = 0, run = 0;
+    final t = _controller.text;
+    for (var i = 0; i < t.length; i++) {
+      if (t.codeUnitAt(i) == 10) {
+        if (run > longest) longest = run;
+        run = 0;
+      } else {
+        run++;
+      }
+    }
+    return run > longest ? run : longest;
+  }
+
+  Widget _fillField() {
+    return TextField(
+      controller: _controller,
+      expands: true,
+      maxLines: null,
+      minLines: null,
+      readOnly: widget.readOnly,
+      enableInteractiveSelection: true,
+      keyboardType: TextInputType.multiline,
+      textAlignVertical: TextAlignVertical.top,
+      cursorColor: Colors.white,
+      scrollPhysics: const ClampingScrollPhysics(),
+      style: TextStyle(
+        fontFamily: _fontFamily,
+        fontSize: _fontSize,
+        height: _lineHeight,
+        color: widget.readOnly ? Colors.white54 : Colors.white,
+      ),
+      decoration: const InputDecoration(
+        border: InputBorder.none,
+        isDense: true,
+        isCollapsed: true,
+      ),
+    );
+  }
+
+  Widget _cappedBox(ColorScheme cs, BoxDecoration decoration) {
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(minHeight: 240, maxHeight: 520),

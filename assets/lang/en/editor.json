@@ -69,7 +69,7 @@
   "editor.translations.add_locale": "Add locale",
   "editor.translations.add_locale.help": "Short tag, e.g. en, pt, de, fr, pt_BR.",
   "editor.translations.locale_code": "Locale code",
-  "editor.translations.extract": "Extract @keys from UI",
+  "editor.translations.extract": "Find keys in screens",
   "editor.translations.add_key": "Add key",
   "editor.translations.add_key.title": "Add translation key",
   "editor.translations.add_key.help": "Dot-separated name like `settings.title_label`. The UI refers to it as `@settings.title_label`.",
@@ -110,5 +110,13 @@
   "editor.tests.run_live": "Run live",
   "editor.tests.no_file": "No file",
   "editor.tests.select_file": "Select a test file",
-  "editor.tests.desktop_only": "Running tests needs the desktop build (the wasi-sdk toolchain is not available in the browser)."
+  "editor.tests.desktop_only": "Running tests needs the desktop build (the wasi-sdk toolchain is not available in the browser).",
+  "editor.tab.code": "Code",
+  "editor.tab.ui": "Screens",
+  "editor.tab.text": "Text",
+  "editor.tab.app": "App",
+  "editor.tab.tests": "Tests",
+  "editor.ai.open": "Edit with AI",
+  "editor.ai.missing": "Install the Compiler add-on from the store to edit with AI.",
+  "editor.ui.add_block": "Add block"
 }

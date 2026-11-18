@@ -69,7 +69,7 @@
   "editor.translations.add_locale": "Sprache hinzufügen",
   "editor.translations.add_locale.help": "Kurzes Kürzel, z. B. en, pt, de, fr, pt_BR.",
   "editor.translations.locale_code": "Sprachcode",
-  "editor.translations.extract": "@Schlüssel aus der Oberfläche extrahieren",
+  "editor.translations.extract": "Schlüssel aus Bildschirmen",
   "editor.translations.add_key": "Schlüssel hinzufügen",
   "editor.translations.add_key.title": "Übersetzungsschlüssel hinzufügen",
   "editor.translations.add_key.help": "Durch Punkte getrennter Name wie `settings.title_label`. Die Oberfläche verweist darauf als `@settings.title_label`.",
@@ -110,5 +110,13 @@
   "editor.tests.run_live": "Live ausführen",
   "editor.tests.no_file": "Keine Datei",
   "editor.tests.select_file": "Wähle eine Testdatei",
-  "editor.tests.desktop_only": "Tests brauchen die Desktop-Version (die wasi-sdk-Werkzeugkette ist im Browser nicht verfügbar)."
+  "editor.tests.desktop_only": "Tests brauchen die Desktop-Version (die wasi-sdk-Werkzeugkette ist im Browser nicht verfügbar).",
+  "editor.tab.code": "Code",
+  "editor.tab.ui": "Bildschirme",
+  "editor.tab.text": "Texte",
+  "editor.tab.app": "App",
+  "editor.tab.tests": "Tests",
+  "editor.ai.open": "Mit KI bearbeiten",
+  "editor.ai.missing": "Installiere das Compiler-Add-on aus dem Store, um mit KI zu bearbeiten.",
+  "editor.ui.add_block": "Block hinzufügen"
 }

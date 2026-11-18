@@ -69,7 +69,7 @@
   "editor.translations.add_locale": "Adicionar idioma",
   "editor.translations.add_locale.help": "Etiqueta curta, p. ex. en, pt, de, fr, pt_BR.",
   "editor.translations.locale_code": "Código do idioma",
-  "editor.translations.extract": "Extrair @chaves da interface",
+  "editor.translations.extract": "Procurar chaves nos ecrãs",
   "editor.translations.add_key": "Adicionar chave",
   "editor.translations.add_key.title": "Adicionar chave de tradução",
   "editor.translations.add_key.help": "Nome separado por pontos, como `settings.title_label`. A interface refere-se a ela como `@settings.title_label`.",
@@ -110,5 +110,13 @@
   "editor.tests.run_live": "Correr ao vivo",
   "editor.tests.no_file": "Sem ficheiro",
   "editor.tests.select_file": "Escolha um ficheiro de teste",
-  "editor.tests.desktop_only": "Correr testes exige a versão de secretária (a cadeia wasi-sdk não está disponível no navegador)."
+  "editor.tests.desktop_only": "Correr testes exige a versão de secretária (a cadeia wasi-sdk não está disponível no navegador).",
+  "editor.tab.code": "Código",
+  "editor.tab.ui": "Ecrãs",
+  "editor.tab.text": "Textos",
+  "editor.tab.app": "App",
+  "editor.tab.tests": "Testes",
+  "editor.ai.open": "Editar com IA",
+  "editor.ai.missing": "Instale o complemento Compiler na loja para editar com IA.",
+  "editor.ui.add_block": "Adicionar bloco"
 }

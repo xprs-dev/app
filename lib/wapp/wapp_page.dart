@@ -291,6 +291,9 @@ class _WappPageState extends State<WappPage>
   /// home.ui.json) or 'settings' for the metadata form.
   String _activeEditFile = 'source';
 
+  /// The compiler output panel under the code, folded away on a phone.
+  bool _outputOpen = false;
+
   /// TabController for the App Creator editor (Code/UI/Settings).
   /// Created lazily the first time the user enters editor mode so we
   /// don't allocate a controller for the Projects-only view.

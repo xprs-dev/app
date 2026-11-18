@@ -69,7 +69,7 @@
   "editor.translations.add_locale": "Ajouter une langue",
   "editor.translations.add_locale.help": "Code court, p. ex. en, pt, de, fr, pt_BR.",
   "editor.translations.locale_code": "Code de langue",
-  "editor.translations.extract": "Extraire les @clés de l'interface",
+  "editor.translations.extract": "Trouver les clés des écrans",
   "editor.translations.add_key": "Ajouter une clé",
   "editor.translations.add_key.title": "Ajouter une clé de traduction",
   "editor.translations.add_key.help": "Nom séparé par des points, comme `settings.title_label`. L'interface y fait référence par `@settings.title_label`.",
@@ -110,5 +110,13 @@
   "editor.tests.run_live": "Lancer en direct",
   "editor.tests.no_file": "Aucun fichier",
   "editor.tests.select_file": "Choisissez un fichier de test",
-  "editor.tests.desktop_only": "Lancer les tests nécessite la version de bureau (la chaîne wasi-sdk n'est pas disponible dans le navigateur)."
+  "editor.tests.desktop_only": "Lancer les tests nécessite la version de bureau (la chaîne wasi-sdk n'est pas disponible dans le navigateur).",
+  "editor.tab.code": "Code",
+  "editor.tab.ui": "Écrans",
+  "editor.tab.text": "Textes",
+  "editor.tab.app": "App",
+  "editor.tab.tests": "Tests",
+  "editor.ai.open": "Modifier avec l'IA",
+  "editor.ai.missing": "Installez le module Compiler depuis la boutique pour modifier avec l'IA.",
+  "editor.ui.add_block": "Ajouter un bloc"
 }

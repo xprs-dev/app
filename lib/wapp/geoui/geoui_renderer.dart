@@ -1221,7 +1221,11 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
     final min = block.getNumber('min');
     final max = block.getNumber('max');
     final val = widget.bindings.getValue(name);
-    final numVal = val is int ? val.toDouble() : (val as double? ?? min ?? 0);
+    final numVal = (val is num
+            ? val.toDouble()
+            : (val is String ? double.tryParse(val.trim()) : null)) ??
+        min ??
+        0;
 
     if (min != null && max != null) {
       return _renderSliderField(block);
@@ -1256,7 +1260,12 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
     final max = block.getNumber('max')!;
     final step = block.getNumber('step');
     final val = widget.bindings.getValue(fieldName);
-    final numVal = val is int ? val.toDouble() : (val as double? ?? min);
+    // A value may arrive as text (a manifest read back, a wapp's echo): a
+    // failed cast here blanked the whole card in release builds.
+    final parsedVal = val is num
+        ? val.toDouble()
+        : (val is String ? double.tryParse(val.trim()) : null);
+    final numVal = (parsedVal ?? min).clamp(min, max).toDouble();
     final divisions = step != null ? ((max - min) / step).round() : null;
     final displayVal =
         isInt ? numVal.round().toString() : numVal.toStringAsFixed(1);
