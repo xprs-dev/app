@@ -191,7 +191,15 @@ the alternatives if F-Droid objects). Keep the define on every store build.
   fdroiddata never got `srclibs/xprs-zx.yml`, the same miss as xprs-core
   before it and the likely reason the bot stopped. The file was added to the
   MR. **A new srclib in `fdroid/srclibs/` means an fdroiddata MR the same
-  day.**
+  day.** The second pipeline built 4007081 and 4007082 and then failed 4007083
+  on `cp: Permission denied`: `../../x1watt/zx` lies outside the build dir, so
+  it survives between the ABI builds of one job. The recipe now runs
+  `rm -rf ../../x1watt/zx` first (template commit b11f95f and the MR). The
+  third pipeline hit the fork's 1 h job limit during the x86_64 build; the
+  fork's `build_timeout` was raised to 3 h (GitLab's shared-runner maximum)
+  and the job retried. Pipeline 3083409706 then went green: all three ABIs
+  matched the reference binaries, in about 33 min. **A fresh fork needs
+  `build_timeout` raised before its first pipeline.**
 
 ## 3. Following the review
 
