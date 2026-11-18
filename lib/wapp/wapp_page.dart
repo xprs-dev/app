@@ -749,6 +749,10 @@ class _WappPageState extends State<WappPage>
   // Generic conversation stores keyed by the GeoUI field name. A wapp drives
   // these via the ui.convo.* protocol; the host renders them with the generic
   // ConversationsField. No app-specific (e.g. APRS) knowledge lives here.
+  /// Open prompts whose cycle has no end (`more`): where ui.prompt.cycle
+  /// delivers the next values, by prompt id.
+  final Map<String, void Function(List<String>)> _cycleFeeds = {};
+
   final Map<String, ConversationStore> _convStores = {};
 
   /// Durable conversation history (conversations.zx). Null until [_loadConversations]
@@ -2455,6 +2459,13 @@ class _WappPageState extends State<WappPage>
           final field = data['field'] as String? ?? 'conversations';
           _convStore(field).clear(data['id'] as String?);
           changed = true;
+        } else if (type == 'ui.prompt.cycle') {
+          // More values for the cycle of a prompt still open (asked for with
+          // `prompt_more`): appended, never replacing what was shown.
+          final vals = [
+            for (final v in (data['values'] as List? ?? const [])) v.toString(),
+          ];
+          _cycleFeeds[(data['id'] ?? '').toString()]?.call(vals);
         } else if (type == 'ui.prompt') {
           // Generic prompt: the wapp asks the host to show a dialog (title +
           // optional text input + optional chips) and returns the result as a
@@ -4575,6 +4586,37 @@ class _WappPageState extends State<WappPage>
     // What "back" returns to: every value shown before, newest last, so it
     // still walks back after "next" wrapped round the list.
     final cycleShown = <int>[];
+    // `more: true`: the list has no end. Near its end the wapp is asked for
+    // more (`prompt_more`, answered with ui.prompt.cycle) instead of the
+    // dialog going round the same few again.
+    final cycleMore = cycle?['more'] == true;
+    var cycleAsked = false;
+    var cycleWaiting = false;
+    void Function(VoidCallback)? cycleSet;
+    void askMore() {
+      if (!cycleMore || cycleAsked) return;
+      cycleAsked = true;
+      _fieldValues['prompt_id'] = id;
+      _sendCommand('prompt_more');
+    }
+
+    _cycleFeeds[id] = (vals) {
+      void apply() {
+        final start = cycleValues.length;
+        for (final v in vals) {
+          if (v.isNotEmpty && !cycleValues.contains(v)) cycleValues.add(v);
+        }
+        cycleAsked = false;
+        if (cycleWaiting && cycleValues.length > start) {
+          cycleShown.add(cycleAt);
+          cycleAt = start;
+          cycleWaiting = false;
+        }
+      }
+
+      final set = cycleSet;
+      set == null ? apply() : set(apply);
+    };
 
     final controller = TextEditingController(
       text: (input?['value'] ?? '').toString(),
@@ -4616,6 +4658,7 @@ class _WappPageState extends State<WappPage>
     // Global scope switch) is rendered FIRST — on top — so the scope choice is
     // the first thing the user sees and sets.
     Widget content(BuildContext ctx, void Function(VoidCallback) setLocal) {
+      cycleSet = setLocal;
       final cs = Theme.of(ctx).colorScheme;
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -4663,10 +4706,19 @@ class _WappPageState extends State<WappPage>
                   IconButton.filledTonal(
                     icon: const Icon(Icons.autorenew),
                     tooltip: cycleNext.isNotEmpty ? cycleNext : null,
-                    onPressed: cycleValues.length > 1
+                    onPressed: cycleValues.length > 1 || cycleMore
                         ? () => setLocal(() {
+                              final last = cycleAt >= cycleValues.length - 1;
+                              if (cycleMore && last) {
+                                // Shown when the answer comes (one message).
+                                cycleWaiting = true;
+                                askMore();
+                                return;
+                              }
                               cycleShown.add(cycleAt);
                               cycleAt = (cycleAt + 1) % cycleValues.length;
+                              // Ask ahead, so "next" rarely waits.
+                              if (cycleValues.length - cycleAt <= 3) askMore();
                             })
                         : null,
                   ),
@@ -4802,6 +4854,11 @@ class _WappPageState extends State<WappPage>
       );
     }
 
+    void closed(void _) {
+      _cycleFeeds.remove(id);
+      cycleSet = null;
+    }
+
     if (fullscreen) {
       // A dedicated full-screen panel: roomy, with the title + actions in an
       // app bar so the picker isn't cramped.
@@ -4835,7 +4892,7 @@ class _WappPageState extends State<WappPage>
             ),
           ),
         ),
-      );
+      ).then(closed);
       return;
     }
 
@@ -4874,7 +4931,7 @@ class _WappPageState extends State<WappPage>
           );
         },
       ),
-    );
+    ).then(closed);
   }
 
   /// Drain the curated firehose host-side into the Social "All" archive.

@@ -107,4 +107,20 @@ void main() {
     final fresh = k.create(callsign: 'X5ZZZZ')!;
     expect(fresh.callsign, isNot('X5ZZZZ'));
   });
+
+  test('more callsigns without end, and an early one can still be created', () {
+    final k = XprsGroupKeys.instance;
+    final first = k.candidates(8);
+    final seen = {...first};
+    for (var round = 0; round < 5; round++) {
+      final more = k.candidates(8, more: true);
+      expect(more, hasLength(8), reason: 'a fresh batch every time');
+      expect(seen.intersection(more.toSet()), isEmpty,
+          reason: 'never one already offered: no loop');
+      seen.addAll(more);
+    }
+    // Going back to the very first one still creates THAT group.
+    final g = k.create(nick: 'early', callsign: first.first)!;
+    expect(g.callsign, first.first);
+  });
 }

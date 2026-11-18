@@ -4562,11 +4562,16 @@ class WappEngine {
     // in memory until hal_xprs_group_create_as picks one. The callsign
     // derives from the key (26.1), so letting the person choose it means
     // offering keys; the wapp sees the callsigns, never the keys.
+    // count < 0: |count| more, keeping the pool (an older host clears it).
     // Bytes written, negated size if `out` is small, -1 with no profile open.
     final halXprsGroupCandidates = WasmFunction(
       (int count, int outPtr, int outCap) {
         if (!XprsGroupKeys.instance.ready) return -1;
-        final s = XprsGroupKeys.instance.candidates(count).join(',');
+        // A negative count asks for that many MORE, keeping the ones already
+        // offered (the dialog turns through callsigns without end).
+        final s = XprsGroupKeys.instance
+            .candidates(count.abs(), more: count < 0)
+            .join(',');
         final n = utf8.encode(s).length;
         if (n > outCap) return -n;
         return _writeStr(outPtr, outCap, s);
