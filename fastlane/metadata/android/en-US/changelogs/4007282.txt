@@ -1,0 +1,2 @@
+Status: a post that showed two or three times (copies saved by older versions) is merged into one when Status opens; if one copy was deleted, the post shows as deleted.
+Deleting a long status now removes all of it, its parts included, so it cannot reappear.
