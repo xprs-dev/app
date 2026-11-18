@@ -1774,8 +1774,8 @@ extension _WappEditor on _WappPageState {
   /// Thin bar above the canvas body that shows which screen we're
   /// editing plus its tip.
   Widget _buildCanvasHeader(Map<String, dynamic> screen, ColorScheme cs) {
-    final name = (screen['name'] as String?) ?? 'Screen';
-    final tip = (screen['tip'] as String?) ?? '';
+    final name = _uiResolveName((screen['name'] as String?) ?? 'Screen');
+    final tip = _uiResolveName((screen['tip'] as String?) ?? '');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1893,7 +1893,7 @@ extension _WappEditor on _WappPageState {
   ) {
     final kw = (block[r'$'] as String?) ?? 'block';
     final type = (block[r'$type'] as String?) ?? '';
-    final name = (block['name'] as String?) ?? '';
+    final name = _uiResolveName((block['name'] as String?) ?? '');
     final children = (block['children'] as List?) ?? const [];
 
     // Special group renderings: show a chip stand-in so the user
@@ -2059,7 +2059,7 @@ extension _WappEditor on _WappPageState {
   Widget _buildCanvasLeaf(Map<String, dynamic> block, ColorScheme cs) {
     final kw = (block[r'$'] as String?) ?? '';
     if (kw == 'action') {
-      final label = (block['label'] as String?) ?? 'Action';
+      final label = _uiResolveName((block['label'] as String?) ?? 'Action');
       final style = (block['style'] as String?) ?? 'secondary';
       return IgnorePointer(
         child: switch (style) {
@@ -2085,9 +2085,9 @@ extension _WappEditor on _WappPageState {
     }
     if (kw == 'field') {
       final type = (block[r'$type'] as String?) ?? 'string';
-      final label =
-          (block['label'] as String?) ?? (block['name'] as String? ?? '');
-      final tip = (block['tip'] as String?) ?? '';
+      final label = _uiResolveName(
+          (block['label'] as String?) ?? (block['name'] as String? ?? ''));
+      final tip = _uiResolveName((block['tip'] as String?) ?? '');
       return _buildCanvasFieldMock(type, label, tip, block, cs);
     }
     // Unknown leaf — show generic pill.
