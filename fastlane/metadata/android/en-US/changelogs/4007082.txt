@@ -1,0 +1,4 @@
+Archiver is now part of the app (menu > Archiver). Its Impact tab charts the requests your device served and the storage it gives, with milestones. The home screen invites you to become an archiver. On a phone, the archiver answers under the device's own X3 callsign.
+New black-and-white look.
+Search finds people, stations and groups through the archivers.
+Fixes: held requests are sent once; faster reconnect to archivers.
