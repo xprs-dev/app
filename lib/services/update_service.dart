@@ -1184,7 +1184,7 @@ class UpdateService with WidgetsBindingObserver {
           final reason = (r['reason'] as num?)?.toInt() ?? 0;
           final waiting = st != 'running';
           phase.value = !waiting
-              ? ''
+              ? tr('updates.phase.web')
               : reason == 3
                   ? tr('updates.phase.wifi')
                   : tr('updates.phase.network');
