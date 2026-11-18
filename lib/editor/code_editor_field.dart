@@ -141,9 +141,9 @@ class _CodeEditorFieldState extends State<CodeEditorField> {
               child: Text(
                 widget.label,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: cs.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  color: cs.primary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           _editorBox(cs, fill: false),
@@ -152,9 +152,9 @@ class _CodeEditorFieldState extends State<CodeEditorField> {
               padding: const EdgeInsets.only(left: 4, top: 6),
               child: Text(
                 widget.tip!,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
             ),
         ],
@@ -225,7 +225,9 @@ class _CodeEditorFieldState extends State<CodeEditorField> {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 10),
+                      horizontal: 10,
+                      vertical: 10,
+                    ),
                     child: TextField(
                       controller: _controller,
                       maxLines: null,
@@ -239,8 +241,7 @@ class _CodeEditorFieldState extends State<CodeEditorField> {
                         fontFamily: _fontFamily,
                         fontSize: _fontSize,
                         height: _lineHeight,
-                        color:
-                            widget.readOnly ? Colors.white54 : Colors.white,
+                        color: widget.readOnly ? Colors.white54 : Colors.white,
                       ),
                       decoration: const InputDecoration(
                         border: InputBorder.none,
@@ -281,9 +282,7 @@ class _LineNumberGutter extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       decoration: const BoxDecoration(
         color: Color(0x40000000),
-        border: Border(
-          right: BorderSide(color: Color(0x33FFFFFF)),
-        ),
+        border: Border(right: BorderSide(color: Color(0x33FFFFFF))),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,

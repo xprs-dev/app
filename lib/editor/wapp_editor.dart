@@ -135,12 +135,14 @@ extension _WappEditor on _WappPageState {
 
     if (!result.ok) {
       _logLine('compile failed: ${result.error}');
-      NotificationService.instance.show(XprsNotification(
-        level: NotificationLevel.error,
-        title: tr('editor.compile.failed'),
-        body: result.error ?? tr('editor.see_log'),
-        source: 'host:app-creator',
-      ));
+      NotificationService.instance.show(
+        XprsNotification(
+          level: NotificationLevel.error,
+          title: tr('editor.compile.failed'),
+          body: result.error ?? tr('editor.see_log'),
+          source: 'host:app-creator',
+        ),
+      );
       return;
     }
 
@@ -148,18 +150,19 @@ extension _WappEditor on _WappPageState {
     await wappData.writeBytes('last_compiled.wasm', bytes);
     // A fresh compile supersedes any bytes loaded from disk.
     _loadedWasmBytes = null;
-    _logLine(
-        'compile ok: ${bytes.length} bytes in ${result.durationMs}ms');
-    NotificationService.instance.show(XprsNotification(
-      level: NotificationLevel.success,
-      title: tr('editor.compile.ok'),
-      body: tr('editor.compile.ok.body', {
-        'bytes': bytes.length,
-        'ms': result.durationMs,
-        'backend': WappCompilerService.instance.backend.name
-      }),
-      source: 'host:app-creator',
-    ));
+    _logLine('compile ok: ${bytes.length} bytes in ${result.durationMs}ms');
+    NotificationService.instance.show(
+      XprsNotification(
+        level: NotificationLevel.success,
+        title: tr('editor.compile.ok'),
+        body: tr('editor.compile.ok.body', {
+          'bytes': bytes.length,
+          'ms': result.durationMs,
+          'backend': WappCompilerService.instance.backend.name,
+        }),
+        source: 'host:app-creator',
+      ),
+    );
   }
 
   /// App Creator install pipeline. Called from `_drainOutbox` when
@@ -229,11 +232,10 @@ extension _WappEditor on _WappPageState {
     final translationsRaw = _fieldValues['translations'];
     final translations = _coerceTranslations(translationsRaw);
 
-    final version =
-        (_fieldValues['wapp_version'] as String?) ?? '1.0.0';
+    final version = (_fieldValues['wapp_version'] as String?) ?? '1.0.0';
     final tickInterval =
         int.tryParse((_fieldValues['wapp_tick_interval'] as String?) ?? '') ??
-            5000;
+        5000;
     final halRaw = _fieldValues['wapp_hal_requires'];
     final halRequires = halRaw is List<String>
         ? halRaw
@@ -265,12 +267,14 @@ extension _WappEditor on _WappPageState {
     );
     if (!result.ok) {
       _logLine('install failed: ${result.error}');
-      NotificationService.instance.show(XprsNotification(
-        level: NotificationLevel.error,
-        title: tr('editor.install.failed'),
-        body: result.error ?? tr('editor.see_log'),
-        source: 'host:app-creator',
-      ));
+      NotificationService.instance.show(
+        XprsNotification(
+          level: NotificationLevel.error,
+          title: tr('editor.install.failed'),
+          body: result.error ?? tr('editor.see_log'),
+          source: 'host:app-creator',
+        ),
+      );
       return;
     }
 
@@ -285,13 +289,16 @@ extension _WappEditor on _WappPageState {
     _loadedWasmBytes = null;
 
     _logLine('install ok: $id');
-    NotificationService.instance.show(XprsNotification(
-      level: NotificationLevel.success,
-      title: tr('editor.install.ok'),
-      body: tr('editor.install.ok.body',
-          {'name': title.isNotEmpty ? title : folderName}),
-      source: 'host:app-creator',
-    ));
+    NotificationService.instance.show(
+      XprsNotification(
+        level: NotificationLevel.success,
+        title: tr('editor.install.ok'),
+        body: tr('editor.install.ok.body', {
+          'name': title.isNotEmpty ? title : folderName,
+        }),
+        source: 'host:app-creator',
+      ),
+    );
     // Refresh the Projects tab so a freshly installed wapp shows up
     // immediately if the user switches back to it.
     unawaited(_refreshProjects());
@@ -320,12 +327,14 @@ extension _WappEditor on _WappPageState {
     final manifest = await pkg.readJson('manifest.json');
     if (manifest == null) {
       _logLine('(load) missing or invalid manifest.json at ${entry.dirPath}');
-      NotificationService.instance.show(XprsNotification(
-        level: NotificationLevel.error,
-        title: tr('editor.load.failed'),
-        body: tr('editor.manifest_missing', {'path': entry.dirPath}),
-        source: 'host:app-creator',
-      ));
+      NotificationService.instance.show(
+        XprsNotification(
+          level: NotificationLevel.error,
+          title: tr('editor.load.failed'),
+          body: tr('editor.manifest_missing', {'path': entry.dirPath}),
+          source: 'host:app-creator',
+        ),
+      );
       return;
     }
     final id = manifest['id'] as String? ?? '';
@@ -354,8 +363,7 @@ extension _WappEditor on _WappPageState {
         iconForField = rawIcon;
       }
     }
-    final uiJson =
-        await pkg.readString('screens/home.ui.json') ?? '';
+    final uiJson = await pkg.readString('screens/home.ui.json') ?? '';
     final wasm = await pkg.readBytes('app.wasm');
     final sourceC = await pkg.readString('main.c') ?? '';
 
@@ -389,10 +397,8 @@ extension _WappEditor on _WappPageState {
     _fieldValues['wapp_description'] = description;
     _fieldValues['wapp_name'] = entry.folder;
     _fieldValues['wapp_icon'] = iconForField;
-    _fieldValues['wapp_version'] =
-        (manifest['version'] as String?) ?? '1.0.0';
-    _fieldValues['wapp_kind'] =
-        (manifest['kind'] as String?) ?? 'app';
+    _fieldValues['wapp_version'] = (manifest['version'] as String?) ?? '1.0.0';
+    _fieldValues['wapp_kind'] = (manifest['kind'] as String?) ?? 'app';
     final tickVal = '${manifest['tick_interval_ms'] ?? 5000}';
     _fieldValues['wapp_tick_interval'] = tickVal;
     _tickIntervalController.text = tickVal;
@@ -402,9 +408,10 @@ extension _WappEditor on _WappPageState {
         ? halList.cast<String>().toList()
         : <String>['log'];
     // Provides functionalities — stored as List<String> for the chip editor.
-    final providesFns = manifest['provides']?['functionalities']
-        ?? manifest['provides']?['widgets']
-        ?? manifest['provides']?['functions'];
+    final providesFns =
+        manifest['provides']?['functionalities'] ??
+        manifest['provides']?['widgets'] ??
+        manifest['provides']?['functions'];
     _fieldValues['wapp_provides_functionalities'] = providesFns is List
         ? providesFns.cast<String>().toList()
         : <String>[];
@@ -416,24 +423,30 @@ extension _WappEditor on _WappPageState {
     _fieldValues['source__readonly'] = sourceC.isEmpty;
     _loadedWasmBytes = wasm;
 
-    _logLine('loaded ${entry.folder}: id=$id, '
-        'title=${title.isEmpty ? '(empty)' : title}, '
-        'ui=${uiJson.length} chars, '
-        'source=${sourceC.isEmpty ? '(missing)' : '${sourceC.length} chars'}, '
-        'wasm=${wasm?.length ?? 0} bytes'
-        '${entry.isBuiltIn ? ' (built-in)' : ''}');
+    _logLine(
+      'loaded ${entry.folder}: id=$id, '
+      'title=${title.isEmpty ? '(empty)' : title}, '
+      'ui=${uiJson.length} chars, '
+      'source=${sourceC.isEmpty ? '(missing)' : '${sourceC.length} chars'}, '
+      'wasm=${wasm?.length ?? 0} bytes'
+      '${entry.isBuiltIn ? ' (built-in)' : ''}',
+    );
     if (sourceC.isEmpty) {
-      _logLine('(no main.c shipped with this wapp — Code tab will be '
-          'empty; Compile will rebuild from whatever you type in)');
+      _logLine(
+        '(no main.c shipped with this wapp — Code tab will be '
+        'empty; Compile will rebuild from whatever you type in)',
+      );
     }
-    NotificationService.instance.show(XprsNotification(
-      level: NotificationLevel.success,
-      title: tr('editor.load.ok', {'folder': entry.folder}),
-      body: entry.isBuiltIn
-          ? tr('editor.load.builtin', {'folder': entry.folder})
-          : (title.isNotEmpty ? title : tr('editor.load.no_title')),
-      source: 'host:app-creator',
-    ));
+    NotificationService.instance.show(
+      XprsNotification(
+        level: NotificationLevel.success,
+        title: tr('editor.load.ok', {'folder': entry.folder}),
+        body: entry.isBuiltIn
+            ? tr('editor.load.builtin', {'folder': entry.folder})
+            : (title.isNotEmpty ? title : tr('editor.load.no_title')),
+        source: 'host:app-creator',
+      ),
+    );
     if (mounted) setState(() {});
   }
 
@@ -470,12 +483,14 @@ extension _WappEditor on _WappPageState {
     _fieldValues['source__readonly'] = false;
     _tickIntervalController.text = '5000';
     _logLine('── new project — fields reset to defaults ──');
-    NotificationService.instance.show(XprsNotification(
-      level: NotificationLevel.info,
-      title: tr('editor.new.title'),
-      body: tr('editor.new.body'),
-      source: 'host:app-creator',
-    ));
+    NotificationService.instance.show(
+      XprsNotification(
+        level: NotificationLevel.info,
+        title: tr('editor.new.title'),
+        body: tr('editor.new.body'),
+        source: 'host:app-creator',
+      ),
+    );
     if (mounted) setState(() {});
   }
 
@@ -499,19 +514,22 @@ extension _WappEditor on _WappPageState {
       final entries = await installed.listDirectory('');
       for (final entry in entries) {
         if (!entry.isDirectory) continue;
-        final manifest =
-            await installed.readJson('${entry.name}/manifest.json');
+        final manifest = await installed.readJson(
+          '${entry.name}/manifest.json',
+        );
         if (manifest == null) continue;
         final id = manifest['id'] as String? ?? '';
         if (id.isNotEmpty) seenIds.add(id);
-        userEntries.add(_ProjectEntry(
-          folder: entry.name,
-          id: id,
-          title: (manifest['description'] as String?) ?? '',
-          description: (manifest['summary'] as String?) ?? '',
-          dirPath: installed.getAbsolutePath(entry.name),
-          isBuiltIn: false,
-        ));
+        userEntries.add(
+          _ProjectEntry(
+            folder: entry.name,
+            id: id,
+            title: (manifest['description'] as String?) ?? '',
+            description: (manifest['summary'] as String?) ?? '',
+            dirPath: installed.getAbsolutePath(entry.name),
+            isBuiltIn: false,
+          ),
+        );
       }
     }
 
@@ -521,10 +539,7 @@ extension _WappEditor on _WappPageState {
     // neither candidate resolves and the archive scan is a no-op
     // (web built-ins come from the fetch-based loader instead).
     final cwd = platform.currentDirectory();
-    final archiveCandidates = [
-      '$cwd/../apps',
-      '$cwd/../../apps',
-    ];
+    final archiveCandidates = ['$cwd/../apps', '$cwd/../../apps'];
     for (final archivePath in archiveCandidates) {
       final archive = wappPackageStorage(archivePath);
       if (!await archive.directoryExists('')) continue;
@@ -538,14 +553,16 @@ extension _WappEditor on _WappPageState {
         final id = manifest['id'] as String? ?? '';
         if (id.isNotEmpty && seenIds.contains(id)) continue;
         if (id.isNotEmpty) seenIds.add(id);
-        builtInEntries.add(_ProjectEntry(
-          folder: entry.name,
-          id: id,
-          title: (manifest['description'] as String?) ?? '',
-          description: (manifest['summary'] as String?) ?? '',
-          dirPath: pkgDir,
-          isBuiltIn: true,
-        ));
+        builtInEntries.add(
+          _ProjectEntry(
+            folder: entry.name,
+            id: id,
+            title: (manifest['description'] as String?) ?? '',
+            description: (manifest['summary'] as String?) ?? '',
+            dirPath: pkgDir,
+            isBuiltIn: true,
+          ),
+        );
       }
       break; // first archive dir that exists wins
     }
@@ -599,18 +616,19 @@ extension _WappEditor on _WappPageState {
     final pkg = wappPackageStorage(dir);
     final manifest = await pkg.readJson('manifest.json');
     if (manifest == null) {
-      NotificationService.instance.show(XprsNotification(
-        level: NotificationLevel.error,
-        title: tr('editor.edit.failed'),
-        body: tr('editor.manifest_missing', {'path': dir}),
-        source: 'host:app-creator',
-      ));
+      NotificationService.instance.show(
+        XprsNotification(
+          level: NotificationLevel.error,
+          title: tr('editor.edit.failed'),
+          body: tr('editor.manifest_missing', {'path': dir}),
+          source: 'host:app-creator',
+        ),
+      );
       return;
     }
     final norm = dir.replaceAll('\\', '/').replaceAll(RegExp(r'/$'), '');
     final folder = norm.contains('/') ? norm.split('/').last : norm;
-    final installedBase =
-        installedAppsStorage().basePath.replaceAll('\\', '/');
+    final installedBase = installedAppsStorage().basePath.replaceAll('\\', '/');
     final entry = _ProjectEntry(
       folder: folder,
       id: manifest['id'] as String? ?? '',
@@ -630,12 +648,14 @@ extension _WappEditor on _WappPageState {
   Future<void> _editThisWapp() async {
     final appCreatorDir = editorWappDirPath();
     if (!await wappPackageStorage(appCreatorDir).exists('manifest.json')) {
-      NotificationService.instance.show(XprsNotification(
-        level: NotificationLevel.error,
-        title: tr('editor.unavailable'),
-        body: tr('editor.unavailable.body'),
-        source: 'host:launcher',
-      ));
+      NotificationService.instance.show(
+        XprsNotification(
+          level: NotificationLevel.error,
+          title: tr('editor.unavailable'),
+          body: tr('editor.unavailable.body'),
+          source: 'host:launcher',
+        ),
+      );
       return;
     }
     if (!mounted) return;
@@ -663,9 +683,13 @@ extension _WappEditor on _WappPageState {
   /// identified by its stable `name == "projects"` (its `$type` is
   /// "cards", so a type compare misses it — that was the leak).
   List<GeoUiBlock> get _editorScreens => _screens
-      .where((s) => !s.children.any((c) =>
-          c.keyword == 'group' &&
-          (c.name == 'projects' || c.type == 'projects')))
+      .where(
+        (s) => !s.children.any(
+          (c) =>
+              c.keyword == 'group' &&
+              (c.name == 'projects' || c.type == 'projects'),
+        ),
+      )
       .toList();
 
   /// The tab labels shown for the editor, matched 1:1 to
@@ -730,9 +754,11 @@ extension _WappEditor on _WappPageState {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      tr(_projectsLoading
-                          ? 'editor.projects.scanning'
-                          : 'editor.projects.empty'),
+                      tr(
+                        _projectsLoading
+                            ? 'editor.projects.scanning'
+                            : 'editor.projects.empty',
+                      ),
                       textAlign: TextAlign.center,
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),
@@ -740,7 +766,9 @@ extension _WappEditor on _WappPageState {
                 )
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   itemCount: projects.length,
                   itemBuilder: (context, i) =>
                       _buildProjectCard(projects[i], cs),
@@ -786,8 +814,10 @@ extension _WappEditor on _WappPageState {
             width: 26,
             height: 26,
             child: FittedBox(
-              child: Text(icon.characters.take(2).toString(),
-                  style: const TextStyle(fontSize: 22)),
+              child: Text(
+                icon.characters.take(2).toString(),
+                style: const TextStyle(fontSize: 22),
+              ),
             ),
           );
         }
@@ -831,19 +861,20 @@ extension _WappEditor on _WappPageState {
                       children: [
                         Flexible(
                           child: Text(
-                            entry.title.isNotEmpty
-                                ? entry.title
-                                : entry.folder,
+                            entry.title.isNotEmpty ? entry.title : entry.folder,
                             style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                         if (entry.isBuiltIn) ...[
                           const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: cs.secondaryContainer,
                               borderRadius: BorderRadius.circular(4),
@@ -904,17 +935,24 @@ extension _WappEditor on _WappPageState {
                     icon: const Icon(Icons.edit, size: 16),
                     label: Text(tr('common.edit')),
                     style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact),
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ),
                   if (!entry.isBuiltIn)
                     TextButton.icon(
                       onPressed: () => _deleteProject(entry),
-                      icon: Icon(Icons.delete_outline,
-                          size: 16, color: cs.error),
-                      label: Text(tr('common.delete'),
-                          style: TextStyle(color: cs.error)),
+                      icon: Icon(
+                        Icons.delete_outline,
+                        size: 16,
+                        color: cs.error,
+                      ),
+                      label: Text(
+                        tr('common.delete'),
+                        style: TextStyle(color: cs.error),
+                      ),
                       style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact),
+                        visualDensity: VisualDensity.compact,
+                      ),
                     ),
                 ],
               ),
@@ -940,12 +978,18 @@ extension _WappEditor on _WappPageState {
     }
 
     const files = <_EditFile>[
-      _EditFile(label: 'main.c', field: 'source', language: 'c', icon: Icons.code),
       _EditFile(
-          label: 'home.ui.json',
-          field: 'source_ui',
-          language: 'json',
-          icon: Icons.web),
+        label: 'main.c',
+        field: 'source',
+        language: 'c',
+        icon: Icons.code,
+      ),
+      _EditFile(
+        label: 'home.ui.json',
+        field: 'source_ui',
+        language: 'json',
+        icon: Icons.web,
+      ),
     ];
 
     Widget tile(IconData icon, String label, String key) {
@@ -954,12 +998,18 @@ extension _WappEditor on _WappPageState {
         dense: true,
         selected: selected,
         selectedTileColor: cs.primary.withAlpha(28),
-        leading: Icon(icon,
-            size: 18, color: selected ? cs.primary : cs.onSurfaceVariant),
-        title: Text(label,
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
+        leading: Icon(
+          icon,
+          size: 18,
+          color: selected ? cs.primary : cs.onSurfaceVariant,
+        ),
+        title: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
         onTap: () => setState(() => _activeEditFile = key),
       );
     }
@@ -970,12 +1020,15 @@ extension _WappEditor on _WappPageState {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-            child: Text(tr('editor.files').toUpperCase(),
-                style: TextStyle(
-                    fontSize: 11,
-                    letterSpacing: 1.2,
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w600)),
+            child: Text(
+              tr('editor.files').toUpperCase(),
+              style: TextStyle(
+                fontSize: 11,
+                letterSpacing: 1.2,
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
           for (final f in files) tile(f.icon, f.label, f.field),
           if (settingsScreen != null) ...[
@@ -990,8 +1043,10 @@ extension _WappEditor on _WappPageState {
     if (_activeEditFile == 'settings' && settingsScreen != null) {
       right = _buildSettingsScreen(settingsScreen);
     } else {
-      final active = files.firstWhere((f) => f.field == _activeEditFile,
-          orElse: () => files.first);
+      final active = files.firstWhere(
+        (f) => f.field == _activeEditFile,
+        orElse: () => files.first,
+      );
       final content = (_fieldValues[active.field] as String?) ?? '';
       final readOnly =
           active.field == 'source' && _fieldValues['source__readonly'] == true;
@@ -1004,13 +1059,16 @@ extension _WappEditor on _WappPageState {
               children: [
                 Icon(active.icon, size: 16, color: cs.primary),
                 const SizedBox(width: 8),
-                Text(active.label,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  active.label,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const Spacer(),
                 if (active.field == 'source' && !readOnly)
                   TextButton.icon(
-                    onPressed: () => _handleCompile(
-                        {'source': (_fieldValues['source'] as String?) ?? ''}),
+                    onPressed: () => _handleCompile({
+                      'source': (_fieldValues['source'] as String?) ?? '',
+                    }),
                     icon: const Icon(Icons.build, size: 18),
                     label: Text(tr('editor.compile')),
                   ),
@@ -1074,9 +1132,7 @@ extension _WappEditor on _WappPageState {
       if (name.isNotEmpty) dir = installedAppsStorage().getAbsolutePath(name);
     }
     if (dir == null || dir.isEmpty) {
-      return Center(
-        child: Text(tr('editor.tests.no_project')),
-      );
+      return Center(child: Text(tr('editor.tests.no_project')));
     }
     return _TestsPanel(key: ValueKey('tests-$dir'), wappDir: dir);
   }
@@ -1118,8 +1174,9 @@ extension _WappEditor on _WappPageState {
     final title = _singleTargetEdit
         ? '${tr('common.edit')}$titleSuffix'
         : '${widget.title}$titleSuffix';
-    final backTooltip =
-        tr(_singleTargetEdit ? 'common.done' : 'editor.back_to_projects');
+    final backTooltip = tr(
+      _singleTargetEdit ? 'common.done' : 'editor.back_to_projects',
+    );
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -1130,18 +1187,14 @@ extension _WappEditor on _WappPageState {
         title: Text(title),
         bottom: TabBar(
           controller: _editorTabController,
-          tabs: editorNames
-              .map((n) => Tab(text: _i18n.resolve(n)))
-              .toList(),
+          tabs: editorNames.map((n) => Tab(text: _i18n.resolve(n))).toList(),
           isScrollable: true,
         ),
       ),
       body: TabBarView(
         controller: _editorTabController,
         physics: const NeverScrollableScrollPhysics(),
-        children: [
-          for (final screen in editorScreens) _buildScreen(screen),
-        ],
+        children: [for (final screen in editorScreens) _buildScreen(screen)],
       ),
     );
   }
@@ -1192,8 +1245,7 @@ extension _WappEditor on _WappPageState {
               ),
             ],
             selected: {_uiEditorMode},
-            onSelectionChanged: (s) =>
-                setState(() => _uiEditorMode = s.first),
+            onSelectionChanged: (s) => setState(() => _uiEditorMode = s.first),
             showSelectedIcon: false,
           ),
           const Spacer(),
@@ -1222,7 +1274,8 @@ extension _WappEditor on _WappPageState {
             // tree view doesn't point at a stale path.
             if (mounted) setState(() => _uiSelectedPath = null);
           },
-          tip: 'GeoUI screens, raw JSON. Changes round-trip to the '
+          tip:
+              'GeoUI screens, raw JSON. Changes round-trip to the '
               'visual editor on save.',
         ),
       );
@@ -1230,13 +1283,18 @@ extension _WappEditor on _WappPageState {
       // Visual mode — parse, show screen tabs + tree + inspector.
       dynamic parsed;
       try {
-        parsed = raw.trim().isEmpty
-            ? <dynamic>[]
-            : jsonDecode(raw);
+        parsed = raw.trim().isEmpty ? <dynamic>[] : jsonDecode(raw);
       } catch (e) {
-        body = _buildUiEditorError('This UI has a JSON syntax error — '
-            'switch to Code mode to fix it.\n\n$e');
-        return Column(children: [header, Expanded(child: body)]);
+        body = _buildUiEditorError(
+          'This UI has a JSON syntax error — '
+          'switch to Code mode to fix it.\n\n$e',
+        );
+        return Column(
+          children: [
+            header,
+            Expanded(child: body),
+          ],
+        );
       }
       final screens = _uiScreensOf(parsed);
       if (screens.isEmpty) {
@@ -1249,7 +1307,12 @@ extension _WappEditor on _WappPageState {
       }
     }
 
-    return Column(children: [header, Expanded(child: body)]);
+    return Column(
+      children: [
+        header,
+        Expanded(child: body),
+      ],
+    );
   }
 
   /// Write [screens] back to `_fieldValues['source_ui']` as pretty
@@ -1287,8 +1350,11 @@ extension _WappEditor on _WappPageState {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.dashboard_customize_outlined,
-                size: 56, color: cs.primary),
+            Icon(
+              Icons.dashboard_customize_outlined,
+              size: 56,
+              color: cs.primary,
+            ),
             const SizedBox(height: 12),
             Text(
               tr('editor.ui.no_screens'),
@@ -1307,7 +1373,9 @@ extension _WappEditor on _WappPageState {
   }
 
   Widget _buildUiEditorVisual(
-      List<Map<String, dynamic>> screens, ColorScheme cs) {
+    List<Map<String, dynamic>> screens,
+    ColorScheme cs,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1349,22 +1417,11 @@ extension _WappEditor on _WappPageState {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(
-                width: 200,
-                child: _buildUiPalette(cs),
-              ),
-              VerticalDivider(
-                  width: 1, color: cs.outlineVariant.withAlpha(80)),
-              Expanded(
-                flex: 3,
-                child: _buildUiCanvas(screens, cs),
-              ),
-              VerticalDivider(
-                  width: 1, color: cs.outlineVariant.withAlpha(80)),
-              SizedBox(
-                width: 300,
-                child: _buildUiInspector(screens, cs),
-              ),
+              SizedBox(width: 200, child: _buildUiPalette(cs)),
+              VerticalDivider(width: 1, color: cs.outlineVariant.withAlpha(80)),
+              Expanded(flex: 3, child: _buildUiCanvas(screens, cs)),
+              VerticalDivider(width: 1, color: cs.outlineVariant.withAlpha(80)),
+              SizedBox(width: 300, child: _buildUiInspector(screens, cs)),
             ],
           ),
         ),
@@ -1385,17 +1442,14 @@ extension _WappEditor on _WappPageState {
           Text(
             'Palette',
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3,
-                ),
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             tr('editor.ui.drag_hint'),
-            style: TextStyle(
-              fontSize: 11,
-              color: cs.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 12),
           for (final entry in _uiPaletteEntries())
@@ -1436,10 +1490,7 @@ extension _WappEditor on _WappPageState {
                   const SizedBox(height: 1),
                   Text(
                     tr(entry.subLabel!),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: cs.onSurfaceVariant,
-                    ),
+                    style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
                   ),
                 ],
               ],
@@ -1471,8 +1522,7 @@ extension _WappEditor on _WappPageState {
   /// and an outline decoration when selected. Drop zones sit between
   /// children so palette items and reordered blocks can be inserted
   /// at exact positions.
-  Widget _buildUiCanvas(
-      List<Map<String, dynamic>> screens, ColorScheme cs) {
+  Widget _buildUiCanvas(List<Map<String, dynamic>> screens, ColorScheme cs) {
     final active = screens[_uiActiveScreenIndex];
     return Container(
       color: cs.surface,
@@ -1501,18 +1551,15 @@ extension _WappEditor on _WappPageState {
             const SizedBox(width: 8),
             Text(
               name,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
           ],
         ),
         if (tip.isNotEmpty) ...[
           const SizedBox(height: 2),
-          Text(
-            tip,
-            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-          ),
+          Text(tip, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
         ],
       ],
     );
@@ -1537,8 +1584,8 @@ extension _WappEditor on _WappPageState {
   }) {
     final kw = (block[r'$'] as String?) ?? 'block';
     final isContainer = kw == 'screen' || kw == 'group';
-    final selected = _uiSelectedPath != null &&
-        _listEquals(_uiSelectedPath!, path);
+    final selected =
+        _uiSelectedPath != null && _listEquals(_uiSelectedPath!, path);
 
     final inner = isContainer
         ? _buildCanvasContainer(block, path, cs)
@@ -1550,8 +1597,8 @@ extension _WappEditor on _WappPageState {
     final outlineColor = selected
         ? cs.primary
         : isContainer
-            ? cs.outlineVariant.withAlpha(140)
-            : Colors.transparent;
+        ? cs.outlineVariant.withAlpha(140)
+        : Colors.transparent;
     final outlineWidth = selected ? 2.0 : (isContainer ? 1.0 : 0.0);
 
     Widget wrapped = Container(
@@ -1606,7 +1653,10 @@ extension _WappEditor on _WappPageState {
   /// the keyword + name, then every child interleaved with drop
   /// zones so users can drop into exact positions.
   Widget _buildCanvasContainer(
-      Map<String, dynamic> block, List<int> path, ColorScheme cs) {
+    Map<String, dynamic> block,
+    List<int> path,
+    ColorScheme cs,
+  ) {
     final kw = (block[r'$'] as String?) ?? 'block';
     final type = (block[r'$type'] as String?) ?? '';
     final name = (block['name'] as String?) ?? '';
@@ -1616,14 +1666,15 @@ extension _WappEditor on _WappPageState {
     // understands these groups are rendered natively by the host
     // and don't have editable children in the WYSIWYG sense.
     final isSpecialGroup =
-        kw == 'group' && const {
-              'projects',
-              'tasks',
-              'map',
-              'output',
-              'sources',
-              'ui-editor'
-            }.contains(type);
+        kw == 'group' &&
+        const {
+          'projects',
+          'tasks',
+          'map',
+          'output',
+          'sources',
+          'ui-editor',
+        }.contains(type);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1672,13 +1723,15 @@ extension _WappEditor on _WappPageState {
             decoration: BoxDecoration(
               color: cs.secondaryContainer.withAlpha(120),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                  color: cs.outlineVariant.withAlpha(120)),
+              border: Border.all(color: cs.outlineVariant.withAlpha(120)),
             ),
             child: Row(
               children: [
-                Icon(Icons.auto_awesome,
-                    size: 16, color: cs.onSecondaryContainer),
+                Icon(
+                  Icons.auto_awesome,
+                  size: 16,
+                  color: cs.onSecondaryContainer,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1697,11 +1750,10 @@ extension _WappEditor on _WappPageState {
           _buildCanvasDropZone(path, 0, cs),
           for (var i = 0; i < children.length; i++)
             if (children[i] is Map<String, dynamic>) ...[
-              _buildCanvasBlock(
-                children[i] as Map<String, dynamic>,
-                [...path, i],
-                cs,
-              ),
+              _buildCanvasBlock(children[i] as Map<String, dynamic>, [
+                ...path,
+                i,
+              ], cs),
               _buildCanvasDropZone(path, i + 1, cs),
             ],
           if (children.isEmpty)
@@ -1726,7 +1778,10 @@ extension _WappEditor on _WappPageState {
   /// container. When a drag hovers over it, it expands and highlights
   /// so the user sees exactly where the block will land.
   Widget _buildCanvasDropZone(
-      List<int> parentPath, int insertIndex, ColorScheme cs) {
+    List<int> parentPath,
+    int insertIndex,
+    ColorScheme cs,
+  ) {
     return DragTarget<_UiDragPayload>(
       onWillAcceptWithDetails: (_) => true,
       onAcceptWithDetails: (details) =>
@@ -1738,14 +1793,10 @@ extension _WappEditor on _WappPageState {
           height: active ? 26 : 8,
           margin: const EdgeInsets.symmetric(vertical: 2),
           decoration: BoxDecoration(
-            color: active
-                ? cs.primary.withAlpha(60)
-                : Colors.transparent,
+            color: active ? cs.primary.withAlpha(60) : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
-              color: active
-                  ? cs.primary
-                  : cs.outlineVariant.withAlpha(60),
+              color: active ? cs.primary : cs.outlineVariant.withAlpha(60),
               width: active ? 2 : 1,
               style: BorderStyle.solid,
             ),
@@ -1778,22 +1829,16 @@ extension _WappEditor on _WappPageState {
       final style = (block['style'] as String?) ?? 'secondary';
       return IgnorePointer(
         child: switch (style) {
-          'primary' => FilledButton(
-              onPressed: () {},
-              child: Text(label),
-            ),
+          'primary' => FilledButton(onPressed: () {}, child: Text(label)),
           'danger' => FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: cs.error,
-                foregroundColor: cs.onError,
-              ),
-              onPressed: () {},
-              child: Text(label),
+            style: FilledButton.styleFrom(
+              backgroundColor: cs.error,
+              foregroundColor: cs.onError,
             ),
-          _ => OutlinedButton(
-              onPressed: () {},
-              child: Text(label),
-            ),
+            onPressed: () {},
+            child: Text(label),
+          ),
+          _ => OutlinedButton(onPressed: () {}, child: Text(label)),
         },
       );
     }
@@ -1806,7 +1851,8 @@ extension _WappEditor on _WappPageState {
     }
     if (kw == 'field') {
       final type = (block[r'$type'] as String?) ?? 'string';
-      final label = (block['label'] as String?) ?? (block['name'] as String? ?? '');
+      final label =
+          (block['label'] as String?) ?? (block['name'] as String? ?? '');
       final tip = (block['tip'] as String?) ?? '';
       return _buildCanvasFieldMock(type, label, tip, block, cs);
     }
@@ -1855,7 +1901,8 @@ extension _WappEditor on _WappPageState {
         return IgnorePointer(
           child: TextField(
             controller: TextEditingController(
-                text: '${block['default'] ?? ''}'),
+              text: '${block['default'] ?? ''}',
+            ),
             decoration: base,
           ),
         );
@@ -1876,8 +1923,7 @@ extension _WappEditor on _WappPageState {
           decoration: BoxDecoration(
             color: const Color(0xFF1E1E1E),
             borderRadius: BorderRadius.circular(10),
-            border:
-                Border.all(color: cs.outlineVariant.withAlpha(100)),
+            border: Border.all(color: cs.outlineVariant.withAlpha(100)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1911,8 +1957,7 @@ extension _WappEditor on _WappPageState {
           decoration: BoxDecoration(
             color: const Color(0xFF0B1020),
             borderRadius: BorderRadius.circular(10),
-            border:
-                Border.all(color: cs.outlineVariant.withAlpha(100)),
+            border: Border.all(color: cs.outlineVariant.withAlpha(100)),
           ),
           child: Text(
             label.isEmpty ? tr('editor.ui.log_output') : label,
@@ -1934,16 +1979,10 @@ extension _WappEditor on _WappPageState {
                 borderRadius: BorderRadius.circular(12),
               ),
               alignment: Alignment.center,
-              child: const Icon(Icons.extension,
-                  color: Colors.white, size: 26),
+              child: const Icon(Icons.extension, color: Colors.white, size: 26),
             ),
             const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(fontSize: 13),
-              ),
-            ),
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
           ],
         );
       case 'string':
@@ -1952,7 +1991,8 @@ extension _WappEditor on _WappPageState {
         return IgnorePointer(
           child: TextField(
             controller: TextEditingController(
-                text: '${block['default'] ?? ''}'),
+              text: '${block['default'] ?? ''}',
+            ),
             maxLines: multiline ? ((block['lines'] as num?)?.toInt() ?? 3) : 1,
             decoration: base,
           ),
@@ -1963,7 +2003,10 @@ extension _WappEditor on _WappPageState {
   /// Insert or move a block based on a drag payload. Called from
   /// every drop zone.
   void _uiHandleDrop(
-      _UiDragPayload data, List<int> parentPath, int insertIndex) {
+    _UiDragPayload data,
+    List<int> parentPath,
+    int insertIndex,
+  ) {
     final raw = (_fieldValues['source_ui'] as String?) ?? '[]';
     final dynamic parsed;
     try {
@@ -2007,7 +2050,11 @@ extension _WappEditor on _WappPageState {
       adjustedInsert--;
     }
     _uiInsertBlockAt(
-        activeScreen, parentPath, adjustedInsert, movingBlock as Map<String, dynamic>);
+      activeScreen,
+      parentPath,
+      adjustedInsert,
+      movingBlock as Map<String, dynamic>,
+    );
     _uiPersist(screens);
     setState(() => _uiSelectedPath = [...parentPath, adjustedInsert]);
   }
@@ -2048,8 +2095,7 @@ extension _WappEditor on _WappPageState {
   /// selected block. Fields are typed (Switch for bool, number
   /// keyboard for num, text area for `multiline` strings) so the
   /// user isn't just typing into a JSON string.
-  Widget _buildUiInspector(
-      List<Map<String, dynamic>> screens, ColorScheme cs) {
+  Widget _buildUiInspector(List<Map<String, dynamic>> screens, ColorScheme cs) {
     final selected = _uiSelectedPath;
     if (selected == null) {
       return Container(
@@ -2090,8 +2136,7 @@ extension _WappEditor on _WappPageState {
         children: [
           Row(
             children: [
-              Icon(_uiIconForBlock(kw, type),
-                  size: 18, color: cs.primary),
+              Icon(_uiIconForBlock(kw, type), size: 18, color: cs.primary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -2114,10 +2159,7 @@ extension _WappEditor on _WappPageState {
           ),
           const SizedBox(height: 12),
           for (final field in _uiInspectorFields(block))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: field,
-            ),
+            Padding(padding: const EdgeInsets.only(bottom: 10), child: field),
           if (!isRoot) ...[
             const SizedBox(height: 8),
             Row(
@@ -2127,7 +2169,8 @@ extension _WappEditor on _WappPageState {
                   icon: const Icon(Icons.arrow_upward, size: 14),
                   label: Text(tr('editor.ui.up')),
                   style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact),
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
                 const SizedBox(width: 6),
                 OutlinedButton.icon(
@@ -2135,7 +2178,8 @@ extension _WappEditor on _WappPageState {
                   icon: const Icon(Icons.arrow_downward, size: 14),
                   label: Text(tr('editor.ui.down')),
                   style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact),
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
               ],
             ),
@@ -2166,7 +2210,9 @@ extension _WappEditor on _WappPageState {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         ),
         keyboardType: const TextInputType.numberWithOptions(
-            signed: true, decimal: true),
+          signed: true,
+          decimal: true,
+        ),
         onChanged: (v) {
           final parsed = num.tryParse(v);
           if (parsed != null) _uiUpdateAttributeTyped(key, parsed);
@@ -2227,22 +2273,23 @@ extension _WappEditor on _WappPageState {
     final locales = translations.keys.toList()..sort();
     if (locales.isEmpty) locales.add('en');
     // Clamp the active selection to something valid.
-    if (_translationsLocale == null ||
-        !locales.contains(_translationsLocale)) {
+    if (_translationsLocale == null || !locales.contains(_translationsLocale)) {
       _translationsLocale = locales.first;
     }
     final activeLocale = _translationsLocale!;
     final currentMap = translations.putIfAbsent(
-        activeLocale, () => <String, String>{});
+      activeLocale,
+      () => <String, String>{},
+    );
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       children: [
         Text(
           'Translations',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 4),
         Text(
@@ -2267,8 +2314,7 @@ extension _WappEditor on _WappPageState {
           decoration: BoxDecoration(
             color: cs.primaryContainer.withAlpha(80),
             borderRadius: BorderRadius.circular(12),
-            border:
-                Border.all(color: cs.outlineVariant.withAlpha(100)),
+            border: Border.all(color: cs.outlineVariant.withAlpha(100)),
           ),
           child: Row(
             children: [
@@ -2334,10 +2380,11 @@ extension _WappEditor on _WappPageState {
               onPressed: activeLocale == 'en'
                   ? null
                   : () => _translationsRemoveLocale(activeLocale),
-              icon: Icon(Icons.delete_outline,
-                  size: 16, color: cs.error),
-              label: Text(tr('common.remove'),
-                  style: TextStyle(color: cs.error)),
+              icon: Icon(Icons.delete_outline, size: 16, color: cs.error),
+              label: Text(
+                tr('common.remove'),
+                style: TextStyle(color: cs.error),
+              ),
             ),
           ],
         ),
@@ -2391,7 +2438,11 @@ extension _WappEditor on _WappPageState {
   }
 
   Widget _buildTranslationsRow(
-      String locale, String key, String value, ColorScheme cs) {
+    String locale,
+    String key,
+    String value,
+    ColorScheme cs,
+  ) {
     // Use a keyed TextEditingController so the row survives locale
     // switches without dropping the user's in-flight edit.
     return Padding(
@@ -2408,8 +2459,7 @@ extension _WappEditor on _WappPageState {
           children: [
             Row(
               children: [
-                Icon(Icons.key_outlined,
-                    size: 14, color: cs.onSurfaceVariant),
+                Icon(Icons.key_outlined, size: 14, color: cs.onSurfaceVariant),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -2464,8 +2514,7 @@ extension _WappEditor on _WappPageState {
     map.remove(locale);
     setState(() {
       if (_translationsLocale == locale) {
-        _translationsLocale =
-            map.keys.isEmpty ? null : map.keys.first;
+        _translationsLocale = map.keys.isEmpty ? null : map.keys.first;
       }
     });
   }
@@ -2521,8 +2570,10 @@ extension _WappEditor on _WappPageState {
         _translationsWalk(v, out);
       }
     } else if (node is String) {
-      if (node.startsWith('@') && node.length > 1 &&
-          !node.contains(' ') && !node.contains('\n')) {
+      if (node.startsWith('@') &&
+          node.length > 1 &&
+          !node.contains(' ') &&
+          !node.contains('\n')) {
         out.add(node.substring(1));
       }
     }
@@ -2540,8 +2591,7 @@ extension _WappEditor on _WappPageState {
       final screens = _uiScreensOf(parsed);
       if (_uiActiveScreenIndex >= screens.length) return;
       final parentPath = path.sublist(0, path.length - 1);
-      final parent =
-          _uiLookup(screens[_uiActiveScreenIndex], parentPath);
+      final parent = _uiLookup(screens[_uiActiveScreenIndex], parentPath);
       if (parent == null) return;
       final kids = parent['children'];
       if (kids is! List) return;
@@ -2564,8 +2614,7 @@ extension _WappEditor on _WappPageState {
       final screens = _uiScreensOf(parsed);
       if (_uiActiveScreenIndex >= screens.length) return;
       final parentPath = path.sublist(0, path.length - 1);
-      final parent =
-          _uiLookup(screens[_uiActiveScreenIndex], parentPath);
+      final parent = _uiLookup(screens[_uiActiveScreenIndex], parentPath);
       if (parent == null) return;
       final kids = parent['children'];
       if (kids is! List) return;
@@ -2584,8 +2633,7 @@ extension _WappEditor on _WappPageState {
     final raw = (_fieldValues['source_ui'] as String?) ?? '';
     List<Map<String, dynamic>> screens;
     try {
-      final parsed =
-          raw.trim().isEmpty ? <dynamic>[] : jsonDecode(raw);
+      final parsed = raw.trim().isEmpty ? <dynamic>[] : jsonDecode(raw);
       screens = _uiScreensOf(parsed);
     } catch (_) {
       screens = <Map<String, dynamic>>[];
@@ -2625,13 +2673,9 @@ extension _WappEditor on _WappPageState {
     _fieldValues.putIfAbsent('wapp_tick_interval', () => '5000');
 
     final halRequires = _fieldValues['wapp_hal_requires'];
-    final halList = halRequires is List<String>
-        ? halRequires
-        : <String>['log'];
+    final halList = halRequires is List<String> ? halRequires : <String>['log'];
     final providesList = _fieldValues['wapp_provides_functionalities'];
-    final provides = providesList is List<String>
-        ? providesList
-        : <String>[];
+    final provides = providesList is List<String> ? providesList : <String>[];
 
     return Column(
       children: [
@@ -2682,19 +2726,16 @@ extension _WappEditor on _WappPageState {
               // otherwise the renderer's SingleChildScrollView
               // swallows scroll events and prevents the outer
               // ListView from reaching Category / HAL / Provides.
-              SizedBox(
-                height: 700,
-                child: identityRenderer,
-              ),
+              SizedBox(height: 700, child: identityRenderer),
 
               // ── Category ──
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Text(
                   'Category',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
               Padding(
@@ -2713,23 +2754,24 @@ extension _WappEditor on _WappPageState {
                 child: Wrap(
                   spacing: 6,
                   runSpacing: 4,
-                  children: {
-                    'app': tr('editor.settings.kind.app'),
-                    'system': tr('editor.settings.kind.system'),
-                    'addon': tr('editor.settings.kind.addon'),
-                  }.entries.map((e) {
-                    final selected =
-                        (_fieldValues['wapp_kind'] ?? 'app') == e.key;
-                    return ChoiceChip(
-                      label: Text(e.value),
-                      selected: selected,
-                      onSelected: (on) {
-                        if (on) {
-                          setState(() => _fieldValues['wapp_kind'] = e.key);
-                        }
-                      },
-                    );
-                  }).toList(),
+                  children:
+                      {
+                        'app': tr('editor.settings.kind.app'),
+                        'system': tr('editor.settings.kind.system'),
+                        'addon': tr('editor.settings.kind.addon'),
+                      }.entries.map((e) {
+                        final selected =
+                            (_fieldValues['wapp_kind'] ?? 'app') == e.key;
+                        return ChoiceChip(
+                          label: Text(e.value),
+                          selected: selected,
+                          onSelected: (on) {
+                            if (on) {
+                              setState(() => _fieldValues['wapp_kind'] = e.key);
+                            }
+                          },
+                        );
+                      }).toList(),
                 ),
               ),
               const SizedBox(height: 12),
@@ -2748,8 +2790,7 @@ extension _WappEditor on _WappPageState {
                     ),
                   ),
                   keyboardType: TextInputType.number,
-                  onChanged: (v) =>
-                      _fieldValues['wapp_tick_interval'] = v,
+                  onChanged: (v) => _fieldValues['wapp_tick_interval'] = v,
                 ),
               ),
               const SizedBox(height: 20),
@@ -2759,9 +2800,9 @@ extension _WappEditor on _WappPageState {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                 child: Text(
                   tr('editor.settings.hal'),
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
               Padding(
@@ -2809,9 +2850,9 @@ extension _WappEditor on _WappPageState {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                 child: Text(
                   tr('editor.settings.provides'),
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
               Padding(
@@ -2837,7 +2878,8 @@ extension _WappEditor on _WappPageState {
                         onDeleted: () {
                           setState(() {
                             provides.remove(w);
-                            _fieldValues['wapp_provides_functionalities'] = provides;
+                            _fieldValues['wapp_provides_functionalities'] =
+                                provides;
                           });
                         },
                       ),
@@ -2857,7 +2899,10 @@ extension _WappEditor on _WappPageState {
   }
 
   Widget _buildSigningIdentitySection(
-      ColorScheme cs, IwiProfile? profile, String npub) {
+    ColorScheme cs,
+    IwiProfile? profile,
+    String npub,
+  ) {
     final allProfiles = ProfileService.instance.profiles;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
@@ -2910,8 +2955,10 @@ extension _WappEditor on _WappPageState {
               decoration: InputDecoration(
                 labelText: tr('editor.signing.active_profile'),
                 isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -2923,8 +2970,10 @@ extension _WappEditor on _WappPageState {
                     : p.npub;
                 return DropdownMenuItem(
                   value: p.id,
-                  child: Text('$label  ($short)',
-                      overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    '$label  ($short)',
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 );
               }).toList(),
               onChanged: (id) async {
@@ -2964,11 +3013,16 @@ extension _WappEditor on _WappPageState {
                   await ProfileService.instance.saveAndActivate(preview);
                   if (!mounted) return;
                   setState(() {});
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(tr('editor.signing.created',
-                        {'callsign': preview.callsign})),
-                    duration: const Duration(seconds: 3),
-                  ));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        tr('editor.signing.created', {
+                          'callsign': preview.callsign,
+                        }),
+                      ),
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
                 },
               ),
               const SizedBox(width: 8),
@@ -2995,20 +3049,21 @@ extension _WappEditor on _WappPageState {
   Future<void> _settingsSaveToDisk() async {
     final id = (_fieldValues['wapp_id'] as String?) ?? '';
     if (id.isEmpty) {
-      NotificationService.instance.show(XprsNotification(
-        level: NotificationLevel.error,
-        title: tr('editor.save.no_project'),
-        body: tr('editor.save.no_project.body'),
-        source: 'host:app-creator',
-      ));
+      NotificationService.instance.show(
+        XprsNotification(
+          level: NotificationLevel.error,
+          title: tr('editor.save.no_project'),
+          body: tr('editor.save.no_project.body'),
+          source: 'host:app-creator',
+        ),
+      );
       return;
     }
     await _handleInstall(<String, dynamic>{
       'id': id,
       'title': (_fieldValues['wapp_title'] as String?) ?? '',
       'name': (_fieldValues['wapp_name'] as String?) ?? '',
-      'description':
-          (_fieldValues['wapp_description'] as String?) ?? '',
+      'description': (_fieldValues['wapp_description'] as String?) ?? '',
       'source_ui': (_fieldValues['source_ui'] as String?) ?? '',
     });
   }
@@ -3041,22 +3096,28 @@ extension _WappEditor on _WappPageState {
     if (confirm != true) return;
 
     try {
-      await installedAppsStorage()
-          .deleteDirectory(entry.folder, recursive: true);
+      await installedAppsStorage().deleteDirectory(
+        entry.folder,
+        recursive: true,
+      );
     } catch (e) {
-      NotificationService.instance.show(XprsNotification(
-        level: NotificationLevel.error,
-        title: tr('editor.delete.failed'),
-        body: e.toString(),
-        source: 'host:app-creator',
-      ));
+      NotificationService.instance.show(
+        XprsNotification(
+          level: NotificationLevel.error,
+          title: tr('editor.delete.failed'),
+          body: e.toString(),
+          source: 'host:app-creator',
+        ),
+      );
       return;
     }
-    NotificationService.instance.show(XprsNotification(
-      level: NotificationLevel.info,
-      title: tr('editor.delete.done', {'folder': entry.folder}),
-      source: 'host:app-creator',
-    ));
+    NotificationService.instance.show(
+      XprsNotification(
+        level: NotificationLevel.info,
+        title: tr('editor.delete.done', {'folder': entry.folder}),
+        source: 'host:app-creator',
+      ),
+    );
     // WappLoadedEvent doubles as "launcher, please rescan" — reuse it.
     EventBus().fire(WappLoadedEvent(wappId: entry.id, wappName: entry.folder));
     await _refreshProjects();
@@ -3214,7 +3275,7 @@ extension _WappEditor on _WappPageState {
     final widgets = <Widget>[];
     final keys = [
       for (final k in block.keys)
-        if (k != 'children') k
+        if (k != 'children') k,
     ];
     for (final key in keys) {
       final v = block[key];
@@ -3233,20 +3294,21 @@ extension _WappEditor on _WappPageState {
   Future<void> _translationsSaveToDisk() async {
     final id = (_fieldValues['wapp_id'] as String?) ?? '';
     if (id.isEmpty) {
-      NotificationService.instance.show(XprsNotification(
-        level: NotificationLevel.error,
-        title: tr('editor.translations.cannot_save'),
-        body: tr('editor.save.no_project.body'),
-        source: 'host:app-creator',
-      ));
+      NotificationService.instance.show(
+        XprsNotification(
+          level: NotificationLevel.error,
+          title: tr('editor.translations.cannot_save'),
+          body: tr('editor.save.no_project.body'),
+          source: 'host:app-creator',
+        ),
+      );
       return;
     }
     await _handleInstall(<String, dynamic>{
       'id': id,
       'title': (_fieldValues['wapp_title'] as String?) ?? '',
       'name': (_fieldValues['wapp_name'] as String?) ?? '',
-      'description':
-          (_fieldValues['wapp_description'] as String?) ?? '',
+      'description': (_fieldValues['wapp_description'] as String?) ?? '',
       'source_ui': (_fieldValues['source_ui'] as String?) ?? '',
     });
   }
@@ -3306,8 +3368,7 @@ extension _WappEditor on _WappPageState {
             child: Text(tr('common.cancel')),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(ctx, controller.text.trim()),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
             child: Text(tr('common.add')),
           ),
         ],
@@ -3361,8 +3422,7 @@ extension _WappEditor on _WappPageState {
             child: Text(tr('common.cancel')),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(ctx, controller.text.trim()),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
             child: Text(tr('common.add')),
           ),
         ],
@@ -3383,8 +3443,7 @@ extension _WappEditor on _WappPageState {
   /// Walk [screen] along [path] and return the leaf block (mutable
   /// reference into the dynamic tree). Returns null when any index
   /// runs off the end of its parent's `children` array.
-  Map<String, dynamic>? _uiLookup(
-      Map<String, dynamic> screen, List<int> path) {
+  Map<String, dynamic>? _uiLookup(Map<String, dynamic> screen, List<int> path) {
     dynamic current = screen;
     for (final i in path) {
       if (current is! Map) return null;
@@ -3504,8 +3563,7 @@ class _TestsPanelState extends State<_TestsPanel> {
         final rel = 'tests/$n';
         files.add(rel);
         final src = await _pkg.readString(rel) ?? '';
-        for (final m
-            in RegExp(r'WAPP_TEST\(\s*(\w+)\s*\)').allMatches(src)) {
+        for (final m in RegExp(r'WAPP_TEST\(\s*(\w+)\s*\)').allMatches(src)) {
           cases.add(_DiscoveredTest(rel, m.group(1)!));
         }
       }
@@ -3562,7 +3620,10 @@ class _TestsPanelState extends State<_TestsPanel> {
         _disabled.add(name);
       }
     });
-    await _pkg.writeString('tests/disabled.json', jsonEncode(_disabled.toList()));
+    await _pkg.writeString(
+      'tests/disabled.json',
+      jsonEncode(_disabled.toList()),
+    );
   }
 
   Future<void> _run({bool liveOnly = false}) async {
@@ -3572,17 +3633,22 @@ class _TestsPanelState extends State<_TestsPanel> {
       _ran = false;
       _results.clear();
       _log.clear();
-      _logLine(liveOnly
-          ? '── Run live (talks to APRS-IS; UI may freeze briefly) ──'
-          : '── Run tests ──');
+      _logLine(
+        liveOnly
+            ? '── Run live (talks to APRS-IS; UI may freeze briefly) ──'
+            : '── Run tests ──',
+      );
       _logLine('compiling ${_files.length} file(s)…');
     });
     // Persist any in-editor changes so the build sees them.
-    if (_selectedFile != null) await _pkg.writeString(_selectedFile!, _editorText);
+    if (_selectedFile != null)
+      await _pkg.writeString(_selectedFile!, _editorText);
 
     final srcs = _files.map((f) => _pkg.getAbsolutePath(f)).toList();
-    final res = await WappCompilerService.instance
-        .compileTests(testSources: srcs, workStorage: _pkg);
+    final res = await WappCompilerService.instance.compileTests(
+      testSources: srcs,
+      workStorage: _pkg,
+    );
     if (!res.ok) {
       if (!mounted) return;
       setState(() {
@@ -3594,8 +3660,11 @@ class _TestsPanelState extends State<_TestsPanel> {
       });
       return;
     }
-    setState(() => _logLine(
-        'compiled tests.wasm (${res.wasmBytes!.length} bytes) in ${res.durationMs}ms'));
+    setState(
+      () => _logLine(
+        'compiled tests.wasm (${res.wasmBytes!.length} bytes) in ${res.durationMs}ms',
+      ),
+    );
 
     // The quick run skips the live (network) case; "Run live" skips the
     // rest. User checkbox-disabled cases are always skipped too.
@@ -3633,7 +3702,9 @@ class _TestsPanelState extends State<_TestsPanel> {
             final er = d['error']?.toString() ?? '';
             results[nm] = _CaseResult(passed: ps, skipped: sk, error: er);
             final mark = sk ? '⊘ skip' : (ps ? '✓ pass' : '✗ FAIL');
-            lines.add('$mark  $nm${(!ps && !sk && er.isNotEmpty) ? "  — $er" : ""}');
+            lines.add(
+              '$mark  $nm${(!ps && !sk && er.isNotEmpty) ? "  — $er" : ""}',
+            );
             break;
           case 'tests.log': // evidence emitted by a test (e.g. live data)
             lines.add('    ${d['text'] ?? ''}');
@@ -3717,12 +3788,15 @@ class _TestsPanelState extends State<_TestsPanel> {
               children: [
                 Icon(Icons.terminal, size: 15, color: cs.onSurfaceVariant),
                 const SizedBox(width: 6),
-                Text(tr('editor.tests.log').toUpperCase(),
-                    style: TextStyle(
-                        fontSize: 11,
-                        letterSpacing: 1.1,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onSurfaceVariant)),
+                Text(
+                  tr('editor.tests.log').toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 1.1,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
                 const Spacer(),
                 if (_log.isNotEmpty)
                   IconButton(
@@ -3738,10 +3812,12 @@ class _TestsPanelState extends State<_TestsPanel> {
             child: _log.isEmpty
                 ? Center(
                     child: Text(
-                        tr('editor.tests.empty'),
-                        style: TextStyle(
-                            color: cs.onSurfaceVariant.withAlpha(150),
-                            fontSize: 12)),
+                      tr('editor.tests.empty'),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant.withAlpha(150),
+                        fontSize: 12,
+                      ),
+                    ),
                   )
                 : Scrollbar(
                     controller: _logScroll,
@@ -3752,18 +3828,25 @@ class _TestsPanelState extends State<_TestsPanel> {
                       itemBuilder: (context, i) {
                         final line = _log[i];
                         Color c = Colors.white70;
-                        if (line.startsWith('✓')) c = const Color(0xFF66BB6A);
-                        else if (line.startsWith('✗') ||
-                            line.contains('FAIL')) c = const Color(0xFFE57373);
-                        else if (line.startsWith('⊘')) c = const Color(0xFFFFB74D);
-                        else if (line.startsWith('──')) c = cs.primary;
-                        else if (line.startsWith('    ')) c = const Color(0xFF7FB0E0);
-                        return Text(line,
-                            style: TextStyle(
-                                fontFamily: 'monospace',
-                                fontSize: 12,
-                                height: 1.4,
-                                color: c));
+                        if (line.startsWith('✓'))
+                          c = const Color(0xFF66BB6A);
+                        else if (line.startsWith('✗') || line.contains('FAIL'))
+                          c = const Color(0xFFE57373);
+                        else if (line.startsWith('⊘'))
+                          c = const Color(0xFFFFB74D);
+                        else if (line.startsWith('──'))
+                          c = cs.primary;
+                        else if (line.startsWith('    '))
+                          c = const Color(0xFF7FB0E0);
+                        return Text(
+                          line,
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            height: 1.4,
+                            color: c,
+                          ),
+                        );
                       },
                     ),
                   ),
@@ -3775,91 +3858,110 @@ class _TestsPanelState extends State<_TestsPanel> {
 
   Widget _buildList(ColorScheme cs) {
     final items = <Widget>[];
-    items.add(Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              FilledButton.icon(
-                onPressed: _running ? null : () => _run(),
-                icon: _running
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.play_arrow, size: 18),
-                label: Text(tr('editor.tests.run')),
-              ),
-              if (_cases.any((c) => c.name.startsWith('live_'))) ...[
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: _running ? null : () => _run(liveOnly: true),
-                  icon: const Icon(Icons.public, size: 18),
-                  label: Text(tr('editor.tests.run_live')),
+    items.add(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                FilledButton.icon(
+                  onPressed: _running ? null : () => _run(),
+                  icon: _running
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.play_arrow, size: 18),
+                  label: Text(tr('editor.tests.run')),
                 ),
+                if (_cases.any((c) => c.name.startsWith('live_'))) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _running ? null : () => _run(liveOnly: true),
+                    icon: const Icon(Icons.public, size: 18),
+                    label: Text(tr('editor.tests.run_live')),
+                  ),
+                ],
               ],
-            ],
-          ),
-          if (_ran)
-            Padding(
-              padding: const EdgeInsets.only(top: 8, left: 2),
-              child: _summaryChip(cs),
             ),
-        ],
+            if (_ran)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, left: 2),
+                child: _summaryChip(cs),
+              ),
+          ],
+        ),
       ),
-    ));
+    );
 
     for (final file in _files) {
       final base = file.split('/').last;
-      items.add(Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-        child: Text(base.toUpperCase(),
+      items.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+          child: Text(
+            base.toUpperCase(),
             style: TextStyle(
-                fontSize: 11,
-                letterSpacing: 1.1,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurfaceVariant)),
-      ));
+              fontSize: 11,
+              letterSpacing: 1.1,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
       for (final c in _cases.where((c) => c.file == file)) {
         final enabled = !_disabled.contains(c.name);
         final r = _results[c.name];
-        items.add(InkWell(
-          onTap: () => _loadFile(file),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-            child: Row(
-              children: [
-                Checkbox(
-                  value: enabled,
-                  visualDensity: VisualDensity.compact,
-                  onChanged: (v) => _toggle(c.name, v ?? true),
-                ),
-                _badge(r, enabled),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    c.name,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: enabled ? cs.onSurface : cs.onSurfaceVariant,
-                      decoration:
-                          enabled ? null : TextDecoration.lineThrough,
+        items.add(
+          InkWell(
+            onTap: () => _loadFile(file),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              child: Row(
+                children: [
+                  Checkbox(
+                    value: enabled,
+                    visualDensity: VisualDensity.compact,
+                    onChanged: (v) => _toggle(c.name, v ?? true),
+                  ),
+                  _badge(r, enabled),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      c.name,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: enabled ? cs.onSurface : cs.onSurfaceVariant,
+                        decoration: enabled ? null : TextDecoration.lineThrough,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ));
-        if (r != null && r.passed == false && !r.skipped && r.error.isNotEmpty) {
-          items.add(Padding(
-            padding: const EdgeInsets.fromLTRB(56, 0, 12, 4),
-            child: Text(r.error,
+        );
+        if (r != null &&
+            r.passed == false &&
+            !r.skipped &&
+            r.error.isNotEmpty) {
+          items.add(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(56, 0, 12, 4),
+              child: Text(
+                r.error,
                 style: const TextStyle(
-                    fontSize: 11, color: Color(0xFFE57373), height: 1.3)),
-          ));
+                  fontSize: 11,
+                  color: Color(0xFFE57373),
+                  height: 1.3,
+                ),
+              ),
+            ),
+          );
         }
       }
     }
@@ -3873,26 +3975,40 @@ class _TestsPanelState extends State<_TestsPanel> {
   }
 
   Widget _summaryChip(ColorScheme cs) {
-    return Row(children: [
-      Text('✓$_passed',
+    return Row(
+      children: [
+        Text(
+          '✓$_passed',
           style: const TextStyle(
-              color: Color(0xFF66BB6A), fontWeight: FontWeight.bold)),
-      const SizedBox(width: 8),
-      Text('✗$_failed',
+            color: Color(0xFF66BB6A),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '✗$_failed',
           style: TextStyle(
-              color: _failed > 0 ? const Color(0xFFE57373) : cs.onSurfaceVariant,
-              fontWeight: FontWeight.bold)),
-      const SizedBox(width: 8),
-      Text('⊘$_skipped', style: TextStyle(color: cs.onSurfaceVariant)),
-    ]);
+            color: _failed > 0 ? const Color(0xFFE57373) : cs.onSurfaceVariant,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text('⊘$_skipped', style: TextStyle(color: cs.onSurfaceVariant)),
+      ],
+    );
   }
 
   Widget _badge(_CaseResult? r, bool enabled) {
-    if (!enabled) return const Text('⊘', style: TextStyle(color: Colors.orange));
+    if (!enabled)
+      return const Text('⊘', style: TextStyle(color: Colors.orange));
     if (r == null) {
-      return const SizedBox(width: 14, child: Text('—', textAlign: TextAlign.center));
+      return const SizedBox(
+        width: 14,
+        child: Text('—', textAlign: TextAlign.center),
+      );
     }
-    if (r.skipped) return const Text('⊘', style: TextStyle(color: Colors.orange));
+    if (r.skipped)
+      return const Text('⊘', style: TextStyle(color: Colors.orange));
     if (r.passed == true) {
       return const Icon(Icons.check_circle, size: 14, color: Color(0xFF66BB6A));
     }
@@ -3910,8 +4026,10 @@ class _TestsPanelState extends State<_TestsPanel> {
               Icon(Icons.science_outlined, size: 16, color: cs.primary),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(_selectedFile ?? tr('editor.tests.no_file'),
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                child: Text(
+                  _selectedFile ?? tr('editor.tests.no_file'),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
               ),
               FilledButton.icon(
                 onPressed: _selectedFile == null ? null : _saveFile,
