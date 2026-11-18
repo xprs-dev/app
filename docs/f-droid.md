@@ -185,8 +185,13 @@ the alternatives if F-Droid objects). Keep the define on every store build.
   with `start_project` = fdroiddata so no clone was needed): the three blocks
   rendered by `tool/fdroid_recipe.py`, appended, and `CurrentVersion` moved;
   nothing else in the file differed. release.yml run 44276405988 had passed
-  `verify_apks` for all three. Until the bot is understood, assume each
-  release needs such an MR.
+  `verify_apks` for all three. Its first pipeline failed `fdroid build` and
+  `git redirect` on "srclib xprs-zx not found": the template gained the
+  `xprs-zx` srclib on 2026-11-09 (commit e4a22ef, first in v1.7.0) and
+  fdroiddata never got `srclibs/xprs-zx.yml`, the same miss as xprs-core
+  before it and the likely reason the bot stopped. The file was added to the
+  MR. **A new srclib in `fdroid/srclibs/` means an fdroiddata MR the same
+  day.**
 
 ## 3. Following the review
 
