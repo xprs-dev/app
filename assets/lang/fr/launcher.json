@@ -9,6 +9,7 @@
   "launcher.drawer.update_available": "Mise à jour disponible",
   "launcher.drawer.hardware": "Matériel",
   "launcher.drawer.groups": "Groupes",
+  "launcher.drawer.archiver": "Archiveur",
   "launcher.drawer.exit": "Quitter XPRS",
   "launcher.exit.title": "Quitter XPRS ?",
   "launcher.exit.body": "XPRS s'arrête complètement : aucun message n'est reçu ni relayé pour les autres jusqu'à ce que vous le rouvriez.",

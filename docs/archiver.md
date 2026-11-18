@@ -222,6 +222,27 @@ the packet itself.
    responder tolerates two different questions per asker, but the client should
    coordinate.
 
+## Where a person sets it
+
+The **Archiver** page, in the launcher's top-left menu
+(`lib/launcher/archiver_page.dart`). It was the Archive wapp until
+2026-11-18; the archiver is a core function of every station, so it is a page
+of the app, and a boot task removes the old wapp (`retireArchiverWapp`). Four
+tabs:
+
+- **Archive:** the callsign it answers under (the device's X3), what it
+  announces, the packet tiers, what it keeps (people I follow, public, limit,
+  age) and how it serves others (always on, `dial:`, `room:`).
+- **Files:** media hosted for others: usage, requests, bandwidth, the limit
+  and sources, and Free space.
+- **Directory:** the "who has this?" pointer role.
+- **My archivers:** the archivers this station relies on (the one list behind
+  the publication push and the mailbox declaration), and auto-select.
+
+Every change goes through `applyArchiverSettings`
+(`lib/services/xprs/archiver_settings.dart`), the same function behind
+`POST /api/xprs/archiver`.
+
 ## Being an archiver
 
 - **It is a decision, not a duty.** Disk, bandwidth and whom to carry for are

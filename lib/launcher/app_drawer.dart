@@ -103,6 +103,11 @@ class _AppDrawer extends StatelessWidget {
               title: Text(tr('launcher.drawer.groups')),
               onTap: () => _open(context, const GroupsPage()),
             ),
+            ListTile(
+              leading: const Icon(Icons.inventory_2_outlined),
+              title: Text(tr('launcher.drawer.archiver')),
+              onTap: () => _open(context, const ArchiverPage()),
+            ),
             if (platform.platformName() == 'android')
               ListTile(
                 leading: const Icon(Icons.share),

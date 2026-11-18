@@ -36,6 +36,7 @@ import 'platform/platform.dart' show hasImplicitView, signalDartReady;
 import 'profile/storage_paths.dart';
 import 'services/task_monitor_service.dart';
 
+import 'launcher/archiver_page.dart';
 import 'launcher/boot_splash.dart';
 import 'launcher/launcher.dart';
 import 'launcher/position_share_card.dart' show PositionSharePage;
@@ -282,6 +283,15 @@ Future<void> _boot() async {
     init: ensureEditorInstalled,
   );
   BootOrchestrator.instance.register(
+    id: 'retire-archiver-wapp',
+    name: 'Retire the Archive wapp',
+    description:
+        'One-time removal of the installed Archive wapp, now the Archiver '
+        'page of the app. Idempotent; keeps a user-modified copy.',
+    mode: BootStart.sequential,
+    init: retireArchiverWapp,
+  );
+  BootOrchestrator.instance.register(
     id: 'migrate-aprs-to-chat',
     name: 'Migrate aprs wapp to chat',
     description:
@@ -483,6 +493,8 @@ Future<void> _boot() async {
   // A wapp that needs this station's place links straight to the switch.
   hostNotificationPages[PositionSharePage.target] =
       () => const PositionSharePage();
+  // The archiver's cleanup result ("Free space") opens its page.
+  hostNotificationPages[ArchiverPage.target] = () => const ArchiverPage();
 
   // Deep links (Android): open xprs.dev/circle/<key> straight on the
   // circles "apply to join" flow. Needs the navigator live (after runApp).

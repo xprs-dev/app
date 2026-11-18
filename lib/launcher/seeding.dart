@@ -134,6 +134,46 @@ Future<void> _migrateWappFolder(String oldName, String newName) async {
   }
 }
 
+/// Retire a bundled wapp that is no longer shipped because its job moved into
+/// the app itself. Removing the `.wapp` from the bundle only stops NEW
+/// installs; a profile that already has it keeps a stale copy that still
+/// opens. This removes that copy, its data and its autostart, and leaves the
+/// name in the offered sets so nothing reinstalls it. A user-edited copy
+/// is somebody's source and is kept. Idempotent.
+Future<void> _retireWapp(String name) async {
+  if (ProfileService.instance.activeProfile == null) return;
+  final tag = 'retire wapp $name';
+  final prefs = await PreferencesService.instance();
+  final installed = installedAppsStorage();
+  try {
+    if (await installed.directoryExists(name)) {
+      final manifest = await installed.readJson('$name/manifest.json');
+      if (manifest?['user_modified'] == true) {
+        debugPrint('$tag: keeping user-modified copy');
+        return;
+      }
+      await installed.deleteDirectory(name, recursive: true);
+      debugPrint('$tag: program dir removed');
+    }
+  } catch (e) {
+    debugPrint('$tag program: $e');
+  }
+  try {
+    final data = wappsDataStorage(prefs);
+    if (await data.directoryExists(name)) {
+      await data.deleteDirectory(name, recursive: true);
+      debugPrint('$tag: data dir removed');
+    }
+  } catch (e) {
+    debugPrint('$tag data: $e');
+  }
+  await prefs.setWappAutostart(name, false);
+}
+
+/// The Archive wapp became the app's Archiver page (lib/launcher/
+/// archiver_page.dart): the archiver is a core function of every station.
+Future<void> retireArchiverWapp() => _retireWapp('archiver');
+
 /// Rename aprs -> chat: an existing profile transitions to the renamed "Chat"
 /// wapp instead of keeping the old "APRS" one (or losing it).
 Future<void> migrateAprsToChat() => _migrateWappFolder('aprs', 'chat');

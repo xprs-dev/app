@@ -37,11 +37,21 @@ import 'radio_app.dart';
 /// here is this app's decision, not the core's (architecture.md §3).
 const Map<String, String> coreNotificationWapps = {
   'core:nostr': 'social',
-  'core:archiver': 'archiver',
 };
 
-/// [n] with a core topic replaced by `wapp:<the wapp that handles it>`.
+/// Which page of the app shows a core notification, for a topic handled by
+/// the app itself rather than a wapp: the archiver is a core function with
+/// its own page (lib/launcher/archiver_page.dart), registered as a host page
+/// at boot (wapp_open.dart hostNotificationPages).
+const Map<String, String> coreNotificationHostPages = {
+  'core:archiver': 'host:archiver',
+};
+
+/// [n] with a core topic replaced by the host page or the
+/// `wapp:<the wapp that handles it>` that shows it.
 XprsNotification routeCoreNotification(XprsNotification n) {
+  final page = coreNotificationHostPages[n.source];
+  if (page != null) return n.withSource(page);
   final wapp = coreNotificationWapps[n.source];
   return wapp == null ? n : n.withSource('wapp:$wapp');
 }

@@ -78,6 +78,7 @@ import 'hero/launcher_visibility.dart';
 import 'torrent_service.dart';
 import '../version.dart';
 import 'update_mirror_service.dart';
+import 'xprs/archiver_settings.dart';
 import 'firmware_mirror_service.dart';
 import 'xprs/xprs_files.dart';
 import 'media/media_preview.dart';
@@ -1749,67 +1750,13 @@ class RemoteApiService {
         final legacy = path == '/api/xprs/super';
         final data =
             req.method == 'POST' ? await _body(req) : const <String, dynamic>{};
-        final listKey = legacy ? 'supers' : 'archivers';
-        if (data.containsKey(listKey)) {
-          prefs?.xprsNamedArchivers = (data[listKey] as List?)
-                  ?.map((e) => e.toString().trim().toUpperCase())
-                  .where((e) => e.isNotEmpty)
-                  .toList() ??
-              const <String>[];
-        }
-        if (data.containsKey('public')) {
-          await prefs?.setXprsPublicArchiver(data['public'] == true);
-        }
-        if (data.containsKey('keepFollowed')) {
-          await prefs?.setXprsKeepFollowed(data['keepFollowed'] == true);
-        }
-        if (data.containsKey('quotaMb')) {
-          final v = int.tryParse('${data['quotaMb']}');
-          if (v != null && v > 0) prefs?.xprsArchiveMaxMb = v;
-        }
-        if (data.containsKey('maxDays')) {
-          final v = int.tryParse('${data['maxDays']}');
-          if (v != null && v > 0) prefs?.xprsArchiveMaxDays = v;
-        }
-        // 13.0.2: where THIS station answers a connection (announced while
-        // it is a public archiver), whether it has room, and the dials of
-        // archivers the operator wants named by hand.
-        if (data.containsKey('dial')) {
-          prefs?.xprsDial = '${data['dial'] ?? ''}';
-        }
-        if (data.containsKey('room')) {
-          prefs?.xprsRoom = data['room'] != false;
-        }
-        if (data.containsKey('roomStations')) {
-          final v = int.tryParse('${data['roomStations']}');
-          if (v != null && v > 0) prefs?.xprsRoomStations = v;
-        }
-        if (data['dials'] is Map) {
-          for (final e in (data['dials'] as Map).entries) {
-            prefs?.rememberArchiverDial(
-                e.key.toString(), e.value == null ? null : '${e.value}');
-          }
-        }
-        final beKey = legacy ? 'be' : 'alwaysOn';
-        if (data.containsKey(beKey)) {
-          final on = data[beKey] == true;
-          if (legacy && on) await prefs?.setXprsPublicArchiver(true);
-          await prefs?.setXprsAlwaysOn(on);
-          // An always-on archiver mirrors releases (the phone fetches by sha
-          // from it, and it fetched from xprs.dev). Becoming one at runtime
-          // starts the mirror now rather than at the next boot.
-          final m = UpdateMirrorService.instance;
-          if (m.enabled && !m.isRunning) {
-            await m.start();
-          } else if (!m.enabled && m.isRunning) {
-            await m.stop();
-          }
-        }
-        // Every writer re-reads the snapshot the receive funnel uses.
-        XprsIngest.reloadPolicy();
-        if (data.isNotEmpty) {
-          MeshService.instance.applyArchiveLimits();
-        }
+        // One writer for the page and the API (archiver_settings.dart). The
+        // legacy shape names the list `supers` and always-on `be`.
+        await applyArchiverSettings({
+          ...data,
+          if (legacy && data.containsKey('supers')) 'archivers': data['supers'],
+          if (legacy && data.containsKey('be')) 'alwaysOn': data['be'],
+        }, legacy: legacy);
         final counts = XprsArchive.instance.countsByTier();
         return _json(res, {
           'ok': true,

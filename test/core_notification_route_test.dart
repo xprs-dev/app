@@ -22,7 +22,8 @@ void main() {
     expect(r.tag, 'tag');
     expect(r.convo, 'c');
     expect(r.body, 'b');
-    expect(routeCoreNotification(_n('core:archiver')).source, 'wapp:archiver');
+    // The archiver is a page of the app, not a wapp.
+    expect(routeCoreNotification(_n('core:archiver')).source, 'host:archiver');
   });
 
   test('anything else passes through untouched', () {

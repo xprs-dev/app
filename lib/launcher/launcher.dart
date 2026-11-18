@@ -67,6 +67,7 @@ import '../version.dart';
 import 'apps_intro_page.dart';
 import 'update_page.dart';
 import 'groups_page.dart';
+import 'archiver_page.dart';
 import '../profile/iwi_profile.dart';
 import '../profile/profile_encryption.dart';
 import '../profile/profile_service.dart';

@@ -49,8 +49,8 @@ Everything below hangs off one separation, and it is the whole design:
 | Role | Answers | Stores | Typical hardware | Volunteered via |
 |---|---|---|---|---|
 | **Publisher** (leaf) | "here are *my* notes" | its own posts + the authors it follows (notes **and** media) | phone, laptop — anything | nothing to volunteer; this is every user |
-| **Archiver** | "*where* can I find notes from `npub…`" | **pointers only** — a who-has map. Never other people's content | old Android on a charger, home WiFi | the **Archiver wapp** |
-| **Archiver** | "I *hold* a copy of that" | other people's content, up to a quota the owner sets | NAS, home server, a phone with a big card, a LoRa/BLE gateway box | the **Archiver wapp** |
+| **Archiver** | "*where* can I find notes from `npub…`" | **pointers only** — a who-has map. Never other people's content | old Android on a charger, home WiFi | the **Archiver page** (top-left menu; it was a wapp until 2026-11-18) |
+| **Archiver** | "I *hold* a copy of that" | other people's content, up to a quota the owner sets | NAS, home server, a phone with a big card, a LoRa/BLE gateway box | the **Archiver page** (top-left menu; it was a wapp until 2026-11-18) |
 
 A single device can be all three. Most are only a Publisher, and that is fine —
 a network of pure Publishers already works, it just gets slow to search and
@@ -400,7 +400,7 @@ act pulls the referenced blobs into the local `MediaArchive` (content-addressed 
 sha256, already built), from the internet, **now, while the internet is there** —
 the whole point being that later, it is not. That is a real cost, so it is a real
 setting: notes always; media by size cap, on WiFi, or never (Settings, and the
-Archiver wapp for the machines with disks). But the default for something you
+Archiver page for the machines with disks). But the default for something you
 *liked* is: **take the picture too.**
 
 ### And then it is on Reticulum
@@ -690,7 +690,7 @@ it.
   mains and fibre serves generously, by default — because it *volunteered*, and
   that is what the role means.
 
-The Archiver wapp's **Quota** screen owns the storage half of this; the same panel
+The Archiver page's **Files** tab owns the storage half of this; the same panel
 gains the bandwidth half, because to a user they are one question with two
 numbers: *how much of my disk, and how much of my line?*
 
@@ -791,7 +791,7 @@ is in `main` with tests, and the device-validated ones say so.
    reads as the internet — the safe default, asserted by test. The
    **mirror-the-small-devices loop** runs: an Archiver pulls what the leaves
    around it share, then publishes itself, so the DHT hands out the mains box
-   instead of somebody's phone. And the **Archiver wapp** ships: opens at 0 GB,
+   instead of somebody's phone. And the **Archiver page** (top-left menu; it was a wapp until 2026-11-18) ships: opens at 0 GB,
    raises in 5 GB steps, and lists everything held for others with a drop on
    every row.
 4. ~~Resolve answers are bare.~~ **BUILT.** The `VALUE` reply now carries a
@@ -1358,7 +1358,7 @@ Dependency order. Each step is small and independently useful.
    own copy of it.
 6. **The Archiver wapp** (above) — the role becomes something a person grants,
    inspects and revokes.
-7. **The Archiver role**, then the **Archiver wapp** (above): quota, policy,
+7. **The Archiver role**, then the **Archiver page** (top-left menu; it was a wapp until 2026-11-18) (above): quota, policy,
    direct-link store-and-forward, mirror-the-small-devices, and a visible,
    deletable list of what is being held for others.
 8. **Retention rules on both.** What is worth a pointer: a record signed by a

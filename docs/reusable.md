@@ -1392,3 +1392,20 @@ Flutter import in the core.
   with the message `station.share {kind}` (`_handleStationShare` in
   wapp_page.dart: the system file picker, a name for the folder, `StationShare.add`).
   Reuse the message from any wapp that wants "share this folder".
+
+## One writer for a setting the API and a page both change
+
+`applyArchiverSettings(Map data, {legacy})` (`lib/services/xprs/
+archiver_settings.dart`) is the only place the archiver's preferences are
+written; the Archiver page and `POST /api/xprs/archiver` both call it with the
+keys they change. Copy the shape for any setting with side effects (a service
+to restart, a policy snapshot to reload): a page and an API that each did the
+writes themselves drifted apart within weeks.
+
+## Retiring a bundled wapp whose job moved into the app
+
+`_retireWapp(name)` (`lib/launcher/seeding.dart`) removes an installed copy,
+its data and its autostart, keeps a user-modified copy, and leaves the name in
+the offered sets so seeding never reinstalls it. Register a one-line wrapper
+as a sequential boot task (see `retireArchiverWapp` in `lib/main.dart`).
+Removing the `.wapp` from `assets/wapps/` alone only stops new installs.

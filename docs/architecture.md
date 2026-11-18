@@ -698,7 +698,7 @@ Two things make it checkable, which it was not:
 This app keeps two unrelated things and had called both "the archive": the
 **packet spool** (`XprsArchive`, XPRS packets, capped in MB and days) and the
 **file store** (`MediaArchive`/`ArchiverService`, other people's media, capped
-in GB). They share no state, and the Archiver wapp's "Enable" switch governed
+in GB). They share no state, and the Archiver wapp's "Enable" switch (now the Files tab of the Archiver page) governed
 the second while the station's archiver role lived in three other preferences —
 so a device announcing `serve:archive` showed the role as off.
 
