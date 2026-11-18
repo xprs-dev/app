@@ -100,6 +100,74 @@ void main() {
     });
   });
 
+  group('updateRoundDue (the Android heartbeat)', () {
+    const h = Duration(hours: 1), r = Duration(minutes: 30);
+    const now = 10 * 3600 * 1000;
+    test('due when a check is due and nothing was tried lately', () {
+      expect(
+          updateRoundDue(
+              lastCheckMs: now - 2 * 3600 * 1000,
+              lastAttemptMs: 0,
+              nowMs: now,
+              interval: h,
+              retryAfter: r),
+          isTrue);
+    });
+    test('not on every beat after a failed try: waits retryAfter', () {
+      expect(
+          updateRoundDue(
+              lastCheckMs: now - 5 * 3600 * 1000,
+              lastAttemptMs: now - 60 * 1000,
+              nowMs: now,
+              interval: h,
+              retryAfter: r),
+          isFalse);
+      expect(
+          updateRoundDue(
+              lastCheckMs: now - 5 * 3600 * 1000,
+              lastAttemptMs: now - 31 * 60 * 1000,
+              nowMs: now,
+              interval: h,
+              retryAfter: r),
+          isTrue);
+    });
+    test('not before the interval since the last answered check', () {
+      expect(
+          updateRoundDue(
+              lastCheckMs: now - 20 * 60 * 1000,
+              lastAttemptMs: 0,
+              nowMs: now,
+              interval: h,
+              retryAfter: r),
+          isFalse);
+    });
+  });
+
+  group('ReleaseInfo.toFeed', () {
+    test('what a check found reads back the same after a restart', () {
+      final r = ReleaseInfo.fromFeed({
+        'version': '1.12.0-beta.1',
+        'tagName': 'v1.12.0-beta.1',
+        'name': 'XPRS 1.12.0-beta.1',
+        'body': '## Fixes\n- one',
+        'publishedAt': '2026-11-18T18:00:00Z',
+        'prerelease': true,
+        'assets': [
+          {'name': 'xprs-1.12.0-beta.1-android-arm64-v8a.apk',
+           'url': 'v1.12.0-beta.1/a.apk', 'size': 65000000, 'sha256': 'AB'}
+        ],
+      }, baseUrl: 'https://xprs.dev/updates');
+      final back = ReleaseInfo.fromFeed(r.toFeed());
+      expect(back.version, r.version);
+      expect(back.isPrerelease, isTrue);
+      expect(back.body, r.body);
+      expect(back.assets.single.url,
+          'https://xprs.dev/updates/v1.12.0-beta.1/a.apk');
+      expect(back.assets.single.size, 65000000);
+      expect(back.assets.single.sha256, 'ab');
+    });
+  });
+
   group('readyCovers / readyIsStale', () {
     test('the download on disk is reused for the same, newer version', () {
       expect(

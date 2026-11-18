@@ -118,6 +118,22 @@ class ReleaseInfo {
     );
   }
 
+  /// This release in the feed's own schema (asset URLs absolute), so
+  /// [ReleaseInfo.fromFeed] reads it back unchanged: what a check found is
+  /// kept across restarts in this form.
+  Map<String, dynamic> toFeed() => {
+        'version': version,
+        'tagName': tagName,
+        if (name != null) 'name': name,
+        if (body != null) 'body': body,
+        if (publishedAt != null) 'publishedAt': publishedAt,
+        'prerelease': isPrerelease,
+        'assets': [
+          for (final a in assets)
+            {'name': a.name, 'url': a.url, 'size': a.size, 'sha256': a.sha256}
+        ],
+      };
+
   /// The asset to download for [platform], or null if this release has none.
   /// Suffix-matched, so both `xprs-*` and legacy `aurora-*` names qualify.
   ///
@@ -332,6 +348,25 @@ bool updateCheckDue({
   if (lastCheckMs == null || lastCheckMs <= 0) return true;
   if (nowMs < lastCheckMs) return true;
   return nowMs - lastCheckMs >= interval.inMilliseconds;
+}
+
+/// Whether a heartbeat should start an automatic round now: a check is due
+/// ([updateCheckDue]) and the last attempt, answered or not, is at least
+/// [retryAfter] old, so a phone with no network does not try on every beat.
+bool updateRoundDue({
+  required int? lastCheckMs,
+  required int lastAttemptMs,
+  required int nowMs,
+  required Duration interval,
+  required Duration retryAfter,
+}) {
+  if (lastAttemptMs > 0 &&
+      nowMs >= lastAttemptMs &&
+      nowMs - lastAttemptMs < retryAfter.inMilliseconds) {
+    return false;
+  }
+  return updateCheckDue(
+      lastCheckMs: lastCheckMs, nowMs: nowMs, interval: interval);
 }
 
 /// How long until the next scheduled check, never less than [minDelay] so a

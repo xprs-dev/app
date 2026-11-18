@@ -45,6 +45,7 @@ import 'xprs/xprs_monitor.dart';
 import 'xprs/xprs_files.dart';
 import 'notification_service.dart';
 import '../platform/fs.dart';
+import 'package:xprs_core/src/platform/core_host.dart' show CoreHost;
 
 enum UpdateStatus { idle, checking, available, downloading, downloaded, error }
 
@@ -96,6 +97,10 @@ class UpdateService with WidgetsBindingObserver {
   static const _kAuto = 'update.auto';
   static const _kOverMetered = 'update.overMetered';
   static const _kLastCheck = 'update.lastCheck';
+  // What the last answered check found ({stable, beta, fdroid} in the feed's
+  // schema), so a restart still knows a newer version exists: without it the
+  // page and the menu dot went blank until the next check, hours later.
+  static const _kKnown = 'update.known';
   static const _kNotified = 'update.lastNotifiedVersion';
   // The verified download waiting to be installed, so a restart neither
   // downloads it again nor hashes it again.
@@ -228,6 +233,10 @@ class UpdateService with WidgetsBindingObserver {
   /// The version of the verified download waiting to be installed.
   String? get readyVersion => _readyVersion;
 
+  /// The version the running download is fetching (null when none runs), so
+  /// the page names what is coming rather than what is installed.
+  final ValueNotifier<String?> downloadingVersion = ValueNotifier(null);
+
   /// What the launcher shows (a dot on the menu and the drawer entry, a
   /// banner when an update is ready to install).
   final ValueNotifier<UpdateNotice> notice = ValueNotifier(UpdateNotice.none);
@@ -239,9 +248,10 @@ class UpdateService with WidgetsBindingObserver {
   /// Set while the Updates page is on screen: no "ready" notification then.
   bool pageOpen = false;
 
-  /// How often the running app looks for a newer release. Releases ship at
-  /// most weekly; the feed is ~1 KB.
-  static const Duration checkInterval = Duration(hours: 6);
+  /// How often the running app looks for a newer release. The feed is ~1 KB
+  /// and a beta can ship the same day as a fix, so an hour: six hours left a
+  /// phone a whole afternoon behind a release.
+  static const Duration checkInterval = Duration(hours: 1);
 
   /// A failed check (no network) is retried sooner than [checkInterval].
   static const Duration retryAfterFailure = Duration(minutes: 30);
@@ -252,6 +262,13 @@ class UpdateService with WidgetsBindingObserver {
 
   Timer? _timer;
   bool _started = false;
+
+  /// An automatic round is running (check, then maybe a download).
+  bool _roundRunning = false;
+
+  /// When the last automatic round started, answered or not: a check that
+  /// reached nothing is not tried again before [retryAfterFailure].
+  int _lastAttemptMs = 0;
 
   /// Compile-time default for automatic updates when Android names no
   /// installer (an `adb install`). Every Android release is built with
@@ -328,8 +345,36 @@ class UpdateService with WidgetsBindingObserver {
         android: fdroidAvailable,
         installer: installer,
         storeDefine: autoCheckEnabled);
+    _restoreKnown(p.getString(_kKnown));
     _refreshNotice();
   }
+
+  /// Bring back what the last answered check found, unless this process has
+  /// already checked (its own answer is newer).
+  void _restoreKnown(String? raw) {
+    if (raw == null || raw.isEmpty) return;
+    if (stable.value != null || beta.value != null || fdroid.value != null) {
+      return;
+    }
+    try {
+      final j = jsonDecode(raw);
+      if (j is! Map) return;
+      ReleaseInfo? read(Object? o) =>
+          o is Map<String, dynamic> ? ReleaseInfo.fromFeed(o) : null;
+      stable.value = read(j['stable']);
+      beta.value = read(j['beta']);
+      fdroid.value = read(j['fdroid']);
+      _settleStatus();
+    } catch (_) {}
+  }
+
+  Future<void> _saveKnown() => _prefs((p) => p.setString(
+      _kKnown,
+      jsonEncode({
+        if (stable.value != null) 'stable': stable.value!.toFeed(),
+        if (beta.value != null) 'beta': beta.value!.toFeed(),
+        if (fdroid.value != null) 'fdroid': fdroid.value!.toFeed(),
+      })));
 
   // Asked once per process: only an install replaces the installer, and an
   // install restarts the process.
@@ -431,6 +476,7 @@ class UpdateService with WidgetsBindingObserver {
       if (answered) {
         _lastCheckMs = DateTime.now().millisecondsSinceEpoch;
         await _prefs((p) => p.setInt(_kLastCheck, _lastCheckMs!));
+        await _saveKnown();
       }
       _settleStatus();
     } catch (e) {
@@ -556,13 +602,45 @@ class UpdateService with WidgetsBindingObserver {
   Future<void> start() async {
     if (!supported || _started) return;
     _started = true;
+    // The version on the page goes with the download: cleared once it ends,
+    // whichever way (ready, failed, cancelled).
+    status.addListener(() {
+      if (status.value != UpdateStatus.downloading) {
+        downloadingVersion.value = null;
+      }
+    });
     await load();
     await _restoreReady();
     await resumeActiveDownload();
     try {
       WidgetsBinding.instance.addObserver(this);
     } catch (_) {}
-    _arm();
+    // Android: the foreground service's native heartbeat keeps coming while
+    // Dart timers are throttled in the background, so the round rides on it
+    // (a few integer compares per beat until a check is due). Elsewhere the
+    // timer below is enough: the desktop process is not frozen.
+    CoreHost.keepAlive.addTickListener(_onBeat);
+    // A newer version was already known before this restart and is not on
+    // disk yet: fetch it soon instead of at the next check.
+    final known = selectedRelease;
+    _arm(
+        after: autoUpdate && isNewer(known) && !_hasReady
+            ? startDelay
+            : null);
+  }
+
+  /// One native heartbeat: start an automatic round when one is due.
+  void _onBeat() {
+    if (!_started || !autoUpdate || _roundRunning) return;
+    if (!updateRoundDue(
+        lastCheckMs: _lastCheckMs,
+        lastAttemptMs: _lastAttemptMs,
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+        interval: checkInterval,
+        retryAfter: retryAfterFailure)) {
+      return;
+    }
+    unawaited(runAutomatic());
   }
 
   /// Arm the next automatic check: at [checkInterval] after the last one, no
@@ -600,20 +678,28 @@ class UpdateService with WidgetsBindingObserver {
   /// it in the background and say once that it is ready. Also what
   /// POST /api/update/auto runs.
   Future<void> runAutomatic() async {
-    if (!autoUpdate) return;
-    final answered = await checkForUpdates();
-    // Re-arm before the download: a download waiting for Wi-Fi can take hours.
-    _arm(after: answered ? checkInterval : retryAfterFailure);
-    final sel = selectedRelease;
-    if (sel == null || !isNewer(sel)) return;
-    if (readyCovers(
-        readyVersion: _readyVersion, wanted: sel.version, running: kAppVersion)) {
-      _notifyReady(sel.version);
-      return;
+    if (!autoUpdate || _roundRunning) return;
+    _roundRunning = true;
+    _lastAttemptMs = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final answered = await checkForUpdates();
+      // Re-arm before the download: a download waiting for Wi-Fi can take hours.
+      _arm(after: answered ? checkInterval : retryAfterFailure);
+      final sel = selectedRelease;
+      if (sel == null || !isNewer(sel)) return;
+      if (readyCovers(
+          readyVersion: _readyVersion,
+          wanted: sel.version,
+          running: kAppVersion)) {
+        _notifyReady(sel.version);
+        return;
+      }
+      if (status.value == UpdateStatus.downloading || _tracking) return;
+      LogService.instance.add('update: ${sel.version} found, downloading');
+      await download(sel, auto: true);
+    } finally {
+      _roundRunning = false;
     }
-    if (status.value == UpdateStatus.downloading || _tracking) return;
-    LogService.instance.add('update: ${sel.version} found, downloading');
-    await download(sel, auto: true);
   }
 
   /// Post "XPRS `version` is ready to install" once per version. Its tap opens
@@ -722,6 +808,7 @@ class UpdateService with WidgetsBindingObserver {
       status.value = UpdateStatus.downloaded;
       return true;
     }
+    downloadingVersion.value = release.version;
     final allowData = !auto || _overMetered;
     final metered = allowData ? false : await UpdateNative.isMetered();
     final platform = currentUpdatePlatform();
@@ -767,7 +854,7 @@ class UpdateService with WidgetsBindingObserver {
     // progress. The Reticulum (sha handle) and desktop paths stay below.
     if (isHttp0) {
       lastSource = 'https';
-      phase.value = 'Downloading from xprs.dev';
+      phase.value = tr('updates.phase.web');
     }
     if (isHttp0 && UpdateNative.hasDownloadManager) {
       return _downloadViaManager(release, asset, overMetered: allowData);
@@ -879,7 +966,7 @@ class UpdateService with WidgetsBindingObserver {
     try {
       for (final station in stations) {
         final dot = asset.name.lastIndexOf('.');
-        phase.value = 'Asking $station over the mesh';
+        phase.value = tr('updates.phase.mesh', {'station': station});
         final path = await XprsFileFetch.instance.fetch(
           archiver: station,
           shaHex: asset.sha256,
@@ -940,7 +1027,7 @@ class UpdateService with WidgetsBindingObserver {
       // it and went to the web for bytes sitting on its own disk.
       final mine = UpdateMirrorService.instance.pathForSha(shaHex);
       if (mine != null) {
-        phase.value = 'Held by this station\'s mirror';
+        phase.value = tr('updates.phase.mirror');
         final dir = await UpdateNative.supportDir();
         final dest = '$dir${pathSeparator}${asset.name}';
         await fs.file(mine).copy(dest);
@@ -954,7 +1041,7 @@ class UpdateService with WidgetsBindingObserver {
       // moving the bytes, and with no always-on archiver holding this release it
       // spent all five minutes learning that nobody did -- after the mesh had
       // already spent its share. Ask the DHT the cheap question first.
-      phase.value = 'Looking for an always-on archiver holding ${release.version}';
+      phase.value = tr('updates.phase.search');
       final providers = await RnsService.instance
           .contentProviderCount(shaHex, timeout: providerProbeTimeout);
       if (providers == 0) {
@@ -1154,6 +1241,7 @@ class UpdateService with WidgetsBindingObserver {
     final id = p.getInt(_kDlId);
     if (id == null) return;
     final version = p.getString(_kDlVersion) ?? '';
+    if (version.isNotEmpty) downloadingVersion.value = version;
     final asset = ReleaseAsset(
       name: p.getString(_kDlName) ?? '',
       url: '',

@@ -511,8 +511,9 @@ Future<void> _boot() async {
   // circles "apply to join" flow. Needs the navigator live (after runApp).
   unawaited(DeepLinkService.instance.start());
 
-  // Automatic updates: check the feed a minute after start-up and every six
-  // hours after, download a newer release in the background, and post one
+  // Automatic updates: check the feed a minute after start-up and every hour
+  // after (on Android driven by the service heartbeat, which keeps beating in
+  // the background), download a newer release on its own, and post one
   // "ready to install" notification. Off for an F-Droid install (the F-Droid
   // client updates it) and off the web. docs/updates.md section 6.
   unawaited(UpdateService.instance.start());

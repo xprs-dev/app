@@ -22,7 +22,7 @@ Related: [architecture.md](architecture.md) §4 (which lane carries what),
         ▼
    https://xprs.dev/updates/{stable,beta}.json     ~1 KB, JSON only
         │
-        ├──────────────► every phone: "is there a newer version?"  (one GET, every 6 h)
+        ├──────────────► every phone: "is there a newer version?"  (one GET, every hour)
         │
         └──────────────► a SUPER-ARCHIVER downloads the artifacts ONCE
                               │
@@ -203,11 +203,21 @@ uses this; it is the fallback for a device that has internet but no mesh.
    (`update.ready.*` in preferences: path, version, size), deleting it once that
    version runs;
 2. re-attaches to a DownloadManager job left running by an earlier process;
-3. arms ONE one-shot timer for the next check: a minute after start-up when a
-   check is due, otherwise at `lastCheck + 6 h` (`update.lastCheck`). A check
+3. restores what the last answered check found (`update.known`: the stable,
+   beta and F-Droid releases in the feed's own schema), so the page, the menu
+   dot and the automatic download still know a newer version after a restart.
+   When one is known and not on disk yet, the download starts a minute after
+   start-up instead of at the next check;
+4. arms ONE one-shot timer for the next check: a minute after start-up when a
+   check is due, otherwise at `lastCheck + 1 h` (`update.lastCheck`). A check
    that reached no source retries after 30 minutes. Coming back to the
-   foreground re-arms it 5 s out when a check is overdue, because a frozen
-   process may have slept through the timer.
+   foreground re-arms it 5 s out when a check is overdue;
+5. on Android, also listens to the foreground service's native heartbeat
+   (`CoreHost.keepAlive`, every 2 s, 10-30 s when saving battery), which keeps
+   coming while Dart timers are throttled with the app in the background: a
+   beat starts the round when `updateRoundDue` says so (a check due, and no
+   attempt in the last 30 minutes). The timer alone used to sleep through
+   whole afternoons on a phone in a pocket.
 
 Each round (`runAutomatic`): read the feed, and when the selected channel has a
 newer version, `download(release, auto: true)`. Once the artifact is verified

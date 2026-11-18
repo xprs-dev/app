@@ -1449,4 +1449,5 @@ tap is routed by `sourceId` in `launcher_page._openHeroItem`.
   spans as one `Text.rich` (shrink-wraps in a bubble, `maxLines` for a card
   preview); links tap through `onLink` or **`openExternalLink(url)`**
   (http/https only, system browser via url_launcher). Used by the chat bubble
-  (`_bodyText`) and the cards' description (forum posts).
+  (`_bodyText`), the cards' description (forum posts) and the release notes
+  on the Updates page.
