@@ -27,6 +27,9 @@ import 'dart:typed_data';
 
 import 'package:wasm_run/wasm_run.dart';
 
+import 'package:xprs_core/src/profile/storage_paths.dart'
+    show wappPackageStorage;
+
 import '../profile/profile_storage.dart';
 import 'compiler_addon.dart';
 import 'wapp_compiler_service.dart';
@@ -66,8 +69,10 @@ class AddonClang {
     final usr = '$dir/media/usr';
     if (!await File(wasm).exists() || !await Directory(usr).exists()) {
       return const AddonBuild(
-          -1, 'The wapp.build provider is incomplete (media/llvm.wasm, media/usr).',
-          0);
+        -1,
+        'The wapp.build provider is incomplete (media/llvm.wasm, media/usr).',
+        0,
+      );
     }
     final sw = Stopwatch()..start();
     final port = await _port();
@@ -90,15 +95,21 @@ class AddonClang {
     reply.close();
     _armIdle();
     return AddonBuild(
-        res['code'] as int, res['log'] as String, sw.elapsedMilliseconds);
+      res['code'] as int,
+      res['log'] as String,
+      sw.elapsedMilliseconds,
+    );
   }
 
   Future<SendPort> _port() async {
     final p = _worker;
     if (p != null) return p;
     final ready = ReceivePort();
-    _isolate = await Isolate.spawn(_workerMain, ready.sendPort,
-        debugName: 'compiler-addon');
+    _isolate = await Isolate.spawn(
+      _workerMain,
+      ready.sendPort,
+      debugName: 'compiler-addon',
+    );
     final port = await ready.first as SendPort;
     ready.close();
     return _worker = port;
@@ -135,8 +146,14 @@ Future<void> _workerMain(SendPort ready) async {
         module = await compileWasmModule(bytes, config: const ModuleConfig());
         loaded = path;
       }
-      reply.send(await _driver(module, job['usr'] as String,
-          job['work'] as String, (job['args'] as List).cast<String>()));
+      reply.send(
+        await _driver(
+          module,
+          job['usr'] as String,
+          job['work'] as String,
+          (job['args'] as List).cast<String>(),
+        ),
+      );
     } catch (e) {
       reply.send({'code': -1, 'log': 'compiler failed to start: $e'});
     }
@@ -145,10 +162,17 @@ Future<void> _workerMain(SendPort ready) async {
 
 /// clang's driver, done by hand: ask for the plan, run each step.
 Future<Map<String, Object>> _driver(
-    WasmModule module, String usr, String work, List<String> args) async {
+  WasmModule module,
+  String usr,
+  String work,
+  List<String> args,
+) async {
   final log = StringBuffer();
-  final (planCode, plan) =
-      await _run(module, usr, work, [args.first, '-###', ...args.skip(1)]);
+  final (planCode, plan) = await _run(module, usr, work, [
+    args.first,
+    '-###',
+    ...args.skip(1),
+  ]);
   if (planCode != 0) return {'code': planCode, 'log': plan};
   final steps = parseClangPlan(plan);
   if (steps.isEmpty) return {'code': 1, 'log': plan};
@@ -161,31 +185,36 @@ Future<Map<String, Object>> _driver(
 }
 
 Future<(int, String)> _run(
-    WasmModule module, String usr, String work, List<String> argv) async {
+  WasmModule module,
+  String usr,
+  String work,
+  List<String> argv,
+) async {
   final inst = await module
       .builder(
-          wasiConfig: WasiConfig(
-        args: argv,
-        preopenedDirs: [
-          PreopenedDir(wasmGuestPath: '/usr', hostPath: usr),
-          PreopenedDir(wasmGuestPath: '/work', hostPath: work),
-        ],
-        webBrowserFileSystem: const {},
-        captureStdout: true,
-        captureStderr: true,
-      ))
+        wasiConfig: WasiConfig(
+          args: argv,
+          preopenedDirs: [
+            PreopenedDir(wasmGuestPath: '/usr', hostPath: usr),
+            PreopenedDir(wasmGuestPath: '/work', hostPath: work),
+          ],
+          webBrowserFileSystem: const {},
+          // The compile step writes its object file to $TMPDIR (default
+          // /tmp, which is not mounted).
+          env: const [EnvVariable(name: 'TMPDIR', value: '/work')],
+          captureStdout: true,
+          captureStderr: true,
+        ),
+      )
       .build();
   final out = BytesBuilder(copy: false);
-  final subs = [
-    inst.stdout.listen(out.add),
-    inst.stderr.listen(out.add),
-  ];
+  final subs = [inst.stdout.listen(out.add), inst.stderr.listen(out.add)];
   var code = 0;
   try {
     inst.getFunction('_start')!.call(const []);
   } catch (e) {
     // wasmtime reports proc_exit as "Exited with i32 exit status N".
-    final m = RegExp(r'exit status (\d+)').firstMatch('$e');
+    final m = RegExp(r'exit status\s+(\d+)').firstMatch('$e');
     if (m != null) {
       code = int.parse(m.group(1)!);
     } else {
@@ -193,8 +222,9 @@ Future<(int, String)> _run(
       out.add(utf8.encode('\n$e\n'));
     }
   }
-  // Let the captured streams deliver what the run wrote.
-  await Future<void>.delayed(Duration.zero);
+  // The captured streams deliver after the call returns: give them a moment,
+  // or a failed step reports its exit and not its reason.
+  await Future<void>.delayed(const Duration(milliseconds: 100));
   for (final s in subs) {
     await s.cancel();
   }
@@ -259,28 +289,42 @@ class AddonCompilerBackend implements CompilerBackend {
     '-Wl,--strip-all',
   ];
 
+  /// A plain scratch folder for one build. Not the profile's storage: an
+  /// encrypted profile keeps a wapp's data inside its store, where the
+  /// compiler, reading files by path, finds nothing (measured on a phone:
+  /// clang exited 1 on a /work it saw empty). A wapp's source is public
+  /// like its package, which is stored unencrypted too.
+  static Future<(Directory, ProfileStorage)> _scratch() async {
+    final dir = await Directory.systemTemp.createTemp('wapp-build-');
+    return (dir, wappPackageStorage(dir.path));
+  }
+
   @override
   Future<CompileResult> compile({
     required String source,
     required ProfileStorage pkg,
     required ProfileStorage workStorage,
   }) async {
-    await workStorage.createDirectory('compile-tmp');
-    await workStorage.writeString('compile-tmp/source.c', source);
-    final b = await AddonClang.instance.build(
-      workDir: workStorage.getAbsolutePath('compile-tmp'),
-      flags: [
-        ..._common,
-        '-Werror',
-        '-Wl,--export=module_init',
-        '-Wl,--export=module_tick',
-        '-Wl,--export=module_handle_event',
-        '-Wl,--export=module_destroy',
-        '-Wl,--export=module_tick_interval_ms',
-      ],
-      sources: const ['source.c'],
-    );
-    return _result(b, await workStorage.readBytes('compile-tmp/output.wasm'));
+    final (dir, work) = await _scratch();
+    try {
+      await work.writeString('source.c', source);
+      final b = await AddonClang.instance.build(
+        workDir: dir.path,
+        flags: [
+          ..._common,
+          '-Werror',
+          '-Wl,--export=module_init',
+          '-Wl,--export=module_tick',
+          '-Wl,--export=module_handle_event',
+          '-Wl,--export=module_destroy',
+          '-Wl,--export=module_tick_interval_ms',
+        ],
+        sources: const ['source.c'],
+      );
+      return _result(b, await work.readBytes('output.wasm'));
+    } finally {
+      await dir.delete(recursive: true);
+    }
   }
 
   @override
@@ -291,26 +335,29 @@ class AddonCompilerBackend implements CompilerBackend {
     if (testSources.isEmpty) {
       return CompileResult.failure('no tests/*.c sources to build');
     }
-    await workStorage.createDirectory('compile-tmp');
-    final names = <String>[];
-    for (var i = 0; i < testSources.length; i++) {
-      final n = 'test_$i.c';
-      await File(testSources[i])
-          .copy(workStorage.getAbsolutePath('compile-tmp/$n'));
-      names.add(n);
+    final (dir, work) = await _scratch();
+    try {
+      final names = <String>[];
+      for (var i = 0; i < testSources.length; i++) {
+        final n = 'test_$i.c';
+        await File(testSources[i]).copy('${dir.path}/$n');
+        names.add(n);
+      }
+      final b = await AddonClang.instance.build(
+        workDir: dir.path,
+        flags: [
+          ..._common,
+          '-I/usr/xprs/sdk',
+          '-DWAPP_TESTING',
+          '-Wl,--export=module_run_tests',
+        ],
+        sources: [...names, '/usr/xprs/sdk/wapp_test.c'],
+        out: 'tests.wasm',
+      );
+      return _result(b, await work.readBytes('tests.wasm'));
+    } finally {
+      await dir.delete(recursive: true);
     }
-    final b = await AddonClang.instance.build(
-      workDir: workStorage.getAbsolutePath('compile-tmp'),
-      flags: [
-        ..._common,
-        '-I/usr/xprs/sdk',
-        '-DWAPP_TESTING',
-        '-Wl,--export=module_run_tests',
-      ],
-      sources: [...names, '/usr/xprs/sdk/wapp_test.c'],
-      out: 'tests.wasm',
-    );
-    return _result(b, await workStorage.readBytes('compile-tmp/tests.wasm'));
   }
 
   /// [wasm] is the output read back through the work storage, the same path
@@ -318,11 +365,16 @@ class AddonCompilerBackend implements CompilerBackend {
   static CompileResult _result(AddonBuild b, Uint8List? wasm) =>
       b.code == 0 && wasm != null && wasm.isNotEmpty
       ? CompileResult(
-          ok: true, wasmBytes: wasm, stderr: b.log, durationMs: b.ms)
+          ok: true,
+          wasmBytes: wasm,
+          stderr: b.log,
+          durationMs: b.ms,
+        )
       : CompileResult(
           ok: false,
           stderr: b.log,
           exitCode: b.code,
           durationMs: b.ms,
-          error: b.code == -1 ? b.log : 'clang exited with ${b.code}');
+          error: b.code == -1 ? b.log : 'clang exited with ${b.code}',
+        );
 }
