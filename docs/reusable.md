@@ -1435,3 +1435,16 @@ whole, snapshots overwritten, at most N rows. Copy the pattern for any other
 `ArchiverHeroCard.card()` is inserted at the hero's second slot after
 ranking (HeroFeedService.refresh) instead of joining the ranked pool; the
 tap is routed by `sourceId` in `launcher_page._openHeroItem`.
+
+## Formatted text and tappable links (XPRS.md 4.11)
+
+- **`lib/util/xprs_md.dart`**: `parseXprsMd(text)` -> blocks (heading, list,
+  quote, rule, paragraph) of `XprsMdSpan`s (bold/italic/strike/code, `url`,
+  `ref`); `parseXprsMdInline(line)`; `xprsMdHasMarkup(text)` to keep a plain
+  `Text` for plain words. Pure Dart, a port of webchat `page/xprs_md.js`, so
+  the app and the browser read a message alike. Use it for any `t:blog` or
+  message body instead of a new regex.
+- **`XprsMdText`** (`lib/wapp/geoui/widgets/xprs_md_text.dart`): draws those
+  blocks as one `Text.rich` (shrink-wraps in a bubble's `IntrinsicWidth`),
+  links tap through `onLink` or **`openExternalLink(url)`** (http/https only,
+  system browser via url_launcher). The chat bubble uses it via `_bodyText`.

@@ -20,12 +20,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../../util/media_ref.dart';
+import '../../../util/xprs_md.dart';
 import '../../shared_media_fetch.dart';
 import '../../../services/i18n/core_i18n.dart';
 import '../conversation_store.dart';
 import 'chat_palette.dart';
 import 'media_view.dart';
 import 'message_info_page.dart';
+import 'xprs_md_text.dart';
 
 /// `2026-09-08` as somebody would say it: today and yesterday by name, the
 /// last week by weekday, this year without the year, anything older in full.
@@ -1066,7 +1068,8 @@ class _ChatViewFieldState extends State<ChatViewField> {
       .replaceAll(RegExp(r'\bih:[0-9a-fA-F]{40}\b'), '') // BitTorrent hint
       .replaceAll(RegExp(r'\bsz:\d+\b'), '') // media size hint
       .replaceAll(RegExp(r'\bam:[0-9a-f]{6}\b'), '') // receipt correlation id
-      .replaceAll(RegExp(r'\s+'), ' ')
+      // Spaces only: U+2028/U+2029 and newlines are the text's layout.
+      .replaceAll(RegExp(r'[ \t]+'), ' ')
       .trim();
 
   // Shrink-wrap a text bubble's column to its content width so the meta line can
@@ -1303,10 +1306,10 @@ class _ChatViewFieldState extends State<ChatViewField> {
           if (mediaRefs.isEmpty)
             (locked
                 ? _lockedText(revealMid, text, revealTip, outgoing)
-                : Text(shownText, style: _bodyStyle))
+                : _bodyText(shownText))
           else ...[
             if (_textWithoutTokens(shownText).isNotEmpty)
-              Text(_textWithoutTokens(shownText), style: _bodyStyle),
+              _bodyText(_textWithoutTokens(shownText)),
             Padding(
               padding: const EdgeInsets.only(top: 4, bottom: 2),
               child: Wrap(
@@ -1462,6 +1465,15 @@ class _ChatViewFieldState extends State<ChatViewField> {
 
   static TextStyle get _bodyStyle =>
       TextStyle(color: ChatPalette.text, fontSize: ChatPalette.bodySize);
+
+  /// A message's words: formatted text (XPRS.md 4.11, which a reader MAY
+  /// apply to a t:message) with tappable links. Plain words keep a plain Text.
+  static Widget _bodyText(String t) => xprsMdHasMarkup(t)
+      ? XprsMdText(t,
+          style: _bodyStyle,
+          linkColor: ChatPalette.link,
+          mutedColor: ChatPalette.secondary)
+      : Text(t, style: _bodyStyle);
 
   /// Whether this message can be corrected or withdrawn from here: ours, or
   /// somebody else's where we hold authority. Not a note, not one that is
