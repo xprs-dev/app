@@ -1,0 +1,3 @@
+Links in chat messages and forum posts are tappable and open in your browser.
+Messages and posts show formatting: **bold**, *italic*, ~~struck~~, `code`, headings, lists and quotes, read the same way as in the web chat.
+Fixes: a long status was shown up to three times on its author's phone, with words glued together; it now shows once, joined correctly. Parts of a long status heard live are no longer shown as separate posts.
