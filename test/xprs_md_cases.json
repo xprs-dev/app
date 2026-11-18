@@ -1,0 +1,154 @@
+{
+ "about": "Formatted text (XPRS.md 4.11): input -> HTML that lib/util/xprs_md.dart gives. 'html' uses the options below, 'plain' none.",
+ "options": {
+  "img": "<img src=\"REF\" alt=\"ALT\"> (alt escaped & \" <)",
+  "file": "<a data-ref=\"REF\">LABEL</a> (label escaped & <)",
+  "mention": "<span class=\"at\">@CALL</span>"
+ },
+ "vectors": [
+  {
+   "name": "plain",
+   "input": "hello there, all good?",
+   "html": "<p>hello there, all good?</p>",
+   "plain": "<p>hello there, all good?</p>"
+  },
+  {
+   "name": "bare link, sentence end left out",
+   "input": "see https://xprs.dev/in/X1QZ3N.",
+   "html": "<p>see <a href=\"https://xprs.dev/in/X1QZ3N\" target=\"_blank\" rel=\"noopener nofollow\">https://xprs.dev/in/X1QZ3N</a>.</p>",
+   "plain": "<p>see <a href=\"https://xprs.dev/in/X1QZ3N\" target=\"_blank\" rel=\"noopener nofollow\">https://xprs.dev/in/X1QZ3N</a>.</p>"
+  },
+  {
+   "name": "named link",
+   "input": "[the spec](https://xprs.dev/spec) is here",
+   "html": "<p><a href=\"https://xprs.dev/spec\" target=\"_blank\" rel=\"noopener nofollow\">the spec</a> is here</p>",
+   "plain": "<p><a href=\"https://xprs.dev/spec\" target=\"_blank\" rel=\"noopener nofollow\">the spec</a> is here</p>"
+  },
+  {
+   "name": "other scheme stays text",
+   "input": "[x](javascript:alert(1)) and ftp://a.b",
+   "html": "<p>[x](javascript:alert(1)) and ftp://a.b</p>",
+   "plain": "<p>[x](javascript:alert(1)) and ftp://a.b</p>"
+  },
+  {
+   "name": "emphasis",
+   "input": "**bold** *it* _it_ ~~gone~~",
+   "html": "<p><strong>bold</strong> <em>it</em> <em>it</em> <del>gone</del></p>",
+   "plain": "<p><strong>bold</strong> <em>it</em> <em>it</em> <del>gone</del></p>"
+  },
+  {
+   "name": "code is literal",
+   "input": "`a*b*c` and `<b>`",
+   "html": "<p><code>a*b*c</code> and <code>&lt;b&gt;</code></p>",
+   "plain": "<p><code>a*b*c</code> and <code>&lt;b&gt;</code></p>"
+  },
+  {
+   "name": "snake_case stays",
+   "input": "snake_case_name and file_v2_final",
+   "html": "<p>snake_case_name and file_v2_final</p>",
+   "plain": "<p>snake_case_name and file_v2_final</p>"
+  },
+  {
+   "name": "underscores inside a link",
+   "input": "_go_ https://a.org/x_y_z",
+   "html": "<p><em>go</em> <a href=\"https://a.org/x_y_z\" target=\"_blank\" rel=\"noopener nofollow\">https://a.org/x_y_z</a></p>",
+   "plain": "<p><em>go</em> <a href=\"https://a.org/x_y_z\" target=\"_blank\" rel=\"noopener nofollow\">https://a.org/x_y_z</a></p>"
+  },
+  {
+   "name": "bold link",
+   "input": "**https://a.org**",
+   "html": "<p><strong><a href=\"https://a.org\" target=\"_blank\" rel=\"noopener nofollow\">https://a.org</a></strong></p>",
+   "plain": "<p><strong><a href=\"https://a.org\" target=\"_blank\" rel=\"noopener nofollow\">https://a.org</a></strong></p>"
+  },
+  {
+   "name": "italic around bold",
+   "input": "*a **b** c*",
+   "html": "<p><em>a <strong>b</strong> c</em></p>",
+   "plain": "<p><em>a <strong>b</strong> c</em></p>"
+  },
+  {
+   "name": "emphasis in a link label",
+   "input": "[**big** news](https://a.org/n)",
+   "html": "<p><a href=\"https://a.org/n\" target=\"_blank\" rel=\"noopener nofollow\"><strong>big</strong> news</a></p>",
+   "plain": "<p><a href=\"https://a.org/n\" target=\"_blank\" rel=\"noopener nofollow\"><strong>big</strong> news</a></p>"
+  },
+  {
+   "name": "html is text",
+   "input": "<script>alert('x')</script> & \"q\"",
+   "html": "<p>&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt; &amp; &quot;q&quot;</p>",
+   "plain": "<p>&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt; &amp; &quot;q&quot;</p>"
+  },
+  {
+   "name": "mention",
+   "input": "thanks @X1QZ3N and @x1abc, mail me@X1WATT",
+   "html": "<p>thanks <span class=\"at\">@X1QZ3N</span> and @x1abc, mail me@X1WATT</p>",
+   "plain": "<p>thanks @X1QZ3N and @x1abc, mail me@X1WATT</p>"
+  },
+  {
+   "name": "image ref",
+   "input": "![the feed point](nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg)",
+   "html": "<p><img src=\"nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg\" alt=\"the feed point\"></p>",
+   "plain": "<p>![the feed point](nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg)</p>"
+  },
+  {
+   "name": "file ref",
+   "input": "[notes](nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.pdf)",
+   "html": "<p><a data-ref=\"nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.pdf\">notes</a></p>",
+   "plain": "<p>notes</p>"
+  },
+  {
+   "name": "image with a non-ref target stays text",
+   "input": "![x](https://a.org/p.png)",
+   "html": "<p>!<a href=\"https://a.org/p.png\" target=\"_blank\" rel=\"noopener nofollow\">x</a></p>",
+   "plain": "<p>!<a href=\"https://a.org/p.png\" target=\"_blank\" rel=\"noopener nofollow\">x</a></p>"
+  },
+  {
+   "name": "heading levels",
+   "input": "# One ## Two ### Three #### four",
+   "html": "<h3>One</h3><h4>Two</h4><h5>Three</h5><p>#### four</p>",
+   "plain": "<h3>One</h3><h4>Two</h4><h5>Three</h5><p>#### four</p>"
+  },
+  {
+   "name": "lists",
+   "input": "- one * two + three 1. first 2) second",
+   "html": "<ul><li>one</li><li>two</li><li>three</li></ul><ol><li>first</li><li>second</li></ol>",
+   "plain": "<ul><li>one</li><li>two</li><li>three</li></ul><ol><li>first</li><li>second</li></ol>"
+  },
+  {
+   "name": "list kind change splits",
+   "input": "- a 1. b",
+   "html": "<ul><li>a</li></ul><ol><li>b</li></ol>",
+   "plain": "<ul><li>a</li></ul><ol><li>b</li></ol>"
+  },
+  {
+   "name": "quote",
+   "input": "> said **this** > and that after",
+   "html": "<blockquote>said <strong>this</strong><br>and that</blockquote><p>after</p>",
+   "plain": "<blockquote>said <strong>this</strong><br>and that</blockquote><p>after</p>"
+  },
+  {
+   "name": "rule",
+   "input": "above --- below",
+   "html": "<p>above</p><hr><p>below</p>",
+   "plain": "<p>above</p><hr><p>below</p>"
+  },
+  {
+   "name": "line and paragraph breaks",
+   "input": "line one   line two para two",
+   "html": "<p>line one<br>line two</p><p>para two</p>",
+   "plain": "<p>line one<br>line two</p><p>para two</p>"
+  },
+  {
+   "name": "newlines read as breaks",
+   "input": "a\nb\n\nc",
+   "html": "<p>a<br>b</p><p>c</p>",
+   "plain": "<p>a<br>b</p><p>c</p>"
+  },
+  {
+   "name": "spec example",
+   "input": "## The dipole Rebuilt and **measured** at last. ![the feed point](nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg)",
+   "html": "<h4>The dipole</h4><p>Rebuilt and <strong>measured</strong> at last.</p><p><img src=\"nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg\" alt=\"the feed point\"></p>",
+   "plain": "<h4>The dipole</h4><p>Rebuilt and <strong>measured</strong> at last.</p><p>![the feed point](nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg)</p>"
+  }
+ ]
+}

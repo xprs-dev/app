@@ -1438,15 +1438,13 @@ tap is routed by `sourceId` in `launcher_page._openHeroItem`.
 
 ## Formatted text and tappable links (XPRS.md 4.11)
 
-- **One reader, in core:** `package:xprs_core/src/util/xprs_md.dart` (exported
-  by `xprs_core`; `lib/util/xprs_md.dart` is a shim). `xprsMdToHtml(text,
-  XprsMdHtml(img:, file:, mention:))` for HTML, `parseXprsMd(text)` for styled
-  spans (bold/italic/strike/code, `url`, `ref`+`image`, `mention`),
-  `xprsMdHasMarkup`, `xprsMdToWire` / `xprsMdFromWire` for a composer. Never
-  write another Markdown regex: the server, the app and the web chat must
-  read a post the same way. The web chat's `portal/page/xprs_md.js` is its JS
-  twin; both pass `core/test/xprs_md_vectors.json` (change a reader only with
-  those answers, then regenerate the page copies).
+- **`lib/util/xprs_md.dart`**: the ONE Dart reader for the Flutter app
+  (Android, desktop). `parseXprsMd(text)` -> blocks of styled spans
+  (bold/italic/strike/code, `url`, `ref`+`image`, `mention`), `xprsMdToHtml`,
+  `xprsMdHasMarkup` (keep a plain `Text` for plain words), `xprsMdToWire` /
+  `xprsMdFromWire` for a composer. Never write another Markdown regex in
+  Dart; cases in `test/xprs_md_cases.json`. (The web portal's JavaScript has
+  its own reader in `portal/page/xprs_md.js` and stays independent.)
 - **`XprsMdText`** (`lib/wapp/geoui/widgets/xprs_md_text.dart`): draws those
   spans as one `Text.rich` (shrink-wraps in a bubble, `maxLines` for a card
   preview); links tap through `onLink` or **`openExternalLink(url)`**

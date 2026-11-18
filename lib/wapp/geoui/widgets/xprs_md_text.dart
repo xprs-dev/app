@@ -1,4 +1,4 @@
-// Draws formatted text (XPRS.md 4.11, read by core xprs_md.dart) as ONE
+// Draws formatted text (XPRS.md 4.11, read by lib/util/xprs_md.dart) as ONE
 // Text.rich, so it shrink-wraps inside a chat bubble's IntrinsicWidth like the
 // plain Text it replaces. Links (written [words](https://...) or bare) open in
 // the system browser on tap; everything else is styling.
@@ -9,7 +9,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:xprs_core/src/util/xprs_md.dart';
+import '../../../util/xprs_md.dart';
 
 /// Open an http(s) link outside the app. False when nothing could open it.
 Future<bool> openExternalLink(String url) async {

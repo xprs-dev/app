@@ -39,7 +39,7 @@ import 'geoui/avatar_image.dart';
 import '../editor/code_editor_field.dart';
 import 'geoui/widgets/route_field.dart';
 import 'geoui/widgets/xprs_md_text.dart';
-import 'package:xprs_core/src/util/xprs_md.dart' show xprsMdHasMarkup;
+import '../util/xprs_md.dart' show xprsMdHasMarkup;
 import 'geoui/widgets/log_view_field.dart';
 import 'geoui/widgets/stats_grid_field.dart';
 import 'geoui/widgets/chat_palette.dart';
