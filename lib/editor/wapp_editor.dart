@@ -675,7 +675,7 @@ extension _WappEditor on _WappPageState {
   /// The Compiler add-on (`tools.xprs.compiler`): the AI that edits wapps
   /// and the compiler a phone lacks. Optional and not shipped with the app,
   /// so the editor only opens it, on the wapp being edited, when it is
-  /// installed, and says where to get it when not.
+  /// installed. It is an ordinary wapp, installed and shared like any other.
   static const compilerWappId = 'tools.xprs.compiler';
 
   Future<void> _openCompilerAi() async {

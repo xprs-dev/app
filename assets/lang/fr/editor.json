@@ -117,6 +117,6 @@
   "editor.tab.app": "App",
   "editor.tab.tests": "Tests",
   "editor.ai.open": "Modifier avec l'IA",
-  "editor.ai.missing": "Installez le module Compiler depuis la boutique pour modifier avec l'IA.",
+  "editor.ai.missing": "Modifier avec l'IA demande le module Compiler. Installez-le comme n'importe quelle wapp.",
   "editor.ui.add_block": "Ajouter un bloc"
 }
