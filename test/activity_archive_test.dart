@@ -4,6 +4,7 @@ import 'package:xprs/profile/profile_storage_fs.dart';
 import 'package:xprs/wapp/geoui/activity_archive.dart';
 import 'package:xprs/wapp/geoui/widgets/activity_feed.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xprs_core/src/storage/store_db.dart';
 
 void main() {
 
@@ -37,6 +38,77 @@ void main() {
         dir.deleteSync(recursive: true);
       } catch (_) {}
     }
+  });
+
+  group('one XPRS post, one row (one author and ts, XPRS.md 7.6)', () {
+    const t = 1795022699000;
+    Map<String, dynamic> copy(String mid, String text, {bool deleted = false}) => {
+          'mid': mid,
+          'from': 'X1WATT',
+          'text': deleted ? '' : text,
+          if (deleted) 'deleted': true,
+          't': t,
+          'source': 'xprs',
+        };
+
+    test('a second identifier for the same post is not kept', () {
+      final dir = Directory.systemTemp.createTempSync('activity_xprs_');
+      dirs.add(dir);
+      final a = archive(dir, 'one.zx');
+      a.add(copy('aa0001', 'you should see the link'));
+      a.add(copy('bb0002', 'you should seethe link'));
+      final rows = a.recent().where((r) => r['from'] == 'X1WATT').toList();
+      expect(rows, hasLength(1));
+      expect(rows.single['mid'], 'aa0001');
+      a.close();
+    });
+
+    test('copies kept by older builds merge on open; a withdrawal wins', () {
+      final dir = Directory.systemTemp.createTempSync('activity_merge_');
+      dirs.add(dir);
+      final a = archive(dir, 'merge.zx');
+      a.add(copy('aa0001', 'you should see the link'));
+      a.revise('aa0001', '', deleted: true, by: 'X1WATT');
+      a.close();
+      // What an older build left behind: the same post under two more ids.
+      final db = openStoreDb('${dir.path}/merge.zx');
+      for (final (mid, text) in [
+        ('bb0002', 'you should seethe link'),
+        ('cc0003', 'you should see the link'),
+      ]) {
+        db.execute(
+            "INSERT INTO activity(t,dir,from_call,text,kind,mid,parent,source) "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            [t, 'in', 'X1WATT', text, 'msg', mid, '', 'xprs']);
+      }
+      // And a different post of the same author, which stays.
+      db.execute(
+          "INSERT INTO activity(t,dir,from_call,text,kind,mid,parent,source) "
+          "VALUES(?,?,?,?,?,?,?,?)",
+          [t + 60000, 'in', 'X1WATT', 'another post', 'msg', 'dd0004', '', 'xprs']);
+      db.dispose();
+      final rows = a.recent().where((r) => r['from'] == 'X1WATT').toList();
+      expect(rows.map((r) => r['mid']), unorderedEquals(['aa0001', 'dd0004']),
+          reason: 'the deleted copy stands for the post');
+      a.close();
+    });
+
+    test('without a withdrawal the longest text (spaces kept) stays', () {
+      final dir = Directory.systemTemp.createTempSync('activity_long_');
+      dirs.add(dir);
+      final a = archive(dir, 'long.zx');
+      a.add(copy('bb0002', 'you should seethe link'));
+      a.close();
+      final db = openStoreDb('${dir.path}/long.zx');
+      db.execute(
+          "INSERT INTO activity(t,dir,from_call,text,kind,mid,parent,source) "
+          "VALUES(?,?,?,?,?,?,?,?)",
+          [t, 'in', 'X1WATT', 'you should see the link', 'msg', 'cc0003', '', 'xprs']);
+      db.dispose();
+      final rows = a.recent().where((r) => r['from'] == 'X1WATT').toList();
+      expect(rows.single['text'], 'you should see the link');
+      a.close();
+    });
   });
 
   test('legacy migration routes by provenance and exact follow key', () {

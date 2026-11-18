@@ -2103,6 +2103,40 @@ class _WappPageState extends State<WappPage>
                       (e['from'] ?? '').toString() == from,
                 );
               }
+              // XPRS.md 7.6: one author and ts is one post, whatever identifier
+              // it came under (the packet as sent, the same packet rebuilt from
+              // its parts, a copy heard again). The row already shown stands;
+              // a withdrawal of another copy withdraws it.
+              if (fieldName == 'activity' &&
+                  !dup &&
+                  ActivityArchive.isXprsMid(mid)) {
+                Map<String, dynamic>? twin;
+                for (final e in buf) {
+                  final em = (e['mid'] ?? '').toString();
+                  if (em != mid &&
+                      ActivityArchive.isXprsMid(em) &&
+                      '${e['from']}' == '${row['from']}' &&
+                      '${e['t']}' == '${row['t']}') {
+                    twin = e;
+                    break;
+                  }
+                }
+                if (twin != null) {
+                  if (row['deleted'] == true && twin['deleted'] != true) {
+                    twin
+                      ..['text'] = ''
+                      ..['deleted'] = true
+                      ..['edited'] = false
+                      ..['kind'] = 'msg:deleted';
+                    _activityArchive?.revise(twin['mid'].toString(), '',
+                        deleted: true,
+                        by: '${row['from'] ?? ''}'.toUpperCase());
+                    _activityRev.value++;
+                  }
+                  changed = true;
+                  continue;
+                }
+              }
               // XPRS.md 7.8: the same post again, now corrected or withdrawn.
               // A post never held is not drawn as a deleted one (there was no
               // place for it); one held has its words replaced and says so.
