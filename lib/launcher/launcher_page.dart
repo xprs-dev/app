@@ -59,7 +59,14 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
     ProfileService.instance.activeProfileNotifier.addListener(
       _onProfileChanged,
     );
+    // A wapp installed while another page is on top (the Install wapp's
+    // "Install a file...", the editor's own install) is known at once: its
+    // tile, and what it provides to the functionality registry, which the
+    // editor asks for "wapp.build" and "wapp.edit".
+    _installedSub = EventBus().on<WappLoadedEvent>((_) => _scanArchive());
   }
+
+  EventSubscription<WappLoadedEvent>? _installedSub;
 
   // The launcher stays MOUNTED under every pushed wapp page, so "am I built?"
   // says nothing about whether anyone can see me. RouteAware is what actually
@@ -88,6 +95,7 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
   void dispose() {
     // RouteAware subscriptions leak across hot reload if this is skipped.
     launcherRouteObserver.unsubscribe(this);
+    _installedSub?.cancel();
     LauncherVisibility.instance.setRouteOnTop(false);
     ProfileService.instance.activeProfileNotifier.removeListener(
       _onProfileChanged,
