@@ -63,10 +63,12 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
     // "Install a file...", the editor's own install) is known at once: its
     // tile, and what it provides to the functionality registry, which the
     // editor asks for "wapp.build" and "wapp.edit".
-    _installedSub = EventBus().on<WappLoadedEvent>((_) => _scanArchive());
+    // WappInstalledEvent, not WappLoadedEvent: that one fires on every page
+    // open, and a rescan of every installed wapp per open is waste.
+    _installedSub = EventBus().on<WappInstalledEvent>((_) => _scanArchive());
   }
 
-  EventSubscription<WappLoadedEvent>? _installedSub;
+  EventSubscription<WappInstalledEvent>? _installedSub;
 
   // The launcher stays MOUNTED under every pushed wapp page, so "am I built?"
   // says nothing about whether anyone can see me. RouteAware is what actually

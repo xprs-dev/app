@@ -1048,7 +1048,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
       fieldName: name,
       label: label,
       tip: tip,
-      hint: field.getString('hint') ?? 'Message…',
+      hint: _t(field.getString('hint')) ?? 'Message…',
       messages: messages,
       onSend: (text) {
         widget.bindings.setValue('${name}_input', text);
@@ -1072,8 +1072,8 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
         ? raw.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()
         : const <Map<String, dynamic>>[];
     final wantSearch = field.getBool('search') ?? false;
-    final hint = field.getString('search-hint') ??
-        field.getString('hint') ??
+    final hint = _t(field.getString('search-hint')) ??
+        _t(field.getString('hint')) ??
         tr('geoui.search.callsign');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

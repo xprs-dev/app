@@ -7901,7 +7901,9 @@ class _WappPageState extends State<WappPage>
   /// at the bottom). Used for screens that are just a `$type:"chat"` field.
   Widget _buildChatFeedScreen(GeoUiBlock chat) {
     final name = chat.name ?? 'activity';
-    final hint = chat.getString('hint') ?? 'Message…';
+    // A wapp's `@key` hint in its own language, like every other label.
+    final rawHint = chat.getString('hint');
+    final hint = rawHint == null ? 'Message…' : _i18n.resolve(rawHint);
     // The Activity feed gets a Twitter-style layout (compose on top, centered
     // post stream) and renders from the PERSISTED archive, so posts received in
     // the background (app closed) appear alongside live ones.

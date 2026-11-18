@@ -302,9 +302,11 @@ class WappInstallerService {
       wappVersion: version,
     );
 
-    // Nudge the launcher to rescan. WappLoadedEvent is the signal
-    // LauncherPage already subscribes to for other rescan triggers.
+    // WappInstalledEvent makes the launcher rescan (its tiles and the
+    // functionality registry); WappLoadedEvent stays for what bridges it
+    // to the wapps (system.wapp.loaded).
     EventBus().fire(WappLoadedEvent(wappId: id, wappName: title));
+    EventBus().fire(WappInstalledEvent(wappId: id));
 
     return InstallResult.success(id);
   }
@@ -581,6 +583,7 @@ class WappInstallerService {
       wappVersion: version,
     );
     EventBus().fire(WappLoadedEvent(wappId: id, wappName: title));
+    EventBus().fire(WappInstalledEvent(wappId: id));
     return InstallResult.success(id);
   }
 
