@@ -107,28 +107,8 @@ class _IwiAppState extends State<IwiApp> {
       // Lets the hero feed know when the launcher is actually on screen, so its
       // timers can stop while a wapp page covers it. See LauncherVisibility.
       navigatorObservers: [launcherRouteObserver],
-      // Material 3's default seed is purple; override to blue so
-      // the launcher, buttons and accents land on a cooler palette
-      // that matches the XPRS brand.
-      //
-      // The background is true black, not M3's dark surface: the launcher is
-      // mostly full-bleed imagery over empty space, and on OLED the empty space
-      // should cost nothing to light. `surface` stays a hair above black so
-      // cards, the all-apps sheet and the module bars still read as lifted
-      // rather than dissolving into the background.
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: Colors.black,
-        canvasColor: Colors.black,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF3F6CFF),
-          brightness: Brightness.dark,
-        ).copyWith(
-          surface: const Color(0xFF0C0C0F),
-          surfaceContainerLowest: Colors.black,
-        ),
-      ),
+      // Plain black and white (app_theme.dart).
+      theme: xprsTheme(),
       // The NotificationLayer is installed via `builder`, not `home:`,
       // so it sits ABOVE the Navigator. That way its stacking overlay
       // renders on top of whatever route is currently visible — the

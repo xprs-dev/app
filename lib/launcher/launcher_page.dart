@@ -296,6 +296,11 @@ class _LauncherPageState extends State<LauncherPage> with RouteAware {
   /// intent if the wapp has since been uninstalled and reinstalled elsewhere.
   Future<void> _openHeroItem(HeroItem item) async {
     if (item.id.isEmpty) return;
+    if (item.sourceId == kHeroSourceArchiver) {
+      await Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => const ArchiverPage()));
+      return;
+    }
 
     if (item.isNostr) {
       final manifest = _wappForIntent(item.intent ?? 'social');

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../event_bus.dart';
+import 'archiver_hero_source.dart';
 import 'hero_inbox.dart';
 import 'hero_item.dart';
 import 'hero_ranker.dart';
@@ -45,7 +46,9 @@ class HeroFeedService {
   /// straight to the 5-minute cadence on a fresh install, so the first real
   /// post could sit unshown for minutes after the relays had already sent it.
   bool get hasNoRealContent =>
-      items.value.every((i) => i.sourceId == kHeroSourceWelcome);
+      items.value.every((i) =>
+          i.sourceId == kHeroSourceWelcome ||
+          i.sourceId == kHeroSourceArchiver);
 
   void register(HeroSource source) {
     if (_sources.any((s) => s.id == source.id)) return;
@@ -89,13 +92,21 @@ class HeroFeedService {
     }
     if (serial != _serial) return; // a newer refresh already won
 
-    final ranked = rankHero(
+    final ranked = List<HeroItem>.of(rankHero(
       gathered,
       follows: RnsService.instance.follows.asSet,
       limit: limit,
       now: DateTime.now(),
-    );
+    ));
     _lastRefresh = DateTime.now();
+    // The Archiver card is pinned at the second slot rather than ranked
+    // (see ArchiverHeroCard): posts keep the first, the card is never lost.
+    try {
+      final card = ArchiverHeroCard.card();
+      if (card != null) ranked.insert(ranked.isEmpty ? 0 : 1, card);
+    } catch (_) {
+      // never blank the hero over it
+    }
 
     // Skip the notifier when nothing actually changed: the carousel is a
     // PageView and rebuilding it mid-swipe for an unchanged like count would

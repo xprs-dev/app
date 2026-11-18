@@ -19,9 +19,11 @@ import 'package:xprs_core/src/services/xprs/xprs_names.dart';
 import '../services/i18n/core_i18n.dart';
 import '../services/preferences_service.dart';
 import '../services/xprs/archiver_settings.dart';
+import '../services/xprs/archiver_stats.dart';
 import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_history_server.dart';
 import '../services/xprs/xprs_station_policy.dart';
+import 'archiver_charts.dart';
 
 class ArchiverPage extends StatefulWidget {
   const ArchiverPage({super.key});
@@ -42,6 +44,8 @@ class _ArchiverPageState extends State<ArchiverPage> {
   final _dial = TextEditingController();
   final _search = TextEditingController();
   List<Map<String, Object>> _found = const [];
+  List<ArchiverDay> _days = const [];
+  int _cared = 0;
 
   PreferencesService? get _prefs => PreferencesService.instanceSync;
 
@@ -49,6 +53,8 @@ class _ArchiverPageState extends State<ArchiverPage> {
   void initState() {
     super.initState();
     _dial.text = _prefs?.xprsDial ?? '';
+    // Today's row is current when the page opens, not up to an hour old.
+    ArchiverStats.instance.sample();
     _refresh();
     // Foreground-only, once a minute: the counts move slowly and nobody is
     // looking once the page is closed (docs/performance.md 6.5).
@@ -102,6 +108,8 @@ class _ArchiverPageState extends State<ArchiverPage> {
       );
       _files = _decode(NodeRoleApi.instance.archiveStatusJson());
       _dir = _decode(NodeRoleApi.instance.statusJson());
+      _days = ArchiverStats.instance.days;
+      _cared = archive.caredFor();
     });
   }
 
@@ -226,6 +234,259 @@ class _ArchiverPageState extends State<ArchiverPage> {
             DropdownMenuItem<T>(value: o.$1, child: Text(o.$2)),
         ],
       ),
+    );
+  }
+
+
+  // ── impact ────────────────────────────────────────────────────────────────
+
+  static String _size(num bytes) {
+    final b = bytes.toDouble();
+    if (b >= 1 << 30) return '${(b / (1 << 30)).toStringAsFixed(1)} GB';
+    if (b >= 1 << 20) return '${(b / (1 << 20)).toStringAsFixed(1)} MB';
+    if (b >= 1024) return '${(b / 1024).round()} KB';
+    return '${b.round()} B';
+  }
+
+  static String _dayLabel(String d) {
+    // yyyy-mm-dd -> d/m
+    if (d.length != 10) return d;
+    return '${int.parse(d.substring(8))}/${int.parse(d.substring(5, 7))}';
+  }
+
+  /// The last [n] calendar days, oldest first, a zero row for a day the app
+  /// did not run (so the axis is time, not "days we have").
+  List<ArchiverDay> _lastDays(int n) {
+    final byDay = {for (final d in _days) d.d: d};
+    final today = DateTime.now();
+    return [
+      for (var i = n - 1; i >= 0; i--)
+        byDay[ArchiverStats.dayOf(today.subtract(Duration(days: i)))] ??
+            ArchiverDay(ArchiverStats.dayOf(today.subtract(Duration(days: i)))),
+    ];
+  }
+
+  Widget _plain(BuildContext context, String title, Widget child,
+      {String? help}) =>
+      _section(context, title, [
+        Padding(padding: const EdgeInsets.all(16), child: child),
+      ], help: help);
+
+  Widget _bigNumber(BuildContext context, String value, String label) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(value,
+            style: tt.displaySmall?.copyWith(
+                fontWeight: FontWeight.w700, color: cs.onSurface)),
+        Text(label, style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+      ],
+    );
+  }
+
+  Widget _impactTab(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final a = _arch;
+    final rec = a['records'] is Map ? a['records'] as Map : const {};
+    final public = a['public'] == true;
+    final cared = _cared;
+    final d14 = _lastDays(14);
+    final d30 = _lastDays(30);
+    final answered30 = d30.fold<int>(0, (s, d) => s + d.ans);
+    final mail30 = d30.fold<int>(0, (s, d) => s + d.mail);
+    final answeredAll = _days.fold<int>(0, (s, d) => s + d.ans + d.mail);
+    final bytes = XprsArchive.instance.spoolBytes;
+    final total = (rec['total'] as num?)?.toInt() ?? 0;
+    final storage = [
+      for (final d in d30)
+        if (d.bytes > 0) ChartPoint(_dayLabel(d.d), d.bytes.toDouble()),
+    ];
+    final reqSpark = [
+      for (final v in (_files['reqSpark'] as List? ?? const [])) v as num,
+    ];
+    final qSpark = [
+      for (final v in (_dir['querySpark'] as List? ?? const [])) v as num,
+    ];
+    final milestones = <(String, int, int)>[
+      (tr('archiver.impact.m.answers', {'n': '100'}), answeredAll, 100),
+      (tr('archiver.impact.m.answers', {'n': '1 000'}), answeredAll, 1000),
+      (tr('archiver.impact.m.packets', {'n': '10 000'}), total, 10000),
+      (tr('archiver.impact.m.storage', {'n': '100 MB'}), bytes, 100 << 20),
+      (tr('archiver.impact.m.storage', {'n': '1 GB'}), bytes, 1 << 30),
+      (tr('archiver.impact.m.cared', {'n': '10'}), cared, 10),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        if (!public)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: cs.outline),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    const Icon(Icons.volunteer_activism_outlined, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(tr('archiver.impact.invite.title'),
+                          style: tt.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700)),
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text(tr('archiver.impact.invite.body'),
+                      style: tt.bodyMedium
+                          ?.copyWith(color: cs.onSurfaceVariant)),
+                  const SizedBox(height: 14),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.public),
+                    label: Text(tr('archiver.impact.invite.go')),
+                    onPressed: () => _apply({'public': true}),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        _plain(
+          context,
+          tr('archiver.impact.title'),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _bigNumber(context, '$cared',
+                  tr('archiver.impact.cared', {'n': '$cared'})),
+              const SizedBox(height: 16),
+              Row(children: [
+                Expanded(
+                    child: _bigNumberSmall(context, '$answered30',
+                        tr('archiver.impact.answered30'))),
+                Expanded(
+                    child: _bigNumberSmall(
+                        context, '$mail30', tr('archiver.impact.mail30'))),
+                Expanded(
+                    child: _bigNumberSmall(
+                        context, _size(bytes), tr('archiver.impact.held'))),
+              ]),
+            ],
+          ),
+          help: tr('archiver.impact.help'),
+        ),
+        _plain(
+          context,
+          tr('archiver.impact.chart.answers'),
+          BarChart(
+            points: [
+              for (final d in d14)
+                ChartPoint(_dayLabel(d.d), (d.ans + d.mail).toDouble()),
+            ],
+            idle: tr('archiver.impact.chart.answers.idle',
+                {'n': '${d14.fold<int>(0, (s, d) => s + d.ans + d.mail)}'}),
+            format: (p) => tr('archiver.impact.chart.answers.point',
+                {'day': p.label, 'n': '${p.value.round()}'}),
+          ),
+          help: tr('archiver.impact.chart.answers.help'),
+        ),
+        _plain(
+          context,
+          tr('archiver.impact.chart.storage'),
+          storage.length < 2
+              ? Text(tr('archiver.impact.collecting'),
+                  style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant))
+              : LineChart(
+                  points: storage,
+                  idle: tr('archiver.impact.chart.storage.idle',
+                      {'size': _size(storage.last.value)}),
+                  format: (p) => '${p.label}: ${_size(p.value)}',
+                ),
+        ),
+        _plain(
+          context,
+          tr('archiver.impact.split'),
+          SplitBar(parts: [
+            (tr('archiver.tile.mine'), ((rec['own'] as num?) ?? 0).toDouble(),
+                _compact(rec['own'])),
+            (tr('archiver.tile.followed'),
+                ((rec['followed'] as num?) ?? 0).toDouble(),
+                _compact(rec['followed'])),
+            (tr('archiver.tile.strangers'),
+                ((rec['stranger'] as num?) ?? 0).toDouble(),
+                _compact(rec['stranger'])),
+          ]),
+          help: tr('archiver.impact.split.help'),
+        ),
+        _plain(
+          context,
+          tr('archiver.impact.day'),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  tr('archiver.impact.day.files', {
+                    'n': '${reqSpark.fold<num>(0, (s, v) => s + v).round()}'
+                  }),
+                  style: tt.bodyMedium),
+              const SizedBox(height: 6),
+              Sparkline(values: reqSpark),
+              const SizedBox(height: 14),
+              Text(
+                  tr('archiver.impact.day.queries', {
+                    'n': '${qSpark.fold<num>(0, (s, v) => s + v).round()}'
+                  }),
+                  style: tt.bodyMedium),
+              const SizedBox(height: 6),
+              Sparkline(values: qSpark),
+            ],
+          ),
+        ),
+        _section(context, tr('archiver.impact.milestones'), [
+          for (var i = 0; i < milestones.length; i++) ...[
+            if (i > 0) const Divider(height: 1),
+            _milestone(context, milestones[i]),
+          ],
+        ]),
+      ],
+    );
+  }
+
+  Widget _bigNumberSmall(BuildContext context, String value, String label) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(value,
+            style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+        Text(label, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+      ],
+    );
+  }
+
+  Widget _milestone(BuildContext context, (String, int, int) m) {
+    final cs = Theme.of(context).colorScheme;
+    final done = m.$2 >= m.$3;
+    return ListTile(
+      leading: Icon(done ? Icons.emoji_events : Icons.emoji_events_outlined,
+          color: done ? cs.onSurface : cs.outline),
+      title: Text(m.$1,
+          style: TextStyle(color: done ? cs.onSurface : cs.onSurfaceVariant)),
+      subtitle: done
+          ? Text(tr('archiver.impact.m.done'))
+          : Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: LinearProgressIndicator(
+                  value: (m.$2 / m.$3).clamp(0.0, 1.0).toDouble()),
+            ),
     );
   }
 
@@ -506,13 +767,14 @@ class _ArchiverPageState extends State<ArchiverPage> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: Text(tr('launcher.drawer.archiver')),
           bottom: TabBar(
             isScrollable: true,
             tabs: [
+              Tab(icon: const Icon(Icons.insights_outlined), text: tr('archiver.tab.impact')),
               Tab(icon: const Icon(Icons.inventory_2_outlined), text: tr('archiver.tab.archive')),
               Tab(icon: const Icon(Icons.folder_shared_outlined), text: tr('archiver.tab.files')),
               Tab(icon: const Icon(Icons.hub_outlined), text: tr('archiver.tab.directory')),
@@ -523,6 +785,7 @@ class _ArchiverPageState extends State<ArchiverPage> {
         body: RefreshIndicator(
           onRefresh: () async => _refresh(),
           child: TabBarView(children: [
+            _impactTab(context),
             _archiveTab(context),
             _filesTab(context),
             _directoryTab(context),

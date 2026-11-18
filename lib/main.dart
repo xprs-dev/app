@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'models/monitored_task.dart';
 import 'editor/editor_install.dart';
 import 'wapp/host_event_bridge.dart';
+import 'services/xprs/archiver_stats.dart';
 import 'services/media/media_fetch.dart';
 import 'wapp/shared_media_fetch.dart';
 import 'wapp/native/media_capability.dart';
@@ -290,6 +291,16 @@ Future<void> _boot() async {
         'page of the app. Idempotent; keeps a user-modified copy.',
     mode: BootStart.sequential,
     init: retireArchiverWapp,
+  );
+  BootOrchestrator.instance.register(
+    id: 'archiver-stats',
+    name: 'Archiver daily log',
+    description:
+        'Samples what this device gave the network (asks answered, mail '
+        'handed over, archive size) once an hour into one row per day, for '
+        'the Archiver page charts and the home card. Starts a timer only.',
+    mode: BootStart.parallel,
+    init: () async => ArchiverStats.instance.start(),
   );
   BootOrchestrator.instance.register(
     id: 'migrate-aprs-to-chat',

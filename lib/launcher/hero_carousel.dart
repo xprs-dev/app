@@ -241,8 +241,13 @@ class _HeroCard extends StatelessWidget {
   const _HeroCard({required this.item, this.onTap});
 
   /// Stable per-post accent so a card keeps its colour across refreshes.
-  Color get _accent =>
-      _heroAccents[item.id.hashCode.abs() % _heroAccents.length];
+  Color get _accent => _isArchiver
+      ? const Color(0xFF5A5A5A)
+      : _heroAccents[item.id.hashCode.abs() % _heroAccents.length];
+
+  /// The app's own Archiver card (ArchiverHeroCard): graphite, an archive
+  /// mark, and no "when" chip, since it is not news.
+  bool get _isArchiver => item.sourceId == kHeroSourceArchiver;
 
   /// Backdrop for a post that brings no picture (and the placeholder under one
   /// that is still loading).
@@ -385,6 +390,13 @@ class _HeroCard extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               _backdrop(),
+              if (_isArchiver)
+                const Positioned(
+                  right: -12,
+                  bottom: -18,
+                  child: Icon(Icons.inventory_2_outlined,
+                      size: 150, color: Color(0x1FFFFFFF)),
+                ),
               _topScrim(),
               _scrim(),
               // Chips and text in ONE column, not two Positioned layers that
@@ -417,6 +429,7 @@ class _HeroCard extends StatelessWidget {
                         border: _accent.withValues(alpha: 0.55),
                       ),
                     ),
+                    if (!_isArchiver) ...[
                     const SizedBox(width: 8),
                     // When it happened. The hero shows posts that may be hours
                     // old (a quiet timeline is backfilled from the local
@@ -440,6 +453,7 @@ class _HeroCard extends StatelessWidget {
                               ],
                             ),
                           ),
+                    ],
                         ],
                       ),
                       const SizedBox(height: 12),

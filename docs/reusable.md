@@ -1409,3 +1409,29 @@ its data and its autostart, keeps a user-modified copy, and leaves the name in
 the offered sets so seeding never reinstalls it. Register a one-line wrapper
 as a sequential boot task (see `retireArchiverWapp` in `lib/main.dart`).
 Removing the `.wapp` from `assets/wapps/` alone only stops new installs.
+
+## The black-and-white theme (`lib/launcher/app_theme.dart`)
+
+`xprsTheme()` is the app's only ThemeData and `xprsMonochrome` its scheme,
+written by hand (no seed, so no lavender tints): white accent, grey
+containers, red only for errors. Painters and charts take their inks from
+`Theme.of(context).colorScheme`, never from their own greys.
+
+## Charts without a library (`lib/launcher/archiver_charts.dart`)
+
+`BarChart`, `LineChart`, `Sparkline` and `SplitBar`: CustomPainter charts in
+theme inks, one series each, with touch-to-read values. Reuse them for any
+small stats panel before adding a chart dependency.
+
+## A daily log of live counters (`lib/services/xprs/archiver_stats.dart`)
+
+`foldArchiverReading` turns in-memory counters (which reset at every launch)
+into one persisted row per day: deltas within a process, a reset counted
+whole, snapshots overwritten, at most N rows. Copy the pattern for any other
+"last 14 days" view; sample hourly, never per event.
+
+## A pinned app card on the home hero (`lib/services/hero/archiver_hero_source.dart`)
+
+`ArchiverHeroCard.card()` is inserted at the hero's second slot after
+ranking (HeroFeedService.refresh) instead of joining the ranked pool; the
+tap is routed by `sourceId` in `launcher_page._openHeroItem`.
