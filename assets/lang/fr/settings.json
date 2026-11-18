@@ -77,5 +77,15 @@
   "settings.device.no_owner": "Indicatif de l'appareil",
   "settings.device.archiver": "Archiveur public sous cet indicatif",
   "settings.device.copy": "Copier",
-  "settings.device.copied": "Copié"
+  "settings.device.copied": "Copié",
+  "settings.device.change": "Changer d'indicatif",
+  "settings.device.change.title": "Indicatif de la station",
+  "settings.device.change.now": "Actuel : {callsign}",
+  "settings.device.change.back": "Revenir au précédent",
+  "settings.device.change.another": "Un autre",
+  "settings.device.change.note": "Un indicatif vient de sa clé : c'est donc une nouvelle clé de station. Les autres apprennent le nouvel indicatif par les annonces de cette station ; ceux qui ont noté l'ancien à la main ont besoin du nouveau.",
+  "settings.device.change.saved": "Cette station est maintenant {callsign}",
+  "settings.device.change.restart": "Quittez et rouvrez XPRS pour que toutes les connexions utilisent le nouvel indicatif.",
+  "settings.device.change.later": "Plus tard",
+  "settings.device.change.failed": "L'indicatif n'a pas pu être changé."
 }

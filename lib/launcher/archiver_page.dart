@@ -15,6 +15,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:xprs_core/src/services/social/node_role_api.dart';
 import 'package:xprs_core/src/services/xprs/xprs_names.dart';
+import 'package:xprs_core/src/profile/device_identity.dart';
 
 import '../services/i18n/core_i18n.dart';
 import '../services/preferences_service.dart';
@@ -24,6 +25,7 @@ import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_history_server.dart';
 import '../services/xprs/xprs_station_policy.dart';
 import 'archiver_charts.dart';
+import 'device_identity_card.dart';
 
 class ArchiverPage extends StatefulWidget {
   const ArchiverPage({super.key});
@@ -510,6 +512,18 @@ class _ArchiverPageState extends State<ArchiverPage> {
             subtitle: Text(announced.isEmpty
                 ? tr('archiver.archive.announces_nothing')
                 : tr('archiver.archive.announces', {'claim': announced})),
+            // The archiver's name is the device's X3: pick another here, as
+            // in Settings > This device.
+            trailing: DeviceIdentity.instance.ready &&
+                    !DeviceIdentity.instance.isProfileKey
+                ? IconButton(
+                    tooltip: tr('settings.device.change'),
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: () async {
+                      if (await changeStationCallsign(context)) _refresh();
+                    },
+                  )
+                : null,
           ),
           const Divider(height: 1),
           _tiles(context, [

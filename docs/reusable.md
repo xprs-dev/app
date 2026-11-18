@@ -1451,3 +1451,11 @@ tap is routed by `sourceId` in `launcher_page._openHeroItem`.
   (http/https only, system browser via url_launcher). Used by the chat bubble
   (`_bodyText`), the cards' description (forum posts) and the release notes
   on the Updates page.
+
+## Picking the station callsign (`changeStationCallsign`, device_identity_card.dart)
+
+`changeStationCallsign(context)` is the whole flow: a dialog with a fresh X3
+candidate, "another one" (autorenew), "back" (undo through the ones shown) and
+Save, then an offer to exit so every connection uses it. `DeviceIdentityCard`
+(Settings > This device) and the Archiver page's station row both call it.
+Reuse it wherever the station's name is shown with an edit action.

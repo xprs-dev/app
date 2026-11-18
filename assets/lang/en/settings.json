@@ -77,5 +77,15 @@
   "settings.device.no_owner": "Device callsign",
   "settings.device.archiver": "Public archiver under this callsign",
   "settings.device.copy": "Copy",
-  "settings.device.copied": "Copied"
+  "settings.device.copied": "Copied",
+  "settings.device.change": "Change callsign",
+  "settings.device.change.title": "Station callsign",
+  "settings.device.change.now": "Now: {callsign}",
+  "settings.device.change.back": "Back to the previous one",
+  "settings.device.change.another": "Another one",
+  "settings.device.change.note": "A callsign comes from its key, so this is a new station key. Others learn the new callsign from this station's announcements; anyone who saved the old one by hand needs the new one.",
+  "settings.device.change.saved": "This station is now {callsign}",
+  "settings.device.change.restart": "Exit and reopen XPRS so every connection uses the new callsign.",
+  "settings.device.change.later": "Later",
+  "settings.device.change.failed": "The callsign could not be changed."
 }

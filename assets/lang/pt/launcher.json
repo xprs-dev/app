@@ -10,7 +10,7 @@
   "launcher.drawer.hardware": "Hardware",
   "launcher.drawer.groups": "Grupos",
   "launcher.drawer.archiver": "Arquivador",
-  "launcher.drawer.exit": "Sair do XPRS",
+  "launcher.drawer.exit": "Sair",
   "launcher.exit.title": "Sair do XPRS?",
   "launcher.exit.body": "O XPRS para por completo: nenhuma mensagem é recebida nem retransmitida para outros até você abri-lo de novo.",
   "launcher.exit.confirm": "Sair",

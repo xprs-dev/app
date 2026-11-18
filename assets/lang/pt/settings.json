@@ -77,5 +77,15 @@
   "settings.device.no_owner": "Indicativo do dispositivo",
   "settings.device.archiver": "Arquivador público com este indicativo",
   "settings.device.copy": "Copiar",
-  "settings.device.copied": "Copiado"
+  "settings.device.copied": "Copiado",
+  "settings.device.change": "Mudar indicativo",
+  "settings.device.change.title": "Indicativo da estação",
+  "settings.device.change.now": "Atual: {callsign}",
+  "settings.device.change.back": "Voltar ao anterior",
+  "settings.device.change.another": "Outro",
+  "settings.device.change.note": "Um indicativo vem da sua chave, por isso esta é uma chave de estação nova. Os outros ficam a saber o indicativo novo pelos anúncios desta estação; quem guardou o antigo à mão precisa do novo.",
+  "settings.device.change.saved": "Esta estação é agora {callsign}",
+  "settings.device.change.restart": "Saia e volte a abrir o XPRS para que todas as ligações usem o indicativo novo.",
+  "settings.device.change.later": "Mais tarde",
+  "settings.device.change.failed": "Não foi possível mudar o indicativo."
 }

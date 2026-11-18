@@ -77,5 +77,15 @@
   "settings.device.no_owner": "Geräte-Rufzeichen",
   "settings.device.archiver": "Öffentlicher Archivierer unter diesem Rufzeichen",
   "settings.device.copy": "Kopieren",
-  "settings.device.copied": "Kopiert"
+  "settings.device.copied": "Kopiert",
+  "settings.device.change": "Rufzeichen ändern",
+  "settings.device.change.title": "Rufzeichen der Station",
+  "settings.device.change.now": "Jetzt: {callsign}",
+  "settings.device.change.back": "Zurück zum vorherigen",
+  "settings.device.change.another": "Ein anderes",
+  "settings.device.change.note": "Ein Rufzeichen kommt aus seinem Schlüssel, das ist also ein neuer Stationsschlüssel. Andere erfahren das neue Rufzeichen aus den Ankündigungen dieser Station; wer das alte von Hand gespeichert hat, braucht das neue.",
+  "settings.device.change.saved": "Diese Station heißt jetzt {callsign}",
+  "settings.device.change.restart": "Beende XPRS und öffne es wieder, damit jede Verbindung das neue Rufzeichen nutzt.",
+  "settings.device.change.later": "Später",
+  "settings.device.change.failed": "Das Rufzeichen konnte nicht geändert werden."
 }
