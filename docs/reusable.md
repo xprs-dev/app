@@ -1459,3 +1459,12 @@ candidate, "another one" (autorenew), "back" (undo through the ones shown) and
 Save, then an offer to exit so every connection uses it. `DeviceIdentityCard`
 (Settings > This device) and the Archiver page's station row both call it.
 Reuse it wherever the station's name is shown with an edit action.
+
+## One XPRS post, one row (`ActivityArchive.isXprsMid`)
+
+An XPRS post is one (author, ts) (XPRS.md 7.6) but can arrive under several
+6-hex identifiers (as sent, rebuilt from parts, heard again). Anything that
+lists posts matches on author + time for XPRS ids (`ActivityArchive.isXprsMid`)
+and on the id alone for NOSTR (64 hex). The archive merges old copies on open
+(`_mergeXprsCopies`); the feed buffer in wapp_page.dart skips a twin and lets
+a withdrawal of any copy withdraw the post shown.
