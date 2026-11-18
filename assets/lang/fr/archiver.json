@@ -101,8 +101,8 @@
   "archiver.impact.m.storage": "{n} gardés pour le réseau",
   "archiver.impact.m.cared": "{n} stations comptent sur vous",
   "archiver.impact.m.done": "Atteint",
-  "archiver.hero.invite.title": "Faites de votre téléphone un archiveur",
-  "archiver.hero.invite.body": "Il garde déjà {n} paquets. Prêtez un peu de stockage et gardez les messages de ceux dont le téléphone est éteint.",
+  "archiver.hero.invite.title": "Devenez archiveur",
+  "archiver.hero.invite.body": "Il garde déjà {n} paquets. Prêtez du stockage et gardez le courrier de ceux dont le téléphone est éteint.",
   "archiver.hero.thanks.title": "Merci, archiveur",
   "archiver.hero.thanks.body": "Cette semaine, votre appareil a servi {n} demandes et garde {size} pour le réseau."
 }

@@ -101,8 +101,8 @@
   "archiver.impact.m.storage": "{n} guardados para a rede",
   "archiver.impact.m.cared": "{n} estações contam consigo",
   "archiver.impact.m.done": "Alcançado",
-  "archiver.hero.invite.title": "Faça do seu telemóvel um arquivador",
-  "archiver.hero.invite.body": "Já guarda {n} pacotes. Empreste algum armazenamento e guarde mensagens de quem tem o telemóvel desligado.",
+  "archiver.hero.invite.title": "Torne-se arquivador",
+  "archiver.hero.invite.body": "Já guarda {n} pacotes. Empreste armazenamento e guarde o correio de quem tem o telemóvel desligado.",
   "archiver.hero.thanks.title": "Obrigado, arquivador",
   "archiver.hero.thanks.body": "Esta semana o seu dispositivo atendeu {n} pedidos e guarda {size} para a rede."
 }

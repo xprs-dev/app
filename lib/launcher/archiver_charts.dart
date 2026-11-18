@@ -307,12 +307,18 @@ class SplitBar extends StatelessWidget {
             height: 14,
             child: Row(children: [
               if (total <= 0)
-                Expanded(child: ColoredBox(color: cs.surfaceContainerHighest)),
+                Expanded(
+                    child: ColoredBox(
+                        color: cs.surfaceContainerHighest,
+                        child: const SizedBox(height: 14))),
               for (var i = 0; i < parts.length; i++)
                 if (total > 0 && parts[i].$2 > 0) ...[
                   Expanded(
                     flex: math.max(1, (parts[i].$2 / total * 1000).round()),
-                    child: ColoredBox(color: _inks[i % _inks.length]),
+                    // A childless ColoredBox is zero-sized: give it the bar's height.
+                    child: ColoredBox(
+                        color: _inks[i % _inks.length],
+                        child: const SizedBox(height: 14)),
                   ),
                   if (i < parts.length - 1) const SizedBox(width: 2),
                 ],
