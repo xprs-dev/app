@@ -177,6 +177,16 @@ the alternatives if F-Droid objects). Keep the define on every store build.
   columns; `tool/fdroid_recipe.py` now wraps them.) This is the rule of
   section 7 that was missed: **a change to the build steps goes into
   fdroiddata in the same breath as into the template.**
+* **2026-11-18: v1.11.0 by hand.** F-Droid still offered 1.6.0: the
+  `checkupdates` bot, busy with other apps the same day, had not touched this
+  recipe since 2026-11-07, so tags v1.7.0 to v1.10.0 were never added. v1.11.0
+  went in as fdroiddata !57991 (https://gitlab.com/fdroid/fdroiddata/-/merge_requests/57991,
+  branch `xprs-1.11.0` on the fork, committed through the GitLab commits API
+  with `start_project` = fdroiddata so no clone was needed): the three blocks
+  rendered by `tool/fdroid_recipe.py`, appended, and `CurrentVersion` moved;
+  nothing else in the file differed. release.yml run 44276405988 had passed
+  `verify_apks` for all three. Until the bot is understood, assume each
+  release needs such an MR.
 
 ## 3. Following the review
 
