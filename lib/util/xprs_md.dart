@@ -95,10 +95,10 @@ final _code = RegExp(r'`([^`]+)`');
 final _image = RegExp(r'!\[([^\]]*)\]\(([^)\s]+)\)');
 final _link = RegExp(r'\[([^\]]+)\]\(([^)\s]+)\)');
 final _httpOnly = RegExp(r'''^https?://[^\s<>"']+$''', caseSensitive: false);
-// A bare link never ends in sentence punctuation or an emphasis mark, so
-// "**https://a.org**" is a bold link.
+// A bare link never ends in punctuation or an emphasis mark (GFM autolinks:
+// ? ! . , : * _ ~ are left out), so "**https://a.org**" is a bold link.
 final _bare = RegExp(
-    r'''\bhttps?://[^\s<>"'()\u0000]+[^\s<>"'().,;:!?*~\u0000]''',
+    r'''\bhttps?://[^\s<>"'()\u0000]+[^\s<>"'().,;:!?*_~\u0000]''',
     caseSensitive: false);
 final _mention = RegExp(
     r'(^|[^A-Za-z0-9_@])@([A-Z0-9][A-Z0-9/-]*[A-Z0-9]|[A-Z0-9])(?![a-z])');

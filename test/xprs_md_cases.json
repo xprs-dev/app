@@ -149,6 +149,18 @@
    "input": "## The dipole Rebuilt and **measured** at last. ![the feed point](nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg)",
    "html": "<h4>The dipole</h4><p>Rebuilt and <strong>measured</strong> at last.</p><p><img src=\"nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg\" alt=\"the feed point\"></p>",
    "plain": "<h4>The dipole</h4><p>Rebuilt and <strong>measured</strong> at last.</p><p>![the feed point](nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg)</p>"
+  },
+  {
+   "name": "link ending in an emphasis mark",
+   "input": "see https://a.org/x_ and ~~https://b.org~~, ok?",
+   "html": "<p>see <a href=\"https://a.org/x\" target=\"_blank\" rel=\"noopener nofollow\">https://a.org/x</a>_ and <del><a href=\"https://b.org\" target=\"_blank\" rel=\"noopener nofollow\">https://b.org</a></del>, ok?</p>",
+   "plain": "<p>see <a href=\"https://a.org/x\" target=\"_blank\" rel=\"noopener nofollow\">https://a.org/x</a>_ and <del><a href=\"https://b.org\" target=\"_blank\" rel=\"noopener nofollow\">https://b.org</a></del>, ok?</p>"
+  },
+  {
+   "name": "link inside parentheses",
+   "input": "(https://a.org/p) works",
+   "html": "<p>(<a href=\"https://a.org/p\" target=\"_blank\" rel=\"noopener nofollow\">https://a.org/p</a>) works</p>",
+   "plain": "<p>(<a href=\"https://a.org/p\" target=\"_blank\" rel=\"noopener nofollow\">https://a.org/p</a>) works</p>"
   }
  ]
 }
