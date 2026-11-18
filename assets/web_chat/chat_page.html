@@ -1044,6 +1044,9 @@ function nostrOpen(peerHex,x,cb){
   }catch(e){cb(null);}}
 
 // ---- formatted text (XPRS.md 4.11): a small markdown, read safely --------
+// Twin of core lib/src/util/xprs_md.dart (the server's and the app's reader):
+// change both together; test/md_vectors_test.js and core's
+// test/xprs_md_test.dart hold them to core test/xprs_md_vectors.json.
 // A t:blog's m: is markdown: paragraphs, headings, emphasis, lists, quotes,
 // links and images. The wire carries no newline (one packet per line, parts
 // joined by a space), so a line break travels as U+2028 and a paragraph break
@@ -1091,7 +1094,9 @@ function mdInline(s,opts){
     if(isRef(u))return put(opts.file?opts.file(u,label):mdEsc(label));
     if(!/^https?:\/\/[^\s<>"']+$/i.test(u))return all;
     return put('<a href="'+mdEsc(u)+'" target="_blank" rel="noopener nofollow">'+mdEmph(mdEsc(label))+'</a>');});
-  s=s.replace(/\bhttps?:\/\/[^\s<>"'()\u0000]+[^\s<>"'().,;:!?\u0000]/gi,function(u){
+  /* A bare link never ends in sentence punctuation or an emphasis mark, so
+   * "**https://a.org**" is a bold link (the same rule as core xprs_md.dart). */
+  s=s.replace(/\bhttps?:\/\/[^\s<>"'()\u0000]+[^\s<>"'().,;:!?*~\u0000]/gi,function(u){
     return put('<a href="'+mdEsc(u)+'" target="_blank" rel="noopener nofollow">'+mdEsc(u)+'</a>');});
   if(opts.mention)s=s.replace(/(^|[^A-Za-z0-9_@])@([A-Z0-9][A-Z0-9\/-]*[A-Z0-9]|[A-Z0-9])(?![a-z])/g,
     function(_,pre,c){return pre+put(opts.mention(c));});

@@ -1,4 +1,4 @@
-// Draws formatted text (XPRS.md 4.11, parsed by lib/util/xprs_md.dart) as ONE
+// Draws formatted text (XPRS.md 4.11, read by core xprs_md.dart) as ONE
 // Text.rich, so it shrink-wraps inside a chat bubble's IntrinsicWidth like the
 // plain Text it replaces. Links (written [words](https://...) or bare) open in
 // the system browser on tap; everything else is styling.
@@ -9,7 +9,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../util/xprs_md.dart';
+import 'package:xprs_core/src/util/xprs_md.dart';
 
 /// Open an http(s) link outside the app. False when nothing could open it.
 Future<bool> openExternalLink(String url) async {
@@ -33,6 +33,7 @@ class XprsMdText extends StatefulWidget {
     required this.mutedColor,
     this.codeBackground = const Color(0x33FFFFFF),
     this.onLink,
+    this.maxLines,
   });
 
   final String text;
@@ -45,6 +46,9 @@ class XprsMdText extends StatefulWidget {
 
   /// What a tapped link does; null opens it with [openExternalLink].
   final void Function(String url)? onLink;
+
+  /// Cut after this many lines with an ellipsis (a card's preview); null: all.
+  final int? maxLines;
 
   @override
   State<XprsMdText> createState() => _XprsMdTextState();
@@ -106,6 +110,9 @@ class _XprsMdTextState extends State<XprsMdText> {
       final tap = TapGestureRecognizer()..onTap = () => _open(url);
       _taps.add(tap);
       return TextSpan(text: s.text, style: st, recognizer: tap);
+    }
+    if (s.mention != null) {
+      st = st.copyWith(fontWeight: FontWeight.w600);
     }
     if (s.ref != null) {
       st = st.copyWith(color: widget.mutedColor, fontStyle: FontStyle.italic);
@@ -175,6 +182,8 @@ class _XprsMdTextState extends State<XprsMdText> {
           }
       }
     }
-    return Text.rich(TextSpan(style: base, children: children));
+    return Text.rich(TextSpan(style: base, children: children),
+        maxLines: widget.maxLines,
+        overflow: widget.maxLines == null ? null : TextOverflow.ellipsis);
   }
 }

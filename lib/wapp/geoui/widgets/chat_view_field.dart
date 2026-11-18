@@ -20,7 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../../util/media_ref.dart';
-import '../../../util/xprs_md.dart';
+import 'package:xprs_core/src/util/xprs_md.dart';
 import '../../shared_media_fetch.dart';
 import '../../../services/i18n/core_i18n.dart';
 import '../conversation_store.dart';

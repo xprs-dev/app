@@ -38,6 +38,8 @@ import 'geoui/geoui_renderer.dart';
 import 'geoui/avatar_image.dart';
 import '../editor/code_editor_field.dart';
 import 'geoui/widgets/route_field.dart';
+import 'geoui/widgets/xprs_md_text.dart';
+import 'package:xprs_core/src/util/xprs_md.dart' show xprsMdHasMarkup;
 import 'geoui/widgets/log_view_field.dart';
 import 'geoui/widgets/stats_grid_field.dart';
 import 'geoui/widgets/chat_palette.dart';
@@ -9816,12 +9818,21 @@ class _WappPageState extends State<WappPage>
                   if (desc.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        desc,
-                        style: const TextStyle(fontSize: 13),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      // A forum post's body is formatted text (XPRS.md
+                      // 4.11): links tap, emphasis shows.
+                      child: xprsMdHasMarkup(desc)
+                          ? XprsMdText(desc,
+                              style: TextStyle(
+                                  fontSize: 13, color: cs.onSurface),
+                              linkColor: cs.primary,
+                              mutedColor: cs.onSurfaceVariant,
+                              maxLines: 3)
+                          : Text(
+                              desc,
+                              style: const TextStyle(fontSize: 13),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                     ),
                   if (chips.isNotEmpty)
                     Padding(

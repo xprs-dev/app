@@ -1438,13 +1438,17 @@ tap is routed by `sourceId` in `launcher_page._openHeroItem`.
 
 ## Formatted text and tappable links (XPRS.md 4.11)
 
-- **`lib/util/xprs_md.dart`**: `parseXprsMd(text)` -> blocks (heading, list,
-  quote, rule, paragraph) of `XprsMdSpan`s (bold/italic/strike/code, `url`,
-  `ref`); `parseXprsMdInline(line)`; `xprsMdHasMarkup(text)` to keep a plain
-  `Text` for plain words. Pure Dart, a port of webchat `page/xprs_md.js`, so
-  the app and the browser read a message alike. Use it for any `t:blog` or
-  message body instead of a new regex.
+- **One reader, in core:** `package:xprs_core/src/util/xprs_md.dart` (exported
+  by `xprs_core`; `lib/util/xprs_md.dart` is a shim). `xprsMdToHtml(text,
+  XprsMdHtml(img:, file:, mention:))` for HTML, `parseXprsMd(text)` for styled
+  spans (bold/italic/strike/code, `url`, `ref`+`image`, `mention`),
+  `xprsMdHasMarkup`, `xprsMdToWire` / `xprsMdFromWire` for a composer. Never
+  write another Markdown regex: the server, the app and the web chat must
+  read a post the same way. The web chat's `portal/page/xprs_md.js` is its JS
+  twin; both pass `core/test/xprs_md_vectors.json` (change a reader only with
+  those answers, then regenerate the page copies).
 - **`XprsMdText`** (`lib/wapp/geoui/widgets/xprs_md_text.dart`): draws those
-  blocks as one `Text.rich` (shrink-wraps in a bubble's `IntrinsicWidth`),
-  links tap through `onLink` or **`openExternalLink(url)`** (http/https only,
-  system browser via url_launcher). The chat bubble uses it via `_bodyText`.
+  spans as one `Text.rich` (shrink-wraps in a bubble, `maxLines` for a card
+  preview); links tap through `onLink` or **`openExternalLink(url)`**
+  (http/https only, system browser via url_launcher). Used by the chat bubble
+  (`_bodyText`) and the cards' description (forum posts).
