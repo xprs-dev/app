@@ -677,9 +677,9 @@ extension _WappEditor on _WappPageState {
   /// so the editor only opens it, on the wapp being edited, when it is
   /// installed. It is an ordinary wapp, installed and shared like any other.
   Future<void> _openCompilerAi() async {
-    final dir = await compilerAddonDir();
+    final editor = provider(wappEditFunctionality);
     if (!mounted) return;
-    if (dir == null) {
+    if (editor == null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(tr('editor.ai.missing'))));
@@ -693,9 +693,8 @@ extension _WappEditor on _WappPageState {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => WappPage(
-          wappDir: dir,
-          // arch-ignore: no-raw-ui-string the add-on's proper name
-          title: 'Compiler',
+          wappDir: editor.dirPath,
+          title: editor.title,
           editWappDir: target,
         ),
       ),

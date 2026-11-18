@@ -1,27 +1,33 @@
-// The Compiler add-on (`tools.xprs.compiler`): an ordinary wapp, installed
-// and shared like any other and never part of the app, that brings what a
-// phone lacks to build a wapp (clang and wasm-ld compiled to WASI, with the C
-// library and the XPRS hal headers) and the AI that edits wapps.
+// What the editor asks of an installed wapp, by capability and never by
+// name (architecture.md, no-wapp-special-case-in-host): any wapp may provide
+// these, the Compiler add-on is just the first that does.
 //
-// Package layout the host relies on:
-//   media/llvm.wasm   YoWASP's LLVM multi-call module (clang, wasm-ld),
-//                     WASI preview 1
-//   media/usr/        its resources (include/, lib/, share/) plus the XPRS
-//                     headers in usr/xprs/ (xprs_wasm_hal.h, ...)
+//   wapp.build  a toolchain the host runs to build a wapp where there is no
+//               wasi-sdk (a phone). Package layout the host relies on:
+//                 media/llvm.wasm   clang + wasm-ld as one WASI preview 1
+//                                   module, chosen by argv[0]
+//                 media/usr/        its headers and libraries, plus the XPRS
+//                                   headers in usr/xprs/ and the test runner
+//                                   in usr/xprs/sdk/
+//   wapp.edit   a screen that edits a wapp, opened on it; it is told which
+//               with {"type":"host.edit_target","dir":...}
+//
+// Providers come from the launcher's scan of the installed wapps
+// (FunctionalityRegistry), so nothing here reads the disk.
 
-import 'package:xprs_core/src/profile/storage_paths.dart';
+import '../launcher/launcher.dart' show WappManifest;
+import '../wapp/functionality_registry.dart';
 
-const compilerAddonId = 'tools.xprs.compiler';
+const wappBuildFunctionality = 'wapp.build';
+const wappEditFunctionality = 'wapp.edit';
 
-/// The installed add-on's package directory (absolute), or null.
-Future<String?> compilerAddonDir() async {
-  final installed = installedAppsStorage();
-  if (!await installed.directoryExists('')) return null;
-  for (final e in await installed.listDirectory('')) {
-    if (!e.isDirectory) continue;
-    final abs = installed.getAbsolutePath(e.path);
-    final m = await wappPackageStorage(abs).readJson('manifest.json');
-    if (m?['id'] == compilerAddonId) return abs;
+/// The first installed wapp providing [functionality], or null.
+WappManifest? provider(String functionality) {
+  for (final m in FunctionalityRegistry.instance.providersFor(functionality)) {
+    if (m.dirPath.isNotEmpty) return m;
   }
   return null;
 }
+
+/// Its package directory (absolute), or null.
+String? providerDir(String functionality) => provider(functionality)?.dirPath;

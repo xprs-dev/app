@@ -31,13 +31,13 @@ import '../profile/profile_storage.dart';
 import 'compiler_addon.dart';
 import 'wapp_compiler_service.dart';
 
-/// The outcome of one build: [code] 0 and [wasm] set when it linked.
+/// The outcome of one build: [code] 0 when it linked. The output is in the
+/// work folder; the caller reads it through its storage.
 class AddonBuild {
   final int code;
   final String log;
-  final Uint8List? wasm;
   final int ms;
-  const AddonBuild(this.code, this.log, this.wasm, this.ms);
+  const AddonBuild(this.code, this.log, this.ms);
 }
 
 class AddonClang {
@@ -58,17 +58,16 @@ class AddonClang {
     required List<String> sources,
     String out = 'output.wasm',
   }) async {
-    final dir = await compilerAddonDir();
+    final dir = providerDir(wappBuildFunctionality);
     if (dir == null) {
-      return const AddonBuild(
-          -1, 'The Compiler add-on is not installed.', null, 0);
+      return const AddonBuild(-1, 'No installed wapp provides wapp.build.', 0);
     }
     final wasm = '$dir/media/llvm.wasm';
     final usr = '$dir/media/usr';
     if (!await File(wasm).exists() || !await Directory(usr).exists()) {
       return const AddonBuild(
-          -1, 'The Compiler add-on is incomplete (media/llvm.wasm, media/usr).',
-          null, 0);
+          -1, 'The wapp.build provider is incomplete (media/llvm.wasm, media/usr).',
+          0);
     }
     final sw = Stopwatch()..start();
     final port = await _port();
@@ -90,13 +89,8 @@ class AddonClang {
     final res = await reply.first as Map;
     reply.close();
     _armIdle();
-    final code = res['code'] as int;
-    Uint8List? bytes;
-    if (code == 0) {
-      final f = File('$workDir/$out');
-      if (await f.exists()) bytes = await f.readAsBytes();
-    }
-    return AddonBuild(code, res['log'] as String, bytes, sw.elapsedMilliseconds);
+    return AddonBuild(
+        res['code'] as int, res['log'] as String, sw.elapsedMilliseconds);
   }
 
   Future<SendPort> _port() async {
@@ -133,8 +127,12 @@ Future<void> _workerMain(SendPort ready) async {
     try {
       final path = job['wasm'] as String;
       if (module == null || loaded != path) {
-        module = await compileWasmModule(await File(path).readAsBytes(),
-            config: const ModuleConfig());
+        // The runtime compiles only from bytes in memory (wasm_run has no
+        // compile-from-file), so the 74 MB module is read whole, once per
+        // worker, on this worker isolate, and released when compiled.
+        // arch-ignore: no-whole-file-read wasm_run compiles from bytes only; worker isolate, once per worker
+        final bytes = await File(path).readAsBytes();
+        module = await compileWasmModule(bytes, config: const ModuleConfig());
         loaded = path;
       }
       reply.send(await _driver(module, job['usr'] as String,
@@ -282,7 +280,7 @@ class AddonCompilerBackend implements CompilerBackend {
       ],
       sources: const ['source.c'],
     );
-    return _result(b);
+    return _result(b, await workStorage.readBytes('compile-tmp/output.wasm'));
   }
 
   @override
@@ -297,8 +295,8 @@ class AddonCompilerBackend implements CompilerBackend {
     final names = <String>[];
     for (var i = 0; i < testSources.length; i++) {
       final n = 'test_$i.c';
-      await workStorage.writeString(
-          'compile-tmp/$n', await File(testSources[i]).readAsString());
+      await File(testSources[i])
+          .copy(workStorage.getAbsolutePath('compile-tmp/$n'));
       names.add(n);
     }
     final b = await AddonClang.instance.build(
@@ -312,12 +310,15 @@ class AddonCompilerBackend implements CompilerBackend {
       sources: [...names, '/usr/xprs/sdk/wapp_test.c'],
       out: 'tests.wasm',
     );
-    return _result(b);
+    return _result(b, await workStorage.readBytes('compile-tmp/tests.wasm'));
   }
 
-  static CompileResult _result(AddonBuild b) => b.code == 0 && b.wasm != null
+  /// [wasm] is the output read back through the work storage, the same path
+  /// the desktop backend takes (a wapp's module is tens of kilobytes).
+  static CompileResult _result(AddonBuild b, Uint8List? wasm) =>
+      b.code == 0 && wasm != null && wasm.isNotEmpty
       ? CompileResult(
-          ok: true, wasmBytes: b.wasm, stderr: b.log, durationMs: b.ms)
+          ok: true, wasmBytes: wasm, stderr: b.log, durationMs: b.ms)
       : CompileResult(
           ok: false,
           stderr: b.log,

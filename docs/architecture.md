@@ -823,6 +823,32 @@ disk.
 
 ---
 
+### Building and editing a wapp on the device (2026-11-18)
+
+A phone has no compiler and the app ships none. What it lacks comes from an
+ordinary wapp, installed and passed on like any other, found **by capability,
+never by name** (`lib/editor/compiler_addon.dart`):
+
+- `wapp.build`: a toolchain the host runs. The provider's package holds
+  `media/llvm.wasm` (the C compiler and linker as one WASI preview 1 module)
+  and `media/usr/` (C headers and libraries, the XPRS headers in
+  `usr/xprs/`). The editor's backend (`wapp_compiler_backend_addon_io.dart`)
+  runs it on one worker isolate, never the UI's: WASI cannot start a process,
+  so it asks the compiler driver for its plan (`-###`) and runs each step in
+  the same module. The worker keeps the module between builds and exits after
+  five idle minutes. A desktop with wasi-sdk keeps using it.
+- `wapp.edit`: a screen opened on the wapp being edited; the page tells it
+  which with `{"type":"host.edit_target","dir":...}`, and the editor reads the
+  files again when it closes.
+
+The first provider of both is the Compiler add-on (`apps/compiler`), whose
+`wapp.edit` is an AI. It reaches the AI service through
+`hal_http_request2` (headers, byte body, timeout), which is **answered, not
+polled**: the host delivers `{"type":"http.done","id":N}` when the response is
+in, so the add-on declares no clock (performance.md 8.4). It proposes whole
+files; nothing is written before the person applies, and Undo restores them.
+Building stays in the editor.
+
 ### Storage: zx stores (2026-11-09)
 
 Every database is a **zx store** (`*.zx`: zxdb, pure Dart, the same engine on

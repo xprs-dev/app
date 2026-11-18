@@ -1468,3 +1468,19 @@ lists posts matches on author + time for XPRS ids (`ActivityArchive.isXprsMid`)
 and on the id alone for NOSTR (64 hex). The archive merges old copies on open
 (`_mergeXprsCopies`); the feed buffer in wapp_page.dart skips a twin and lets
 a withdrawal of any copy withdraw the post shown.
+
+## Finding a wapp by what it provides (`lib/editor/compiler_addon.dart`)
+
+`provider(functionality)` returns the first installed wapp whose manifest lists
+the functionality under `provides.functionalities`, from the launcher's scan
+(`FunctionalityRegistry`), so it reads no disk. Use it whenever host code needs
+"a wapp that can do X": never compare a wapp id or folder (architecture.md,
+`no-wapp-special-case-in-host`). `wapp.build` and `wapp.edit` are the first two.
+
+## Waking a wapp when its request is answered (`WappEngine._httpStart`)
+
+`hal_http_request2` hands the wapp `{"type":"http.done","id":N}` and calls
+`handleEvent` when the response is in, the same way the event broker wakes a
+subscriber. Any new asynchronous hal verb should do the same instead of letting
+the wapp poll from `module_tick`.
+

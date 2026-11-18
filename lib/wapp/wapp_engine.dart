@@ -541,7 +541,8 @@ class WappEngine {
   void _httpStart(_WappHttpState s, int method, Uri uri,
       {Map<String, String>? headers,
       List<int>? body,
-      required Duration timeout}) {
+      required Duration timeout,
+      int? wakeHandle}) {
     const names = ['GET', 'POST', 'PUT', 'DELETE'];
     final m = method >= 0 && method < names.length ? names[method] : 'GET';
     HttpTransport.shared
@@ -554,6 +555,14 @@ class WappEngine {
     }).catchError((Object _) {
       s.failed = true;
       s.done = true;
+    }).whenComplete(() {
+      // hal_http_request2 is answered, not polled: the wapp is handed
+      // {"type":"http.done","id":N} and woken, as the event broker wakes a
+      // subscriber, so it declares no clock to ask whether its answer came.
+      final h = wakeHandle;
+      if (h == null || !_loaded) return;
+      sendMessage('{"type":"http.done","id":$h}');
+      handleEvent();
     });
   }
 
@@ -2165,7 +2174,8 @@ class WappEngine {
         _httpStart(s, method, uri,
             headers: headers,
             body: bodyLen > 0 ? _readBytes(bodyPtr, bodyLen) : null,
-            timeout: Duration(milliseconds: ms));
+            timeout: Duration(milliseconds: ms),
+            wakeHandle: h);
         return h;
       },
       params: [
