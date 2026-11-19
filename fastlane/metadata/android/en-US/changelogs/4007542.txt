@@ -1,0 +1,4 @@
+Wapps compile on every device: a small C compiler now ships inside the app (444 KB), so the editor builds on a phone in under a second with nothing to install.
+Wapps can serve each other and answer later; the new AI wapp offers ai.chat to any wapp, with your own key and service.
+Uninstall a wapp you installed from a file, from its own menu.
+New folder on a group's menu and header.
