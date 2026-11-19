@@ -5176,10 +5176,13 @@ class _WappPageState extends State<WappPage>
     final at = open ?? _roomsBrowseId ?? '';
     final path = roomsPath(rows, at);
     final store = _convStore('conversations');
+    // A step is the group's own name: not its path (the steps before it say
+    // that) and not its callsign (the group's page does).
     String nameOf(Map<String, dynamic> r) {
       final id = '${r['id'] ?? ''}';
       final t = store.items[id]?.title ?? '';
-      return roomsLeaf(t.isNotEmpty ? t : '${r['name'] ?? id}');
+      return roomsLeaf(t.isNotEmpty ? t : '${r['name'] ?? id}')
+          .replaceFirst(RegExp(r'\s*\(X5[A-Z0-9]+\)$'), '');
     }
 
     if (path.isEmpty) {
@@ -5191,65 +5194,72 @@ class _WappPageState extends State<WappPage>
     final leafId = '${leaf['id'] ?? ''}';
     // A group's own conversation, opened from its list, is its "General".
     final general = open != null && roomsKids(rows, open).isNotEmpty;
-    const sep = Padding(
-      padding: EdgeInsets.symmetric(horizontal: 2),
-      child: Icon(Icons.chevron_right, size: 20, color: ChatPalette.secondary),
-    );
-    Widget step(String label, {VoidCallback? onTap, bool last = false}) {
+    void goTo(String id) => setState(() {
+          _roomsOpenId = null;
+          _roomsBrowseId = id;
+        });
+    // Every step with where its tap leads (null: this is where we are).
+    final all = <(String, String?)>[
+      for (var i = 0; i < path.length; i++)
+        (
+          nameOf(path[i]),
+          i == path.length - 1 && !general ? null : '${path[i]['id'] ?? ''}',
+        ),
+      if (general) (tr('geoui.rooms.general'), null),
+    ];
+    const sep = Icon(Icons.chevron_right, size: 20, color: ChatPalette.secondary);
+    Widget step(String label, String? to, {int flex = 1}) {
+      final last = to == null;
       final text = Text(
         label,
         maxLines: 1,
         softWrap: false,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: 18,
           fontWeight: last ? FontWeight.w600 : FontWeight.w400,
           color: last ? ChatPalette.text : ChatPalette.secondary,
         ),
       );
-      if (onTap == null) return text;
-      return InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          child: text,
-        ),
+      return Flexible(
+        flex: flex,
+        child: last
+            ? text
+            : InkWell(
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => goTo(to),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: text,
+                ),
+              ),
       );
     }
 
-    void goTo(String id) => setState(() {
-          _roomsOpenId = null;
-          _roomsBrowseId = id;
-        });
-    final steps = <Widget>[];
-    for (var i = 0; i < path.length; i++) {
-      final id = '${path[i]['id'] ?? ''}';
-      final isLast = i == path.length - 1 && !general;
-      if (i > 0) steps.add(sep);
-      steps.add(step(
-        nameOf(path[i]),
-        last: isLast,
-        onTap: isLast ? null : () => goTo(id),
-      ));
-    }
-    if (general) {
-      steps
-        ..add(sep)
-        ..add(step(tr('geoui.rooms.general'), last: true));
-    }
+    // A phone's bar holds two steps: where we are and the group it is in.
+    // Anything further up is one "…", which leads to the step it hides.
+    final shown = all.length > 2 ? all.sublist(all.length - 2) : all;
     return Row(
       children: [
         roomAvatar(leafId, '${leaf['name'] ?? leafId}', 34),
         const SizedBox(width: 8),
-        Expanded(
-          // The end of the path is where the person is: a long one scrolls,
-          // and starts out showing its end.
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            reverse: true,
-            child: Row(children: steps),
+        if (all.length > 2) ...[
+          InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => goTo(all[all.length - 3].$2 ?? leafId),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+              child: Text('…',
+                  style: TextStyle(fontSize: 18, color: ChatPalette.secondary)),
+            ),
           ),
-        ),
+          sep,
+        ],
+        for (var i = 0; i < shown.length; i++) ...[
+          if (i > 0) sep,
+          // Where we are keeps the room when both cannot fit.
+          step(shown[i].$1, shown[i].$2, flex: shown[i].$2 == null ? 3 : 2),
+        ],
       ],
     );
   }
@@ -5271,9 +5281,10 @@ class _WappPageState extends State<WappPage>
     }
 
     return [
-      // A folder is made INSIDE its group: on the group's list, and in a
-      // group that has none yet (where there is no list to make it on).
-      if (nests && (open == null || roomsKids(rows, at).isEmpty))
+      // A folder is made INSIDE its group. The group's list has its own
+      // "New folder" row; a group with none yet has no list, so the button
+      // is here.
+      if (nests && open != null && roomsKids(rows, at).isEmpty)
         IconButton(
           tooltip: tr('geoui.rooms.new_folder'),
           icon: const Icon(Icons.create_new_folder_outlined),
@@ -5645,9 +5656,10 @@ class _WappPageState extends State<WappPage>
           actions: _graphPanelTitle != null
               ? const [] // a graph panel owns the screen — no wapp options menu
               : roomsCrumbs
-              // In a room the bar is the room's: its buttons, and the wapp's
-              // menu. Search and the list's actions belong to the list.
-              ? [..._roomsBarActions(), _buildWappOptionsMenu()]
+              // In a room the bar is the room's: the path and its buttons.
+              // Search, the wapp's menu and the list's actions belong to the
+              // list, one step back.
+              ? _roomsBarActions()
               : [
                   ..._channelIndicators(),
                   // A menu screen that asks for it ("appbar": true) also gets a
