@@ -4454,6 +4454,8 @@ class WappEngine {
             'verified': r.verified,
             // 10.7.1: anyone reads a public group; a private one is sealed.
             'public': XprsGroupRead.instance.isPublic(c),
+            // 10.4.2: closed to new posts (its admin and moderators still post).
+            if (r.closed) 'closed': true,
             if (holds && r.offerRoles[me] == XprsRole.mod) 'offer': 'mod',
             if (tree[c] != null) 'parent': tree[c],
           });
@@ -4879,6 +4881,25 @@ class WappEngine {
         }
       },
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // hal_xprs_group_closed(group, on): close the group to new posts, or
+    // open it again (XPRS.md 10.4.2): `state:closed` / `state:open` under
+    // t:moderate, signed by the group (its admin) or by a moderator.
+    // hal_xprs_groups reports it as `closed`. 0 = announced, -1 = refused.
+    final halXprsGroupClosed = WasmFunction(
+      (int gPtr, int gLen, int on) {
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        if (g.isEmpty) return -1;
+        try {
+          return XprsGroupOps.setClosed(g, on != 0).ok ? 0 : -1;
+        } catch (e) {
+          LogService.instance.add('xprs: group state failed (${e.runtimeType})');
+          return -1;
+        }
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
     // hal_xprs_group_accept(group): this station takes up the membership it
@@ -5398,6 +5419,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_group_folder', halXprsGroupFolder),
       WasmImport('hal', 'xprs_group_picture', halXprsGroupPicture),
       WasmImport('hal', 'xprs_group_rename', halXprsGroupRename),
+      WasmImport('hal', 'xprs_group_closed', halXprsGroupClosed),
       WasmImport('hal', 'xprs_send', halXprsSend),
       WasmImport('hal', 'xprs_unlock', halXprsUnlock),
       WasmImport('hal', 'xprs_redact', halXprsRedact),

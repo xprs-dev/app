@@ -83,6 +83,10 @@ class ConversationItem {
   /// host only offers the menu entries; the wapp judges each act.
   bool mod = false;
 
+  /// The wapp says this station cannot write here now (a group closed to new
+  /// posts, XPRS.md 10.4.2): the room shows a note where the message box was.
+  bool noPost = false;
+
   /// Host wall-clock (ms) of the last real activity (message / pin / new
   /// unread) — the primary sort key so the most recently active conversations
   /// sit on top. 0 for legacy rows that predate this field; the list sort then
@@ -359,6 +363,8 @@ class ConversationStore {
     if (d.containsKey('muted')) it.muted = d['muted'] == true;
     // The row is stated whole each time, so absent means no authority.
     it.mod = d['mod'] == true;
+    // Likewise: absent means this station may write here.
+    it.noPost = d['nopost'] == true;
     if (d.containsKey('unread')) {
       final nv = (d['unread'] as num?)?.toInt() ?? it.unread;
       if (nv > it.unread) it.activityTs = _nowMs(); // new unread = activity

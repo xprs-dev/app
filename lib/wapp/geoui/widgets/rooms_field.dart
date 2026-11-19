@@ -1263,6 +1263,9 @@ class _RoomsFieldState extends State<RoomsField> {
                     onUnsend: widget.onUnsend,
                     onHistory: widget.onHistory,
                     canModerate: room?.mod ?? false,
+                    closedNote: (room?.noPost ?? false)
+                        ? tr('geoui.rooms.closed_note')
+                        : null,
                     privacyOn: widget.privacyOn,
                     onSenderTap: widget.onSenderTap,
                     onInfo: widget.onInfo,

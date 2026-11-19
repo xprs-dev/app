@@ -155,6 +155,10 @@ class ChatViewField extends StatefulWidget {
   final void Function(Map<String, dynamic> m)? onUnsend;
   final void Function(Map<String, dynamic> m)? onHistory;
   final bool canModerate;
+
+  /// Not null: this station cannot write here, and this is why. The note
+  /// stands where the message box would be.
+  final String? closedNote;
   final void Function(Map<String, dynamic> m)? onBlock;
 
   /// "Message <sender> directly" on someone else's bubble: the host opens (or
@@ -192,6 +196,7 @@ class ChatViewField extends StatefulWidget {
     this.onUnsend,
     this.onHistory,
     this.canModerate = false,
+    this.closedNote,
     this.onBlock,
     this.onDirectMessage,
     this.onItemTap,
@@ -1781,6 +1786,32 @@ class _ChatViewFieldState extends State<ChatViewField> {
   }
 
   Widget _composeBar(ColorScheme cs) {
+    final note = widget.closedNote;
+    if (note != null) {
+      return SafeArea(
+        top: false,
+        child: Container(
+          width: double.infinity,
+          color: ChatPalette.windowBg,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_outline,
+                  size: 18, color: ChatPalette.secondary),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  note,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: ChatPalette.secondary),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (_editing != null) {
       return Column(mainAxisSize: MainAxisSize.min, children: [
         _editBanner(cs),

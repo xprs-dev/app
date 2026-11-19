@@ -556,6 +556,16 @@ class FunctionalityRegistry {
           ReturnDef('int',
               'Bytes written, -1 when refused (not the admin, or too deep)')),
       EndpointDef(
+          'hal_xprs_group_closed',
+          'Close a group or a folder to new posts, or open it again: '
+          'state:closed / state:open under t:moderate (XPRS \u00a710.4.2). '
+          'Its admin and its moderators can, and still post while it is closed',
+          [
+            ParamDef('group', 'string', 'The group, "X5..." or "#X5..."'),
+            ParamDef('on', 'int', '1 closes it, 0 opens it'),
+          ],
+          ReturnDef('int', '0 announced, -1 refused')),
+      EndpointDef(
           'hal_xprs_group_rename',
           'Rename a closed group or a folder: the nick: of its own '
           't:identity (XPRS \u00a76.3.2, \u00a710.1), signed with the group '

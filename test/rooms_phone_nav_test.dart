@@ -112,6 +112,43 @@ void main() {
     expect(find.byTooltip('New folder'), findsNothing);
   });
 
+  testWidgets('a room closed to posts shows why, where the message box was',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 760);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final store = ConversationStore()
+      ..upsert({'id': '#X5CLUB', 'title': 'Club', 'nopost': true})
+      ..upsert({'id': '#X5OPEN', 'title': 'Open'});
+    Widget room(String open) => MaterialApp(
+          home: Scaffold(
+            body: RoomsField(
+              rooms: const [
+                {'id': '#X5CLUB', 'name': 'Club'},
+                {'id': '#X5OPEN', 'name': 'Open'},
+              ],
+              store: store,
+              openId: open,
+              hostHeader: true,
+              onOpenRoom: (_) {},
+              onSend: (_, _) {},
+              onNewRoom: (_) {},
+              onMembers: () {},
+            ),
+          ),
+        );
+    await tester.pumpWidget(room('#X5CLUB'));
+    await tester.pump();
+    expect(find.textContaining('only admins and moderators post'),
+        findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+
+    await tester.pumpWidget(room('#X5OPEN'));
+    await tester.pump();
+    expect(find.textContaining('only admins and moderators post'), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
   test('the tree reads as a path, and a folder by its own name', () {
     expect([for (final r in roomsPath(_rows, '#X5SOUP')) r['id']],
         ['#X5FAMI', '#X5RECI', '#X5SOUP']);

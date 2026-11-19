@@ -741,4 +741,71 @@ void main() {
       expect(m.rosterOf(g, nowMs: now).roles['X32DVA'], isNot(XprsRole.mod));
     });
   });
+
+  // XPRS.md 10.4.2: a group closed to new posts.
+  group('closed to new posts', () {
+    void join(String who, String at, {bool mod = false}) {
+      final gr = _act(g, at, 'grant:$who${mod ? ' role:mod' : ''}');
+      m.offer(gr, nowMs: now);
+      m.offer(
+          _accept(who, at, xprsIdentifier(gr), role: mod ? 'mod' : 'member'),
+          nowMs: now);
+    }
+
+    setUp(() {
+      join('X1RD89', '2026-08-08_10:00:00');
+      join('X32DVA', '2026-08-08_10:00:01', mod: true);
+    });
+
+    test('a group nobody closed is open', () {
+      expect(m.rosterOf(g, nowMs: now).closed, isFalse);
+      expect(m.mayPostNow(g, 'X1RD89', nowMs: now), isTrue);
+    });
+
+    test('closed: its admin and moderators post, a member does not', () {
+      m.offer(_act(g, '2026-08-09_12:00:00', 'state:closed'), nowMs: now);
+      expect(m.rosterOf(g, nowMs: now).closed, isTrue);
+      expect(m.mayPostNow(g, 'X1RD89', nowMs: now), isFalse);
+      expect(m.mayPostNow(g, 'X32DVA', nowMs: now), isTrue);
+      expect(m.mayPostNow(g, g, nowMs: now), isTrue);
+      expect(m.mayPost(g, 'X1RD89', nowMs: now), isTrue,
+          reason: 'closing removes nobody: they are still a member');
+    });
+
+    test('what was said before it closed stands, what came after does not', () {
+      m.offer(_act(g, '2026-08-09_12:00:00', 'state:closed'), nowMs: now);
+      expect(m.postStands(g, 'X1RD89', _ts('2026-08-09T11:59:00')), isTrue);
+      expect(m.postStands(g, 'X1RD89', _ts('2026-08-09T12:01:00')), isFalse);
+      expect(m.postStands(g, 'X32DVA', _ts('2026-08-09T12:01:00')), isTrue);
+    });
+
+    test('a moderator may open it again, and the newest act decides', () {
+      m.offer(_act(g, '2026-08-09_12:00:00', 'state:closed'), nowMs: now);
+      m.offer(_act('X32DVA', '2026-08-10_09:00:00', 'state:open'), nowMs: now);
+      expect(m.rosterOf(g, nowMs: now).closed, isFalse);
+      expect(m.mayPostNow(g, 'X1RD89', nowMs: now), isTrue);
+      // The stretch it was closed for stays closed.
+      expect(m.postStands(g, 'X1RD89', _ts('2026-08-09T18:00:00')), isFalse);
+      expect(m.postStands(g, 'X1RD89', _ts('2026-08-10T10:00:00')), isTrue);
+    });
+
+    test('a member cannot close a group, nor a stranger', () {
+      m.offer(_act('X1RD89', '2026-08-09_12:00:00', 'state:closed'),
+          nowMs: now);
+      _keyFor('X1NOBD');
+      m.offer(_act('X1NOBD', '2026-08-09_12:00:01', 'state:closed'),
+          nowMs: now);
+      expect(m.rosterOf(g, nowMs: now).closed, isFalse);
+    });
+
+    test('a device state on the act says nothing about the group', () {
+      m.offer(_act(g, '2026-08-09_12:00:00', 'state:locked'), nowMs: now);
+      expect(m.rosterOf(g, nowMs: now).closed, isFalse);
+    });
+
+    test('unverifiable fails open', () {
+      m.offer(_act(g, '2026-08-09_12:00:00', 'state:closed'), nowMs: now);
+      expect(m.mayPostNow(g, 'X1RD89', nowMs: now, haveKey: false), isTrue);
+    });
+  });
 }

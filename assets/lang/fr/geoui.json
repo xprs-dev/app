@@ -132,6 +132,7 @@
   "geoui.rooms.mute": "Couper les notifications",
   "geoui.rooms.new_folder": "Nouveau dossier",
   "geoui.rooms.general": "Général",
+  "geoui.rooms.closed_note": "Fermé : seuls les admins et modérateurs publient ici",
   "geoui.rooms.group_info": "Infos du groupe",
   "geoui.rooms.unmute": "Activer les notifications",
   "geoui.rooms.muted": "Notifications désactivées",

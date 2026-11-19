@@ -1544,3 +1544,13 @@ phone (`_roomsCrumbs`, `_roomsUp`, `_roomsBarActions`): the path is the title,
 its steps are buttons, and back goes up a level read off the tree. Any other
 nested list a wapp shows on a phone should use these rather than drawing a
 second header under the bar. `test/rooms_phone_nav_test.dart` is the contract.
+
+## A room this station cannot write in (`nopost`, `ChatViewField.closedNote`)
+
+A wapp that owns its conversations states `"nopost":true` on a room's row
+(`ui.convo.upsert`) when this station may read it but not write there; the
+rooms layout then shows a note where the message box was
+(`ChatViewField.closedNote`). Chat uses it for a group closed to new posts
+(XPRS.md 10.4.2; the core's `XprsGroups.mayPostNow` / `postStands` are the
+rule, `hal_xprs_group_closed` the act). Use the same flag for any read-only
+room rather than refusing the send after the person has typed.
