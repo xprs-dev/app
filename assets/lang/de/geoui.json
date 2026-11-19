@@ -130,6 +130,7 @@
   "geoui.rooms.archived": "Archiviert",
   "geoui.rooms.archive": "Chat archivieren",
   "geoui.rooms.mute": "Benachrichtigungen stummschalten",
+  "geoui.rooms.new_folder": "Neuer Ordner",
   "geoui.rooms.unmute": "Benachrichtigungen einschalten",
   "geoui.rooms.muted": "Benachrichtigungen aus",
   "geoui.rooms.delete": "Chat löschen",

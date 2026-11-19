@@ -1482,3 +1482,14 @@ the functionality under `provides.functionalities`, from the launcher's scan
 subscriber. Any new asynchronous hal verb should do the same instead of letting
 the wapp poll from `module_tick`.
 
+
+## Per-room permissions on the rail (`ui.rooms.set`)
+
+`RoomsField` (`lib/wapp/geoui/widgets/rooms_field.dart`) offers an action on a
+room only where the wapp's rail entry says this station may do it, and hands
+the room's id back as a command; the wapp still judges the act. `nest: true`
+offers "New folder" on the row menu and in the open room's header
+(`onNewRoom` → `rooms_new`, chat's `folder_ask`). The rail is restated whole on
+every change, so a flag there cannot go stale the way a row upsert's can. A
+new per-room action (pin, rename, ...) should be one more flag on the same
+entry, read through a helper like `_nests(id)`.

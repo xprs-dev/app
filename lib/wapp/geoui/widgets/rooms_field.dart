@@ -16,7 +16,8 @@ import 'chat_view_field.dart';
 /// members it is given, and reports taps back. NIP-72 / moderation semantics live
 /// in the wapp.
 ///
-/// Data in: `ui.rooms.set {rooms:[{id,name,icon,parent,depth,unread,selected}]}`
+/// Data in: `ui.rooms.set {rooms:[{id,name,icon,parent,depth,nest,unread,selected}]}`
+/// (`nest`: the wapp lets this station add a folder below that room)
 /// for the rail, the usual `ui.convo.*` for the open room's messages, and
 /// the header's people button, which asks the host to open the members panel.
 class RoomsField extends StatefulWidget {
@@ -31,6 +32,8 @@ class RoomsField extends StatefulWidget {
 
   final void Function(String id) onOpenRoom;
   final void Function(String id, String text) onSend;
+  /// "New folder": add a room below [parentId]. Offered on a room's menu and
+  /// in its header only where its rail entry says `nest`.
   final void Function(String parentId) onNewRoom;
 
   /// "New chat" — find a PERSON (NomadNet/LXMF peer, callsign, npub) and start
@@ -434,7 +437,8 @@ class _RoomsFieldState extends State<RoomsField> {
     }
     final hasMenu = widget.onArchive != null ||
         widget.onDelete != null ||
-        widget.onToggleNotify != null;
+        widget.onToggleNotify != null ||
+        _nests(id);
     final tile = InkWell(
       // Right-click on a desktop, long-press on a phone (below): the same
       // menu as the three dots, which the collapsed rail has no room for.
@@ -921,7 +925,25 @@ class _RoomsFieldState extends State<RoomsField> {
         : Tooltip(message: 'Archived ($n)', child: tile);
   }
 
+  /// The wapp lets this station add a folder below [id] (its rail entry's
+  /// `nest`, restated whole with every ui.rooms.set).
+  bool _nests(String id) =>
+      widget.rooms.any((r) => r['id'] == id && r['nest'] == true);
+
   List<PopupMenuEntry<String>> _menuItems(String id) => [
+    if (_nests(id))
+      PopupMenuItem(
+        value: 'folder',
+        child: Row(children: [
+          const Icon(Icons.create_new_folder_outlined,
+              size: 20, color: ChatPalette.secondary),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(tr('geoui.rooms.new_folder'),
+                style: const TextStyle(color: ChatPalette.text)),
+          ),
+        ]),
+      ),
     if (widget.onToggleNotify != null)
       PopupMenuItem(
         value: 'notify',
@@ -988,6 +1010,10 @@ class _RoomsFieldState extends State<RoomsField> {
   Future<void> _rowAction(String action, String id, String name) async {
     if (action == 'notify') {
       widget.onToggleNotify?.call(id);
+      return;
+    }
+    if (action == 'folder') {
+      widget.onNewRoom(id);
       return;
     }
     if (action == 'archive') {
@@ -1162,6 +1188,14 @@ class _RoomsFieldState extends State<RoomsField> {
                   ],
                 ),
               ),
+              // A topic folder inside this group, where the wapp allows one.
+              if (open != null && _nests(open))
+                IconButton(
+                  tooltip: tr('geoui.rooms.new_folder'),
+                  color: ChatPalette.secondary,
+                  icon: const Icon(Icons.create_new_folder_outlined),
+                  onPressed: () => widget.onNewRoom(open),
+                ),
               if (widget.onToggleNotify != null && open != null)
                 _notifyButton(open),
               IconButton(

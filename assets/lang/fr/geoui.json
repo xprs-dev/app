@@ -130,6 +130,7 @@
   "geoui.rooms.archived": "Archivées",
   "geoui.rooms.archive": "Archiver la discussion",
   "geoui.rooms.mute": "Couper les notifications",
+  "geoui.rooms.new_folder": "Nouveau dossier",
   "geoui.rooms.unmute": "Activer les notifications",
   "geoui.rooms.muted": "Notifications désactivées",
   "geoui.rooms.delete": "Supprimer la discussion",
