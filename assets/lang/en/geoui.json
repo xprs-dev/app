@@ -131,6 +131,7 @@
   "geoui.rooms.archive": "Archive chat",
   "geoui.rooms.mute": "Mute notifications",
   "geoui.rooms.new_folder": "New folder",
+  "geoui.rooms.general": "General",
   "geoui.rooms.unmute": "Turn on notifications",
   "geoui.rooms.muted": "Notifications off",
   "geoui.rooms.delete": "Delete chat",

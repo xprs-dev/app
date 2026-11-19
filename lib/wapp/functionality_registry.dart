@@ -556,6 +556,16 @@ class FunctionalityRegistry {
           ReturnDef('int',
               'Bytes written, -1 when refused (not the admin, or too deep)')),
       EndpointDef(
+          'hal_xprs_group_rename',
+          'Rename a closed group or a folder: the nick: of its own '
+          't:identity (XPRS \u00a76.3.2, \u00a710.1), signed with the group '
+          'key, so only its admin can',
+          [
+            ParamDef('group', 'string', 'The group, "X5..." or "#X5..."'),
+            ParamDef('nick', 'string', 'The new name'),
+          ],
+          ReturnDef('int', '0 announced, -1 refused')),
+      EndpointDef(
           'hal_xprs_group_picture',
           'Set a closed group\'s picture: its own t:identity with file: '
           '(XPRS \u00a76.3.2, \u00a710.1), signed with the group key, so only '

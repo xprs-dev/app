@@ -102,6 +102,20 @@ class RoomsField extends StatefulWidget {
   final void Function(String text)? onPostStatus;
   final void Function(String id)? onStatusSeen;
 
+  /// A phone's navigation INTO a group (the narrow layout only). The list
+  /// shows the groups and conversations, and nothing below them; a group
+  /// that has folders opens on [browseId], its own list: the group's
+  /// conversation first ("General"), then its folders, and "New folder"
+  /// where the wapp allows one. The host holds the position and draws the
+  /// way back, as the breadcrumb in its one bar ([hostHeader]): this widget
+  /// only reports where a tap leads through [onBrowse].
+  final String? browseId;
+  final void Function(String? id)? onBrowse;
+
+  /// The host's bar names the open room and carries its buttons, so the
+  /// room draws no header row of its own under it.
+  final bool hostHeader;
+
   const RoomsField({
     super.key,
     this.onTogglePrivacy,
@@ -135,6 +149,9 @@ class RoomsField extends StatefulWidget {
     this.statuses = const [],
     this.onPostStatus,
     this.onStatusSeen,
+    this.browseId,
+    this.onBrowse,
+    this.hostHeader = false,
   });
 
   @override
@@ -193,7 +210,8 @@ class _RoomsFieldState extends State<RoomsField> {
             _railW = want;
           }
         }
-        if (c.maxWidth >= 640) return _wide(cs);
+        _narrowNow = c.maxWidth < 640;
+        if (!_narrowNow) return _wide(cs);
         return _narrow(cs, c.maxWidth);
       },
     );
@@ -235,9 +253,73 @@ class _RoomsFieldState extends State<RoomsField> {
   Widget _narrow(ColorScheme cs, double maxW) {
     if (widget.openId == null) {
       _railW = _expanded; // list fills the screen
+      final at = widget.browseId;
+      if (_browse && at != null && roomsKids(widget.rooms, at).isNotEmpty) {
+        return Material(color: ChatPalette.windowBg, child: _folders(cs, at));
+      }
       return Material(color: ChatPalette.windowBg, child: _rail(cs));
     }
     return _chat(cs);
+  }
+
+  /// A phone walks INTO a group instead of unfolding it in the list.
+  bool _narrowNow = false;
+  bool get _browse => _narrowNow && widget.onBrowse != null;
+
+  /// What is inside the group [at]: its own conversation, its folders (the
+  /// busiest first), and the way to add one.
+  Widget _folders(ColorScheme cs, String at) {
+    final self = widget.rooms.where((r) => r['id'] == at).toList();
+    final kids = roomsKids(widget.rooms, at)
+      ..sort((a, b) => _rank(b).compareTo(_rank(a)));
+    return SafeArea(
+      right: false,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        children: [
+          for (final r in self) _roomTile(cs, r, true, general: true),
+          for (final r in kids) _roomTile(cs, r, true),
+          if (_nests(at))
+            InkWell(
+              onTap: () => widget.onNewRoom(at),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 9, 10, 9),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: const BoxDecoration(
+                        color: ChatPalette.raised,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.create_new_folder_outlined,
+                          color: ChatPalette.accent),
+                    ),
+                    const SizedBox(width: 13),
+                    Text(
+                      tr('geoui.rooms.new_folder'),
+                      style: TextStyle(
+                        color: ChatPalette.accent,
+                        fontSize: ChatPalette.rowTitleSize,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  int _rank(Map<String, dynamic> r) {
+    final id = '${r['id'] ?? ''}';
+    final ts = widget.store.items[id]?.activityTs ?? 0;
+    if (ts > 0) return ts;
+    final seen = (r['seen'] as num?)?.toInt() ?? 0;
+    return seen > 0 ? seen * 1000 : 0; // wapp reports epoch SECONDS
   }
 
   Widget _rail(ColorScheme cs) {
@@ -281,6 +363,17 @@ class _RoomsFieldState extends State<RoomsField> {
     }
 
     final tree = roomsTreeByRank(rows, rank);
+    if (_browse) {
+      // Groups and conversations only: what is inside a group is shown
+      // inside it. A branch still rises with its busiest folder.
+      final ids = {for (final r in rows) '${r['id'] ?? ''}'};
+      return [
+        for (final r in tree)
+          if (!ids.contains('${r['parent'] ?? ''}') ||
+              '${r['parent'] ?? ''}' == '${r['id'] ?? ''}')
+            r,
+      ];
+    }
     // The folder open now: the groups above it unfold, so the person sees
     // where they are and the chevron says so.
     final parentOf = {
@@ -334,17 +427,28 @@ class _RoomsFieldState extends State<RoomsField> {
     return '${(d.inDays / 7).floor()}w';
   }
 
-  Widget _roomTile(ColorScheme cs, Map<String, dynamic> r, bool expanded) {
+  /// [general]: the row is a group's own conversation, listed first inside
+  /// the group it belongs to.
+  Widget _roomTile(ColorScheme cs, Map<String, dynamic> r, bool expanded,
+      {bool general = false}) {
     final id = '${r['id'] ?? ''}';
     if (id.isEmpty) return const SizedBox.shrink();
-    final name = '${r['name'] ?? id}';
-    final depth = (r['depth'] as num?)?.toInt() ?? 0;
+    final browse = _browse;
+    final fullName = '${r['name'] ?? id}';
+    // Inside a group a folder goes by its own name: the bar above already
+    // says where this is.
+    final name = general
+        ? tr('geoui.rooms.general')
+        : browse && widget.browseId != null
+            ? roomsLeaf(fullName)
+            : fullName;
+    final depth = browse ? 0 : (r['depth'] as num?)?.toInt() ?? 0;
     // The wapp rarely knows the unread count — the conversation store does
     // (it tracks arrivals against the open room). Fall back to it, so a room
     // or channel with waiting messages actually says so on the rail.
-    final below = _below(id);
+    final below = general ? const <Map<String, dynamic>>[] : _below(id);
     final folds = below.isNotEmpty;
-    final folded = folds && !_unfolded.contains(id);
+    final folded = folds && (browse || !_unfolded.contains(id));
     int unreadOf(Map<String, dynamic> x) =>
         (x['unread'] as num?)?.toInt() ??
         widget.store.items['${x['id'] ?? ''}']?.unread ??
@@ -401,7 +505,7 @@ class _RoomsFieldState extends State<RoomsField> {
     final seenSec = (r['seen'] as num?)?.toInt() ?? 0;
     final age = _ago(ts > 0 ? ts : seenSec * 1000);
 
-    var icon = _avatar(cs, id, name, selected, expanded ? 48 : 44);
+    var icon = _avatar(cs, id, fullName, selected, expanded ? 48 : 44);
     // Collapsed rail: there is no row space beside a 44px avatar in a 64px
     // rail, so the count rides ON the avatar as a corner chip (a badge in the
     // row overflowed it). Expanded keeps the inline pill next to the name.
@@ -438,7 +542,7 @@ class _RoomsFieldState extends State<RoomsField> {
     final hasMenu = widget.onArchive != null ||
         widget.onDelete != null ||
         widget.onToggleNotify != null ||
-        _nests(id);
+        (!browse && _nests(id));
     final tile = InkWell(
       // Right-click on a desktop, long-press on a phone (below): the same
       // menu as the three dots, which the collapsed rail has no room for.
@@ -446,6 +550,12 @@ class _RoomsFieldState extends State<RoomsField> {
           ? (d) => _menuAt(d.globalPosition, id, name)
           : null,
       onTap: () {
+        // A group with folders opens on its own list; anything else is a
+        // conversation.
+        if (browse && folds) {
+          widget.onBrowse!(id);
+          return;
+        }
         widget.onOpenRoom(id);
         // Narrow: the expanded rail is an overlay ON the chat, so picking a
         // conversation has to get out of the way — otherwise you tap a room
@@ -566,7 +676,24 @@ class _RoomsFieldState extends State<RoomsField> {
                   ],
                 ),
               ),
-              if (folds)
+              if (folds && browse)
+                // Not a switch here: the whole row leads into the group.
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${below.length}',
+                          style: const TextStyle(
+                              fontSize: ChatPalette.rowMetaSize,
+                              color: ChatPalette.secondary)),
+                      const SizedBox(width: 2),
+                      const Icon(Icons.folder_outlined,
+                          size: 16, color: ChatPalette.secondary),
+                    ],
+                  ),
+                ),
+              if (folds && !browse)
                 SizedBox(
                   width: 40,
                   child: IconButton(
@@ -931,7 +1058,7 @@ class _RoomsFieldState extends State<RoomsField> {
       widget.rooms.any((r) => r['id'] == id && r['nest'] == true);
 
   List<PopupMenuEntry<String>> _menuItems(String id) => [
-    if (_nests(id))
+    if (_nests(id) && !_browse)
       PopupMenuItem(
         value: 'folder',
         child: Row(children: [
@@ -1050,85 +1177,8 @@ class _RoomsFieldState extends State<RoomsField> {
   }
 
   Widget _avatar(
-      ColorScheme cs, String id, String name, bool selected, double size) {
-    // The label is the NAME, abbreviated — never a bare symbol. Channels are
-    // called "#DEV (global)": strip the '#' and the scope suffix, keep up to
-    // four letters ("DEV", "NEWS", "NOMA"), so a collapsed rail still reads.
-    // A rail of identical '#' circles distinguished only by hash-colour was
-    // unusable — nobody knows what to click.
-    var label = '';
-    // A folder is titled by its path, "Family › Travel": its own name is the
-    // last step, or every folder of one group wears the group's letters.
-    final own = name.contains('\u203A') ? name.split('\u203A').last.trim() : name;
-    for (var i = 0; i < own.length && label.length < 4; i++) {
-      final ch = own[i];
-      if (ch == ' ' || ch == '(') break; // scope tag: not part of the name
-      if (RegExp(r'[A-Za-z0-9]').hasMatch(ch)) label += ch.toUpperCase();
-    }
-    if (label.isEmpty) label = own.isNotEmpty ? own[0].toUpperCase() : '#';
-    final hue = (id.hashCode & 0xff) / 255.0;
-    final bg = HSLColor.fromAHSL(1, hue * 360, 0.5, 0.45).toColor();
-    final border =
-        selected ? Border.all(color: ChatPalette.accent, width: 2.5) : null;
-    final initials = Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: bg,
-        shape: BoxShape.circle,
-        border: border,
-      ),
-      // One line that shrinks to the circle: on a narrow phone "EMBA" at 34
-      // wrapped to "EMB" over "A".
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-        label,
-        maxLines: 1,
-        softWrap: false,
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-          fontSize: label.length <= 1
-              ? 18
-              : label.length == 2
-              ? 14
-              : label.length == 3
-              ? 12
-              : 10.5,
-          letterSpacing: label.length >= 3 ? -0.3 : 0,
-        ),
-      ),
-      ),
-    );
-    // An open room is a place and keeps its initials. A conversation with one
-    // station shows the picture that station announced (XPRS.md 6.3.2), and
-    // until it has one the identicon it wears in Status and everywhere else:
-    // four letters of a callsign ("X1AR") told two stations apart badly and
-    // made the same person look different in each wapp.
-    // A closed group is a station too (XPRS.md 10.1) and may announce a
-    // picture of its own; until it does, or while it is on its way, the
-    // initials stand in for it.
-    if (id.startsWith('#X5')) {
-      return Container(
-        width: size,
-        height: size,
-        foregroundDecoration:
-            BoxDecoration(shape: BoxShape.circle, border: border),
-        child: StationAvatar(
-            callsign: id.substring(1), size: size, fallback: initials),
-      );
-    }
-    if (id.startsWith('#')) return initials;
-    return Container(
-      width: size,
-      height: size,
-      foregroundDecoration:
-          BoxDecoration(shape: BoxShape.circle, border: border),
-      child: StationAvatar(callsign: id, size: size),
-    );
-  }
+          ColorScheme cs, String id, String name, bool selected, double size) =>
+      roomAvatar(id, name, size, selected: selected);
 
   Widget _chat(ColorScheme cs) {
     final open = widget.openId;
@@ -1149,7 +1199,7 @@ class _RoomsFieldState extends State<RoomsField> {
         // room header: who + members toggle (and, on a narrow window where the
         // rail is hidden behind the chat, the way back to it). Rooms only —
         // see isDirect above.
-        if (!isDirect)
+        if (!isDirect && !widget.hostHeader)
           Container(
           height: 52,
           padding: const EdgeInsets.only(left: 4, right: 12),
@@ -1351,3 +1401,117 @@ List<Map<String, dynamic>> roomsTreeByRank(
   }
   return out;
 }
+
+/// A room's face: its picture when it is a closed group that announced one
+/// or a station, else the initials of its own name. The list rows and the
+/// host's breadcrumb draw the same one.
+Widget roomAvatar(String id, String name, double size,
+    {bool selected = false}) {
+    // The label is the NAME, abbreviated — never a bare symbol. Channels are
+    // called "#DEV (global)": strip the '#' and the scope suffix, keep up to
+    // four letters ("DEV", "NEWS", "NOMA"), so a collapsed rail still reads.
+    // A rail of identical '#' circles distinguished only by hash-colour was
+    // unusable — nobody knows what to click.
+    var label = '';
+    // A folder is titled by its path, "Family › Travel": its own name is the
+    // last step, or every folder of one group wears the group's letters.
+    final own = name.contains('\u203A') ? name.split('\u203A').last.trim() : name;
+    for (var i = 0; i < own.length && label.length < 4; i++) {
+      final ch = own[i];
+      if (ch == ' ' || ch == '(') break; // scope tag: not part of the name
+      if (RegExp(r'[A-Za-z0-9]').hasMatch(ch)) label += ch.toUpperCase();
+    }
+    if (label.isEmpty) label = own.isNotEmpty ? own[0].toUpperCase() : '#';
+    final hue = (id.hashCode & 0xff) / 255.0;
+    final bg = HSLColor.fromAHSL(1, hue * 360, 0.5, 0.45).toColor();
+    final border =
+        selected ? Border.all(color: ChatPalette.accent, width: 2.5) : null;
+    final initials = Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: bg,
+        shape: BoxShape.circle,
+        border: border,
+      ),
+      // One line that shrinks to the circle: on a narrow phone "EMBA" at 34
+      // wrapped to "EMB" over "A".
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+        label,
+        maxLines: 1,
+        softWrap: false,
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+          fontSize: label.length <= 1
+              ? 18
+              : label.length == 2
+              ? 14
+              : label.length == 3
+              ? 12
+              : 10.5,
+          letterSpacing: label.length >= 3 ? -0.3 : 0,
+        ),
+      ),
+      ),
+    );
+    // An open room is a place and keeps its initials. A conversation with one
+    // station shows the picture that station announced (XPRS.md 6.3.2), and
+    // until it has one the identicon it wears in Status and everywhere else:
+    // four letters of a callsign ("X1AR") told two stations apart badly and
+    // made the same person look different in each wapp.
+    // A closed group is a station too (XPRS.md 10.1) and may announce a
+    // picture of its own; until it does, or while it is on its way, the
+    // initials stand in for it.
+    if (id.startsWith('#X5')) {
+      return Container(
+        width: size,
+        height: size,
+        foregroundDecoration:
+            BoxDecoration(shape: BoxShape.circle, border: border),
+        child: StationAvatar(
+            callsign: id.substring(1), size: size, fallback: initials),
+      );
+    }
+    if (id.startsWith('#')) return initials;
+    return Container(
+      width: size,
+      height: size,
+      foregroundDecoration:
+          BoxDecoration(shape: BoxShape.circle, border: border),
+      child: StationAvatar(callsign: id, size: size),
+    );
+}
+
+/// The folders listed directly under [id].
+List<Map<String, dynamic>> roomsKids(
+        List<Map<String, dynamic>> rows, String id) =>
+    [
+      for (final r in rows)
+        if ('${r['parent'] ?? ''}' == id && '${r['id'] ?? ''}' != id) r,
+    ];
+
+/// The rows from the root group down to [id] (which is last); empty when
+/// [id] is not on the list. Stops at a cycle, as the tree itself does
+/// (XPRS.md 10.2).
+List<Map<String, dynamic>> roomsPath(
+    List<Map<String, dynamic>> rows, String id) {
+  final by = {for (final r in rows) '${r['id'] ?? ''}': r};
+  final out = <Map<String, dynamic>>[];
+  final seen = <String>{};
+  var c = id;
+  for (var i = 0; i < 8 && c.isNotEmpty && seen.add(c); i++) {
+    final r = by[c];
+    if (r == null) break;
+    out.insert(0, r);
+    c = '${r['parent'] ?? ''}';
+  }
+  return out;
+}
+
+/// A folder's own name: the wapp titles it by its path ("Family › Travel").
+String roomsLeaf(String name) =>
+    name.contains('›') ? name.split('›').last.trim() : name;

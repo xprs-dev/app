@@ -4861,6 +4861,26 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_group_rename(group, nick): the group's name, changed by its
+    // admin: the nick: of its own `t:identity` (XPRS.md 6.3.2, 10.1), signed
+    // with the group key. A folder is a group (10.2), so this renames a
+    // folder too. 0 = announced, -1 = refused (not the admin, no name).
+    final halXprsGroupRename = WasmFunction(
+      (int gPtr, int gLen, int nPtr, int nLen) {
+        final g =
+            _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
+        final nick = nLen > 0 ? _readStr(nPtr, nLen).trim() : '';
+        if (g.isEmpty || nick.isEmpty) return -1;
+        try {
+          return XprsGroupOps.rename(g, nick).ok ? 0 : -1;
+        } catch (e) {
+          LogService.instance.add('xprs: group rename failed (${e.runtimeType})');
+          return -1;
+        }
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     // hal_xprs_group_accept(group): this station takes up the membership it
     // was offered (26.3.1, the member's own half). Signed with the PROFILE
     // key, the person speaking for themselves. The core finds the offer that
@@ -5377,6 +5397,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_group_accept', halXprsGroupAccept),
       WasmImport('hal', 'xprs_group_folder', halXprsGroupFolder),
       WasmImport('hal', 'xprs_group_picture', halXprsGroupPicture),
+      WasmImport('hal', 'xprs_group_rename', halXprsGroupRename),
       WasmImport('hal', 'xprs_send', halXprsSend),
       WasmImport('hal', 'xprs_unlock', halXprsUnlock),
       WasmImport('hal', 'xprs_redact', halXprsRedact),

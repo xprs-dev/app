@@ -633,6 +633,15 @@ class _WappPageState extends State<WappPage>
 
   /// The room open in the Discord-like rooms widget ($type:"rooms").
   String? _roomsOpenId;
+
+  /// The group a phone is INSIDE in the rooms layout: its folder list is on
+  /// screen (RoomsField.browseId). Null at the conversation list.
+  String? _roomsBrowseId;
+
+  /// The rooms field's rows and name, as last built, for the bar that
+  /// navigates them ([_roomsCrumbs], [_roomsUp]).
+  List<Map<String, dynamic>> _roomsRows = const [];
+  String _roomsFieldName = 'rooms';
   // Per rooms field: how many conversations the wapp holds archived, and how
   // many of those have unread. Render state from ui.rooms.set, not a setting,
   // so it stays out of _fieldValues (which is persisted and sent back).
@@ -4143,6 +4152,8 @@ class _WappPageState extends State<WappPage>
         : const <Map<String, dynamic>>[];
     // Opening a room is one path whoever asks: a tap on the list, or the
     // default the wide layout picks below.
+    _roomsRows = rooms;
+    _roomsFieldName = field;
     void openRoom(String id) {
       setState(() => _roomsOpenId = id);
       store.clearUnread(id);
@@ -4224,6 +4235,10 @@ class _WappPageState extends State<WappPage>
       store: store,
       openId: openId,
       onOpenRoom: openRoom,
+      // A phone walks into a group: the bar above is the way back out.
+      browseId: _roomsBrowseId,
+      onBrowse: (id) => setState(() => _roomsBrowseId = id),
+      hostHeader: narrowRooms,
       archivedCount: _roomsArchived[field]?.$1 ?? 0,
       archivedUnread: _roomsArchived[field]?.$2 ?? 0,
       onArchived: () => _sendCommand('${field}_archived'),
@@ -5117,6 +5132,169 @@ class _WappPageState extends State<WappPage>
     );
   }
 
+  /// Up one level in the rooms layout on a phone, read off the tree rather
+  /// than a history: from a folder to the group that lists it, from a group
+  /// with folders (its conversation, or its list) outward, and from a plain
+  /// conversation to the list.
+  void _roomsUp() {
+    final rows = _roomsRows;
+    String parentOf(String id) {
+      for (final r in rows) {
+        if (r['id'] == id) {
+          final up = '${r['parent'] ?? ''}';
+          return rows.any((x) => x['id'] == up) ? up : '';
+        }
+      }
+      return '';
+    }
+
+    setState(() {
+      final open = _roomsOpenId;
+      if (open != null) {
+        _roomsOpenId = null;
+        if (roomsKids(rows, open).isNotEmpty) {
+          _roomsBrowseId = open; // its "General" closes onto its own list
+        } else {
+          final up = parentOf(open);
+          _roomsBrowseId = up.isEmpty ? null : up;
+        }
+        return;
+      }
+      final at = _roomsBrowseId;
+      if (at == null) return;
+      final up = parentOf(at);
+      _roomsBrowseId = up.isEmpty ? null : up;
+    });
+  }
+
+  /// The bar's title in a room: where this is, as a path the person can
+  /// walk back along. "Family › Recipes": each group named before the last
+  /// step is a button that opens that group's list.
+  Widget _roomsCrumbs() {
+    final rows = _roomsRows;
+    final open = _roomsOpenId;
+    final at = open ?? _roomsBrowseId ?? '';
+    final path = roomsPath(rows, at);
+    final store = _convStore('conversations');
+    String nameOf(Map<String, dynamic> r) {
+      final id = '${r['id'] ?? ''}';
+      final t = store.items[id]?.title ?? '';
+      return roomsLeaf(t.isNotEmpty ? t : '${r['name'] ?? id}');
+    }
+
+    if (path.isEmpty) {
+      // A room that is not on the list (yet): its title alone.
+      final t = store.items[at]?.title ?? '';
+      return Text(t.isEmpty ? at : t, maxLines: 1, overflow: TextOverflow.ellipsis);
+    }
+    final leaf = path.last;
+    final leafId = '${leaf['id'] ?? ''}';
+    // A group's own conversation, opened from its list, is its "General".
+    final general = open != null && roomsKids(rows, open).isNotEmpty;
+    const sep = Padding(
+      padding: EdgeInsets.symmetric(horizontal: 2),
+      child: Icon(Icons.chevron_right, size: 20, color: ChatPalette.secondary),
+    );
+    Widget step(String label, {VoidCallback? onTap, bool last = false}) {
+      final text = Text(
+        label,
+        maxLines: 1,
+        softWrap: false,
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: last ? FontWeight.w600 : FontWeight.w400,
+          color: last ? ChatPalette.text : ChatPalette.secondary,
+        ),
+      );
+      if (onTap == null) return text;
+      return InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: text,
+        ),
+      );
+    }
+
+    void goTo(String id) => setState(() {
+          _roomsOpenId = null;
+          _roomsBrowseId = id;
+        });
+    final steps = <Widget>[];
+    for (var i = 0; i < path.length; i++) {
+      final id = '${path[i]['id'] ?? ''}';
+      final isLast = i == path.length - 1 && !general;
+      if (i > 0) steps.add(sep);
+      steps.add(step(
+        nameOf(path[i]),
+        last: isLast,
+        onTap: isLast ? null : () => goTo(id),
+      ));
+    }
+    if (general) {
+      steps
+        ..add(sep)
+        ..add(step(tr('geoui.rooms.general'), last: true));
+    }
+    return Row(
+      children: [
+        roomAvatar(leafId, '${leaf['name'] ?? leafId}', 34),
+        const SizedBox(width: 8),
+        Expanded(
+          // The end of the path is where the person is: a long one scrolls,
+          // and starts out showing its end.
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            reverse: true,
+            child: Row(children: steps),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The room's own buttons, in the bar: a new folder where the wapp allows
+  /// one here, the bell, and the group's page (members, its name, picture).
+  List<Widget> _roomsBarActions() {
+    final field = _roomsFieldName;
+    final open = _roomsOpenId;
+    final at = open ?? _roomsBrowseId;
+    if (at == null) return const [];
+    final rows = _roomsRows;
+    final nests = rows.any((r) => r['id'] == at && r['nest'] == true);
+    final store = _convStore('conversations');
+    final muted = store.items[at]?.muted ?? false;
+    void cmd(String name) {
+      _fieldValues['${field}_convo'] = at;
+      _sendCommand('${field}_$name');
+    }
+
+    return [
+      // A folder is made INSIDE its group: on the group's list, and in a
+      // group that has none yet (where there is no list to make it on).
+      if (nests && (open == null || roomsKids(rows, at).isEmpty))
+        IconButton(
+          tooltip: tr('geoui.rooms.new_folder'),
+          icon: const Icon(Icons.create_new_folder_outlined),
+          onPressed: () => cmd('new'),
+        ),
+      if (open != null)
+        IconButton(
+          tooltip: tr(muted ? 'geoui.rooms.unmute' : 'geoui.rooms.mute'),
+          icon: Icon(muted
+              ? Icons.notifications_off_outlined
+              : Icons.notifications_outlined),
+          onPressed: () => cmd('notify'),
+        ),
+      IconButton(
+        tooltip: tr('geoui.rooms.members'),
+        icon: const Icon(Icons.group_outlined),
+        onPressed: () => cmd('members'),
+      ),
+    ];
+  }
+
   /// Is [id]'s peer being heard on the air right now?
   ///
   /// A chat conversation is keyed on the peer's CALLSIGN, so reachability is
@@ -5306,12 +5484,28 @@ class _WappPageState extends State<WappPage>
           (c) => c.keyword == 'group' && c.type == 'rooms',
         );
 
+    // Inside a group (its folder list), or in a room of the rooms layout on a
+    // phone: the bar is the breadcrumb, and back goes up ONE level.
+    final roomsNarrow = MediaQuery.of(context).size.width < 640 &&
+        _tabScreens[idx].children.any(
+          (c) => c.keyword == 'group' && c.type == 'rooms',
+        );
+    final roomsInside =
+        roomsNarrow && (_roomsOpenId != null || _roomsBrowseId != null);
+    // A room (a group, a folder), as against a conversation with one person,
+    // which keeps the callsign and reach dot it always had.
+    final roomsCrumbs = roomsInside &&
+        (_roomsOpenId == null || _roomsOpenId!.startsWith('#'));
+
     return PopScope(
       // Intercept system-back to close an open reticulum-graph panel, a
       // conversation thread, or to drill up one in-wapp level. Otherwise back
       // leaves for the launcher.
-      canPop:
-          _graphPanelBack == null && thread == null && !navBack && !roomsOpen,
+      canPop: _graphPanelBack == null &&
+          thread == null &&
+          !navBack &&
+          !roomsOpen &&
+          !roomsInside,
       onPopInvoked: (didPop) {
         if (didPop) return;
         if (_graphPanelBack != null) {
@@ -5320,6 +5514,8 @@ class _WappPageState extends State<WappPage>
           setState(() => _convOpenId = null);
         } else if (navBack) {
           _sendCommand('nav_back');
+        } else if (roomsInside) {
+          _roomsUp();
         } else if (roomsOpen) {
           setState(() => _roomsOpenId = null);
         }
@@ -5343,11 +5539,16 @@ class _WappPageState extends State<WappPage>
                   tooltip: tr('common.back'),
                   onPressed: () => setState(() => _convOpenId = null),
                 )
+              : roomsInside
+              // A room, or a group's folder list, fills the screen: the
+              // single AppBar arrow goes up one level (folder, group, the
+              // conversation list). Nothing below draws an arrow of its own.
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: tr('common.back'),
+                  onPressed: _roomsUp,
+                )
               : roomsOpen
-              // A room/thread fills the screen (narrow rooms layout): the
-              // single AppBar arrow returns to the conversation LIST. The
-              // thread header draws no arrow of its own — two stacked back
-              // arrows with different meanings is how a user gets lost.
               ? IconButton(
                   icon: const Icon(Icons.arrow_back),
                   tooltip: tr('common.back'),
@@ -5382,7 +5583,10 @@ class _WappPageState extends State<WappPage>
                       ),
                   ],
                 )
+              : roomsCrumbs
+              ? _roomsCrumbs()
               : _titleWithReach(navBack ? _wappNavTitle! : widget.title),
+          titleSpacing: roomsCrumbs ? 0 : null,
           // The horizontal tab bar lives under the title. Hidden while a
           // conversation thread or a graph panel takes over the screen.
           bottom: (showTabs && thread == null && _graphPanelTitle == null)
@@ -5440,6 +5644,10 @@ class _WappPageState extends State<WappPage>
               : null,
           actions: _graphPanelTitle != null
               ? const [] // a graph panel owns the screen — no wapp options menu
+              : roomsCrumbs
+              // In a room the bar is the room's: its buttons, and the wapp's
+              // menu. Search and the list's actions belong to the list.
+              ? [..._roomsBarActions(), _buildWappOptionsMenu()]
               : [
                   ..._channelIndicators(),
                   // A menu screen that asks for it ("appbar": true) also gets a
