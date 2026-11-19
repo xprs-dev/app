@@ -5208,7 +5208,7 @@ class _WappPageState extends State<WappPage>
       if (general) (tr('geoui.rooms.general'), null),
     ];
     const sep = Icon(Icons.chevron_right, size: 20, color: ChatPalette.secondary);
-    Widget step(String label, String? to, {int flex = 1}) {
+    Widget step(String label, String? to) {
       final last = to == null;
       final text = Text(
         label,
@@ -5222,7 +5222,6 @@ class _WappPageState extends State<WappPage>
         ),
       );
       return Flexible(
-        flex: flex,
         child: last
             ? text
             : InkWell(
@@ -5236,30 +5235,55 @@ class _WappPageState extends State<WappPage>
       );
     }
 
-    // A phone's bar holds two steps: where we are and the group it is in.
-    // Anything further up is one "…", which leads to the step it hides.
-    final shown = all.length > 2 ? all.sublist(all.length - 2) : all;
+    Widget dots(String to) => InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: () => goTo(to),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+            child: Text('…',
+                style: TextStyle(fontSize: 18, color: ChatPalette.secondary)),
+          ),
+        );
     return Row(
       children: [
         roomAvatar(leafId, '${leaf['name'] ?? leafId}', 34),
         const SizedBox(width: 8),
-        if (all.length > 2) ...[
-          InkWell(
-            borderRadius: BorderRadius.circular(6),
-            onTap: () => goTo(all[all.length - 3].$2 ?? leafId),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 10, horizontal: 2),
-              child: Text('…',
-                  style: TextStyle(fontSize: 18, color: ChatPalette.secondary)),
-            ),
-          ),
-          sep,
-        ],
-        for (var i = 0; i < shown.length; i++) ...[
-          if (i > 0) sep,
-          // Where we are keeps the room when both cannot fit.
-          step(shown[i].$1, shown[i].$2, flex: shown[i].$2 == null ? 3 : 2),
-        ],
+        Expanded(
+          // Where we are is never cut to make room for where we came from:
+          // the group it is in is named when both fit, and is the "…" (a
+          // tap away) when they do not. Anything further up is always "…".
+          child: LayoutBuilder(builder: (ctx, box) {
+            double wide(String t, FontWeight w) => (TextPainter(
+                  text: TextSpan(
+                      text: t, style: TextStyle(fontSize: 18, fontWeight: w)),
+                  textDirection: TextDirection.ltr,
+                  textScaler: MediaQuery.textScalerOf(ctx),
+                  maxLines: 1,
+                )..layout())
+                    .width;
+            final here = all.last;
+            final up = all.length > 1 ? all[all.length - 2] : null;
+            final more = all.length > 2 ? all[all.length - 3] : null;
+            const sepW = 20.0, dotsW = 22.0;
+            final both = up != null &&
+                wide(here.$1, FontWeight.w600) +
+                        wide(up.$1, FontWeight.w400) +
+                        sepW +
+                        (more != null ? dotsW + sepW : 0) <=
+                    box.maxWidth;
+            return Row(children: [
+              if (up != null && both) ...[
+                if (more != null) ...[dots(more.$2 ?? leafId), sep],
+                step(up.$1, up.$2),
+                sep,
+              ] else if (up != null) ...[
+                dots(up.$2 ?? leafId),
+                sep,
+              ],
+              step(here.$1, here.$2),
+            ]);
+          }),
+        ),
       ],
     );
   }
@@ -5280,28 +5304,40 @@ class _WappPageState extends State<WappPage>
       _sendCommand('${field}_$name');
     }
 
+    // One menu, so the path has the bar: on a phone three buttons left a
+    // folder two levels down with room for a single letter of its name.
+    final canFolder = nests && (open == null || roomsKids(rows, at).isEmpty);
+    PopupMenuItem<String> item(String v, IconData icon, String label) =>
+        PopupMenuItem<String>(
+          value: v,
+          child: ListTile(
+            leading: Icon(icon),
+            title: Text(label),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+          ),
+        );
     return [
-      // A folder is made INSIDE its group. The group's list has its own
-      // "New folder" row; a group with none yet has no list, so the button
-      // is here.
-      if (nests && open != null && roomsKids(rows, at).isEmpty)
-        IconButton(
-          tooltip: tr('geoui.rooms.new_folder'),
-          icon: const Icon(Icons.create_new_folder_outlined),
-          onPressed: () => cmd('new'),
-        ),
-      if (open != null)
-        IconButton(
-          tooltip: tr(muted ? 'geoui.rooms.unmute' : 'geoui.rooms.mute'),
-          icon: Icon(muted
-              ? Icons.notifications_off_outlined
-              : Icons.notifications_outlined),
-          onPressed: () => cmd('notify'),
-        ),
-      IconButton(
-        tooltip: tr('geoui.rooms.members'),
-        icon: const Icon(Icons.group_outlined),
-        onPressed: () => cmd('members'),
+      PopupMenuButton<String>(
+        icon: const Icon(Icons.more_vert),
+        tooltip: tr('wapp_host.menu.options'),
+        onSelected: cmd,
+        itemBuilder: (_) => [
+          // The group's page: its members, its name, its picture, who reads.
+          item('members', Icons.info_outline, tr('geoui.rooms.group_info')),
+          // A folder is made INSIDE its group.
+          if (canFolder)
+            item('new', Icons.create_new_folder_outlined,
+                tr('geoui.rooms.new_folder')),
+          if (open != null)
+            item(
+              'notify',
+              muted
+                  ? Icons.notifications_outlined
+                  : Icons.notifications_off_outlined,
+              tr(muted ? 'geoui.rooms.unmute' : 'geoui.rooms.mute'),
+            ),
+        ],
       ),
     ];
   }
