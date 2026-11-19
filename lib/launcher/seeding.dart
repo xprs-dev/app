@@ -460,3 +460,15 @@ Future<Uint8List> _bundledWappBytes(String name) async {
   final data = await rootBundle.load('assets/wapps/$name.wapp');
   return data.buffer.asUint8List();
 }
+
+/// Whether the app itself ships a wapp named [name] (`assets/wapps/<name>.wapp`).
+/// Such a wapp is part of the app and has no Uninstall of its own; one a
+/// person installed from a file or from someone else does.
+Future<bool> isBundledWapp(String name) async {
+  try {
+    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+    return manifest.listAssets().contains('assets/wapps/$name.wapp');
+  } catch (_) {
+    return true; // unknown: offer nothing destructive
+  }
+}

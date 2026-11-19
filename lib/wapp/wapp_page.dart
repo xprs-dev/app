@@ -102,7 +102,7 @@ import '../editor/wapp_compiler_service.dart';
 import 'wapp_installer_service.dart';
 import 'wapp_signing_service.dart';
 import 'wapp_social_store.dart';
-import '../launcher/launcher.dart' show WappManifest;
+import '../launcher/launcher.dart' show WappManifest, isBundledWapp;
 import 'functionality_broker.dart';
 import 'functionality_registry.dart';
 import 'wapp_open.dart';
@@ -1469,6 +1469,11 @@ class _WappPageState extends State<WappPage>
       // permission read afterwards would be a permission that did nothing.
       _engine.grantedPermissions =
           declaredPermissions(await _pkg.readString('manifest.json'));
+      unawaited(
+        isBundledWapp(_wappName).then((b) {
+          if (mounted && b != _bundled) setState(() => _bundled = b);
+        }),
+      );
       final loadWatch = Stopwatch()..start();
       await _engine.load(wasmBytes);
       final loadMs = loadWatch.elapsedMilliseconds;
@@ -3257,6 +3262,46 @@ class _WappPageState extends State<WappPage>
   /// The wapp asked to remove an installed wapp (`{"type":"wapp.remove"}`,
   /// from its `remove <name>` command or a card's remove action). The
   /// store cannot remove itself while it runs.
+  /// Whether the app ships this wapp (seeding.dart). True until known, so
+  /// Uninstall is never offered by mistake.
+  bool _bundled = true;
+
+  /// Remove this wapp from the device, after asking. Its saved data stays,
+  /// as with the store's own uninstall.
+  Future<void> _uninstallThisWapp() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('wapp_host.uninstall.title', {'name': widget.title})),
+        content: Text(tr('wapp_host.uninstall.body')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(tr('common.cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              tr('wapp_host.menu.uninstall'),
+              style: const TextStyle(color: Color(0xFFda3633)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await BackgroundWappManager.instance.stop(_wappName);
+    final result = await WappInstallerService.instance.uninstall(_wappName);
+    if (!mounted) return;
+    if (!result.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error ?? 'Uninstall failed')),
+      );
+      return;
+    }
+    Navigator.of(context).maybePop();
+  }
+
   Future<void> _handleWappRemove(Map<String, dynamic> data) async {
     final name = _wappSlug(data['name'] as String? ?? '');
     if (name.isEmpty || name == 'install' || name == _wappName) return;
@@ -5876,6 +5921,8 @@ class _WappPageState extends State<WappPage>
       onSelected: (value) {
         if (value == 'edit') {
           _editThisWapp();
+        } else if (value == 'uninstall') {
+          unawaited(_uninstallThisWapp());
         } else if (value.startsWith('toggle:')) {
           // A per-conversation local toggle (e.g. Include my location): flip the
           // field value the next conversations_send will read.
@@ -6045,6 +6092,19 @@ class _WappPageState extends State<WappPage>
             dense: true,
           ),
         ),
+        // A wapp the app did not ship (installed from a file, or passed on
+        // by someone) is listed in no store, so its own menu is where it is
+        // removed.
+        if (!_bundled && !_isAppCreator)
+          PopupMenuItem<String>(
+            value: 'uninstall',
+            child: ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: Text(tr('wapp_host.menu.uninstall')),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+            ),
+          ),
       ],
     );
   }

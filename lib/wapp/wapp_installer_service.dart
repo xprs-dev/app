@@ -561,6 +561,9 @@ class WappInstallerService {
       return InstallResult.failure(wappId, 'uninstall failed: $e');
     }
     EventBus().fire(WappUnloadedEvent(wappId: wappId, wappName: wappId));
+    // What is installed changed: the launcher rescans on this (and its
+    // providers leave the functionality registry with it).
+    EventBus().fire(WappInstalledEvent(wappId: wappId));
     return InstallResult.success(wappId);
   }
 

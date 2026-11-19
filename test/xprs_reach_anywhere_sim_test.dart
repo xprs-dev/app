@@ -35,7 +35,17 @@ import 'package:xprs/services/xprs/xprs_packet.dart';
 
 import 'support/mail_relay_sim.dart';
 
-const _ts = '2026-10-25_10:00:00';
+/// A `ts:` value [ago] before now. Fixed dates here aged out of the fetch's
+/// 30-day first window (XprsFetch.firstWindow) and the test began failing
+/// on the day they did, so every stamp is relative.
+String _stamp(Duration ago) {
+  final t = DateTime.now().toUtc().subtract(ago);
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${t.year}-${two(t.month)}-${two(t.day)}_'
+      '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
+}
+
+final _ts = _stamp(const Duration(days: 1));
 
 void main() {
 
@@ -257,9 +267,17 @@ void main() {
     // A talks to the room; B hears it and its bridge offers it to X.
     await sim.as(a, () async {
       sim.air.radio(a.call,
-          sim.sign(a, 't:message f:X1AAAA ts:2026-10-20_09:00:00 m:anyone on the hill?'));
+          sim.sign(
+            a,
+            't:message f:X1AAAA ts:${_stamp(const Duration(days: 2, minutes: 5))} '
+            'm:anyone on the hill?',
+          ));
       sim.air.radio(a.call,
-          sim.sign(a, 't:message f:X1AAAA ts:2026-10-20_09:05:00 m:view is great'));
+          sim.sign(
+            a,
+            't:message f:X1AAAA ts:${_stamp(const Duration(days: 2))} '
+            'm:view is great',
+          ));
     });
     await sim.as(b, () async => sim.drain(b));
     final before = XprsIngest.policy;
