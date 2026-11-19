@@ -117,6 +117,6 @@
   "editor.tab.app": "App",
   "editor.tab.tests": "Pruebas",
   "editor.ai.open": "Editar con IA",
-  "editor.ai.missing": "Para editar con IA necesitas el complemento Compiler. Instálalo como cualquier wapp.",
+  "editor.ai.missing": "Para editar con IA necesitas el complemento IA. Instálalo como cualquier wapp.",
   "editor.ui.add_block": "Añadir bloque"
 }

@@ -1,6 +1,6 @@
 // What the editor asks of an installed wapp, by capability and never by
 // name (architecture.md, no-wapp-special-case-in-host): any wapp may provide
-// it, the Compiler add-on is just the first that does.
+// it, the AI add-on (tools.xprs.ai) is just the first that does.
 //
 //   wapp.edit   a screen that edits a wapp, opened on it; it is told which
 //               with {"type":"host.edit_target","dir":...}

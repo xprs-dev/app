@@ -117,6 +117,6 @@
   "editor.tab.app": "App",
   "editor.tab.tests": "Tests",
   "editor.ai.open": "Mit KI bearbeiten",
-  "editor.ai.missing": "Für die Bearbeitung mit KI brauchst du das Compiler-Add-on. Installiere es wie jede andere Wapp.",
+  "editor.ai.missing": "Für die Bearbeitung mit KI brauchst du das KI-Add-on. Installiere es wie jede andere Wapp.",
   "editor.ui.add_block": "Block hinzufügen"
 }

@@ -672,11 +672,11 @@ extension _WappEditor on _WappPageState {
     );
   }
 
-  /// The Compiler add-on (`tools.xprs.compiler`): the AI that edits wapps
-  /// and the compiler a phone lacks. Optional and not shipped with the app,
-  /// so the editor only opens it, on the wapp being edited, when it is
+  /// Whatever installed wapp provides `wapp.edit`, the AI add-on
+  /// (`tools.xprs.ai`) first among them. Optional and not shipped with the
+  /// app, so the editor only opens it, on the wapp being edited, when it is
   /// installed. It is an ordinary wapp, installed and shared like any other.
-  Future<void> _openCompilerAi() async {
+  Future<void> _openEditAi() async {
     final editor = provider(wappEditFunctionality);
     if (!mounted) return;
     if (editor == null) {
@@ -1340,7 +1340,7 @@ extension _WappEditor on _WappPageState {
           IconButton(
             tooltip: tr('editor.ai.open'),
             icon: const Icon(Icons.auto_awesome),
-            onPressed: _openCompilerAi,
+            onPressed: _openEditAi,
           ),
           IconButton(
             tooltip: tr('common.save'),

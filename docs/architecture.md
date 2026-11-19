@@ -852,12 +852,12 @@ an add-on, was 74 MB and took a phone to 1.8 GB and a native crash.
 
 **Editing** with help comes from an ordinary wapp, installed and passed on
 like any other, found **by capability, never by name**
-(`lib/editor/compiler_addon.dart`): `wapp.edit`, a screen opened on the wapp
+(`lib/editor/edit_provider.dart`): `wapp.edit`, a screen opened on the wapp
 being edited; the page tells it which with
 `{"type":"host.edit_target","dir":...}`, and the editor reads the files again
 when it closes.
 
-The first provider is the Compiler add-on (`apps/compiler`), an AI. It
+The first provider is the AI add-on (`apps/ai`, `tools.xprs.ai`). It
 reaches the AI service through `hal_http_request2` (headers, byte body,
 timeout), which is **answered, not polled**: the host delivers
 `{"type":"http.done","id":N}` when the response is in, so the add-on declares

@@ -1467,13 +1467,13 @@ and on the id alone for NOSTR (64 hex). The archive merges old copies on open
 (`_mergeXprsCopies`); the feed buffer in wapp_page.dart skips a twin and lets
 a withdrawal of any copy withdraw the post shown.
 
-## Finding a wapp by what it provides (`lib/editor/compiler_addon.dart`)
+## Finding a wapp by what it provides (`lib/editor/edit_provider.dart`)
 
 `provider(functionality)` returns the first installed wapp whose manifest lists
 the functionality under `provides.functionalities`, from the launcher's scan
 (`FunctionalityRegistry`), so it reads no disk. Use it whenever host code needs
 "a wapp that can do X": never compare a wapp id or folder (architecture.md,
-`no-wapp-special-case-in-host`). `wapp.build` and `wapp.edit` are the first two.
+`no-wapp-special-case-in-host`). `wapp.edit` (the AI add-on) is the first.
 
 ## Waking a wapp when its request is answered (`WappEngine._httpStart`)
 

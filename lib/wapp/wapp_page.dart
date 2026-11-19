@@ -37,7 +37,7 @@ import 'geoui/geoui_parser.dart';
 import 'geoui/geoui_renderer.dart';
 import 'geoui/avatar_image.dart';
 import '../editor/code_editor_field.dart';
-import '../editor/compiler_addon.dart';
+import '../editor/edit_provider.dart';
 import 'geoui/widgets/route_field.dart';
 import 'geoui/widgets/xprs_md_text.dart';
 import '../util/xprs_md.dart' show xprsMdHasMarkup;
@@ -1622,7 +1622,7 @@ class _WappPageState extends State<WappPage>
       if (_isAppCreator && widget.editWappDir != null) {
         await _autoEditTarget();
       } else if (widget.editWappDir != null) {
-        // Any other wapp opened "on" a wapp (the Compiler add-on's AI,
+        // Any other wapp opened "on" a wapp (the AI add-on,
         // from the editor) is told which one, once, as an event:
         // {"type":"host.edit_target","dir":"<absolute package dir>"}.
         _engine.sendMessage(jsonEncode(
