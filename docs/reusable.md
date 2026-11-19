@@ -1512,3 +1512,11 @@ offers "New folder" on the row menu and in the open room's header
 every change, so a flag there cannot go stale the way a row upsert's can. A
 new per-room action (pin, rename, ...) should be one more flag on the same
 entry, read through a helper like `_nests(id)`.
+
+## Is this wapp part of the app? (`isBundledWapp`, `lib/launcher/seeding.dart`)
+
+`isBundledWapp(name)` says whether the app ships `assets/wapps/<name>.wapp`.
+Use it wherever host code must treat a person's own wapps (installed from a
+file, passed on by someone) differently from the app's: the wapp page offers
+Uninstall only for the former (`_uninstallThisWapp`). It answers true when it
+cannot tell, so nothing destructive is offered by mistake.
