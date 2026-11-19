@@ -1,0 +1,4 @@
+App Creator works on a phone: bottom navigation, one Save, a full-width Screens canvas, and wapps built on the device with the Compiler add-on.
+Install a .wapp file someone passed on; a newly installed wapp shows in the launcher at once.
+Share works again; Archiver tops the menu; each group has its own menu.
+Wapps can make full HTTP requests; PUT and DELETE are no longer sent as GET.
