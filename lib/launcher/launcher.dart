@@ -94,6 +94,7 @@ import 'hardware_page.dart';
 import 'muted_page.dart';
 import 'share_app_page.dart';
 import '../util/observable_listenable.dart';
+import '../wapp/geoui/widgets/xprs_md_text.dart' show openExternalLink;
 
 part 'wapp_manifest.dart';
 part 'seeding.dart';

@@ -121,6 +121,17 @@ class _AppDrawer extends StatelessWidget {
               title: Text(tr('common.settings')),
               onTap: onSettings,
             ),
+            // Where to read more about the project: the website, in the
+            // browser, the drawer closed first like every other entry.
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: Text(tr('launcher.drawer.about')),
+              subtitle: const Text('xprs.dev'),
+              onTap: () {
+                Navigator.of(context).pop();
+                openExternalLink('https://xprs.dev');
+              },
+            ),
             // Exit sits apart at the bottom: it stops the background service
             // too, so nothing is received or relayed until XPRS is opened
             // again. A browser tab is closed by the browser.
