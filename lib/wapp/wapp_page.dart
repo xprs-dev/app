@@ -5323,7 +5323,8 @@ class _WappPageState extends State<WappPage>
         );
     return [
       PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert),
+        // The same three lines as the wapp's menu everywhere else.
+        icon: const Icon(Icons.menu),
         tooltip: tr('wapp_host.menu.options'),
         onSelected: cmd,
         itemBuilder: (_) => [

@@ -1,7 +1,7 @@
 // Groups on a phone: the conversation list shows groups and people only; a
 // group that has folders opens on its own list (its conversation first, as
-// "General", then its folders by their own names); a folder is made inside
-// its group and nowhere else; and the tree reads as a path for the bar.
+// "General", then its folders by their own names); adding a folder is in
+// the bar's menu, never a row; and the tree reads as a path for the bar.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xprs/wapp/geoui/conversation_store.dart';
@@ -80,7 +80,7 @@ void main() {
     expect(find.text('New folder'), findsNothing);
   });
 
-  testWidgets('inside a group: General, its folders by name, New folder',
+  testWidgets('inside a group: General and its folders by name, nothing else',
       (tester) async {
     final r = await pump(tester, browse: '#X5FAMI');
     expect(find.text('General'), findsOneWidget);
@@ -92,8 +92,9 @@ void main() {
     expect(r.opened, ['#X5FAMI'], reason: "the group's own conversation");
     await tester.tap(find.text('Recipes'));
     expect(r.browsed, ['#X5RECI'], reason: 'it has folders of its own');
-    await tester.tap(find.text('New folder'));
-    expect(r.made, ['#X5FAMI']);
+    // Adding a folder is in the bar's menu (the host's), not a row here.
+    expect(find.text('New folder'), findsNothing);
+    expect(r.made, isEmpty);
   });
 
   testWidgets('a folder with nothing inside opens as a conversation',

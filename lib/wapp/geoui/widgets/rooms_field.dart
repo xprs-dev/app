@@ -266,8 +266,9 @@ class _RoomsFieldState extends State<RoomsField> {
   bool _narrowNow = false;
   bool get _browse => _narrowNow && widget.onBrowse != null;
 
-  /// What is inside the group [at]: its own conversation, its folders (the
-  /// busiest first), and the way to add one.
+  /// What is inside the group [at]: its own conversation and its folders
+  /// (the busiest first). Nothing else: adding a folder is an act, and acts
+  /// are in the bar's menu, not a row among the folders.
   Widget _folders(ColorScheme cs, String at) {
     final self = widget.rooms.where((r) => r['id'] == at).toList();
     final kids = roomsKids(widget.rooms, at)
@@ -279,36 +280,6 @@ class _RoomsFieldState extends State<RoomsField> {
         children: [
           for (final r in self) _roomTile(cs, r, true, general: true),
           for (final r in kids) _roomTile(cs, r, true),
-          if (_nests(at))
-            InkWell(
-              onTap: () => widget.onNewRoom(at),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 9, 10, 9),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: const BoxDecoration(
-                        color: ChatPalette.raised,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.create_new_folder_outlined,
-                          color: ChatPalette.accent),
-                    ),
-                    const SizedBox(width: 13),
-                    Text(
-                      tr('geoui.rooms.new_folder'),
-                      style: TextStyle(
-                        color: ChatPalette.accent,
-                        fontSize: ChatPalette.rowTitleSize,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
         ],
       ),
     );
