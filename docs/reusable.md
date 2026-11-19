@@ -1520,3 +1520,14 @@ Use it wherever host code must treat a person's own wapps (installed from a
 file, passed on by someone) differently from the app's: the wapp page offers
 Uninstall only for the former (`_uninstallThisWapp`). It answers true when it
 cannot tell, so nothing destructive is offered by mistake.
+
+## A composer that counts down to a size limit
+
+`lib/wapp/geoui/widgets/compose_counter.dart`: `composeRoomLeft(max, text,
+extra)` is the room left in UTF-8 bytes (what a packet holds) for the text plus
+any attachment tokens sent with it, and `ComposeCounter(left)` draws it, amber
+in the last 20 and red past zero. The Status feed's post and reply composers
+use it, with the limit from the wapp's field (`"max"` on the `activity` field
+in `apps/social/screens/home.ui.json`); past zero they refuse to send. Another
+limited composer should take a `"max"` from its field the same way and reuse
+these two.

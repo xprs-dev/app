@@ -7960,6 +7960,9 @@ class _WappPageState extends State<WappPage>
 
   /// A full-height chat feed (the chat field fills the tab; the composer sits
   /// at the bottom). Used for screens that are just a `$type:"chat"` field.
+  /// The Activity screen's per-post limit (its field's `"max"`), null for none.
+  int? _activityMaxBytes;
+
   Widget _buildChatFeedScreen(GeoUiBlock chat) {
     final name = chat.name ?? 'activity';
     // A wapp's `@key` hint in its own language, like every other label.
@@ -7970,8 +7973,12 @@ class _WappPageState extends State<WappPage>
     // the background (app closed) appear alongside live ones.
     if (name == 'activity') {
       final posts = _socialActivityPosts();
+      // The wapp's size limit for one post (`"max"`, UTF-8 bytes), kept for
+      // the thread page's reply box too.
+      _activityMaxBytes = chat.getNumber('max')?.toInt();
       return ActivityFeed(
         posts: posts,
+        maxBytes: _activityMaxBytes,
         replyCount: _replyCountFor,
         onAttach: _attachImageOrVideoToChat,
         onItemTap: _openConvoFromFeed,
@@ -8570,6 +8577,7 @@ class _WappPageState extends State<WappPage>
           MaterialPageRoute(
             builder: (_) => ActivityThreadPage(
               root: post,
+              maxBytes: _activityMaxBytes,
               focusReply: reply,
               revision: _activityRev,
               loadThread: (rootMid) =>

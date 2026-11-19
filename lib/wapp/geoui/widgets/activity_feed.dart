@@ -33,6 +33,7 @@ import '../../../util/time_ago.dart';
 import '../../shared_media_fetch.dart' show mediaSizeHint;
 import 'chat_palette.dart';
 import 'chat_view_field.dart' show viaTagColor;
+import 'compose_counter.dart';
 import 'generated_avatar.dart';
 import 'media_view.dart';
 
@@ -150,6 +151,10 @@ class ActivityFeed extends StatefulWidget {
 
   final String hint;
 
+  /// The most a post may hold, in UTF-8 bytes (the wapp's `"max"`): the
+  /// composers count down to it and refuse to post past it. Null, no limit.
+  final int? maxBytes;
+
   const ActivityFeed({
     super.key,
     required this.posts,
@@ -192,6 +197,7 @@ class ActivityFeed extends StatefulWidget {
     this.curatedAll = false,
     this.readOnly = false,
     this.hint = "What's happening?",
+    this.maxBytes,
   });
 
   @override
@@ -289,6 +295,8 @@ class _ActivityFeedState extends State<ActivityFeed> {
     // The back gate below depends on whether the composer has focus, so a
     // focus change has to rebuild it.
     _composeFocus.addListener(_onComposeFocus);
+    // The countdown follows every keystroke.
+    _input.addListener(_onTyped);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) widget.onFilterChanged?.call(_filterToString(_filter));
     });
@@ -337,7 +345,19 @@ class _ActivityFeedState extends State<ActivityFeed> {
     }
   }
 
+  void _onTyped() {
+    if (widget.maxBytes != null && mounted) setState(() {});
+  }
+
+  /// Room left in the composer, null when the wapp set no limit.
+  int? get _left => widget.maxBytes == null
+      ? null
+      : composeRoomLeft(widget.maxBytes!, _input.text,
+          _pending.map((p) => p.token).join(' '));
+
   void _post() {
+    // One packet, never parts: past the limit nothing is posted.
+    if ((_left ?? 0) < 0) return;
     var text = _input.text.trim();
     if (_pending.isNotEmpty) {
       final tokens = _pending.map((p) => p.token).join(' ');
@@ -871,8 +891,9 @@ class _ActivityFeedState extends State<ActivityFeed> {
                     ),
                   ),
                 const Spacer(),
+                if (_left != null) ComposeCounter(_left!),
                 FilledButton(
-                  onPressed: _post,
+                  onPressed: (_left ?? 0) < 0 ? null : _post,
                   style: FilledButton.styleFrom(
                     backgroundColor: ChatPalette.accent,
                     foregroundColor: Colors.white,
@@ -1604,6 +1625,9 @@ class ActivityThreadPage extends StatefulWidget {
   /// Tapping an @mention inside the thread opens that person.
   final void Function(String pubkeyHex)? onMentionTap;
 
+  /// The most a reply may hold, in UTF-8 bytes ([ActivityFeed.maxBytes]).
+  final int? maxBytes;
+
   const ActivityThreadPage({
     super.key,
     required this.root,
@@ -1626,6 +1650,7 @@ class ActivityThreadPage extends StatefulWidget {
     this.revision,
     this.mentionResolver,
     this.onMentionTap,
+    this.maxBytes,
   });
 
   @override
@@ -1644,7 +1669,18 @@ class _ActivityThreadPageState extends State<ActivityThreadPage> {
   void initState() {
     super.initState();
     widget.revision?.addListener(_onRev);
+    _input.addListener(_onTyped);
   }
+
+  void _onTyped() {
+    if (widget.maxBytes != null && mounted) setState(() {});
+  }
+
+  /// Room left in the reply, null when the wapp set no limit.
+  int? get _left => widget.maxBytes == null
+      ? null
+      : composeRoomLeft(widget.maxBytes!, _input.text,
+          _pending.map((p) => p.token).join(' '));
 
   @override
   void dispose() {
@@ -1698,6 +1734,8 @@ class _ActivityThreadPageState extends State<ActivityThreadPage> {
   }
 
   void _send() {
+    // One packet, never parts: past the limit nothing is sent.
+    if ((_left ?? 0) < 0) return;
     var text = _input.text.trim();
     if (_pending.isNotEmpty) {
       final tokens = _pending.map((p) => p.token).join(' ');
@@ -1866,10 +1904,11 @@ class _ActivityThreadPageState extends State<ActivityThreadPage> {
                   ),
                 ),
               ),
+              if (_left != null) ComposeCounter(_left!),
               IconButton(
                 icon: const Icon(Icons.send),
                 color: ChatPalette.accent,
-                onPressed: _send,
+                onPressed: (_left ?? 0) < 0 ? null : _send,
               ),
             ],
           ),
