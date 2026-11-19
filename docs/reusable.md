@@ -1554,3 +1554,14 @@ rooms layout then shows a note where the message box was
 (XPRS.md 10.4.2; the core's `XprsGroups.mayPostNow` / `postStands` are the
 rule, `hal_xprs_group_closed` the act). Use the same flag for any read-only
 room rather than refusing the send after the person has typed.
+
+## Counting distinct things across stations (`XprsSketch`, core `xprs_group_index.dart`)
+
+A 64-register HyperLogLog: `add(item)`, `merge(other)` (register-wise max),
+`estimate()`, and a 64-character text form. Two stations that each saw part
+of something, with overlap, combine their sketches and count each thing once:
+neither a sum nor an average. XPRS.md 12.9.7 fixes the hash and the encoding,
+so the ESP32 and any other implementation produce the same sketch. Use it for
+any "how many distinct X, network-wide" question (posts, people, devices)
+before inventing a protocol to exchange lists. `XprsGroupRanking` is the
+example of merging several stations' views.

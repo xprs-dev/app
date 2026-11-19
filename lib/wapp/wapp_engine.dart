@@ -37,6 +37,9 @@ import '../services/xprs/xprs_group_act.dart' show xprsGroupNickShown;
 import '../services/xprs/xprs_group_keys.dart';
 import '../services/xprs/xprs_group_read.dart';
 import '../services/xprs/xprs_group_ops.dart';
+import 'package:xprs_core/src/services/xprs/xprs_group_index.dart';
+import 'package:xprs_core/src/services/xprs/xprs_group_act.dart'
+    show xprsGroupNickShown;
 import '../services/xprs/xprs_groups.dart';
 import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_fetch.dart';
@@ -4883,6 +4886,40 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
+    // hal_xprs_group_rank(by, out, cap): public groups ranked across the
+    // groups indexes of this station's archivers (XPRS.md 12.9.7). `by` is
+    // `active` (posts this week and the last, posters breaking a tie),
+    // `members` or `growing` (joins in the last four weeks); an open group
+    // ranks under `active` only. Asking also reads any index an archiver
+    // named since (at most once a minute); the answer to that arrives later
+    // as core.groups. JSON:
+    // {"sources":N,"rows":[{"g","name","open","members","posts","posters",
+    // "joins"}]}, fifty rows at most. Negative: the buffer is too small.
+    final halXprsGroupRank = WasmFunction(
+      (int bPtr, int bLen, int outPtr, int outCap) {
+        final by = _readStr(bPtr, bLen).trim();
+        final r = XprsGroupRanking.instance..refresh();
+        final rows = <Map<String, Object?>>[];
+        for (final g in r.ranked(by).take(50)) {
+          final nick = g.open ? '' : (XprsProfiles.instance.nickFor(g.group) ?? '');
+          rows.add({
+            'g': g.group,
+            'name': nick.isEmpty ? g.group : xprsGroupNickShown(nick),
+            'open': g.open,
+            if (g.members != null) 'members': g.members,
+            'posts': g.posts,
+            'posters': g.posters,
+            if (!g.open) 'joins': g.joins,
+          });
+        }
+        final bytes =
+            utf8.encode(jsonEncode({'sources': r.sources, 'rows': rows}));
+        if (bytes.length > outCap) return -bytes.length;
+        return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
+      },
+      params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
     // hal_xprs_group_closed(group, on): close the group to new posts, or
     // open it again (XPRS.md 10.4.2): `state:closed` / `state:open` under
     // t:moderate, signed by the group (its admin) or by a moderator.
@@ -5420,6 +5457,7 @@ class WappEngine {
       WasmImport('hal', 'xprs_group_picture', halXprsGroupPicture),
       WasmImport('hal', 'xprs_group_rename', halXprsGroupRename),
       WasmImport('hal', 'xprs_group_closed', halXprsGroupClosed),
+      WasmImport('hal', 'xprs_group_rank', halXprsGroupRank),
       WasmImport('hal', 'xprs_send', halXprsSend),
       WasmImport('hal', 'xprs_unlock', halXprsUnlock),
       WasmImport('hal', 'xprs_redact', halXprsRedact),

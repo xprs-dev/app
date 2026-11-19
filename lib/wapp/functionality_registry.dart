@@ -556,6 +556,18 @@ class FunctionalityRegistry {
           ReturnDef('int',
               'Bytes written, -1 when refused (not the admin, or too deep)')),
       EndpointDef(
+          'hal_xprs_group_rank',
+          'Public groups ranked across the groups indexes of this '
+          'station\'s archivers (XPRS \u00a712.9.7): by activity, members or '
+          'growth. Open groups rank by activity only. Asking also reads an '
+          'index an archiver named since; its answer arrives as core.groups',
+          [
+            ParamDef('by', 'string', 'active, members or growing'),
+            ParamDef('out', 'buffer', 'JSON {sources, rows:[{g, name, open, '
+                'members, posts, posters, joins}]}'),
+          ],
+          ReturnDef('int', 'Bytes written; negative: the size needed')),
+      EndpointDef(
           'hal_xprs_group_closed',
           'Close a group or a folder to new posts, or open it again: '
           'state:closed / state:open under t:moderate (XPRS \u00a710.4.2). '
