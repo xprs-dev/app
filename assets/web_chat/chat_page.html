@@ -1889,6 +1889,7 @@ function roomLabel(r){
   if(r.slice(0,2)==='g:'){var hr=hostedByCall[r.slice(2)];return hr?hr.name:r.slice(2);}
   if(r.slice(0,2)==='o:')return r.slice(2).replace(/_/g,' ');
   if(r==='onew')return 'Join a group';
+  if(r==='grank')return 'Ranking';
   return r==='local'?'Local':r==='regional'?'Regional':r==='global'?'Global':
          r==='social'?'Social':r.slice(3);}
 /* The drawer on a narrow screen (the CSS decides when #side is one). */
@@ -1918,6 +1919,7 @@ function renderSide(){
   var hosted=chatRooms.length?'<div class="roomhead">Station rooms</div>'+roomEntries(chatRooms,'g:'):'';
   hosted+='<div class="roomhead">Groups</div>'+myGroups.map(function(g){var k='o:'+g;
       return '<div class="room'+(curRoom===k?' on':'')+'" data-r="'+esc(k)+'">'+esc(roomLabel(k))+'</div>';}).join('')+
+    (canRank?'<div class="room'+(curRoom==='grank'?' on':'')+'" data-r="grank">Ranking</div>':'')+
     '<div class="room new'+(curRoom==='onew'?' on':'')+'" data-r="onew">+ Join a group</div>';
   /* The Forum (XPRS.md 18.5) is always on the list: its categories are the
    * station's forum rooms, shown inside, and a category open keeps it lit. */
@@ -1961,6 +1963,13 @@ function switchRoom(r){
   fabSet(null);
   el('sealbtn').style.display=r.slice(0,3)==='dm:'?'':'none';
   if(r==='onew'){joinGroupPrompt();return;}
+  if(r==='grank'){
+    el('txt').disabled=true;el('txt').placeholder='';
+    el('msgs').className='messages alerts';
+    renderSide();
+    loadRank();
+    return;
+  }
   if(r.slice(0,2)==='o:'){
     var og=r.slice(2);
     note+='<div class="roomnote">'+(og.slice(0,2)==='X5'?
@@ -3404,6 +3413,7 @@ function applyServices(sv){
   if(p.moderation){canModerate=true;if(sess)loadMyRole();}
   if(p.rooms){canRooms=true;loadRooms();}
   if(p.storage||p.gallery){canGallery=true;renderSide();}
+  if(p.groups){canRank=true;renderSide();}
   alertPolicy=p.alerts||'moderators';
   if(curRoom==='alerts')fabSet(canAlert()?'alert':null);
   bannerHtml=typeof p.banner==='string'?p.banner:'';
@@ -3667,6 +3677,32 @@ function grantMember(from){
   var done=function(){snack(c+' is invited: they join when they accept');roomRefresh();};
   if(hr.role==='mod'||hr.role==='admin')modAct('grant:'+c,done,call);
   else roomPost({action:'add',call:call,member:c},done);
+}
+/* Public groups ranked across the station's archivers (XPRS.md 12.9.7):
+   most active, most members, growing. A tap follows the group and opens it. */
+var canRank=false,rankBy='active';
+function loadRank(){
+  var box=el('msgs');
+  getJSON('/api/xprs/groups?by='+rankBy,function(d){
+    if(curRoom!=='grank')return;
+    var tabs=[['active','Most active'],['members','Most members'],['growing','Growing']].map(function(t){
+      return '<button class="act'+(rankBy===t[0]?' primary':'')+'" onclick="rankBy=\''+t[0]+'\';loadRank()">'+t[1]+'</button>';}).join(' ');
+    var rows=d&&d.rows||[];
+    var list=rows.length?rows.map(function(g,i){
+      var bits=[];
+      if(rankBy==='members'&&g.members!=null)bits.push(g.members+' members');
+      else if(rankBy==='growing')bits.push('~'+(g.joins||0)+' joined');
+      else{bits.push('~'+g.posts+' posts');bits.push(g.posters+(g.posters===1?' person':' people'));}
+      if(g.open)bits.push('open');
+      return '<div class="card rank" data-g="'+esc(g.g)+'"><b>'+(i+1)+'. '+esc(g.name)+'</b>'+
+        '<div class="lead">'+esc(bits.join(' \u00b7 '))+'</div></div>';}).join(''):
+      '<div class="roomnote">'+(d&&d.sources?'No public groups counted yet.':
+        'No archiver has published a groups index yet.')+'</div>';
+    box.innerHTML='<div class="card"><b>Public groups</b><div class="lead">'+tabs+'</div></div>'+list;
+    [].forEach.call(box.querySelectorAll('.rank'),function(e){
+      e.style.cursor='pointer';
+      e.onclick=function(){var g=e.getAttribute('data-g');followGroup(g,true);switchRoom('o:'+g);};});
+  });
 }
 function leaveGroup(g){followGroup(g,false);snack('No longer following '+g);switchRoom('local');}
 function roomRefresh(){loadRooms(function(){switchRoom(curRoom);if(tab==='admin')loadAdmin();});}

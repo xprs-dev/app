@@ -1565,3 +1565,8 @@ so the ESP32 and any other implementation produce the same sketch. Use it for
 any "how many distinct X, network-wide" question (posts, people, devices)
 before inventing a protocol to exchange lists. `XprsGroupRanking` is the
 example of merging several stations' views.
+
+`xprsGroupRankRows(by)` (core `xprs_group_rank_rows.dart`) is that ranking
+as rows to show (names, folders as `Group › Folder`, private groups left
+out). The app's `hal_xprs_group_rank` and the web chat's
+`GET /api/xprs/groups` both answer with it: a third consumer calls it too.
