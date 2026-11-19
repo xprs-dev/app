@@ -5265,15 +5265,19 @@ class _WappPageState extends State<WappPage>
             final up = all.length > 1 ? all[all.length - 2] : null;
             final more = all.length > 2 ? all[all.length - 3] : null;
             const sepW = 20.0, dotsW = 22.0;
-            final both = up != null &&
-                wide(here.$1, FontWeight.w600) +
-                        wide(up.$1, FontWeight.w400) +
-                        sepW +
-                        (more != null ? dotsW + sepW : 0) <=
-                    box.maxWidth;
+            final pair = up == null
+                ? 0.0
+                : wide(here.$1, FontWeight.w600) +
+                    wide(up.$1, FontWeight.w400) +
+                    sepW;
+            // The group above is named when it fits, even when the "…" for
+            // what is further up has to go: that is one step back from it.
+            final both = up != null && pair <= box.maxWidth;
+            final lead =
+                both && more != null && pair + dotsW + sepW <= box.maxWidth;
             return Row(children: [
               if (up != null && both) ...[
-                if (more != null) ...[dots(more.$2 ?? leafId), sep],
+                if (lead) ...[dots(more.$2 ?? leafId), sep],
                 step(up.$1, up.$2),
                 sep,
               ] else if (up != null) ...[

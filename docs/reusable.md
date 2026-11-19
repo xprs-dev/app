@@ -1531,3 +1531,16 @@ use it, with the limit from the wapp's field (`"max"` on the `activity` field
 in `apps/social/screens/home.ui.json`); past zero they refuse to send. Another
 limited composer should take a `"max"` from its field the same way and reuse
 these two.
+
+## Walking a tree of rooms on a phone (`rooms_field.dart`, `wapp_page.dart`)
+
+`roomsKids(rows, id)`, `roomsPath(rows, id)` and `roomsLeaf(name)` read the
+rooms layout's rows (`ui.rooms.set`, each naming its `parent`) as a tree: the
+folders directly under a group, the path from the root down to a room, and a
+folder's own name out of its "Group › Folder" title. `roomAvatar(id, name,
+size)` is the one drawing of a room's face (a group's picture, else its
+initials). Together they are how the host's ONE bar is the navigation on a
+phone (`_roomsCrumbs`, `_roomsUp`, `_roomsBarActions`): the path is the title,
+its steps are buttons, and back goes up a level read off the tree. Any other
+nested list a wapp shows on a phone should use these rather than drawing a
+second header under the bar. `test/rooms_phone_nav_test.dart` is the contract.
