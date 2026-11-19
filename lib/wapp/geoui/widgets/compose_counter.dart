@@ -8,7 +8,6 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
-import 'chat_palette.dart';
 
 /// The room left in a composer limited to [max] bytes, holding [text] and the
 /// [extra] text that will be sent with it (attachment tokens).
@@ -28,11 +27,12 @@ class ComposeCounter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Twitter's colours: grey, its yellow near the end, its red past it.
     final color = left < 0
-        ? const Color(0xFFF15C6D)
+        ? const Color(0xFFF4212E)
         : left <= warnAt
-            ? Colors.amber
-            : ChatPalette.secondary;
+            ? const Color(0xFFFFD400)
+            : const Color(0xFF71767B);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Text(
@@ -40,7 +40,6 @@ class ComposeCounter extends StatelessWidget {
         style: TextStyle(
           color: color,
           fontSize: 13,
-          fontWeight: left <= warnAt ? FontWeight.w600 : FontWeight.normal,
           fontFeatures: const [FontFeature.tabularFigures()],
         ),
       ),

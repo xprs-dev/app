@@ -28,6 +28,6 @@ void main() {
     await tester.pumpWidget(const MaterialApp(
         home: Scaffold(body: Row(children: [ComposeCounter(-3)]))));
     final t = tester.widget<Text>(find.text('-3'));
-    expect(t.style?.color, const Color(0xFFF15C6D));
+    expect(t.style?.color, const Color(0xFFF4212E));
   });
 }

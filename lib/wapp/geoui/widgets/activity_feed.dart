@@ -37,6 +37,18 @@ import 'compose_counter.dart';
 import 'generated_avatar.dart';
 import 'media_view.dart';
 
+// The composers' type, as Twitter sets it so it reads familiar: the post box
+// at 20 px regular in near-white with a grey placeholder, the reply bar at
+// 17 px. Twitter's own face (Chirp) cannot ship; the system font stands in.
+const _twComposeText =
+    TextStyle(color: Color(0xFFE7E9EA), fontSize: 20, height: 1.2);
+const _twComposeHint =
+    TextStyle(color: Color(0xFF71767B), fontSize: 20, height: 1.2);
+const _twReplyText =
+    TextStyle(color: Color(0xFFE7E9EA), fontSize: 17, height: 1.2);
+const _twReplyHint =
+    TextStyle(color: Color(0xFF71767B), fontSize: 17, height: 1.2);
+
 bool activityPostMatchesDirectFollows(
   Map<String, dynamic> post,
   Set<String> followedPubkeys,
@@ -791,10 +803,7 @@ class _ActivityFeedState extends State<ActivityFeed> {
                     widget.hint,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withAlpha(110),
-                      fontSize: 15,
-                    ),
+                    style: _twComposeHint,
                   ),
                 ),
                 const Icon(Icons.send, size: 18, color: ChatPalette.accent),
@@ -839,15 +848,12 @@ class _ActivityFeedState extends State<ActivityFeed> {
                   focusNode: _composeFocus,
                   autofocus: true,
                   onTapOutside: (_) => _collapseComposer(),
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  style: _twComposeText,
                   minLines: 1,
                   maxLines: 5,
                   decoration: InputDecoration(
                     hintText: widget.hint,
-                    hintStyle: TextStyle(
-                      color: Colors.white.withAlpha(110),
-                      fontSize: 16,
-                    ),
+                    hintStyle: _twComposeHint,
                     isDense: true,
                     border: InputBorder.none,
                   ),
@@ -892,20 +898,29 @@ class _ActivityFeedState extends State<ActivityFeed> {
                   ),
                 const Spacer(),
                 if (_left != null) ComposeCounter(_left!),
-                FilledButton(
-                  onPressed: (_left ?? 0) < 0 ? null : _post,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: ChatPalette.accent,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                // Twitter's Post: a bold 15 px pill 36 px high, the whole of
+                // it at half strength while it cannot post.
+                Opacity(
+                  opacity: (_left ?? 0) < 0 ? 0.5 : 1,
+                  child: FilledButton(
+                    onPressed: (_left ?? 0) < 0 ? null : _post,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: ChatPalette.accent,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: ChatPalette.accent,
+                      disabledForegroundColor: Colors.white,
+                      minimumSize: const Size(0, 36),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 8,
-                    ),
+                    // Sized on the label, not the button's textStyle, which
+                    // would replace the theme's font instead of merging.
+                    child: const Text('Post',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
                   ),
-                  child: const Text('Post'),
                 ),
               ],
             ),
@@ -1882,7 +1897,7 @@ class _ActivityThreadPageState extends State<ActivityThreadPage> {
                   textCapitalization: TextCapitalization.sentences,
                   focusNode: _inputFocus,
                   autofocus: widget.focusReply,
-                  style: const TextStyle(color: Colors.white),
+                  style: _twReplyText,
                   minLines: 1,
                   maxLines: 5,
                   textInputAction: TextInputAction.send,
@@ -1890,7 +1905,7 @@ class _ActivityThreadPageState extends State<ActivityThreadPage> {
                   decoration: InputDecoration(
                     isDense: true,
                     hintText: 'Reply…',
-                    hintStyle: const TextStyle(color: ChatPalette.secondary),
+                    hintStyle: _twReplyHint,
                     filled: true,
                     fillColor: ChatPalette.inBubble,
                     contentPadding: const EdgeInsets.symmetric(
