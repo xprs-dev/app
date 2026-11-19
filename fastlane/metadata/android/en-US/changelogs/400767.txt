@@ -1,0 +1,2 @@
+Close a group or a folder to new posts, and open it again: only its admin and moderators post while it is closed, nobody is removed, and members see why the message box is gone.
+Rename a group or folder from its Group info.
