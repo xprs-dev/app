@@ -950,14 +950,16 @@ flag set the existing wapps use (`--target=wasm32-wasi -O2 -flto
 walking up from `Directory.current.path` looking for
 `apps/hal/xprs_wasm_hal.h`.
 
-**Phase 2b todo:** add `InWasmClangBackend` that reads a bundled
-wasm-clang binary from `pkg.readBytes('media/compilers/cpp.wasm')`
-and runs it under a custom `WappWasiHost` (still unwritten).
-`WappCompilerService.backend` becomes a runtime pick: prefer
-in-wasm when the wapp package ships a compiler, fall back to native
-for developers. The public API stays the same — `compile(source,
-pkg, workStorage)` returns a `CompileResult` either way — so no
-caller needs to change.
+**Without wasi-sdk** (a phone): `AddonCompilerBackend`
+(`wapp_compiler_backend_addon_io.dart`) runs the `wapp.build` provider's
+`media/cc.wasm` (xcc, compiled to WASI) on a worker isolate through
+`wasm_run`, with `/usr`, `/work`, `/tmp`, `/hal` and `/sdk` mounted.
+`makeCompilerBackend()` picks it when wasi-sdk is absent. The public API
+is the same, so no caller changes. To run any WASI command whose output
+you need from `wasm_run`: export its entry under another name than
+`_start` (the builder runs `_start` itself, inside `build()`) and have it
+write its output to a file in a mounted folder (captured stdio arrives
+only some time after the call returns).
 
 **Don't forget:**
 - `CompileResult.failure` is the only error path — the service

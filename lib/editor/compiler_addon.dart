@@ -4,11 +4,14 @@
 //
 //   wapp.build  a toolchain the host runs to build a wapp where there is no
 //               wasi-sdk (a phone). Package layout the host relies on:
-//                 media/llvm.wasm   clang + wasm-ld as one WASI preview 1
-//                                   module, chosen by argv[0]
-//                 media/usr/        its headers and libraries, plus the XPRS
-//                                   headers in usr/xprs/ and the test runner
-//                                   in usr/xprs/sdk/
+//                 media/cc.wasm     a C compiler and linker as one WASI
+//                                   preview 1 command (xcc's wcc), entered
+//                                   by its xprs_run export (not _start), run
+//                                   with /usr, /work and /tmp mounted
+//                 media/usr/        its headers (usr/include) and library
+//                                   (usr/lib), plus the XPRS headers in
+//                                   usr/xprs/ and the test runner in
+//                                   usr/xprs/sdk/
 //   wapp.edit   a screen that edits a wapp, opened on it; it is told which
 //               with {"type":"host.edit_target","dir":...}
 //

@@ -830,13 +830,24 @@ ordinary wapp, installed and passed on like any other, found **by capability,
 never by name** (`lib/editor/compiler_addon.dart`):
 
 - `wapp.build`: a toolchain the host runs. The provider's package holds
-  `media/llvm.wasm` (the C compiler and linker as one WASI preview 1 module)
-  and `media/usr/` (C headers and libraries, the XPRS headers in
+  `media/cc.wasm` (a C compiler and linker as one WASI preview 1 command)
+  and `media/usr/` (its headers and C library, the XPRS headers in
   `usr/xprs/`). The editor's backend (`wapp_compiler_backend_addon_io.dart`)
-  runs it on one worker isolate, never the UI's: WASI cannot start a process,
-  so it asks the compiler driver for its plan (`-###`) and runs each step in
-  the same module. The worker keeps the module between builds and exits after
-  five idle minutes. A desktop with wasi-sdk keeps using it.
+  runs it on one worker isolate, never the UI's, with only `/usr`, the
+  build's `/work` and its `/tmp` mounted. The worker keeps the module between
+  builds and exits after five idle minutes. A desktop with wasi-sdk keeps
+  using it.
+
+  The compiler is xcc (`tyfkda/xcc`, MIT, pinned and patched by
+  `apps/compiler/fetch-toolchain.sh`): about 350 KB, where LLVM compiled to
+  WASI was 74 MB and took a phone to 1.8 GB and a native crash before its
+  first build. It writes WebAssembly itself, so one run compiles and links.
+  It has no optimiser: an on-device build is for trying a change; releases
+  are built on a desktop. Every bundled wapp built with it behaves the same
+  as its desktop build, test suites included. Two things a wapp keeps to
+  build with both: string escapes are written as the UTF-8 character (xcc
+  has no `\u`), and `WAPP_TEST` registers through constructors under xcc
+  (`__XCC`), which has no linker sections.
 - `wapp.edit`: a screen opened on the wapp being edited; the page tells it
   which with `{"type":"host.edit_target","dir":...}`, and the editor reads the
   files again when it closes.
