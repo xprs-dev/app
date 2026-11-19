@@ -132,6 +132,7 @@ class FunctionalityBroker {
       callerEngineId: callerEngineId,
       reqId: reqId,
       taskId: taskId,
+      what: '$functionalityId for $callerWapp',
       timer: Timer(limit, () {
         _finish(
           session,
@@ -251,6 +252,13 @@ class FunctionalityBroker {
       monitor.reportFailure(p.taskId, error);
     }
     monitor.unregister(p.taskId);
+    // A page engine's own log never reaches /api/log, so the exchange is
+    // recorded here: who asked for what, who answered, how long it took.
+    LogService.instance.add(
+      'broker: ${p.what} ${error == null ? 'answered' : 'failed'} by '
+      '${session.provider.name} in ${p.since.elapsedMilliseconds}ms'
+      '${error == null ? '' : ' ($error)'}',
+    );
     _deliver(
       p.callerEngineId,
       p.reqId,
@@ -338,10 +346,15 @@ class _Pending {
   final String reqId;
   final String taskId;
   final Timer timer;
+
+  /// "<functionality> for <caller>", for the log line when it is answered.
+  final String what;
+  final Stopwatch since = Stopwatch()..start();
   _Pending({
     required this.callerEngineId,
     required this.reqId,
     required this.taskId,
     required this.timer,
+    required this.what,
   });
 }
