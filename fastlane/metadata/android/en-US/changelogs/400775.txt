@@ -1,0 +1,2 @@
+Public groups ranked: the chart icon beside Search in Chat shows the most active groups, those with most members and the fastest growing, counted by your archivers.
+A server's directory can now be fetched over the internet, so phones learn what archivers hold without Bluetooth.
