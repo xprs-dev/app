@@ -309,7 +309,10 @@ void main() {
     test('a ts far in the future is discarded', () {
       expect(m.offer(_act(g, '2030-01-01_00:00:00', 'grant:X1RD89'), nowMs: now),
           isFalse);
-      expect(m.mayPost(g, 'X1RD89', nowMs: now), isFalse);
+      // Nothing was taken: the record holds no act, so the group is
+      // unverified (10.7 fails open and says so), not X1RD89's.
+      expect(m.rosterOf(g, nowMs: now).roles['X1RD89'], isNull);
+      expect(m.rosterOf(g, nowMs: now).verified, isFalse);
     });
 
     test('authority is judged at the moment of the act', () {
@@ -451,7 +454,9 @@ void main() {
               't:moderate f:$g d:$g ts:2026-08-08_10:00:00 grant:X1PZ4Q')!,
           _keyFor('X1NOPE').d);
       expect(m.offer(impostor, nowMs: now), isFalse);
-      expect(m.mayPost(g, 'X1PZ4Q', nowMs: now), isFalse);
+      expect(m.rosterOf(g, nowMs: now).roles['X1PZ4Q'], isNull);
+      expect(m.rosterOf(g, nowMs: now).verified, isFalse,
+          reason: 'no act held: unverified, never the impostor\'s member');
     });
 
     test('a key we do not hold yet is counted, not trusted', () {
@@ -739,6 +744,56 @@ void main() {
       expect(m.roleAt(g, 'X32DVA', at('2026-08-11T00:00:00')), XprsRole.none);
       // roleAt never disturbs the cache a normal roster read uses.
       expect(m.rosterOf(g, nowMs: now).roles['X32DVA'], isNot(XprsRole.mod));
+    });
+  });
+
+  // Findings of the 2026-11-19 review, each a rule of section 10.
+  group('the record cannot be bent', () {
+    void join(String who, String at, {bool mod = false}) {
+      final gr = _act(g, at, 'grant:$who${mod ? ' role:mod' : ''}');
+      m.offer(gr, nowMs: now);
+      m.offer(
+          _accept(who, at, xprsIdentifier(gr), role: mod ? 'mod' : 'member'),
+          nowMs: now);
+    }
+
+    test('a member cannot slip authority into their own acceptance', () {
+      join('X1RD89', '2026-08-08_10:00:00');
+      final gr = _act(g, '2026-08-09_10:00:00', 'grant:X1PZ4Q');
+      m.offer(gr, nowMs: now);
+      // X1PZ4Q accepts, and in the same act tries to remove X1RD89 and hide a
+      // message: only the acceptance is theirs to sign (10.3, 10.4.1).
+      m.offer(
+          xprsSign(
+              XprsPacket.parse('t:moderate f:X1PZ4Q d:$g ts:2026-08-09_11:00:00 '
+                  'r:${xprsIdentifier(gr)} accept:member revoke:X1RD89 hide:message')!,
+              _keyFor('X1PZ4Q').d),
+          nowMs: now);
+      final r = m.rosterOf(g, nowMs: now);
+      expect(r.roles['X1PZ4Q'], XprsRole.member, reason: 'the acceptance stands');
+      expect(r.roles['X1RD89'], XprsRole.member, reason: 'the revoke does not');
+      expect(r.hidden, isEmpty);
+    });
+
+    test('a revoked grant cannot be accepted afterwards', () {
+      final gr = _act(g, '2026-08-09_10:00:00', 'grant:X1PZ4Q');
+      m.offer(gr, nowMs: now);
+      m.offer(_act(g, '2026-08-09_10:30:00', 'revoke:X1PZ4Q'), nowMs: now);
+      m.offer(_accept('X1PZ4Q', '2026-08-09_11:00:00', xprsIdentifier(gr)),
+          nowMs: now);
+      expect(m.rosterOf(g, nowMs: now).roles['X1PZ4Q'], isNot(XprsRole.member));
+    });
+
+    test('a grant with until: lapses', () {
+      final gr = _act(g, '2026-08-09_10:00:00',
+          'grant:X1PZ4Q until:2026-08-10_00:00:00');
+      m.offer(gr, nowMs: now);
+      m.offer(_accept('X1PZ4Q', '2026-08-09_11:00:00', xprsIdentifier(gr)),
+          nowMs: now);
+      expect(m.rosterOf(g, nowMs: _ts('2026-08-09T12:00:00')).roles['X1PZ4Q'],
+          XprsRole.member);
+      expect(m.mayPost(g, 'X1PZ4Q', nowMs: now), isFalse,
+          reason: 'past its until: the grant no longer stands');
     });
   });
 
