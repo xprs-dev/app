@@ -1982,6 +1982,8 @@ IconData geoUiResolveIcon(String name) {
       return Icons.cell_tower;
     case 'visibility':
       return Icons.visibility;
+    case 'lock_open':
+      return Icons.lock_open_outlined;
     case 'lock':
       return Icons.lock_outline;
     case 'upgrade':
