@@ -1775,8 +1775,9 @@ function showMsgMenu(ev,id,from,own){
     '<button onclick="menuAct(\'like\',\''+id+'\',\''+from+'\')">'+
       (myLikes[id]?'Unlike':'Like \u2665')+'</button>';
   if(!own)items+='<button onclick="menuAct(\'dm\',\''+id+'\',\''+from+'\')">Message '+from+'</button>';
-  /* A moderator of this station's rooms (XPRS.md 10.10), on a room message. */
-  if(!own&&myStationRole==='mod'&&curRoom.slice(0,3)!=='dm:'){
+  /* A moderator of this room (XPRS.md 10.4.1), or of this station's own
+     rooms (10.10) outside a hosted room. */
+  if(!own&&modHere()){
     items+='<div class="modsep">Moderator</div>'+
       '<button onclick="menuAct(\'mdel\',\''+id+'\',\''+from+'\')">Delete for everyone</button>'+
       '<button onclick="menuAct(\'mout1\',\''+id+'\',\''+from+'\')">Send '+from+' away for an hour</button>'+
@@ -1982,8 +1983,11 @@ function switchRoom(r){
           '<button class="act" onclick="acceptRoom(\''+esc(hr.call)+'\',\''+esc(hr.offer)+
           '\',\''+esc(hr.offer_role||'member')+'\')">Join</button></div>';
       else if(!hr.can_post){canPost=false;
-        note+='<div class="roomnote">'+(hr.visibility==='private'||hr.posting==='members'?
+        note+='<div class="roomnote">'+(hr.state==='closed'?
+          esc(hr.name)+' is closed to new posts.':
+          hr.visibility==='private'||hr.posting==='members'?
           'Only members post in '+esc(hr.name)+'.':'You cannot post here.')+'</div>';}
+      note+=roomActions(hr);
     }
   }
   el('txt').disabled=!canPost;
@@ -3566,6 +3570,34 @@ function loadHosted(){
     for(var i=0;i<rows.length;i++)render(rows[i]);
   });
 }
+/* What the asker may do with a hosted room: leave it (10.3), and as its
+   moderator or the station's administrator close or open it to new posts
+   (10.4.2). The administrator's goes through /api/rooms, signed by the room. */
+function roomActions(hr){
+  var b='';
+  var staff=hr.role==='mod'||hr.role==='admin';
+  if(staff||isStationAdmin)
+    b+='<button class="act" onclick="roomState(\''+esc(hr.call)+'\',\''+
+      (hr.state==='closed'?'open':'closed')+'\')">'+
+      (hr.state==='closed'?'Open to posts':'Close to new posts')+'</button> ';
+  if(hr.role==='member'||hr.role==='mod')
+    b+='<button class="act" onclick="leaveRoom(\''+esc(hr.call)+'\')">Leave</button>';
+  return b?'<div class="roomnote">'+(hr.state==='closed'&&hr.can_post?
+    'Closed to new posts: only moderators write here. ':'')+b+'</div>':'';
+}
+function roomRefresh(){loadRooms(function(){switchRoom(curRoom);if(tab==='admin')loadAdmin();});}
+function roomState(call,state){
+  var hr=hostedByCall[call];
+  if(hr&&(hr.role==='mod'||hr.role==='admin'))
+    return modAct('state:'+state,function(){
+      snack(state==='closed'?'Closed to new posts':'Open to posts');roomRefresh();},call);
+  roomPost({action:'update',call:call,state:state},function(){
+    snack(state==='closed'?'Closed to new posts':'Open to posts');switchRoom(curRoom);});
+}
+function leaveRoom(call){
+  if(!confirm('Leave '+roomLabel('g:'+call)+'?'))return;
+  modAct('leave:group',function(){snack('You left '+roomLabel('g:'+call));roomRefresh();},call);
+}
 function acceptRoom(call,offer,role){
   sendIdentity();
   signAny('t:moderate f:'+mycall+' d:'+call+' ts:'+tsNow()+' r:'+offer+
@@ -4528,9 +4560,17 @@ function tsAt(ms){
   return d.getUTCFullYear()+'-'+p(d.getUTCMonth()+1)+'-'+p(d.getUTCDate())+
     '_'+p(d.getUTCHours())+':'+p(d.getUTCMinutes())+':'+p(d.getUTCSeconds());}
 /* Sign a t:moderate about this station's rooms and post it. */
-function modAct(body,done){
+/* The group an act is about: the hosted room on screen, else the station. */
+function modTarget(){return curRoom.slice(0,2)==='g:'?curRoom.slice(2):stationCall;}
+function modHere(){
+  if(curRoom.slice(0,3)==='dm:')return false;
+  if(curRoom.slice(0,2)==='g:'){var hr=hostedByCall[curRoom.slice(2)];
+    return !!hr&&(hr.role==='mod'||hr.role==='admin');}
+  return myStationRole==='mod';
+}
+function modAct(body,done,to){
   if(!stationCall||!canSign())return snack('Not ready yet');
-  signAny('t:moderate f:'+mycall+' d:'+stationCall+' ts:'+tsNow()+' '+body,function(w){
+  signAny('t:moderate f:'+mycall+' d:'+(to||modTarget())+' ts:'+tsNow()+' '+body,function(w){
     if(!w)return snack('Not signed');
     postWire(w,function(ok,why){
       if(!ok){snack(why||'The station refused it');return;}
@@ -4560,7 +4600,7 @@ function acceptModerator(){
   modAct('r:'+myOffer+' accept:mod',function(){
     snack('You moderate '+stationCall+' now');
     myOffer='';loadMyRole();setTimeout(loadAdmin,500);
-  });
+  },stationCall);
 }
 /* The browser asks the person first; it answers only on a secure page
  * (https, or localhost), so a station opened over plain http says why. */
