@@ -1850,16 +1850,68 @@ function joinGroupPrompt(){
   followGroup(g,true);
   switchRoom('o:'+g);
 }
+/* What the page knows of a followed closed group: name, state, and the
+   visitor's role and pending offer. The station says so where it keeps the
+   group's record (a server); where it does not (a board), the page reads the
+   group's signed acts and finds its own invitation (XPRS.md 10.3.1). */
+var groupInfo={};
+function groupActs(g,info){
+  getJSON('/api/xprs/history?kind=moderate&room='+encodeURIComponent(g)+'&limit=200',function(d){
+    if(!d||!d.rows)return;
+    var me=baseCall(mycall),acts=d.rows.slice().reverse(),offer='',role='none',offerRole='member';
+    var gp=function(w,k){var m=w.match(new RegExp(' '+k+':(\\S+)'));return m?m[1]:'';};
+    for(var i=0;i<acts.length;i++){
+      var w=' '+(acts[i].wire||'')+' ',f=baseCall(acts[i].from||'');
+      var grants=gp(w,'grant').split(','),revs=gp(w,'revoke').split(',');
+      if(grants.indexOf(me)>=0&&role!=='member'&&role!=='mod'){offer=acts[i].id;role='invited';offerRole=gp(w,'role')==='mod'?'mod':'member';}
+      if(revs.indexOf(me)>=0&&!gp(w,'until')){role='none';offer='';}
+      if(f===me&&gp(w,'accept')&&gp(w,'r')===offer){role=gp(w,'accept')==='mod'&&offerRole==='mod'?'mod':'member';offer='';}
+      if(f===me&&gp(w,'leave')){role='none';offer='';}
+    }
+    info.role=role;if(offer){info.offer=offer;info.offer_role=offerRole;}
+    info.guessed=true;
+    drawGroupNote(g);
+  });
+}
+function drawGroupNote(g){
+  var n=el('grpnote');if(!n||curRoom!=='o:'+g)return;
+  var info=groupInfo[g]||{},b='';
+  if(info.role==='invited'&&info.offer)
+    b+='You were invited to '+esc(roomLabel('o:'+g))+'. <button class="act" onclick="acceptGroup(\''+
+      esc(g)+'\')">Join</button> ';
+  if(info.role==='member'||info.role==='mod')
+    b+='<button class="act" onclick="leaveGroupAct(\''+esc(g)+'\')">Leave group</button> ';
+  if(info.state==='closed')b=esc(roomLabel('o:'+g))+' is closed to new posts. '+b;
+  n.innerHTML=b;n.style.display=b?'':'none';
+  drawRoomBar();
+}
+function acceptGroup(g){
+  var info=groupInfo[g]||{};if(!info.offer)return;
+  sendIdentity();
+  modAct('r:'+info.offer+' accept:'+(info.offer_role==='mod'?'mod':'member'),function(){
+    snack('Joined '+roomLabel('o:'+g));info.role=info.offer_role==='mod'?'mod':'member';info.offer='';
+    drawGroupNote(g);},g);
+}
+function leaveGroupAct(g){
+  if(!confirm('Leave '+roomLabel('o:'+g)+'?'))return;
+  modAct('leave:group',function(){snack('You left '+roomLabel('o:'+g));
+    (groupInfo[g]||{}).role='none';drawGroupNote(g);},g);
+}
 function loadGroup(){
   if(curRoom.slice(0,2)!=='o:')return;
   var g=curRoom.slice(2);
   getJSON('/api/xprs/history?kind=message,reaction&room='+encodeURIComponent(g)+
           '&limit=100'+(sess?'&session='+encodeURIComponent(sess):''),function(d){
     if(!d||!d.rows||curRoom!=='o:'+g)return;
+    if(g.slice(0,2)==='X5'){
+      var was=groupInfo[g]||{};
+      var info=d.group||{};
+      if(!info.role&&was.guessed){info.role=was.role;info.offer=was.offer;info.offer_role=was.offer_role;info.guessed=true;}
+      groupInfo[g]=info;
+      if(!d.group||!d.group.role){if(mycall&&!was.asked){info.asked=true;groupActs(g,info);}}
+      drawGroupNote(g);
+    }
     if(d.moderation)applyModeration({removed:d.moderation.removed||[],away:Object.keys(modAway)});
-    if(d.group&&d.group.state==='closed'&&!el('grpclosed')){
-      var n=document.createElement('div');n.className='roomnote';n.id='grpclosed';
-      n.textContent=g+' is closed to new posts.';el('msgs').insertBefore(n,el('msgs').firstChild);}
     var rows=d.rows.slice().reverse();
     for(var i=0;i<rows.length;i++)render(rows[i]);
   });
@@ -1887,7 +1939,7 @@ function roomLabel(r){
   if(r.slice(0,2)==='f:'){var fr=hostedByCall[r.slice(2)];return fr?fr.name:r.slice(2);}
   if(r==='dmnew')return 'Private message';
   if(r.slice(0,2)==='g:'){var hr=hostedByCall[r.slice(2)];return hr?hr.name:r.slice(2);}
-  if(r.slice(0,2)==='o:')return r.slice(2).replace(/_/g,' ');
+  if(r.slice(0,2)==='o:'){var gi=groupInfo[r.slice(2)];return gi&&gi.name?gi.name:r.slice(2).replace(/_/g,' ');}
   if(r==='onew')return 'Join a group';
   if(r==='grank')return 'Ranking';
   return r==='local'?'Local':r==='regional'?'Regional':r==='global'?'Global':
@@ -1975,7 +2027,8 @@ function switchRoom(r){
     note+='<div class="roomnote">'+(og.slice(0,2)==='X5'?
       'A group: what its members wrote, as this station heard it. If you are no member, what you write asks to join.':
       'An open group: anyone may read and write.')+
-      ' <button class="act" onclick="leaveGroup(\''+esc(og)+'\')">Stop following</button></div>';
+      ' <button class="act" onclick="leaveGroup(\''+esc(og)+'\')">Stop following</button></div>'+
+      '<div class="roomnote" id="grpnote" style="display:none"></div>';
   }
   if(r==='dmnew'){
     el('txt').disabled=true;el('txt').placeholder='Choose who to write to';
@@ -4681,11 +4734,13 @@ function tsAt(ms){
     '_'+p(d.getUTCHours())+':'+p(d.getUTCMinutes())+':'+p(d.getUTCSeconds());}
 /* Sign a t:moderate about this station's rooms and post it. */
 /* The group an act is about: the hosted room on screen, else the station. */
-function modTarget(){return curRoom.slice(0,2)==='g:'?curRoom.slice(2):stationCall;}
+function modTarget(){return curRoom.slice(0,2)==='g:'||curRoom.slice(0,2)==='o:'?curRoom.slice(2):stationCall;}
 function modHere(){
   if(curRoom.slice(0,3)==='dm:')return false;
   if(curRoom.slice(0,2)==='g:'){var hr=hostedByCall[curRoom.slice(2)];
     return !!hr&&(hr.role==='mod'||hr.role==='admin');}
+  if(curRoom.slice(0,2)==='o:'){var gi=groupInfo[curRoom.slice(2)];
+    return !!gi&&(gi.role==='mod'||gi.role==='admin');}
   return myStationRole==='mod';
 }
 function modAct(body,done,to){
