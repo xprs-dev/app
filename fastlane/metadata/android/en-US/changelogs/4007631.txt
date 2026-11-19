@@ -1,0 +1,3 @@
+Status works like Twitter: one post is one message, with a countdown of the characters left; Post is disabled past the limit.
+Status compose box in Twitter's type sizes: 20 px text, a 13 px counter that turns yellow then red, a bold Post pill.
+Groups on a phone: one bar that shows the path, and groups open into their folders. New folder is in the bar's menu.
