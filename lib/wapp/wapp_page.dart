@@ -2807,6 +2807,7 @@ class _WappPageState extends State<WappPage>
           unawaited(
             FunctionalityBroker.instance.handleRequest(
               callerEngineId: _engine.engineId,
+              callerWapp: _wappName,
               functionalityId: data['widget'] as String? ?? '',
               reqId: data['req_id'] as String? ?? '',
               args: (data['args'] as Map<String, dynamic>?) ?? const {},

@@ -85,8 +85,13 @@ class FunctionalityDef {
   final String id;
   final String description;
   final List<EndpointDef> endpoints;
+
+  /// How long a provider may take to answer a request for this, in
+  /// milliseconds (`timeout_ms` in the manifest); 0 is the broker's default.
+  /// A provider that asks the network before it answers names its own.
+  final int timeoutMs;
   const FunctionalityDef(this.id, this.description,
-      [this.endpoints = const []]);
+      [this.endpoints = const [], this.timeoutMs = 0]);
 
   factory FunctionalityDef.fromJson(Map<String, dynamic> json) {
     final rawEndpoints = json['endpoints'];
@@ -100,6 +105,7 @@ class FunctionalityDef {
       json['id'] as String? ?? '',
       json['description'] as String? ?? '',
       endpoints,
+      (json['timeout_ms'] as num?)?.toInt() ?? 0,
     );
   }
 }

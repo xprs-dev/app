@@ -1,158 +1,295 @@
 /*
- * FunctionalityBroker — host-side router for functionality.request /
- * functionality.response messages. Implements the "one wapp can provide
- * multiple functionalities" rule and the "user preferences pick the
- * default provider" rule.
+ * FunctionalityBroker — how one wapp asks another for something it provides
+ * (`provides.functionalities` in the provider's manifest), and is answered
+ * whenever the provider is ready: at once, or after the provider's own
+ * network request has come back.
  *
  * Flow:
- *   1. Caller wapp emits `{"type":"widget.request", "widget": "<id>",
- *      "req_id": "<opaque>", "args": {...}}` via hal_msg_send.
- *      (wire names kept as `widget.*` for backward compat with
- *      existing wapp binaries.)
- *   2. wapp_page.dart `_drainOutbox` forwards it to
- *      [FunctionalityBroker.handleRequest] with the caller's engineId.
- *   3. Broker looks up providers in [FunctionalityRegistry], picks one
- *      via user preference (or first registered), spins up a HEADLESS
- *      [WappEngine] for that provider's wasm, injects the request,
- *      and drives `module_handle_event` synchronously.
- *   4. The provider's outbox is scanned for a `widget.response`
- *      matching `req_id`. The engine is then disposed.
- *   5. The matched response is delivered to the caller engine via
- *      [WappEngine.lookup] + sendMessage + handleEvent so the
- *      caller's `module_handle_event` runs immediately.
+ *   1. The caller emits `{"type":"widget.request","widget":"<id>",
+ *      "req_id":"<its own>","args":{...}}` via hal_msg_send (the wire keeps
+ *      the name `widget.*` from when functionalities were widgets). A page
+ *      and a background wapp both forward it to [handleRequest].
+ *   2. The broker picks a provider ([FunctionalityRegistry], the person's
+ *      preferred one when several) and opens a headless engine on it, WITH
+ *      the provider's own storage, app id and permissions, so it has its
+ *      settings and may use what its manifest declares.
+ *   3. The provider gets `{"type":"widget.request","widget":...,
+ *      "req_id":"<broker's>","caller":"<the asking wapp>","args":...}`.
+ *      `caller` is written by the host, never by the asking wapp.
+ *   4. The provider answers `{"type":"widget.response","req_id":...,
+ *      "result":{...}}` (or `"error":"..."`) when it can. The broker is told
+ *      by the engine's outbox hook, so nothing polls: a provider woken by
+ *      `http.done` answers from that event.
+ *   5. The answer goes to the caller's inbox with the caller's own req_id,
+ *      and its `module_handle_event` runs.
+ *
+ * One engine per provider serves every request in flight and is closed when
+ * the last one is answered, so a provider always starts from its saved
+ * settings. A request not answered within its time limit (the
+ * functionality's `timeout_ms`, default [defaultTimeout]) is answered with
+ * an error. Every outcome reaches the caller as a `widget.response`.
  */
 
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../launcher/launcher.dart' show WappManifest;
 import '../models/monitored_task.dart';
-import 'wapp_engine.dart';
+import '../profile/storage_paths.dart'
+    show wappDataStorageFor, wappPackageStorage;
+import '../services/log_service.dart';
 import '../services/preferences_service.dart';
-import '../profile/storage_paths.dart' show wappPackageStorage;
-import 'functionality_registry.dart';
 import '../services/task_monitor_service.dart';
+import 'functionality_registry.dart';
+import 'hal_permissions.dart' show declaredPermissions;
+import 'wapp_engine.dart';
 
 class FunctionalityBroker {
   FunctionalityBroker._();
   static final FunctionalityBroker instance = FunctionalityBroker._();
 
-  /// Wall-clock budget for a single headless provider call. A provider
-  /// that exceeds this is reported to the task monitor (which surfaces
-  /// it as an error) so a slow/runaway provider is visible. Note: a
-  /// synchronous infinite loop inside the WASM cannot be preempted from
-  /// the host isolate — this is a watchdog/visibility measure, and the
-  /// engine is always disposed in `finally`.
-  static const Duration providerBudget = Duration(seconds: 2);
+  /// How long a provider has to answer when its functionality names no
+  /// `timeout_ms`.
+  static const Duration defaultTimeout = Duration(seconds: 30);
 
-  /// Main entry point called from `wapp_page.dart` when a caller
-  /// wapp emits a `widget.request` message.
+  /// The longest a functionality may ask for.
+  static const Duration maxTimeout = Duration(minutes: 10);
+
+  /// Open provider engines, by package directory. A second request for a
+  /// provider that is still opening waits for the same engine.
+  final Map<String, Future<_Session>> _sessions = {};
+  int _nextId = 1;
+
+  /// Test seam: opens the provider's engine. The default loads its
+  /// `app.wasm` with its storage, app id and permissions and runs
+  /// `module_init`.
+  @visibleForTesting
+  Future<WappEngine> Function(WappManifest provider) openEngine = _openEngine;
+
+  /// A caller wapp asked for [functionalityId]. [callerWapp] is the asking
+  /// wapp's folder name, as the host knows it.
   Future<void> handleRequest({
     required String callerEngineId,
     required String functionalityId,
     required String reqId,
     required Map<String, dynamic> args,
+    String callerWapp = '',
   }) async {
     if (functionalityId.isEmpty || reqId.isEmpty) {
-      _deliverError(callerEngineId, reqId,
-          'widget.request missing widget/req_id');
+      _deliver(
+        callerEngineId,
+        reqId,
+        error: 'widget.request missing widget/req_id',
+      );
       return;
     }
-
-    final providers =
-        FunctionalityRegistry.instance.providersFor(functionalityId);
-    if (providers.isEmpty) {
-      _deliverError(callerEngineId, reqId,
-          'no provider registered for "$functionalityId"');
-      return;
-    }
-
-    final provider = await _resolveProvider(functionalityId, providers);
+    final registry = FunctionalityRegistry.instance;
+    final provider = await _resolveProvider(
+      functionalityId,
+      registry.providersFor(functionalityId),
+    );
     if (provider == null) {
-      _deliverError(callerEngineId, reqId,
-          'no provider selected for "$functionalityId"');
+      _deliver(
+        callerEngineId,
+        reqId,
+        error: 'no provider registered for "$functionalityId"',
+      );
       return;
     }
 
-    final pkg = wappPackageStorage(provider.dirPath);
-    final wasmBytes = await pkg.readBytes('app.wasm');
-    if (wasmBytes == null) {
-      _deliverError(callerEngineId, reqId,
-          'provider "${provider.id}" has no app.wasm');
-      return;
-    }
-
-    // Register the headless call with the task monitor so broker work
-    // is visible alongside every other task and a slow provider can be
-    // spotted. Unregistered in `finally` so the registry stays clean.
-    final monitor = TaskMonitorService.instance;
-    final taskId = 'broker.$reqId';
-    monitor.register(MonitoredTask(
-      id: taskId,
-      name: 'provider ${provider.id}',
-      description: 'Headless call: $functionalityId',
-      serviceName: 'broker',
-      priority: TaskPriority.low,
-      type: TaskType.oneshot,
-    ));
-    monitor.reportStart(taskId);
-    final sw = Stopwatch()..start();
-
-    final headless = WappEngine(headless: true);
+    final _Session session;
     try {
-      await headless.load(wasmBytes);
-      headless.init();
-
-      final request = <String, dynamic>{
-        'type': 'widget.request',
-        'widget': functionalityId,
-        'req_id': reqId,
-        'reply_to': callerEngineId,
-        'args': args,
-      };
-      headless.sendMessage(jsonEncode(request));
-      headless.handleEvent();
-
-      final response = _findResponse(headless.drainOutbox(), reqId);
-      if (response == null) {
-        monitor.reportSuccess(taskId);
-        _deliverError(callerEngineId, reqId,
-            'provider "${provider.id}" did not emit widget.response');
-        return;
-      }
-
-      sw.stop();
-      if (sw.elapsed > providerBudget) {
-        // Over budget — surface as a monitor failure (fires ErrorEvent)
-        // but still deliver the (late) response we got.
-        monitor.reportFailure(
-          taskId,
-          'provider "${provider.id}" exceeded ${providerBudget.inMilliseconds}ms '
-          '(took ${sw.elapsedMilliseconds}ms) for "$functionalityId"',
-        );
-      } else {
-        monitor.reportSuccess(taskId);
-      }
-
-      _deliverResponse(callerEngineId, reqId,
-          result: response['result'] as Map<String, dynamic>?,
-          providerWappId: provider.id);
+      session = await (_sessions[provider.dirPath] ??= _open(provider));
     } catch (e) {
-      monitor.reportFailure(taskId, e);
-      _deliverError(
-          callerEngineId, reqId, 'provider "${provider.id}" threw: $e');
-    } finally {
-      headless.dispose();
-      monitor.unregister(taskId);
+      _sessions.remove(provider.dirPath);
+      _deliver(
+        callerEngineId,
+        reqId,
+        error: 'provider "${provider.id}" did not start: $e',
+      );
+      return;
     }
+
+    final id = 'b${_nextId++}';
+    final taskId = 'broker.$id';
+    final monitor = TaskMonitorService.instance;
+    monitor.register(
+      MonitoredTask(
+        id: taskId,
+        name: 'provider ${provider.id}',
+        description: '$functionalityId for $callerWapp',
+        serviceName: 'broker',
+        priority: TaskPriority.low,
+        type: TaskType.oneshot,
+      ),
+    );
+    monitor.reportStart(taskId);
+
+    final limit = _timeoutFor(registry.defFor(functionalityId));
+    session.pending[id] = _Pending(
+      callerEngineId: callerEngineId,
+      reqId: reqId,
+      taskId: taskId,
+      timer: Timer(limit, () {
+        _finish(
+          session,
+          id,
+          error:
+              'provider "${provider.id}" did not answer '
+              '"$functionalityId" in ${limit.inSeconds}s',
+        );
+      }),
+    );
+
+    try {
+      session.engine.sendMessage(
+        jsonEncode({
+          'type': 'widget.request',
+          'widget': functionalityId,
+          'req_id': id,
+          'caller': callerWapp,
+          'args': args,
+        }),
+      );
+      session.engine.handleEvent();
+    } catch (e) {
+      _finish(session, id, error: 'provider "${provider.id}" threw: $e');
+      return;
+    }
+    _drain(session);
+  }
+
+  // ── Provider sessions ───────────────────────────────────────────────
+
+  Future<_Session> _open(WappManifest provider) async {
+    final engine = await openEngine(provider);
+    final session = _Session(provider, engine);
+    // The provider wrote to its outbox outside our own call (it was woken by
+    // an event, e.g. its HTTP answer). Read it after that call returns: an
+    // answer may close the engine, which must not happen inside its own code.
+    engine.onOutbox = () {
+      if (session.drainScheduled) return;
+      session.drainScheduled = true;
+      scheduleMicrotask(() {
+        session.drainScheduled = false;
+        _drain(session);
+      });
+    };
+    return session;
+  }
+
+  static Future<WappEngine> _openEngine(WappManifest provider) async {
+    final pkg = wappPackageStorage(provider.dirPath);
+    final wasm = await pkg.readBytes('app.wasm');
+    if (wasm == null) throw StateError('no app.wasm');
+    final prefs = await PreferencesService.instance();
+    final engine = WappEngine(headless: true);
+    try {
+      // As a background wapp is set up (BackgroundWappManager.start): its own
+      // data, its id, and its declared permissions, all before load, because
+      // imports are bound during instantiation.
+      engine.setStorage(wappDataStorageFor(prefs, provider.name));
+      engine.setAppId(provider.name);
+      engine.grantedPermissions = declaredPermissions(
+        await pkg.readString('manifest.json'),
+      );
+      await engine.load(wasm);
+      engine.init();
+    } catch (_) {
+      engine.dispose();
+      rethrow;
+    }
+    return engine;
+  }
+
+  void _drain(_Session session) {
+    if (session.closed) return;
+    final engine = session.engine;
+    if (engine.logs.isNotEmpty) {
+      for (final l in engine.logs) {
+        LogService.instance.add('[${session.provider.name}] ${l.message}');
+      }
+      engine.logs.clear();
+    }
+    for (final raw in engine.drainOutbox()) {
+      // Anything but an answer (ui.*, toasts) has no screen to go to.
+      if (!raw.contains('widget.response')) continue;
+      try {
+        final msg = jsonDecode(raw);
+        if (msg is! Map<String, dynamic>) continue;
+        if (msg['type'] != 'widget.response') continue;
+        final id = msg['req_id'];
+        if (id is! String) continue;
+        final result = msg['result'];
+        final error = msg['error'];
+        _finish(
+          session,
+          id,
+          result: result is Map<String, dynamic> ? result : null,
+          error: error is String ? error : null,
+        );
+      } catch (_) {}
+    }
+  }
+
+  /// Answer request [id] (once) and close the provider when it was the last.
+  void _finish(
+    _Session session,
+    String id, {
+    Map<String, dynamic>? result,
+    String? error,
+  }) {
+    final p = session.pending.remove(id);
+    if (p == null) return; // already answered, or timed out
+    p.timer.cancel();
+    final monitor = TaskMonitorService.instance;
+    if (error == null) {
+      monitor.reportSuccess(p.taskId);
+    } else {
+      monitor.reportFailure(p.taskId, error);
+    }
+    monitor.unregister(p.taskId);
+    _deliver(
+      p.callerEngineId,
+      p.reqId,
+      result: result,
+      error: error,
+      provider: session.provider.id,
+    );
+    if (session.pending.isEmpty) _close(session);
+  }
+
+  void _close(_Session session) {
+    if (session.closed) return;
+    session.closed = true;
+    _sessions.remove(session.provider.dirPath);
+    session.engine.onOutbox = null;
+    // Not inside the provider's own call (see _open).
+    scheduleMicrotask(session.engine.dispose);
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────────
+
+  static Duration _timeoutFor(FunctionalityDef? def) {
+    final ms = def?.timeoutMs ?? 0;
+    if (ms <= 0) return defaultTimeout;
+    final d = Duration(milliseconds: ms);
+    return d > maxTimeout ? maxTimeout : d;
   }
 
   Future<WappManifest?> _resolveProvider(
     String functionalityId,
-    List<WappManifest> providers,
+    List<WappManifest> all,
   ) async {
+    // The core's own entries have no package to run.
+    final providers = [
+      for (final p in all)
+        if (p.dirPath.isNotEmpty) p,
+    ];
     if (providers.isEmpty) return null;
     if (providers.length == 1) return providers.first;
-
     final prefs = await PreferencesService.instance();
     final preferredId = prefs.getPreferredProvider(functionalityId);
     if (preferredId != null) {
@@ -163,46 +300,48 @@ class FunctionalityBroker {
     return providers.first;
   }
 
-  Map<String, dynamic>? _findResponse(List<String> outbox, String reqId) {
-    for (final raw in outbox) {
-      try {
-        final msg = jsonDecode(raw);
-        if (msg is! Map<String, dynamic>) continue;
-        if (msg['type'] != 'widget.response') continue;
-        if (msg['req_id'] != reqId) continue;
-        return msg;
-      } catch (_) {}
-    }
-    return null;
-  }
-
-  void _deliverResponse(
+  void _deliver(
     String callerEngineId,
     String reqId, {
-    required Map<String, dynamic>? result,
-    required String providerWappId,
+    Map<String, dynamic>? result,
+    String? error,
+    String? provider,
   }) {
-    _sendToCaller(callerEngineId, {
-      'type': 'widget.response',
-      'req_id': reqId,
-      'widget_provider': providerWappId,
-      if (result != null) 'result': result,
-    });
-  }
-
-  void _deliverError(
-      String callerEngineId, String reqId, String message) {
-    _sendToCaller(callerEngineId, {
-      'type': 'widget.response',
-      'req_id': reqId,
-      'error': message,
-    });
-  }
-
-  void _sendToCaller(String callerEngineId, Map<String, dynamic> payload) {
     final engine = WappEngine.lookup(callerEngineId);
-    if (engine == null) return;
-    engine.sendMessage(jsonEncode(payload));
+    if (engine == null) return; // the caller was closed meanwhile
+    engine.sendMessage(
+      jsonEncode({
+        'type': 'widget.response',
+        'req_id': reqId,
+        if (provider != null) 'widget_provider': provider,
+        if (error != null)
+          'error': error
+        else if (result != null)
+          'result': result,
+      }),
+    );
     engine.handleEvent();
   }
+}
+
+class _Session {
+  final WappManifest provider;
+  final WappEngine engine;
+  final Map<String, _Pending> pending = {};
+  bool drainScheduled = false;
+  bool closed = false;
+  _Session(this.provider, this.engine);
+}
+
+class _Pending {
+  final String callerEngineId;
+  final String reqId;
+  final String taskId;
+  final Timer timer;
+  _Pending({
+    required this.callerEngineId,
+    required this.reqId,
+    required this.taskId,
+    required this.timer,
+  });
 }

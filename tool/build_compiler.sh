@@ -70,7 +70,7 @@ mkdir "$WORK/apps"
 git -C "$APPS" archive "$(cat "$ROOT/.wapps-commit")" hal sdk | tar x -C "$WORK/apps"
 cp "$WORK"/apps/hal/*.h "$U/xprs/"
 cp "$WORK"/apps/sdk/wapp_test.c "$WORK"/apps/sdk/wapp_test.h \
-    "$WORK"/apps/sdk/wapp_i18n.h "$U/xprs/sdk/"
+    "$WORK"/apps/sdk/wapp_i18n.h "$WORK"/apps/sdk/wapp_ai.h "$U/xprs/sdk/"
 
 mkdir -p "$OUT"
 cp "$B/cc.wasm" "$OUT/cc.wasm"

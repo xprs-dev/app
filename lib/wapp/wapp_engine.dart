@@ -519,6 +519,9 @@ class WappEngine {
   /// until this is zero.
   int get inboxLength => _inbox.length;
 
+  /// Test seam: the host→wapp messages still queued, oldest first.
+  List<String> get debugInbox => List.unmodifiable(_inbox);
+
   /// Test seam: put a message in the outbox the way `hal_msg_send` does,
   /// hook included. What is under test is the CONTRACT — whoever owns the
   /// engine is told when the wapp writes — not the wasm that wrote it.

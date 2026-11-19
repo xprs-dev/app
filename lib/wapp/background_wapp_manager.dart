@@ -39,6 +39,7 @@ import '../services/wapp_unread_service.dart';
 import '../services/hero/hero_inbox.dart';
 import '../services/preferences_service.dart';
 import 'android_foreground_service.dart';
+import 'functionality_broker.dart';
 import 'hal_permissions.dart';
 import 'wapp_event_broker.dart';
 import 'wapp_engine.dart';
@@ -511,7 +512,20 @@ class _WappBackgroundService extends BackgroundService {
         continue;
       }
       final type = data['type'] as String? ?? '';
-      if (type == 'host.run_command') {
+      if (type == 'widget.request') {
+        // A background wapp asks another wapp for something it provides,
+        // as a page does (FunctionalityBroker); the answer comes back to
+        // this engine's inbox.
+        unawaited(
+          FunctionalityBroker.instance.handleRequest(
+            callerEngineId: engine.engineId,
+            callerWapp: name,
+            functionalityId: data['widget'] as String? ?? '',
+            reqId: data['req_id'] as String? ?? '',
+            args: (data['args'] as Map<String, dynamic>?) ?? const {},
+          ),
+        );
+      } else if (type == 'host.run_command') {
         final cmd = data['command'] as String?;
         if (cmd != null && cmd.isNotEmpty) {
           engine.sendMessage(

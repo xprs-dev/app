@@ -865,6 +865,25 @@ no clock (performance.md 8.4). It proposes whole files; nothing is written
 before the person applies, and Undo restores them. Building stays in the
 editor.
 
+### One wapp serving another (2026-11-19)
+
+A capability a wapp can provide is **not** a new `hal_*`: the wapp declares
+it (`provides.functionalities`) and others ask through the broker
+(`lib/wapp/functionality_broker.dart`, `apps/wapp-interfaces.md` 5). The
+AI is the first: the AI add-on provides `ai.chat`, so any wapp, on screen or
+in the background, uses the AI the person set up without holding its key or
+knowing its service.
+
+- The provider answers **when it can**. The broker keeps its headless
+  engine (opened with the provider's own storage, id and permissions) until
+  every request in flight is answered, then closes it; it is told of an
+  answer by the engine's outbox hook, never by a clock (performance.md 8.4).
+- The host names the caller to the provider (`caller`); a wapp cannot claim
+  to be another.
+- A request has a time limit (the functionality's `timeout_ms`, default
+  30 s, at most 10 min), and every failure reaches the caller as a
+  `widget.response` with an `error`.
+
 ### Storage: zx stores (2026-11-09)
 
 Every database is a **zx store** (`*.zx`: zxdb, pure Dart, the same engine on

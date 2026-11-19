@@ -465,6 +465,11 @@ for any "every N hours while the app runs" job instead of a `Timer.periodic`.
 
 ### WidgetRegistry + WidgetBroker — provider-registration system
 
+> **Since 2026-11-19** these are `FunctionalityRegistry` and
+> `FunctionalityBroker` (`lib/wapp/`), and a provider may answer later.
+> The current contract is in "One wapp serving another" below and in
+> `apps/wapp-interfaces.md` 5; what follows is the original description.
+
 **Files:**
 - `lib/services/widget_registry.dart` — `WidgetRegistry` singleton,
   `{widgetId → [WappManifest]}`
@@ -1474,6 +1479,20 @@ the functionality under `provides.functionalities`, from the launcher's scan
 (`FunctionalityRegistry`), so it reads no disk. Use it whenever host code needs
 "a wapp that can do X": never compare a wapp id or folder (architecture.md,
 `no-wapp-special-case-in-host`). `wapp.edit` (the AI add-on) is the first.
+
+## One wapp serving another (`lib/wapp/functionality_broker.dart`)
+
+A wapp that needs something another wapp can do sends `widget.request` and
+gets a `widget.response`, whenever the provider is ready
+(`apps/wapp-interfaces.md` 5). Use this before adding a `hal_*` for anything
+a wapp could provide: the AI (`ai.chat`, C helper `apps/sdk/wapp_ai.h`) is
+the first service built on it. The broker opens the provider headless with
+its own storage, id and permissions, names the caller, enforces the
+functionality's `timeout_ms`, and is woken by the engine's outbox hook, so
+nothing polls. Host code that wants the same service calls
+`FunctionalityBroker.instance.handleRequest` with an engine to answer to.
+`test/functionality_broker_test.dart` shows how to test a provider/caller
+pair with no wasm (`WappEngine.debugEmit`, `debugInbox`).
 
 ## Waking a wapp when its request is answered (`WappEngine._httpStart`)
 
