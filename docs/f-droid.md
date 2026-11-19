@@ -439,7 +439,13 @@ badging <apk>` (the versionCode).
 The recipe lives in this repository as a template, `fdroid/com.xprs.app.yml`,
 with the XPRS srclibs next to it (`fdroid/srclibs/xprs-wapps.yml`,
 `xprs-reticulum-dart.yml` and, since v1.5.0, `xprs-core.yml`; `flutter` and `dav1d` are existing fdroiddata
-srclibs). Its one build block uses placeholders (`@ABI@`, `@VERSION@`, ...);
+srclibs). Since 2026-11-19 it also names `xcc.yml` (github.com/tyfkda/xcc at
+`.xcc-commit`): the C compiler the app bundles for wapps,
+`assets/compiler/cc.wasm` and `usr.zip`, is removed by `rm:` and rebuilt by
+`tool/build_compiler.sh` like the bundled wapps; two builds of it are byte
+for byte the same. **fdroiddata needs `srclibs/xcc.yml` in the MR of the
+first release that carries it** (section 3: a new srclib means an fdroiddata
+MR the same day). Its one build block uses placeholders (`@ABI@`, `@VERSION@`, ...);
 `tool/fdroid_recipe.py` turns it into one block per ABI for a release:
 
 ```sh

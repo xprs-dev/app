@@ -823,42 +823,47 @@ disk.
 
 ---
 
-### Building and editing a wapp on the device (2026-11-18)
+### Building and editing a wapp on the device (2026-11-18, compiler bundled 2026-11-19)
 
-A phone has no compiler and the app ships none. What it lacks comes from an
-ordinary wapp, installed and passed on like any other, found **by capability,
-never by name** (`lib/editor/compiler_addon.dart`):
+**Building** needs nothing installed: the app bundles a C compiler and uses
+it on every native platform (`lib/editor/wapp_compiler_backend_io.dart`), so
+a phone and a desktop build the same bytes. It is xcc (`tyfkda/xcc`, MIT),
+which writes WebAssembly itself, compiled to WASI: `assets/compiler/cc.wasm`
+(about 350 KB) and `usr.zip` (its headers and C library, the XPRS headers
+and the test runner, 92 KB), built reproducibly by `tool/build_compiler.sh`
+at the commit in `.xcc-commit` with `tool/xcc/xcc.patch`, and rebuilt from
+source by F-Droid (docs/f-droid.md). LLVM compiled to WASI, tried first as
+an add-on, was 74 MB and took a phone to 1.8 GB and a native crash.
 
-- `wapp.build`: a toolchain the host runs. The provider's package holds
-  `media/cc.wasm` (a C compiler and linker as one WASI preview 1 command)
-  and `media/usr/` (its headers and C library, the XPRS headers in
-  `usr/xprs/`). The editor's backend (`wapp_compiler_backend_addon_io.dart`)
-  runs it on one worker isolate, never the UI's, with only `/usr`, the
-  build's `/work` and its `/tmp` mounted. The worker keeps the module between
-  builds and exits after five idle minutes. A desktop with wasi-sdk keeps
-  using it.
+- It runs on one worker isolate, never the UI's (the runtime's call is
+  synchronous), which keeps the module between builds and exits after five
+  idle minutes. `usr.zip` is unpacked once per version into the temp folder.
+- It sees only `/usr`, the build's `/work` and `/tmp`, and `/hal` and `/sdk`
+  (wapps include `"../hal/xprs_wasm_hal.h"`, as laid out in the apps tree).
+- Its entry is `xprs_run`, not `_start` (wasm_run runs a `_start` inside
+  `build()`), and it writes its messages to `/tmp/cc.log` (captured stdio
+  arrives only after the call returns).
+- It has no optimiser. The published wapps are still built by their
+  Makefiles; every one of them behaves the same built either way, test
+  suites included. Two things a wapp keeps to build with both: string
+  escapes are written as the UTF-8 character (xcc has no `\u`), and
+  `WAPP_TEST` registers through constructors under xcc (`__XCC`), which has
+  no linker sections.
 
-  The compiler is xcc (`tyfkda/xcc`, MIT, pinned and patched by
-  `apps/compiler/fetch-toolchain.sh`): about 350 KB, where LLVM compiled to
-  WASI was 74 MB and took a phone to 1.8 GB and a native crash before its
-  first build. It writes WebAssembly itself, so one run compiles and links.
-  It has no optimiser: an on-device build is for trying a change; releases
-  are built on a desktop. Every bundled wapp built with it behaves the same
-  as its desktop build, test suites included. Two things a wapp keeps to
-  build with both: string escapes are written as the UTF-8 character (xcc
-  has no `\u`), and `WAPP_TEST` registers through constructors under xcc
-  (`__XCC`), which has no linker sections.
-- `wapp.edit`: a screen opened on the wapp being edited; the page tells it
-  which with `{"type":"host.edit_target","dir":...}`, and the editor reads the
-  files again when it closes.
+**Editing** with help comes from an ordinary wapp, installed and passed on
+like any other, found **by capability, never by name**
+(`lib/editor/compiler_addon.dart`): `wapp.edit`, a screen opened on the wapp
+being edited; the page tells it which with
+`{"type":"host.edit_target","dir":...}`, and the editor reads the files again
+when it closes.
 
-The first provider of both is the Compiler add-on (`apps/compiler`), whose
-`wapp.edit` is an AI. It reaches the AI service through
-`hal_http_request2` (headers, byte body, timeout), which is **answered, not
-polled**: the host delivers `{"type":"http.done","id":N}` when the response is
-in, so the add-on declares no clock (performance.md 8.4). It proposes whole
-files; nothing is written before the person applies, and Undo restores them.
-Building stays in the editor.
+The first provider is the Compiler add-on (`apps/compiler`), an AI. It
+reaches the AI service through `hal_http_request2` (headers, byte body,
+timeout), which is **answered, not polled**: the host delivers
+`{"type":"http.done","id":N}` when the response is in, so the add-on declares
+no clock (performance.md 8.4). It proposes whole files; nothing is written
+before the person applies, and Undo restores them. Building stays in the
+editor.
 
 ### Storage: zx stores (2026-11-09)
 

@@ -64,7 +64,7 @@ fi
 rm -rf "$home_vagrant/build/$appid" "$home_vagrant/build/reticulum-dart" \
   "$home_vagrant/x1watt/zx" \
   "$home_vagrant/build/core" \
-  "$home_vagrant"/build/srclib/{xprs-wapps,xprs-reticulum-dart,xprs-core,xprs-zx,dav1d} \
+  "$home_vagrant"/build/srclib/{xprs-wapps,xprs-reticulum-dart,xprs-core,xprs-zx,xcc,dav1d} \
   "$home_vagrant/tmp/${appid}_$vercode.apk"
 # The recipe and every srclib it names. flutter and dav1d are fdroiddata's.
 rm -rf "$home_vagrant/srclibs"

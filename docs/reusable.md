@@ -930,7 +930,8 @@ build"). New field types that want defaults must either add them to
 
 ### WappCompilerService + CompilerBackend — the compile pipeline
 
-**Files:** `lib/services/wapp_compiler_service.dart`
+**Files:** `lib/editor/wapp_compiler_service.dart`,
+`lib/editor/wapp_compiler_backend_io.dart`
 
 **What it is.** Thin singleton in front of a `CompilerBackend`
 abstraction. A backend takes a source string + the calling wapp's
@@ -939,27 +940,18 @@ stdout, stderr, exitCode, durationMs, error }`. The service wraps
 every call in a `MonitoredTask` (`compiler.compile`) so it appears
 in the tasks wapp with wall-clock timing and success/fail counts.
 
-**Active backend today (Phase 2a, dev-only):**
-`NativeWasiSdkBackend` — shells out to `$HOME/wasi-sdk/bin/clang`
-via `Process.run`. Writes the source to
-`<wappData>/compile-tmp/source.c`, invokes clang with the exact
-flag set the existing wapps use (`--target=wasm32-wasi -O2 -flto
--I<hal-dir> -Wl,--no-entry -Wl,--export=module_{init,tick,...}
--nostartfiles -o output.wasm source.c`), reads the output from
-`<wappData>/compile-tmp/output.wasm`. The HAL header is located by
-walking up from `Directory.current.path` looking for
-`apps/hal/xprs_wasm_hal.h`.
+**Backend:** `BundledCompilerBackend` on every native platform: the
+app's bundled xcc (`assets/compiler/cc.wasm` + `usr.zip`, built by
+`tool/build_compiler.sh`) on a worker isolate through `wasm_run`, with
+`/usr`, `/work`, `/tmp`, `/hal` and `/sdk` mounted. Web gets a stub.
 
-**Without wasi-sdk** (a phone): `AddonCompilerBackend`
-(`wapp_compiler_backend_addon_io.dart`) runs the `wapp.build` provider's
-`media/cc.wasm` (xcc, compiled to WASI) on a worker isolate through
-`wasm_run`, with `/usr`, `/work`, `/tmp`, `/hal` and `/sdk` mounted.
-`makeCompilerBackend()` picks it when wasi-sdk is absent. The public API
-is the same, so no caller changes. To run any WASI command whose output
-you need from `wasm_run`: export its entry under another name than
-`_start` (the builder runs `_start` itself, inside `build()`) and have it
-write its output to a file in a mounted folder (captured stdio arrives
-only some time after the call returns).
+**Running any WASI command through `wasm_run`** (reuse this pattern, see
+`BundledCompiler`): hand its bytes from `rootBundle` to a worker isolate
+as `TransferableTypedData`; export its entry under another name than
+`_start` (the builder runs `_start` itself, inside `build()`, before you
+can listen); have it write its output to a file in a mounted folder
+(captured stdio arrives only some time after the call returns); read the
+exit code from the trap text (`exit status N`).
 
 **Don't forget:**
 - `CompileResult.failure` is the only error path — the service

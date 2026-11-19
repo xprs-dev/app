@@ -77,7 +77,8 @@ def render(version, code, commit, repo=None, binary=True):
                          ('@RD_PIN@', pin('.reticulum-dart-commit')),
                          ('@CORE_PIN@', pin('.core-commit')),
                          ('@ZX_PIN@', pin('.zx-commit')),
-                         ('@WAPPS_PIN@', pin('.wapps-commit'))):
+                         ('@WAPPS_PIN@', pin('.wapps-commit')),
+                         ('@XCC_PIN@', pin('.xcc-commit'))):
             b = b.replace(key, val)
         blocks.append(b)
     tail = (tail.replace("'@VERSION@'", version)

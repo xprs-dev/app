@@ -2,23 +2,12 @@
  * WappCompilerService — compiles a C source string into a wapp
  * `app.wasm` byte array.
  *
- * Design: a thin singleton in front of a `CompilerBackend`
- * abstraction. Today only the native backend is wired
- * (`NativeWasiSdkBackend`), which shells out to
- * `$HOME/wasi-sdk/bin/clang` via `Process.run`. This is explicitly a
- * Phase 2a interim — it requires a developer wasi-sdk install and
- * fails on any other machine.
+ * A thin singleton in front of a `CompilerBackend`. On every native
+ * platform that is the compiler the app bundles (xcc compiled to WASI,
+ * wapp_compiler_backend_io.dart), so a phone and a desktop build alike
+ * with nothing installed; the web build has none.
  *
- * Phase 2b will add an `InWasmClangBackend` that loads a bundled
- * wasm-clang binary from the App Creator wapp's own package
- * (`media/compilers/cpp.wasm`) and runs it under a custom WASI host.
- * When that lands, the [WappCompilerService] constructor picks
- * between the two backends at runtime: prefer the in-wasm one if
- * the wapp ships a compiler, otherwise fall back to native for
- * developers.
- *
- * Wapps should always call through `WappCompilerService.instance` —
- * the backend swap is invisible to callers.
+ * Wapps should always call through `WappCompilerService.instance`.
  */
 
 import 'dart:async';
@@ -64,15 +53,14 @@ class CompileResult {
     String stderr = '',
     int exitCode = 1,
     int durationMs = 0,
-  }) =>
-      CompileResult(
-        ok: false,
-        stdout: stdout,
-        stderr: stderr,
-        exitCode: exitCode,
-        durationMs: durationMs,
-        error: message,
-      );
+  }) => CompileResult(
+    ok: false,
+    stdout: stdout,
+    stderr: stderr,
+    exitCode: exitCode,
+    durationMs: durationMs,
+    error: message,
+  );
 }
 
 /// Abstract compiler backend. Every new compiler path (native,
@@ -112,10 +100,8 @@ class WappCompilerService {
   WappCompilerService._();
   static final WappCompilerService instance = WappCompilerService._();
 
-  /// The active compiler backend. Resolved via a conditional import
-  /// factory: desktop gets the native wasi-sdk backend, web gets a
-  /// stub that always returns "not supported". A future Phase 2b
-  /// can swap in an in-wasm clang backend here transparently.
+  /// The active compiler backend, resolved by a conditional import: the
+  /// bundled compiler on native platforms, a "not supported" stub on web.
   final CompilerBackend backend = makeCompilerBackend();
 
   /// Run the compiler. Wraps the whole call in a `MonitoredTask` so
@@ -130,14 +116,16 @@ class WappCompilerService {
     const taskId = 'compiler.compile';
     // Re-register so duration numbers reset between runs.
     monitor.unregister(taskId);
-    monitor.register(MonitoredTask(
-      id: taskId,
-      name: 'Compile wapp source',
-      description: 'Backend: ${backend.name}',
-      serviceName: 'compiler',
-      priority: TaskPriority.normal,
-      type: TaskType.oneshot,
-    ));
+    monitor.register(
+      MonitoredTask(
+        id: taskId,
+        name: 'Compile wapp source',
+        description: 'Backend: ${backend.name}',
+        serviceName: 'compiler',
+        priority: TaskPriority.normal,
+        type: TaskType.oneshot,
+      ),
+    );
     monitor.reportStart(taskId);
     try {
       final result = await backend.compile(
@@ -165,14 +153,16 @@ class WappCompilerService {
     final monitor = TaskMonitorService.instance;
     const taskId = 'compiler.tests';
     monitor.unregister(taskId);
-    monitor.register(MonitoredTask(
-      id: taskId,
-      name: 'Compile wapp tests',
-      description: 'Backend: ${backend.name}',
-      serviceName: 'compiler',
-      priority: TaskPriority.normal,
-      type: TaskType.oneshot,
-    ));
+    monitor.register(
+      MonitoredTask(
+        id: taskId,
+        name: 'Compile wapp tests',
+        description: 'Backend: ${backend.name}',
+        serviceName: 'compiler',
+        priority: TaskPriority.normal,
+        type: TaskType.oneshot,
+      ),
+    );
     monitor.reportStart(taskId);
     try {
       final result = await backend.compileTests(

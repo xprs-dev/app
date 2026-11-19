@@ -140,6 +140,8 @@ flutter:
     - assets/editor/app-creator/lang/
     - assets/editor/app-creator/media/icons/
     - assets/editor/app-creator/store/
+    # The C compiler wapps are built with (tool/build_compiler.sh).
+    - assets/compiler/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
