@@ -39,7 +39,10 @@ run_id() {
   gh run list -R "$APP" --workflow release.yml --branch "$TAG" --limit 1 \
     --json databaseId -q '.[0].databaseId // empty'
 }
-until_ok 600 "the release run to start" test -n "$(run_id)"
+# A function, not `test -n "$(run_id)"`: that argument is expanded once, before
+# the loop, so a run that had not started yet was never seen (v1.12.0-beta.4).
+has_run() { [[ -n "$(run_id)" ]]; }
+until_ok 600 "the release run to start" has_run
 say "waiting for release run $(run_id)"
 gh run watch "$(run_id)" -R "$APP" --exit-status >/dev/null ||
   { say "release run failed"; exit 1; }
