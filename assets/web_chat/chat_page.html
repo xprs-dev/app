@@ -416,6 +416,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
         padding:1px 5px;border-radius:3px;margin-left:6px}
 .badge.ok{background:#1b5e20;color:#81c784}
 .badge.bad{background:#b71c1c;color:#ef9a9a}
+.badge.ask{background:#3a2a10;color:#ffb74d}
+.meta .act.small{padding:1px 8px;font-size:11px;margin-left:6px;min-height:0;line-height:18px}
 .msg.failed .bubble{opacity:.55;border-style:dashed}
 .msg .why{font-size:11px;color:#ef9a9a;margin-top:2px}
 .mood{font-size:10px;font-style:italic;color:var(--accent);margin-left:4px}
@@ -1982,6 +1984,10 @@ function switchRoom(r){
         note+='<div class="roomnote">You were invited to '+esc(hr.name)+'. '+
           '<button class="act" onclick="acceptRoom(\''+esc(hr.call)+'\',\''+esc(hr.offer)+
           '\',\''+esc(hr.offer_role||'member')+'\')">Join</button></div>';
+      else if(!hr.can_post&&mayAsk(hr)){
+        /* 10.3: asking to join is an ordinary message, read by the staff. */
+        note+='<div class="roomnote">Only members post in '+esc(hr.name)+
+          '. Write here to ask to join: only its moderators read it.</div>';}
       else if(!hr.can_post){canPost=false;
         note+='<div class="roomnote">'+(hr.state==='closed'?
           esc(hr.name)+' is closed to new posts.':
@@ -2002,7 +2008,9 @@ function switchRoom(r){
     r==='regional'?'Message (stays regional)':
     r==='global'?'Message (goes everywhere)':
     r==='social'?'Status update (published to everyone)':
-    r.slice(0,2)==='g:'?'Message to '+roomLabel(r)+' (stays on this station)':
+    r.slice(0,2)==='g:'?(hostedByCall[r.slice(2)]&&!hostedByCall[r.slice(2)].can_post&&
+      mayAsk(hostedByCall[r.slice(2)])?'Ask to join '+roomLabel(r):
+      'Message to '+roomLabel(r)+' (stays on this station)'):
     'Message to '+r.slice(3);
 }
 /* Draw the room again from what was heard (a key arrived, so what was held
@@ -2187,6 +2195,15 @@ function render(row){
   var badge=row.sig==='verified'?'<span class="badge ok">signed</span>'
            :(row.sig==='none'?'<span class="badge bad">unsigned</span>':'');
   if(sealed)badge+='<span class="badge ok">sealed</span>';
+  /* A request to join (10.3): the staff may invite its author. */
+  var ask=row.request&&curRoom.slice(0,2)==='g:';
+  if(ask){
+    var hq=hostedByCall[curRoom.slice(2)],rc=baseCall(row.from||'');
+    var already=hq&&((hq.members||[]).concat(hq.moderators||[],hq.invited||[])).indexOf(rc)>=0;
+    badge+='<span class="badge ask">request to join</span>';
+    if(!own&&!already&&hq&&(hq.role==='mod'||hq.role==='admin'||isStationAdmin))
+      badge+='<button class="act small" data-grant="'+esc(rc)+'">Invite</button>';
+  }
   /* mood: (27.1) is decoration: one italic word beside the post. */
   var mm=w.match(/ mood:([a-z]+) /);
   if(mm)badge+='<span class="mood">'+mm[1]+'</span>';
@@ -2210,6 +2227,8 @@ function render(row){
   refreshLikes(id);
   d.querySelector('.dots').onclick=function(ev){
     showMsgMenu(ev,id,row.from,own);};
+  var gb=d.querySelector('[data-grant]');
+  if(gb)gb.onclick=function(){grantMember(row.from);};
   var bub=d.querySelector('.bubble');
   if(rm){
     /* A receiver that never heard the parent still shows the reply,
@@ -3584,6 +3603,20 @@ function roomActions(hr){
     b+='<button class="act" onclick="leaveRoom(\''+esc(hr.call)+'\')">Leave</button>';
   return b?'<div class="roomnote">'+(hr.state==='closed'&&hr.can_post?
     'Closed to new posts: only moderators write here. ':'')+b+'</div>':'';
+}
+/* Whether a visitor who is no member may ask to join [hr] (10.3): a public
+   room, open to posts, that only its members write in. */
+function mayAsk(hr){
+  return !!mycall&&hr.visibility==='public'&&hr.posting==='members'&&hr.state!=='closed'&&
+    (hr.role==='none'||!hr.role)&&!(hr.kind&&hr.kind!=='chat');
+}
+/* Staff answer a request with a grant: an offer the person accepts (10.3.1). */
+function grantMember(from){
+  var call=curRoom.slice(2),c=baseCall(from),hr=hostedByCall[call];
+  if(!hr)return;
+  var done=function(){snack(c+' is invited: they join when they accept');roomRefresh();};
+  if(hr.role==='mod'||hr.role==='admin')modAct('grant:'+c,done,call);
+  else roomPost({action:'add',call:call,member:c},done);
 }
 function roomRefresh(){loadRooms(function(){switchRoom(curRoom);if(tab==='admin')loadAdmin();});}
 function roomState(call,state){
