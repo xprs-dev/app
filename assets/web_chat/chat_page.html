@@ -1621,7 +1621,7 @@ function sendMsg(){
   if(curRoom==='local')where=' scope:local';
   else if(curRoom==='regional')where=' scope:regional';
   else if(curRoom.slice(0,3)==='dm:')where=' d:'+curRoom.slice(3);
-  else if(curRoom.slice(0,2)==='g:')where=' d:'+curRoom.slice(2);
+  else if(curRoom.slice(0,2)==='g:'||curRoom.slice(0,2)==='o:')where=' d:'+curRoom.slice(2);
   /* The Social feed publishes a status (27): kept and read later, not a
    * conversation. A reply to a status is itself a status carrying r:. */
   var typ=curRoom==='social'?'t:status':'t:message';
@@ -1659,7 +1659,7 @@ function sendOut(wire,text,sealed,peer){
    * the next poll) takes seconds, and a sender should not wait on it.
    * The wire is archived verbatim, so marking it seen dedups the echo. */
   var mine=render({from:mycall,ts:Math.floor(Date.now()/1000),sig:'verified',
-          to:peer||(curRoom.slice(0,2)==='g:'?curRoom.slice(2):''),
+          to:peer||(curRoom.slice(0,2)==='g:'||curRoom.slice(0,2)==='o:'?curRoom.slice(2):''),
           wire:wire,plain:text,sealed:sealed});
   postWire(wire,function(ok,why){
     if(ok)return;
@@ -1831,6 +1831,39 @@ function scopeRoom(w){
   if(m[1]==='local'||m[1]==='regional')return m[1];
   return /[a-z]/.test(m[1])?null:'global';      /* PT,ES: a country */
 }
+/* Groups this visitor follows by name (XPRS.md 7.3 open groups, 10 closed
+   ones): a list kept on this browser, read from the station by name. */
+var myGroups=(function(){try{return JSON.parse(stGet('xprs_groups')||'[]')||[];}catch(e){return [];}})();
+function groupName(v){
+  var g=(v||'').trim().toUpperCase().replace(/^#/,'').replace(/\s+/g,'_');
+  return /^[A-Z0-9][A-Z0-9_-]{0,15}$/.test(g)?g:'';
+}
+function followGroup(g,on){
+  var i=myGroups.indexOf(g);
+  if(on&&i<0)myGroups.push(g);
+  if(!on&&i>=0)myGroups.splice(i,1);
+  stSet('xprs_groups',JSON.stringify(myGroups));
+}
+function joinGroupPrompt(){
+  var g=groupName(prompt('Group name (an open group like LISBOA, or a group\'s X5 callsign):')||'');
+  if(!g){snack('A name of letters and digits, up to 16');switchRoom('local');return;}
+  followGroup(g,true);
+  switchRoom('o:'+g);
+}
+function loadGroup(){
+  if(curRoom.slice(0,2)!=='o:')return;
+  var g=curRoom.slice(2);
+  getJSON('/api/xprs/history?kind=message,reaction&room='+encodeURIComponent(g)+
+          '&limit=100'+(sess?'&session='+encodeURIComponent(sess):''),function(d){
+    if(!d||!d.rows||curRoom!=='o:'+g)return;
+    if(d.moderation)applyModeration({removed:d.moderation.removed||[],away:Object.keys(modAway)});
+    if(d.group&&d.group.state==='closed'&&!el('grpclosed')){
+      var n=document.createElement('div');n.className='roomnote';n.id='grpclosed';
+      n.textContent=g+' is closed to new posts.';el('msgs').insertBefore(n,el('msgs').firstChild);}
+    var rows=d.rows.slice().reverse();
+    for(var i=0;i<rows.length;i++)render(rows[i]);
+  });
+}
 function roomOf(row){
   var w=row.wire||'';
   var to=row.to||'';
@@ -1840,6 +1873,7 @@ function roomOf(row){
   /* A post (18) is listed by the Blog feed as a card, never as a bubble. */
   if((row.type||'')==='blog'||w.indexOf('t:blog ')===0)return null;
   if(to&&hostedByCall[baseCall(to)])return 'g:'+baseCall(to);
+  if(to&&myGroups.indexOf(to.toUpperCase())>=0)return 'o:'+to.toUpperCase();
   if(to&&to[0]!=='#'){
     if(baseCall(to)===baseCall(mycall))return 'dm:'+baseCall(row.from);
     if(baseCall(row.from)===baseCall(mycall))return 'dm:'+baseCall(to);
@@ -1853,6 +1887,8 @@ function roomLabel(r){
   if(r.slice(0,2)==='f:'){var fr=hostedByCall[r.slice(2)];return fr?fr.name:r.slice(2);}
   if(r==='dmnew')return 'Private message';
   if(r.slice(0,2)==='g:'){var hr=hostedByCall[r.slice(2)];return hr?hr.name:r.slice(2);}
+  if(r.slice(0,2)==='o:')return r.slice(2).replace(/_/g,' ');
+  if(r==='onew')return 'Join a group';
   return r==='local'?'Local':r==='regional'?'Regional':r==='global'?'Global':
          r==='social'?'Social':r.slice(3);}
 /* The drawer on a narrow screen (the CSS decides when #side is one). */
@@ -1880,6 +1916,9 @@ function renderSide(){
         '</div>';}).join('');}
   var chatRooms=hostedRooms.filter(function(hr){return hr.kind!=='forum'&&hr.kind!=='mesh'&&!GAL_KINDS[hr.kind];});
   var hosted=chatRooms.length?'<div class="roomhead">Station rooms</div>'+roomEntries(chatRooms,'g:'):'';
+  hosted+='<div class="roomhead">Groups</div>'+myGroups.map(function(g){var k='o:'+g;
+      return '<div class="room'+(curRoom===k?' on':'')+'" data-r="'+esc(k)+'">'+esc(roomLabel(k))+'</div>';}).join('')+
+    '<div class="room new'+(curRoom==='onew'?' on':'')+'" data-r="onew">+ Join a group</div>';
   /* The Forum (XPRS.md 18.5) is always on the list: its categories are the
    * station's forum rooms, shown inside, and a category open keeps it lit. */
   var forum='<div class="room'+(curRoom==='forum'||curRoom.slice(0,2)==='f:'?' on':'')+
@@ -1921,6 +1960,14 @@ function switchRoom(r){
   el('chatcol').className=r==='alerts'||r==='blog'||r==='forum'||GAL_KINDS[r]?'feed':'';
   fabSet(null);
   el('sealbtn').style.display=r.slice(0,3)==='dm:'?'':'none';
+  if(r==='onew'){joinGroupPrompt();return;}
+  if(r.slice(0,2)==='o:'){
+    var og=r.slice(2);
+    note+='<div class="roomnote">'+(og.slice(0,2)==='X5'?
+      'A group: what its members wrote, as this station heard it. If you are no member, what you write asks to join.':
+      'An open group: anyone may read and write.')+
+      ' <button class="act" onclick="leaveGroup(\''+esc(og)+'\')">Stop following</button></div>';
+  }
   if(r==='dmnew'){
     el('txt').disabled=true;el('txt').placeholder='Choose who to write to';
     el('msgs').innerHTML=dmNewCard();renderSide();
@@ -2002,12 +2049,14 @@ function switchRoom(r){
     'own network: join its WiFi or LAN to read it.</div>':note;
   renderSide();
   if(r.slice(0,2)==='g:')loadHosted();
+  if(r.slice(0,2)==='o:')loadGroup();
   for(var i=0;i<allRows.length;i++)render(allRows[i]);
   document.getElementById('txt').placeholder=
     r==='local'?'Message (stays local)':
     r==='regional'?'Message (stays regional)':
     r==='global'?'Message (goes everywhere)':
     r==='social'?'Status update (published to everyone)':
+    r.slice(0,2)==='o:'?'Message to '+roomLabel(r):
     r.slice(0,2)==='g:'?(hostedByCall[r.slice(2)]&&!hostedByCall[r.slice(2)].can_post&&
       mayAsk(hostedByCall[r.slice(2)])?'Ask to join '+roomLabel(r):
       'Message to '+roomLabel(r)+' (stays on this station)'):
@@ -2436,6 +2485,7 @@ function tick(){
     else if(GAL_KINDS[curRoom])loadGallery();
     else if(curRoom.slice(0,2)==='f:')loadForum();
     else if(curRoom.slice(0,2)==='g:')loadHosted();
+    else if(curRoom.slice(0,2)==='o:')loadGroup();
     else load();
   }
   else if(tab==='traffic')loadTraffic();
@@ -3618,6 +3668,7 @@ function grantMember(from){
   if(hr.role==='mod'||hr.role==='admin')modAct('grant:'+c,done,call);
   else roomPost({action:'add',call:call,member:c},done);
 }
+function leaveGroup(g){followGroup(g,false);snack('No longer following '+g);switchRoom('local');}
 function roomRefresh(){loadRooms(function(){switchRoom(curRoom);if(tab==='admin')loadAdmin();});}
 function roomState(call,state){
   var hr=hostedByCall[call];
