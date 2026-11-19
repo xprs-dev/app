@@ -4900,11 +4900,30 @@ class WappEngine {
         final by = _readStr(bPtr, bLen).trim();
         final r = XprsGroupRanking.instance..refresh();
         final rows = <Map<String, Object?>>[];
-        for (final g in r.ranked(by).take(50)) {
-          final nick = g.open ? '' : (XprsProfiles.instance.nickFor(g.group) ?? '');
+        // A group's name as read here; a folder (10.2) wears its group's
+        // name in front, or two "Recipes" of two groups read alike.
+        String nameOf(String g) {
+          final nick = XprsProfiles.instance.nickFor(g) ?? '';
+          return nick.isEmpty ? g : xprsGroupNickShown(nick);
+        }
+        final parents = XprsGroups.instance.parents();
+        for (final g in r.ranked(by)) {
+          if (rows.length >= 50) break;
+          // An archiver judged it public from the newest post IT holds; a
+          // station that knows better (a member told it is private, 10.7.1)
+          // does not show it (12.9.7: public groups only).
+          if (!g.open && XprsGroupRead.instance.modeOf(g.group) == 'private') {
+            continue;
+          }
+          final up = g.open ? null : parents[g.group];
+          final name = g.open
+              ? g.group
+              : up == null
+                  ? nameOf(g.group)
+                  : '${nameOf(up)} \u203A ${nameOf(g.group)}';
           rows.add({
             'g': g.group,
-            'name': nick.isEmpty ? g.group : xprsGroupNickShown(nick),
+            'name': name,
             'open': g.open,
             if (g.members != null) 'members': g.members,
             'posts': g.posts,
