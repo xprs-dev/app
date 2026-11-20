@@ -61,9 +61,8 @@ fi
 # A fresh tree, as on the buildserver (fdroiddata CI deletes build/ between
 # builds). Only the Flutter clone survives a local rerun: it is large, and the
 # recipe checks out its pinned version with -f anyway.
-rm -rf "$home_vagrant/build/$appid" "$home_vagrant/build/reticulum-dart" \
-  "$home_vagrant/x1watt/zx" \
-  "$home_vagrant/build/core" \
+rm -rf "$home_vagrant/build/$appid" "$home_vagrant/x1watt/zx" \
+  "$home_vagrant"/build/{reticulum-dart,core,apps,xcc} \
   "$home_vagrant"/build/srclib/{xprs-wapps,xprs-reticulum-dart,xprs-core,xprs-zx,xcc,dav1d} \
   "$home_vagrant/tmp/${appid}_$vercode.apk"
 # The recipe and every srclib it names. flutter and dav1d are fdroiddata's.
@@ -74,7 +73,9 @@ for lib in flutter dav1d; do
   curl -fsSL "https://gitlab.com/fdroid/fdroiddata/-/raw/master/srclibs/$lib.yml" \
     -o "$home_vagrant/srclibs/$lib.yml"
 done
-cp "$RECIPE"/srclibs/*.yml "$home_vagrant/srclibs/"
+for lib in "$RECIPE"/srclibs/*.yml; do
+  if [[ -e "$lib" ]]; then cp "$lib" "$home_vagrant/srclibs/"; fi
+done
 chown -R vagrant "$home_vagrant"
 
 # `fdroid build --on-server` uninstalls sudo when it is done, even on failure.

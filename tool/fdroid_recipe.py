@@ -50,11 +50,6 @@ def pubspec_version():
     return m.group(1), int(m.group(2))
 
 
-def pin(name):
-    with open(os.path.join(ROOT, name)) as f:
-        return f.read().strip()
-
-
 def render(version, code, commit, repo=None, binary=True):
     with open(os.path.join(ROOT, 'fdroid', 'com.xprs.app.yml')) as f:
         text = f.read()
@@ -69,16 +64,7 @@ def render(version, code, commit, repo=None, binary=True):
                          ('@FLUTTER_PLATFORM@', platform),
                          ("'@VERSION@'", version),
                          ("'@VERCODE@'", str(vercode(abi, code))),
-                         ("'@COMMIT@'", commit),
-                         # fdroid lint wants a commit, not a branch. A later
-                         # build block keeps these (F-Droid's auto-update
-                         # copies the last one); its prebuild checks out the
-                         # release's own pins, which a full clone holds.
-                         ('@RD_PIN@', pin('.reticulum-dart-commit')),
-                         ('@CORE_PIN@', pin('.core-commit')),
-                         ('@ZX_PIN@', pin('.zx-commit')),
-                         ('@WAPPS_PIN@', pin('.wapps-commit')),
-                         ('@XCC_PIN@', pin('.xcc-commit'))):
+                         ("'@COMMIT@'", commit)):
             b = b.replace(key, val)
         blocks.append(b)
     tail = (tail.replace("'@VERSION@'", version)
@@ -133,8 +119,10 @@ def main():
     with open(os.path.join(a.out, 'metadata', 'com.xprs.app.yml'), 'w') as f:
         f.write(recipe)
     overrides = dict(s.split('=', 1) for s in a.srclib_repo)
+    # The app's own srclibs, if any (flutter and dav1d are fdroiddata's; the
+    # source dependencies are submodules since 1.12.1).
     src = os.path.join(ROOT, 'fdroid', 'srclibs')
-    for name in sorted(os.listdir(src)):
+    for name in sorted(os.listdir(src)) if os.path.isdir(src) else []:
         with open(os.path.join(src, name)) as f:
             text = f.read()
         lib = name[:-len('.yml')]

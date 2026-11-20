@@ -1,0 +1,20 @@
+# Source dependencies, pinned per release (release.sh sets each gitlink to the
+# commit in the matching .*-commit file). Only F-Droid's build checks them
+# out (recipe `submodules: true`, tool/fdroid_deps.sh); a development tree
+# uses the sibling checkouts (../core, ../reticulum-dart, ../../x1watt/zx,
+# ../apps) and can leave deps/ empty.
+[submodule "deps/reticulum-dart"]
+	path = deps/reticulum-dart
+	url = https://github.com/xprs-dev/reticulum-dart.git
+[submodule "deps/core"]
+	path = deps/core
+	url = https://github.com/xprs-dev/core.git
+[submodule "deps/zx"]
+	path = deps/zx
+	url = https://github.com/x1watt/zx.git
+[submodule "deps/apps"]
+	path = deps/apps
+	url = https://github.com/xprs-dev/apps.git
+[submodule "deps/xcc"]
+	path = deps/xcc
+	url = https://github.com/tyfkda/xcc.git

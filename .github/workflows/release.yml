@@ -44,6 +44,17 @@ jobs:
           VER=$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d+ -f1)
           test "$VER" = "${GITHUB_REF_NAME#v}" ||
             { echo "::error::pubspec.yaml says $VER, the tag says $GITHUB_REF_NAME"; exit 1; }
+      # F-Droid builds from the submodules under deps/, the other jobs from the
+      # .*-commit pin files (tool/ci_fetch_siblings.sh); release.sh writes both.
+      - name: The submodules are at the pinned commits
+        run: |
+          for p in reticulum-dart:.reticulum-dart-commit core:.core-commit \
+                   zx:.zx-commit apps:.wapps-commit xcc:.xcc-commit; do
+            d=deps/${p%%:*}; f=${p#*:}
+            link=$(git ls-tree HEAD "$d" | awk '{print $3}')
+            test "$link" = "$(cat "$f")" ||
+              { echo "::error::$d is at ${link:-nothing}, $f says $(cat "$f")"; exit 1; }
+          done
       # The buildserver image, the Flutter and NDK it downloads and the build
       # itself need ~25 GB; the runner's preinstalled SDKs are not used.
       - name: Free disk space

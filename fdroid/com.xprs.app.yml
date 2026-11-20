@@ -9,6 +9,10 @@
 # installer on record (adb), the case F-Droid's reviewer hit (fdroiddata
 # !48456, 2026-10-15). An F-Droid client install has them off regardless; an
 # install from xprs.dev has them on. Keep the define on every store build.
+# The source dependencies (reticulum-dart, core, zx, apps, xcc) are git
+# submodules under deps/, pinned by the release; tool/fdroid_deps.sh puts them
+# where the build expects them. So the steps never name a dependency's commit,
+# and checkupdates can copy them to a new version as they are.
 # See docs/f-droid.md.
 Categories:
   - Connectivity
@@ -30,6 +34,7 @@ Builds:
   - versionName: '@VERSION@'
     versionCode: '@VERCODE@'
     commit: '@COMMIT@'
+    submodules: true
     sudo:
       - apt-get update
       - apt-get install -y make clang-19 lld-19 llvm-19 wasi-libc libclang-rt-19-dev-wasm32
@@ -39,11 +44,6 @@ Builds:
     binary: https://github.com/xprs-dev/app/releases/download/v%v/xprs-%v-android-@ABI@.apk
     srclibs:
       - flutter@stable
-      - xprs-reticulum-dart@@RD_PIN@
-      - xprs-core@@CORE_PIN@
-      - xprs-zx@@ZX_PIN@
-      - xprs-wapps@@WAPPS_PIN@
-      - xcc@@XCC_PIN@
       - dav1d@1.4.3
     rm:
       - artwork
@@ -60,16 +60,7 @@ Builds:
       - flutterVersion=$(cat .flutter-version)
       - '[[ $flutterVersion ]]'
       - git -C $$flutter$$ checkout -f $flutterVersion
-      - git -C $$xprs-reticulum-dart$$ checkout -f $(cat .reticulum-dart-commit)
-      - git -C $$xprs-core$$ checkout -f $(cat .core-commit)
-      - git -C $$xprs-zx$$ checkout -f $(cat .zx-commit)
-      - git -C $$xprs-wapps$$ checkout -f $(cat .wapps-commit)
-      - git -C $$xcc$$ checkout -f $(cat .xcc-commit)
-      - cp -r $$xprs-reticulum-dart$$ ../reticulum-dart
-      - cp -r $$xprs-core$$ ../core
-      - rm -rf ../../x1watt/zx
-      - mkdir -p ../../x1watt
-      - cp -r $$xprs-zx$$ ../../x1watt/zx
+      - sh tool/fdroid_deps.sh
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter pub get --enforce-lockfile
@@ -77,8 +68,8 @@ Builds:
       - .pub-cache
     build:
       - WASI_SYSROOT=/usr WASM_CLANG=clang-19 WASM_CLANGXX=clang++-19 WASM_AR=llvm-ar-19
-        DAV1D_SRC=$$dav1d$$ python3 tool/build_bundled_wapps.py $$xprs-wapps$$
-      - XCC_SRC=$$xcc$$ sh tool/build_compiler.sh $$xprs-wapps$$
+        DAV1D_SRC=$$dav1d$$ python3 tool/build_bundled_wapps.py ../apps
+      - XCC_SRC=../xcc sh tool/build_compiler.sh ../apps
       - rustup default 1.89.0
       - rustup target add @RUST_TARGET@
       - export PUB_CACHE=$(pwd)/.pub-cache

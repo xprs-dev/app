@@ -87,6 +87,8 @@ RD_PIN=$(pin_of ../reticulum-dart)
 CORE_PIN=$(pin_of ../core)
 ZX_PIN=$(pin_of ../../x1watt/zx)
 WAPPS_PIN=$(pin_of ../apps)
+# xcc is not ours: its pin moves by hand, in .xcc-commit (the compiler build).
+XCC_PIN=$(git show HEAD:.xcc-commit)
 
 # F-Droid shows changelogs/<versionCode>.txt, and each per-ABI APK has its own
 # versionCode (CODE x 10 plus an ABI digit, android/app/build.gradle.kts). The
@@ -110,6 +112,7 @@ fi
 # every F-Droid build from this release on, silently (xprs-core for v1.5.0,
 # xprs-zx for v1.7.0, xcc for v1.12.0; docs/f-droid.md section 2).
 for s in fdroid/srclibs/*.yml; do
+  [[ -e "$s" ]] || continue
   n=$(basename "$s")
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
     "https://gitlab.com/fdroid/fdroiddata/-/raw/master/srclibs/$n" || echo 000)
@@ -120,7 +123,7 @@ for s in fdroid/srclibs/*.yml; do
 done
 
 echo ">> current: $current   new: $VERSION+$CODE"
-echo ">> pins: reticulum-dart $RD_PIN, core $CORE_PIN, zx $ZX_PIN, wapps $WAPPS_PIN; changelog: ${CL:-none}"
+echo ">> pins: reticulum-dart $RD_PIN, core $CORE_PIN, zx $ZX_PIN, wapps $WAPPS_PIN, xcc $XCC_PIN; changelog: ${CL:-none}"
 if [[ "$YES" -ne 1 ]]; then
   read -r -p ">> proceed? [y/N] " ans; [[ "$ans" == "y" || "$ans" == "Y" ]] || exit 1
 fi
@@ -164,6 +167,11 @@ declare -A put=( [pubspec.yaml]="$pubblob" [lib/version.dart]="$verblob"
   [.core-commit]=$(echo "$CORE_PIN" | git hash-object -w --stdin)
   [.zx-commit]=$(echo "$ZX_PIN" | git hash-object -w --stdin)
   [.wapps-commit]=$(echo "$WAPPS_PIN" | git hash-object -w --stdin) )
+# The same pins as git submodules under deps/ (mode 160000), which F-Droid's
+# build checks out (recipe `submodules: true`, tool/fdroid_deps.sh). They need
+# no checkout here: only the gitlink is written.
+declare -A link=( [deps/reticulum-dart]="$RD_PIN" [deps/core]="$CORE_PIN"
+  [deps/zx]="$ZX_PIN" [deps/apps]="$WAPPS_PIN" [deps/xcc]="$XCC_PIN" )
 drop=()
 if [[ -n "$CL" ]]; then
   clblob=$(git rev-parse "HEAD:$CL")
@@ -175,6 +183,9 @@ GIT_INDEX_FILE="$tmpidx" git read-tree HEAD
 for p in "${!put[@]}"; do
   GIT_INDEX_FILE="$tmpidx" git update-index --add --cacheinfo 100644,"${put[$p]}","$p"
 done
+for p in "${!link[@]}"; do
+  GIT_INDEX_FILE="$tmpidx" git update-index --add --cacheinfo 160000,"${link[$p]}","$p"
+done
 for p in "${drop[@]}"; do GIT_INDEX_FILE="$tmpidx" git update-index --force-remove "$p"; done
 tree=$(GIT_INDEX_FILE="$tmpidx" git write-tree)
 rm -f "$tmpidx"
@@ -185,6 +196,10 @@ git update-ref HEAD "$(git commit-tree "$tree" -p HEAD -m "Release v${VERSION}")
 for p in "${!put[@]}"; do
   git update-index --add --cacheinfo 100644,"${put[$p]}","$p"
   [[ "$p" == pubspec.yaml ]] || git cat-file blob "${put[$p]}" > "$p"
+done
+for p in "${!link[@]}"; do
+  git update-index --add --cacheinfo 160000,"${link[$p]}","$p"
+  mkdir -p "$p"
 done
 for p in "${drop[@]}"; do git update-index --force-remove "$p"; rm -f "$p"; done
 git tag "v${VERSION}"
