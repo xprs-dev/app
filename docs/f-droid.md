@@ -225,10 +225,10 @@ the alternatives if F-Droid objects). Keep the define on every store build.
      `srclibs/xcc.yml`. `release.sh` now warns when a file in `fdroid/srclibs/`
      is missing from fdroiddata master.
 
-  Answering issue #2 is still open: with every srclib in fdroiddata, the
-  bot's copied blocks build a later tag as they are (each checks out the
-  `.*-commit` pins of the release). Submodules would remove the srclibs
-  altogether and spare an fdroiddata MR when a dependency is added.
+  Issue #2 answered the same day: the dependencies became submodules
+  (section 7), from 1.12.1 on. That release's recipe has to reach fdroiddata
+  by hand once, since the bot copies the old srclib steps; after it, the bot
+  copies steps that name no dependency.
 
 ## 3. Following the review
 
@@ -465,17 +465,29 @@ badging <apk>` (the versionCode).
 
 ## 7. The recipe
 
-The recipe lives in this repository as a template, `fdroid/com.xprs.app.yml`,
-with the XPRS srclibs next to it (`fdroid/srclibs/xprs-wapps.yml`,
-`xprs-reticulum-dart.yml` and, since v1.5.0, `xprs-core.yml`; `flutter` and `dav1d` are existing fdroiddata
-srclibs). Since 2026-11-19 it also names `xcc.yml` (github.com/tyfkda/xcc at
-`.xcc-commit`): the C compiler the app bundles for wapps,
-`assets/compiler/cc.wasm` and `usr.zip`, is removed by `rm:` and rebuilt by
-`tool/build_compiler.sh` like the bundled wapps; two builds of it are byte
-for byte the same. **fdroiddata needs `srclibs/xcc.yml` in the MR of the
-first release that carries it** (section 3: a new srclib means an fdroiddata
-MR the same day). Its one build block uses placeholders (`@ABI@`, `@VERSION@`, ...);
-`tool/fdroid_recipe.py` turns it into one block per ABI for a release:
+The recipe lives in this repository as a template, `fdroid/com.xprs.app.yml`.
+Its only srclibs are fdroiddata's own `flutter` and `dav1d`.
+
+**Since 1.12.1 the source dependencies are git submodules** under `deps/`
+(`reticulum-dart`, `core`, `zx`, `apps` and `xcc`, as fdroiddata asked in
+GitHub issue #2). Until 1.12.0 each was a srclib named in the build steps
+(`xprs-reticulum-dart`, `xprs-core`, `xprs-zx`, `xprs-wapps`, `xcc`), and
+every new one broke F-Droid's automatic updates, because `checkupdates`
+copies the last build blocks and fdroiddata lacked the new srclib (section
+2). Now the recipe says `submodules: true` and its prebuild runs
+`sh tool/fdroid_deps.sh`, which clones each submodule to the path the build
+expects (`../reticulum-dart`, `../core`, `../../x1watt/zx`, `../apps`,
+`../xcc`), refuses one whose gitlink differs from its `.*-commit` pin file,
+and removes `deps/`. Which dependencies exist and where they go is decided
+in that script, inside the release, so **the recipe's steps carry to the
+next version unchanged**. A development tree uses the sibling checkouts and
+leaves `deps/` empty; `release.sh` writes the gitlinks without a checkout.
+
+The C compiler the app bundles for wapps (`assets/compiler/cc.wasm` and
+`usr.zip`) is removed by `rm:` and rebuilt from `../xcc` like the bundled
+wapps; two builds of it are byte for byte the same. The one build block uses
+placeholders (`@ABI@`, `@VERSION@`, ...); `tool/fdroid_recipe.py` turns it
+into one block per ABI for a release:
 
 ```sh
 python3 tool/fdroid_recipe.py --version 1.2.18 --code 400385 --commit <release commit> \
@@ -490,9 +502,10 @@ different steps than F-Droid's will not reproduce. The rendered arm64 block
 (the other two differ only in the ABI names and the versionCode digit):
 
 ```yaml
-  - versionName: 1.2.18
-    versionCode: 4003852
+  - versionName: 1.12.1
+    versionCode: <N x 10 + 2>
     commit: <release commit>
+    submodules: true
     sudo:
       - apt-get update
       - apt-get install -y make clang-19 lld-19 llvm-19 wasi-libc libclang-rt-19-dev-wasm32
@@ -502,11 +515,11 @@ different steps than F-Droid's will not reproduce. The rendered arm64 block
     binary: https://github.com/xprs-dev/app/releases/download/v%v/xprs-%v-android-arm64-v8a.apk
     srclibs:
       - flutter@stable
-      - xprs-reticulum-dart@5ec49acdb6322cff20f7bf3f7f063c6e619f76fd
-      - xprs-wapps@c51d0e09514c0f704869ca9c445aa108754b17cd
       - dav1d@1.4.3
     rm:
       - artwork
+      - assets/compiler/cc.wasm
+      - assets/compiler/usr.zip
       - assets/editor/app-creator/app.wasm
       - desktop
       - ios
@@ -518,9 +531,7 @@ different steps than F-Droid's will not reproduce. The rendered arm64 block
       - flutterVersion=$(cat .flutter-version)
       - '[[ $flutterVersion ]]'
       - git -C $$flutter$$ checkout -f $flutterVersion
-      - git -C $$xprs-reticulum-dart$$ checkout -f $(cat .reticulum-dart-commit)
-      - git -C $$xprs-wapps$$ checkout -f $(cat .wapps-commit)
-      - cp -r $$xprs-reticulum-dart$$ ../reticulum-dart
+      - sh tool/fdroid_deps.sh
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter pub get --enforce-lockfile
@@ -528,11 +539,13 @@ different steps than F-Droid's will not reproduce. The rendered arm64 block
       - .pub-cache
     build:
       - WASI_SYSROOT=/usr WASM_CLANG=clang-19 WASM_CLANGXX=clang++-19 WASM_AR=llvm-ar-19
-        DAV1D_SRC=$$dav1d$$ python3 tool/build_bundled_wapps.py $$xprs-wapps$$
+        DAV1D_SRC=$$dav1d$$ python3 tool/build_bundled_wapps.py ../apps
+      - XCC_SRC=../xcc sh tool/build_compiler.sh ../apps
       - rustup default 1.89.0
       - rustup target add aarch64-linux-android
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform=android-arm64
+        --dart-define=AUTO_UPDATE_CHECK=false
     ndk: r28c
 ```
 
@@ -557,13 +570,14 @@ What each part is for, and what taught it:
 * **`.flutter-version`** in this repository names the Flutter release F-Droid
   builds with; prebuild checks it out of `flutter@stable`. Bump the file when
   upgrading Flutter. (Geogram review.)
-* **`.reticulum-dart-commit` and `.wapps-commit`** do the same for the two XPRS
-  srclibs. The srclib lines name the pins of the release the recipe was
-  rendered for (`fdroid lint` refuses a branch there; only Flutter's is
-  exempt), and prebuild then checks out the pins of the release being built,
-  which the full srclib clone holds. `release.sh` writes them, so F-Droid's
-  auto-update, which copies the last build block with its old srclib lines,
-  always builds the right sources.
+* **The `deps/` submodules and the `.*-commit` pin files** name the same
+  commits: `release.sh` writes both, `release.yml` fails a tag where they
+  differ, and `tool/fdroid_deps.sh` refuses to build one. The pin files are
+  what the Linux and Windows jobs fetch (`tool/ci_fetch_siblings.sh
+  --pinned`) and what the compiler build reads; the submodules are what
+  F-Droid checks out. A new dependency is a new submodule, a new pin file,
+  a line in `release.sh` and a line in `tool/fdroid_deps.sh`, all in this
+  repository: no fdroiddata change.
 * **`commit:` is the release commit's hash**, not the tag. The tag is how
   `UpdateCheckMode` finds new releases. (Geogram review.)
 * **One block per ABI**, each building one split APK with its own versionCode.
@@ -583,8 +597,10 @@ What each part is for, and what taught it:
   2026-10-15 (section 1): no automatic updates where Android names no
   installer. The define must stay on every store build, and it reaches the
   release pipeline through the same template.
-* **reticulum-dart is copied next to the app**, because `pubspec.yaml`
-  depends on it by path. `$$srclib$$` expands to an absolute path.
+* **The dependencies are cloned next to the app**, because `pubspec.yaml`
+  (and core's) depend on them by path. A clone, not a move: a submodule's
+  `.git` is a relative pointer, and the wapp and compiler builds run git in
+  their sources (the reproducible timestamp, the pinned headers).
 * **The scanner refuses any WebAssembly file** in the source tree, and it runs
   after `prebuild`. The committed App Creator module is therefore deleted with
   `rm:`, and every bundled wapp module is rebuilt in `build:`, after the scan,
@@ -608,7 +624,9 @@ What each part is for, and what taught it:
 
 * it tags `vX.Y.Z` and writes `version: X.Y.Z+<commit count>` into
   `pubspec.yaml`, so every versionCode rises;
-* it pins `../reticulum-dart` and `../apps` by commit (both must be pushed);
+* it pins `../reticulum-dart`, `../core`, `../../x1watt/zx` and `../apps` by
+  commit (all must be pushed), in the `.*-commit` files and as the `deps/`
+  submodules, and sets `deps/xcc` to `.xcc-commit`;
 * it copies the release's changelog to the three per-ABI names F-Droid looks
   for (`changelogs/4003851.txt`, `4003852.txt`, `4003853.txt`).
 

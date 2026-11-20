@@ -150,9 +150,11 @@ exist. `test/update_mirror_test.dart` pins every name the workflow publishes.
 ```
 
 `release.sh` bumps `pubspec.yaml`, regenerates `lib/version.dart`, pins
-`../reticulum-dart` and `../apps` by commit (`.reticulum-dart-commit`,
-`.wapps-commit`; both must be pushed), adds the F-Droid changelog copies,
-commits, tags and pushes. Pushing the tag is what triggers everything else.
+`../reticulum-dart`, `../core`, `../../x1watt/zx` and `../apps` by commit
+(`.reticulum-dart-commit`, `.core-commit`, `.zx-commit`, `.wapps-commit`;
+all must be pushed) and writes the same commits, plus `.xcc-commit`, as the
+git submodules under `deps/` that F-Droid builds from (`docs/f-droid.md`
+section 7), adds the F-Droid changelog copies, commits, tags and pushes. Pushing the tag is what triggers everything else.
 
 1. **`release.yml`** (this repo, on `v*`) builds the three platforms and
    attaches the artifacts to a GitHub Release. `prerelease` is set when the tag

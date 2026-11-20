@@ -1600,3 +1600,14 @@ store the Files tiles count and "Free space" empties, so no second
 A widget test that opens the page must touch `NodeRoleApi.instance.serveRings`
 in `setUpAll` first: its minute timer otherwise starts inside the test's fake
 clock and is reported as pending (`test/settings_topics_test.dart`).
+
+### Recipe steps that never change — `tool/fdroid_deps.sh`
+
+F-Droid's `checkupdates` copies the last build block to each new version, so
+anything that differs between versions must live in the repository, not in
+the recipe. `tool/fdroid_deps.sh` is the pattern: the recipe says only
+`sh tool/fdroid_deps.sh`, and the script (versioned with the release) decides
+which `deps/` submodules exist and where they go, and checks each gitlink
+against its `.*-commit` pin file. A new source dependency is a submodule, a
+pin file, one `place` line there and one `link` entry in `release.sh`; no
+fdroiddata change. Do the same for any future per-version build logic.
