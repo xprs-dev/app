@@ -229,6 +229,12 @@ the alternatives if F-Droid objects). Keep the define on every store build.
   (section 7), from 1.12.1 on. That release's recipe has to reach fdroiddata
   by hand once, since the bot copies the old srclib steps; after it, the bot
   copies steps that name no dependency.
+* **2026-11-20 10:03 UTC:** `licaon-kter` merged !58321 (v1.12.0, squashed)
+  and closed !56668. The bot's `com.xprs.app` branch was still there, so
+  issue #2 asks for it to be deleted. v1.12.1's recipe is fdroiddata !58325
+  (https://gitlab.com/fdroid/fdroiddata/-/merge_requests/58325), rebuilt on
+  master after the squash made the stacked branch conflict: **a follow-up MR
+  is based on master after the previous one merges, not stacked on it.**
 
 ## 3. Following the review
 
