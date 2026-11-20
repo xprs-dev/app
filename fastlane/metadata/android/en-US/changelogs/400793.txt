@@ -1,0 +1,2 @@
+F-Droid can now update XPRS on its own: the app's source dependencies are pinned as git submodules.
+No changes inside the app since 1.12.0.
