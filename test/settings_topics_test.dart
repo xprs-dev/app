@@ -4,9 +4,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:xprs/launcher/archiver_page.dart';
 import 'package:xprs/launcher/hardware_page.dart';
 import 'package:xprs/launcher/launcher.dart';
 import 'package:xprs/services/preferences_service.dart';
+import 'package:xprs_core/src/services/social/node_role_api.dart';
 
 import 'i18n_english.dart';
 
@@ -20,6 +22,9 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     PreferencesService.resetForTest();
     await PreferencesService.instance();
+    // The core's serve counters start a minute timer on first use: start it
+    // here, outside a test's fake clock, or the Archiver test leaves it pending.
+    NodeRoleApi.instance.serveRings;
   });
 
   Future<void> pump(WidgetTester tester, Widget page) async {
@@ -67,6 +72,11 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing,
           reason: '$t is still loading');
       expect(find.widgetWithText(AppBar, t), findsOneWidget, reason: t);
+      if (t == 'Network') {
+        // Hosting lives on the Archiver page (Files), not here.
+        expect(find.text('Host for the mesh'), findsNothing);
+        expect(find.byType(SwitchListTile), findsNothing);
+      }
       if (t == 'Location & privacy') {
         // Everything about where this station is, in one place.
         expect(find.text("Share this device's location"), findsOneWidget);
@@ -101,5 +111,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.widgetWithText(TextFormField, '868200'), findsNothing,
         reason: 'LoRa\'s frequency stayed on a Bluetooth link');
+  });
+
+  testWidgets('the Archiver Files tab holds the hosting switches',
+      (tester) async {
+    await pump(tester, const ArchiverPage());
+    await tester.tap(find.text('Files'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Hosting'), findsOneWidget);
+    expect(find.text('Storage for media'), findsOneWidget);
+
+    final prefs = PreferencesService.instanceSync!;
+    expect(prefs.hostEnabled, isTrue);
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Host for the mesh'));
+    await tester.pumpAndSettle();
+    expect(prefs.hostEnabled, isFalse);
+    // Off: the charging gate has nothing to gate.
+    expect(
+        tester
+            .widget<SwitchListTile>(find.widgetWithText(
+                SwitchListTile, 'Only when charging on Wi-Fi'))
+            .onChanged,
+        isNull);
+    prefs.hostEnabled = true;
+    // Close the page: its once-a-minute refresh timer ends with it.
+    await tester.pumpWidget(const SizedBox());
   });
 }

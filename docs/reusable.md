@@ -1583,3 +1583,20 @@ Hardware, Permissions) is an `_entry` straight to it. Each topic page loads only
 what it shows (the wapp-data walk for Storage, hosted usage for Network).
 `CoverageCard` (`lib/launcher/coverage_card.dart`) is the Coverage switch, kept
 beside location sharing so both read the same location, GPS or typed.
+
+### Archiver page building blocks — `_section` / `_switch` / `_choice` / `_tiles`
+
+`lib/launcher/archiver_page.dart`. Everything this device stores or serves for
+others is set on the Archiver page, never in Settings: a new control is one
+`_switch(title, help, value, onChanged)` or `_choice<T>(title, value, options,
+onChanged)` inside a `_section(context, title, [...], help:)`. `_hostSection`
+(Files tab) is the pattern for a group that writes preferences directly and
+then calls a core `apply…()`: pass `null` as `onChanged` to grey a row out.
+The hosting switches (`hostEnabled`, `hostCapacityGated`, `hostCeilingGb`)
+moved here from Settings > Network on 2026-11-20; they fill the same hosted
+store the Files tiles count and "Free space" empties, so no second
+"used / clear" pair is needed.
+
+A widget test that opens the page must touch `NodeRoleApi.instance.serveRings`
+in `setUpAll` first: its minute timer otherwise starts inside the test's fake
+clock and is reported as pending (`test/settings_topics_test.dart`).

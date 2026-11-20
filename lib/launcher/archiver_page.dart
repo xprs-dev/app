@@ -19,6 +19,7 @@ import 'package:xprs_core/src/profile/device_identity.dart';
 
 import '../services/i18n/core_i18n.dart';
 import '../services/preferences_service.dart';
+import '../services/reticulum/rns_service.dart';
 import '../services/xprs/archiver_settings.dart';
 import '../services/xprs/archiver_stats.dart';
 import '../services/xprs/xprs_archive.dart';
@@ -628,6 +629,7 @@ class _ArchiverPageState extends State<ArchiverPage> {
             _Tile(tr('archiver.files.freeable'), '${f['freeableText'] ?? ''}', ''),
           ]),
         ], help: tr('archiver.files.help')),
+        _hostSection(context),
         _section(context, tr('archiver.files.settings'), [
           _switch(tr('archiver.files.enable'), null, on,
               (v) => _filesPref('quotaGb=${v ? (quota == 0 ? 5 : quota) : 0}'),
@@ -658,6 +660,41 @@ class _ArchiverPageState extends State<ArchiverPage> {
         ]),
       ],
     );
+  }
+
+  /// Room for the pictures of followed people; strangers' files go first,
+  /// then followed media largest first, and notes are never evicted.
+  static const List<int> _hostCeilings = [1, 5, 10, 25, 50, 100];
+
+  /// Hosting for the mesh (relay + file host): the master switch, the
+  /// charging gate and the media ceiling. Moved here from Settings > Network
+  /// so everything stored for others is on this page. It fills the same
+  /// hosted store the tiles above count and Free space empties.
+  Widget _hostSection(BuildContext context) {
+    final prefs = _prefs;
+    final hostOn = prefs?.hostEnabled ?? true;
+    void set(void Function(PreferencesService p) change) {
+      if (prefs == null) return;
+      change(prefs);
+      RnsService.instance.applyHostingSettings();
+      _refresh();
+    }
+
+    return _section(context, tr('archiver.host.title'), [
+      _switch(tr('archiver.host.enable'), tr('archiver.host.enable.help'),
+          hostOn, (v) => set((p) => p.hostEnabled = v),
+          icon: Icons.cloud_upload_outlined),
+      const Divider(height: 1),
+      _switch(tr('archiver.host.charging'), tr('archiver.host.charging.help'),
+          prefs?.hostCapacityGated ?? true,
+          hostOn ? (v) => set((p) => p.hostCapacityGated = v) : null,
+          icon: Icons.battery_charging_full),
+      const Divider(height: 1),
+      _choice<int>(tr('archiver.host.media'), prefs?.hostCeilingGb ?? 10,
+          [for (final g in _hostCeilings) (g, '$g GB')],
+          hostOn ? (v) => set((p) => p.hostCeilingGb = v) : null,
+          icon: Icons.sd_storage_outlined),
+    ], help: tr('archiver.host.help'));
   }
 
   Future<void> _confirmFree() async {

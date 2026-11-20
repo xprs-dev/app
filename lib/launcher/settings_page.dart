@@ -42,7 +42,6 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
     // The directory walk and the hosted-media count are for their own
     // pages, not for every page Settings opens.
     if (widget.topic == SettingsTopic.storage) await _refreshWappData();
-    if (widget.topic == SettingsTopic.network) _refreshHostedUsage();
   }
 
   /// Prompt for a single text value (used for the Reticulum sharing-folder
@@ -334,7 +333,7 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
             const SizedBox(height: 24),
             ..._secMuted(cs),
           ],
-        SettingsTopic.network => [..._secRns(cs), ..._secHosting(cs)],
+        SettingsTopic.network => _secRns(cs),
         SettingsTopic.updates => _secFolders(cs),
         SettingsTopic.storage => [..._secDatadir(cs), ..._secWappdata(cs)],
         SettingsTopic.developer => _secRemote(cs),
@@ -631,69 +630,6 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
       const SizedBox(height: 24),
       ];
 
-  List<Widget> _secHosting(ColorScheme cs) => [
-      // ── Hosting: its own heading, or its text reads as Reticulum's ──
-      Text(tr('settings.hosting.title'),
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: cs.primary,
-                fontWeight: FontWeight.w600,
-              )),
-      const SizedBox(height: 4),
-      Text(
-        tr('settings.hosting.help'),
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: cs.onSurfaceVariant,
-            ),
-      ),
-      const SizedBox(height: 12),
-      Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-        ),
-        color: cs.surfaceContainerLow,
-        child: Column(
-          children: [
-            SwitchListTile(
-              secondary: const Icon(Icons.cloud_upload_outlined),
-              title: Text(tr('settings.hosting.enable')),
-              subtitle: Text(
-                tr('settings.hosting.enable.help'),
-                style: TextStyle(color: cs.onSurfaceVariant),
-              ),
-              value: _prefs?.hostEnabled ?? true,
-              onChanged: (v) {
-                _prefs?.hostEnabled = v;
-                RnsService.instance.applyHostingSettings();
-                setState(() {});
-              },
-            ),
-            const Divider(height: 1),
-            SwitchListTile(
-              secondary: const Icon(Icons.battery_charging_full),
-              title: Text(tr('settings.hosting.charging')),
-              subtitle: Text(
-                tr('settings.hosting.charging.help'),
-                style: TextStyle(color: cs.onSurfaceVariant),
-              ),
-              value: _prefs?.hostCapacityGated ?? true,
-              onChanged: (_prefs?.hostEnabled ?? true)
-                  ? (v) {
-                      _prefs?.hostCapacityGated = v;
-                      RnsService.instance.applyHostingSettings();
-                      setState(() {});
-                    }
-                  : null,
-            ),
-            const Divider(height: 1),
-            _mediaQuotaTile(cs),
-          ],
-        ),
-      ),
-      const SizedBox(height: 24),
-      ];
-
   List<Widget> _secFolders(ColorScheme cs) => [
       // ── Sharing folders (Reticulum) ──
       Text(tr('settings.folders.title'),
@@ -919,87 +855,6 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
         }
       }
     }
-  }
-
-  /// How much room the media of the people we follow may take.
-  ///
-  /// The eviction planner is fed the hosted-BLOB inventory, so what this bounds
-  /// is pictures — a followed person's notes are kept whatever happens to their
-  /// media. Strangers' blobs are dropped first, then followed media largest
-  /// first, and only under pressure.
-  static const List<int> _quotaChoices = [1, 5, 10, 25, 50, 100];
-
-  Widget _mediaQuotaTile(ColorScheme cs) {
-    final gb = _prefs?.hostCeilingGb ?? 10;
-    final idx = _quotaChoices.indexOf(gb);
-    final usedGb = _hostedBytes / (1 << 30);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.sd_storage_outlined, size: 20),
-              const SizedBox(width: 12),
-              Expanded(child: Text(tr('settings.hosting.media'))),
-              Text('$gb GB',
-                  style: TextStyle(
-                      color: cs.primary, fontWeight: FontWeight.w700)),
-            ],
-          ),
-          Slider(
-            value: (idx < 0 ? 2 : idx).toDouble(),
-            min: 0,
-            max: (_quotaChoices.length - 1).toDouble(),
-            divisions: _quotaChoices.length - 1,
-            label: '${_quotaChoices[idx < 0 ? 2 : idx]} GB',
-            onChanged: (_prefs?.hostEnabled ?? true)
-                ? (v) => setState(
-                    () => _prefs?.hostCeilingGb = _quotaChoices[v.round()])
-                : null,
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  tr('settings.hosting.media.used',
-                      {'gb': usedGb.toStringAsFixed(1)}),
-                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-                ),
-              ),
-              TextButton(
-                onPressed: _hostedBytes == 0 ? null : _clearHostedMedia,
-                child: Text(tr('settings.hosting.media.clear')),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  int _hostedBytes = 0;
-
-  void _refreshHostedUsage() {
-    final archive = sharedMediaArchive();
-    if (archive == null) return;
-    var total = 0;
-    for (final r in archive.hostedInventory()) {
-      total += r.bytes;
-    }
-    if (mounted && total != _hostedBytes) {
-      setState(() => _hostedBytes = total);
-    }
-  }
-
-  Future<void> _clearHostedMedia() async {
-    final archive = sharedMediaArchive();
-    if (archive == null) return;
-    for (final r in archive.hostedInventory()) {
-      archive.delete(r.sha);
-    }
-    _refreshHostedUsage();
   }
 }
 
