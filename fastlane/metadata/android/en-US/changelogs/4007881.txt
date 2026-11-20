@@ -1,0 +1,6 @@
+Settings is a short menu of topics; Groups and Hardware are inside it, and file hosting moved to the Archiver.
+Chat: groups with folders on one bar, formatted text and tappable links, public groups ranked by the archivers, rooms closed to posts.
+Status counts down to one message; an alert's message is optional.
+Updates download in the background.
+Build and edit wapps on the phone with the Compiler add-on.
+About XPRS in the menu opens xprs.dev.
