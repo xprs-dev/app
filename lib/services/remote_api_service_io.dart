@@ -49,6 +49,7 @@ import 'mesh/mesh_service.dart';
 import 'mesh/mesh_store.dart';
 import 'mesh/mesh_table.dart';
 import 'mesh/mesh_transfer_scheduler.dart';
+import 'package:xprs_core/src/services/xprs/xprs_group_index.dart' show xprsIsOpenGroupName;
 import 'package:xprs_core/src/platform/os.dart' as platform;
 import '../profile/profile_service.dart';
 import '../profile/storage_paths.dart';
@@ -1444,7 +1445,10 @@ class RemoteApiService {
         // freely within one conversation.
         //
         // A broadcast has no recipient to seal to, so it is always plain.
-        final wantPrivate = dest.isEmpty
+        // A group (an open group's name, 7.3, or an X5 group, 10) is not a
+        // person: a post to it is not sealed to anybody here.
+        final toGroup = dest.startsWith('X5') || xprsIsOpenGroupName(dest);
+        final wantPrivate = dest.isEmpty || toGroup
             ? false
             : (data['private'] == null
                 ? type == 'message'
@@ -1882,6 +1886,16 @@ class RemoteApiService {
               status: HttpStatus.badRequest);
         }
         return _json(res, {'ok': true, 'wire': r.wire});
+      }
+
+      // Follow (or stop following) a group by name, as Chat does when its
+      // owner joins one (7.3): its talk is then kept and caught up.
+      if (req.method == 'POST' && path == '/api/xprs/group/follow') {
+        final data = await _body(req);
+        final g = (data['d'] ?? '').toString();
+        final ok = RnsService.instance.followGroup(g, data['on'] != false);
+        return _json(res, {'ok': ok, 'followed': XprsArchive.instance.followedGroups.toList()},
+            status: ok ? HttpStatus.ok : HttpStatus.badRequest);
       }
 
       // One closed group's roster, replayed per section 26.4. The answer to

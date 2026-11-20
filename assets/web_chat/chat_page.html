@@ -417,6 +417,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 .badge.ok{background:#1b5e20;color:#81c784}
 .badge.bad{background:#b71c1c;color:#ef9a9a}
 .badge.ask{background:#3a2a10;color:#ffb74d}
+.badge.corr{background:#1a2a3a;color:#90caf9}
 .meta .act.small{padding:1px 8px;font-size:11px;margin-left:6px;min-height:0;line-height:18px}
 .msg.failed .bubble{opacity:.55;border-style:dashed}
 .msg .why{font-size:11px;color:#ef9a9a;margin-top:2px}
@@ -1782,6 +1783,8 @@ function showMsgMenu(ev,id,from,own){
   if(!own&&modHere()){
     items+='<div class="modsep">Moderator</div>'+
       '<button onclick="menuAct(\'mdel\',\''+id+'\',\''+from+'\')">Delete for everyone</button>'+
+      '<button onclick="menuAct(\'mhide\',\''+id+'\',\''+from+'\')">Hide</button>'+
+      '<button onclick="menuAct(\'medit\',\''+id+'\',\''+from+'\')">Correct\u2026</button>'+
       '<button onclick="menuAct(\'mout1\',\''+id+'\',\''+from+'\')">Send '+from+' away for an hour</button>'+
       '<button onclick="menuAct(\'mout24\',\''+id+'\',\''+from+'\')">Send '+from+' away for a day</button>'+
       '<button onclick="menuAct(\'mout\',\''+id+'\',\''+from+'\')">Send '+from+' away until lifted</button>';
@@ -1800,6 +1803,9 @@ function menuAct(act,id,from){
   else if(act==='like')sendLike(id);
   else if(act==='dm')openDm(from);
   else if(act==='mdel')modDelete(id);
+  else if(act==='mhide')modAct('r:'+id+' hide:message',function(){
+    applyModeration({removed:[id],away:Object.keys(modAway)});snack('Hidden');});
+  else if(act==='medit')modCorrect(id);
   else if(act==='mout1')modSendAway(from,3600);
   else if(act==='mout24')modSendAway(from,86400);
   else if(act==='mout')modSendAway(from,0);}
@@ -1863,7 +1869,7 @@ function groupActs(g,info){
     for(var i=0;i<acts.length;i++){
       var w=' '+(acts[i].wire||'')+' ',f=baseCall(acts[i].from||'');
       var grants=gp(w,'grant').split(','),revs=gp(w,'revoke').split(',');
-      if(grants.indexOf(me)>=0&&role!=='member'&&role!=='mod'){offer=acts[i].id;role='invited';offerRole=gp(w,'role')==='mod'?'mod':'member';}
+      if(grants.indexOf(me)>=0&&role!=='member'&&role!=='mod'){offer=acts[i].id||wireId(acts[i].wire||'');role='invited';offerRole=gp(w,'role')==='mod'?'mod':'member';}
       if(revs.indexOf(me)>=0&&!gp(w,'until')){role='none';offer='';}
       if(f===me&&gp(w,'accept')&&gp(w,'r')===offer){role=gp(w,'accept')==='mod'&&offerRole==='mod'?'mod':'member';offer='';}
       if(f===me&&gp(w,'leave')){role='none';offer='';}
@@ -1882,7 +1888,10 @@ function drawGroupNote(g){
   if(info.role==='member'||info.role==='mod')
     b+='<button class="act" onclick="leaveGroupAct(\''+esc(g)+'\')">Leave group</button> ';
   if(info.state==='closed')b=esc(roomLabel('o:'+g))+' is closed to new posts. '+b;
+  if(info.sealed)b='Private group: its words are sealed for its members, and this page cannot open them. '+b;
   n.innerHTML=b;n.style.display=b?'':'none';
+  /* 10.4.2: while closed only its moderators write. */
+  el('txt').disabled=info.state==='closed'&&info.role!=='mod'&&info.role!=='admin';
   drawRoomBar();
 }
 function acceptGroup(g){
@@ -1904,14 +1913,19 @@ function loadGroup(){
           '&limit=100'+(sess?'&session='+encodeURIComponent(sess):''),function(d){
     if(!d||!d.rows||curRoom!=='o:'+g)return;
     if(g.slice(0,2)==='X5'){
-      var was=groupInfo[g]||{};
-      var info=d.group||{};
-      if(!info.role&&was.guessed){info.role=was.role;info.offer=was.offer;info.offer_role=was.offer_role;info.guessed=true;}
-      groupInfo[g]=info;
-      if(!d.group||!d.group.role){if(mycall&&!was.asked){info.asked=true;groupActs(g,info);}}
+      /* One record per group, kept across polls: the station's word when it
+         keeps the group's record, else what the page found in its acts
+         (asked again at most once a minute). */
+      var info=groupInfo[g]||(groupInfo[g]={});
+      var sg=d.group||{};
+      for(var k in sg)info[k]=sg[k];
+      if(sg.role){info.guessed=false;if(!sg.offer)delete info.offer;}
+      info.sealed=d.rows.some(function(r){return / x:/.test(r.wire||'')&&!/ m:/.test(r.wire||'');});
+      var now=Date.now();
+      if(!sg.role&&mycall&&now-(info.askedAt||0)>60000){info.askedAt=now;groupActs(g,info);}
       drawGroupNote(g);
     }
-    if(d.moderation)applyModeration({removed:d.moderation.removed||[],away:Object.keys(modAway)});
+    if(d.moderation)applyModeration({removed:d.moderation.removed||[],away:Object.keys(modAway),edits:d.moderation.edits});
     var rows=d.rows.slice().reverse();
     for(var i=0;i<rows.length;i++)render(rows[i]);
   });
@@ -2351,7 +2365,10 @@ function render(row){
                      :('replying to '+rm[1]);
     bub.appendChild(q);
   }
-  bub.appendChild(document.createTextNode(text));
+  var corrected=modEdits[id]!=null;
+  bub.appendChild(document.createTextNode(corrected?modEdits[id]:text));
+  if(corrected){var mt0=d.querySelector('.meta');
+    if(mt0)mt0.insertAdjacentHTML('beforeend','<span class="badge corr">corrected by a moderator</span>');}
   /* In the order things were SAID. The archive files a packet when it is
    * heard, and the mesh replays: a catch-up brings an hour-old message in
    * after this morning's, and appending put 14:05 below 13:28. A row with
@@ -3697,7 +3714,7 @@ function loadHosted(){
           '&limit=100'+(sess?'&session='+encodeURIComponent(sess):''),function(d){
     if(!d||!d.rows)return;
     /* Removals are by packet id; who a ROOM sent away is the room's own. */
-    if(d.moderation)applyModeration({removed:d.moderation.removed||[],away:Object.keys(modAway)});
+    if(d.moderation)applyModeration({removed:d.moderation.removed||[],away:Object.keys(modAway),edits:d.moderation.edits});
     var rows=d.rows.slice().reverse();
     for(var i=0;i<rows.length;i++)render(rows[i]);
   });
@@ -4188,7 +4205,7 @@ function loadForum(force){
   var want=forumTopic.id;
   getJSON('/api/xprs/history?room='+encodeURIComponent(hr.call)+'&kind=blog&root='+encodeURIComponent(want)+'&limit=200'+q,function(d){
     if(!d||!d.rows||curRoom!==here||!forumTopic||forumTopic.id!==want)return;
-    if(d.moderation)applyModeration({removed:d.moderation.removed||[],away:Object.keys(modAway)});
+    if(d.moderation)applyModeration({removed:d.moderation.removed||[],away:Object.keys(modAway),edits:d.moderation.edits});
     var posts=blogPosts(d.rows),i,top=null,comments=[];
     pendPrune(posts);
     for(i=0;i<posts.length;i++){
@@ -4693,8 +4710,21 @@ function adminSet(settings){adminDo('set',{settings:settings});
 var stationCall='',canModerate=false,myStationRole='none',myOffer='';
 var modRemoved={},modAway={};
 var SAFETY={sos:1,warning:1,info:1};
+/* A moderator's corrections (XPRS.md 10.4.1), as the station judged them:
+   the text shown instead of the original, marked so. */
+var modEdits={};
 function applyModeration(m){
   var i,ch=false,box=el('msgs'),k;
+  for(k in (m.edits||{})){
+    if(modEdits[k]===m.edits[k])continue;
+    modEdits[k]=m.edits[k];
+    var md=box.querySelector('.msg[data-id="'+k+'"]');
+    if(md){var bb=md.querySelector('.bubble');
+      if(bb){var q=bb.querySelector('.quote');bb.textContent='';if(q)bb.appendChild(q);
+        bb.appendChild(document.createTextNode(m.edits[k]));}
+      var mt=md.querySelector('.meta');
+      if(mt&&!mt.querySelector('.corr'))mt.insertAdjacentHTML('beforeend','<span class="badge corr">corrected by a moderator</span>');}
+  }
   for(i=0;i<(m.removed||[]).length;i++)
     if(!modRemoved[m.removed[i]]){modRemoved[m.removed[i]]=1;ch=true;}
   var away={};
@@ -4752,6 +4782,17 @@ function modAct(body,done,to){
       if(done)done();
     });
   });
+}
+/* 10.4.1: the moderator's own words in place of the author's, signed by the
+   moderator under t:moderate so they are never taken for the author's. */
+function modCorrect(id){
+  var p=idmap[id];
+  var t=prompt('Correct this message (what everybody will see instead):',p?p.text:'');
+  if(t===null)return;
+  t=t.replace(/[\x00-\x1f]/g,' ').trim();
+  if(!t)return;
+  modAct('edit:'+id+' m:'+t,function(){var e={};e[id]=t;
+    applyModeration({removed:[],away:Object.keys(modAway),edits:e});snack('Corrected');});
 }
 function modDelete(id){
   if(!confirm('Delete this message for everyone? This cannot be undone.'))return;
