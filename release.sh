@@ -105,6 +105,20 @@ if [[ -z "$CL" ]]; then
   echo "warning: no $CL_DIR/$CODE.txt; F-Droid will show no changelog for this release" >&2
 fi
 
+# F-Droid builds a release from fdroiddata's recipe and srclibs, not from
+# fdroid/ here. A srclib added to the template and not to fdroiddata breaks
+# every F-Droid build from this release on, silently (xprs-core for v1.5.0,
+# xprs-zx for v1.7.0, xcc for v1.12.0; docs/f-droid.md section 2).
+for s in fdroid/srclibs/*.yml; do
+  n=$(basename "$s")
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    "https://gitlab.com/fdroid/fdroiddata/-/raw/master/srclibs/$n" || echo 000)
+  if [[ "$code" == 404 ]]; then
+    echo "warning: srclibs/$n is not in fdroiddata: F-Droid cannot build this" >&2
+    echo "         release until an fdroiddata MR adds it (docs/f-droid.md section 2)" >&2
+  fi
+done
+
 echo ">> current: $current   new: $VERSION+$CODE"
 echo ">> pins: reticulum-dart $RD_PIN, core $CORE_PIN, zx $ZX_PIN, wapps $WAPPS_PIN; changelog: ${CL:-none}"
 if [[ "$YES" -ne 1 ]]; then

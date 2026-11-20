@@ -200,6 +200,35 @@ the alternatives if F-Droid objects). Keep the define on every store build.
   and the job retried. Pipeline 3083409706 then went green: all three ABIs
   matched the reference binaries, in about 33 min. **A fresh fork needs
   `build_timeout` raised before its first pipeline.**
+* **2026-11-20: why F-Droid still showed 1.6.0, and v1.12.0 by hand.** Three
+  separate causes:
+  1. **The bot skips the app every day.** Its MR !56668 (v1.7.0, opened
+     2026-11-10) failed to build (no `xprs-zx` srclib), and `linsui` labelled
+     it "waiting-for-upstream" and linked GitHub issue #2 ("Can you add them as
+     git submodule?", unanswered). While that MR's branch `com.xprs.app`
+     exists in `fdroid/checkupdates-bot-fdroiddata`, `checkupdates` logs
+     "...checkupdate failed for com.xprs.app : Open merge request with human
+     edits, skipped." on every daily run (checkupdates-runner, job "10/20" is
+     the batch holding `com.xprs.app`). So **no tag is picked up automatically
+     until a maintainer closes !56668 and deletes that branch**; that is asked
+     in !58321.
+  2. **v1.11.0 missed the build cycle.** !57991 merged 2026-11-18 13:28 UTC;
+     the build cycle running since 2026-11-17 23:36 UTC was started from
+     fdroiddata `88c5fa1` (2026-11-17 17:34), 115 commits earlier. v1.11.0 is
+     built in the NEXT cycle, then published. (`running.json` → `fdroiddata.
+     commitId` says which recipe a cycle builds.)
+  3. **v1.12.0 added a srclib again.** `xcc` (the bundled C compiler, template
+     commit 575fe27) was not in fdroiddata, the third time after `xprs-core`
+     and `xprs-zx`. v1.12.0 went in as fdroiddata !58321
+     (https://gitlab.com/fdroid/fdroiddata/-/merge_requests/58321, branch
+     `xprs-1.12.0` on the fork, commits API as for v1.11.0) with
+     `srclibs/xcc.yml`. `release.sh` now warns when a file in `fdroid/srclibs/`
+     is missing from fdroiddata master.
+
+  Answering issue #2 is still open: with every srclib in fdroiddata, the
+  bot's copied blocks build a later tag as they are (each checks out the
+  `.*-commit` pins of the release). Submodules would remove the srclibs
+  altogether and spare an fdroiddata MR when a dependency is added.
 
 ## 3. Following the review
 
