@@ -1,15 +1,11 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:reticulum/src/services/social/listening_schedule.dart';
 import 'package:reticulum/src/services/social/node_profile.dart';
 
 import '../services/i18n/schedule_text.dart';
 
-import '../services/location_service.dart';
 import '../services/preferences_service.dart';
 import '../services/social/node_profile_service.dart';
-import '../util/geohash.dart';
 import '../services/i18n/core_i18n.dart';
 
 /// Settings → Hardware: what this device is made of (docs/NOSTR.md).
@@ -46,44 +42,6 @@ class _HardwarePageState extends State<HardwarePage> {
 
   void _save(VoidCallback change) {
     setState(change);
-  }
-
-  /// The device's own position, or null when there is no fix.
-  ///
-  /// Coverage has to be derived from where the device actually is. It used to
-  /// store the literal string 'u0' whenever the switch was turned on, so every
-  /// node that enabled Coverage advertised the same region in the Baltic
-  /// regardless of where it stood, and the network was told a location nobody
-  /// had measured.
-  Future<({double lat, double lon})?> _position() async {
-    final loc = LocationService.instance;
-    loc.ensureStarted();
-    final lat = loc.latE7, lon = loc.lonE7;
-    if (lat != null && lon != null) {
-      return (lat: lat / 1e7, lon: lon / 1e7);
-    }
-    return loc.currentPosition();
-  }
-
-  /// Re-encode the coverage region at [precision] from the current fix.
-  ///
-  /// Always re-encoded, never padded: dropping characters coarsens a geohash,
-  /// but appending them names a different place. Refining therefore has to go
-  /// back to the coordinates.
-  Future<void> _setCoverage(int precision) async {
-    final p = _prefs;
-    if (p == null) return;
-    final at = await _position();
-    if (!mounted) return;
-    if (at == null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(tr('hardware.no_fix')),
-      ));
-      _save(() => p.nodeGeohash = '');
-      return;
-    }
-    _save(() => p.nodeGeohash =
-        geohashEncode(at.lat, at.lon, precision: precision));
   }
 
   @override
@@ -143,6 +101,8 @@ class _HardwarePageState extends State<HardwarePage> {
                   value: p.nodeAutonomyHours.clamp(0, 168).toDouble(),
                   max: 168,
                   divisions: 24,
+                  label: tr('hardware.autonomy.hours',
+                      {'n': p.nodeAutonomyHours}),
                   onChanged: (v) => _save(() => p.nodeAutonomyHours = v.round()),
                 ),
               ),
@@ -182,65 +142,13 @@ class _HardwarePageState extends State<HardwarePage> {
                   onChanged: (v) => _save(() => p.nodeUplink = v ?? -1),
                 ),
               ),
-              _measured(
-                cs,
-                profile.bwClass == 0
-                    ? tr('hardware.speed.unmeasured')
-                    : tr('hardware.speed.observed', {'bw': _bw(profile.bwClass)}),
-                tr('hardware.speed.why'),
-              ),
-            ]),
-          ),
-          const SizedBox(height: 20),
-
-          _header(context, tr('hardware.coverage')),
-          _card(
-            cs,
-            Column(children: [
-              SwitchListTile(
-                secondary: const Icon(Icons.place_outlined),
-                title: Text(tr('hardware.coverage.title')),
-                subtitle: Text(p.nodeGeohash.isEmpty
-                    ? tr('hardware.coverage.off')
-                    : tr('hardware.coverage.region', {
-                        'geohash': p.nodeGeohash,
-                        'precision': _precisionKm(p.nodeGeohash)
-                      })),
-                value: p.nodeGeohash.isNotEmpty,
-                onChanged: (on) {
-                  if (!on) {
-                    _save(() => p.nodeGeohash = '');
-                    return;
-                  }
-                  unawaited(_setCoverage(4));
-                },
-              ),
-              if (p.nodeGeohash.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        tr('hardware.coverage.precision'),
-                        style: TextStyle(
-                            color: cs.onSurfaceVariant, fontSize: 12),
-                      ),
-                      Slider(
-                        value: p.nodeGeohash.length.clamp(2, 6).toDouble(),
-                        min: 2,
-                        max: 6,
-                        divisions: 4,
-                        label: _precisionKm(p.nodeGeohash),
-                        onChanged: (v) => unawaited(_setCoverage(v.round())),
-                      ),
-                      Text(
-                        tr('hardware.coverage.phone'),
-                        style: TextStyle(
-                            color: cs.onSurfaceVariant, fontSize: 12),
-                      ),
-                    ],
-                  ),
+              // Shown once there is a measurement: until something has been
+              // timed, "not measured yet" was all this line could ever say.
+              if (profile.bwClass > 0)
+                _measured(
+                  cs,
+                  tr('hardware.speed.observed', {'bw': _bw(profile.bwClass)}),
+                  tr('hardware.speed.why'),
                 ),
             ]),
           ),
@@ -258,7 +166,9 @@ class _HardwarePageState extends State<HardwarePage> {
               for (final r in _svc.radios)
                 ListTile(
                   leading: Icon(_linkIcon(r.link)),
-                  title: Text('${_linkLabel(r.link)} · ${r.rangeKm} km'),
+                  title: Text(r.rangeKm > 0
+                      ? '${_linkLabel(r.link)} · ${r.rangeKm} km'
+                      : _linkLabel(r.link)),
                   subtitle: Text([
                     if (r.freqKhz > 0) _freq(r.freqKhz),
                     if (r.mode.isNotEmpty) r.mode,
@@ -266,6 +176,7 @@ class _HardwarePageState extends State<HardwarePage> {
                   ].join(' · ')),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline),
+                    tooltip: tr('common.delete'),
                     onPressed: () => _save(() {
                       final rs = _svc.radios..removeWhere((x) => x.link == r.link);
                       _svc.radios = rs;
@@ -328,12 +239,26 @@ class _HardwarePageState extends State<HardwarePage> {
     return '$normal\n\n$outage';
   }
 
+  /// What a new radio of [link] starts from: LoRa on 868.2 MHz, packet on
+  /// the 2 m APRS frequency, and no frequency or mode for Bluetooth and WiFi
+  /// Direct, which have neither to state.
+  static ({int range, int freq, String mode}) _radioDefaults(int link) =>
+      switch (link) {
+        LinkFlag.lora => (range: 5, freq: 868200, mode: 'LoRa-SF7BW125'),
+        LinkFlag.packetRadio => (range: 30, freq: 144800, mode: 'AX.25 1200'),
+        _ => (range: 0, freq: 0, mode: ''),
+      };
+
+  static bool _hasFrequency(int link) =>
+      link == LinkFlag.lora || link == LinkFlag.packetRadio;
+
   Future<void> _addRadio() async {
     var link = LinkFlag.lora;
-    var range = 5;
-    var freq = 868200;
-    var mode = 'LoRa-SF7BW125';
-    var schedule = 'always';
+    var d = _radioDefaults(link);
+    final range = TextEditingController(text: '${d.range}');
+    final freq = TextEditingController(text: '${d.freq}');
+    final mode = TextEditingController(text: d.mode);
+    final schedule = TextEditingController(text: 'always');
 
     final ok = await showDialog<bool>(
       context: context,
@@ -360,41 +285,50 @@ class _HardwarePageState extends State<HardwarePage> {
                         value: LinkFlag.wifiDirect,
                         child: Text(tr('hardware.link.wifi_direct'))),
                   ],
-                  onChanged: (v) => setLocal(() => link = v ?? LinkFlag.lora),
+                  // Another kind of radio starts from its own defaults: a
+                  // Bluetooth link kept LoRa's 868 MHz before.
+                  onChanged: (v) => setLocal(() {
+                    link = v ?? LinkFlag.lora;
+                    d = _radioDefaults(link);
+                    range.text = '${d.range}';
+                    freq.text = '${d.freq}';
+                    mode.text = d.mode;
+                  }),
                 ),
                 TextFormField(
-                  initialValue: '$range',
+                  controller: range,
                   decoration: InputDecoration(
                       labelText: tr('hardware.radio.range'),
                       helperText: tr('hardware.radio.range.help')),
                   keyboardType: TextInputType.number,
-                  onChanged: (v) => range = int.tryParse(v) ?? range,
                 ),
-                TextFormField(
-                  initialValue: '$freq',
-                  decoration: InputDecoration(
-                    labelText: tr('hardware.radio.freq'),
-                    helperText: tr('hardware.radio.freq.help'),
+                if (_hasFrequency(link)) ...[
+                  TextFormField(
+                    controller: freq,
+                    decoration: InputDecoration(
+                      labelText: tr('hardware.radio.freq'),
+                      helperText: tr('hardware.radio.freq.help'),
+                    ),
+                    keyboardType: TextInputType.number,
                   ),
-                  keyboardType: TextInputType.number,
-                  onChanged: (v) => freq = int.tryParse(v) ?? freq,
-                ),
+                  TextFormField(
+                    controller: mode,
+                    decoration:
+                        InputDecoration(labelText: tr('hardware.radio.mode')),
+                  ),
+                ],
                 TextFormField(
-                  initialValue: mode,
-                  decoration: InputDecoration(labelText: tr('hardware.radio.mode')),
-                  onChanged: (v) => mode = v,
-                ),
-                TextFormField(
-                  initialValue: schedule,
+                  controller: schedule,
                   decoration: InputDecoration(
                     labelText: tr('hardware.radio.schedule'),
                     helperText: tr('hardware.radio.schedule.help'),
                   ),
-                  onChanged: (v) => schedule = v,
+                  // The reading below follows what is typed.
+                  onChanged: (_) => setLocal(() {}),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  trSchedule(ListeningSchedule.parse(schedule)),
+                  trSchedule(ListeningSchedule.parse(schedule.text)),
                   style: const TextStyle(fontSize: 12),
                 ),
               ],
@@ -412,16 +346,21 @@ class _HardwarePageState extends State<HardwarePage> {
       ),
     );
 
+    final hasFreq = _hasFrequency(link);
+    final entry = RadioEntry(
+      link: link,
+      rangeKm: int.tryParse(range.text.trim()) ?? d.range,
+      freqKhz: hasFreq ? (int.tryParse(freq.text.trim()) ?? d.freq) : 0,
+      mode: hasFreq ? mode.text.trim() : '',
+      schedule: ListeningSchedule.parse(schedule.text.trim()),
+    );
+    for (final c in [range, freq, mode, schedule]) {
+      c.dispose();
+    }
     if (ok != true) return;
     final rs = _svc.radios
       ..removeWhere((r) => r.link == link)
-      ..add(RadioEntry(
-        link: link,
-        rangeKm: range,
-        freqKhz: freq,
-        mode: mode,
-        schedule: ListeningSchedule.parse(schedule),
-      ));
+      ..add(entry);
     _save(() => _svc.radios = rs);
   }
 
@@ -554,13 +493,4 @@ class _HardwarePageState extends State<HardwarePage> {
     if (bps > 1000) return '${(bps / 1000).toStringAsFixed(0)} kB/s';
     return '$bps B/s';
   }
-
-  /// What a geohash of this length actually promises.
-  static String _precisionKm(String g) => switch (g.length) {
-        <= 2 => tr('hardware.precision.country'),
-        3 => tr('hardware.precision.region'),
-        4 => tr('hardware.precision.district'),
-        5 => tr('hardware.precision.town'),
-        _ => tr('hardware.precision.neighbourhood'),
-      };
 }

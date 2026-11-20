@@ -46,6 +46,7 @@ import '../services/xprs/xprs_climate.dart';
 import '../services/preferences_service.dart';
 import 'device_identity_card.dart';
 import 'position_share_card.dart';
+import 'coverage_card.dart';
 import '../services/launch_count_store.dart';
 import '../services/new_wapp_tracker.dart';
 import '../services/hero/archiver_hero_source.dart';

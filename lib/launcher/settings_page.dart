@@ -2,8 +2,13 @@ part of 'launcher.dart';
 
 // ── Iwi Settings ─────────────────────────────────────────────────────
 
+/// The pages Settings opens, one per topic.
+enum SettingsTopic { device, language, privacy, network, updates, storage, developer }
+
+/// Settings: a short menu of topics ([topic] null), or one topic's page.
 class IwiSettingsPage extends StatefulWidget {
-  const IwiSettingsPage({super.key});
+  final SettingsTopic? topic;
+  const IwiSettingsPage({super.key, this.topic});
 
   @override
   State<IwiSettingsPage> createState() => _IwiSettingsPageState();
@@ -34,8 +39,10 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
       _prefs = prefs;
       _dataDir = prefs.wappDataDir ?? defaultPath;
     });
-    await _refreshWappData();
-    _refreshHostedUsage();
+    // The directory walk and the hosted-media count are for their own
+    // pages, not for every page Settings opens.
+    if (widget.topic == SettingsTopic.storage) await _refreshWappData();
+    if (widget.topic == SettingsTopic.network) _refreshHostedUsage();
   }
 
   /// Prompt for a single text value (used for the Reticulum sharing-folder
@@ -292,434 +299,523 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
+    final topic = widget.topic;
     return Scaffold(
-      appBar: AppBar(title: Text(tr('common.settings'))),
+      appBar: AppBar(
+          title: Text(topic == null ? tr('common.settings') : _topicTitle(topic))),
       body: _prefs == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(20),
-              children: [
-                // ── Permissions (Android) ──
-                //
-                // Every permission is optional; this is where one refused at
-                // the intro is granted later, and where the person sees which
-                // features are off because of it.
-                if (platform.platformName() == 'android') ...[
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                    ),
-                    color: cs.surfaceContainerLow,
-                    child: ValueListenableBuilder<Set<String>>(
-                      valueListenable:
-                          PermissionState.instance.missing.listenable,
-                      builder: (context, missing, _) => ListTile(
-                        leading: const Icon(Icons.verified_user_outlined),
-                        title: Text(tr('permissions.title')),
-                        subtitle: Text(
-                          missing.isEmpty
-                              ? tr('permissions.all_granted')
-                              : tr('permissions.settings.missing', {
-                                  'list': missing
-                                      .map((k) =>
-                                          tr('permissions.$k.title'))
-                                      .toSet()
-                                      .join(', '),
-                                }),
-                          style: TextStyle(color: cs.onSurfaceVariant),
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const PermissionsPage())),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-                // ── Muted accounts ──
-                //
-                // Where a mute is taken back. Muting itself happens where the
-                // spam is — the ⋯ menu on the post — because that is where the
-                // user is when they decide.
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                  ),
-                  color: cs.surfaceContainerLow,
-                  child: ListTile(
-                    leading: const Icon(Icons.volume_off),
-                    title: Text(tr('settings.muted.title')),
-                    subtitle: Text(
-                      () {
-                        final n = RnsService.instance.mutedCallsigns.length;
-                        return n == 0
-                            ? tr('settings.muted.none')
-                            : trn('settings.muted.count', n);
-                      }(),
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context)
-                        .push(MaterialPageRoute(
-                            builder: (_) => const MutedPage()))
-                        .then((_) {
-                      if (mounted) setState(() {});
-                    }),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // ── Language ──
-                Text(tr('common.language'),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        )),
-                const SizedBox(height: 4),
-                Text(
-                  tr('common.language.desc'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                  ),
-                  color: cs.surfaceContainerLow,
-                  child: ListTile(
-                    leading: const Icon(Icons.language),
-                    title: Text(tr('common.language')),
-                    subtitle: Text(
-                      _localeSubtitle(),
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                    ),
-                    // The choices are the folders this build ships under
-                    // assets/lang/, so adding a language never touches this
-                    // screen. Each is named in itself, never translated.
-                    trailing: DropdownButton<String>(
-                      value: _localeValue(),
-                      underline: const SizedBox.shrink(),
-                      items: [
-                        DropdownMenuItem(
-                            value: '', child: Text(tr('common.auto'))),
-                        for (final code in CoreI18n.instance.languages)
-                          DropdownMenuItem(
-                              value: code, child: Text(_languageName(code))),
-                      ],
-                      onChanged: _onLocaleChanged,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // ── Remote control API ──
-                Text(tr('settings.remote.title'),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        )),
-                const SizedBox(height: 4),
-                Text(
-                  tr('settings.remote.help',
-                      {'port': _prefs?.remoteApiPort ?? 3456}),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                  ),
-                  color: cs.surfaceContainerLow,
-                  child: SwitchListTile(
-                    secondary: const Icon(Icons.cable),
-                    title: Text(tr('settings.remote.api')),
-                    subtitle: Text(
-                      RemoteApiService.instance.running
-                          ? tr('settings.remote.listening',
-                              {'port': _prefs?.remoteApiPort ?? 3456})
-                          : tr('common.off'),
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                    ),
-                    value: _prefs?.remoteApiEnabled ?? false,
-                    onChanged: _onRemoteApiChanged,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                  ),
-                  color: cs.surfaceContainerLow,
-                  child: SwitchListTile(
-                    secondary: const Icon(Icons.bug_report),
-                    title: Text(tr('settings.ble_debug.title')),
-                    subtitle: Text(
-                      tr('settings.ble_debug.help'),
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                    ),
-                    value: _prefs?.bleDebug ?? false,
-                    onChanged: _onBleDebugChanged,
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // ── This device ──
-                Text(tr('settings.device.title'),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        )),
-                const SizedBox(height: 12),
-                const DeviceIdentityCard(),
-                const SizedBox(height: 24),
-
-                // ── Privacy ──
-                Text(tr('settings.privacy.title'),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        )),
-                const SizedBox(height: 12),
-                const PositionShareCard(),
-                const SizedBox(height: 24),
-
-                // ── Reticulum ──
-                Text(tr('settings.reticulum.title'),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        )),
-                const SizedBox(height: 4),
-                Text(
-                  tr('settings.reticulum.help'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                  ),
-                  color: cs.surfaceContainerLow,
-                  child: ListTile(
-                    leading: const Icon(Icons.dns),
-                    title: Text(tr('settings.reticulum.servers')),
-                    subtitle: Text(
-                      () {
-                        final list = _prefs?.rnsBootstrapServers ?? const [];
-                        if (list.isEmpty) return tr('settings.reticulum.servers.none');
-                        final n = list.length;
-                        return trn('settings.reticulum.servers.count', n,
-                            {'first': list.first, 'more': n > 1 ? ' …' : ''});
-                      }(),
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                    ),
-                    trailing: const Icon(Icons.edit),
-                    onTap: _editRnsServers,
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // ── Hosting: its own heading, or its text reads as Reticulum's ──
-                Text(tr('settings.hosting.title'),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        )),
-                const SizedBox(height: 4),
-                Text(
-                  tr('settings.hosting.help'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                  ),
-                  color: cs.surfaceContainerLow,
-                  child: Column(
-                    children: [
-                      SwitchListTile(
-                        secondary: const Icon(Icons.cloud_upload_outlined),
-                        title: Text(tr('settings.hosting.enable')),
-                        subtitle: Text(
-                          tr('settings.hosting.enable.help'),
-                          style: TextStyle(color: cs.onSurfaceVariant),
-                        ),
-                        value: _prefs?.hostEnabled ?? true,
-                        onChanged: (v) {
-                          _prefs?.hostEnabled = v;
-                          RnsService.instance.applyHostingSettings();
-                          setState(() {});
-                        },
-                      ),
-                      const Divider(height: 1),
-                      SwitchListTile(
-                        secondary: const Icon(Icons.battery_charging_full),
-                        title: Text(tr('settings.hosting.charging')),
-                        subtitle: Text(
-                          tr('settings.hosting.charging.help'),
-                          style: TextStyle(color: cs.onSurfaceVariant),
-                        ),
-                        value: _prefs?.hostCapacityGated ?? true,
-                        onChanged: (_prefs?.hostEnabled ?? true)
-                            ? (v) {
-                                _prefs?.hostCapacityGated = v;
-                                RnsService.instance.applyHostingSettings();
-                                setState(() {});
-                              }
-                            : null,
-                      ),
-                      const Divider(height: 1),
-                      _mediaQuotaTile(cs),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // ── Sharing folders (Reticulum) ──
-                Text(tr('settings.folders.title'),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        )),
-                const SizedBox(height: 4),
-                Text(
-                  tr('settings.folders.help'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                  ),
-                  color: cs.surfaceContainerLow,
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.system_update_alt),
-                        title: Text(tr('settings.folders.stable')),
-                        subtitle: Text(
-                          _folderSubtitle(_upd.stableFolder),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: cs.onSurfaceVariant),
-                        ),
-                        trailing: const Icon(Icons.edit),
-                        onTap: () => _editUpdateFolder(beta: false),
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        leading: const Icon(Icons.science_outlined),
-                        title: Text(tr('settings.folders.beta')),
-                        subtitle: Text(
-                          _folderSubtitle(_upd.betaFolder),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: cs.onSurfaceVariant),
-                        ),
-                        trailing: const Icon(Icons.edit),
-                        onTap: () => _editUpdateFolder(beta: true),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // ── Data Directory ──
-                Text(tr('settings.storage.title'),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        )),
-                const SizedBox(height: 4),
-                Text(
-                  tr('settings.storage.help'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
-                  ),
-                  color: cs.surfaceContainerLow,
-                  child: ListTile(
-                    leading: const Icon(Icons.folder),
-                    title: Text(tr('settings.storage.dir')),
-                    subtitle: Text(
-                      _dataDir ?? tr('settings.storage.dir.unset'),
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.open_in_new),
-                          tooltip: tr('settings.storage.dir.open'),
-                          onPressed: _openDataDir,
-                        ),
-                        const Icon(Icons.edit),
-                      ],
-                    ),
-                    onTap: _pickDirectory,
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // ── Per-wapp data ──
-                Text(tr('settings.wappdata.title'),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        )),
-                const SizedBox(height: 4),
-                Text(
-                  tr('settings.wappdata.help'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                ..._buildWappDataList(cs),
-              ],
+              children: topic == null ? _menu(cs) : _topicBody(topic, cs),
             ),
     );
   }
+
+  static String _topicTitle(SettingsTopic t) => switch (t) {
+        SettingsTopic.device => tr('settings.device.title'),
+        SettingsTopic.language => tr('common.language'),
+        SettingsTopic.privacy => tr('settings.topic.privacy'),
+        SettingsTopic.network => tr('settings.topic.network'),
+        SettingsTopic.updates => tr('launcher.drawer.updates'),
+        SettingsTopic.storage => tr('settings.storage.title'),
+        SettingsTopic.developer => tr('settings.topic.developer'),
+      };
+
+  /// One topic's page: the sections that belong to it, nothing else.
+  List<Widget> _topicBody(SettingsTopic t, ColorScheme cs) => switch (t) {
+        SettingsTopic.device => _secDevice(cs),
+        SettingsTopic.language => _secLang(cs),
+        SettingsTopic.privacy => [
+            ..._secPrivacy(cs),
+            // Coverage says where this station serves: beside location
+            // sharing, where the location without GPS is set too.
+            const CoverageCard(),
+            const SizedBox(height: 24),
+            ..._secMuted(cs),
+          ],
+        SettingsTopic.network => [..._secRns(cs), ..._secHosting(cs)],
+        SettingsTopic.updates => _secFolders(cs),
+        SettingsTopic.storage => [..._secDatadir(cs), ..._secWappdata(cs)],
+        SettingsTopic.developer => _secRemote(cs),
+      };
+
+  /// Open a page, and restate the menu's lines when coming back from it.
+  void _push(Widget page) => Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => page))
+          .then((_) {
+        if (mounted) setState(() {});
+      });
+
+  Widget _entry(IconData icon, String title, String subtitle, Widget page) =>
+      ListTile(
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => _push(page),
+      );
+
+  Widget _group(ColorScheme cs, List<Widget> rows) => Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+        ),
+        color: cs.surfaceContainerLow,
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) const Divider(height: 1, indent: 56),
+            rows[i],
+          ],
+        ]),
+      );
+
+  /// Settings itself: one line per topic, the ones reached for most on top,
+  /// each opening a page of its own.
+  List<Widget> _menu(ColorScheme cs) {
+    final call = ProfileService.instance.activeProfile?.callsign ?? '';
+    final api = RemoteApiService.instance.running;
+    return [
+      _group(cs, [
+        // Every permission is optional; this is where one refused at the
+        // intro is granted later, and which features are off is said here.
+        if (platform.platformName() == 'android')
+          ValueListenableBuilder<Set<String>>(
+            valueListenable: PermissionState.instance.missing.listenable,
+            builder: (context, missing, _) => _entry(
+              Icons.verified_user_outlined,
+              tr('permissions.title'),
+              missing.isEmpty
+                  ? tr('permissions.all_granted')
+                  : tr('permissions.settings.missing', {
+                      'list': missing
+                          .map((k) => tr('permissions.$k.title'))
+                          .toSet()
+                          .join(', '),
+                    }),
+              const PermissionsPage(),
+            ),
+          ),
+        _entry(Icons.badge_outlined, tr('settings.device.title'),
+            call.isEmpty ? tr('settings.topic.device.desc') : call,
+            const IwiSettingsPage(topic: SettingsTopic.device)),
+        _entry(Icons.language, tr('common.language'), _localeSubtitle(),
+            const IwiSettingsPage(topic: SettingsTopic.language)),
+        _entry(Icons.place_outlined, tr('settings.topic.privacy'),
+            tr('settings.topic.privacy.desc'),
+            const IwiSettingsPage(topic: SettingsTopic.privacy)),
+      ]),
+      const SizedBox(height: 16),
+      _group(cs, [
+        _entry(Icons.groups, tr('launcher.drawer.groups'),
+            tr('settings.topic.groups.desc'), const GroupsPage()),
+        _entry(Icons.memory, tr('hardware.title'),
+            tr('settings.topic.hardware.desc'), const HardwarePage()),
+        _entry(Icons.dns_outlined, tr('settings.topic.network'),
+            tr('settings.topic.network.desc'),
+            const IwiSettingsPage(topic: SettingsTopic.network)),
+      ]),
+      const SizedBox(height: 16),
+      _group(cs, [
+        _entry(Icons.system_update_alt, tr('launcher.drawer.updates'),
+            tr('settings.topic.updates.desc'),
+            const IwiSettingsPage(topic: SettingsTopic.updates)),
+        _entry(Icons.folder_outlined, tr('settings.storage.title'),
+            tr('settings.topic.storage.desc'),
+            const IwiSettingsPage(topic: SettingsTopic.storage)),
+        _entry(Icons.code, tr('settings.topic.developer'),
+            api
+                ? tr('settings.remote.listening',
+                    {'port': _prefs?.remoteApiPort ?? 3456})
+                : tr('settings.topic.developer.desc'),
+            const IwiSettingsPage(topic: SettingsTopic.developer)),
+      ]),
+    ];
+  }
+
+  List<Widget> _secMuted(ColorScheme cs) => [
+      // ── Muted accounts ──
+      //
+      // Where a mute is taken back. Muting itself happens where the
+      // spam is — the ⋯ menu on the post — because that is where the
+      // user is when they decide.
+      Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+        ),
+        color: cs.surfaceContainerLow,
+        child: ListTile(
+          leading: const Icon(Icons.volume_off),
+          title: Text(tr('settings.muted.title')),
+          subtitle: Text(
+            () {
+              final n = RnsService.instance.mutedCallsigns.length;
+              return n == 0
+                  ? tr('settings.muted.none')
+                  : trn('settings.muted.count', n);
+            }(),
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context)
+              .push(MaterialPageRoute(
+                  builder: (_) => const MutedPage()))
+              .then((_) {
+            if (mounted) setState(() {});
+          }),
+        ),
+      ),
+      const SizedBox(height: 24),
+      ];
+
+  List<Widget> _secLang(ColorScheme cs) => [
+      // ── Language ──
+      Text(
+        tr('common.language.desc'),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+      ),
+      const SizedBox(height: 12),
+      Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+        ),
+        color: cs.surfaceContainerLow,
+        child: ListTile(
+          leading: const Icon(Icons.language),
+          title: Text(tr('common.language')),
+          subtitle: Text(
+            _localeSubtitle(),
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+          // The choices are the folders this build ships under
+          // assets/lang/, so adding a language never touches this
+          // screen. Each is named in itself, never translated.
+          trailing: DropdownButton<String>(
+            value: _localeValue(),
+            underline: const SizedBox.shrink(),
+            items: [
+              DropdownMenuItem(
+                  value: '', child: Text(tr('common.auto'))),
+              for (final code in CoreI18n.instance.languages)
+                DropdownMenuItem(
+                    value: code, child: Text(_languageName(code))),
+            ],
+            onChanged: _onLocaleChanged,
+          ),
+        ),
+      ),
+      const SizedBox(height: 24),
+      ];
+
+  List<Widget> _secRemote(ColorScheme cs) => [
+      // ── Remote control API ──
+      Text(tr('settings.remote.title'),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: cs.primary,
+                fontWeight: FontWeight.w600,
+              )),
+      const SizedBox(height: 4),
+      Text(
+        tr('settings.remote.help',
+            {'port': _prefs?.remoteApiPort ?? 3456}),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+      ),
+      const SizedBox(height: 12),
+      Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+        ),
+        color: cs.surfaceContainerLow,
+        child: SwitchListTile(
+          secondary: const Icon(Icons.cable),
+          title: Text(tr('settings.remote.api')),
+          subtitle: Text(
+            RemoteApiService.instance.running
+                ? tr('settings.remote.listening',
+                    {'port': _prefs?.remoteApiPort ?? 3456})
+                : tr('common.off'),
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+          value: _prefs?.remoteApiEnabled ?? false,
+          onChanged: _onRemoteApiChanged,
+        ),
+      ),
+      const SizedBox(height: 12),
+      Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+        ),
+        color: cs.surfaceContainerLow,
+        child: SwitchListTile(
+          secondary: const Icon(Icons.bug_report),
+          title: Text(tr('settings.ble_debug.title')),
+          subtitle: Text(
+            tr('settings.ble_debug.help'),
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+          value: _prefs?.bleDebug ?? false,
+          onChanged: _onBleDebugChanged,
+        ),
+      ),
+      const SizedBox(height: 24),
+      ];
+
+  List<Widget> _secDevice(ColorScheme cs) => [
+      // ── This device ──
+      const DeviceIdentityCard(),
+      const SizedBox(height: 24),
+      ];
+
+  List<Widget> _secPrivacy(ColorScheme cs) => [
+      // ── Privacy ──
+      const PositionShareCard(),
+      const SizedBox(height: 24),
+      ];
+
+  List<Widget> _secRns(ColorScheme cs) => [
+      // ── Reticulum ──
+      Text(tr('settings.reticulum.title'),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: cs.primary,
+                fontWeight: FontWeight.w600,
+              )),
+      const SizedBox(height: 4),
+      Text(
+        tr('settings.reticulum.help'),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+      ),
+      const SizedBox(height: 12),
+      Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+        ),
+        color: cs.surfaceContainerLow,
+        child: ListTile(
+          leading: const Icon(Icons.dns),
+          title: Text(tr('settings.reticulum.servers')),
+          subtitle: Text(
+            () {
+              final list = _prefs?.rnsBootstrapServers ?? const [];
+              if (list.isEmpty) return tr('settings.reticulum.servers.none');
+              final n = list.length;
+              return trn('settings.reticulum.servers.count', n,
+                  {'first': list.first, 'more': n > 1 ? ' …' : ''});
+            }(),
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+          trailing: const Icon(Icons.edit),
+          onTap: _editRnsServers,
+        ),
+      ),
+      const SizedBox(height: 24),
+      ];
+
+  List<Widget> _secHosting(ColorScheme cs) => [
+      // ── Hosting: its own heading, or its text reads as Reticulum's ──
+      Text(tr('settings.hosting.title'),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: cs.primary,
+                fontWeight: FontWeight.w600,
+              )),
+      const SizedBox(height: 4),
+      Text(
+        tr('settings.hosting.help'),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+      ),
+      const SizedBox(height: 12),
+      Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+        ),
+        color: cs.surfaceContainerLow,
+        child: Column(
+          children: [
+            SwitchListTile(
+              secondary: const Icon(Icons.cloud_upload_outlined),
+              title: Text(tr('settings.hosting.enable')),
+              subtitle: Text(
+                tr('settings.hosting.enable.help'),
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+              value: _prefs?.hostEnabled ?? true,
+              onChanged: (v) {
+                _prefs?.hostEnabled = v;
+                RnsService.instance.applyHostingSettings();
+                setState(() {});
+              },
+            ),
+            const Divider(height: 1),
+            SwitchListTile(
+              secondary: const Icon(Icons.battery_charging_full),
+              title: Text(tr('settings.hosting.charging')),
+              subtitle: Text(
+                tr('settings.hosting.charging.help'),
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+              value: _prefs?.hostCapacityGated ?? true,
+              onChanged: (_prefs?.hostEnabled ?? true)
+                  ? (v) {
+                      _prefs?.hostCapacityGated = v;
+                      RnsService.instance.applyHostingSettings();
+                      setState(() {});
+                    }
+                  : null,
+            ),
+            const Divider(height: 1),
+            _mediaQuotaTile(cs),
+          ],
+        ),
+      ),
+      const SizedBox(height: 24),
+      ];
+
+  List<Widget> _secFolders(ColorScheme cs) => [
+      // ── Sharing folders (Reticulum) ──
+      Text(tr('settings.folders.title'),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: cs.primary,
+                fontWeight: FontWeight.w600,
+              )),
+      const SizedBox(height: 4),
+      Text(
+        tr('settings.folders.help'),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+      ),
+      const SizedBox(height: 12),
+      Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+        ),
+        color: cs.surfaceContainerLow,
+        child: Column(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.system_update_alt),
+              title: Text(tr('settings.folders.stable')),
+              subtitle: Text(
+                _folderSubtitle(_upd.stableFolder),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+              trailing: const Icon(Icons.edit),
+              onTap: () => _editUpdateFolder(beta: false),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.science_outlined),
+              title: Text(tr('settings.folders.beta')),
+              subtitle: Text(
+                _folderSubtitle(_upd.betaFolder),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+              trailing: const Icon(Icons.edit),
+              onTap: () => _editUpdateFolder(beta: true),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 24),
+      ];
+
+  List<Widget> _secDatadir(ColorScheme cs) => [
+      // ── Data Directory ──
+      Text(tr('settings.storage.title'),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: cs.primary,
+                fontWeight: FontWeight.w600,
+              )),
+      const SizedBox(height: 4),
+      Text(
+        tr('settings.storage.help'),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+      ),
+      const SizedBox(height: 12),
+      Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+        ),
+        color: cs.surfaceContainerLow,
+        child: ListTile(
+          leading: const Icon(Icons.folder),
+          title: Text(tr('settings.storage.dir')),
+          subtitle: Text(
+            _dataDir ?? tr('settings.storage.dir.unset'),
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.open_in_new),
+                tooltip: tr('settings.storage.dir.open'),
+                onPressed: _openDataDir,
+              ),
+              const Icon(Icons.edit),
+            ],
+          ),
+          onTap: _pickDirectory,
+        ),
+      ),
+      const SizedBox(height: 24),
+      ];
+
+  List<Widget> _secWappdata(ColorScheme cs) => [
+      // ── Per-wapp data ──
+      Text(tr('settings.wappdata.title'),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: cs.primary,
+                fontWeight: FontWeight.w600,
+              )),
+      const SizedBox(height: 4),
+      Text(
+        tr('settings.wappdata.help'),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+      ),
+      const SizedBox(height: 12),
+      ..._buildWappDataList(cs),
+      ];
 
   List<Widget> _buildWappDataList(ColorScheme cs) {
     final entries = _wappDataEntries;

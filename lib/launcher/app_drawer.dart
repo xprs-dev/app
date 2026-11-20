@@ -66,7 +66,8 @@ class _AppDrawer extends StatelessWidget {
             ),
             const Divider(height: 1),
             // The panels people reach for often, one tap from the home
-            // screen. Settings still holds everything else.
+            // screen. Settings holds everything else, Hardware and Groups
+            // included.
             // The archiver first: it is what this device gives the network.
             ListTile(
               leading: const Icon(Icons.inventory_2_outlined),
@@ -99,16 +100,6 @@ class _AppDrawer extends StatelessWidget {
                   );
                 },
               ),
-            ListTile(
-              leading: const Icon(Icons.memory),
-              title: Text(tr('launcher.drawer.hardware')),
-              onTap: () => _open(context, const HardwarePage()),
-            ),
-            ListTile(
-              leading: const Icon(Icons.groups),
-              title: Text(tr('launcher.drawer.groups')),
-              onTap: () => _open(context, const GroupsPage()),
-            ),
             if (platform.platformName() == 'android')
               ListTile(
                 leading: const Icon(Icons.share),
