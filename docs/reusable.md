@@ -1570,3 +1570,16 @@ example of merging several stations' views.
 as rows to show (names, folders as `Group › Folder`, private groups left
 out). The app's `hal_xprs_group_rank` and the web chat's
 `GET /api/xprs/groups` both answer with it: a third consumer calls it too.
+
+## Settings topics
+
+`IwiSettingsPage` (`lib/launcher/settings_page.dart`) is a short menu of topics
+(`_menu`), and `IwiSettingsPage(topic: SettingsTopic.x)` is one topic's page
+(`_topicBody`), built from the same state and section methods (`_secLang`,
+`_secHosting`, ...). A new setting goes into the section of its topic; a new
+topic is one `SettingsTopic` value, one `_entry` on the menu and one case in
+`_topicTitle` and `_topicBody`. A page that is already its own screen (Groups,
+Hardware, Permissions) is an `_entry` straight to it. Each topic page loads only
+what it shows (the wapp-data walk for Storage, hosted usage for Network).
+`CoverageCard` (`lib/launcher/coverage_card.dart`) is the Coverage switch, kept
+beside location sharing so both read the same location, GPS or typed.

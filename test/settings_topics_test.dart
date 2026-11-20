@@ -14,7 +14,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   installEnglishForTest();
 
-  setUp(() async {
+  // Once for the file: the store is a process-wide singleton, and reset
+  // between tests a page's second load never completes in the test binding.
+  setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     PreferencesService.resetForTest();
     await PreferencesService.instance();
@@ -34,40 +36,46 @@ void main() {
     }
   }
 
-  testWidgets('Settings is a menu of topics, Groups and Hardware among them',
+  // One walk through Settings, as a person would take it: the menu, then
+  // each topic opened from it and closed again. (Separate tests would each
+  // build a fresh page against singletons the previous test left behind.)
+  testWidgets('Settings is a menu of topics, and each opens its own page',
       (tester) async {
     await pump(tester, const IwiSettingsPage());
     for (final t in [
-      'This device',
-      'Language',
-      'Location & privacy',
-      'Groups',
-      'Hardware',
-      'Network',
-      'Updates',
-      'Storage',
-      'Developer',
+      'This device', 'Language', 'Location & privacy', 'Groups', 'Hardware',
+      'Network', 'Updates', 'Storage', 'Developer',
     ]) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     // The long list of controls is not on the menu any more.
     expect(find.byType(SwitchListTile), findsNothing);
-  });
 
-  for (final topic in SettingsTopic.values) {
-    testWidgets('the ${topic.name} page draws', (tester) async {
-      await pump(tester, IwiSettingsPage(topic: topic));
-      expect(tester.takeException(), isNull);
-      expect(find.byType(ListView), findsOneWidget);
-    });
-  }
-
-  testWidgets('Location & privacy holds sharing, coverage and muted accounts',
-      (tester) async {
-    await pump(tester, const IwiSettingsPage(topic: SettingsTopic.privacy));
-    expect(find.text("Share this device's location"), findsOneWidget);
-    expect(find.text('Say where this device serves'), findsOneWidget);
-    expect(find.text('Muted accounts'), findsOneWidget);
+    for (final t in [
+      'This device', 'Language', 'Location & privacy', 'Network', 'Updates',
+      'Storage', 'Developer',
+    ]) {
+      await tester.tap(find.text(t));
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 50; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 100)));
+        await tester.pump();
+        if (find.byType(CircularProgressIndicator).evaluate().isEmpty) break;
+      }
+      expect(tester.takeException(), isNull, reason: t);
+      expect(find.byType(CircularProgressIndicator), findsNothing,
+          reason: '$t is still loading');
+      expect(find.widgetWithText(AppBar, t), findsOneWidget, reason: t);
+      if (t == 'Location & privacy') {
+        // Everything about where this station is, in one place.
+        expect(find.text("Share this device's location"), findsOneWidget);
+        expect(find.text('Say where this device serves'), findsOneWidget);
+        expect(find.text('Muted accounts'), findsOneWidget);
+      }
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+    }
   });
 
   testWidgets('Hardware no longer holds coverage, and draws', (tester) async {
@@ -78,9 +86,14 @@ void main() {
 
   testWidgets('a Bluetooth radio has no frequency to state', (tester) async {
     await pump(tester, const HardwarePage());
-    await tester.scrollUntilVisible(find.text('Add a radio').last, 200);
-    await tester.tap(find.text('Add a radio').last);
+    await tester.scrollUntilVisible(find.text('Add a radio'), 200,
+        scrollable: find.byType(Scrollable).first);
+    // Fully on screen, not just its top edge, or the tap lands below it.
+    await tester.ensureVisible(find.text('Add a radio'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Add a radio'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
     expect(find.widgetWithText(TextFormField, '868200'), findsOneWidget);
     await tester.tap(find.text('LoRa').last);
     await tester.pumpAndSettle();

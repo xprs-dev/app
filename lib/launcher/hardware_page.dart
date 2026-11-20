@@ -106,13 +106,14 @@ class _HardwarePageState extends State<HardwarePage> {
                   onChanged: (v) => _save(() => p.nodeAutonomyHours = v.round()),
                 ),
               ),
-              _measured(
-                cs,
-                tr('hardware.powered.pct', {'pct': profile.poweredPct}),
-                profile.poweredPct == 0
-                    ? tr('hardware.powered.unwatched')
-                    : tr('hardware.powered.measured'),
-              ),
+              // Only once it has been watched: "Powered 0%" above "not
+              // watched long enough to say" contradicted itself.
+              if (profile.poweredPct > 0)
+                _measured(
+                  cs,
+                  tr('hardware.powered.pct', {'pct': profile.poweredPct}),
+                  tr('hardware.powered.measured'),
+                ),
             ]),
           ),
           const SizedBox(height: 20),
@@ -271,6 +272,9 @@ class _HardwarePageState extends State<HardwarePage> {
               children: [
                 DropdownButtonFormField<int>(
                   initialValue: link,
+                  // A long name ("Packet radio (AX.25)", or longer in German)
+                  // is cut short instead of pushing past the dialog's edge.
+                  isExpanded: true,
                   decoration: InputDecoration(labelText: tr('hardware.radio.link')),
                   items: [
                     const DropdownMenuItem(
