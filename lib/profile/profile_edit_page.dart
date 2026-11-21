@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'callsign_input.dart';
 import 'iwi_profile.dart';
 import 'identity_backup.dart';
+import 'other_identities_editor.dart';
 import 'profile_avatar.dart';
 import 'profile_crypto.dart';
 import 'profile_encryption.dart';
@@ -54,6 +55,9 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   /// order added. The derived X1 is never in it: it is the base.
   late List<String> _licences;
 
+  /// The other identities the person states (6.3.3), saved with the profile.
+  late List<StatedIdentities> _identities;
+
   /// Which one is on the air by default; '' = the derived X1.
   late String _active;
   bool _revealKey = false;
@@ -73,6 +77,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     _description = TextEditingController(text: _p.description);
     _licence = TextEditingController();
     _licences = List<String>.of(_p.heldLicences);
+    _identities = List<StatedIdentities>.of(_p.identities);
     _active = _p.licenceCallsign.trim().toUpperCase();
     _refreshBackupStatus();
     _refreshEncStatus();
@@ -275,6 +280,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       description: _description.text.trim(),
       licenceCallsigns: List<String>.of(_licences),
       licenceCallsign: _licences.contains(_active) ? _active : '',
+      identities: List<StatedIdentities>.of(_identities),
     );
     await ProfileService.instance.update(edited);
     if (!mounted) return;
@@ -711,6 +717,12 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
           _LicenceNote(
               derived: _p.callsign,
               typed: _active.isNotEmpty ? _active : _licence.text.trim()),
+          const SizedBox(height: 12),
+          OtherIdentitiesEditor(
+            identities: _identities,
+            onChanged: (list) => setState(() => _identities = list),
+          ),
+          const SizedBox(height: 12),
           _IdentityRow(
             label: tr('profile.npub'),
             value: _p.npub,
