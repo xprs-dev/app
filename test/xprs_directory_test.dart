@@ -220,6 +220,34 @@ void main() {
       expect(c.failed, 1);
       expect(g.keepersOf('X1ZZZZ'), isEmpty);
     });
+
+    test('a station that claims to archive is remembered; a relay role alone is not a claim',
+        () {
+      final c = XprsDirectoryConsumer.instance..named = (() => const []);
+      expect(c.archiveClaimMs('X3ARC1'), isNull);
+      // Claimed even when its directory is not read (not one we lean on).
+      c.offer(XprsPacket.parse('t:service f:X3ARC1 serve:archive count:5')!);
+      expect(c.archiveClaimMs('X3ARC1'), isNotNull);
+      expect(c.archiveClaimMs('x3arc1-2'), isNotNull, reason: 'by base callsign');
+      // A service that is not archiving.
+      c.offer(XprsPacket.parse('t:service f:X3RELY serve:relay')!);
+      expect(c.archiveClaimMs('X3RELY'), isNull);
+    });
+
+    test('an archiver this station asked for its directory is read', () async {
+      // The wiring reads from the adopted archivers AND the ones asked
+      // (MeshService._readFrom): the consumer reads whoever `named` gives.
+      final c = XprsDirectoryConsumer.instance;
+      final text = XprsDirectory.compose([const XprsDirectoryEntry('X1BBBB', t0)]);
+      final ref = XprsDirectory.refOf(XprsDirectory.shaOf(text))!;
+      c
+        ..named = (() => ['X3ADPT', 'X3ASKD'])
+        ..fetchText = ((archiver, sha) async => text);
+      c.offer(XprsPacket.parse('t:service f:X3ASKD serve:archive file:$ref')!);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(c.ignored, 0);
+      expect(g.keepersOf('X1BBBB'), ['X3ASKD']);
+    });
   });
 
   group('the archive\'s lines and the served visitors', () {
