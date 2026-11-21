@@ -34,9 +34,15 @@ void main() {
     air = _Recorder();
     XprsPublisher.instance.bearers = [air];
     XprsFileFetch.instance.internetFetch = null;
+    // The internet lane waits this long for a 202 before starting without
+    // one; the tests here are about what happens after it has started.
+    XprsFileFetch.internetGrace = const Duration(milliseconds: 20);
   });
 
-  tearDown(() => XprsFileFetch.instance.internetFetch = null);
+  tearDown(() {
+    XprsFileFetch.instance.internetFetch = null;
+    XprsFileFetch.internetGrace = const Duration(seconds: 3);
+  });
 
   String askId() {
     final ask = air.sent.firstWhere((w) => w.contains('cmd:file'));

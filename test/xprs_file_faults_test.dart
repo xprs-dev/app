@@ -214,8 +214,11 @@ void main() {
   });
 
   // ── The exact length, from the holder's 202 (spec 11.2) ───────────────
-  test('a 202 that states the length makes the piece path possible',
+  test('the internet lane waits for the 202, and runs once with the length',
       () async {
+    XprsFileFetch.internetGrace = const Duration(seconds: 5);
+    addTearDown(
+        () => XprsFileFetch.internetGrace = const Duration(seconds: 3));
     final lane = <int>[];
     XprsFileFetch.instance.internetFetch = (sha, ext, archiver, destDir) async {
       lane.add(XprsFileFetch.instance.exactSizeOf(sha));
@@ -227,20 +230,28 @@ void main() {
         selfCallsign: 'X1SELF',
         timeout: const Duration(seconds: 2));
     await Future<void>.delayed(const Duration(milliseconds: 50));
-    expect(lane, [0], reason: 'asked before anyone said how long it is');
+    expect(lane, isEmpty,
+        reason: 'nobody has said how long it is: no whole-file fetch yet');
     final ask = asks().single;
-    XprsFileFetch.instance.onResult(XprsPacket.parse(
+    final accepted = XprsPacket.parse(
         't:result f:X3AAAA d:X1SELF ts:2026-11-21_08:00:00 '
-        'r:${xprsIdentifier(ask)} code:202 size:3145728')!);
+        'r:${xprsIdentifier(ask)} code:202 size:3145728')!;
+    XprsFileFetch.instance.onResult(accepted);
+    XprsFileFetch.instance.onResult(accepted); // a re-aired 202
     await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(XprsFileFetch.instance.exactSizeOf(_sha), 3145728);
-    expect(lane, [0, 3145728],
-        reason: 'the internet lane runs again, now able to fetch by pieces');
+    expect(lane, [3145728],
+        reason: 'one run, with the length: by pieces, not the whole file '
+            'and then the pieces as well');
     XprsFileFetch.instance.noteInboundComplete(_sha, '/tmp/x');
     await fut;
   });
 
-  test('a one-piece file does not restart the internet lane', () async {
+  test('a holder that never answers still gets the internet lane, after a '
+      'moment', () async {
+    XprsFileFetch.internetGrace = const Duration(milliseconds: 80);
+    addTearDown(
+        () => XprsFileFetch.internetGrace = const Duration(seconds: 3));
     var runs = 0;
     XprsFileFetch.instance.internetFetch = (sha, ext, archiver, destDir) async {
       runs++;
@@ -250,14 +261,29 @@ void main() {
         archiver: 'X3AAAA',
         shaHex: _sha,
         selfCallsign: 'X1SELF',
-        timeout: const Duration(seconds: 2));
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    XprsFileFetch.instance.onResult(XprsPacket.parse(
-        't:result f:X3AAAA d:X1SELF ts:2026-11-21_08:00:00 '
-        'r:${xprsIdentifier(asks().single)} code:202 size:5000')!);
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    expect(runs, 1, reason: 'one piece: its own hash verifies it');
-    XprsFileFetch.instance.noteInboundComplete(_sha, '/tmp/x');
+        timeout: const Duration(seconds: 1));
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(runs, 0);
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    expect(runs, 1, reason: 'on a foreign network it is the only lane');
+    await fut;
+  });
+
+  test('a caller that states the length starts the internet lane at once',
+      () async {
+    var runs = 0;
+    XprsFileFetch.instance.internetFetch = (sha, ext, archiver, destDir) async {
+      runs++;
+      return null;
+    };
+    final fut = XprsFileFetch.instance.fetch(
+        archiver: 'X3AAAA',
+        shaHex: _sha,
+        selfCallsign: 'X1SELF',
+        exactSize: 5000000,
+        timeout: const Duration(seconds: 1));
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(runs, 1);
     await fut;
   });
 
