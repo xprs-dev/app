@@ -1,0 +1,2 @@
+A fresh install asks every archiver it finds on the internet where its directory and public groups list are, so Search and the groups ranking fill in.
+Fixed: that ask was never sent while another ask was waiting for its answer.
