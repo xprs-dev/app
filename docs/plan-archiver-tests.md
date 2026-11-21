@@ -239,12 +239,14 @@ test failed for its stated reason before anything was fixed.
    on its `202` to `cmd:file`, which costs no extra packet, and on a `q:have`
    answer (spec 11.2, 8.1). The fetch keeps it and, for a file of more than
    one piece, runs the internet lane again with it.
-2. **A piece list for every hosted file of more than one piece**, named in
-   the holder's provider record (`manifestHash`). Today only folder
-   publishing attaches one, so by-hash fetches of chat media find no list
-   and fall back to whole-file from one holder.
-3. **`ph:` written on `t:file`** (spec 7.7.1), so a reader has the list's
-   hash from the description and needs no provider record to find it.
+2. **A piece list for every hosted file of more than one piece** (done
+   2026-11-21). Every publish of a provider record cuts the list from the
+   serve archive with bounded reads, stores and advertises it, and names it
+   as the record's manifest. Only folder publishing did.
+3. **`ph:` written on `t:file`** (done 2026-11-21, on the description of the
+   file behind a preview). Still to do: the READER keeps `ph:` and fetches
+   the list by it, instead of finding it through a provider record; the
+   stored extension follows the spec (`xpl`, not `pieces`).
 4. **Holders remembered** (done 2026-11-21). A station that answers `202`
    is kept as a source of the file; `xprsKnownHolders` is those plus the
    station whose message named it; the holder index answers from it and a
