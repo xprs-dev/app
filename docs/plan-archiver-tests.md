@@ -266,10 +266,33 @@ arrives by pieces from both holders and verifies; a holder without the list
 still serves pieces; a length that is not exact is refused, not guessed. The
 fetcher's glue is one function, `fetchByPieces`.
 
-**Not proven yet:** the same between two real processes over a real link,
-with the holders found through provider records and the length taken from a
-`202`. That is the first scenario of layer 3, and it needs the server to
-expose a fetch and its file counters (section 8).
+**Proven between two real processes (2026-11-21).**
+`portal/test/interop_archivers.py --server <server binary>` starts two
+throwaway server-edition stations on one machine, B dialling A, and checks 22
+things in about a minute. A 900 kB file put on A is advertised with its
+15-piece list, fetched by B by pieces in about 3 s (`piece swarm ... 15
+piece(s)` in B's log), verified, and then advertised by B too; a one-piece
+file is fetched whole; a file A does not hold is refused in under a second.
+The server answers `/api/xprs/archiver`, `/api/xprs/files` and a fetch
+action to a caller on the machine only (core `xprs_bench_status.dart`).
+
+What that run found and fixed: pieces were only a fallback after the
+whole-file path (now first); the internet lane started a whole-file fetch
+before the `202` stated the length and then a piece fetch beside it (now one
+run a holder); a file uploaded over the station API was never advertised.
+
+**Two findings left open:**
+
+- **Two links between the same two stations break link handshakes.** With
+  each station dialling the other, Reticulum's path to the holder flipped
+  between the two connections mid-handshake and the piece engine's link
+  never completed (the whole-file fallback delivered after its 30 s wait).
+  A station reachable both over the LAN and through a hub is the same
+  shape. To reproduce and fix in the transport.
+- **A cold pair is slow.** Asked in the first seconds after two stations
+  meet, the piece engine waits 30 s for a holder it has no path to, then
+  the fallback delivers (35 s for 900 kB). It should retry once the path
+  is learned instead of giving the piece path up.
 
 ## 10. Order of work
 
