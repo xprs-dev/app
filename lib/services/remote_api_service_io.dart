@@ -20,9 +20,7 @@ import 'xprs/xprs_inline_file.dart';
 import 'xprs/xprs_inline_sender.dart';
 import 'receive/wapp_delivery.dart';
 import 'xprs/xprs_lan.dart';
-import 'xprs/xprs_line.dart';
 import 'xprs/xprs_publisher.dart';
-import 'xprs/xprs_tcp.dart';
 import 'mesh/xblob_service.dart';
 import '../connections/bluetooth/ble5_bus.dart';
 import 'xprs/xprs_gossip.dart';
@@ -64,6 +62,7 @@ import 'files/media_file_source.dart';
 import 'i2p/i2p_service.dart';
 import 'log_service.dart';
 import 'media/media_fetch.dart';
+import 'package:xprs_core/src/services/xprs/xprs_bench_status.dart';
 import 'reticulum/rns_service.dart';
 import 'reticulum/rns_session.dart';
 import 'power_state.dart';
@@ -1150,11 +1149,7 @@ class RemoteApiService {
       }
       // ── XPRS files (section 25.2): cmd:file, both ends ──────────────
       if (req.method == 'GET' && path == '/api/xprs/files') {
-        return _json(res, {
-          'server': XprsFileServer.instance.statusJson(),
-          'fetch': XprsFileFetch.instance.statusJson(),
-          'spool': MeshBulkSpool.instance.statusJson(),
-        });
+        return _json(res, xprsFilesStatusMap());
       }
       if (req.method == 'POST' && path == '/api/xprs/folder/publish') {
         // {"name":"XPRS firmware stable","tag":"stable","dir":"/abs/dir"}
@@ -1771,46 +1766,11 @@ class RemoteApiService {
           if (legacy && data.containsKey('supers')) 'archivers': data['supers'],
           if (legacy && data.containsKey('be')) 'alwaysOn': data['be'],
         }, legacy: legacy);
-        final counts = XprsArchive.instance.countsByTier();
+        // The reading itself is the core's, shared with the server edition
+        // (xprs_bench_status.dart): one shape whatever a test is driving.
         return _json(res, {
           'ok': true,
-          // The callsign the archive answers and announces under: the
-          // device's X3 (DeviceIdentity) where the install has one.
-          'archiver': XprsArchive.instance.archiverName,
-          'public': prefs?.xprsPublicArchiver ?? false,
-          'alwaysOn': prefs?.xprsAlwaysOn ?? false,
-          'alwaysOnStored': prefs?.xprsAlwaysOnStored ?? false,
-          'keepFollowed': prefs?.xprsKeepFollowed ?? true,
-          'quotaMb': prefs?.xprsArchiveMaxMb ?? 500,
-          'maxDays': prefs?.xprsArchiveMaxDays ?? 365,
-          'archivers': prefs?.xprsNamedArchivers ?? const <String>[],
-          'dial': prefs?.xprsDial ?? '',
-          'room': prefs?.xprsRoom ?? true,
-          'roomStations': prefs?.xprsRoomStations ?? 500,
-          'caredFor': XprsArchive.instance.caredFor(),
-          'dials': prefs?.xprsArchiverDials ?? const <String, String>{},
-          'dialsByHand':
-              prefs?.xprsArchiverDialsByHand ?? const <String, String>{},
-          'line': {
-            'dialled': XprsLineLane.instance.status,
-            'peers': XprsLinePeers.instance.status,
-          },
-          'records': {
-            'own': counts.own,
-            'followed': counts.followed,
-            'stranger': counts.stranger,
-            'total': counts.total,
-          },
-          'followedCallsigns': XprsArchive.instance.followed.length,
-          // What this station handed to ITS archivers (XPRS.md 12: a station
-          // keeps its own publications and hands a copy to the archivers its
-          // operator chose). The core does it for every wapp; `noDest` counts
-          // the ones it could not, which is what a silent deposit looks like.
-          'deposited': XprsPublisher.instance.deposited,
-          'depositNoDest': XprsPublisher.instance.depositNoDest,
-          // What the spool occupies, the same number the Archiver screen
-          // shows -- here so a phone's answer can be read without the screen.
-          'bytes': XprsArchive.instance.spoolBytes,
+          ...xprsArchiverStatusMap(),
           if (legacy) ...{
             'supers': prefs?.xprsNamedArchivers ?? const <String>[],
             'be': prefs?.xprsAlwaysOn ?? false,
