@@ -1,0 +1,2 @@
+A fresh install reads the directory and public groups list of every archiver it asked, so the groups ranking fills in.
+An internet station counts as an archiver only once it has said it archives, so a fresh install no longer leans on one that keeps nothing.
