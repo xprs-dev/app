@@ -243,9 +243,11 @@ test failed for its stated reason before anything was fixed.
    and fall back to whole-file from one holder.
 3. **`ph:` written on `t:file`** (spec 7.7.1), so a reader has the list's
    hash from the description and needs no provider record to find it.
-4. **Holders remembered.** A station that served or announced a file is
-   written as a source of it, so the holder index (`q:have` misses, `m:try`)
-   has something to say. Nothing writes one today.
+4. **Holders remembered** (done 2026-11-21). A station that answers `202`
+   is kept as a source of the file; `xprsKnownHolders` is those plus the
+   station whose message named it; the holder index answers from it and a
+   fetch asks all of them. Still to add: holders learned from a `q:have`
+   answer, and reporting held hashes upward to the chosen archivers.
 5. **Progress** as one reading per file across lanes.
 
 ## 10. Order of work

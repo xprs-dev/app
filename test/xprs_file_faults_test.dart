@@ -190,6 +190,27 @@ void main() {
     expect(XprsFileFetch.instance.busy, isFalse);
   });
 
+  // ── Holders are remembered (spec 12.9.2) ──────────────────────────────
+  test('a station that answers 202 is remembered as a holder of the file',
+      () async {
+    XprsFileFetch.instance.onHolder =
+        (sha, holder) => archive.addSource(sha, 'callsign', holder);
+    addTearDown(() => XprsFileFetch.instance.onHolder = null);
+    expect(xprsKnownHolders(archive, _sha), isEmpty);
+    final fut = XprsFileFetch.instance.fetch(
+        archiver: 'X3AAAA',
+        shaHex: _sha,
+        selfCallsign: 'X1SELF',
+        timeout: const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    XprsFileFetch.instance.onResult(refusal(asks().single, 202));
+    expect(xprsKnownHolders(archive, _sha), ['X3AAAA'],
+        reason: 'what a q:have miss names in m:try, and what the next '
+            'fetch of this file asks beside its sender');
+    XprsFileFetch.instance.noteInboundComplete(_sha, '/tmp/x');
+    await fut;
+  });
+
   // ── F4: two requesters of one file ────────────────────────────────────
   group('F4: two stations ask one holder for the same file', () {
     late String sha;
