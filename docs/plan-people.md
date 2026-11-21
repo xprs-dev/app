@@ -1,7 +1,8 @@
 # People: one record per key, identities that accumulate
 
-Status on 2026-11-21: steps 1 to 3a done and pushed; the rest open. No
-release until the whole plan is in (decided 2026-11-21).
+Status on 2026-11-21 (evening): steps 1, 3a, 4 and 5 done and pushed, 2
+partly; see Steps. No release until the whole plan is in (decided
+2026-11-21).
 
 ## Why
 
@@ -54,10 +55,13 @@ once an hour.
 ## Decisions (2026-11-21)
 
 1. Keyless records are kept until a key claims them.
-2. Telling others one's own extra identities needs wire words that do not
-   exist (`mac`, `email`, a claim of a Meshtastic or MeshCore id). OPEN: the
-   user was asked whether to add three optional fields to `t:identity` or to
-   keep these on the device. Nothing is aired until this is answered.
+2. Telling others: no key per kind, because the list of kinds is open and
+   will grow for decades. Two generic words on the identity packet,
+   `idtype:` (the kind, a documented VALUE) and `data:` (the identity, or
+   several of that kind, comma-separated). One packet states one kind; the
+   newest packet of a kind replaces it; `data:-` withdraws it. Spec 6.3.3.
+   (`kind:` and `m:` were rejected for this; `data` was preferred over
+   `value` because it reads for one or several and can be reused.)
 3. Scope: a MAC is only worth telling at local range; an e-mail address goes
    as far as its owner chooses (local, regional, global).
 4. The whole plan before the next release.
@@ -80,10 +84,19 @@ once an hour.
      fetch and the named holder of a piece fetch.
    - OPEN: `_apiIdentity` and station visits, `lxmfDestForCallsign` and the
      `_lxmf*` maps, `npubForCallsign`, `XprsProfiles` re-keyed by npub.
-4. OPEN. Own profile: `IwiProfile` gets the same list (several licence
-   callsigns, the owner's boards, an e-mail address with its scope); the
-   profile page lists them.
-5. OPEN. Telling others (decision 2), then the spec text and corpus.
+4. DONE. Own profile: `IwiProfile.identities` (a list of
+   `StatedIdentities`: kind, values, scope); the profile page has "Other
+   identities", one row per kind with its scope
+   (`lib/profile/other_identities_editor.dart`, strings in five languages).
+   The issued callsigns stay in `heldLicences` and are stated from there.
+   NOT YET SEEN RUNNING: tested by unit tests only, no screenshot.
+5. DONE. Telling others: spec 6.3.3 and five corpus packets (365);
+   `XprsPublisher.composeIdentityStatement` / `publishIdentities` (aired
+   with the decoration, a removed kind withdrawn once);
+   `XprsPeople.stated` on receipt, through `XprsProfiles._apply` so it is
+   verified like every identity field; `tellable(holder, reach:)` for
+   whoever later serves these. OPEN: nothing shows another person's stated
+   identities on a screen yet; the firmware does not parse `idtype:`.
 6. OPEN. `architecture.md` section; `reusable.md` entries (core: done).
 7. Proof: a fresh station on the public hubs fills its groups list without
    waiting for a hub announce (`temp/xprs-fresh*` runs, see
