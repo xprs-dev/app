@@ -259,6 +259,18 @@ test failed for its stated reason before anything was fixed.
    figure no longer reads the disk. Wapps get it through `hal_media_state`
    (`lane`, `holders`, `holding`).
 
+**Proven in-process (2026-11-21).** `core/test/
+file_pieces_two_holders_test.dart`: two holders serving a real media archive,
+a fetcher, three `FileTransferNode`s wired in one process. A five-piece file
+arrives by pieces from both holders and verifies; a holder without the list
+still serves pieces; a length that is not exact is refused, not guessed. The
+fetcher's glue is one function, `fetchByPieces`.
+
+**Not proven yet:** the same between two real processes over a real link,
+with the holders found through provider records and the length taken from a
+`202`. That is the first scenario of layer 3, and it needs the server to
+expose a fetch and its file counters (section 8).
+
 ## 10. Order of work
 
 1. **Files, as failing tests.** F1 to F9 in the simulators plus one
