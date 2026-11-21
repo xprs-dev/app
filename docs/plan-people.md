@@ -98,7 +98,8 @@ once an hour.
    verified like every identity field; `tellable(holder, reach:)` for
    whoever later serves these. OPEN: nothing shows another person's stated
    identities on a screen yet; the firmware does not parse `idtype:`.
-6. OPEN. `architecture.md` section; `reusable.md` entries (core: done).
+6. DONE. `architecture.md` ("A person is a key"); core `reusable.md`.
+   The message info page shows what a sender stated of themselves.
 7. Proof: a fresh station on the public hubs fills its groups list without
    waiting for a hub announce (`temp/xprs-fresh*` runs, see
    `plan-archiver-tests.md`); the suites pass.

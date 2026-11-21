@@ -3,7 +3,16 @@ import 'package:flutter/services.dart';
 
 import '../../../services/i18n/core_i18n.dart';
 import '../../../services/i18n/format.dart';
+import '../../../services/people/xprs_people.dart';
 import 'edit_history_list.dart';
+
+/// The name of an identity kind: translated for the documented ones, the
+/// word itself for one this build does not know.
+String _idLabel(String type) {
+  final key = 'profile.ids.type.$type';
+  final t = tr(key);
+  return t == key ? type : t;
+}
 
 /// The details a wapp sends for ONE message's Info page (`ui.convo.info`).
 ///
@@ -223,6 +232,11 @@ class _InfoBody extends StatelessWidget {
                 outgoing || convo.startsWith('#') ? convo : tr('geoui.info.you'),
                 copy: convo),
           if (net.isNotEmpty) _Row(tr('geoui.chat.info.network'), net),
+          // What the sender says they are also known as (6.3.3).
+          if (!outgoing && from.isNotEmpty)
+            for (final e in XprsPeople.instance.saidByCall(from).entries)
+              _Row(_idLabel(e.key), e.value.join(', '),
+                  copy: e.value.join(', '), mono: true),
           if (tsSent != null)
             _Row(tr('geoui.info.written'), _when(tsSent))
           else if ((m['time'] ?? '').toString().isNotEmpty)

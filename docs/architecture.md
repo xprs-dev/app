@@ -607,6 +607,42 @@ a device with two profiles archives from the active one. A headless server
 whose profile is already an `X3` is its own device and airs one observation,
 as before.
 
+### A person is a key; everything else is an identity under it (2026-11-21)
+
+The one thing that identifies a person is their `npub`. The callsign their
+key derives, the callsigns an authority issued them, the Reticulum identity
+and LXMF address of each device, the fixed Bluetooth address of a board, a
+node on another mesh, an e-mail address: all of these are identities that
+accumulate under that key, in one place, `XprsPeople` (core
+`lib/src/services/people/xprs_people.dart`, kept in `people.zx`).
+
+- **Any "who is this" or "how do I reach this callsign" question is asked
+  there.** A new map keyed by callsign is the thing this replaces: each of
+  the old ones learned from one source, so a station that had an archiver's
+  messages in hand could not open a file link to it until one particular
+  announce arrived (35 minutes, measured). `RnsService.identityForCallsign`
+  is the first reader; `docs/plan-people.md` lists the tables still to move.
+- **Every identity carries how it was learned**, weakest first: relayed,
+  observed, noted, signed, derived. Evidence only rises. A reader asks for
+  the minimum it needs.
+- **Something heard that has no key** (a Meshtastic node a gateway wrote, an
+  unsigned issued callsign) is a keyless record named by its own identity,
+  taken over when a key claims it. Two keys may hold one identity (XPRS.md
+  6.4.2); both are kept and nothing is merged.
+- **What a person tells others is a statement** (XPRS.md 6.3.3): one signed
+  identity packet per kind, `idtype:` and `data:`, with the `scope:` its
+  owner chose. The kinds are values in a documented list, never keys: a new
+  network is a new word, not a protocol change, and an unknown kind is kept
+  as written. `XprsPublisher.publishIdentities` says ours;
+  `XprsProfiles._apply` hands a verified one to `XprsPeople.stated`.
+- **What this station only observed is never told on.** Only a statement
+  has a scope, and `XprsPeople.tellable(holder, reach:)` is the one answer
+  to "may this be served to somebody at this reach". A hardware address or
+  an e-mail address is not in any page, directory or API answer otherwise.
+- **A hardware address is taken as a station's own only after it has kept
+  answering** for half an hour (`noteAddress`): a phone's Bluetooth address
+  rotates and never gets there, so nothing guesses the kind from its bits.
+
 ### A cable is a lane too (2026-09-12)
 
 The Firmwares wapp writes an image to a board on a USB cable. Everything

@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xprs/wapp/geoui/widgets/chat_view_field.dart';
+import 'package:xprs/services/people/xprs_people.dart';
 import 'package:xprs/wapp/geoui/widgets/message_info_page.dart';
 
 import 'i18n_english.dart';
@@ -110,6 +111,47 @@ void main() {
         find.text('The packet as it travelled'), 200,
         scrollable: page);
     expect(find.textContaining('via:X3RLY7'), findsOneWidget);
+  });
+
+  testWidgets('what the sender says they are also known as is shown (6.3.3)',
+      (tester) async {
+    const npub =
+        'npub1qz3n7fu9j9uenmyva7ha6x9eqwymytv2847ccv4vxdmn45y50q7h7k5f';
+    final people = XprsPeople.instance..debugReset();
+    addTearDown(people.debugReset);
+    people.claim(npub, XprsIdType.callsign, 'X1PEER',
+        evidence: XprsIdEvidence.derived);
+    people.stated(npub, 'email', 'peer@example.org', tsMs: 1700000000000);
+    people.stated(npub, 'meshtastic', 'MTA1B2C3D4', tsMs: 1700000000000);
+    // Something this device only observed is not a thing they said.
+    people.note(npub, XprsIdType.ble, 'A4:CF:12:0B:7E:31',
+        evidence: XprsIdEvidence.observed);
+
+    await pumpChat(tester, bubble(), asked: []);
+    await tester.tap(find.text('X1PEER').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Info'));
+    await tester.pumpAndSettle();
+    MessageInfoBus.publish({
+      'type': 'ui.convo.info',
+      'id': 'X1PEER',
+      'mid': 'aa1111',
+      'stored': {
+        'row': {'mid': 'aa1111', 'dir': 'in', 'sender': 'X1PEER', 'ts': 1700000000},
+        'versions': const [],
+      },
+      'packet': const {'bearer': 'ble'},
+    });
+    await tester.pumpAndSettle();
+    final page = find
+        .descendant(
+            of: find.byType(MessageInfoPage), matching: find.byType(Scrollable))
+        .first;
+    await tester.scrollUntilVisible(find.text('peer@example.org'), 200,
+        scrollable: page);
+    expect(find.text('E-mail address'), findsOneWidget);
+    expect(find.text('MTA1B2C3D4'), findsOneWidget);
+    expect(find.text('A4:CF:12:0B:7E:31'), findsNothing);
   });
 
   testWidgets('details for another message are not shown', (tester) async {
