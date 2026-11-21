@@ -24,7 +24,7 @@ import '../wapp/wapp_open.dart';
 import '../wapp/wapp_page.dart';
 import 'log_service.dart';
 
-class DeepLinkService {
+class DeepLinkService with WidgetsBindingObserver {
   DeepLinkService._();
   static final DeepLinkService instance = DeepLinkService._();
 
@@ -47,10 +47,30 @@ class DeepLinkService {
       }
       return null;
     });
+    WidgetsBinding.instance.addObserver(this);
+    await _pullLaunchLink();
+  }
+
+  /// Ask the Activity for the link it was started with, once per link (the
+  /// native side forgets it when it is read).
+  ///
+  /// Not only at boot. The engine outlives the Activity: it runs headless
+  /// from boot, and Android starts a NEW Activity for a tapped notification
+  /// when the old one is gone or sits in another task. That Activity keeps its
+  /// link for whoever asks, and this service had already asked, at boot, an
+  /// Activity that was not there: the tap opened the app on the launcher and
+  /// the notification stayed unread. So it asks again each time the app comes
+  /// to the front. One channel trip per resume, nothing while in the pocket.
+  Future<void> _pullLaunchLink() async {
     try {
-      final initial = await _channel.invokeMethod<String>('getInitialLink');
-      if (initial != null && initial.isNotEmpty) await _handle(initial);
+      final link = await _channel.invokeMethod<String>('getInitialLink');
+      if (link != null && link.isNotEmpty) await _handle(link);
     } catch (_) {}
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_pullLaunchLink());
   }
 
   Future<void> _handle(String url) async {

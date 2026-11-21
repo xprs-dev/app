@@ -331,6 +331,13 @@ in-app card and the Android shade together:
 - **The updater retires its own.** With nothing waiting to be installed at
   startup (it was installed, or the file is gone), "XPRS x is ready to
   install" is read: `UpdateService._retireNotifications`.
+- **The tap link is asked for on every resume, not only at boot.** The engine
+  outlives the Activity (headless from boot), and Android starts a new
+  Activity for a tapped notification when the old one is gone or sits in
+  another task. That Activity holds its link until asked (`getInitialLink`);
+  `DeepLinkService` asks each time the app comes to the front. Asking once at
+  boot dropped the link (found on the C61, 2026-11-21): the tap opened the
+  launcher and the notification stayed unread.
 - **Dismissing is not reading.** A notification swiped away in the Android
   shade stays unread on the bell: a swipe says "not now".
 
