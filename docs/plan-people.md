@@ -79,11 +79,16 @@ once an hour.
      records; a board's Bluetooth address (`PacketGateway.receive` and
      `XprsPeople.noteAddress`, filed after 30 minutes of the same address).
    - OPEN: a WLAN address (no source for it yet), the LXMF source of a
-     verified directed packet, a seed from `observed.zx` at first start.
+     verified directed packet. (The seed from `observed.zx` is done, 3b.)
 3. Readers, one at a time, each deleting the table it replaces.
    - DONE (3a): `RnsService.identityForCallsign`, used by the whole-file
      fetch and the named holder of a piece fetch.
-   - OPEN: `_apiIdentity` and station visits, `lxmfDestForCallsign` and the
+   - DONE (3b): `_callIdentity` and `_callsignDest` are gone. Identity by
+     callsign through the record; key material in a bounded cache
+     (`_peerIds`) seeded from `observed.zx` (`namedPeers`, `pubkeyOf`);
+     `call_peers.json` imported once and removed. `_apiIdentity`, station
+     visits and the relay lookups read through `_identityOfCall`.
+   - OPEN: `_apiStation` / `_wappStation`, `lxmfDestForCallsign` and the
      `_lxmf*` maps, `npubForCallsign`, `XprsProfiles` re-keyed by npub.
 4. DONE. Own profile: `IwiProfile.identities` (a list of
    `StatedIdentities`: kind, values, scope); the profile page has "Other
