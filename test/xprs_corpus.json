@@ -210,6 +210,31 @@
 "id": "a0e22d"
 },
 {
+"wire": "t:identity f:X1QZ3N ts:2026-11-21_10:00:00 idtype:licence data:CT1ABC,EA/CT1ABC sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 144,
+"id": "15ad43"
+},
+{
+"wire": "t:identity f:X1QZ3N ts:2026-11-21_10:00:05 scope:local idtype:ble data:A4:CF:12:0B:7E:31,A4:CF:12:0B:80:02 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 171,
+"id": "6f6ed8"
+},
+{
+"wire": "t:identity f:X1QZ3N ts:2026-11-21_10:00:10 scope:PT,ES idtype:email data:joao@example.org sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 154,
+"id": "be76d7"
+},
+{
+"wire": "t:identity f:X1QZ3N ts:2026-11-21_10:00:15 idtype:meshtastic data:MTA1B2C3D4 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 141,
+"id": "f79cea"
+},
+{
+"wire": "t:identity f:X1QZ3N ts:2026-11-22_08:00:00 scope:PT,ES idtype:email data:- sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 139,
+"id": "dc7679"
+},
+{
 "wire": "t:identity f:CT1ABC ts:2026-08-08_14:26:40 k:npub1qz3n7fu9j9uenmyva7ha6x9eqwymytv2847ccv4vxdmn45y50q7h7k5f sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 171,
 "id": "52f750"
