@@ -350,3 +350,14 @@ Open:
   overlay when a holder is named.
 - After beta.2: directory asks go to every announced archiver, least
   recently asked first (core 543d4ec).
+
+### 1.13.0-beta.4 (2026-11-21)
+
+Released with core 88db90b. Live check on a fresh station (public hubs only,
+`--no-lan`): it heard X3PTZM at 16:57 and asked it for its directory at once
+(beta.2 never did). X3PTZM answered within 4 s ("history for X3SKAU — 6
+packets, directed, beside the radio replay"), but what it re-aired was the
+asker's own identity, not X3PTZM's `t:service`, and the groups list stayed
+empty. Next: check that `cmd:history kind:service only:<archiver>` answers
+with the archiver's own newest `t:service` (does it keep its own? does
+`only:` equal to the answering station match?).
