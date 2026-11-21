@@ -538,12 +538,17 @@ void main() {
     for (var i = 0; i < ticks; i++) {
       beforeEach?.call();
       await XprsCatchup.instance.tick(_self);
-      // Answer whatever is in flight, so the one-ask gate opens.
-      for (final w in List<String>.of(aired)) {
-        final p = XprsPacket.parse(w);
-        if (p == null || p.type != 'command') continue;
-        XprsCatchup.instance.onResult(XprsPacket.parse(
-            't:result f:${p['d']} d:$_self ts:x r:${xprsIdentifier(p)} code:200')!);
+      // Answer whatever is in flight, so the one-ask gate opens. Twice: an
+      // answer frees the slot, and the directory ask that waited for it
+      // goes out then, to be answered in turn.
+      for (var round = 0; round < 2; round++) {
+        for (final w in List<String>.of(aired)) {
+          final p = XprsPacket.parse(w);
+          if (p == null || p.type != 'command') continue;
+          XprsCatchup.instance.onResult(XprsPacket.parse(
+              't:result f:${p['d']} d:$_self ts:x r:${xprsIdentifier(p)} code:200')!);
+        }
+        await Future<void>.delayed(Duration.zero);
       }
       now += const Duration(minutes: 11).inMilliseconds;
     }
@@ -610,6 +615,43 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(aired.where((w) => w.contains('kind:service')), hasLength(1),
         reason: 'not a sweep later, when the slot is taken again');
+  });
+
+  test('a directory ask nobody answered is asked again after five minutes; '
+      'an answered one waits the half hour', () async {
+    PreferencesService.instanceSync!.xprsNamedArchivers = const ['X3ARK'];
+    addTearDown(
+        () => PreferencesService.instanceSync!.xprsNamedArchivers = const []);
+    List<String> dirAsks() =>
+        aired.where((w) => w.contains('kind:service')).toList();
+    // Sweeps a minute apart, answering everything EXCEPT the directory ask.
+    Future<void> sweep({bool answerDirectory = false}) async {
+      await XprsCatchup.instance.tick(_self);
+      for (var round = 0; round < 2; round++) {
+        for (final w in List<String>.of(aired)) {
+          final p = XprsPacket.parse(w);
+          if (p == null || p.type != 'command') continue;
+          if (!answerDirectory && w.contains('kind:service')) continue;
+          XprsCatchup.instance.onResult(XprsPacket.parse(
+              't:result f:${p['d']} d:$_self ts:x r:${xprsIdentifier(p)} code:200')!);
+        }
+        await Future<void>.delayed(Duration.zero);
+      }
+      now += const Duration(minutes: 1).inMilliseconds;
+    }
+
+    for (var i = 0; i < 4; i++) {
+      await sweep();
+    }
+    expect(dirAsks(), hasLength(1), reason: 'not again within five minutes');
+    for (var i = 0; i < 3; i++) {
+      await sweep();
+    }
+    expect(dirAsks(), hasLength(2), reason: 'unanswered: asked again');
+    for (var i = 0; i < 12; i++) {
+      await sweep(answerDirectory: true);
+    }
+    expect(dirAsks(), hasLength(2), reason: 'answered: the half hour');
   });
 
   test('an archiver heard only over the internet is still asked', () async {

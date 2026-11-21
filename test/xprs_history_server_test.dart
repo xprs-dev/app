@@ -551,6 +551,54 @@ void main() {
       });
     });
 
+    test('a directed send that fails stops the replay, and is counted',
+        () {
+      seed(14);
+      fakeAsync((async) {
+        // X1CCC's lane delivers the 202 and the first two packets, then
+        // fails: the route went the wrong way (seen on X3PTZM).
+        var sent = 0;
+        srv.directedTxOverride = (to, wire) async {
+          if (to != 'X1CCC') return true;
+          sent++;
+          directed.add((to, wire));
+          return sent <= 3;
+        };
+        ask('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+            'until:2026-08-13_11:00:00');
+        async.elapse(const Duration(seconds: 2));
+        ask2('t:command f:X1CCC d:X1SELF ts:2026-08-13_12:00:05 cmd:history '
+            'until:2026-08-13_11:00:00');
+        async.elapse(const Duration(seconds: 8));
+        expect(srv.directedLost, 1);
+        expect(sent, lessThan(XprsHistoryServer.pageSize),
+            reason: 'not the whole page into a lane that is failing');
+        expect(codesTo('X1CCC'), ['202'],
+            reason: 'no 206 or 200 claims a page that did not arrive');
+        async.elapse(const Duration(seconds: 30));
+      });
+    });
+
+    test('a directed 202 that fails sends no page at all', () {
+      seed(14);
+      fakeAsync((async) {
+        srv.directedTxOverride = (to, wire) async {
+          if (to == 'X1CCC') directed.add((to, wire));
+          return to != 'X1CCC';
+        };
+        ask('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+            'until:2026-08-13_11:00:00');
+        async.elapse(const Duration(seconds: 2));
+        ask2('t:command f:X1CCC d:X1SELF ts:2026-08-13_12:00:05 cmd:history '
+            'until:2026-08-13_11:00:00');
+        async.elapse(const Duration(seconds: 8));
+        expect(directed.where((e) => e.$1 == 'X1CCC'), hasLength(1),
+            reason: 'the 202 only');
+        expect(srv.directedLost, 1);
+        async.elapse(const Duration(seconds: 30));
+      });
+    });
+
     test('an asker with no directed path is told busy', () {
       seed(14);
       fakeAsync((async) {
