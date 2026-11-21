@@ -563,6 +563,27 @@ void main() {
     expect(p['since'], isNotNull);
   });
 
+  test('the archivers announced on Reticulum are asked too, not only the '
+      'adopted one', () async {
+    // The adopted one is far away and never answers; the others must still
+    // be asked, or the groups ranking stays empty.
+    PreferencesService.instanceSync!.xprsNamedArchivers = const ['X3FAR'];
+    XprsCatchup.instance.announcedOverride =
+        () => ['X3FAR', 'X3NEAR', _self, 'X3ALSO'];
+    addTearDown(() {
+      PreferencesService.instanceSync!.xprsNamedArchivers = const [];
+      XprsCatchup.instance.announcedOverride = null;
+    });
+    final asks = await directoryAsksAfterTicks(5);
+    final asked = <String?>[];
+    for (final w in asks) {
+      final d = XprsPacket.parse(w)!['d'];
+      if (!asked.contains(d)) asked.add(d);
+    }
+    expect(asked, ['X3FAR', 'X3NEAR', 'X3ALSO'],
+        reason: 'one a sweep, the chosen one first, never ourselves');
+  });
+
   test('an archiver in earshot is not asked: the air brings its announcement',
       () async {
     PreferencesService.instanceSync!.xprsNamedArchivers = const [_station];
