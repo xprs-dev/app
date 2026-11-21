@@ -88,8 +88,22 @@ once an hour.
      (`_peerIds`) seeded from `observed.zx` (`namedPeers`, `pubkeyOf`);
      `call_peers.json` imported once and removed. `_apiIdentity`, station
      visits and the relay lookups read through `_identityOfCall`.
-   - OPEN: `_apiStation` / `_wappStation`, `lxmfDestForCallsign` and the
-     `_lxmf*` maps, `npubForCallsign`, `XprsProfiles` re-keyed by npub.
+   - OPEN, each on a critical path, each with a rule the record must
+     reproduce exactly before its readers move. One per change, with a
+     live check on the phone and the boards:
+     - `_callPub` (callsign to key): read by every signature check. Rule:
+       for a callsign learned off an open bearer the FIRST key bound wins
+       (`recordCallsignPubkey(onlyIfUnknown:)`), or the last speaker makes
+       genuine traffic look forged. The record already receives every
+       binding (mirror, 2026-11-21); what is missing is a
+       first-binding-wins reader, the reverse lookups and the enumerations.
+     - `_lxmfCallsign`, `_lxmfAlias`, `_lxStation` (where mail to a
+       callsign is written). Rules: one trusted destination per callsign;
+       the person's name and the device's X3 share an address, the X3 as
+       an alias.
+     - `_apiStation` / `_wappStation` (where a station's visitor API
+       answers).
+     - `XprsProfiles._deco`, re-keyed from callsign to npub.
 4. DONE. Own profile: `IwiProfile.identities` (a list of
    `StatedIdentities`: kind, values, scope); the profile page has "Other
    identities", one row per kind with its scope
