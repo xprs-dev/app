@@ -125,6 +125,11 @@
 "id": "d77f4f"
 },
 {
+"wire": "t:blog f:X1QZ3N ts:2026-08-08_14:26:40 title:antenna-notes sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK m:## The dipole\u2029Rebuilt and **measured** at last.\u2029![the feed point](nYxKzGm4vT2pQ8dW5jR7cL0aFbNs9hUe3oXiC6EkM1w.jpg)",
+"bytes": null,
+"id": "f7719f"
+},
+{
 "wire": "t:message f:X1QZ3N ts:2026-08-08_14:26:40 m:OK   ->  ca5413",
 "bytes": null,
 "id": "79db36"
@@ -198,6 +203,11 @@
 "wire": "t:identity f:X3PTZM ts:2026-11-05_17:00:00 nick:XPRS-server file:- url:https://178-202-105-29.nip.io/ sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK m:-",
 "bytes": null,
 "id": "4a7829"
+},
+{
+"wire": "t:identity f:X3VGAZ ts:2026-11-14_09:00:00 nick:bench pos:40,-8 acc:171000 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": null,
+"id": "a0e22d"
 },
 {
 "wire": "t:identity f:CT1ABC ts:2026-08-08_14:26:40 k:npub1qz3n7fu9j9uenmyva7ha6x9eqwymytv2847ccv4vxdmn45y50q7h7k5f sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
@@ -665,6 +675,26 @@
 "id": "2454aa"
 },
 {
+"wire": "t:moderate f:X5A3F2 d:X5A3F2 ts:2026-08-08_16:00:00 state:closed sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 129,
+"id": "fe0e24"
+},
+{
+"wire": "t:moderate f:X32DVA d:X5A3F2 ts:2026-08-09_09:00:00 state:open sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 127,
+"id": "cda667"
+},
+{
+"wire": "t:message f:X5A3F2 d:X1RD89 ts:2026-08-08_14:40:00 x:CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": null,
+"id": "e150ca"
+},
+{
+"wire": "t:message f:X1RD89 d:X5A3F2 ts:2026-08-08_14:41:00 x:<sealed> sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": null,
+"id": "d7ab43"
+},
+{
 "wire": "t:moderate f:X3PTZM d:X3PTZM ts:2026-11-06_10:00:00 grant:X1RD89 role:mod sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 138,
 "id": "784324"
@@ -1098,6 +1128,11 @@
 "wire": "t:service f:X3ARC1 serve:archive,files count:48211 dial:arc1.example.org room:yes ts:2026-11-06_10:00:00 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 169,
 "id": "7ad72e"
+},
+{
+"wire": "t:service f:X3PTZM d:X3KEEP ts:2026-11-09_10:00:00 dial:178.202.105.29 k:npub1... m:3f9a1c2e4b7d6a80 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": null,
+"id": "e48b19"
 },
 {
 "wire": "t:channel f:X1QZ3N freq:145.500MHz mode:fm kind:listen since:2026-08-08_18:00:00 until:2026-08-08_22:00:00 ts:2026-08-08_14:26:40",
@@ -1605,9 +1640,9 @@
 "id": "e52b73"
 },
 {
-"wire": "t:result f:X3RLY7 d:X1BOA3 ts:2026-08-08_14:26:40 r:747ae8 code:429 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK m:try X32DVA or CT1ABC-9",
-"bytes": 157,
-"id": "63dc75"
+"wire": "t:result f:X3RLY7 d:X1BOA3 ts:2026-08-08_14:26:40 r:747ae8 code:429 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK m:try X32DVA,CT1ABC-9",
+"bytes": 154,
+"id": "7b4c43"
 },
 {
 "wire": "t:observation f:X1QZ3N pos:38.72,-9.14 age:30",
@@ -1763,15 +1798,5 @@
 "wire": "t:moderate f:X5A3F2 d:X5A3F2 ts:... revoke:X32DVA since:... sig:...",
 "bytes": null,
 "id": "31f92e"
-},
-{
-"wire": "t:moderate f:X5A3F2 d:X5A3F2 ts:2026-08-08_16:00:00 state:closed sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
-"bytes": 129,
-"id": "fe0e24"
-},
-{
-"wire": "t:moderate f:X32DVA d:X5A3F2 ts:2026-08-09_09:00:00 state:open sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
-"bytes": 127,
-"id": "cda667"
 }
 ]

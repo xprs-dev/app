@@ -29,7 +29,10 @@ OUT = pathlib.Path("test/xprs_corpus.json")
 # The document writes placeholders for values it does not spell out in full.
 EXPAND = {"<60 characters>": "K" * 60, "<64 characters>": "C" * 64,
           "<86 characters>": "C" * 86, "<107 characters>": "C" * 107,
-          "<128 characters>": "C" * 128}
+          "<128 characters>": "C" * 128,
+          # A paragraph break inside m: (section 18): the document shows the
+          # character by name, the wire carries the character itself.
+          "<U+2029>": "\u2029"}
 
 KEY = re.compile(r"[a-z][a-z0-9]{0,15}")
 
