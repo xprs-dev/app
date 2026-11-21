@@ -91,6 +91,18 @@ once an hour.
    - OPEN, each on a critical path, each with a rule the record must
      reproduce exactly before its readers move. One per change, with a
      live check on the phone and the boards:
+     - DONE in part (2026-11-22): a DERIVED callsign's key (X1 to X5) is
+       answered from the record when this run has not heard it
+       (`pubkeyForCallsign`), so a restarted station verifies at once. Safe
+       by arithmetic. Issued callsigns still come from this run's table
+       only; see the decision below.
+     - DECISION NEEDED for issued callsigns: the spec (6.4.2) says two keys
+       may bind one issued callsign and both verify. The code keeps ONE key
+       per callsign, the first heard, and forgets it at restart. Persisting
+       that as it is would let whoever was heard first hold a callsign on
+       this device for good. The faithful way is to keep every key that
+       signed for the callsign and accept a packet that verifies against
+       any of them; that changes the single-key `keyResolver`.
      - `_callPub` (callsign to key): read by every signature check. Rule:
        for a callsign learned off an open bearer the FIRST key bound wins
        (`recordCallsignPubkey(onlyIfUnknown:)`), or the last speaker makes
