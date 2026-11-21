@@ -335,3 +335,18 @@ Open:
   directory, and its public groups list stayed empty.
 - The holder fix and the retry are proven by unit tests only until a build
   with them is on the phone.
+
+### 1.13.0-beta.2 on the phone (2026-11-21)
+
+- Asked 10 s after start: arrived in 50 s (beta.1: never). The retry works.
+- Still whole-file, cold and warm (35 s): `not by pieces — 1 holder(s), no
+  piece list known` after about 30 s. The holder is asked for its record
+  over the DHT destination, the phone has no route to that destination
+  within the 3 s a DHT request allows (its link requests go out on the LAN
+  with `path: false`), the ask is skipped, and the lookup then walks the
+  public overlay. The files destination of the same station is reachable.
+  Next: learn the piece list over the files link the fetch already has (or
+  give a named holder the file fetch's path wait), and do not walk the
+  overlay when a holder is named.
+- After beta.2: directory asks go to every announced archiver, least
+  recently asked first (core 543d4ec).
