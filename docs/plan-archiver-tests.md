@@ -201,7 +201,24 @@ header differs from the original's (7.7.6), and a full audit of section 37.
   which lane a file arrived on in status, not only in the log; log every
   silent failure of F9.
 
-## 9. Order of work
+## 9. Step 1 results (2026-11-21)
+
+`test/xprs_file_faults_test.dart` holds one test per fault, asserting what
+the file system must do. A fault still standing is skipped with its number;
+running that file with the `--run-skipped` flag shows them failing. Every
+test failed for its stated reason before anything was fixed.
+
+| Fault | Confirmed | Now |
+|---|---|---|
+| F3: `404 m:try` is not followed | yes | open: part of the fetch door |
+| F10 (new): a second fetch of one file re-uses the first waiter and asks no new holder | yes | open: part of the fetch door |
+| F4: two requesters of one file | yes, and worse than read: NEITHER got its closing `200` | **fixed**: the spool owes one entry to several targets, the in-flight table is per file and asker |
+| F5: the requester's callsign with a device suffix | yes | **fixed**: compared without the suffix |
+| F6: unknown size goes to the packet lane, no fallback | yes | open: part of the fetch door |
+| F11 (new): chunks re-sent on another grid (an addressed re-send has a longer header) are counted twice; the file looks whole early, fails its hash and is discarded | yes | **fixed**: held bytes are counted per byte |
+| F1, F2, F7, F8 | by reading the code only: the machinery is missing, there is no behaviour to drive | open: tested with the fetch door and the firmware responder |
+
+## 10. Order of work
 
 1. **Files, as failing tests.** F1 to F9 in the simulators plus one
    two-station run, so each is confirmed or cleared before anything is fixed.
