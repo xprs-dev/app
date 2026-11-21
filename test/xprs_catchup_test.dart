@@ -530,6 +530,49 @@ void main() {
         reason: 'the second station is asked for the whole window');
   });
 
+  // ── An archiver's directory, asked for when it is not heard (12.9) ────
+  // Its `t:service`, which names the directory and the groups index, rides
+  // its radio and LAN only; reached over the internet, it is asked for.
+  Future<List<String>> directoryAsksAfterTicks(int ticks) async {
+    for (var i = 0; i < ticks; i++) {
+      await XprsCatchup.instance.tick(_self);
+      // Answer whatever is in flight, so the one-ask gate opens.
+      for (final w in List<String>.of(aired)) {
+        final p = XprsPacket.parse(w);
+        if (p == null || p.type != 'command') continue;
+        XprsCatchup.instance.onResult(XprsPacket.parse(
+            't:result f:${p['d']} d:$_self ts:x r:${xprsIdentifier(p)} code:200')!);
+      }
+      now += const Duration(minutes: 11).inMilliseconds;
+    }
+    return aired.where((w) => w.contains('kind:service')).toList();
+  }
+
+  test('a chosen archiver not heard is asked for its own directory announcement',
+      () async {
+    PreferencesService.instanceSync!.xprsNamedArchivers = const ['X3ARK'];
+    addTearDown(
+        () => PreferencesService.instanceSync!.xprsNamedArchivers = const []);
+    final asks = await directoryAsksAfterTicks(3);
+    expect(asks, hasLength(1),
+        reason: 'once, then not again within the half hour');
+    final p = XprsPacket.parse(asks.single)!;
+    expect(p['d'], 'X3ARK');
+    expect(p['cmd'], 'history');
+    expect(p['only'], 'X3ARK');
+    expect(p['since'], isNotNull);
+  });
+
+  test('an archiver in earshot is not asked: the air brings its announcement',
+      () async {
+    PreferencesService.instanceSync!.xprsNamedArchivers = const [_station];
+    addTearDown(
+        () => PreferencesService.instanceSync!.xprsNamedArchivers = const []);
+    _beacon(now, count: 0);
+    final asks = await directoryAsksAfterTicks(1);
+    expect(asks, isEmpty);
+  });
+
   // ── An open group followed by name (7.3) ───────────────────────────────
   test('an open group this station follows is asked for by its name', () async {
     PreferencesService.instanceSync!.xprsNamedArchivers = const ['X3ARK'];
