@@ -377,7 +377,7 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
   /// Settings itself: one line per topic, the ones reached for most on top,
   /// each opening a page of its own.
   List<Widget> _menu(ColorScheme cs) {
-    final call = ProfileService.instance.activeProfile?.callsign ?? '';
+    final call = ProfileService.instance.activeProfile?.wireCallsign ?? '';
     final api = RemoteApiService.instance.running;
     return [
       _group(cs, [
