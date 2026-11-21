@@ -218,6 +218,36 @@ test failed for its stated reason before anything was fixed.
 | F11 (new): chunks re-sent on another grid (an addressed re-send has a longer header) are counted twice; the file looks whole early, fails its hash and is discarded | yes | **fixed**: held bytes are counted per byte |
 | F1, F2, F7, F8 | by reading the code only: the machinery is missing, there is no behaviour to drive | open: tested with the fetch door and the firmware responder |
 
+### Step 2, first increments (2026-11-21)
+
+- **Holders (F3, F10 closed).** `XprsFileFetch` is one fetch per file with a
+  set of holders (at most six). Asking again for a file being fetched joins
+  it and asks the new holder too; a `404`/`429` with `m:try` is followed one
+  hop; the fetch ends null only when every holder asked has refused. The
+  `m:try` reader is shared (`xprsTryCallsigns`, `xprs_vocab.dart`).
+- **Lane for an unknown size (F6 closed).** A tap over a link takes the bulk
+  and internet lanes and sends the packet-lane ask beside them; untapped, the
+  bounded packet-lane guess stands.
+- **F1, part.** A caller that knows the exact length passes it (`exactSize`;
+  the updater does, from the release feed) and it reaches
+  `fetchContentAddressed`, which is what selects the piece path.
+
+**What F1 still needs**, in this order:
+
+1. **The exact length for any file.** A message's `size:` is rounded
+   (`240kB`). The holder's answer to `q:have` already carries `size:`; it has
+   to be the exact byte count there, and the fetch has to ask it.
+2. **A piece list for every hosted file of more than one piece**, named in
+   the holder's provider record (`manifestHash`). Today only folder
+   publishing attaches one, so by-hash fetches of chat media find no list
+   and fall back to whole-file from one holder.
+3. **`ph:` written on `t:file`** (spec 7.7.1), so a reader has the list's
+   hash from the description and needs no provider record to find it.
+4. **Holders remembered.** A station that served or announced a file is
+   written as a source of it, so the holder index (`q:have` misses, `m:try`)
+   has something to say. Nothing writes one today.
+5. **Progress** as one reading per file across lanes.
+
 ## 10. Order of work
 
 1. **Files, as failing tests.** F1 to F9 in the simulators plus one

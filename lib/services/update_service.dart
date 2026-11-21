@@ -978,6 +978,9 @@ class UpdateService with WidgetsBindingObserver {
           // Seconds to say 202, not the transfer's hour: a station that does
           // not hold the release is asked and left behind, never waited on.
           acceptWithin: meshAcceptWithin,
+          // The feed states the length exactly: the internet lane can then
+          // take pieces from every station that holds the release.
+          exactSize: asset.size,
         );
         if (path == null) continue; // 404 / refused / timed out: try the next
         await _markReady(path, release.version);

@@ -98,7 +98,7 @@ void main() {
         reason: 'the archiver said who holds it (spec 8.1, 12.9.2); '
             'the fetch must ask there instead of ending');
     await fut;
-  }, skip: 'F3: m:try is logged and not followed (xprs_files.dart onResult)');
+  });
 
   // ── F10: a second holder is asked when the first was already asked ────
   test('F10: asking a second archiver for the same file reaches it', () async {
@@ -119,8 +119,76 @@ void main() {
     expect(asks().map((p) => p['d']).toSet(), {'X3AAAA', 'X3BBBB'},
         reason: 'one fetch per file, but every holder named is a source');
     await Future.wait([a, b]);
-  }, skip: 'F10: a second fetch of one sha re-uses the first waiter and asks '
-      'nobody new (xprs_files.dart fetch)');
+  });
+
+  // ── One fetch, several holders: the edges ─────────────────────────────
+  XprsPacket refusal(XprsPacket ask, int code, {String? m}) =>
+      XprsPacket.parse('t:result f:${ask['d']} d:X1SELF '
+          'ts:2026-11-21_08:00:00 r:${xprsIdentifier(ask)} code:$code'
+          '${m == null ? '' : ' m:$m'}')!;
+
+  test('one holder refusing does not end a fetch another may still answer',
+      () async {
+    final a = XprsFileFetch.instance.fetch(
+        archiver: 'X3AAAA',
+        shaHex: _sha,
+        selfCallsign: 'X1SELF',
+        timeout: const Duration(seconds: 2));
+    XprsFileFetch.instance.fetch(
+        archiver: 'X3BBBB',
+        shaHex: _sha,
+        selfCallsign: 'X1SELF',
+        timeout: const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    var done = false;
+    // ignore: unawaited_futures
+    a.whenComplete(() => done = true);
+    final toA = asks().firstWhere((p) => p['d'] == 'X3AAAA');
+    XprsFileFetch.instance.onResult(refusal(toA, 404));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(done, isFalse, reason: 'X3BBBB was asked and has not answered');
+    final toB = asks().firstWhere((p) => p['d'] == 'X3BBBB');
+    XprsFileFetch.instance.onResult(refusal(toB, 404));
+    expect(await a, isNull, reason: 'now every holder asked has refused');
+  });
+
+  test('a redirect is followed one hop, and never back to ourselves',
+      () async {
+    final a = XprsFileFetch.instance.fetch(
+        archiver: 'X3AAAA',
+        shaHex: _sha,
+        selfCallsign: 'X1SELF',
+        timeout: const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    XprsFileFetch.instance
+        .onResult(refusal(asks().single, 404, m: 'try X3BBBB,X1SELF'));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(asks().map((p) => p['d']), ['X3AAAA', 'X3BBBB']);
+    // X3BBBB was reached by a redirect: where it points is not followed.
+    final toB = asks().firstWhere((p) => p['d'] == 'X3BBBB');
+    XprsFileFetch.instance.onResult(refusal(toB, 404, m: 'try X3CCCC'));
+    expect(await a, isNull);
+    expect(asks().map((p) => p['d']), isNot(contains('X3CCCC')));
+  });
+
+  test('the bytes arriving from any holder end the fetch for every caller',
+      () async {
+    final a = XprsFileFetch.instance.fetch(
+        archiver: 'X3AAAA',
+        shaHex: _sha,
+        selfCallsign: 'X1SELF',
+        timeout: const Duration(seconds: 2));
+    final b = XprsFileFetch.instance.fetch(
+        archiver: 'X3BBBB',
+        shaHex: _sha,
+        selfCallsign: 'X1SELF',
+        timeout: const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    XprsFileFetch.instance.noteInboundComplete(_sha, '/tmp/got.bin');
+    expect(await a, '/tmp/got.bin');
+    expect(await b, '/tmp/got.bin');
+    expect(XprsFileFetch.instance.busy, isFalse);
+  });
 
   // ── F4: two requesters of one file ────────────────────────────────────
   group('F4: two stations ask one holder for the same file', () {
@@ -224,8 +292,12 @@ void main() {
         reason: 'over 32 kB the holder refuses a packet-lane ask (403) and '
             'nothing falls back; with a link the bulk and internet lanes '
             'carry any size');
-  }, skip: 'F6: unknown size is routed to the packet lane with no fallback '
-      '(media_fetch.dart decide)');
+    // Nobody asked: the bounded guess stands, whatever the link.
+    expect(
+        MediaFetch.decide(
+            size: null, link: true, bleOnly: false, maxMb: 50, userTapped: false),
+        MediaLane.packet);
+  });
 
   // ── F11: a re-send on another grid still completes the file ───────────
   test('F11: gaps re-sent on a different grid still assemble the file', () {
