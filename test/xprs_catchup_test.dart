@@ -533,8 +533,10 @@ void main() {
   // ── An archiver's directory, asked for when it is not heard (12.9) ────
   // Its `t:service`, which names the directory and the groups index, rides
   // its radio and LAN only; reached over the internet, it is asked for.
-  Future<List<String>> directoryAsksAfterTicks(int ticks) async {
+  Future<List<String>> directoryAsksAfterTicks(int ticks,
+      {void Function()? beforeEach}) async {
     for (var i = 0; i < ticks; i++) {
+      beforeEach?.call();
       await XprsCatchup.instance.tick(_self);
       // Answer whatever is in flight, so the one-ask gate opens.
       for (final w in List<String>.of(aired)) {
@@ -592,6 +594,38 @@ void main() {
     _beacon(now, count: 0);
     final asks = await directoryAsksAfterTicks(1);
     expect(asks, isEmpty);
+  });
+
+  test('the directory ask goes out when the ask ahead of it is answered',
+      () async {
+    PreferencesService.instanceSync!.xprsNamedArchivers = const ['X3ARK'];
+    addTearDown(
+        () => PreferencesService.instanceSync!.xprsNamedArchivers = const []);
+    // One sweep: its history ask takes the slot, the directory ask waits.
+    await XprsCatchup.instance.tick(_self);
+    expect(aired.where((w) => w.contains('kind:service')), isEmpty);
+    final ahead = XprsPacket.parse(aired.single)!;
+    XprsCatchup.instance.onResult(XprsPacket.parse(
+        't:result f:X3ARK d:$_self ts:x r:${xprsIdentifier(ahead)} code:200')!);
+    await Future<void>.delayed(Duration.zero);
+    expect(aired.where((w) => w.contains('kind:service')), hasLength(1),
+        reason: 'not a sweep later, when the slot is taken again');
+  });
+
+  test('an archiver heard only over the internet is still asked', () async {
+    PreferencesService.instanceSync!.xprsNamedArchivers = const [_station];
+    addTearDown(
+        () => PreferencesService.instanceSync!.xprsNamedArchivers = const []);
+    // Heard again before every sweep, as an archiver that keeps answering is.
+    final asks = await directoryAsksAfterTicks(3,
+        beforeEach: () => XprsMonitor.instance.offer(
+            XprsPacket.parse(
+                't:observation f:$_station serve:archive count:0')!,
+            bearer: 'rns',
+            selfCallsign: _self,
+            nowMs: now));
+    expect(asks, hasLength(1),
+        reason: 'its t:service does not travel over Reticulum');
   });
 
   // ── An open group followed by name (7.3) ───────────────────────────────
