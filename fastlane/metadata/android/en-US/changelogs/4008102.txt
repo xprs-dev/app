@@ -1,0 +1,4 @@
+A fresh install finds archivers over Reticulum and fills Search and the public groups ranking from them, with no setup.
+Files: a fetch asks every station known to hold a file, follows a redirect to another holder, and takes large files in pieces from several holders. Fixed: two people fetching the same file, and small files re-sent over radio.
+Download progress shows the lane and the number of holders.
+Linux: no Bluetooth error at start.
