@@ -109,7 +109,13 @@ once an hour.
    identities", one row per kind with its scope
    (`lib/profile/other_identities_editor.dart`, strings in five languages).
    The issued callsigns stay in `heldLicences` and are stated from there.
-   NOT YET SEEN RUNNING: tested by unit tests only, no screenshot.
+   SEEN RUNNING (2026-11-22, Linux desktop on a private display): kinds
+   listed, a typed address normalised, a board's address defaulting to
+   "Nearby only", both sets saved. Found there: nothing was aired on Save
+   (fixed, core: a change is stated five seconds later). On the air: the
+   e-mail statement on LAN and Reticulum, the `scope:local` one on the LAN
+   only. Not settled: the kind list opened from the keyboard but not from
+   a scripted mouse click (another menu did); try by hand.
 5. DONE. Telling others: spec 6.3.3 and five corpus packets (365);
    `XprsPublisher.composeIdentityStatement` / `publishIdentities` (aired
    with the decoration, a removed kind withdrawn once);
