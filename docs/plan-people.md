@@ -74,11 +74,12 @@ once an hour.
      callsign for the key; every announce that names its node
      (`RnsService._notePerson`) files the device's Reticulum identity and LXMF
      address; a signed `lx:` (`noteSignedLx`).
-   - OPEN: the beacon's `lx:` (`noteStationAddress`), the static Bluetooth or
-     WLAN address behind a verified beacon (boards only, never a phone's
-     rotating address), a gateway's Meshtastic and MeshCore nodes (3.2), the
-     LXMF source of a verified directed packet, a seed from `observed.zx` at
-     first start.
+   - DONE: the beacon's `lx:` (`RnsService._wireBeaconAddresses`); a
+     gateway's Meshtastic and MeshCore nodes (`XprsIngest.heard`), keyless
+     records; a board's Bluetooth address (`PacketGateway.receive` and
+     `XprsPeople.noteAddress`, filed after 30 minutes of the same address).
+   - OPEN: a WLAN address (no source for it yet), the LXMF source of a
+     verified directed packet, a seed from `observed.zx` at first start.
 3. Readers, one at a time, each deleting the table it replaces.
    - DONE (3a): `RnsService.identityForCallsign`, used by the whole-file
      fetch and the named holder of a piece fetch.
