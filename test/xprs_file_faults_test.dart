@@ -204,6 +204,8 @@ void main() {
         timeout: const Duration(seconds: 2));
     await Future<void>.delayed(const Duration(milliseconds: 50));
     XprsFileFetch.instance.onResult(refusal(asks().single, 202));
+    // And counted for the progress reading: one asked, one holding.
+    expect(XprsFileFetch.instance.holdersOf(_sha), (asked: 1, accepted: 1));
     expect(xprsKnownHolders(archive, _sha), ['X3AAAA'],
         reason: 'what a q:have miss names in m:try, and what the next '
             'fetch of this file asks beside its sender');

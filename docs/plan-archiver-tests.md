@@ -252,7 +252,12 @@ test failed for its stated reason before anything was fixed.
    station whose message named it; the holder index answers from it and a
    fetch asks all of them. Still to add: holders learned from a `q:have`
    answer, and reporting held hashes upward to the chosen archivers.
-5. **Progress** as one reading per file across lanes.
+5. **Progress** as one reading per file across lanes (done 2026-11-21):
+   `MediaProgress` names the lane (`visit`, `packet`, `bulk`, `internet`),
+   the bytes or pieces in hand, and the holders asked and holding. All of it
+   is read from local state, so showing it sends nothing; the bulk lane's
+   figure no longer reads the disk. Wapps get it through `hal_media_state`
+   (`lane`, `holders`, `holding`).
 
 ## 10. Order of work
 

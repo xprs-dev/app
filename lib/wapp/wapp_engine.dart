@@ -940,6 +940,11 @@ class WappEngine {
               'name': meta?.name ?? info?.name ?? '',
               'ext': info?.ext ?? ref.ext,
               'original': original == null ? '' : '${original.sha}.${original.ext}',
+              // Where the bytes are arriving and from how many: read from
+              // what this device already holds, so asking costs no traffic.
+              'lane': p.lane ?? '',
+              'holders': p.holders,
+              'holding': p.holding,
             }));
       },
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],

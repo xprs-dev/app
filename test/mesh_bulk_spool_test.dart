@@ -72,6 +72,22 @@ void main() {
     expect(d2.offset, o.size);
   });
 
+  test('progress is read from what was written, and ends with the file', () {
+    final data = blob(50000);
+    final o = offerFor(data);
+    final hex = MeshBulkSpool.shaHex(o.sha256);
+    expect(spool.inboundProgress(hex), isNull, reason: 'nothing in flight');
+    spool.offered('AAA', o);
+    expect(spool.inboundProgress(hex), (received: 0, total: 50000));
+    spool.writeAt(o.sha256, 0, Uint8List.sublistView(data, 0, 20000));
+    expect(spool.inboundProgress(hex), (received: 20000, total: 50000));
+    spool.writeAt(o.sha256, 20000, Uint8List.sublistView(data, 20000));
+    expect(spool.inboundProgress(hex), (received: 50000, total: 50000));
+    expect(spool.verify(o.sha256), true);
+    spool.completeInbound(o.sha256, selfCallsign: 'ME');
+    expect(spool.inboundProgress(hex), isNull, reason: 'it is a file now');
+  });
+
   test('resume: partial .part -> offer answers with its length', () {
     final data = blob(50000);
     final o = offerFor(data);
