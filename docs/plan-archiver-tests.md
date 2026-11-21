@@ -33,7 +33,7 @@ have a definition of "correct".
    holds, never whether it serves. A board with flash only serves what fits
    its flash.
 3. **Piece lists are binary; packets and human listings stay text**
-   (proposed, section 4).
+   (in the spec since 2026-11-21, section 4).
 4. **Spec contradictions are resolved in the spec** (done, section 6).
 5. **The suite lives in `portal/contract/`**, beside the conformance suite
    every engine already runs. (`webchat/` is a second clone of the same
@@ -88,14 +88,16 @@ screens or requesters wait on it.
 Reticulum link and over HTTP, report held hashes upward on the publication
 push (12.9.2).
 
-## 4. Piece lists: binary (proposed spec change, 7.7.2)
+## 4. Piece lists: binary (spec 7.7.2)
 
 - **The piece list** is the SHA-256 of each piece, 32 bytes each, in piece
-  order, nothing else. It stays a content-addressed file named by `ph:`, with
-  its own extension. The code already works this way
-  (`core/lib/src/services/folders/piece_hashes.dart`); the text form exists
-  only in the spec.
-- **`ps:`** beside `ph:` in `t:file` states the piece size.
+  order, nothing else. It stays a content-addressed file named by `ph:`,
+  extension `xpl`. The code already works this way
+  (`core/lib/src/services/folders/piece_hashes.dart`), under the extension
+  `pieces`, which has to follow the spec.
+- **No field for the piece size** (no new wire word): it follows from the
+  file's size (65 536 bytes; 262 144 from 4 MiB; 1 048 576 from 64 MiB), and
+  the list's length confirms it. `pieceSizeForFile` is already that rule.
 - **Why this does not touch radio transparency.** Packets stay text. File
   contents never were: a photograph on the radio is binary in `b:` as base64,
   and so would a piece list be. And a piece list never travels the narrow
