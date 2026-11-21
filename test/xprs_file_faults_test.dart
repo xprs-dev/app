@@ -269,6 +269,33 @@ void main() {
     await fut;
   });
 
+  test('an internet run that brought nothing is tried again while the file '
+      'is wanted', () async {
+    XprsFileFetch.internetRetry = const Duration(milliseconds: 60);
+    addTearDown(
+        () => XprsFileFetch.internetRetry = const Duration(seconds: 60));
+    var runs = 0;
+    XprsFileFetch.instance.internetFetch = (sha, ext, archiver, destDir) async {
+      runs++;
+      return null; // no path to the holder yet
+    };
+    final fut = XprsFileFetch.instance.fetch(
+        archiver: 'X3AAAA',
+        shaHex: _sha,
+        selfCallsign: 'X1SELF',
+        exactSize: 5000000,
+        timeout: const Duration(milliseconds: 700));
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(runs, 1);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(runs, 2, reason: 'once more after the first wait');
+    await fut;
+    expect(runs, lessThanOrEqualTo(1 + XprsFileFetch.internetRetries));
+    final after = runs;
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(runs, after, reason: 'a fetch that ended tries no more');
+  });
+
   test('a caller that states the length starts the internet lane at once',
       () async {
     var runs = 0;
