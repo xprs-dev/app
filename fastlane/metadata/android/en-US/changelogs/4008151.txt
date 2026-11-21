@@ -1,0 +1,3 @@
+Files: a fetch asks the station that holds a file for its piece list directly, so large files come in pieces without a long wait.
+A fetch started before the device has a route to the holder tries again instead of waiting out its time.
+Settings shows the name you transmit as.
