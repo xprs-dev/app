@@ -305,3 +305,33 @@ run a holder); a file uploaded over the station API was never advertised.
    3 nightly or by hand (QEMU faults on about half its runs today,
    `firmware/docs/esp32.md`).
 6. **The bench checklist.**
+
+## 11. Full test of 1.13.0-beta.1 (2026-11-21)
+
+Suites: app 1629 pass (one pixel comparison differs on the Pi's renderer,
+`meshtastic_tag_golden_test`), core 582, server 42, reticulum-dart 415,
+`interop_archivers.py` 22 checks. The bench phone was updated in place to the
+released APK.
+
+Found and fixed after the tag (not in beta.1):
+
+- A phone fetching 900 kB from a station on its own network waited 30 s and
+  then took the whole file: the piece list is learned from a provider
+  record, and the lookup walked the public overlay instead of asking the
+  named holder. `DhtNode.resolve(holders:)` now asks it first.
+- A fetch asked in the phone's first seconds had no Reticulum path, failed
+  once and waited out its timeout. The internet lane now tries again (60 s,
+  120 s, 240 s).
+- The server's `lan` setting; the Settings device row shows the on-air name.
+
+Open:
+
+- Across a public hub the holder's `202` arrived after the 3 s grace, so the
+  fetch went whole-file (15 s for 900 kB) and the piece path was not used.
+- A restart of a station announces again inside the hub's hourly budget;
+  X3PTZM's next announce (13:56) reached nobody, the one after (14:57) did.
+  The last own-announce time should survive a restart.
+- A fresh station adopted another archiver (X3VZVS) and asked it for its
+  directory, and its public groups list stayed empty.
+- The holder fix and the retry are proven by unit tests only until a build
+  with them is on the phone.
