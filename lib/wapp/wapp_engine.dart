@@ -706,7 +706,7 @@ class WappEngine {
   /// Resolve a wapp-supplied database path to the absolute path of its zx
   /// store, confined to this wapp's private data dir: rejects absolute paths
   /// and any '..' segment so a wapp can't escape its sandbox; the file name
-  /// ends in `.zx` (a `.sqlite3`, `.sqlite` or `.db` ending is replaced).
+  /// ends in `.zx` (a `.db` ending is replaced).
   /// Returns null if unresolvable/unsafe.
   String? _wappDbPath(String rel) {
     final s = _storage;
@@ -715,7 +715,7 @@ class WappEngine {
         rel.split('/').where((p) => p.isNotEmpty && p != '.').toList();
     if (parts.isEmpty || parts.contains('..')) return null;
     var name = parts.removeLast()
-        .replaceFirst(RegExp(r'\.(sqlite3?|db)$'), '');
+        .replaceFirst(RegExp(r'\.db$'), '');
     if (name.isEmpty) return null;
     if (!name.endsWith('.zx')) name = '$name.zx';
     return s.getAbsolutePath([...parts, name].join('/'));
@@ -2703,9 +2703,9 @@ class WappEngine {
     );
 
     // ── Database HAL (hal.db: per-wapp zx store, scoped to the wapp data dir)
-    // SQL in the SQLite dialect, run by zx (docs: zx zxdb-sql.md). The store
-    // is `<path>.zx` (a trailing .sqlite3/.db a wapp may still name is
-    // replaced), encrypted inside an encrypted profile.
+    // SQL, run by zx (docs: zx zxdb-sql.md). The store is `<path>.zx` (a
+    // trailing .db a wapp may still name is replaced), encrypted inside an
+    // encrypted profile.
     final halDbOpen = WasmFunction(
       (int pathPtr, int pathLen) {
         if (pathLen <= 0) return -1;

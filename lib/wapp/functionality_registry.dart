@@ -208,7 +208,7 @@ class FunctionalityRegistry {
       EndpointDef('hal_db_open', 'Open/create a database under the wapp data dir (stored as <path>.zx; encrypted in an encrypted profile)', [
         ParamDef('path', 'string', 'Relative path (no leading / or ..)'),
       ], ReturnDef('int', 'Handle (>=0) or -1 on error')),
-      EndpointDef('hal_db_exec', 'Run a non-SELECT statement (SQL, the dialect zx shares with SQLite)', [
+      EndpointDef('hal_db_exec', 'Run a non-SELECT statement (SQL, run by zx)', [
         ParamDef('handle', 'int'),
         ParamDef('sql', 'string'),
         ParamDef('params', 'string', 'Optional JSON array bound to ? placeholders'),
