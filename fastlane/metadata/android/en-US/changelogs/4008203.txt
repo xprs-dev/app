@@ -1,0 +1,3 @@
+Notifications: tapping one in the Android notification area marks it read in XPRS too.
+Opening the page a notification is about marks it read, and "ready to install" goes away once the update is installed.
+Read notifications stay read after a restart, and unread ones stay unread.
