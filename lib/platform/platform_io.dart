@@ -74,6 +74,7 @@ Future<bool> showSystemNotification({
   String? wapp,
   String? convo,
   String? view,
+  String? id,
 }) async {
   try {
     if (Platform.isLinux) {
@@ -135,6 +136,9 @@ Future<bool> showSystemNotification({
         if (wapp != null && wapp.isNotEmpty) 'wapp': wapp,
         if (convo != null && convo.isNotEmpty) 'convo': convo,
         if (view != null && view.isNotEmpty) 'view': view,
+        // The notification's identity: it rides the tap link back
+        // (xprs://open?...&n=) so the tap marks exactly this one read.
+        if (id != null && id.isNotEmpty) 'n': id,
       });
     }
     // Windows native balloon not implemented — use winrt toast later.
@@ -192,6 +196,17 @@ Future<void> withdrawSystemNotifications(
         if (convo != null && convo.isNotEmpty) 'convo': convo,
         if (view != null && view.isNotEmpty) 'view': view,
       });
+    }
+  } catch (_) {}
+}
+
+/// Withdraw the ONE OS notification with this identity
+/// (NotificationService.idOf), whatever it is about: it was opened or
+/// resolved in-app. Android only, as above.
+Future<void> withdrawSystemNotificationById(String id) async {
+  try {
+    if (Platform.isAndroid && id.isNotEmpty) {
+      await _bgChannel.invokeMethod('notify_seen', {'n': id});
     }
   } catch (_) {}
 }

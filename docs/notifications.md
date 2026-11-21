@@ -299,7 +299,40 @@ notification. You often don't need to raise error notifications by hand — fire
   the same `openWappByFolder`. One opener, two doors.
 - **OS notification** — for `system`/`both`: `notify-send` (Linux), `osascript`
   (macOS), or a heads-up `NotificationManager` post (Android). Tapping the Android one
-  opens the launcher.
+  opens what it is about (the deep link above) and marks it read.
+
+## When a notification is read
+
+One notification has one identity everywhere: `NotificationService.idOf(n)`,
+the tag when it has one, otherwise its instant and source. It is the bell
+row's id, and it rides to Android inside the existing `notify` call, where
+`BgBridge` puts it in the notification's extras (`xprs_n`) and in the tap link
+(`xprs://open?wapp=…&n=<id>`). Three things make a notification read, the
+same for a wapp's and a host service's, and each one clears the bell row, the
+in-app card and the Android shade together:
+
+| What happened | Call | Marks |
+|---|---|---|
+| It was tapped: Android shade, desktop toast, in-app card, bell row | `openNotificationTarget(…, notificationId:)` → `markSeenById(id)` | that one notification, even when its target can no longer be opened |
+| What it is about is on screen | `viewing(source, convo:, view:)` → `markSeen` | everything about that target (`isAbout`) |
+| What it said stopped being true | `markSeenById(tag, source:)`, or a source-wide `markSeen(source, all: true)` | that notification, or all of that source's |
+
+- **Every tap goes through `openNotificationTarget`**, so a new door inherits
+  the rule by passing the id; none marks anything itself.
+- **A host page reports itself like a wapp page.** A wapp page calls
+  `viewing('wapp:<name>', …)`; a host page with notifications of its own
+  wraps its build in `NotificationTargetView(source: 'host:updates', …)`
+  (Updates, the archiver, position sharing). Reached through Settings rather
+  than the notification, it reads them all the same. What is on screen is a
+  stack: a host page closed over a wapp page leaves the wapp page in front.
+- **A wapp withdraws what is no longer true** with
+  `{"type":"notify.resolve","tag":"<the tag it raised it under>"}`, in both
+  drains. It reaches that wapp's own notifications only.
+- **The updater retires its own.** With nothing waiting to be installed at
+  startup (it was installed, or the file is gone), "XPRS x is ready to
+  install" is read: `UpdateService._retireNotifications`.
+- **Dismissing is not reading.** A notification swiped away in the Android
+  shade stays unread on the bell: a swipe says "not now".
 
 ## Persistence & dedupe
 
@@ -312,7 +345,9 @@ notification. You often don't need to raise error notifications by hand — fire
   A cursor has two moving operands: it advances when the list is opened, and a
   row's timestamp advances whenever a replayed event is re-recorded — so an
   already-read notification jumped back above the line and re-lit the bell. A
-  flag cannot be un-set by a replay. A row written before the field existed has
+  flag cannot be un-set by a replay. The flag is written with the row (until
+  2026-11-21 it was not, so a restart fell back to the watermark and read
+  every row older than the last thing marked). A row written before the field existed has
   no `seen` and falls back to the legacy `notifications/seen_ms.txt` watermark,
   which is still maintained. A replayed row also inherits its predecessor's
   first-seen timestamp, so a repeat does not jump to "Today" — which makes

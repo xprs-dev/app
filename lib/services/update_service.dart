@@ -749,7 +749,10 @@ class UpdateService with WidgetsBindingObserver {
     final p = await SharedPreferences.getInstance();
     final path = p.getString(_kReadyPath);
     final version = p.getString(_kReadyVersion);
-    if (path == null || version == null) return;
+    if (path == null || version == null) {
+      _retireNotifications();
+      return;
+    }
     var keep = false;
     try {
       final f = fs.file(path);
@@ -765,6 +768,7 @@ class UpdateService with WidgetsBindingObserver {
       for (final k in [_kReadyPath, _kReadyVersion, _kReadySize]) {
         await p.remove(k);
       }
+      _retireNotifications();
       return;
     }
     _downloadedPath = path;
@@ -773,6 +777,12 @@ class UpdateService with WidgetsBindingObserver {
     status.value = UpdateStatus.downloaded;
     _refreshNotice();
   }
+
+  /// Nothing is waiting to be installed (it was installed, or its file is
+  /// gone): "XPRS x is ready to install" is no longer true, so it leaves the
+  /// bell and the shade instead of asking for an update that already ran.
+  void _retireNotifications() =>
+      NotificationService.instance.markSeen(notificationSource, all: true);
 
   Future<void> _deleteQuietly(String path) async {
     try {

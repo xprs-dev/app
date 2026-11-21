@@ -100,6 +100,7 @@ class SystemTrayNotificationBackend implements NotificationBackend {
       wapp: wapp,
       convo: n.convo,
       view: n.view,
+      id: NotificationService.idOf(n),
     )
         .then((acted) async {
       if (!acted || wapp == null || wapp.isEmpty) return;
@@ -114,6 +115,7 @@ class SystemTrayNotificationBackend implements NotificationBackend {
         wapp,
         convo: n.convo,
         view: n.view,
+        notificationId: NotificationService.idOf(n),
         navigator: rootNavigatorKey.currentState,
       );
     }));
@@ -152,24 +154,41 @@ class NotificationService with WidgetsBindingObserver {
     return true; // about the wapp itself: seen once any of it is on screen
   }
 
-  /// What the person is being shown now, if a wapp page is in front.
-  ({String source, String? convo, String? view})? _onScreen;
+  /// The one identity of a notification, everywhere it is shown: its bell
+  /// row, its in-app card, its entry in the OS shade and the link a tap on
+  /// that entry carries (`xprs://open?...&n=<id>`). The tag when there is one
+  /// (the same event announced twice is the same notification), otherwise its
+  /// instant and source.
+  static String idOf(XprsNotification n) =>
+      (n.tag != null && n.tag!.isNotEmpty)
+          ? n.tag!
+          : '${n.timestamp.microsecondsSinceEpoch}:${n.source}';
+
+  /// The pages showing something a notification can be about, the one in
+  /// front last. A stack, because a host page (Updates) opens over a wapp
+  /// page and, closed again, leaves that wapp page on screen.
+  final List<({String source, String? convo, String? view})> _shown = [];
+  ({String source, String? convo, String? view})? get _onScreen =>
+      _shown.isEmpty ? null : _shown.last;
   bool _foreground = true;
 
-  /// A wapp page is showing [convo] or [view] of [source] (or the wapp with
-  /// neither). Cheap to call on every build: it acts only on a change.
+  /// A page is showing [convo] or [view] of [source] (or [source] with
+  /// neither): a wapp page (`wapp:<name>`), or a host page through
+  /// [NotificationTargetView] (`host:updates`). Cheap to call on every build:
+  /// it acts only on a change.
   void viewing(String source, {String? convo, String? view}) {
     final c = (convo ?? '').isEmpty ? null : convo;
     final v = (view ?? '').isEmpty ? null : view;
     final s = _onScreen;
     if (s != null && s.source == source && s.convo == c && s.view == v) return;
-    _onScreen = (source: source, convo: c, view: v);
+    _shown.removeWhere((e) => e.source == source);
+    _shown.add((source: source, convo: c, view: v));
     if (_foreground) markSeen(source, convo: c, view: v);
   }
 
   /// The page for [source] is gone; nothing of it is on screen.
   void leftView(String source) {
-    if (_onScreen?.source == source) _onScreen = null;
+    _shown.removeWhere((e) => e.source == source);
   }
 
   /// The person has been shown this target: withdraw the notifications about
@@ -179,10 +198,27 @@ class NotificationService with WidgetsBindingObserver {
   void markSeen(String source, {String? convo, String? view, bool all = false}) {
     EventBus().fire(
         NotificationsSeenEvent(source, convo: convo, view: view, all: all));
-    if (source.startsWith('wapp:')) {
+    // The shade files a notification under what its tap opens: the wapp
+    // folder, or the host page's own source (`host:updates`).
+    final target = source.startsWith('wapp:')
+        ? source.substring(5)
+        : (isHostNotificationTarget(source) ? source : '');
+    if (target.isNotEmpty) {
       unawaited(platform.withdrawSystemNotifications(
-          wapp: source.substring(5), convo: convo, view: view, all: all));
+          wapp: target, convo: convo, view: view, all: all));
     }
+  }
+
+  /// This ONE notification is done with: it was opened (a tap on it in the
+  /// Android shade, on the desktop toast, on its in-app card or on its row),
+  /// or what it said stopped being true (a wapp's `notify.resolve`). It is
+  /// marked read on the bell and leaves the shade and the cards, whatever
+  /// else its source still has unread. [source], when given, limits it to
+  /// that source's notification: a wapp resolves only its own.
+  void markSeenById(String id, {String? source}) {
+    if (id.isEmpty) return;
+    EventBus().fire(NotificationsSeenEvent.one(id, source: source));
+    unawaited(platform.withdrawSystemNotificationById(id));
   }
 
   bool _onScreenNow(XprsNotification n) {
@@ -316,7 +352,7 @@ class NotificationService with WidgetsBindingObserver {
   void reset() {
     // Only init() added it, and a test that never ran init has no binding.
     if (_initialised) WidgetsBinding.instance.removeObserver(this);
-    _onScreen = null;
+    _shown.clear();
     _foreground = true;
     _errorSub?.cancel();
     _errorSub = null;
@@ -338,17 +374,79 @@ class NotificationsSeenEvent extends AppEvent {
   final String? convo;
   final String? view;
   final bool all;
-  NotificationsSeenEvent(this.source, {this.convo, this.view, this.all = false});
 
-  bool covers(XprsNotification n) => all
-      ? n.source == source
-      : NotificationService.isAbout(
-      nSource: n.source,
-      nConvo: n.convo,
-      nView: n.view,
-      source: source,
-      convo: convo,
-      view: view);
+  /// One notification by its identity ([NotificationService.idOf]) rather
+  /// than everything about a target; [source] then only narrows it, and may
+  /// be empty.
+  final String? id;
+  NotificationsSeenEvent(this.source, {this.convo, this.view, this.all = false})
+      : id = null;
+  NotificationsSeenEvent.one(String this.id, {String? source})
+      : source = source ?? '',
+        convo = null,
+        view = null,
+        all = false;
+
+  bool covers(XprsNotification n) => coversRow(
+      id: NotificationService.idOf(n),
+      source: n.source,
+      convo: n.convo,
+      view: n.view);
+
+  /// The same question for a stored row, which is no [XprsNotification].
+  bool coversRow({
+    required String id,
+    required String source,
+    String? convo,
+    String? view,
+  }) {
+    if (this.id != null) {
+      return id == this.id && (this.source.isEmpty || source == this.source);
+    }
+    return all
+        ? source == this.source
+        : NotificationService.isAbout(
+            nSource: source,
+            nConvo: convo,
+            nView: view,
+            source: this.source,
+            convo: this.convo,
+            view: this.view);
+  }
+}
+
+/// A host page that a notification can be about (Updates, the archiver):
+/// while it is shown, the notifications of [source] are seen, the same as a
+/// wapp page showing its wapp. Wrap the page's own build in it, so every way
+/// in counts, not only a tap on the notification.
+class NotificationTargetView extends StatefulWidget {
+  final String source;
+  final Widget child;
+  const NotificationTargetView(
+      {super.key, required this.source, required this.child});
+
+  @override
+  State<NotificationTargetView> createState() => _NotificationTargetViewState();
+}
+
+class _NotificationTargetViewState extends State<NotificationTargetView> {
+  @override
+  void initState() {
+    super.initState();
+    // After the frame: marking seen updates other widgets (the bell).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) NotificationService.instance.viewing(widget.source);
+    });
+  }
+
+  @override
+  void dispose() {
+    NotificationService.instance.leftView(widget.source);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class NotificationShownEvent extends AppEvent {
@@ -520,6 +618,7 @@ class _NotificationCard extends StatelessWidget {
                   wapp,
                   convo: n.convo,
                   view: n.view,
+                  notificationId: NotificationService.idOf(n),
                   navigator: rootNavigatorKey.currentState,
                 ));
               }

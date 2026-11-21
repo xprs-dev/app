@@ -7,12 +7,13 @@ part of 'launcher.dart';
 /// Delegates to [openWappByFolder], the same door the Android notification
 /// deep link uses, so all three taps behave identically.
 Future<bool> _openWappBySource(BuildContext context, String source,
-    {String? convo, String? view}) {
+    {String? convo, String? view, String? notificationId}) {
   if (!source.startsWith('wapp:')) return Future.value(false);
-  return openWappByFolder(
+  return openNotificationTarget(
     source.substring(5).trim(),
     convo: convo,
     view: view,
+    notificationId: notificationId,
     navigator: Navigator.of(context),
   );
 }
@@ -174,10 +175,12 @@ class _NotificationRow extends StatelessWidget {
     if (source.startsWith('wapp:')) {
       onTap = () => unawaited(
           _openWappBySource(context, source,
-              convo: notification.convo, view: notification.view));
+              convo: notification.convo,
+              view: notification.view,
+              notificationId: notification.id));
     } else if (isHostNotificationTarget(source)) {
       onTap = () => unawaited(openNotificationTarget(source,
-          navigator: Navigator.of(context)));
+          notificationId: notification.id, navigator: Navigator.of(context)));
     }
     return Card(
       margin: const EdgeInsets.only(bottom: 10),

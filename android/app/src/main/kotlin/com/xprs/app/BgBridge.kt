@@ -92,6 +92,7 @@ object BgBridge {
                         wapp = call.argument<String>("wapp"),
                         convo = call.argument<String>("convo"),
                         view = call.argument<String>("view"),
+                        n = call.argument<String>("n"),
                     )
                     result.success(true)
                 }
@@ -106,7 +107,11 @@ object BgBridge {
                 // The person has been shown what some notifications were
                 // about (NotificationService.markSeen): withdraw exactly those.
                 "notify_seen" -> {
-                    withdraw(
+                    // One notification by its identity (opened or resolved
+                    // in-app), rather than everything about a target.
+                    val n = call.argument<String>("n")
+                    if (!n.isNullOrEmpty()) withdrawById(appCtx, n)
+                    else withdraw(
                         appCtx,
                         wapp = call.argument<String>("wapp") ?: "",
                         convo = call.argument<String>("convo"),
@@ -191,6 +196,19 @@ object BgBridge {
         }
     }
 
+    /** The extras key under which an event notification carries its XPRS
+     * identity (NotificationService.idOf), read back by [withdrawById]. */
+    private const val EXTRA_N = "xprs_n"
+
+    /** Withdraw the one event notification whose identity is [n]. */
+    fun withdrawById(context: Context, n: String) {
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        for (sbn in nm.activeNotifications) {
+            if (sbn.id !in 9000..9099) continue
+            if (sbn.notification.extras?.getString(EXTRA_N) == n) nm.cancel(sbn.tag, sbn.id)
+        }
+    }
+
     /** Post a heads-up notification for a message/event. Tapping opens the
      * app — and when [wapp] is given, deep-links straight to that wapp (and
      * to [convo] or [view] inside it) via xprs://open, the same route the in-app
@@ -204,6 +222,7 @@ object BgBridge {
         wapp: String? = null,
         convo: String? = null,
         view: String? = null,
+        n: String? = null,
     ) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
@@ -227,6 +246,9 @@ object BgBridge {
                 // in, and without it the tap lands on the feed and the person
                 // has to go looking for what they were just told about.
                 .apply { if (!view.isNullOrEmpty()) appendQueryParameter("view", view) }
+                // Which notification this is, so the tap marks exactly this
+                // one read in the app (DeepLinkService -> openNotificationTarget).
+                .apply { if (!n.isNullOrEmpty()) appendQueryParameter("n", n) }
                 .build()
             launch.action = Intent.ACTION_VIEW
             launch.data = uri
@@ -239,15 +261,20 @@ object BgBridge {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
         } else null
-        val n: Notification = NotificationCompat.Builder(context, EVENT_CHANNEL_ID)
+        val built: Notification = NotificationCompat.Builder(context, EVENT_CHANNEL_ID)
             .setContentTitle(title)
             .apply { if (!body.isNullOrEmpty()) setContentText(body) }
             .setSmallIcon(R.drawable.ic_stat_xprs)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .apply { if (pi != null) setContentIntent(pi) }
+            .apply {
+                if (!n.isNullOrEmpty()) {
+                    addExtras(android.os.Bundle().apply { putString(EXTRA_N, n) })
+                }
+            }
             .build()
         synchronized(postedEventIds) { postedEventIds.add(id) }
-        nm.notify(aboutTag(wapp, convo, view), id, n)
+        nm.notify(aboutTag(wapp, convo, view), id, built)
     }
 }

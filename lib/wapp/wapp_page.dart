@@ -2719,6 +2719,13 @@ class _WappPageState extends State<WappPage>
               source: 'wapp:$_wappName',
             ),
           );
+        } else if (type == 'notify.resolve') {
+          // What a notification of this wapp's said is no longer true (the
+          // door was answered, the offer withdrawn): it is read, everywhere.
+          // Its own notifications only, by the tag it raised them under.
+          NotificationService.instance.markSeenById(
+              data['tag']?.toString() ?? '',
+              source: 'wapp:$_wappName');
         } else if (type == 'notify') {
           // New unified notification protocol.
           // A notification whose tap target the user cannot open is a dead

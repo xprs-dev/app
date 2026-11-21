@@ -313,6 +313,23 @@ error as an error-level in-app notification.
 
 See `docs/notifications.md` for the full developer guide.
 
+**Read state, reusable pieces** (`docs/notifications.md`, "When a
+notification is read"):
+- `NotificationService.idOf(n)` — the one identity of a notification (bell
+  row, card, Android shade entry, tap link). Never derive an id elsewhere.
+- `openNotificationTarget(target, convo:, view:, notificationId:)`
+  (`lib/wapp/wapp_open.dart`) — the one door for every notification tap;
+  passing `notificationId` marks that notification read. A new tap surface
+  calls this, it does not mark anything itself.
+- `NotificationTargetView(source: 'host:<name>', child: …)` — wrap a host
+  page's build in it and that page's notifications are read while it is
+  shown. Use it for any new host page registered in `hostNotificationPages`.
+- `NotificationService.markSeenById(id, source:)` — one notification is done
+  with (opened, or no longer true). Wapps reach it with
+  `{"type":"notify.resolve","tag":"…"}`.
+- `NotificationService.markSeen(source, all: true)` — a service retires all
+  of its own notifications (the updater, once nothing is left to install).
+
 **Wapp wire protocol** (messages the wapp sends via `hal_msg_send`):
 
 ```

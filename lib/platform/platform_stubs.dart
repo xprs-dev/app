@@ -36,6 +36,7 @@ Future<bool> showSystemNotification({
   String? wapp,
   String? convo,
   String? view,
+  String? id,
 }) async {
   // no-op: on web the in-app layer is the only notification surface
   return false;
@@ -52,6 +53,8 @@ Future<void> clearSystemNotifications() async {}
 /// web: the in-app layer is the only notification surface there.
 Future<void> withdrawSystemNotifications(
     {required String wapp, String? convo, String? view, bool all = false}) async {}
+
+Future<void> withdrawSystemNotificationById(String id) async {}
 
 /// True when the current platform supports spawning subprocesses
 /// (Linux / macOS / Windows). Web and mobile return false so

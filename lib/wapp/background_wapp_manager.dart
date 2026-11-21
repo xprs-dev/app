@@ -642,6 +642,12 @@ class _WappBackgroundService extends BackgroundService {
         // be waiting on the launcher when the user next looks. HeroInbox
         // persists it, so it survives a restart too.
         HeroInbox.instance.handleMessage(name, data);
+      } else if (type == 'notify.resolve') {
+        // As a page drains it: this wapp's own notification, by its tag, is
+        // read everywhere because what it said is no longer true.
+        NotificationService.instance.markSeenById(
+            data['tag']?.toString() ?? '',
+            source: 'wapp:$name');
       } else if (type == 'notify') {
         // A notification whose tap target the user cannot open is a dead
         // end: dropped before it reaches the bell, the Android shade or the

@@ -10,6 +10,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../services/notification_service.dart';
 import '../services/update_service.dart';
 import '../util/time_ago.dart';
 import '../version.dart';
@@ -56,8 +57,13 @@ class _UpdatePageState extends State<UpdatePage> {
     if (recheck) await _svc.checkForUpdates();
   }
 
+  // Looking at this page is reading the updater's notifications, whichever
+  // way in was used (the notification, Settings).
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => NotificationTargetView(
+      source: UpdateService.notificationSource, child: _page(context));
+
+  Widget _page(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(tr('updates.title'))),
       body: !_svc.supported

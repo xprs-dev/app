@@ -88,9 +88,7 @@ class StoredNotification {
       // The tag, when there is one, IS the identity: the same event announced
       // twice must be the same ROW. A timestamp id made every repeat a new row,
       // so the bell could never stop counting the same thing.
-      id: (n.tag != null && n.tag!.isNotEmpty)
-          ? n.tag!
-          : '${ts.microsecondsSinceEpoch}:${n.source}',
+      id: NotificationService.idOf(n),
       level: n.level,
       title: n.title,
       body: n.body,
@@ -111,6 +109,9 @@ class StoredNotification {
     if (convo != null && convo!.isNotEmpty) 'convo': convo,
     if (view != null && view!.isNotEmpty) 'view': view,
     'timestamp': timestamp.millisecondsSinceEpoch,
+    // Written, or a restart forgets which rows were read and falls back to
+    // the watermark, which reads every row older than the last thing marked.
+    if (seen != null) 'seen': seen,
   };
 }
 
@@ -149,15 +150,8 @@ class NotificationStore {
     // Shown what they were about (NotificationService.markSeen): the same
     // rule that withdraws them from the OS shade marks them read here.
     _seenSub = EventBus().on<NotificationsSeenEvent>((e) {
-      unawaited(_markSeenWhere((n) => e.all
-          ? n.source == e.source
-          : NotificationService.isAbout(
-              nSource: n.source,
-              nConvo: n.convo,
-              nView: n.view,
-              source: e.source,
-              convo: e.convo,
-              view: e.view))
+      unawaited(_markSeenWhere((n) => e.coversRow(
+              id: n.id, source: n.source, convo: n.convo, view: n.view))
           .catchError((_) {}));
     });
     ProfileService.instance.activeProfileNotifier.addListener(_reload);

@@ -18,6 +18,7 @@ import 'package:xprs_core/src/services/xprs/xprs_names.dart';
 import 'package:xprs_core/src/profile/device_identity.dart';
 
 import '../services/i18n/core_i18n.dart';
+import '../services/notification_service.dart';
 import '../services/preferences_service.dart';
 import '../services/reticulum/rns_service.dart';
 import '../services/xprs/archiver_settings.dart';
@@ -816,7 +817,10 @@ class _ArchiverPageState extends State<ArchiverPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => NotificationTargetView(
+      source: ArchiverPage.target, child: _page(context));
+
+  Widget _page(BuildContext context) {
     return DefaultTabController(
       length: 5,
       child: Scaffold(

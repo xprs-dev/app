@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:xprs_core/src/services/xprs/xprs_shared_position.dart';
 
 import '../services/i18n/core_i18n.dart';
+import '../services/notification_service.dart';
 import '../services/preferences_service.dart';
 
 /// The radii offered, in metres. 10 m is a normal fix; the larger ones say
@@ -174,7 +175,10 @@ class PositionSharePage extends StatelessWidget {
   static const String target = 'host:position';
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) =>
+      NotificationTargetView(source: target, child: _page(context));
+
+  Widget _page(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(tr('settings.privacy.title'))),
     body: const SingleChildScrollView(
       padding: EdgeInsets.all(16),

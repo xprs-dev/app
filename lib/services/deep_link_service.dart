@@ -70,6 +70,8 @@ class DeepLinkService {
         uri.queryParameters['wapp'] ?? '',
         convo: uri.queryParameters['convo'],
         view: uri.queryParameters['view'],
+        // Which notification was tapped (BgBridge.notify puts it there).
+        notificationId: uri.queryParameters['n'],
         navigator: rootNavigatorKey.currentState,
       );
       return;

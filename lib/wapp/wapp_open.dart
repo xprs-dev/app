@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 
 import '../profile/storage_paths.dart';
 import '../services/log_service.dart';
+import '../services/notification_service.dart';
 import '../services/wapp_unread_service.dart';
 import 'wapp_page.dart';
 
@@ -36,13 +37,20 @@ bool isHostNotificationTarget(String target) =>
 
 /// Open what a tapped notification is about: a registered host page, or the
 /// wapp at [target] (on [convo] / [view]). Every tap door goes through here --
-/// the Android shade (xprs://open), the desktop toast, the in-app card.
+/// the Android shade (xprs://open), the desktop toast, the in-app card, the
+/// row in the notification centre -- so [notificationId], the notification
+/// that was tapped, is marked read HERE, once, for all of them: opening one
+/// is reading it, even when its target cannot be opened any more.
 Future<bool> openNotificationTarget(
   String target, {
   String? convo,
   String? view,
+  String? notificationId,
   required NavigatorState? navigator,
 }) async {
+  if (notificationId != null && notificationId.isNotEmpty) {
+    NotificationService.instance.markSeenById(notificationId);
+  }
   final page = hostNotificationPages[target];
   if (page == null) {
     return openWappByFolder(target,
