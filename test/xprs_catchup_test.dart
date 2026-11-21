@@ -654,6 +654,20 @@ void main() {
     expect(dirAsks(), hasLength(2), reason: 'answered: the half hour');
   });
 
+  test('a station that reached us over the internet is asked for its '
+      'directory, without a hub announce; a bare name is not', () async {
+    XprsCatchup.instance
+      ..announcedOverride = (() => const ['XPRS'])
+      ..remoteOverride = (() => const ['X3PTZM', 'X1PERS', 'XPRS', 'X5GRUP']);
+    addTearDown(() => XprsCatchup.instance
+      ..announcedOverride = null
+      ..remoteOverride = null);
+    final asks = await directoryAsksAfterTicks(3);
+    final asked = {for (final w in asks) XprsPacket.parse(w)!['d']};
+    expect(asked, {'X3PTZM'},
+        reason: 'a station; not a person, a group or a word');
+  });
+
   test('an archiver heard only over the internet is still asked', () async {
     PreferencesService.instanceSync!.xprsNamedArchivers = const [_station];
     addTearDown(
