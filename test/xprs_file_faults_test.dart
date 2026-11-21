@@ -211,6 +211,54 @@ void main() {
     await fut;
   });
 
+  // ── The exact length, from the holder's 202 (spec 11.2) ───────────────
+  test('a 202 that states the length makes the piece path possible',
+      () async {
+    final lane = <int>[];
+    XprsFileFetch.instance.internetFetch = (sha, ext, archiver, destDir) async {
+      lane.add(XprsFileFetch.instance.exactSizeOf(sha));
+      return null;
+    };
+    final fut = XprsFileFetch.instance.fetch(
+        archiver: 'X3AAAA',
+        shaHex: _sha,
+        selfCallsign: 'X1SELF',
+        timeout: const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(lane, [0], reason: 'asked before anyone said how long it is');
+    final ask = asks().single;
+    XprsFileFetch.instance.onResult(XprsPacket.parse(
+        't:result f:X3AAAA d:X1SELF ts:2026-11-21_08:00:00 '
+        'r:${xprsIdentifier(ask)} code:202 size:3145728')!);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(XprsFileFetch.instance.exactSizeOf(_sha), 3145728);
+    expect(lane, [0, 3145728],
+        reason: 'the internet lane runs again, now able to fetch by pieces');
+    XprsFileFetch.instance.noteInboundComplete(_sha, '/tmp/x');
+    await fut;
+  });
+
+  test('a one-piece file does not restart the internet lane', () async {
+    var runs = 0;
+    XprsFileFetch.instance.internetFetch = (sha, ext, archiver, destDir) async {
+      runs++;
+      return null;
+    };
+    final fut = XprsFileFetch.instance.fetch(
+        archiver: 'X3AAAA',
+        shaHex: _sha,
+        selfCallsign: 'X1SELF',
+        timeout: const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    XprsFileFetch.instance.onResult(XprsPacket.parse(
+        't:result f:X3AAAA d:X1SELF ts:2026-11-21_08:00:00 '
+        'r:${xprsIdentifier(asks().single)} code:202 size:5000')!);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(runs, 1, reason: 'one piece: its own hash verifies it');
+    XprsFileFetch.instance.noteInboundComplete(_sha, '/tmp/x');
+    await fut;
+  });
+
   // ── F4: two requesters of one file ────────────────────────────────────
   group('F4: two stations ask one holder for the same file', () {
     late String sha;

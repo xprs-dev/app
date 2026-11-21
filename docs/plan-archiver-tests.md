@@ -234,9 +234,11 @@ test failed for its stated reason before anything was fixed.
 
 **What F1 still needs**, in this order:
 
-1. **The exact length for any file.** A message's `size:` is rounded
-   (`240kB`). The holder's answer to `q:have` already carries `size:`; it has
-   to be the exact byte count there, and the fetch has to ask it.
+1. **The exact length for any file** (done 2026-11-21). A message's
+   `size:` is rounded (`240kB`). The holder now states the exact byte count
+   on its `202` to `cmd:file`, which costs no extra packet, and on a `q:have`
+   answer (spec 11.2, 8.1). The fetch keeps it and, for a file of more than
+   one piece, runs the internet lane again with it.
 2. **A piece list for every hosted file of more than one piece**, named in
    the holder's provider record (`manifestHash`). Today only folder
    publishing attaches one, so by-hash fetches of chat media find no list

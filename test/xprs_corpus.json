@@ -415,14 +415,14 @@
 "id": "17d873"
 },
 {
-"wire": "t:result f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:26:41 r:17d873 s:have have:full size:240kB",
-"bytes": 86,
-"id": "b4c29d"
+"wire": "t:result f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:26:41 r:17d873 s:have have:full size:240640",
+"bytes": 87,
+"id": "198763"
 },
 {
-"wire": "t:result f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:26:41 r:17d873 s:have have:412/900 size:58MB",
-"bytes": 88,
-"id": "bd0d4b"
+"wire": "t:result f:X3RLY7 d:X1QZ3N ts:2026-08-08_14:26:41 r:17d873 s:have have:412/900 size:60817408",
+"bytes": 92,
+"id": "c183ce"
 },
 {
 "wire": "t:message f:X1QZ3N d:X1RD89 ts:2026-08-08_14:26:40 q:ack m:meet at the bridge at six",

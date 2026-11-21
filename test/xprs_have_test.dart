@@ -42,6 +42,11 @@ void main() {
     expect(w, contains('have:full'));
     expect(w, contains('d:X1QZ3N'));
     expect(w, contains('f:X3ARC'));
+    // Spec 8.1: `s:have`, and the exact length in bytes as a plain integer,
+    // which a fetch by pieces needs.
+    final p = XprsPacket.parse(w)!;
+    expect(p['s'], 'have');
+    expect(int.parse(p['size']!), held(shaHex).size);
   });
 
   test('directed miss → 404 with m:try naming indexed holders', () {
