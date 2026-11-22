@@ -296,4 +296,50 @@ void main() {
       expect(a.visitors, {'10.0.0.2', '10.0.0.3'});
     });
   });
+
+  group('one group: who keeps it (a link to a group is resolved with this)', () {
+    WebChatApi ranked() => WebChatApi(
+          publicRows: ({sinceMs, untilMs, required types, from, visitor, room, required limit}) => const [],
+          held: (t) => 0,
+          receive: (_) {},
+          mayAir: (_) => true,
+          selfCallsign: () => 'X3SELF',
+          keyOf: (c) => null,
+          appPath: () => '/app',
+          now: () => DateTime.utc(2026, 11, 22),
+          groupRank: (by) => (sources: 2, rows: [
+            {'g': 'LISBOA', 'name': 'LISBOA', 'open': true, 'posts': 17},
+            {'g': 'X5NKSF', 'name': 'Family', 'open': false, 'members': 1},
+          ]),
+        )..groupHolders =
+            (g) => g == 'X5NKSF' ? const ['X3SELF', 'X3ARC2'] : const [];
+
+    test('holders and the ranking row of the group asked for', () async {
+      final r = await ranked().handle('GET', '/api/xprs/groups', {'g': 'x5nksf'}, '');
+      expect(r.status, 200);
+      final b = r.json;
+      expect(b['g'], 'X5NKSF');
+      expect(b['holders'], ['X3SELF', 'X3ARC2']);
+      expect((b['row'] as Map)['name'], 'Family');
+      expect((b['row'] as Map)['open'], false);
+    });
+
+    test('a group nobody lists: no holders, no row, and no error', () async {
+      final r = await ranked().handle('GET', '/api/xprs/groups', {'g': 'X5NONE'}, '');
+      expect(r.status, 200);
+      final b = r.json;
+      expect(b['holders'], isEmpty);
+      expect(b.containsKey('row'), isFalse);
+    });
+
+    test('not a group name: refused', () async {
+      final r = await ranked().handle('GET', '/api/xprs/groups', {'g': 'a b/../c'}, '');
+      expect(r.status, 400);
+    });
+
+    test('without g: the ranking as before', () async {
+      final r = await ranked().handle('GET', '/api/xprs/groups', {}, '');
+      expect((r.json['rows'] as List), hasLength(2));
+    });
+  });
 }
