@@ -1,0 +1,6 @@
+Chat groups can be shared as links (xprs.dev/in/...) that open in XPRS or in a browser, with their folders; non-members ask to join.
+A group's record reaches the archiver that keeps it, automatically.
+A first sealed message from somebody new opens as soon as their key arrives.
+Messages relayed in from Reticulum are no longer marked "LAN"; far stations are no longer listed as Local.
+Profile: other identities (e-mail, Meshtastic, MeshCore). Licensed callsigns are held by one key for a year.
+Many fixes: station pages, freezes, settings.
