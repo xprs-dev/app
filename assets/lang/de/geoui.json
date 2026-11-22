@@ -270,5 +270,7 @@
   "geoui.media.fetching_pct": "Datei wird geholt… {pct}% von {size}",
   "geoui.rooms.show_folders.one": "{n} Ordner zeigen",
   "geoui.rooms.show_folders.other": "{n} Ordner zeigen",
-  "geoui.rooms.hide_folders": "Ordner ausblenden"
+  "geoui.rooms.hide_folders": "Ordner ausblenden",
+  "geoui.info.keys": "Rufzeichen",
+  "geoui.info.keys.several": "Von mehr als einem Schlüssel beansprucht. „Verifiziert“ heißt: einer davon hat dies geschrieben."
 }

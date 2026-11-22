@@ -270,5 +270,7 @@
   "geoui.media.fetching_pct": "Récupération du fichier… {pct}% de {size}",
   "geoui.rooms.show_folders.one": "Afficher {n} dossier",
   "geoui.rooms.show_folders.other": "Afficher {n} dossiers",
-  "geoui.rooms.hide_folders": "Masquer les dossiers"
+  "geoui.rooms.hide_folders": "Masquer les dossiers",
+  "geoui.info.keys": "Indicatif",
+  "geoui.info.keys.several": "Revendiqué par plus d'une clé. « Vérifié » signifie que l'une d'elles a écrit ceci."
 }

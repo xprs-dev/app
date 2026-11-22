@@ -270,5 +270,7 @@
   "geoui.media.fetching_pct": "Getting the file… {pct}% of {size}",
   "geoui.rooms.show_folders.one": "Show {n} folder",
   "geoui.rooms.show_folders.other": "Show {n} folders",
-  "geoui.rooms.hide_folders": "Hide folders"
+  "geoui.rooms.hide_folders": "Hide folders",
+  "geoui.info.keys": "Callsign",
+  "geoui.info.keys.several": "Claimed by more than one key. \"Verified\" means one of them wrote this."
 }

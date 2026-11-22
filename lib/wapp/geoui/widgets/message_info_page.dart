@@ -288,6 +288,13 @@ class _InfoBody extends StatelessWidget {
         // ── privacy and authorship ─────────────────────────────────────
         _Section(title: tr('geoui.info.section.security'), children: [
           _Row(tr('geoui.chat.info.signature'), _sig(auth)),
+          // An issued callsign bound by more than one key (6.4.2): "verified"
+          // then means "by one of the keys that claim it", and the reader
+          // is told so.
+          if (!outgoing &&
+              from.isNotEmpty &&
+              XprsPeople.instance.signersOfLicence(from).length > 1)
+            _Row(tr('geoui.info.keys'), tr('geoui.info.keys.several')),
           _Row(
               tr('geoui.info.sealed'),
               enc || details?['sealedWire'] == true
