@@ -115,7 +115,7 @@
   "profile.callsigns.pinned.one": "{n} Gespräch behält ein anderes deiner Rufzeichen.",
   "profile.callsigns.pinned.other": "{n} Gespräche behalten ein anderes deiner Rufzeichen.",
   "profile.ids.title": "Weitere Identitäten",
-  "profile.ids.help": "Weitere Wege, unter denen man Sie kennt: eine E-Mail-Adresse, Ihr Knoten in einem anderen Mesh, die Adresse eines Ihrer Boards. Jede Art wird mit Ihrem Schlüssel angekündigt, so weit Sie es wählen.",
+  "profile.ids.help": "Weitere Wege, unter denen man Sie kennt: eine E-Mail-Adresse oder Ihr Knoten in einem anderen Mesh. Jede Art wird mit Ihrem Schlüssel angekündigt, so weit Sie es wählen.",
   "profile.ids.scope": "Bekanntgeben",
   "profile.ids.scope.local": "Nur in der Nähe",
   "profile.ids.scope.regional": "In der Region",

@@ -239,6 +239,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 #dmnew .chips .pill{cursor:pointer;font-size:12px;padding:4px 10px}
 #dmnew .chips .pill:hover{border-color:var(--accent);color:var(--accent)}
 .messages .roomnote{margin-top:0}
+.grpnav{margin-bottom:6px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
 .messages .roomnote+.msg{margin-top:auto}
 #content{flex:1;display:flex;min-height:0}
 #side{width:150px;border-right:1px solid var(--border);overflow-y:auto;
@@ -1850,6 +1851,54 @@ function followGroup(g,on){
   if(!on&&i>=0)myGroups.splice(i,1);
   stSet('xprs_groups',JSON.stringify(myGroups));
 }
+/* Folders (XPRS.md 10.2): a group lists other groups as part of itself, and
+   the station says which with the group's record (`subs`). Each is a group
+   of its own, read by its own callsign; the page keeps who listed whom, so a
+   folder opens without being followed and shows the way back up. Five
+   levels counting the root, and never a group inside itself. */
+var groupUp={};
+function groupSubs(g){return (groupInfo[g]&&groupInfo[g].subs)||[];}
+function groupDepth(g){var n=0,seen={};while(groupUp[g]&&!seen[g]&&n<8){seen[g]=1;g=groupUp[g];n++;}return n;}
+function noteSubs(g,subs){
+  var changed=false;
+  (subs||[]).forEach(function(x){
+    var c=(x.g||'').toUpperCase();
+    if(!c||c===g||groupDepth(g)>=4)return;
+    for(var a=g,i=0;a&&i<8;a=groupUp[a],i++)if(a===c)return;   /* its own ancestor */
+    if(!groupUp[c]){groupUp[c]=g;changed=true;}
+    var ci=groupInfo[c]||(groupInfo[c]={});
+    if(x.name&&!ci.name)ci.name=x.name;
+  });
+  return changed;
+}
+function groupTree(g,depth){
+  var k='o:'+g,h='<div class="room'+(curRoom===k?' on':'')+'" data-r="'+esc(k)+'"'+
+    (depth?' style="padding-left:'+(12+depth*14)+'px"':'')+'>'+(depth?'&#128193; ':'')+esc(roomLabel(k))+'</div>';
+  if(depth<4)groupSubs(g).forEach(function(x){
+    var c=(x.g||'').toUpperCase();if(groupUp[c]===g)h+=groupTree(c,depth+1);});
+  return h;
+}
+/* Asking to join (10.3): an ordinary message to the group, which its
+   moderators see as a request and answer with an invitation. Once a day at
+   most from this page, and the message box stays shut to a non-member: a
+   link to a public group is for reading, not a door for anybody to post
+   through. */
+function joinAsked(g){var t=+(stGet('xprs_joinreq_'+g)||0);return Date.now()-t<86400000?t:0;}
+function askToJoin(g){
+  if(!canSign())return snack('Not ready yet');
+  if(joinAsked(g))return snack('You already asked today');
+  var why=prompt('Ask to join '+roomLabel('o:'+g)+'. Say who you are (its moderators read this):','');
+  if(why===null)return;
+  why=(why.replace(/[\x00-\x1f]/g,' ').trim()||'Asks to join').slice(0,120);
+  sendIdentity();
+  signAny('t:message f:'+mycall+' ts:'+tsNow()+' d:'+g+' m:'+why,function(w,err){
+    if(!w)return snack('Not sent: '+(err||'not signed'));
+    postWire(w,function(ok,e2){
+      if(!ok)return snack('Not sent'+(e2?' ('+e2+')':''));
+      stSet('xprs_joinreq_'+g,''+Date.now());
+      snack('Request sent');drawGroupNote(g);});
+  });
+}
 /* A link to a group, for sharing: xprs.dev/in/<x5 callsign> for a group with
    a callsign, xprs.dev/in/g/<name> for an open group, whose name could be
    mistaken for a station's. Opened in a browser it shows this page on the
@@ -1920,11 +1969,25 @@ function drawGroupNote(g){
       esc(g)+'\')">Join</button> ';
   if(info.role==='member'||info.role==='mod')
     b+='<button class="act" onclick="leaveGroupAct(\''+esc(g)+'\')">Leave group</button> ';
+  /* Only members post (10.7.1); anybody else asks to join. */
+  var inside=info.role==='member'||info.role==='mod'||info.role==='admin';
+  if(!inside&&info.role!=='invited'){
+    var asked=joinAsked(g);
+    b+=asked?'You asked to join. Its moderators answer with an invitation, shown here. ':
+      'Only its members write here. <button class="act" onclick="askToJoin(\''+esc(g)+'\')">Ask to join</button> ';
+  }
   if(info.state==='closed')b=esc(roomLabel('o:'+g))+' is closed to new posts. '+b;
   if(info.sealed)b='Private group: its words are sealed for its members, and this page cannot open them. '+b;
+  /* Its folders, and the way back up. */
+  var nav='';
+  if(groupUp[g])nav+='<button class="act small" onclick="switchRoom(\'o:'+esc(groupUp[g])+'\')">&#8593; '+esc(roomLabel('o:'+groupUp[g]))+'</button> ';
+  groupSubs(g).forEach(function(x){var c=(x.g||'').toUpperCase();
+    if(groupUp[c]===g)nav+='<button class="act small" onclick="switchRoom(\'o:'+esc(c)+'\')">&#128193; '+esc(roomLabel('o:'+c))+'</button> ';});
+  if(nav)b='<div class="grpnav">'+nav+'</div>'+b;
   n.innerHTML=b;n.style.display=b?'':'none';
   /* 10.4.2: while closed only its moderators write. */
-  el('txt').disabled=info.state==='closed'&&info.role!=='mod'&&info.role!=='admin';
+  el('txt').disabled=!inside||(info.state==='closed'&&info.role!=='mod'&&info.role!=='admin');
+  el('txt').placeholder=inside?'Message':'Only members write here';
   drawRoomBar();
 }
 function acceptGroup(g){
@@ -1952,6 +2015,8 @@ function loadGroup(){
       var info=groupInfo[g]||(groupInfo[g]={});
       var sg=d.group||{};
       for(var k in sg)info[k]=sg[k];
+      info.loaded=true;
+      if(noteSubs(g,sg.subs))renderSide();
       if(sg.role){info.guessed=false;if(!sg.offer)delete info.offer;}
       info.sealed=d.rows.some(function(r){return / x:/.test(r.wire||'')&&!/ m:/.test(r.wire||'');});
       var now=Date.now();
@@ -1972,7 +2037,7 @@ function roomOf(row){
   /* A post (18) is listed by the Blog feed as a card, never as a bubble. */
   if((row.type||'')==='blog'||w.indexOf('t:blog ')===0)return null;
   if(to&&hostedByCall[baseCall(to)])return 'g:'+baseCall(to);
-  if(to&&myGroups.indexOf(to.toUpperCase())>=0)return 'o:'+to.toUpperCase();
+  if(to&&(myGroups.indexOf(to.toUpperCase())>=0||groupUp[to.toUpperCase()]))return 'o:'+to.toUpperCase();
   if(to&&to[0]!=='#'){
     if(baseCall(to)===baseCall(mycall))return 'dm:'+baseCall(row.from);
     if(baseCall(row.from)===baseCall(mycall))return 'dm:'+baseCall(to);
@@ -2016,8 +2081,7 @@ function renderSide(){
         '</div>';}).join('');}
   var chatRooms=hostedRooms.filter(function(hr){return hr.kind!=='forum'&&hr.kind!=='mesh'&&!GAL_KINDS[hr.kind];});
   var hosted=chatRooms.length?'<div class="roomhead">Station rooms</div>'+roomEntries(chatRooms,'g:'):'';
-  hosted+='<div class="roomhead">Groups</div>'+myGroups.map(function(g){var k='o:'+g;
-      return '<div class="room'+(curRoom===k?' on':'')+'" data-r="'+esc(k)+'">'+esc(roomLabel(k))+'</div>';}).join('')+
+  hosted+='<div class="roomhead">Groups</div>'+myGroups.map(function(g){return groupTree(g,0);}).join('')+
     (canRank?'<div class="room'+(curRoom==='grank'?' on':'')+'" data-r="grank">Ranking</div>':'')+
     '<div class="room new'+(curRoom==='onew'?' on':'')+'" data-r="onew">+ Join a group</div>';
   /* The Forum (XPRS.md 18.5) is always on the list: its categories are the
@@ -2072,12 +2136,12 @@ function switchRoom(r){
   if(r.slice(0,2)==='o:'){
     var og=r.slice(2);
     note+='<div class="roomnote">'+(og.slice(0,2)==='X5'?
-      'A group: what its members wrote, as this station heard it. If you are no member, what you write asks to join.':
+      'A group: what its members wrote, as this station heard it. Anyone reads; its members write.':
       'An open group: anyone may read and write.')+
       ' <button class="act" onclick="shareGroup(\''+esc(og)+'\')">Share link</button>'+
       /* Reached through xprs.dev: the same group in the installed app. */
       (window.XPRS_REMOTE?' <a class="act" href="xprs://in/'+(og.slice(0,2)==='X5'?'':'g/')+esc(og.toLowerCase())+'">Open in XPRS</a>':'')+
-      ' <button class="act" onclick="leaveGroup(\''+esc(og)+'\')">Stop following</button></div>'+
+      (myGroups.indexOf(og)>=0?' <button class="act" onclick="leaveGroup(\''+esc(og)+'\')">Stop following</button>':'')+'</div>'+
       '<div class="roomnote" id="grpnote" style="display:none"></div>';
   }
   if(r==='dmnew'){
@@ -2173,6 +2237,8 @@ function switchRoom(r){
       mayAsk(hostedByCall[r.slice(2)])?'Ask to join '+roomLabel(r):
       'Message to '+roomLabel(r)+' (stays on this station)'):
     'Message to '+r.slice(3);
+  /* A group with a callsign: shut until the station says we are a member. */
+  if(r.slice(0,4)==='o:X5')drawGroupNote(r.slice(2));
 }
 /* Draw the room again from what was heard (a key arrived, so what was held
  * back can now be opened). */

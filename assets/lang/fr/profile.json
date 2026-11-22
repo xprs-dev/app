@@ -115,7 +115,7 @@
   "profile.callsigns.pinned.one": "{n} conversation garde un autre de vos indicatifs.",
   "profile.callsigns.pinned.other": "{n} conversations gardent un autre de vos indicatifs.",
   "profile.ids.title": "Autres identités",
-  "profile.ids.help": "D'autres façons dont on vous connaît : une adresse e-mail, votre nœud sur un autre réseau mesh, l'adresse d'une carte que vous exploitez. Chaque type est annoncé avec votre clé, aussi loin que vous le choisissez.",
+  "profile.ids.help": "D'autres façons dont on vous connaît : une adresse e-mail ou votre nœud sur un autre réseau mesh. Chaque type est annoncé avec votre clé, aussi loin que vous le choisissez.",
   "profile.ids.scope": "Diffuser",
   "profile.ids.scope.local": "À proximité seulement",
   "profile.ids.scope.regional": "Dans la région",

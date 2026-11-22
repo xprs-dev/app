@@ -115,7 +115,7 @@
   "profile.callsigns.pinned.one": "{n} conversación conserva otro de tus indicativos.",
   "profile.callsigns.pinned.other": "{n} conversaciones conservan otro de tus indicativos.",
   "profile.ids.title": "Otras identidades",
-  "profile.ids.help": "Otras formas en que le conocen: una dirección de correo, su nodo en otra red mesh, la dirección de una placa suya. Cada tipo se anuncia con su clave, hasta donde usted elija.",
+  "profile.ids.help": "Otras formas en que le conocen: una dirección de correo o su nodo en otra red mesh. Cada tipo se anuncia con su clave, hasta donde usted elija.",
   "profile.ids.scope": "Difundir",
   "profile.ids.scope.local": "Solo cerca",
   "profile.ids.scope.regional": "En la región",

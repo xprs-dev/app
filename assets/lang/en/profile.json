@@ -115,7 +115,7 @@
   "profile.callsigns.pinned.one": "{n} conversation keeps another of your callsigns.",
   "profile.callsigns.pinned.other": "{n} conversations keep another of your callsigns.",
   "profile.ids.title": "Other identities",
-  "profile.ids.help": "Other ways people know you: an e-mail address, your node on another mesh, the address of a board you run. Each kind is announced under your key, as far as you choose.",
+  "profile.ids.help": "Other ways people know you: an e-mail address or your node on another mesh. Each kind is announced under your key, as far as you choose.",
   "profile.ids.scope": "Tell it",
   "profile.ids.scope.local": "Nearby only",
   "profile.ids.scope.regional": "In the region",

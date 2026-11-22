@@ -45,8 +45,8 @@ class OtherIdentitiesEditor extends StatefulWidget {
 
 class _OtherIdentitiesEditorState extends State<OtherIdentitiesEditor> {
   final _value = TextEditingController();
-  String _type = XprsIdType.statable.first;
-  String _scope = XprsIdType.defaultScope(XprsIdType.statable.first);
+  String _type = XprsIdType.typed.first;
+  String _scope = XprsIdType.defaultScope(XprsIdType.typed.first);
   String? _error;
 
   @override
@@ -186,7 +186,7 @@ class _OtherIdentitiesEditorState extends State<OtherIdentitiesEditor> {
               value: _type,
               isExpanded: true,
               items: [
-                for (final t in XprsIdType.statable)
+                for (final t in XprsIdType.typed)
                   DropdownMenuItem(value: t, child: Text(typeLabel(t))),
               ],
               onChanged: (t) => setState(() {

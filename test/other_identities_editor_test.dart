@@ -25,6 +25,14 @@ void main() {
     expect(XprsIdType.defaultScope(XprsIdType.email), 'global');
   });
 
+  test('a radio address is not offered to type: a machine fills it in', () {
+    expect(XprsIdType.typed, isNot(contains(XprsIdType.ble)));
+    expect(XprsIdType.typed, isNot(contains(XprsIdType.wlan)));
+    expect(XprsIdType.typed.first, XprsIdType.email);
+    expect(XprsIdType.statable, contains(XprsIdType.ble),
+        reason: 'a station may still state the one it has');
+  });
+
   test('the profile keeps the sets, and an older profile reads as none', () {
     const p = IwiProfile(
         id: 'p1',
