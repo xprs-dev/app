@@ -1850,6 +1850,39 @@ function followGroup(g,on){
   if(!on&&i>=0)myGroups.splice(i,1);
   stSet('xprs_groups',JSON.stringify(myGroups));
 }
+/* A link to a group, for sharing: xprs.dev/in/<x5 callsign> for a group with
+   a callsign, xprs.dev/in/g/<name> for an open group, whose name could be
+   mistaken for a station's. Opened in a browser it shows this page on the
+   group, from a station that keeps it; on a device with XPRS installed it
+   opens the app. */
+function groupLink(g){
+  return 'https://xprs.dev/in/'+(g.slice(0,2)==='X5'?'':'g/')+g.toLowerCase();
+}
+function shareGroup(g){
+  var u=groupLink(g);
+  var done=function(){snack('Link copied: '+u);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(u).then(done,function(){prompt('Link to this group:',u);});
+  }else prompt('Link to this group:',u);
+}
+/* The group the address asks for (#g=<name or X5 callsign>): followed and
+   opened. How a shared link, a station's own address and the app all say
+   "start on this group". */
+function groupFromAddress(){
+  var m=/[#&]g=([^&]+)/.exec(location.hash||'');
+  if(!m)return '';
+  var v='';try{v=decodeURIComponent(m[1]);}catch(e){v=m[1];}
+  return groupName(v);
+}
+function openGroupFromAddress(){
+  var g=groupFromAddress();
+  if(!g)return false;
+  followGroup(g,true);
+  if(tab!=='chat')showTab('chat');
+  switchRoom('o:'+g);
+  return true;
+}
+window.addEventListener('hashchange',function(){openGroupFromAddress();});
 function joinGroupPrompt(){
   var g=groupName(prompt('Group name (an open group like LISBOA, or a group\'s X5 callsign):')||'');
   if(!g){snack('A name of letters and digits, up to 16');switchRoom('local');return;}
@@ -2041,6 +2074,9 @@ function switchRoom(r){
     note+='<div class="roomnote">'+(og.slice(0,2)==='X5'?
       'A group: what its members wrote, as this station heard it. If you are no member, what you write asks to join.':
       'An open group: anyone may read and write.')+
+      ' <button class="act" onclick="shareGroup(\''+esc(og)+'\')">Share link</button>'+
+      /* Reached through xprs.dev: the same group in the installed app. */
+      (window.XPRS_REMOTE?' <a class="act" href="xprs://in/'+(og.slice(0,2)==='X5'?'':'g/')+esc(og.toLowerCase())+'">Open in XPRS</a>':'')+
       ' <button class="act" onclick="leaveGroup(\''+esc(og)+'\')">Stop following</button></div>'+
       '<div class="roomnote" id="grpnote" style="display:none"></div>';
   }
@@ -4904,6 +4940,9 @@ function adminRelease(){
      once it is clear there is no extension to offer (below). */
   if(b)useKey(b);else el('call').textContent='\u2026';
   renderSide();
+  /* A link to a group opens on it; anything else on the usual room. */
+  var asked=groupFromAddress();
+  if(asked){followGroup(asked,true);curRoom='o:'+asked;}
   switchRoom(curRoom);
   load();
   tabTimer=setInterval(tick,TAB_MS.chat);
