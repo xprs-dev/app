@@ -1458,20 +1458,31 @@ function fetchKey(call,cb){
   if(keys[c]){cb(keys[c]);return;}
   if(keyWait[c]){keyWait[c].push(cb);return;}
   keyWait[c]=[cb];
-  getJSON('/api/xprs/history?kind=identity&call='+encodeURIComponent(c)+'&limit=3',
-    function(d){
-      var k=null,rows=(d&&d.rows)||[],i,m;
-      for(i=0;i<rows.length&&!k;i++){
-        if(rows[i].sig!=='verified')continue;
-        m=(rows[i].wire||'').match(/ k:(npub1[0-9a-z]+)/);
-        if(m)k=npubDecode(m[1]);
-      }
-      /* Not found is not remembered as a fact: the identity may arrive next. */
-      if(k)keys[c]=k;else keyMiss[c]=Date.now();
-      var w=keyWait[c];delete keyWait[c];
-      for(i=0;i<w.length;i++)w[i](k);
-    });
+  /* A station that did not answer has not said "no key": the question is
+     asked again, with more patience each time, before anybody is offered
+     clear text. A busy station answering in seven seconds used to read as
+     "no key is known" to a newcomer writing their first message. */
+  var waits=[8000,14000,20000],n=0;
+  (function ask(){
+    getJSON('/api/xprs/history?kind=identity&call='+encodeURIComponent(c)+'&limit=3',
+      function(d){
+        if(!d&&++n<waits.length){ask();return;}
+        var k=null,rows=(d&&d.rows)||[],i,m;
+        for(i=0;i<rows.length&&!k;i++){
+          if(rows[i].sig!=='verified')continue;
+          m=(rows[i].wire||'').match(/ k:(npub1[0-9a-z]+)/);
+          if(m)k=npubDecode(m[1]);
+        }
+        /* Not found is not remembered as a fact: the identity may arrive next. */
+        if(k)keys[c]=k;else keyMiss[c]=Date.now();
+        keyDown[c]=!d;
+        var w=keyWait[c];delete keyWait[c];
+        for(i=0;i<w.length;i++)w[i](k);
+      },waits[n]);
+  })();
 }
+/* The station did not answer the last ask for this callsign's key. */
+var keyDown={};
 
 // ---- a session: proof of the key behind our callsign -----------------------
 //
@@ -1634,6 +1645,10 @@ function sendMsg(){
      clear text is the visitor's choice for the conversation, and the only
      form amateur bands allow (6.4). Never in the clear by accident. */
   if(peer&&!dmClear[peer])fetchKey(peer,function(k){
+    /* No answer is not "no key": nothing is offered in clear text then. */
+    if(!k&&keyDown[baseCall(peer)]){
+      snack('The station did not answer with '+peer+'\'s key. Not sent: try again in a moment.');
+      t.value=text;return;}
     if(!k&&!confirm('No key is known for '+peer+' yet, so this cannot be sealed. Send it in clear text?')){
       t.value=text;return;}
     dispatch(k);});
@@ -2633,11 +2648,11 @@ function kb(n){
   if(n==null)return '-';
   return n>=1048576?(n/1048576).toFixed(1)+' MB':Math.round(n/1024)+' KB';
 }
-function getJSON(url,cb){
+function getJSON(url,cb,ms){
   try{
     var x=new XMLHttpRequest();
     x.open('GET',url,true);
-    x.timeout=6000;
+    x.timeout=ms||6000;
     x.onload=function(){try{cb(JSON.parse(x.responseText));}catch(e){cb(null);}};
     x.onerror=x.ontimeout=function(){cb(null);};
     x.send();
