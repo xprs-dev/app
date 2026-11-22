@@ -1,0 +1,4 @@
+Chat groups can be shared as links (xprs.dev/in/...): they open the group in XPRS, or in a browser for people without it. Every group has "Share link".
+A fresh install finds public groups within minutes.
+Profile: state your other identities (e-mail, a Meshtastic node, a board) and choose how far each is told.
+A licensed callsign belongs to one key for a year after its last activity; impostors are not believed.
