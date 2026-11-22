@@ -104,15 +104,15 @@ once an hour.
        6.4.2). Another key meanwhile is an impostor. Every time is when
        this station HEARD, never a packet's `ts:`, so a forger gains
        nothing by backdating. Kept in `people.zx`.
-     - OPEN, proposed and awaiting the user: agreement BETWEEN stations. A
-       fresh install has heard nothing, and replayed history is only as old
-       as when it is heard, so a newcomer must learn the holder from
-       archivers. Proposal: the archivers' directory carries, for issued
-       callsigns, the holding key and when the archiver first and last
-       heard it; a station with no observation of its own takes what its
-       archivers agree on (majority, then earliest first-heard by most);
-       its own observation always wins. Needs a new version of the
-       directory listing.
+     - DONE 2026-11-22: agreement BETWEEN stations. An archiver's
+       directory says who it heard holding each issued callsign (`XKEY1`
+       lines, `XprsDirectory.holdersIn`, only its own observations); a
+       reader takes a holder most of its archivers name
+       (`XprsPeople.witness`, `agreedHolder`: majority, median seniority),
+       and its own observation comes first unless they agree on one heard
+       earlier. Testimony is stored in `people.zx` (the user asked why it
+       was not: a restart must not reopen the gap an impostor needs).
+       NOT YET SEEN LIVE: X3PTZM still runs the older server.
      - `_callPub` is now only this run's cache in front of the record.
        Still reading it directly: the reverse lookups (`callsignForHex`,
        `_identityForPub`), the contacts list and the followed-profile
