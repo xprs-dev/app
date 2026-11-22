@@ -89,7 +89,6 @@
   "geoui.chat.editing": "Editando {snippet}",
   "geoui.chat.cancel_edit": "Cancelar la edición",
   "geoui.chat.attach": "Adjuntar un archivo",
-  "geoui.chat.newline": "Nueva línea (mantener para enviar)",
   "geoui.chat.privacy.on": "Cifrado: toca para enviar esta conversación en claro",
   "geoui.chat.privacy.off": "Texto en claro: cualquiera al alcance puede leerlo. Toca para cifrar",
   "geoui.profile.keep": "Conservar datos",

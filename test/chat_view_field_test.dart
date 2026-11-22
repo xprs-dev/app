@@ -6,6 +6,7 @@
 // "+9eb53a4af55e5da04cdcc44842502041e8d5e2460f123358c31a17f8a31993dd OK".
 import 'package:xprs/wapp/geoui/conversation_store.dart';
 import 'package:xprs/wapp/geoui/widgets/chat_view_field.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -163,7 +164,7 @@ void main() {
       await tester.tap(find.text('Reply').first);
       await tester.pump();
       await tester.enterText(find.byType(TextField).last, 'OK');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.tap(find.byIcon(Icons.send));
       await tester.pump();
       expect(sent, ['+9eb5 OK']);
     });
@@ -171,7 +172,7 @@ void main() {
     testWidgets('a plain message carries no marker', (tester) async {
       await pump(tester, [msg('smth', mid: '9eb5')]);
       await tester.enterText(find.byType(TextField).last, 'hello');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.tap(find.byIcon(Icons.send));
       await tester.pump();
       expect(sent, ['hello']);
     });
@@ -195,7 +196,7 @@ void main() {
     await tester.tap(field);
     await tester.pump();
     await tester.enterText(field, 'first');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.tap(find.byIcon(Icons.send));
     await tester.pumpAndSettle();
 
     final node = tester.widget<TextField>(field).focusNode;
@@ -345,7 +346,7 @@ void main() {
       await tester.pump();
 
       final field = find.byType(TextField);
-      final send = find.byIcon(Icons.keyboard_return);
+      final send = find.byIcon(Icons.send);
 
       // One short line: the buttons sit beside the text.
       await tester.enterText(field, 'hi');
@@ -503,7 +504,7 @@ void main() {
       final field = find.byType(TextField);
       expect(tester.widget<TextField>(field).controller!.text, 'meet at six');
       await tester.enterText(field, 'meet at seven');
-      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.tap(find.byIcon(Icons.send));
       await tester.pump();
       expect(calls, ['a1=meet at seven']);
       expect(sent, isEmpty, reason: 'a correction is not a new message');
@@ -518,35 +519,42 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Edit'));
       await tester.pumpAndSettle();
-      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.tap(find.byIcon(Icons.send));
       await tester.pump();
       expect(calls, isEmpty);
     });
 
-    // The button beside the message used to be a second Send. It is a new
-    // line now; the keyboard's own key sends, and holding the button does
-    // for a keyboard that has none.
-    testWidgets('the button adds a line; the keyboard sends; a hold sends too',
+    // On a phone the keyboard's key is Enter and adds a line; the button
+    // beside the message sends. A line break travels as U+2028 (4.11).
+    testWidgets('on a phone Enter adds a line and the button sends',
         (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
       sent.clear();
       await pumpWith(tester, const []);
       final field = find.byType(TextField);
-      await tester.enterText(field, 'first');
-      await tester.tap(find.byIcon(Icons.keyboard_return));
+      final tf = tester.widget<TextField>(field);
+      expect(tf.textInputAction, TextInputAction.newline);
+      expect(tf.keyboardType, TextInputType.multiline);
+      await tester.enterText(field, 'first\nsecond');
       await tester.pump();
-      expect(tester.widget<TextField>(field).controller!.text, 'first\n');
-      expect(sent, isEmpty, reason: 'a new line is not a send');
-      tester.testTextInput.enterText('first\nsecond');
+      expect(sent, isEmpty);
+      await tester.tap(find.byIcon(Icons.send));
       await tester.pump();
+      expect(sent, ['first\u2028second']);
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    testWidgets('with a real keyboard Enter still sends', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+      sent.clear();
+      await pumpWith(tester, const []);
+      final field = find.byType(TextField);
+      expect(tester.widget<TextField>(field).textInputAction, TextInputAction.send);
+      await tester.enterText(field, 'one line');
       await tester.testTextInput.receiveAction(TextInputAction.send);
       await tester.pump();
-      expect(sent, ['first\u2028second'],
-          reason: 'a packet is one line: the break travels as U+2028 (4.11)');
-
-      await tester.enterText(field, 'held');
-      await tester.longPress(find.byIcon(Icons.keyboard_return));
-      await tester.pump();
-      expect(sent.last, 'held');
+      expect(sent, ['one line']);
+      debugDefaultTargetPlatformOverride = null;
     });
 
     testWidgets('Delete for everyone asks first, then withdraws', (tester) async {

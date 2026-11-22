@@ -16,6 +16,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
@@ -1950,6 +1951,11 @@ class _ChatViewFieldState extends State<ChatViewField> {
   /// composition survive the move.
   final GlobalKey _inputKey = GlobalKey();
 
+  /// A touch keyboard: its Enter adds a line, and sending is the button's.
+  static bool get _enterAddsLine =>
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
+
   Widget _textField({bool tall = false}) => TextField(
         key: _inputKey,
         controller: _input,
@@ -1961,8 +1967,14 @@ class _ChatViewFieldState extends State<ChatViewField> {
         cursorColor: ChatPalette.accent,
         minLines: 1,
         maxLines: 5,
-        textInputAction: TextInputAction.send,
-        onSubmitted: (_) => _send(),
+        // On a phone the keyboard shows Enter and it adds a line; the
+        // button beside the field sends. With a real keyboard (a desktop)
+        // Enter sends, as it always has there.
+        keyboardType:
+            _enterAddsLine ? TextInputType.multiline : TextInputType.text,
+        textInputAction:
+            _enterAddsLine ? TextInputAction.newline : TextInputAction.send,
+        onSubmitted: _enterAddsLine ? null : (_) => _send(),
         decoration: InputDecoration(
           hintText: widget.hint,
           hintStyle: TextStyle(
@@ -2001,25 +2013,9 @@ class _ChatViewFieldState extends State<ChatViewField> {
           ),
       ];
 
-  /// A new line at the cursor, replacing whatever is selected.
-  void _newLine() {
-    final v = _input.value;
-    final sel = v.selection;
-    final at = sel.isValid ? sel.start : v.text.length;
-    final end = sel.isValid ? sel.end : v.text.length;
-    _input.value = TextEditingValue(
-      text: v.text.replaceRange(at, end, '\n'),
-      selection: TextSelection.collapsed(offset: at + 1),
-    );
-    _inputFocus.requestFocus();
-  }
-
-  /// The button beside the message: a new line.
-  ///
-  /// It used to be a second Send, next to the keyboard's own (the field
-  /// asks the keyboard for a send key, and Enter sends on a desktop), which
-  /// left no way to write a message of more than one line. Held down it
-  /// still sends, for a keyboard that offers no send key of its own.
+  /// The button beside the message sends. On a phone it is the ONLY send:
+  /// the keyboard's own key is Enter there and adds a line (see
+  /// [_enterAddsLine]), so a message can have more than one.
   Widget _sendButton() => SizedBox(
         width: 48,
         height: 48,
@@ -2027,14 +2023,11 @@ class _ChatViewFieldState extends State<ChatViewField> {
           color: ChatPalette.accent,
           shape: const CircleBorder(),
           clipBehavior: Clip.antiAlias,
-          child: Tooltip(
-            message: tr('geoui.chat.newline'),
-            child: InkWell(
-              onTap: _newLine,
-              onLongPress: _send,
-              child: Icon(Icons.keyboard_return,
-                  size: 22, color: ChatPalette.onAccent),
-            ),
+          child: IconButton(
+            icon: const Icon(Icons.send, size: 22),
+            color: ChatPalette.onAccent,
+            tooltip: tr('common.send'),
+            onPressed: _send,
           ),
         ),
       );

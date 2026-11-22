@@ -89,7 +89,6 @@
   "geoui.chat.editing": "Modification de {snippet}",
   "geoui.chat.cancel_edit": "Annuler la modification",
   "geoui.chat.attach": "Joindre un fichier",
-  "geoui.chat.newline": "Nouvelle ligne (maintenir pour envoyer)",
   "geoui.chat.privacy.on": "Chiffré : touchez pour envoyer cette conversation en clair",
   "geoui.chat.privacy.off": "Texte en clair : quiconque à portée peut le lire. Touchez pour chiffrer",
   "geoui.profile.keep": "Conserver les données",
