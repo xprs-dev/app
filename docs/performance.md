@@ -1704,6 +1704,50 @@ not "fix" them blind:
 > against these documents and finds a shape the guard missed, widen the rule
 > the same day (§8.8), with the spelling that got past it in the rule's `why`.
 
+### 8.25 The third audit: one stall that was always there, and seven that were new (2026-11-22)
+
+**The stall that was always there.** `XprsArchive` wrote everything heard in
+twenty seconds in ONE transaction on the main isolate: forty to a hundred
+packets, each an upsert against four indexes plus two lookups. Measured:
+0.4 to 1.8 s for sixty rows on a Raspberry Pi 4. On the C61 the log went
+silent for 2 to 5 s at :10, :30 and :50 of every minute, a menu tapped in
+that window did not open, and Android raised "XPRS isn't responding" (the
+main thread's stack was inside `libapp.so`: since the platform and UI threads
+were merged, a busy main isolate IS an unresponsive app). No `perf:` line
+showed it, because a frame is only timed when one is asked for.
+
+> **How it was found, which is the reusable part:** the gaps in the log.
+> A station on a busy channel logs several lines a second; list every
+> silence longer than two seconds and look at the clock. Silences on a
+> fixed second of the minute are a timer.
+
+The write now goes in slices (`flushInSlices`), the event loop given a turn
+between, the slice sized by what the last one cost (every slice is a commit,
+and a commit is a generation: "Stores on zx"). `flush()` stays whole for a
+caller that needs it written now. `tool/flush_time.dart <archive.zx>`
+measures it on a real file. The remaining cost is still on the main isolate;
+moving the archive to a worker is the real cure and is not done.
+
+**Seven that two days of new work added**, found by reading the diff
+against this section:
+
+| Where | The shape | Now |
+|---|---|---|
+| `XprsGroupDeposit.tick` | every minute for ever: a select per known group and a key read per group and archiver, to learn that nothing was due | after a look that finds nothing, an hour; a new act resets it |
+| `XprsBridge.hearsOn` | a map of everything the monitor knows of a station, built for every packet heard on the LAN | kept thirty seconds |
+| `XprsArchive` kept answers | up to 24 answers of up to 1000 rows each, wires included | 12 answers, none over 250 rows |
+| `XprsNames.find` with an npub | bech32, callsign arithmetic and `recordCallsignPubkey` (which clears the name memo) on every keystroke | once per key |
+| `rnsIfaceKind` | the interface label parsed twice per announce and per datagram | kept per label |
+| firmware `xi_census_locked` | every message the store holds read under the index lock each time a segment goes | at open only; the author set is maintained as records are added and carried |
+| firmware `xprsindex_left_take` | the index lock taken after every heard packet to learn there was nothing | read without the lock first |
+
+Left as it is, and why: the message Info page reads two primary-key rows
+when it builds (it builds once or twice per opening).
+
+The rule these share is 8.7's second one. **Each was written as "ask, and
+see whether there is something to do", and none had asked what the answer
+costs on the ten thousand occasions when it is no.**
+
 ## Profiling native memory on a stock device (recipe)
 
 The Dart VM service and Android's native heap profiler both work on a **profile
