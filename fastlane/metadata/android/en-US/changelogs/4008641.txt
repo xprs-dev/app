@@ -1,0 +1,2 @@
+A group's whole record, folders included, reaches the archiver that keeps the group, also for older groups.
+Developer settings: the remote-control API can be opened to the local network; the phone's address is shown with a copy button.
