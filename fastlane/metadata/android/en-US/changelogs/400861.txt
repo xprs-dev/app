@@ -1,0 +1,4 @@
+A group's folders and members now reach the archiver that keeps the group, so a shared link shows the whole group.
+Web chat on a station answers at once instead of after seconds, and a newcomer's first private message is sealed.
+A packet heard on the home network is no longer sent again to the archiver on that network.
+Settings: clearer groups page; no data-folder path to edit on a phone.
