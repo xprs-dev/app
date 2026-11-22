@@ -726,14 +726,22 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
                 tooltip: tr('settings.storage.dir.open'),
                 onPressed: _openDataDir,
               ),
-              const Icon(Icons.edit),
+              // Moving the folder is a desktop matter. On a phone the app's
+              // own folder is the only one it may write to, and a path to
+              // type there made no sense (review of 2026-11-22).
+              if (_dataDirMovable) const Icon(Icons.edit),
             ],
           ),
-          onTap: _pickDirectory,
+          onTap: _dataDirMovable ? _pickDirectory : null,
         ),
       ),
       const SizedBox(height: 24),
       ];
+
+  bool get _dataDirMovable =>
+      !kIsWeb &&
+      defaultTargetPlatform != TargetPlatform.android &&
+      defaultTargetPlatform != TargetPlatform.iOS;
 
   List<Widget> _secWappdata(ColorScheme cs) => [
       // ── Per-wapp data ──
