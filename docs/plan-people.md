@@ -96,14 +96,23 @@ once an hour.
        (`pubkeyForCallsign`), so a restarted station verifies at once. Safe
        by arithmetic. Issued callsigns still come from this run's table
        only; see the decision below.
-     - DECIDED 2026-11-22 (option A) and DONE: an issued callsign verifies
-       under ANY key that signed for it (`xprsAlternateKeys`,
-       `XprsPeople.signersOfLicence`; spec 6.4.2 says so now). Its key is
-       therefore remembered across a restart too. The message info page
-       says when a callsign is claimed by more than one key. OPEN: sealing
-       TO an issued callsign held by two keys still uses the first key
-       (`keyResolver` gives one); opening a sealed message from one tries
-       only that key too.
+     - DECIDED 2026-11-22, twice. First option A (any key that signed for
+       an issued callsign verifies), then replaced the same day by the
+       user's rule, which is what the code does now: an issued callsign
+       belongs to ONE key for a year after that key's last activity
+       (`XprsPeople.claimLicence`, `leaseHolder`, `licenceActive`; spec
+       6.4.2). Another key meanwhile is an impostor. Every time is when
+       this station HEARD, never a packet's `ts:`, so a forger gains
+       nothing by backdating. Kept in `people.zx`.
+     - OPEN, proposed and awaiting the user: agreement BETWEEN stations. A
+       fresh install has heard nothing, and replayed history is only as old
+       as when it is heard, so a newcomer must learn the holder from
+       archivers. Proposal: the archivers' directory carries, for issued
+       callsigns, the holding key and when the archiver first and last
+       heard it; a station with no observation of its own takes what its
+       archivers agree on (majority, then earliest first-heard by most);
+       its own observation always wins. Needs a new version of the
+       directory listing.
      - `_callPub` is now only this run's cache in front of the record.
        Still reading it directly: the reverse lookups (`callsignForHex`,
        `_identityForPub`), the contacts list and the followed-profile
