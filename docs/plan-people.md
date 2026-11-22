@@ -96,19 +96,18 @@ once an hour.
        (`pubkeyForCallsign`), so a restarted station verifies at once. Safe
        by arithmetic. Issued callsigns still come from this run's table
        only; see the decision below.
-     - DECISION NEEDED for issued callsigns: the spec (6.4.2) says two keys
-       may bind one issued callsign and both verify. The code keeps ONE key
-       per callsign, the first heard, and forgets it at restart. Persisting
-       that as it is would let whoever was heard first hold a callsign on
-       this device for good. The faithful way is to keep every key that
-       signed for the callsign and accept a packet that verifies against
-       any of them; that changes the single-key `keyResolver`.
-     - `_callPub` (callsign to key): read by every signature check. Rule:
-       for a callsign learned off an open bearer the FIRST key bound wins
-       (`recordCallsignPubkey(onlyIfUnknown:)`), or the last speaker makes
-       genuine traffic look forged. The record already receives every
-       binding (mirror, 2026-11-21); what is missing is a
-       first-binding-wins reader, the reverse lookups and the enumerations.
+     - DECIDED 2026-11-22 (option A) and DONE: an issued callsign verifies
+       under ANY key that signed for it (`xprsAlternateKeys`,
+       `XprsPeople.signersOfLicence`; spec 6.4.2 says so now). Its key is
+       therefore remembered across a restart too. The message info page
+       says when a callsign is claimed by more than one key. OPEN: sealing
+       TO an issued callsign held by two keys still uses the first key
+       (`keyResolver` gives one); opening a sealed message from one tries
+       only that key too.
+     - `_callPub` is now only this run's cache in front of the record.
+       Still reading it directly: the reverse lookups (`callsignForHex`,
+       `_identityForPub`), the contacts list and the followed-profile
+       sweeps. Moving those onto the record removes the table.
      - `_lxmfCallsign`, `_lxmfAlias`, `_lxStation` (where mail to a
        callsign is written). Rules: one trusted destination per callsign;
        the person's name and the device's X3 share an address, the X3 as
