@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'remote_api_access.dart';
 import 'xprs/xprs_archive.dart';
 import 'xprs/xprs_monitor.dart';
 import 'xprs/xprs_profiles.dart';
@@ -109,16 +110,46 @@ class RemoteApiService {
 
   /// Start the API server (idempotent). [navigatorKey] is the app's root
   /// navigator, used to open wapps on POST /api/launch.
-  Future<void> start({int? port, GlobalKey<NavigatorState>? navigatorKey}) async {
+  /// Open to the local network, and the key a caller there must carry.
+  bool _lan = false;
+  String _key = '';
+  bool get lan => _lan && _server != null;
+
+  /// This device's addresses on the local network.
+  Future<List<String>> lanAddresses() async {
+    try {
+      return [
+        for (final i in await NetworkInterface.list(
+            type: InternetAddressType.IPv4, includeLoopback: false))
+          for (final a in i.addresses)
+            if (isPrivateLanAddress(a.address)) a.address,
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> start(
+      {int? port,
+      GlobalKey<NavigatorState>? navigatorKey,
+      bool lan = false,
+      String key = ''}) async {
     if (navigatorKey != null) _navigatorKey = navigatorKey;
     if (port != null) _port = port;
     if (_server != null) return;
+    _lan = lan && key.length >= 16;
+    _key = key;
     try {
-      // Loopback only: the API can install updates and send as the user, so
-      // nothing on the network may reach it. `adb forward` lands on loopback.
-      _server = await HttpServer.bind(InternetAddress.loopbackIPv4, _port,
+      // This device only, unless its owner opened it to the local network:
+      // the API can install updates and send as the user. `adb forward`
+      // lands on loopback. On the network a caller needs the key
+      // (remote_api_access.dart).
+      _server = await HttpServer.bind(
+          _lan ? InternetAddress.anyIPv4 : InternetAddress.loopbackIPv4, _port,
           shared: true);
-      LogService.instance.add('RemoteApi: listening on 127.0.0.1:$_port');
+      LogService.instance.add(_lan
+          ? 'RemoteApi: listening on port $_port, local network included'
+          : 'RemoteApi: listening on 127.0.0.1:$_port');
       _server!.listen(_handle, onError: (e) {
         LogService.instance.add('RemoteApi: request error: $e');
       });
@@ -132,17 +163,16 @@ class RemoteApiService {
   /// false for one a browser makes. A web page can aim a request at
   /// 127.0.0.1 or rebind its own name to it; browsers mark those with an
   /// Origin or Sec-Fetch-* header and the page's own name in Host.
-  static bool _fromBench(HttpRequest req) {
+  bool _fromBench(HttpRequest req) {
     final h = req.headers;
-    if (h.value('origin') != null || h.value('sec-fetch-site') != null) {
-      return false;
-    }
-    final host = h.host;
-    return host == null ||
-        host == '127.0.0.1' ||
-        host == 'localhost' ||
-        host == '::1' ||
-        host == '[::1]';
+    return remoteApiAdmits(
+      peer: req.connectionInfo?.remoteAddress.address ?? '',
+      host: h.host,
+      browser: h.value('origin') != null || h.value('sec-fetch-site') != null,
+      lanOpen: _lan,
+      key: _key,
+      given: h.value('x-xprs-key') ?? req.uri.queryParameters['key'] ?? '',
+    );
   }
 
   Future<void> stop() async {

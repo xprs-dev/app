@@ -15,6 +15,13 @@ class RemoteApiService {
   bool get running => false;
   int get port => defaultPort;
 
-  Future<void> start({int? port, GlobalKey<NavigatorState>? navigatorKey}) async {}
+  bool get lan => false;
+  Future<List<String>> lanAddresses() async => const [];
+
+  Future<void> start(
+      {int? port,
+      GlobalKey<NavigatorState>? navigatorKey,
+      bool lan = false,
+      String key = ''}) async {}
   Future<void> stop() async {}
 }

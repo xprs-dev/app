@@ -151,8 +151,11 @@ install `desktop/wapps/`, and seeding prefers it.
 
 Every `/api/...` check (status, log, bearers, archiver) needs Settings > Remote
 control API turned on first, on each device, and again after `adb uninstall` or
-a data wipe. It listens on 127.0.0.1 only: reach a phone through `adb forward`,
-never its WiFi address. Headless desktop stations set
+a data wipe. It listens on 127.0.0.1 only unless its owner also switches on "Allow from the
+local network" on the same page: then it answers private addresses that carry
+the key shown there (`?key=` or `X-XPRS-Key`), and the page shows the whole
+address with a copy button (`lib/services/remote_api_access.dart`). Without
+that switch, reach a phone through `adb forward`. Headless desktop stations set
 `"flutter.remoteApi.enabled": true` in `~/.local/share/xprs/shared_preferences.json`.
 `docs/validation.md` has the details and what "off" looks like.
 

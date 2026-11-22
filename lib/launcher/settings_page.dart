@@ -42,6 +42,10 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
     // The directory walk and the hosted-media count are for their own
     // pages, not for every page Settings opens.
     if (widget.topic == SettingsTopic.storage) await _refreshWappData();
+    if (widget.topic == SettingsTopic.developer) {
+      final addrs = await RemoteApiService.instance.lanAddresses();
+      if (mounted) setState(() => _lanAddresses = addrs);
+    }
   }
 
   /// Prompt for a single text value (used for the Reticulum sharing-folder
@@ -206,14 +210,37 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
     final p = _prefs;
     if (p == null) return;
     p.remoteApiEnabled = enabled;
-    if (enabled) {
-      await RemoteApiService.instance
-          .start(port: p.remoteApiPort, navigatorKey: rootNavigatorKey);
-    } else {
-      await RemoteApiService.instance.stop();
+    await _restartRemoteApi();
+  }
+
+  /// The API again, as the two switches now stand.
+  Future<void> _restartRemoteApi() async {
+    final p = _prefs;
+    if (p == null) return;
+    await RemoteApiService.instance.stop();
+    if (p.remoteApiEnabled) {
+      await RemoteApiService.instance.start(
+          port: p.remoteApiPort,
+          navigatorKey: rootNavigatorKey,
+          lan: p.remoteApiLan,
+          key: p.remoteApiKey);
     }
+    _lanAddresses = await RemoteApiService.instance.lanAddresses();
     if (mounted) setState(() {});
   }
+
+  /// Open the API to the local network, or close it. Opening makes the key
+  /// a caller there must carry, once; closing keeps it for the next time.
+  Future<void> _onRemoteApiLanChanged(bool on) async {
+    final p = _prefs;
+    if (p == null) return;
+    if (on && p.remoteApiKey.length < 16) p.remoteApiKey = newRemoteApiKey();
+    p.remoteApiLan = on;
+    await _restartRemoteApi();
+  }
+
+  /// This device's addresses on the local network, for the Developer page.
+  List<String> _lanAddresses = const [];
 
   Future<void> _editRnsServers() async {
     if (_prefs == null) return;
@@ -552,6 +579,59 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
           ),
           value: _prefs?.remoteApiEnabled ?? false,
           onChanged: _onRemoteApiChanged,
+        ),
+      ),
+      const SizedBox(height: 12),
+      // The local network: off unless its owner opens it, and then only to
+      // a caller with the key. The address is shown whole, to copy.
+      Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+        ),
+        color: cs.surfaceContainerLow,
+        child: Column(
+          children: [
+            SwitchListTile(
+              secondary: const Icon(Icons.lan_outlined),
+              title: Text(tr('settings.remote.lan')),
+              subtitle: Text(tr('settings.remote.lan.help'),
+                  style: TextStyle(color: cs.onSurfaceVariant)),
+              value: (_prefs?.remoteApiEnabled ?? false) &&
+                  (_prefs?.remoteApiLan ?? false),
+              onChanged: (_prefs?.remoteApiEnabled ?? false)
+                  ? _onRemoteApiLanChanged
+                  : null,
+            ),
+            if (RemoteApiService.instance.lan)
+              for (final url in remoteApiUrls(
+                  _lanAddresses,
+                  _prefs?.remoteApiPort ?? 3456,
+                  _prefs?.remoteApiKey ?? ''))
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.link),
+                  title: SelectableText(url,
+                      style: const TextStyle(
+                          fontFamily: 'monospace', fontSize: 12)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.copy),
+                    tooltip: tr('settings.remote.copy'),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: url));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(tr('settings.remote.copied'))));
+                    },
+                  ),
+                ),
+            if (RemoteApiService.instance.lan && _lanAddresses.isEmpty)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.wifi_off),
+                title: Text(tr('settings.remote.no_lan')),
+              ),
+          ],
         ),
       ),
       const SizedBox(height: 12),

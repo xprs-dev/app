@@ -15,6 +15,7 @@
  */
 library;
 
+import '../services/remote_api_access.dart';
 import '../services/i18n/flutter_locales.dart';
 import 'dart:convert';
 import 'dart:math' as math;

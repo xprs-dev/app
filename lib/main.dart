@@ -461,6 +461,8 @@ Future<void> _boot() async {
     await RemoteApiService.instance.start(
       port: prefs.remoteApiPort,
       navigatorKey: rootNavigatorKey,
+      lan: prefs.remoteApiLan,
+      key: prefs.remoteApiKey,
     );
   }
 

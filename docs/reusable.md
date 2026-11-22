@@ -1638,3 +1638,8 @@ fdroiddata change. Do the same for any future per-version build logic.
 - A form row with a picker and a text field: stack them on a phone and give
   the field `errorMaxLines` (`other_identities_editor.dart`); side by side the
   error is cut off.
+- `remoteApiAdmits` / `newRemoteApiKey` / `remoteApiUrls`
+  (`lib/services/remote_api_access.dart`): the rule for a local service that
+  its owner may open to the LAN (private address, a key, never a browser).
+  Reuse it for any other listener that should be reachable from the network
+  only on request.
