@@ -78,6 +78,9 @@ class RoomsField extends StatefulWidget {
   /// Correct, withdraw, or list the versions of a message (XPRS.md 7.8).
   final void Function(Map<String, dynamic> m, String text)? onEdit;
   final void Function(Map<String, dynamic> m)? onUnsend;
+
+  /// One of our own messages, to be sent again as it was.
+  final void Function(Map<String, dynamic> m)? onRepeat;
   final void Function(Map<String, dynamic> m)? onHistory;
   final bool privacyOn;
 
@@ -146,6 +149,7 @@ class RoomsField extends StatefulWidget {
     this.onTogglePrivacy,
     this.onEdit,
     this.onUnsend,
+    this.onRepeat,
     this.onHistory,
     this.privacyOn = true,
     required this.rooms,
@@ -1317,6 +1321,7 @@ class _RoomsFieldState extends State<RoomsField> {
                     onTogglePrivacy: isDirect ? widget.onTogglePrivacy : null,
                     onEdit: widget.onEdit,
                     onUnsend: widget.onUnsend,
+                    onRepeat: widget.onRepeat,
                     onHistory: widget.onHistory,
                     canModerate: room?.mod ?? false,
                     closedNote: (room?.noPost ?? false)

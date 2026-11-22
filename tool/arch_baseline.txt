@@ -77,7 +77,7 @@
 ../core/lib/src/services/reticulum/wapp_mailbox.dart :: no-unbounded-select :: final rows = db.select('SELECT COUNT(*) c FROM mail');
 ../core/lib/src/services/reticulum/wapp_mailbox.dart :: no-unbounded-select :: final rows = db.select('SELECT DISTINCT tag FROM mail');
 ../core/lib/src/services/social/keep_service.dart :: no-sub-minute-interval-constant :: static const Duration _tick = Duration(seconds: 3);
-../core/lib/src/services/xprs/xprs_archive.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 20), (_) => flush());
+../core/lib/src/services/xprs/xprs_archive.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 20), (_) => unawaited(flushInSlices()));
 ../core/lib/src/services/xprs/xprs_files.dart :: no-sub-minute-interval-constant :: static const Duration askEvery = Duration(seconds: 45);
 ../core/lib/src/services/xprs/xprs_gossip.dart :: no-unbounded-select :: : db.select('SELECT COUNT(*) c FROM gossip_live').first['c'],
 ../core/lib/src/services/xprs/xprs_gossip.dart :: no-unbounded-select :: : db.select('SELECT COUNT(*) c FROM gossip_visits').first['c'],

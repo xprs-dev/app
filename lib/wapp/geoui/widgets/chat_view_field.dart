@@ -145,6 +145,11 @@ class ChatViewField extends StatefulWidget {
   /// Forward gives the whole message; hide gives it (host reads its `key`);
   /// block gives it (host reads its `from`). All purely local on the host.
   final void Function(Map<String, dynamic> m)? onForward;
+
+  /// Send one of our own messages again, exactly as it was (the same packet,
+  /// so nobody receives it twice): for a person moving between stations who
+  /// wants the same word left at each. Null hides the menu item.
+  final void Function(Map<String, dynamic> m)? onRepeat;
   final void Function(Map<String, dynamic> m)? onHide;
 
   /// XPRS.md 7.8: correct a message ([onEdit], with the new words), withdraw it
@@ -191,6 +196,7 @@ class ChatViewField extends StatefulWidget {
     this.onReveal,
     this.onAttach,
     this.onForward,
+    this.onRepeat,
     this.onHide,
     this.onEdit,
     this.onUnsend,
@@ -1537,6 +1543,18 @@ class _ChatViewFieldState extends State<ChatViewField> {
                 onTap: () {
                   Navigator.pop(sheet);
                   widget.onForward!(m);
+                },
+              ),
+            if (outgoing &&
+                widget.onRepeat != null &&
+                (m['mid'] ?? '').toString().isNotEmpty &&
+                m['deleted'] != true)
+              ListTile(
+                leading: const Icon(Icons.repeat),
+                title: Text(tr('geoui.chat.menu.repeat')),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  widget.onRepeat!(m);
                 },
               ),
             // XPRS.md 7.8: our own words can be corrected or withdrawn at any

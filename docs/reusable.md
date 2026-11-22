@@ -1643,3 +1643,7 @@ fdroiddata change. Do the same for any future per-version build logic.
   its owner may open to the LAN (private address, a key, never a browser).
   Reuse it for any other listener that should be reachable from the network
   only on request.
+- `messageKeptRows(...)` (`message_info_page.dart`): the Info page's "Where it
+  is kept" rows from the outbox's record, the reader's mailboxes and the
+  relays. `ChatViewField.onRepeat` -> `<field>_repeat`: the wapp sends the
+  stored packet again through `hal_xprs_send`, no new call into the core.

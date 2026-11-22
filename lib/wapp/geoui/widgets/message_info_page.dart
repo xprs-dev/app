@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import '../../../services/i18n/core_i18n.dart';
 import '../../../services/i18n/format.dart';
 import '../../../services/people/xprs_people.dart';
+import '../../../services/xprs/xprs_archive.dart';
+import '../../../services/xprs/xprs_outbox.dart';
 import 'edit_history_list.dart';
 
 /// The name of an identity kind: translated for the documented ones, the
@@ -12,6 +14,38 @@ String _idLabel(String type) {
   final key = 'profile.ids.type.$type';
   final t = tr(key);
   return t == key ? type : t;
+}
+
+/// The rows of the Info page's "where it is kept" section, as (label key,
+/// value), most certain first. [kept]: station -> `held` (it said so) or
+/// `handed` (a copy was sent to it), from the outbox. [holders]: where the
+/// reader's mail is collected (their declared mailboxes). [relays]: who
+/// carried a message that arrived, nearest last.
+List<(String, String)> messageKeptRows({
+  required bool outgoing,
+  Map<String, String> kept = const {},
+  List<String> holders = const [],
+  List<String> relays = const [],
+}) {
+  if (!outgoing) {
+    return [
+      if (relays.isNotEmpty) ('geoui.info.kept.from', relays.last),
+    ];
+  }
+  final held = [for (final e in kept.entries) if (e.value == 'held') e.key]..sort();
+  final handed = [
+    for (final e in kept.entries)
+      if (e.value == 'handed') e.key,
+  ]..sort();
+  final theirs = [
+    for (final h in holders)
+      if (h.trim().isNotEmpty) h.trim().toUpperCase(),
+  ];
+  return [
+    if (held.isNotEmpty) ('geoui.info.kept.held', held.join(', ')),
+    if (handed.isNotEmpty) ('geoui.info.kept.handed', handed.join(', ')),
+    if (theirs.isNotEmpty) ('geoui.info.kept.theirs', theirs.join(', ')),
+  ];
 }
 
 /// The details a wapp sends for ONE message's Info page (`ui.convo.info`).
@@ -284,6 +318,36 @@ class _InfoBody extends StatelessWidget {
                   style: TextStyle(color: cs.onSurfaceVariant)),
             ),
         ]),
+
+        // ── where it is kept ───────────────────────────────────────────
+        // The stations that hold this message for its reader: the ones
+        // that said so, the archivers a copy was handed to, and where the
+        // reader's own mail is collected. For one that arrived: who handed
+        // it over.
+        () {
+          final rows = messageKeptRows(
+            outgoing: outgoing,
+            kept: outgoing && '${m['mid'] ?? ''}'.isNotEmpty
+                ? XprsOutbox.instance.keptAt('${m['mid']}')
+                : const {},
+            holders: outgoing && convo.isNotEmpty && !convo.startsWith('#')
+                ? XprsArchive.instance.holdersFor(convo)
+                : const [],
+            relays: relays,
+          );
+          return _Section(title: tr('geoui.info.section.kept'), children: [
+            for (final r in rows) _Row(tr(r.$1), r.$2),
+            if (rows.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                    tr(outgoing
+                        ? 'geoui.info.kept.none_out'
+                        : 'geoui.info.kept.none_in'),
+                    style: TextStyle(color: cs.onSurfaceVariant)),
+              ),
+          ]);
+        }(),
 
         // ── privacy and authorship ─────────────────────────────────────
         _Section(title: tr('geoui.info.section.security'), children: [

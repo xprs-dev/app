@@ -4306,6 +4306,11 @@ class _WappPageState extends State<WappPage>
         _fieldValues['${field}_mid'] = '${m['mid'] ?? ''}';
         _sendCommand('${field}_unsend');
       },
+      onRepeat: (m) {
+        _fieldValues['${field}_convo'] = _roomsOpenId ?? '';
+        _fieldValues['${field}_mid'] = '${m['mid'] ?? ''}';
+        _sendCommand('${field}_repeat');
+      },
       onHistory: (m) {
         _fieldValues['${field}_convo'] = _roomsOpenId ?? '';
         _fieldValues['${field}_mid'] = '${m['mid'] ?? ''}';
