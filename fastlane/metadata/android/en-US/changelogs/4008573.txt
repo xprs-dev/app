@@ -1,0 +1,4 @@
+A first sealed message from somebody new opens as soon as their key arrives, instead of staying unreadable.
+A message relayed in from Reticulum is no longer marked "LAN"; a relayed message says who handed it over. Far stations are no longer listed as Local.
+A group opened from a link shows its folders; non-members ask to join instead of writing.
+Chat on a phone: "Share link" in a group's menu. Fixes: a station page that would not open, a one-second freeze every minute.
