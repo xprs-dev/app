@@ -4269,6 +4269,10 @@ class _WappPageState extends State<WappPage>
         _fieldValues['${field}_convo'] = id;
         _sendCommand('${field}_notify');
       },
+      onShare: (id) {
+        _fieldValues['${field}_convo'] = id;
+        _sendCommand('${field}_share');
+      },
       onArchive: (id) {
         if (_roomsOpenId == id) setState(() => _roomsOpenId = null);
         _fieldValues['${field}_convo'] = id;

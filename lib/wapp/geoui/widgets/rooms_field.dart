@@ -85,6 +85,9 @@ class RoomsField extends StatefulWidget {
 
   /// The three-dots menu on a row: archive the conversation, or delete it.
   final void Function(String id)? onArchive;
+
+  /// "Share link" on a room the wapp marked `share`: the wapp shows the link.
+  final void Function(String id)? onShare;
   final void Function(String id)? onDelete;
 
   /// Turn a conversation's notifications on or off. The wapp owns the
@@ -143,6 +146,7 @@ class RoomsField extends StatefulWidget {
     this.archivedUnread = 0,
     this.onArchived,
     this.onArchive,
+    this.onShare,
     this.onDelete,
     this.onToggleNotify,
     this.me = '',
@@ -1028,7 +1032,25 @@ class _RoomsFieldState extends State<RoomsField> {
   bool _nests(String id) =>
       widget.rooms.any((r) => r['id'] == id && r['nest'] == true);
 
+  /// The wapp says this room can be passed on as a link (its rail entry's
+  /// `share`, like `nest`).
+  bool _shares(String id) =>
+      widget.rooms.any((r) => r['id'] == id && r['share'] == true);
+
   List<PopupMenuEntry<String>> _menuItems(String id) => [
+    if (_shares(id) && widget.onShare != null)
+      PopupMenuItem(
+        value: 'share',
+        child: Row(children: [
+          const Icon(Icons.share_outlined,
+              size: 20, color: ChatPalette.secondary),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(tr('geoui.rooms.share'),
+                style: const TextStyle(color: ChatPalette.text)),
+          ),
+        ]),
+      ),
     if (_nests(id) && !_browse)
       PopupMenuItem(
         value: 'folder',
@@ -1112,6 +1134,10 @@ class _RoomsFieldState extends State<RoomsField> {
     }
     if (action == 'folder') {
       widget.onNewRoom(id);
+      return;
+    }
+    if (action == 'share') {
+      widget.onShare?.call(id);
       return;
     }
     if (action == 'archive') {
@@ -1216,6 +1242,14 @@ class _RoomsFieldState extends State<RoomsField> {
                   color: ChatPalette.secondary,
                   icon: const Icon(Icons.create_new_folder_outlined),
                   onPressed: () => widget.onNewRoom(open),
+                ),
+              // A link to this group, for passing on.
+              if (open != null && _shares(open) && widget.onShare != null)
+                IconButton(
+                  tooltip: tr('geoui.rooms.share'),
+                  color: ChatPalette.secondary,
+                  icon: const Icon(Icons.share_outlined),
+                  onPressed: () => widget.onShare?.call(open),
                 ),
               if (widget.onToggleNotify != null && open != null)
                 _notifyButton(open),

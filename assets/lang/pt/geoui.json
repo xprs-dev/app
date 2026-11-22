@@ -270,5 +270,6 @@
   "geoui.media.fetching_pct": "A obter o ficheiro… {pct}% de {size}",
   "geoui.rooms.show_folders.one": "Mostrar {n} pasta",
   "geoui.rooms.show_folders.other": "Mostrar {n} pastas",
-  "geoui.rooms.hide_folders": "Ocultar pastas"
+  "geoui.rooms.hide_folders": "Ocultar pastas",
+  "geoui.rooms.share": "Partilhar ligação"
 }

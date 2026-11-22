@@ -270,5 +270,6 @@
   "geoui.media.fetching_pct": "Récupération du fichier… {pct}% de {size}",
   "geoui.rooms.show_folders.one": "Afficher {n} dossier",
   "geoui.rooms.show_folders.other": "Afficher {n} dossiers",
-  "geoui.rooms.hide_folders": "Masquer les dossiers"
+  "geoui.rooms.hide_folders": "Masquer les dossiers",
+  "geoui.rooms.share": "Partager le lien"
 }
