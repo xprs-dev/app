@@ -1628,3 +1628,13 @@ which `deps/` submodules exist and where they go, and checks each gitlink
 against its `.*-commit` pin file. A new source dependency is a submodule, a
 pin file, one `place` line there and one `link` entry in `release.sh`; no
 fdroiddata change. Do the same for any future per-version build logic.
+
+## Found on the phone, 2026-11-22
+
+- `roomsBarOffers(rows, at, open:, canFolder:)` (`lib/wapp/geoui/widgets/rooms_field.dart`):
+  what a room's menu offers, read from what the wapp states on its rail entry
+  (`page`, `share`, `nest`). A new menu item for a room is a word on the rail
+  entry plus a line here, never a test on the room's id in the host.
+- A form row with a picker and a text field: stack them on a phone and give
+  the field `errorMaxLines` (`other_identities_editor.dart`); side by side the
+  error is cut off.

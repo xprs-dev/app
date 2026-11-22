@@ -5332,6 +5332,9 @@ class _WappPageState extends State<WappPage>
             dense: true,
           ),
         );
+    final offers = roomsBarOffers(rows, at,
+        open: open != null, canFolder: canFolder);
+    if (offers.isEmpty) return const [];
     return [
       PopupMenuButton<String>(
         // The same three lines as the wapp's menu everywhere else.
@@ -5340,12 +5343,15 @@ class _WappPageState extends State<WappPage>
         onSelected: cmd,
         itemBuilder: (_) => [
           // The group's page: its members, its name, its picture, who reads.
-          item('members', Icons.info_outline, tr('geoui.rooms.group_info')),
+          if (offers.contains('members'))
+            item('members', Icons.info_outline, tr('geoui.rooms.group_info')),
+          if (offers.contains('share'))
+            item('share', Icons.share_outlined, tr('geoui.rooms.share')),
           // A folder is made INSIDE its group.
-          if (canFolder)
+          if (offers.contains('new'))
             item('new', Icons.create_new_folder_outlined,
                 tr('geoui.rooms.new_folder')),
-          if (open != null)
+          if (offers.contains('notify'))
             item(
               'notify',
               muted

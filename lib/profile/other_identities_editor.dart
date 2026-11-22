@@ -175,11 +175,16 @@ class _OtherIdentitiesEditorState extends State<OtherIdentitiesEditor> {
               ],
             ),
           ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        // The kind on its own line and the field at full width below it:
+        // side by side on a phone the field had half the screen, an e-mail
+        // address did not fit and the error under it was cut off after
+        // three words (seen on the C61, 2026-11-22).
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             DropdownButton<String>(
               value: _type,
+              isExpanded: true,
               items: [
                 for (final t in XprsIdType.statable)
                   DropdownMenuItem(value: t, child: Text(typeLabel(t))),
@@ -195,23 +200,23 @@ class _OtherIdentitiesEditorState extends State<OtherIdentitiesEditor> {
                 _error = null;
               }),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _value,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: InputDecoration(
-                  isDense: true,
-                  labelText: typeLabel(_type),
-                  errorText: _error,
-                  helperText: tr('profile.ids.scope.help.'
-                      '${_scopes.contains(_scope) ? _scope : 'global'}'),
-                  helperMaxLines: 3,
-                ),
-                onSubmitted: (_) => _add(),
+            const SizedBox(height: 4),
+            TextField(
+              controller: _value,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                isDense: true,
+                labelText: typeLabel(_type),
+                errorText: _error,
+                errorMaxLines: 3,
+                helperText: tr('profile.ids.scope.help.'
+                    '${_scopes.contains(_scope) ? _scope : 'global'}'),
+                helperMaxLines: 3,
               ),
+              onSubmitted: (_) => _add(),
             ),
+            const SizedBox(height: 4),
           ],
         ),
         Row(

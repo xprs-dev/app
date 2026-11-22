@@ -7,6 +7,28 @@ import '../../../services/i18n/core_i18n.dart';
 import 'chat_palette.dart';
 import 'chat_view_field.dart';
 
+/// What the menu of room [at] offers on a narrow screen, as the command each
+/// item sends (`<field>_<name>`), in the order shown. Read from what the wapp
+/// states on the room's rail entry in [rows]: `page` (it has a page of its
+/// own: members, name, picture; a wapp that does not say is taken to have
+/// one), `share` (it can be passed on as a link). A folder where
+/// [canFolder]; the bell only for an [open] conversation.
+List<String> roomsBarOffers(
+  List<Map<String, dynamic>> rows,
+  String at, {
+  required bool open,
+  bool canFolder = false,
+}) {
+  bool says(String word, bool value) =>
+      rows.any((r) => r['id'] == at && r[word] == value);
+  return [
+    if (!says('page', false)) 'members',
+    if (says('share', true)) 'share',
+    if (canFolder) 'new',
+    if (open) 'notify',
+  ];
+}
+
 /// `$type:"rooms"` — a Discord-like chat layout, driven entirely by the wapp.
 ///
 /// A thin left icon rail of rooms that expands on a left→right drag into a panel
