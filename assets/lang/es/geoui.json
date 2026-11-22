@@ -270,7 +270,5 @@
   "geoui.media.fetching_pct": "Obteniendo el archivo… {pct}% de {size}",
   "geoui.rooms.show_folders.one": "Mostrar {n} carpeta",
   "geoui.rooms.show_folders.other": "Mostrar {n} carpetas",
-  "geoui.rooms.hide_folders": "Ocultar carpetas",
-  "geoui.info.keys": "Indicativo",
-  "geoui.info.keys.several": "Reclamado por más de una clave. \"Verificado\" significa que una de ellas escribió esto."
+  "geoui.rooms.hide_folders": "Ocultar carpetas"
 }

@@ -154,42 +154,6 @@ void main() {
     expect(find.text('A4:CF:12:0B:7E:31'), findsNothing);
   });
 
-  testWidgets('an issued callsign claimed by two keys says so beside the '
-      'signature (6.4.2)', (tester) async {
-    final people = XprsPeople.instance..debugReset();
-    addTearDown(people.debugReset);
-    people.claim('npub1aaa', XprsIdType.licence, 'CT1ABC',
-        evidence: XprsIdEvidence.signed);
-    people.claim('npub1bbb', XprsIdType.licence, 'CT1ABC',
-        evidence: XprsIdEvidence.signed);
-    final m = bubble()..['from'] = 'CT1ABC';
-    await pumpChat(tester, m, asked: []);
-    await tester.tap(find.text('CT1ABC').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Info'));
-    await tester.pumpAndSettle();
-    MessageInfoBus.publish({
-      'type': 'ui.convo.info',
-      'id': 'CT1ABC',
-      'mid': 'aa1111',
-      'stored': {
-        'row': {'mid': 'aa1111', 'dir': 'in', 'sender': 'CT1ABC', 'ts': 1700000000},
-        'versions': const [],
-      },
-      'packet': const {'bearer': 'ble', 'sig': 'verified'},
-      'signed': true,
-    });
-    await tester.pumpAndSettle();
-    final page = find
-        .descendant(
-            of: find.byType(MessageInfoPage), matching: find.byType(Scrollable))
-        .first;
-    await tester.scrollUntilVisible(
-        find.textContaining('Claimed by more than one key'), 200,
-        scrollable: page);
-    expect(find.textContaining('Claimed by more than one key'), findsOneWidget);
-  });
-
   testWidgets('details for another message are not shown', (tester) async {
     MessageInfoBus.publish({'mid': 'zz9999', 'relays': 'X3OTHER'});
     await tester.pumpWidget(

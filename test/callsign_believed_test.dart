@@ -14,6 +14,7 @@
  */
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reticulum/reticulum.dart';
+import 'package:xprs/services/people/xprs_people.dart';
 import 'package:xprs/services/reticulum/rns_service.dart';
 
 void main() {
@@ -78,8 +79,11 @@ void main() {
     });
 
     test('a suffixed announcement also binds the bare name', () {
-      // recordCallsignPubkey files both, so pubkeyForCallsign no longer
-      // misses a key it is holding.
+      // A verified identity packet claims the callsign for its key (the
+      // lease of 6.4.2, XprsIngest._bindIdentity) and then files the
+      // binding; the lease is on the bare callsign, so pubkeyForCallsign
+      // answers for the person and for each of their devices.
+      XprsPeople.instance.claimLicence(NostrCrypto.encodeNpub(hex), 'CT1GHI-9');
       rns.recordCallsignPubkey('CT1GHI-9', hex);
       expect(rns.pubkeyForCallsign('CT1GHI-9'), hex);
       expect(rns.pubkeyForCallsign('CT1GHI'), hex,
