@@ -16,6 +16,10 @@ String _idLabel(String type) {
   return t == key ? type : t;
 }
 
+String _keptMemoKey = '';
+DateTime _keptMemoAt = DateTime.fromMillisecondsSinceEpoch(0);
+List<(String, String)> _keptMemo = const [];
+
 /// The rows of the Info page's "where it is kept" section, as (label key,
 /// value), most certain first. [kept]: station -> `held` (it said so) or
 /// `handed` (a copy was sent to it), from the outbox. [holders]: where the
@@ -325,16 +329,25 @@ class _InfoBody extends StatelessWidget {
         // reader's own mail is collected. For one that arrived: who handed
         // it over.
         () {
-          final rows = messageKeptRows(
-            outgoing: outgoing,
-            kept: outgoing && '${m['mid'] ?? ''}'.isNotEmpty
-                ? XprsOutbox.instance.keptAt('${m['mid']}')
-                : const {},
-            holders: outgoing && convo.isNotEmpty && !convo.startsWith('#')
-                ? XprsArchive.instance.holdersFor(convo)
-                : const [],
-            relays: relays,
-          );
+          // Read from the stores once per opening of a message, not each
+          // time the page builds (architecture: no store work in a build).
+          final memoKey = '${m['mid'] ?? ''}|$outgoing|$convo|${relays.join(',')}';
+          if (_keptMemoKey != memoKey ||
+              DateTime.now().difference(_keptMemoAt).inSeconds > 20) {
+            _keptMemoKey = memoKey;
+            _keptMemoAt = DateTime.now();
+            _keptMemo = messageKeptRows(
+              outgoing: outgoing,
+              kept: outgoing && '${m['mid'] ?? ''}'.isNotEmpty
+                  ? XprsOutbox.instance.keptAt('${m['mid']}')
+                  : const {},
+              holders: outgoing && convo.isNotEmpty && !convo.startsWith('#')
+                  ? XprsArchive.instance.holdersFor(convo)
+                  : const [],
+              relays: relays,
+            );
+          }
+          final rows = _keptMemo;
           return _Section(title: tr('geoui.info.section.kept'), children: [
             for (final r in rows) _Row(tr(r.$1), r.$2),
             if (rows.isEmpty)

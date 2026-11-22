@@ -89,6 +89,7 @@
   "geoui.chat.editing": "Bearbeite {snippet}",
   "geoui.chat.cancel_edit": "Bearbeiten abbrechen",
   "geoui.chat.attach": "Datei anhängen",
+  "geoui.chat.newline": "Neue Zeile (halten zum Senden)",
   "geoui.chat.privacy.on": "Verschlüsselt: tippen, um diese Unterhaltung im Klartext zu senden",
   "geoui.chat.privacy.off": "Klartext: jeder in Reichweite kann mitlesen. Tippen zum Verschlüsseln",
   "geoui.profile.keep": "Daten behalten",

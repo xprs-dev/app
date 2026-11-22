@@ -360,10 +360,20 @@ class _ChatViewFieldState extends State<ChatViewField> {
     });
   }
 
+  /// A line break as it travels (XPRS.md 4.11): a packet is one line, so a
+  /// break inside the words is U+2028, with the spaces around it dropped.
+  /// LF never goes out.
+  static String wireLines(String text) =>
+      text.trim().replaceAll(RegExp(r'[ \t]*\r?\n[ \t]*'), '\u2028');
+
+  /// The same words for the message box: lines again.
+  static String boxLines(String text) =>
+      text.replaceAll('\u2029', '\n\n').replaceAll('\u2028', '\n');
+
   void _send() {
     if (_editing != null) {
       final target = _editing!;
-      final words = _input.text.trim();
+      final words = wireLines(_input.text);
       if (words.isEmpty) return;
       _cancelEdit();
       // Unchanged is not an edit: nothing is sent and nothing is marked edited.
@@ -372,7 +382,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
       }
       return;
     }
-    var text = _input.text.trim();
+    var text = wireLines(_input.text);
     // Append any staged attachment tokens so they travel with the message.
     if (_pending.isNotEmpty) {
       final tokens = _pending.map((p) => p.token).join(' ');
@@ -414,7 +424,7 @@ class _ChatViewFieldState extends State<ChatViewField> {
       _editing = m;
       _replyingTo = null;
     });
-    _input.text = (m['text'] ?? '').toString();
+    _input.text = boxLines((m['text'] ?? '').toString());
     _input.selection = TextSelection.collapsed(offset: _input.text.length);
     _inputFocus.requestFocus();
   }
@@ -1991,6 +2001,25 @@ class _ChatViewFieldState extends State<ChatViewField> {
           ),
       ];
 
+  /// A new line at the cursor, replacing whatever is selected.
+  void _newLine() {
+    final v = _input.value;
+    final sel = v.selection;
+    final at = sel.isValid ? sel.start : v.text.length;
+    final end = sel.isValid ? sel.end : v.text.length;
+    _input.value = TextEditingValue(
+      text: v.text.replaceRange(at, end, '\n'),
+      selection: TextSelection.collapsed(offset: at + 1),
+    );
+    _inputFocus.requestFocus();
+  }
+
+  /// The button beside the message: a new line.
+  ///
+  /// It used to be a second Send, next to the keyboard's own (the field
+  /// asks the keyboard for a send key, and Enter sends on a desktop), which
+  /// left no way to write a message of more than one line. Held down it
+  /// still sends, for a keyboard that offers no send key of its own.
   Widget _sendButton() => SizedBox(
         width: 48,
         height: 48,
@@ -1998,11 +2027,14 @@ class _ChatViewFieldState extends State<ChatViewField> {
           color: ChatPalette.accent,
           shape: const CircleBorder(),
           clipBehavior: Clip.antiAlias,
-          child: IconButton(
-            icon: const Icon(Icons.send, size: 22),
-            color: ChatPalette.onAccent,
-            tooltip: tr('common.send'),
-            onPressed: _send,
+          child: Tooltip(
+            message: tr('geoui.chat.newline'),
+            child: InkWell(
+              onTap: _newLine,
+              onLongPress: _send,
+              child: Icon(Icons.keyboard_return,
+                  size: 22, color: ChatPalette.onAccent),
+            ),
           ),
         ),
       );

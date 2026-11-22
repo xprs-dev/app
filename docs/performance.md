@@ -1725,8 +1725,16 @@ The write now goes in slices (`flushInSlices`), the event loop given a turn
 between, the slice sized by what the last one cost (every slice is a commit,
 and a commit is a generation: "Stores on zx"). `flush()` stays whole for a
 caller that needs it written now. `tool/flush_time.dart <archive.zx>`
-measures it on a real file. The remaining cost is still on the main isolate;
-moving the archive to a worker is the real cure and is not done.
+measures it on a real file.
+
+Most of the phone's seconds were not the rows. The write also CHECKS each
+packet's signature, and for the bulk of what a station hears (strangers'
+observations and identities) that is the first check anybody makes: tens of
+milliseconds of pure-Dart secp256k1 each. Those checks now go to the crypto
+worker before each slice (`xprsWarmVerdict`, `RnsCrypto.xprsVerify`, counted
+as `xprsVerify=` on the `perf: crypto-worker` line); the write then looks
+the verdicts up. What the worker sheds is checked inline as before. The rows
+themselves are still written on the main isolate, a few milliseconds each.
 
 **Seven that two days of new work added**, found by reading the diff
 against this section:
@@ -1739,10 +1747,8 @@ against this section:
 | `XprsNames.find` with an npub | bech32, callsign arithmetic and `recordCallsignPubkey` (which clears the name memo) on every keystroke | once per key |
 | `rnsIfaceKind` | the interface label parsed twice per announce and per datagram | kept per label |
 | firmware `xi_census_locked` | every message the store holds read under the index lock each time a segment goes | at open only; the author set is maintained as records are added and carried |
+| message Info page | two store reads each time the page built | once per opening of a message |
 | firmware `xprsindex_left_take` | the index lock taken after every heard packet to learn there was nothing | read without the lock first |
-
-Left as it is, and why: the message Info page reads two primary-key rows
-when it builds (it builds once or twice per opening).
 
 The rule these share is 8.7's second one. **Each was written as "ask, and
 see whether there is something to do", and none had asked what the answer
