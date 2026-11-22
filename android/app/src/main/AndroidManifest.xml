@@ -151,6 +151,22 @@
                     android:scheme="http"
                     android:host="xprs.dev"
                     android:pathPrefix="/circle"/>
+                <!-- A link to a chat group: xprs.dev/in/<x5 callsign> and
+                     xprs.dev/in/g/<name>. A prefix is matched as written, so
+                     both cases of the callsign. A station's page
+                     (xprs.dev/in/<x3...>) is not claimed: it is for a browser. -->
+                <data
+                    android:scheme="https"
+                    android:host="xprs.dev"
+                    android:pathPrefix="/in/x5"/>
+                <data
+                    android:scheme="https"
+                    android:host="xprs.dev"
+                    android:pathPrefix="/in/X5"/>
+                <data
+                    android:scheme="https"
+                    android:host="xprs.dev"
+                    android:pathPrefix="/in/g/"/>
             </intent-filter>
             <!-- Custom-scheme fallback (QR apps / chats that don't linkify https). -->
             <intent-filter>
@@ -180,6 +196,10 @@
                 <data
                     android:scheme="xprs"
                     android:host="open"/>
+                <!-- A link to a chat group, from the web page's Open in XPRS. -->
+                <data
+                    android:scheme="xprs"
+                    android:host="in"/>
             </intent-filter>
         </activity>
         <!-- Background-service runtime for autostarted wapps (keeps BLE/APRS-IS

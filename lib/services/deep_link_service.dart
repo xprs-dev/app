@@ -22,6 +22,7 @@ import '../launcher/launcher.dart' show rootNavigatorKey;
 import '../profile/storage_paths.dart';
 import '../wapp/wapp_open.dart';
 import '../wapp/wapp_page.dart';
+import 'desktop_link.dart';
 import 'log_service.dart';
 
 class DeepLinkService with WidgetsBindingObserver {
@@ -37,8 +38,23 @@ class DeepLinkService with WidgetsBindingObserver {
 
   /// Wire the channel and process the link this session was launched with.
   /// Safe to call once after the navigator is live.
+  /// The link this launch was started with, on the desktop (main sets it).
+  String? launchLink;
+
   Future<void> start() async {
-    if (_started || !_supported) return;
+    if (_started) return;
+    if (!_supported && desktopLinksSupported) {
+      // Linux: the link of this launch, and those of later launches, which
+      // hand theirs over and exit (desktop_link.dart).
+      _started = true;
+      await listenDesktopLinks('${xprsRootStorage().basePath}/link.sock',
+          (link) => unawaited(_handle(link)));
+      final first = launchLink;
+      launchLink = null;
+      if (first != null) await _handle(first);
+      return;
+    }
+    if (!_supported) return;
     _started = true;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onLink') {
@@ -96,6 +112,17 @@ class DeepLinkService with WidgetsBindingObserver {
       );
       return;
     }
+    // A link to a group (xprs.dev/in/<x5 callsign>, xprs.dev/in/g/<name>,
+    // or the same under xprs://in/): the chat, on that group. The chat wapp
+    // follows a group it is asked to open and gives it a room, so somebody
+    // who never heard of the group lands in it.
+    final room = groupRoomOfLink(url);
+    if (room != null) {
+      final ok = await openWappByFolder('chat',
+          convo: room, navigator: rootNavigatorKey.currentState);
+      if (!ok) LogService.instance.add('DeepLink: no chat to open $room in');
+      return;
+    }
     final target = await _wappForLink(url);
     if (target == null) {
       LogService.instance
@@ -115,6 +142,37 @@ class DeepLinkService with WidgetsBindingObserver {
         initialCommand: cmd,
       ),
     ));
+  }
+
+  /// The chat room a group link names, or null when [url] is not one:
+  /// `#X5ABCD` for `https://xprs.dev/in/x5abcd` and `xprs://in/x5abcd`,
+  /// `#LISBOA` for `https://xprs.dev/in/g/lisboa` and `xprs://in/g/lisboa`.
+  /// A station's address (`/in/x3ptzm`) is not a group: that is a page for a
+  /// browser. The forms are the ones the web chat's Share link writes
+  /// (portal chat_page.html `groupLink`).
+  static String? groupRoomOfLink(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return null;
+    final List<String> segs;
+    if ((uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.toLowerCase() == 'xprs.dev') {
+      final p = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+      if (p.isEmpty || p.first.toLowerCase() != 'in') return null;
+      segs = p.sublist(1);
+    } else if (uri.scheme == 'xprs' && uri.host.toLowerCase() == 'in') {
+      segs = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    } else {
+      return null;
+    }
+    if (segs.length == 2 && segs[0].toLowerCase() == 'g') {
+      final g = segs[1].toUpperCase();
+      return RegExp(r'^[A-Z0-9][A-Z0-9_-]{0,15}$').hasMatch(g) ? '#$g' : null;
+    }
+    if (segs.length == 1) {
+      final g = segs[0].toUpperCase();
+      return RegExp(r'^X5[A-Z0-9]{1,6}$').hasMatch(g) ? '#$g' : null;
+    }
+    return null;
   }
 
   /// JSON the circles wapp understands: an `apply_url` command carrying the

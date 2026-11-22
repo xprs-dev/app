@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
+import 'services/desktop_link.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform, kDebugMode, kProfileMode;
 import 'package:flutter/material.dart';
@@ -52,7 +53,20 @@ import 'boot/core_host_app.dart';
 /// the boot engine: it has no Activity and no screen, so a throw on the way to
 /// the first `runApp` used to leave nothing behind at all — no widget, no log,
 /// no clue. Now it is written to the log ring the API serves.
-Future<void> main() async {
+Future<void> main(List<String> args) async {
+  // A launch that carries a link (the desktop entry runs `xprs <link>` when
+  // a browser opens an xprs:// address): the app already running takes it,
+  // and this launch ends before it becomes a second station on the same
+  // profile. With nobody running, the link is opened after boot.
+  final link = desktopLinkFromArgs(args);
+  if (link != null) {
+    final sock = '${xprsRootStorage().basePath}/link.sock';
+    if (await forwardDesktopLink(link, sock)) {
+      endThisLaunch();
+      return;
+    }
+    DeepLinkService.instance.launchLink = link;
+  }
   runZonedGuarded(_boot, (error, stack) {
     // The zone outlives boot, so it catches every uncaught async error for the
     // life of the process. Only the ones that land before the first runApp are

@@ -84,9 +84,15 @@ class MainActivity : FlutterFragmentActivity() {
         if (intent == null || intent.action != Intent.ACTION_VIEW) return null
         val data = intent.data ?: return null
         val s = data.toString()
+        // A link to a group: xprs.dev/in/<x5 callsign> or xprs.dev/in/g/<name>
+        // (and xprs://in/...). A station's page, xprs.dev/in/<x3...>, is
+        // for a browser and is not claimed.
+        val path = data.path?.lowercase() ?: ""
+        val group = path.startsWith("/in/x5") || path.startsWith("/in/g/")
         val ok = (data.scheme == "https" || data.scheme == "http") &&
-            data.host == "xprs.dev" && (data.path?.startsWith("/circle") == true) ||
-            (data.scheme == "xprs" && (data.host == "circle" || data.host == "open"))
+            data.host == "xprs.dev" && (path.startsWith("/circle") || group) ||
+            (data.scheme == "xprs" &&
+                (data.host == "circle" || data.host == "open" || data.host == "in"))
         return if (ok) s else null
     }
 
