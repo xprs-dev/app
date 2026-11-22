@@ -1500,16 +1500,25 @@ function fileRoom(){
   var k=curRoom.slice(0,2),c=k==='g:'||k==='f:'?curRoom.slice(2):'';
   return c&&hostedByCall[c]?c:'';
 }
+/* A small board answers some of these in twenty seconds, not two. Giving up
+   after six left a returning visitor with no session, and so with no mail:
+   the station held three letters for somebody whose page never asked for
+   them (seen on a C3, 2026-11-22). Asked again, more patiently, until the
+   station answers; what is asked is tiny and asking twice costs nothing. */
 function ensureSession(tries){
   if(!canSession||sess||!canSign())return;
+  var n=tries||0,who=mycall;
+  function again(){
+    if(n<12&&!sess&&mycall===who)setTimeout(function(){ensureSession(n+1);},Math.min(3000+n*2000,15000));}
   sendIdentity();
   getJSON('/api/session',function(d){
-    if(!d||!d.nonce)return;
+    if(!d||!d.nonce)return again();
     signAny('t:session f:'+mycall+' ts:'+tsNow()+' m:'+d.nonce,function(w){
       if(!w)return;
       var x=new XMLHttpRequest();
       x.open('POST','/api/session',true);
-      x.timeout=6000;
+      x.timeout=25000;
+      x.onerror=x.ontimeout=again;
       x.onload=function(){
         var j=null;try{j=JSON.parse(x.responseText);}catch(e){}
         if(x.status===200&&j&&j.session){
@@ -1519,13 +1528,14 @@ function ensureSession(tries){
           if(canModerate)loadMyRole();
           if(canRooms)loadRooms();
         }
-        else if(x.status===409&&(tries||0)<4)
-          /* The station has not heard our identity yet. */
-          setTimeout(function(){ensureSession((tries||0)+1);},1500);
+        else if(x.status===409){
+          /* The station has not heard our identity yet: say it again. */
+          identSent=0;again();}
+        else if(x.status>=500)again();
       };
       x.send(JSON.stringify({wire:w}));
     });
-  });
+  },25000);
 }
 
 // ---- sending: POST -> GET -> Image() (hostile WebViews) ----
@@ -1535,9 +1545,23 @@ function postWire(wire,cb){
   try{
     var x=new XMLHttpRequest();
     x.open('POST','/api/xprs/send',true);
-    x.timeout=4000;
+    x.timeout=20000;
     x.onload=function(){fin(x.status===200,x.status===200?'':replyWhy(x));};
-    x.onerror=x.ontimeout=function(){getFallback(wire,fin);};
+    /* Refused outright (a WebView that blocks POST): the GET forms. No
+       answer in twenty seconds is different: the station is there and
+       busy, so the same packet is offered once more (it is one packet by
+       its identifier however often it arrives), and if that goes
+       unanswered too the sender is TOLD, never shown a message as sent
+       that the station does not have. */
+    x.onerror=function(){getFallback(wire,fin);};
+    x.ontimeout=function(){
+      var y=new XMLHttpRequest();
+      y.open('POST','/api/xprs/send',true);
+      y.timeout=30000;
+      y.onload=function(){fin(y.status===200,y.status===200?'':replyWhy(y));};
+      y.onerror=y.ontimeout=function(){fin(false,'the station did not answer; try again');};
+      y.send(JSON.stringify({wire:wire}));
+    };
     x.send(JSON.stringify({wire:wire}));
   }catch(e){getFallback(wire,fin);}
 }
@@ -1590,10 +1614,17 @@ function onSession(j){
   }
   /* Mail that waited while this browser was closed: older than the chat
      window's first page, so asked for by name, once per session. */
-  if(j.mail>0)getJSON('/api/xprs/mail?call='+encodeURIComponent(mycall)+'&session='+sess,function(d){
-    var rows=(d&&d.rows||[]).slice().reverse();
+  if(j.mail>0)fetchMail(0);
+}
+/* The letters waiting here: asked for until the station answers. */
+function fetchMail(n){
+  var who=mycall,s=sess;
+  getJSON('/api/xprs/mail?call='+encodeURIComponent(mycall)+'&session='+sess,function(d){
+    if(!d){if(n<6&&sess===s&&mycall===who)setTimeout(function(){fetchMail(n+1);},4000);return;}
+    var rows=(d.rows||[]).slice().reverse();
     for(var i=0;i<rows.length;i++)render(rows[i]);
-  });
+    renderSide();
+  },45000);
 }
 /* ---- receipts (XPRS.md 9.7.1, 12.8.2) -----------------------------------
    A message addressed to this callsign is acknowledged once, when it reaches
