@@ -1998,3 +1998,11 @@ five times for a status number. Both now run on the store's own thread
 (`core/lib/src/storage/store_worker.dart`, the archive writer's shape made
 reusable); the reads stay on the main isolate. Three earlier fixes went to
 the archive because the culprit was guessed instead of named.
+
+**The server's own seconds (the stall watch, its first hour on the Pi):**
+`server isolate held 2000 to 10267ms by callback from XprsLan.start` and
+`... RnsTcpServerInterface._onClient`, each ending in "history for X —
+nothing held in that window (404)". `XprsArchive.query(only: X)` filtered
+with `fromc=? OR toc=? OR (an observation naming X)`, which no index serves,
+so every history request walked a week of the spool, mostly to answer
+nothing. It is now one indexed lookup per half, merged in code.
