@@ -1863,14 +1863,24 @@ keeping: ask the phone's remote API for one log line in a loop and print
 every answer slower than 0.4 s with its second of the minute (the API is
 served by the main isolate, so a slow answer IS a stall, frames or no
 frames). It answers in 40 ms, except once every twenty seconds: 2.3 s, then
-0.8 s. `top -H` over the same window never shows the main thread above 40%
-of a core: it is WAITING, not computing. The only twenty-second timer is the
-archive's `flushInSlices`, and two blocks of falling length is what its
-slices look like, so the wait is inside a slice: a lock, or the disk.
+0.8 s. The only twenty-second timer is the archive's `flushInSlices`.
 
-> **A stall with an idle thread is not CPU work.** Do not move it to a
-> worker or slice it finer before knowing what it waits for.
+> **A correction, kept because the mistake is easy to repeat.** `top -H`
+> at one sample a second never showed the main thread above 40 % across a
+> stall, and this section first said the thread was WAITING (a lock, the
+> disk). Sampled twice a second it is at 96 to 100 % for the whole two
+> seconds. A one-second average of a thread that works two seconds in
+> twenty, read off a phone, is not evidence of idleness: sample at least
+> four times faster than the thing you are looking for.
 
-`flushInSlices` now logs `perf: archive flush took Nms (rows=N write=..
-tidy=.. commit=.. prune=.. filed=.. stored=..)` for any slice of 250 ms or
-more. Read that line on the next build before changing anything.
+1.14.0-beta.4 carries the timing line, and it named the step:
+`perf: archive flush took 1916ms (rows=24 write=1878ms)`, against
+`rows=48 write=85ms` for another slice on the same phone. So the cost is
+in particular rows, not in rows as such, and not in the wait for the writer
+lock (`begin` never appears). Also seen: `tidy=429ms` (collapsing
+identities) and `prune=291ms`. Replaying 354 real packets from a station
+into a fresh archive on a Pi (`core/tool/flush_real.dart`) writes them in
+5 ms once their signatures are known and in 3 s when they are not, so a
+first signature check is the suspect, yet the crypto worker reports only
+1 to 20 `xprsVerify` a minute. The next build splits `write` into
+`[sig= gone= row= worst=<type>:ms]`; read that before changing anything.
