@@ -23,7 +23,9 @@ import '../wapp/android_foreground_service.dart';
 Future<void> exitApp() async {
   LogService.instance.add('app: exit requested by the person');
   try {
-    XprsArchive.instance.flush();
+    await XprsArchive.instance
+        .flushNow()
+        .timeout(const Duration(seconds: 3), onTimeout: () {});
   } catch (_) {}
   await AndroidForegroundService.instance.shutdown();
   exit(0);

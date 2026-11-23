@@ -1884,3 +1884,53 @@ into a fresh archive on a Pi (`core/tool/flush_real.dart`) writes them in
 first signature check is the suspect, yet the crypto worker reports only
 1 to 20 `xprsVerify` a minute. The next build splits `write` into
 `[sig= gone= row= worst=<type>:ms]`; read that before changing anything.
+
+### 8.28 The archive writes on its own thread (2026-11-23)
+
+8.25 to 8.27 made the periodic write cheaper, then sliced it, then moved
+its signature checks to the crypto worker, and a slice still took 1.9 s on
+the C61. The write itself had never left the isolate that draws, and it
+should not have been there: it is pure work on a file, no plugin, no
+platform channel, exactly what 8.1 sends to a worker.
+
+Now `XprsArchive` hands what it admitted to a long-lived isolate every
+twenty seconds (`xprs_archive_writer_io.dart`; the web, which has no
+isolates, keeps the inline path). That isolate opens the same `.zx` file
+and runs the archive's own `flush` and `_prune` code against it: zx lets
+one isolate write while another reads, and the reader sees each commit on
+its next statement, so the 146 reads of the archive did not change. What
+crosses is data: the wires, and the authors' keys looked up here. What
+comes back is what the main isolate makes true on its side in a few map
+updates: verdicts, rows stored and filed for the hooks, the room caches to
+drop or patch, the held-message counts, names changed.
+
+Three things this needed that are worth knowing before the next such move:
+
+- **Counters two isolates write must be additions.** The `counts` table was
+  written as the number each side remembered; with two writers the last one
+  wins and the other's rows vanish from the count. `_saveCounts` now adds
+  what moved and reads the table back.
+- **The lock is held for one slice, and the curve work is outside it.** The
+  thread checks a slice's signatures (32 rows) before its transaction
+  begins, so the file lock is never held for crypto, and this isolate's
+  occasional writes (a mailbox declaration, a group forgotten) wait for at
+  most one short commit.
+- **A caller that reads straight after writing awaits `flushNow()`**, and a
+  lookup of something just heard asks `pendingWire()` instead of forcing a
+  write. A synchronous `flush()` on the main isolate is left for closing
+  the archive only.
+
+`perf: archive-writer batches= rows= ms= slowest=` once a minute shows its
+cost. Measured on the Pi 4 with 354 real signed packets admitted fifty at a
+time (`core/tool/flush_real.dart`, which meters the event loop with a 2 ms
+timer):
+
+| | longest pause of the main isolate | pauses of 30 ms or more |
+|---|---|---|
+| inline, in slices (before) | 362 ms | over thirty |
+| writer thread | 22 ms | none |
+
+A phone is several times slower than the Pi, which is how 362 ms here was
+1.9 s on the C61. One thing the meter also showed: all 354 admitted in ONE
+turn of the event loop paused it 520 ms even with the thread, so a caller
+that replays a backlog should admit it in steps, as the radios do.
