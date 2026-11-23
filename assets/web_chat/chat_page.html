@@ -449,6 +449,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 #replybar.on{display:flex}
 #replybar .x{margin-left:auto;background:transparent;border:0;
         color:var(--muted);cursor:pointer;font-size:14px}
+.msg .bubble .words{white-space:pre-line}
+.msg .bubble .att img{display:block;max-width:100%;max-height:240px;border-radius:8px;margin-top:6px}
 .msg .author{color:var(--accent);font-weight:bold}
 .msg .time{color:var(--muted);margin-left:6px}
 .msg .bubble{display:inline-block;background:var(--field);
@@ -2627,7 +2629,16 @@ function render(row){
     bub.appendChild(q);
   }
   var corrected=modEdits[id]!=null;
-  bub.appendChild(document.createTextNode(corrected?modEdits[id]:text));
+  /* A line break travels as U+2028 and a paragraph break as U+2029
+   * (XPRS.md 4.11): shown as the lines they are (.bubble .words). */
+  var words=document.createElement('span');words.className='words';
+  words.textContent=String(corrected?modEdits[id]:text).replace(/\u2029/g,'\n\n').replace(/\u2028/g,'\n');
+  bub.appendChild(words);
+  /* A picture the message carries (its file:, XPRS.md 7.7.7), from the
+   * station by reference, as the app shows it. Other files stay a reference. */
+  var att=headField(w,'file');
+  if(att&&/\.(jpg|jpeg|png|gif|webp)$/i.test(att))
+    bub.insertAdjacentHTML('beforeend','<div class="att">'+mdImgHtml(att,'')+'</div>');
   if(corrected){var mt0=d.querySelector('.meta');
     if(mt0)mt0.insertAdjacentHTML('beforeend','<span class="badge corr">corrected by a moderator</span>');}
   /* In the order things were SAID. The archive files a packet when it is

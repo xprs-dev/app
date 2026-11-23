@@ -68,6 +68,32 @@ class FunctionalityBroker {
   @visibleForTesting
   Future<WappEngine> Function(WappManifest provider) openEngine = _openEngine;
 
+  /// Answers owed to the host itself, by the caller id [ask] made up.
+  final Map<String, Completer<Map<String, dynamic>>> _hostCallers = {};
+
+  /// The host's own screens asking for [functionalityId] (the chat composer
+  /// asking for a link card). Same provider choice, time limit and logging
+  /// as a wapp's request; the answer is the provider's `result`, and every
+  /// failure (no provider, no answer in time, the provider's own error) is
+  /// a [FunctionalityError].
+  Future<Map<String, dynamic>> ask(
+    String functionalityId,
+    Map<String, dynamic> args, {
+    String caller = 'host',
+  }) {
+    final callerId = 'host:${_nextId++}';
+    final done = Completer<Map<String, dynamic>>();
+    _hostCallers[callerId] = done;
+    unawaited(handleRequest(
+      callerEngineId: callerId,
+      functionalityId: functionalityId,
+      reqId: callerId,
+      args: args,
+      callerWapp: caller,
+    ));
+    return done.future;
+  }
+
   /// A caller wapp asked for [functionalityId]. [callerWapp] is the asking
   /// wapp's folder name, as the host knows it.
   Future<void> handleRequest({
@@ -315,6 +341,15 @@ class FunctionalityBroker {
     String? error,
     String? provider,
   }) {
+    final host = _hostCallers.remove(callerEngineId);
+    if (host != null) {
+      if (error != null || result == null) {
+        host.completeError(FunctionalityError(error ?? 'no result'));
+      } else {
+        host.complete(result);
+      }
+      return;
+    }
     final engine = WappEngine.lookup(callerEngineId);
     if (engine == null) return; // the caller was closed meanwhile
     engine.sendMessage(
@@ -357,4 +392,13 @@ class _Pending {
     required this.timer,
     required this.what,
   });
+}
+
+/// Why a functionality the host asked for ([FunctionalityBroker.ask]) gave
+/// no result: the words the broker or the provider gave.
+class FunctionalityError implements Exception {
+  const FunctionalityError(this.message);
+  final String message;
+  @override
+  String toString() => message;
 }

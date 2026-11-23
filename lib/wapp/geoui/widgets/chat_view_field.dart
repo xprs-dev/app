@@ -22,6 +22,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../../util/media_ref.dart';
 import '../../../util/xprs_md.dart';
+import '../../link_cards.dart';
 import '../../shared_media_fetch.dart';
 import '../../../services/i18n/core_i18n.dart';
 import '../conversation_store.dart';
@@ -228,6 +229,16 @@ class _ChatViewFieldState extends State<ChatViewField> {
   /// hint) and is appended verbatim on send; [ref] drives the thumbnail.
   final List<({String token, MediaRef ref})> _pending = [];
 
+  /// The card of the first link in the message being written (LinkCards):
+  /// asked for once the typing pauses, shown above the box with a ✕, and
+  /// sent inside the message. [_cardUrl] is the link it is for (set while
+  /// it is still being made); [_cardDropped] holds the links whose card the
+  /// person removed, so it does not come back while they keep typing.
+  LinkCard? _card;
+  String? _cardUrl;
+  final Set<String> _cardDropped = {};
+  Timer? _cardWait;
+
   /// Messages whose reveal has been asked for and not yet come back (§6.2.1).
   /// The derivation is 100k rounds of PBKDF2 and takes seconds on a phone, so
   /// the bubble has to SAY it is working -- a tap that answers nothing reads as
@@ -318,11 +329,47 @@ class _ChatViewFieldState extends State<ChatViewField> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
+    _input.addListener(_onTyped);
+  }
+
+  /// The words changed: look for a link once the typing pauses. Nothing is
+  /// asked while a message is being corrected (a correction carries words
+  /// only, XPRS.md 7.8.1).
+  void _onTyped() {
+    _cardWait?.cancel();
+    _cardWait = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+      final url = _editing == null ? LinkCards.firstUrl(_input.text) : null;
+      if (url == _cardUrl) return;
+      if (url == null || _cardDropped.contains(url)) {
+        if (_cardUrl != null) setState(_clearCard);
+        return;
+      }
+      setState(() {
+        _cardUrl = url;
+        _card = null;
+      });
+      LinkCards.instance.cardFor(url).then((c) {
+        if (!mounted || _cardUrl != url) return;
+        if (c == null) {
+          setState(_clearCard);
+        } else {
+          setState(() => _card = c);
+        }
+      });
+    });
+  }
+
+  void _clearCard() {
+    _card = null;
+    _cardUrl = null;
   }
 
   @override
   void dispose() {
     _scroll.removeListener(_onScroll);
+    _input.removeListener(_onTyped);
+    _cardWait?.cancel();
     _revealTimeout?.cancel();
     _input.dispose();
     _inputFocus.dispose();
@@ -384,6 +431,14 @@ class _ChatViewFieldState extends State<ChatViewField> {
       return;
     }
     var text = wireLines(_input.text);
+    // The link's card: its words after the message, its picture as the
+    // message's file -- unless a picture is attached already, since a message
+    // carries one file (XPRS.md 7.7.7) and the person's own comes first.
+    final card = _card;
+    if (card != null && text.contains(card.url)) {
+      text = LinkCards.withCard(text, card);
+      if (_pending.isEmpty && card.token != null) text = '$text ${card.token}';
+    }
     // Append any staged attachment tokens so they travel with the message.
     if (_pending.isNotEmpty) {
       final tokens = _pending.map((p) => p.token).join(' ');
@@ -399,6 +454,9 @@ class _ChatViewFieldState extends State<ChatViewField> {
     widget.onSend(out);
     _input.clear();
     _pending.clear();
+    _cardWait?.cancel();
+    _clearCard();
+    _cardDropped.clear();
     if (_replyingTo != null) setState(() => _replyingTo = null);
     _atBottom = true;
     // Type, Enter, type again — no click in between. Requested after the frame
@@ -1875,6 +1933,79 @@ class _ChatViewFieldState extends State<ChatViewField> {
     if (mounted) setState(() {});
   }
 
+  /// The link card above the composer: what will go out with the message,
+  /// drawn from what the add-on put in the media store. While it is being
+  /// made, a thin line says so; ✕ sends the link without it.
+  Widget _cardPreview(ColorScheme cs) {
+    final card = _card;
+    final ref = card?.token == null ? null : MediaRef.parse(card!.token!);
+    final bytes = ref == null ? null : sharedMediaArchive()?.get(ref.sha256);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(10),
+          border: Border(left: BorderSide(color: cs.primary, width: 3)),
+        ),
+        padding: const EdgeInsets.fromLTRB(8, 6, 0, 6),
+        child: Row(
+          children: [
+            if (bytes != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.memory(bytes,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      cacheWidth: 144),
+                ),
+              ),
+            Expanded(
+              child: card == null
+                  ? Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: LinearProgressIndicator(
+                          minHeight: 2, color: cs.primary),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(card.title.isNotEmpty ? card.title : card.site,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 13)),
+                        if (card.summary.isNotEmpty)
+                          Text(card.summary,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 12, color: cs.onSurfaceVariant)),
+                      ],
+                    ),
+            ),
+            IconButton(
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.close),
+              tooltip: tr('common.remove'),
+              onPressed: () => setState(() {
+                final url = _cardUrl;
+                if (url != null) _cardDropped.add(url);
+                _clearCard();
+              }),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Thumbnails for staged attachments, shown above the composer. Images render
   /// from the local archive; videos (and other non-images) show a typed icon —
   /// no need to decode the file.
@@ -2132,10 +2263,14 @@ class _ChatViewFieldState extends State<ChatViewField> {
       },
     );
     });
-    if (_pending.isEmpty) return row;
+    if (_pending.isEmpty && _cardUrl == null) return row;
     return Column(
       mainAxisSize: MainAxisSize.min,
-      children: [_attachPreview(cs), row],
+      children: [
+        if (_cardUrl != null) _cardPreview(cs),
+        if (_pending.isNotEmpty) _attachPreview(cs),
+        row,
+      ],
     );
   }
 }

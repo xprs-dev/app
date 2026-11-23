@@ -553,7 +553,10 @@ class WappEngine {
     final m = method >= 0 && method < names.length ? names[method] : 'GET';
     HttpTransport.shared
         .request(m, uri,
-            headers: headers, body: m == 'GET' ? null : body, timeout: timeout)
+            headers: headers,
+            body: m == 'GET' ? null : body,
+            timeout: timeout,
+            maxBytes: _rangeCap(headers))
         .then((r) {
       s.status = r.statusCode;
       s.body = r.bodyBytes;
@@ -570,6 +573,20 @@ class WappEngine {
       sendMessage('{"type":"http.done","id":$h}');
       handleEvent();
     });
+  }
+
+  /// A wapp that asks for `Range: bytes=0-N` wants at most N+1 bytes, and
+  /// gets no more even from a server that ignores the header and sends the
+  /// whole file: the host stops reading there. That is how a wapp bounds an
+  /// answer it cannot vet in advance (a link card reading a page's head).
+  static int? _rangeCap(Map<String, String>? headers) {
+    if (headers == null) return null;
+    for (final e in headers.entries) {
+      if (e.key.toLowerCase() != 'range') continue;
+      final m = RegExp(r'^bytes=0-(\d{1,10})$').firstMatch(e.value.trim());
+      if (m != null) return int.parse(m[1]!) + 1;
+    }
+    return null;
   }
 
   String _readStr(int ptr, int len) {
@@ -969,6 +986,34 @@ class WappEngine {
         return 1;
       },
       params: [ValueTy.i32, ValueTy.i32],
+      results: [ValueTy.i32],
+    );
+    // Bytes the wapp already holds (a picture it downloaded) into the archive
+    // → wire token: what hal_media_put_file does for a file on disk, without
+    // making the wapp find somewhere to write one first. Bounded by the same
+    // cap, and the same preview follows.
+    final halMediaPutBytes = WasmFunction(
+      (int bufPtr, int bufLen, int extPtr, int extLen, int outPtr,
+          int outCap) {
+        final archive = mediaArchive();
+        if (archive == null || bufLen <= 0 || outCap <= 0) return 0;
+        if (bufLen > kMediaPutMaxBytes) return 0;
+        try {
+          final ext = extLen > 0 ? _readStr(extPtr, extLen).toLowerCase() : '';
+          final token = archive.putBytes(
+              _readBytes(bufPtr, bufLen),
+              RegExp(r'^[a-z0-9]{1,18}$').hasMatch(ext) ? ext : 'bin');
+          unawaited(
+              MediaPreviews.instance.ensureFor(token).catchError((_) => null));
+          return _writeStr(outPtr, outCap, token);
+        } catch (_) {
+          return 0;
+        }
+      },
+      params: [
+        ValueTy.i32, ValueTy.i32, ValueTy.i32,
+        ValueTy.i32, ValueTy.i32, ValueTy.i32,
+      ],
       results: [ValueTy.i32],
     );
     // Import a host file into the archive → wire token.
@@ -5184,6 +5229,7 @@ class WappEngine {
       WasmImport('hal', 'media_state', halMediaState),
       WasmImport('hal', 'media_open', halMediaOpen),
       WasmImport('hal', 'media_put_file', halMediaPutFile),
+      WasmImport('hal', 'media_put_bytes', halMediaPutBytes),
       WasmImport('hal', 'media_set_meta', halMediaSetMeta),
       WasmImport('hal', 'media_delete', halMediaDelete),
       WasmImport('hal', 'media_stats', halMediaStats),

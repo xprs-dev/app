@@ -1657,3 +1657,27 @@ at 80 words and 500 characters. `release.sh` always uses it; `release.yml`
 publishes it as the release text (the update centre's "What's new"). Since
 the subject IS the changelog, write commit subjects for the person using
 the app.
+
+## Asking a wapp's functionality from host code
+
+`FunctionalityBroker.instance.ask(id, args, caller: 'name')`
+(`lib/wapp/functionality_broker.dart`): a host screen or service asks a
+functionality a wapp provides and gets the provider's `result` back as a
+Future (a `FunctionalityError` for every failure). Same provider choice,
+time limit and log line as a wapp's `widget.request`. The chat box's link
+cards are the first user (`lib/wapp/link_cards.dart`).
+
+## Link cards in a composer
+
+`LinkCards` (`lib/wapp/link_cards.dart`): `firstUrl(text)` finds the link a
+sentence carries (without its trailing punctuation), `cardFor(url)` asks the
+`link.card` provider once per address, and `withCard(text, card)` writes the
+title and summary as a plain line after the words, cut to fit. `ChatViewField` shows it above the
+box (`_cardPreview`) and sends it. Any other composer (posts, forum) reuses
+the three calls.
+
+## A wapp bounding an HTTP answer
+
+A `Range: bytes=0-N` header on `hal_http_request2` caps the answer at N+1
+bytes whatever the server does (`WappEngine._rangeCap`, `HttpTransport.request
+maxBytes`). Any wapp reading an address it did not vet sends one.

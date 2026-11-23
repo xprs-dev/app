@@ -166,4 +166,34 @@ void main() {
       expect(last(caller)['error'], contains('did not start'));
     });
   });
+
+  test('host code asks and gets the result, or the error, as a Future', () {
+    fakeAsync((async) {
+      Map<String, dynamic>? got;
+      Object? failed;
+      broker
+          .ask('quick.answer', {'url': 'https://example.com'}, caller: 'chat')
+          .then((r) => got = r);
+      async.flushMicrotasks();
+      final req = last(provider);
+      expect(req['caller'], 'chat');
+      expect(req['args'], {'url': 'https://example.com'});
+      provider.debugEmit(jsonEncode({
+        'type': 'widget.response',
+        'req_id': req['req_id'],
+        'result': {'title': 'Example'},
+      }));
+      async.flushMicrotasks();
+      expect(got, {'title': 'Example'});
+      expect(caller.debugInbox, isEmpty, reason: 'no wapp was the caller');
+
+      broker.ask('nobody.has.this', const {}).then((_) {},
+          onError: (Object e) {
+        failed = e;
+      });
+      async.flushMicrotasks();
+      expect(failed, isA<FunctionalityError>());
+      expect('$failed', contains('no provider'));
+    });
+  });
 }
