@@ -1,0 +1,3 @@
+Link previews: no repeated summary; web chat joins split messages
+File lift keeps the caption's line breaks (4.11)
+History asks by type read an index by type, built once in the archive's life on its writer thread
