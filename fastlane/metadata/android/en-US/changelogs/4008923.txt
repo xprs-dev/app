@@ -1,0 +1,4 @@
+Chat 0.10.20: a request to join a group can be answered from its notification; diagnostics for the remaining pause
+Chat: tapping a request to join a group opens the group's member list, where the request is on top with Accept and Decline
+The log names whatever holds the app's main thread for a quarter of a second or more, so the remaining pauses can be found
+...and 1 more change.
