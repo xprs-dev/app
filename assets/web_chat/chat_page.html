@@ -264,14 +264,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 .grpsec{display:flex;align-items:center;gap:8px;margin:14px 0 6px;font-size:10px;letter-spacing:1px;
      text-transform:uppercase;color:var(--dim)}
 .grpsec:after{content:'';flex:1;height:1px;background:var(--border)}
-.grpfolds{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
-.grpfold{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 10px;border-radius:10px;
+/* One column on a phone: a name and "1276 (+24)" do not fit half its width. */
+.grpfolds{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:5px}
+.grpfold{display:flex;align-items:center;gap:8px;min-height:42px;padding:0 10px;border-radius:10px;
      border:1px solid var(--border);background:var(--panel);color:var(--text);font:inherit;font-size:14px;
      cursor:pointer;text-align:left;min-width:0}
 .grpfold:hover{border-color:var(--accent)}
 .grpfold svg{width:18px;height:18px;flex:none;color:var(--accent)}
 .grpfold span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .grpfold em{font-style:normal;color:var(--dim);flex:none}
+.grpfold em.gcnt{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.gcnt b,#side .room .gnew{color:#5fd97a;font-weight:600}
+#side .room .gnew{margin-left:6px;font-size:11px}
 .grpempty{font-size:12px;color:var(--dim);padding:6px 0}
 /* No message box where there is nothing to write: what to do instead, if
    anything, takes its place. */
@@ -1968,8 +1972,32 @@ function noteSubs(g,subs){
     if(!groupUp[c]){groupUp[c]=g;changed=true;}
     var ci=groupInfo[c]||(groupInfo[c]={});
     if(x.name&&!ci.name)ci.name=x.name;
+    /* How many messages the station holds for it (a station that does not
+       count says nothing, and the page shows no number). */
+    if(typeof x.n==='number'&&ci.n!==x.n){ci.n=x.n;changed=true;}
   });
   return changed;
+}
+/* What is new in a folder: the count the station gives now, less the count
+   when this browser last had the folder open. Kept per browser; a folder
+   never seen before starts level, so a first visit is not all "new". */
+var groupSeen={};
+try{groupSeen=JSON.parse(stGet('xprs_gseen')||'{}')||{};}catch(e){groupSeen={};}
+function groupSeenSet(g,n){
+  if(typeof n!=='number'||groupSeen[g]===n)return;
+  groupSeen[g]=n;stSet('xprs_gseen',JSON.stringify(groupSeen));
+}
+function groupNew(g){
+  var n=(groupInfo[g]||{}).n;
+  if(typeof n!=='number')return 0;
+  if(typeof groupSeen[g]!=='number'){groupSeenSet(g,n);return 0;}
+  return n>groupSeen[g]?n-groupSeen[g]:0;
+}
+function groupCount(g){
+  var n=(groupInfo[g]||{}).n;
+  if(typeof n!=='number')return '';
+  var k=groupNew(g);
+  return '<em class="gcnt">'+n+(k?' <b>(+'+k+')</b>':'')+'</em>';
 }
 function groupOpenHere(g){
   if(curRoom.slice(0,2)!=='o:')return false;
@@ -1978,7 +2006,7 @@ function groupOpenHere(g){
 }
 function groupTree(g,depth){
   var k='o:'+g,h='<div class="room'+(curRoom===k?' on':'')+'" data-r="'+esc(k)+'"'+
-    (depth?' style="padding-left:'+(12+depth*14)+'px"':'')+'>'+(depth?IC.folder:'')+esc(roomLabel(k))+'</div>';
+    (depth?' style="padding-left:'+(12+depth*14)+'px"':'')+'>'+(depth?IC.folder:'')+esc(roomLabel(k))+(groupNew(g)?'<span class="gnew">+'+groupNew(g)+'</span>':'')+'</div>';
   /* Folders are listed under the group being read, not under every group
      followed: eleven folders each would bury the rest of the list. */
   if(depth<4&&groupOpenHere(g))groupSubs(g).forEach(function(x){
@@ -2086,6 +2114,7 @@ function toggleFollow(g){
 function drawGroupNote(g){
   var n=el('grpnote');if(!n||curRoom!=='o:'+g)return;
   var info=groupInfo[g]||{},x5=g.slice(0,2)==='X5',q="'"+esc(g)+"'",st='',bar='';
+  groupSeenSet(g,info.n);   /* being read: nothing in it is new any more */
   var inside=!x5||info.role==='member'||info.role==='mod'||info.role==='admin';
   var closed=info.state==='closed'&&info.role!=='mod'&&info.role!=='admin';
   if(info.role==='invited'&&info.offer)
@@ -2115,7 +2144,7 @@ function drawGroupNote(g){
   if(folds.length){
     h+='<div class="grpsec">Folders &middot; '+folds.length+'</div><div class="grpfolds">'+
       folds.map(function(x){var c=(x.g||'').toUpperCase();
-        return '<button class="grpfold" onclick="switchRoom(\'o:'+esc(c)+'\')">'+IC.folder+'<span>'+esc(roomLabel('o:'+c))+'</span><em>&rsaquo;</em></button>';}).join('')+
+        return '<button class="grpfold" onclick="switchRoom(\'o:'+esc(c)+'\')">'+IC.folder+'<span>'+esc(roomLabel('o:'+c))+'</span>'+groupCount(c)+'<em>&rsaquo;</em></button>';}).join('')+
       '</div><div class="grpsec">General</div>';
   }
   n.innerHTML=h;
