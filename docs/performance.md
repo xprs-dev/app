@@ -1987,3 +1987,14 @@ does not have.
 
 > **Before fixing a stall, have the build name it.** If the log cannot
 > say which function held the isolate, add that first and ship it.
+
+**What the watch named, the first hour it ran (1.14.0-beta.7 on the C61):**
+`perf: main isolate held 1863ms by timer from RnsService.start
+(rns_service.dart:4999)`, every twenty seconds, 1.8 to 2.1 s each time. Not
+the archive at all: the observed-node cache. Every twenty seconds it wrote
+every Reticulum node heard since the last write (a phone on the public
+network hears hundreds) in one transaction, then counted the whole table
+five times for a status number. Both now run on the store's own thread
+(`core/lib/src/storage/store_worker.dart`, the archive writer's shape made
+reusable); the reads stay on the main isolate. Three earlier fixes went to
+the archive because the culprit was guessed instead of named.
