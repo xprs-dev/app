@@ -2006,3 +2006,19 @@ nothing held in that window (404)". `XprsArchive.query(only: X)` filtered
 with `fromc=? OR toc=? OR (an observation naming X)`, which no index serves,
 so every history request walked a week of the spool, mostly to answer
 nothing. It is now one indexed lookup per half, merged in code.
+
+**The talk-only ask, the same way:** `perf: inline history for X1WATT took
+2571ms (query=2534ms)`: no `only:`, just `type IN (identity, moderate,
+message, reaction)` over a spool that is mostly observations, so an ask
+that found nothing walked the whole window. Measured with zx on 100,000
+rows: 1,201 ms without an index by type, 18 ms with `idx_pk_type(type,
+pts)`, one range per type merged in code (an `IN` list is not split by
+the planner).
+
+> **A new index on a big store is built once in the file's life, never at
+> every start, and never on the isolate that draws.** The archive looks it
+> up at `init` (one row of `zx_schema`); when it is missing, the writer
+> thread builds it as a queued operation (2 s for 100,000 rows) and the
+> main isolate holds more incoming rows meanwhile instead of dropping them.
+> Until it exists the old query runs. Without a writer thread (web, tests)
+> the store is small and it is built inline.
