@@ -1845,3 +1845,32 @@ strangers and nearly none is in reach.
 The sweep now reads rows only for stations in reach, and logs
 `perf: mesh sweep took Nms (step=Nms ...)` when the minute costs 250 ms or
 more, so the next one names itself. Not yet re-measured on a phone.
+
+### 8.27 What the minute's timing line named, and a stall that is a wait (2026-11-23)
+
+Re-measured on the C61 with 1.14.0-beta.3: the held-mail step of the minute
+sweep is 74 ms (it was the two-second frame of 8.26). The same line named the
+next one on its first run: `perf: mesh sweep took 1598ms (held=74ms
+groupDeposit=1523ms)`, three minutes after start. `XprsGroupDeposit` asked
+"may this station vouch for it" of EVERY known group before asking whether
+any of them was due, and that question replays a roster (a signature check
+per act) the first time it is asked. It now tests what is due first (key
+reads, in memory), asks the costly question only of a due group
+(`vouches`), and gives the event loop a turn between groups.
+
+**Still open: 2.0 to 2.3 s every twenty seconds.** Found with a probe worth
+keeping: ask the phone's remote API for one log line in a loop and print
+every answer slower than 0.4 s with its second of the minute (the API is
+served by the main isolate, so a slow answer IS a stall, frames or no
+frames). It answers in 40 ms, except once every twenty seconds: 2.3 s, then
+0.8 s. `top -H` over the same window never shows the main thread above 40%
+of a core: it is WAITING, not computing. The only twenty-second timer is the
+archive's `flushInSlices`, and two blocks of falling length is what its
+slices look like, so the wait is inside a slice: a lock, or the disk.
+
+> **A stall with an idle thread is not CPU work.** Do not move it to a
+> worker or slice it finer before knowing what it waits for.
+
+`flushInSlices` now logs `perf: archive flush took Nms (rows=N write=..
+tidy=.. commit=.. prune=.. filed=.. stored=..)` for any slice of 250 ms or
+more. Read that line on the next build before changing anything.
