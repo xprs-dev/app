@@ -139,6 +139,13 @@ class LinkCards {
         s.replaceAll(RegExp(r'[\u2028\u2029\r\n\t]+'), ' ').trim();
     final title = plain(card.title);
     var summary = plain(card.summary);
+    // Many pages put the start of their summary in the title already
+    // ("GitHub - owner/repo: Flutter makes it easy…"): said once is enough.
+    final head = summary.length > 40 ? summary.substring(0, 40) : summary;
+    if (head.isNotEmpty &&
+        title.toLowerCase().contains(head.toLowerCase().replaceAll('…', ''))) {
+      summary = '';
+    }
     String build() => [
           if (title.isNotEmpty) title,
           if (summary.isNotEmpty) summary,

@@ -35,6 +35,16 @@ void main() {
     expect(LinkCards.withCard('x', card), 'x\u2028Title — line one line two');
   });
 
+  test('a summary the title already says is left out', () {
+    const card = LinkCard(
+        url: 'https://github.com/flutter/flutter',
+        title: 'GitHub - flutter/flutter: Flutter makes it easy and fast to build beautiful…',
+        summary: 'Flutter makes it easy and fast to build beautiful apps for mobile and beyond',
+        site: 'github.com');
+    expect(LinkCards.withCard('x', card),
+        'x\u2028GitHub - flutter/flutter: Flutter makes it easy and fast to build beautiful…');
+  });
+
   test('a long summary is cut to fit, a message too long goes alone', () {
     final card = LinkCard(
         url: 'https://example.com/a',

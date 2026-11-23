@@ -2515,6 +2515,32 @@ function callLink(c){
   return baseCall(c)===baseCall(mycall)?'<span class="call">'+c+'</span>':
     '<span class="call link" title="Private message" onclick="openDm(\''+c+'\')">'+c+'</span>';
 }
+/* A long message arrives split (7.6): n:k/N parts of one (f, ts), the
+ * station filing them as it heard them. One bubble for the whole, drawn
+ * once every part is in (6.6: joined with one space; a hole is never shown);
+ * the head of part 1 carries file:, the last part the signature. Kept across
+ * redraws, so a part heard on a later poll completes its set. */
+var partSets={};
+function joinPart(row){
+  var w=row.wire||'',n=headField(w,'n');
+  if(!n)return row;
+  var nm=/^([1-9])\/([1-9])$/.exec(n),mi=w.indexOf(' m:');
+  if(!nm||mi<0)return row;                   /* sealed parts: as before */
+  var idx=+nm[1],of=+nm[2];if(idx>of)return null;
+  var key=baseCall(row.from||'')+'|'+headField(w,'ts')+'|'+of;
+  var s=partSets[key]||(partSets[key]={parts:{},got:0,first:null,whole:null});
+  if(s.whole)return s.whole;
+  if(s.parts[idx]===undefined){s.parts[idx]=w.slice(mi+3);s.got++;}
+  if(idx===1)s.first=row;
+  if(idx===of)s.sig=row.sig;
+  if(s.got<of||!s.first)return null;
+  var text=[],k,fw=s.first.wire;
+  for(k=1;k<=of;k++)text.push(s.parts[k]);
+  var o={};for(k in s.first)o[k]=s.first[k];
+  if(s.sig!=null)o.sig=s.sig;
+  o.wire=fw.slice(0,fw.indexOf(' m:')).replace(/ n:[1-9]\/[1-9]/,'')+' m:'+text.join(' ');
+  return s.whole=o;
+}
 function render(row){
   var w=row.wire||'';
   if((row.type||'')==='reaction'||w.indexOf('t:reaction ')===0){
@@ -2522,6 +2548,9 @@ function render(row){
     if(!seen[rk]){seen[rk]=1;applyReaction(row);}
     return;
   }
+  row=joinPart(row);
+  if(!row)return;
+  w=row.wire||'';
   var room=roomOf(row);
   if(room===null)return;
   if(room.slice(0,3)==='dm:'){dmPeers[room.slice(3)]=true;countDm(room.slice(3),row);}

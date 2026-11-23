@@ -27,6 +27,12 @@ void main() {
     expect(p.fits, isTrue);
   });
 
+  test("the caption's line breaks stay (4.11)", () {
+    final l = xprsLiftFile('look\u2028Title — words file:$_sha.jpg');
+    expect(l.text, 'look\u2028Title — words');
+    expect(xprsLiftFile('a  b\u2028 file:$_sha.jpg  c').text, 'a b\u2028c');
+  });
+
   test('m: stays last, so the caption is not read as fields', () {
     final p = xprsLiftFileOnPacket(pkt(
         't:message f:X1ARKL d:X1WATT ts:2026-09-08_10:00:00 m:x file:$_sha.jpg'));
