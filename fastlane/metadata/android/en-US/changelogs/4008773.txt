@@ -1,0 +1,5 @@
+Stations as meeting points: leave a message at a nearby station for someone who is not there; paste their key (npub) in New chat to write to somebody new.
+Message info shows where a message is kept. "Repeat" sends one of your messages again at another station.
+On a phone the keyboard's Enter adds a line; the button sends.
+Web chat: groups show their folders as a list.
+Fixes freezes of several seconds on busy networks.
