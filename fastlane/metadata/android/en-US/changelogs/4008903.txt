@@ -1,0 +1,2 @@
+The update centre shows what changed in each release again: a short summary written automatically from the commits, with the full comparison linked below
+Fix the pause of about two seconds every twenty seconds on busy networks: every write of the message archive now runs on its own thread
