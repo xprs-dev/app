@@ -1,0 +1,3 @@
+Notifications from apps running in the background are in the person's language, not always English
+Chat: join request notes read the same everywhere; the chat simulator passes again
+The log names the place in the code behind an unnamed pause, so the remaining short pause can be found
