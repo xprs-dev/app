@@ -670,6 +670,11 @@
 "id": "2f5574"
 },
 {
+"wire": "t:identity f:X5A3F2 ts:2026-11-23_14:00:00 k:npub1... nick:Gulf lx:5463d9bc93aebda57d1f704a3cfbee80 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": null,
+"id": "098cc6"
+},
+{
 "wire": "t:moderate f:X1RD89 d:X5A3F2 ts:2026-08-08_14:26:40 r:9f2c1a accept:member sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 139,
 "id": "620901"
