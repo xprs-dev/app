@@ -1,0 +1,2 @@
+Fixes a short freeze a few minutes after the app starts for people who run several groups.
+Adds a timing line to the log for a remaining pause on busy networks, so it can be found and fixed.
