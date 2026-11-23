@@ -1,0 +1,3 @@
+Chat 0.10.21: join requests are counted once and stay answered
+Chat: a person who asks to join several times is one request, a declined request stays declined, and an open member list shows new requests at once
+Fix the pause of about two seconds every twenty seconds: the list of Reticulum nodes heard is now written and counted on its own thread
