@@ -1828,3 +1828,20 @@ The stores are zx files (architecture.md, storage). What that changes:
   only, does not flatten FROM subqueries, and a prefix LIKE is a range only
   when written as one (`>= ? AND < ?`). Write the hot query against an index
   and check it with EXPLAIN QUERY PLAN.
+
+### 8.26 The second of every minute (2026-11-23)
+
+Found the way 8.25 says to look: `perf: frame 2141ms`, `1926ms`, `2178ms`,
+`2008ms`, `2203ms` at :23 of five consecutive minutes on the C61, and every
+wapp tick reporting the same 2025 ms once (all queued behind one thing).
+The mesh's minute sweep asked the store for the held mail of EVERY station
+it keeps mail for, one query per station, and only then asked whether that
+station is in reach. A phone on a busy bench keeps mail for hundreds of
+strangers and nearly none is in reach.
+
+> **The general form:** a cheap test and an expensive read, in the wrong
+> order. Filter by what is in memory before reading what is on disk.
+
+The sweep now reads rows only for stations in reach, and logs
+`perf: mesh sweep took Nms (step=Nms ...)` when the minute costs 250 ms or
+more, so the next one names itself. Not yet re-measured on a phone.
