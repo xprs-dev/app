@@ -212,6 +212,29 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+      # What changed, in words, for the update centre: the feed (xprs.dev)
+      # copies the release text, and the app shows it under "What's new".
+      # The changelog is written for every release anyway (F-Droid shows it);
+      # the release commit adds its per-ABI copies, so the tagged commit's
+      # added changelog files are this release's. GitHub's comparison link is
+      # appended below it (generate_release_notes), never instead of it.
+      - name: Check out this release's changelog
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          path: src
+      - name: Release text from the changelog
+        run: |
+          set -euo pipefail
+          cd src
+          f=$(git diff --name-only --diff-filter=A HEAD~1 HEAD -- fastlane/metadata/android/en-US/changelogs | head -1)
+          if [ -n "$f" ]; then
+            sed -e '/^[[:space:]]*$/d' -e 's/^/- /' "$f" > ../notes.md
+          else
+            echo "::warning::no changelog in this release; the update centre will show only the comparison link"
+            : > ../notes.md
+          fi
+          cat ../notes.md
       - name: Collect assets
         run: |
           mkdir -p dist
@@ -232,6 +255,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          body_path: notes.md
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
         env:

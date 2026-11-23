@@ -1647,3 +1647,13 @@ fdroiddata change. Do the same for any future per-version build logic.
   is kept" rows from the outbox's record, the reader's mailboxes and the
   relays. `ChatViewField.onRepeat` -> `<field>_repeat`: the wapp sends the
   stored packet again through `hal_xprs_send`, no new call into the core.
+
+## Release changelog from the commits
+
+`tool/changelog_auto.sh <previous-tag> [core-pin] [rd-pin] [wapps-pin]`:
+the commit subjects since the last release across the app and the three
+pinned siblings, newest first, without docs/test/tool-only commits, capped
+at 80 words and 500 characters. `release.sh` always uses it; `release.yml`
+publishes it as the release text (the update centre's "What's new"). Since
+the subject IS the changelog, write commit subjects for the person using
+the app.

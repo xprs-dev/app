@@ -103,8 +103,19 @@ elif last_tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null); then
   CL=$(git diff --name-only --diff-filter=A "$last_tag" HEAD -- "$CL_DIR" \
     | grep -E '/[0-9]{1,6}\.txt$' | sort -t/ -k6 -n | tail -1 || true)
 fi
-if [[ -z "$CL" ]]; then
-  echo "warning: no $CL_DIR/$CODE.txt; F-Droid will show no changelog for this release" >&2
+# The changelog itself is written from the commits (tool/changelog_auto.sh):
+# this repository since the last tag and the pinned siblings since the pins
+# that tag recorded, without docs, tests and tools, at most 80 words and
+# F-Droid's 500 characters. Nobody writes it, so no release goes out without
+# one. A file written by hand ($CL, above) is replaced by it and dropped.
+CLBLOB=""
+if prev_tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null); then
+  CLTEXT=$(tool/changelog_auto.sh "$prev_tag" "$CORE_PIN" "$RD_PIN" "$WAPPS_PIN")
+  CLBLOB=$(printf '%s\n' "$CLTEXT" | git hash-object -w --stdin)
+  echo ">> changelog (from the commits since $prev_tag):"
+  printf '%s\n' "$CLTEXT" | sed 's/^/     /'
+elif [[ -z "$CL" ]]; then
+  echo "warning: no previous tag and no $CL_DIR/$CODE.txt; F-Droid will show no changelog" >&2
 fi
 
 # F-Droid builds a release from fdroiddata's recipe and srclibs, not from
@@ -123,7 +134,7 @@ for s in fdroid/srclibs/*.yml; do
 done
 
 echo ">> current: $current   new: $VERSION+$CODE"
-echo ">> pins: reticulum-dart $RD_PIN, core $CORE_PIN, zx $ZX_PIN, wapps $WAPPS_PIN, xcc $XCC_PIN; changelog: ${CL:-none}"
+echo ">> pins: reticulum-dart $RD_PIN, core $CORE_PIN, zx $ZX_PIN, wapps $WAPPS_PIN, xcc $XCC_PIN"
 if [[ "$YES" -ne 1 ]]; then
   read -r -p ">> proceed? [y/N] " ans; [[ "$ans" == "y" || "$ans" == "Y" ]] || exit 1
 fi
@@ -173,11 +184,12 @@ declare -A put=( [pubspec.yaml]="$pubblob" [lib/version.dart]="$verblob"
 declare -A link=( [deps/reticulum-dart]="$RD_PIN" [deps/core]="$CORE_PIN"
   [deps/zx]="$ZX_PIN" [deps/apps]="$WAPPS_PIN" [deps/xcc]="$XCC_PIN" )
 drop=()
-if [[ -n "$CL" ]]; then
-  clblob=$(git rev-parse "HEAD:$CL")
+clblob="$CLBLOB"
+if [[ -z "$clblob" && -n "$CL" ]]; then clblob=$(git rev-parse "HEAD:$CL"); fi
+if [[ -n "$clblob" ]]; then
   put["$CL_DIR/$CODE.txt"]=$clblob
   for digit in 1 2 3; do put["$CL_DIR/$((CODE * 10 + digit)).txt"]=$clblob; done
-  if [[ "$CL" != "$CL_DIR/$CODE.txt" ]]; then drop+=("$CL"); fi
+  if [[ -n "$CL" && "$CL" != "$CL_DIR/$CODE.txt" ]]; then drop+=("$CL"); fi
 fi
 GIT_INDEX_FILE="$tmpidx" git read-tree HEAD
 for p in "${!put[@]}"; do

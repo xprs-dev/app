@@ -1934,3 +1934,25 @@ A phone is several times slower than the Pi, which is how 362 ms here was
 1.9 s on the C61. One thing the meter also showed: all 354 admitted in ONE
 turn of the event loop paused it 520 ms even with the thread, so a caller
 that replays a backlog should admit it in steps, as the radios do.
+
+**What beta.5 still did, and why it looked unchanged on the phone.** The
+writer thread ran (`perf: archive-writer batches=3 rows=78 ms=3453
+slowest=2053`), yet the C61 still froze for 1.9 s every twenty seconds. The
+main isolate still WROTE the archive file in six places: each heard
+`t:mailbox` (`recordMailboxDecl`), a visitor's page request
+(`touchServed`), a shelf change (`retier`), a group forgotten, a moderated
+purge, a visitor noted. zx makes a second writer wait for the file lock,
+and the wait is a `sleep()`: the isolate that draws slept out the thread's
+transaction. On a busy bench a declaration arrives every few seconds, so
+every batch found one waiting.
+
+> **Moving the writer is not enough: every write of that file has to move.**
+> A reader never waits in zx; a writer always may. Grep the class for
+> `execute(` and `transaction(` before calling such a move done.
+
+They are now queued operations sent with the next batch (`_op`, `_runOp`)
+and run on the thread after its rows. `recordMailboxDecl` answers "does it
+name us" from the packet alone and leaves the signature check to the
+thread, which also took a curve operation per heard declaration off the
+main isolate (a forged one is admitted to the spool and dropped there, as
+every forged packet is).
