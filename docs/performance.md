@@ -1956,3 +1956,34 @@ name us" from the packet alone and leaves the signature check to the
 thread, which also took a curve operation per heard declaration off the
 main isolate (a forged one is admitted to the spool and dropped there, as
 every forged packet is).
+
+### 8.29 Name the culprit before fixing it (2026-11-23)
+
+1.14.0-beta.6 still froze the C61 for 1.9 s every twenty seconds. Three
+fixes had gone to the archive because the evidence was log silences and one
+sentence in 8.27 ("the only twenty-second timer is the archive's flush")
+that nobody had checked. Two observations that should have stopped that:
+
+- **The stalls kept the same seconds of the minute (:09, :29, :49) across
+  four app restarts.** A timer started by the app gets a new phase at every
+  start. A fixed phase means something outside the app, or code aligned to
+  the clock.
+- **The history server called `archive.flush()` synchronously for every
+  request.** A grep for `XprsArchive.instance.flush(` missed it, because it
+  went through a local variable named `archive`. On the Pi's server it is
+  3.5 s per request; it is now `flushBeforeRead()`, which hands the rows to
+  the writer thread and returns. The phone answers only a few such requests
+  a minute, though, so it was not the phone's stall.
+
+The instrument now in both the app and the server:
+`core/lib/src/platform/stall_watch.dart`, a zone on the top level that times
+every callback the isolate runs (timers, awaits, stream events, platform
+messages, frames) and logs `perf: main isolate held Nms by ...` for any that
+holds it 250 ms or more. In a release build an anonymous closure prints no
+name, so a timer is named by where it was created (a stack trace taken
+then; AOT traces are symbolic in an unobfuscated build). It needs no root,
+no VM service and no symbols, which is everything a release on a phone
+does not have.
+
+> **Before fixing a stall, have the build name it.** If the log cannot
+> say which function held the isolate, add that first and ship it.

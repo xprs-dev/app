@@ -30,6 +30,7 @@ import 'services/permission_gate.dart';
 import 'services/preferences_service.dart';
 import 'services/blossom_server.dart';
 import 'services/log_service.dart';
+import 'package:xprs_core/src/platform/stall_watch.dart';
 import 'services/remote_api_service.dart';
 import 'services/deep_link_service.dart';
 import 'profile/profile_encryption.dart';
@@ -67,7 +68,12 @@ Future<void> main(List<String> args) async {
     }
     DeepLinkService.instance.launchLink = link;
   }
-  runZonedGuarded(_boot, (error, stack) {
+  // Every callback this isolate runs goes through this zone, which names any
+  // that holds it for a quarter of a second (core/lib/src/platform/
+  // stall_watch.dart, performance.md 8.29): the isolate that draws, the
+  // touches and the platform channels is this one.
+  final watch = StallWatch(report: LogService.instance.add);
+  runZonedGuarded(_boot, zoneSpecification: watch.spec, (error, stack) {
     // The zone outlives boot, so it catches every uncaught async error for the
     // life of the process. Only the ones that land before the first runApp are
     // boot failures — calling a later one "BOOT FAILED" sends the next reader
