@@ -48,6 +48,7 @@
   "geoui.chat.clear_text": "Not encrypted: clear text",
   "geoui.chat.private": "private",
   "geoui.chat.empty": "No messages yet",
+  "geoui.chat.late": "Messages that arrived late",
   "geoui.chat.back": "Back to chat",
   "geoui.chat.messages.one": "{n} message",
   "geoui.chat.messages.other": "{n} messages",

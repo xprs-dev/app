@@ -48,6 +48,7 @@
   "geoui.chat.clear_text": "Não cifrada: texto em claro",
   "geoui.chat.private": "privada",
   "geoui.chat.empty": "Ainda sem mensagens",
+  "geoui.chat.late": "Mensagens que chegaram atrasadas",
   "geoui.chat.back": "Voltar à conversa",
   "geoui.chat.messages.one": "{n} mensagem",
   "geoui.chat.messages.other": "{n} mensagens",

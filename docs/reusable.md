@@ -1312,6 +1312,21 @@ same switch by stating the flag and answering the command.
   `data-ts`, and the Chat wapp opens a room `ORDER BY ts, seq`. Any list that
   can receive rows out of order (an archive replays newest first) should place
   by the sender's time this way rather than append.
+- **The same rule for a list's summary line**: any "latest" preview over
+  sender-time ordering follows the newest said, not the newest arrived. The
+  Chat wapp's `room_admit` lets a live arrival set the room's `last_line` only
+  when nothing newer is held.
+- **Late words: marks and a jump** -- a live arrival said before the newest
+  message held is counted and rung like any other, and its room keeps a mark
+  on it (`marks` table, `room_marks_emit` -> `ui.convo.marks`). Any wapp that
+  draws with `ChatViewField` gets the rest by sending that message:
+  `ChatViewField.marks` shows an up-arrow button over the list that jumps to
+  the oldest unseen mark, `onAround` asks the wapp for the rows down to one it
+  does not hold (chat: `rooms_around`, `room_around`), `onMarksSeen` reports a
+  marked bubble once it has been on screen (`rooms_seen`), and `takeJump`
+  lands on one message (`ui.convo.jump`, from a notification whose `view` is
+  `msg:<mid>`). `_scrollToMid` is the bounded scroll-to-a-lazily-built-item
+  loop to reuse for any "jump to message" (replies, search hits, mentions).
 
 ## Folders the format can find (XPRS.md 7.7.2, 7.7.3)
 

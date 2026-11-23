@@ -2403,6 +2403,16 @@ class _WappPageState extends State<WappPage>
           final field = data['field'] as String? ?? 'conversations';
           _convStore(field).addMessage(data);
           changed = true;
+        } else if (type == 'ui.convo.marks') {
+          // Late words the wapp marked: the view offers a jump to each.
+          _convStore(data['field'] as String? ?? 'conversations')
+              .setMarks(data);
+          changed = true;
+        } else if (type == 'ui.convo.jump') {
+          // Land on one message (a tapped notification for late words).
+          _convStore(data['field'] as String? ?? 'conversations')
+              .setJump(data);
+          changed = true;
         } else if (type == 'ui.convo.edit') {
           // XPRS.md 7.8: a message already drawn was corrected, withdrawn or
           // moderated; the wapp states what it shows now.
@@ -4293,6 +4303,20 @@ class _WappPageState extends State<WappPage>
         _sendCommand('${field}_new');
       },
       onNewChat: () => _sendCommand('${field}_newchat'),
+      // Late words (ui.convo.marks): the marked bubbles the person has now
+      // seen, and the rows down from one the view wants to jump to.
+      onMarksSeen: (id, mids) {
+        _fieldValues['${field}_convo'] = id;
+        _fieldValues['${field}_seen'] = mids.join(',');
+        _sendCommand('${field}_seen');
+        _fieldValues.remove('${field}_seen');
+      },
+      onAround: (id, mid) {
+        _fieldValues['${field}_convo'] = id;
+        _fieldValues['${field}_around'] = mid;
+        _sendCommand('${field}_around');
+        _fieldValues.remove('${field}_around');
+      },
       // XPRS.md 7.8: the author's (or a moderator's) correction and withdrawal
       // of a message, and the list of its versions. The wapp judges each act.
       onEdit: (m, text) {

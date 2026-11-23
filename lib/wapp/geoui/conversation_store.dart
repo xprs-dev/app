@@ -165,6 +165,40 @@ class ConversationItem {
 class ConversationStore {
   final Map<String, ConversationItem> items = {};
 
+  /// Messages each conversation wants a reader to be able to jump to, oldest
+  /// first, as its wapp states them (`ui.convo.marks`): words that arrived
+  /// after newer ones were already drawn, so they sit up the history where
+  /// nobody at the foot sees them. Replaced whole on every statement, never
+  /// persisted: the wapp states them again when the conversation opens.
+  final Map<String, List<String>> marks = {};
+
+  /// A message the wapp asked the view to land on (`ui.convo.jump`), e.g. the
+  /// late words a tapped notification named. Taken once by the view.
+  final Map<String, String> jumps = {};
+
+  void setMarks(Map d) {
+    final id = (d['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    final list = d['marks'];
+    final mids = <String>[
+      if (list is List)
+        for (final m in list)
+          if (m is Map && (m['mid'] ?? '').toString().isNotEmpty)
+            m['mid'].toString(),
+    ];
+    if (mids.isEmpty) {
+      marks.remove(id);
+    } else {
+      marks[id] = mids;
+    }
+  }
+
+  void setJump(Map d) {
+    final id = (d['id'] ?? '').toString();
+    final mid = (d['mid'] ?? '').toString();
+    if (id.isNotEmpty && mid.isNotEmpty) jumps[id] = mid;
+  }
+
   /// Durable backing store. When set AND [loaded] is true, every mutation is
   /// written through as it happens — no debounce, no whole-file rewrite.
   ConversationDb? db;

@@ -178,6 +178,21 @@ class ChatViewField extends StatefulWidget {
   /// tappable; others ignore the tap.
   final void Function(Map<String, dynamic> m)? onItemTap;
 
+  /// Messages the reader should be able to jump to, oldest first, by `mid`
+  /// (ConversationStore.marks): words that arrived after newer ones were
+  /// already here, drawn up the history. A button over the list jumps to the
+  /// oldest not yet seen; a mark is reported through [onMarksSeen] once its
+  /// bubble has been on screen.
+  final List<String> marks;
+
+  /// A message to land on as soon as it is drawn (a tapped notification),
+  /// taken once.
+  final String? Function()? takeJump;
+  final void Function(List<String> mids)? onMarksSeen;
+
+  /// The jump target is not among [messages]: ask for the rows down to it.
+  final void Function(String mid)? onAround;
+
   const ChatViewField({
     super.key,
     required this.fieldName,
@@ -208,6 +223,10 @@ class ChatViewField extends StatefulWidget {
     this.onBlock,
     this.onDirectMessage,
     this.onItemTap,
+    this.marks = const [],
+    this.takeJump,
+    this.onMarksSeen,
+    this.onAround,
   });
 
   @override
@@ -278,6 +297,27 @@ class _ChatViewFieldState extends State<ChatViewField> {
   /// while this is true, so reading back through history isn't interrupted by
   /// incoming traffic. Becomes true again once the user scrolls back down.
   bool _atBottom = true;
+
+  // ── late words: jumping to a marked message (widget.marks) ────────────────
+  //
+  // Only marked bubbles (and a jump target) carry a GlobalKey, so finding one
+  // on screen costs nothing for the rest of the list. Seen is checked after a
+  // scroll settles or a frame that drew a mark, through one one-shot timer,
+  // never on every scroll tick.
+  final Map<String, GlobalKey> _markKeys = {};
+  final GlobalKey _listKey = GlobalKey();
+  final Set<String> _seenMarks = {};
+  final Set<String> _askedAround = {};
+  String? _pendingJump;
+  String? _jumping; // the jump whose bounded retries are running
+  String? _flashMid;
+  Timer? _flashTimer;
+  Timer? _seenWait;
+
+  GlobalKey _markKey(String mid) => _markKeys.putIfAbsent(mid, GlobalKey.new);
+
+  List<String> get _unseenMarks =>
+      [for (final m in widget.marks) if (!_seenMarks.contains(m)) m];
 
   // ── derived state, computed when the thread changes (NOT every frame) ─────
   //
@@ -371,6 +411,8 @@ class _ChatViewFieldState extends State<ChatViewField> {
     _input.removeListener(_onTyped);
     _cardWait?.cancel();
     _revealTimeout?.cancel();
+    _flashTimer?.cancel();
+    _seenWait?.cancel();
     _input.dispose();
     _inputFocus.dispose();
     _scroll.dispose();
@@ -812,12 +854,23 @@ class _ChatViewFieldState extends State<ChatViewField> {
     _refreshDerived(widget.messages);
     final messages = _visible;
 
+    final asked = widget.takeJump?.call();
+    if (asked != null && asked.isNotEmpty) _pendingJump = asked;
+    if (_pendingJump != null &&
+        _jumping != _pendingJump &&
+        _byMid.containsKey(_pendingJump)) {
+      final mid = _jumping = _pendingJump!;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToMid(mid));
+    }
+    if (widget.marks.isNotEmpty) _scheduleSeenCheck();
+
     if (messages.length != _lastCount) {
       final grew = messages.length > _lastCount;
       _lastCount = messages.length;
       // Only follow new messages when already at the bottom; otherwise hold
       // the current scroll position so history reading isn't disrupted.
-      if (grew && _atBottom) {
+      // A jump being made (a tapped notification) owns the scroll.
+      if (grew && _atBottom && _pendingJump == null) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _autoScroll());
       }
     }
@@ -891,8 +944,164 @@ class _ChatViewFieldState extends State<ChatViewField> {
   Widget _messageList(ColorScheme cs, List<Map<String, dynamic>> messages) =>
       LayoutBuilder(builder: (context, c) {
         _bubbleMaxW = (c.maxWidth * 0.8).clamp(160.0, 560.0);
-        return _messageRows(cs, messages);
+        final rows = NotificationListener<ScrollEndNotification>(
+          onNotification: (_) {
+            if (widget.marks.isNotEmpty) _scheduleSeenCheck();
+            return false;
+          },
+          child: KeyedSubtree(key: _listKey, child: _messageRows(cs, messages)),
+        );
+        final unseen = _threadRootMid == null ? _unseenMarks : const <String>[];
+        if (unseen.isEmpty) return rows;
+        return Stack(
+          children: [
+            Positioned.fill(child: rows),
+            Positioned(right: 14, bottom: 14, child: _lateButton(unseen)),
+          ],
+        );
       });
+
+  /// The way to words that arrived late: an up arrow with how many there are
+  /// to see. A tap lands on the oldest of them.
+  Widget _lateButton(List<String> unseen) => Tooltip(
+        message: tr('geoui.chat.late'),
+        child: Material(
+          color: ChatPalette.raised,
+          shape: const StadiumBorder(),
+          elevation: 3,
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: () => _jumpTo(unseen.first),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.arrow_upward,
+                      size: 18, color: ChatPalette.accent),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${unseen.length}',
+                    style: const TextStyle(
+                        color: ChatPalette.accent,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+  /// Land on [mid]: at once when it is drawn, otherwise once the wapp has sent
+  /// the rows down to it (onAround), which arrive through a rebuild.
+  void _jumpTo(String mid) {
+    _pendingJump = mid;
+    if (_byMid.containsKey(mid)) {
+      _jumping = mid;
+      _scrollToMid(mid);
+    } else if (widget.onAround != null && _askedAround.add(mid)) {
+      widget.onAround!(mid);
+    } else {
+      // Nothing more can bring it here (withdrawn, or the wapp has no rows):
+      // count it as seen so the button does not point at nothing.
+      _pendingJump = null;
+      _markSeen([mid]);
+    }
+  }
+
+  /// Bring [mid]'s bubble into view. The list is built lazily with bubbles of
+  /// every height, so an unbuilt bubble has no position yet: jump to where it
+  /// should be by its index, let the frame lay it out, and try again. Bounded,
+  /// as [_autoScroll] is.
+  void _scrollToMid(String mid, {int tries = 8}) {
+    if (!mounted || !_scroll.hasClients || _pendingJump != mid) {
+      if (_jumping == mid) _jumping = null;
+      return;
+    }
+    final ctx = _markKeys[mid]?.currentContext;
+    if (ctx != null) {
+      _pendingJump = null;
+      _jumping = null;
+      _atBottom = false;
+      Scrollable.ensureVisible(ctx,
+          alignment: 0.3, duration: const Duration(milliseconds: 250));
+      setState(() => _flashMid = mid);
+      _flashTimer?.cancel();
+      _flashTimer = Timer(const Duration(milliseconds: 1600), () {
+        if (mounted) setState(() => _flashMid = null);
+      });
+      _scheduleSeenCheck();
+      return;
+    }
+    if (tries <= 0) {
+      _pendingJump = null;
+      _jumping = null;
+      return;
+    }
+    final i = _visible.indexWhere((m) => (m['mid'] ?? '') == mid);
+    if (i < 0) {
+      _jumping = null;
+      return;
+    }
+    final n = _visible.length;
+    final pos = _scroll.position;
+    _atBottom = false;
+    _scroll.jumpTo(n <= 1 ? 0.0 : pos.maxScrollExtent * i / (n - 1));
+    setState(() {}); // the bubble at that place now carries its key
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _scrollToMid(mid, tries: tries - 1));
+  }
+
+  void _scheduleSeenCheck() {
+    _seenWait?.cancel();
+    _seenWait = Timer(const Duration(milliseconds: 400), _checkSeen);
+  }
+
+  /// Which marked bubbles are inside the list's viewport now. A bubble counts
+  /// once half of it (or all of a tall one's view) has been on screen.
+  void _checkSeen() {
+    if (!mounted) return;
+    final listBox = _listKey.currentContext?.findRenderObject();
+    if (listBox is! RenderBox || !listBox.hasSize) return;
+    final top = listBox.localToGlobal(Offset.zero).dy;
+    final bottom = top + listBox.size.height;
+    final seen = <String>[];
+    for (final mid in _unseenMarks) {
+      final box = _markKeys[mid]?.currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.hasSize || !box.attached) continue;
+      final y = box.localToGlobal(Offset.zero).dy;
+      final h = box.size.height;
+      final shown = (y + h).clamp(top, bottom) - y.clamp(top, bottom);
+      if (shown >= (h / 2).clamp(0.0, (bottom - top) / 2)) seen.add(mid);
+    }
+    if (seen.isNotEmpty) _markSeen(seen);
+  }
+
+  void _markSeen(List<String> mids) {
+    setState(() => _seenMarks.addAll(mids));
+    widget.onMarksSeen?.call(mids);
+  }
+
+  /// A marked bubble (or the jump target) wears its key, and the flash after
+  /// a jump.
+  Widget _marked(Map<String, dynamic> m, Widget bubble) {
+    final mid = (m['mid'] ?? '').toString();
+    if (mid.isEmpty ||
+        !(mid == _pendingJump || mid == _flashMid || widget.marks.contains(mid))) {
+      return bubble;
+    }
+    return KeyedSubtree(
+      key: _markKey(mid),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        color: mid == _flashMid
+            ? ChatPalette.accent.withAlpha(50)
+            : Colors.transparent,
+        child: bubble,
+      ),
+    );
+  }
 
   Widget _messageRows(ColorScheme cs, List<Map<String, dynamic>> messages) {
     // Indexes are maintained by _refreshDerived (not per frame).
@@ -946,8 +1155,10 @@ class _ChatViewFieldState extends State<ChatViewField> {
       itemCount: messages.length,
       itemBuilder: (context, i) {
         final head = _dayHeader(messages, i);
-        final bubble = _bubble(messages[i],
-            first: head != null || _startsRun(messages, i));
+        final bubble = _marked(
+            messages[i],
+            _bubble(messages[i],
+                first: head != null || _startsRun(messages, i)));
         if (head == null) return bubble;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -101,6 +101,12 @@ class RoomsField extends StatefulWidget {
   /// the app that could not send a picture.
   final Future<String?> Function()? onAttach;
 
+  /// Late words (ConversationStore.marks): the marked messages of room [id]
+  /// that have now been on screen, and a message the view wants the rows
+  /// down to before it jumps there.
+  final void Function(String id, List<String> mids)? onMarksSeen;
+  final void Function(String id, String mid)? onAround;
+
   /// Conversations the person archived, and how many of them hold unread.
   /// When there are any, an "Archived" row heads the list and [onArchived]
   /// opens them.
@@ -168,6 +174,8 @@ class RoomsField extends StatefulWidget {
     this.onBlock,
     this.onDirectMessage,
     this.onAttach,
+    this.onMarksSeen,
+    this.onAround,
     this.archivedCount = 0,
     this.archivedUnread = 0,
     this.onArchived,
@@ -1341,6 +1349,18 @@ class _RoomsFieldState extends State<RoomsField> {
                         : (m) => widget.onBlock!((m['from'] ?? '').toString()),
                     onDirectMessage: widget.onDirectMessage,
                     onAttach: widget.onAttach,
+                    marks: open.isEmpty
+                        ? const []
+                        : (widget.store.marks[open] ?? const []),
+                    takeJump: open.isEmpty
+                        ? null
+                        : () => widget.store.jumps.remove(open),
+                    onMarksSeen: widget.onMarksSeen == null || open.isEmpty
+                        ? null
+                        : (mids) => widget.onMarksSeen!(open, mids),
+                    onAround: widget.onAround == null || open.isEmpty
+                        ? null
+                        : (mid) => widget.onAround!(open, mid),
                   ),
                 ),
         ),

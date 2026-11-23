@@ -48,6 +48,7 @@
   "geoui.chat.clear_text": "Unverschlüsselt: Klartext",
   "geoui.chat.private": "privat",
   "geoui.chat.empty": "Noch keine Nachrichten",
+  "geoui.chat.late": "Später eingetroffene Nachrichten",
   "geoui.chat.back": "Zurück zum Chat",
   "geoui.chat.messages.one": "{n} Nachricht",
   "geoui.chat.messages.other": "{n} Nachrichten",
