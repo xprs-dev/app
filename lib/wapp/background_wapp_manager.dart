@@ -28,6 +28,8 @@ import 'package:flutter/foundation.dart';
 import '../models/monitored_task.dart';
 import '../profile/storage_paths.dart';
 import '../services/background_service.dart';
+import '../services/event_bus.dart';
+import 'i18n_context.dart';
 import 'geoui/geo_chat_archive.dart';
 import 'geoui/activity_archive.dart';
 import 'geoui/conversation_db.dart';
@@ -52,6 +54,22 @@ class BackgroundWappManager {
 
   // Keyed by wapp folder name (the same id WappPage uses for KV + task ids).
   final Map<String, _WappBackgroundService> _running = {};
+
+  /// Reloads the running engines' translations when the language changes.
+  EventSubscription<LocaleChangedEvent>? _localeSub;
+
+  static Future<void> _loadI18n(
+      WappEngine engine, String wappDir, PreferencesService prefs) async {
+    try {
+      engine.setI18n(await I18nContext.loadFromPackage(
+        wappPackageStorage(wappDir),
+        locale: prefs.activeLocale(),
+        languageOnly: prefs.activeLanguageCode(),
+      ));
+    } catch (_) {
+      // No table: the wapp's English literals, as before.
+    }
+  }
 
   bool isRunning(String wappName) => _running.containsKey(wappName);
   List<String> get runningNames => _running.keys.toList(growable: false);
@@ -134,6 +152,18 @@ class BackgroundWappManager {
       final manifestJson = await pkg.readString('manifest.json');
       engine.grantedPermissions = declaredPermissions(manifestJson);
       await engine.load(wasm);
+      // The words a headless wapp composes (a notification, a note in a
+      // room) in the person's language, as its page does (WappPage.
+      // _reloadI18n). Without a table every hal_i18n_get missed and the C
+      // fell back to its English literal: a notification raised while the
+      // app was closed was always English (seen with Chat's join requests,
+      // 2026-11-23).
+      await _loadI18n(engine, wappDir, prefs);
+      _localeSub ??= EventBus().on<LocaleChangedEvent>((_) async {
+        for (final r in _running.values.toList()) {
+          await _loadI18n(r.engine, r.wappDir, r.prefs);
+        }
+      });
       final svc = _WappBackgroundService(name, wappDir, engine, prefs,
           wappOwnedConversations: wappOwnsConversations(manifestJson));
       _running[name] = svc;
