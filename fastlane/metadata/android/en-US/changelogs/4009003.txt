@@ -1,0 +1,5 @@
+Link previews: a shared link goes out with the page's picture, title and summary
+Wapps share one JSON reader (sdk/wapp_json.h), lifted out of the AI add-on
+Link previews: a shared link is sent with the page's picture, title and summary, read once by the sender's phone so the people who receive it never contact the site
+A wapp can bound how much of a web answer it reads
+...and 4 more changes.
