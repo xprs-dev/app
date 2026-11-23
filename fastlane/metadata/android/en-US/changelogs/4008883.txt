@@ -1,0 +1,2 @@
+The message archive is now written in the background, on its own thread: no more pause of a second or two every twenty seconds on busy networks.
+Leaving the app writes what is still waiting before it closes.
