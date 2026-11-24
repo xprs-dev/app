@@ -29,7 +29,18 @@ import 'package:flutter/material.dart';
 import '../../../services/i18n/core_i18n.dart';
 
 class DetailsField extends StatelessWidget {
-  const DetailsField({super.key, required this.sections, this.emptyText});
+  const DetailsField({
+    super.key,
+    required this.sections,
+    this.emptyText,
+    this.rows = false,
+  });
+
+  /// Short facts as rows, the label on the left and the value on the right,
+  /// one card per section (`"layout": "rows"` on the field). The default
+  /// gives every value a card of its own, which is right for a long value
+  /// (an address, a raw frame) and makes ten short facts a screen of boxes.
+  final bool rows;
 
   /// `[{title, items:[{label, value, key, mono}]}]`.
   final List<Map<String, dynamic>> sections;
@@ -52,6 +63,8 @@ class DetailsField extends StatelessWidget {
         ),
       );
     }
+
+    if (rows) return _rowsLayout(context, sections);
 
     // A Column, not a ListView: the screen body this sits in already scrolls,
     // and a ListView inside it has unbounded height — it renders nothing at
@@ -77,6 +90,78 @@ class DetailsField extends StatelessWidget {
             if (raw is Map) _row(context, raw.cast<String, dynamic>()),
         ],
       ],
+    );
+  }
+
+  Widget _rowsLayout(BuildContext context, List<Map<String, dynamic>> sections) {
+    final cs = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final out = <Widget>[];
+    for (final s in sections) {
+      final items = ((s['items'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((m) => m.cast<String, dynamic>())
+          .toList();
+      if (items.isEmpty) continue;
+      final title = (s['title'] ?? '').toString();
+      if (title.isNotEmpty) {
+        out.add(Padding(
+          padding: EdgeInsets.only(top: out.isEmpty ? 0 : 14, bottom: 6, left: 4),
+          child: Text(
+            title.toUpperCase(),
+            style: t.labelSmall?.copyWith(
+              color: cs.primary,
+              letterSpacing: 1.1,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ));
+      }
+      out.add(Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            for (var i = 0; i < items.length; i++) ...[
+              if (i > 0)
+                Divider(height: 1, color: cs.outlineVariant.withAlpha(50)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 104,
+                      child: Text(
+                        (items[i]['label'] ?? '').toString(),
+                        style: t.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SelectableText(
+                        (items[i]['value'] ?? '').toString(),
+                        style: items[i]['mono'] == true
+                            ? t.bodyMedium?.copyWith(fontFamily: 'monospace')
+                            : t.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: out,
     );
   }
 

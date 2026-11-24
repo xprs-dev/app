@@ -62,6 +62,7 @@
   "onboarding.vanity.tried": "Tried {count} keys · {time}",
   "onboarding.vanity.still_looking": "still looking…",
   "onboarding.vanity.searching": "Searching…",
+  "onboarding.vanity.unavailable": "Searching for a callsign needs the app; it cannot run in a browser.",
   "onboarding.vanity.empty": "Matches will appear here.\nYour callsign stays {callsign} until you pick one.",
   "onboarding.vanity.use": "Use",
   "onboarding.apps.get_started": "Get started",

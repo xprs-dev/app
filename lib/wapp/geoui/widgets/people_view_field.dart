@@ -54,6 +54,13 @@ class PeopleViewField extends StatefulWidget {
   final String? emptyArt;
   final Future<String?> Function(String path)? loadAsset;
 
+  /// Every section on one scrolling list under its own heading, instead of
+  /// one section at a time behind filter chips (`"layout": "headers"` on the
+  /// field). For a list whose sections are kinds of one thing a person wants
+  /// to see together -- a board on the cable and a station on the WiFi --
+  /// where hiding all but one behind a chip hides the answer.
+  final bool headers;
+
   const PeopleViewField({
     super.key,
     required this.fieldName,
@@ -64,6 +71,7 @@ class PeopleViewField extends StatefulWidget {
     this.emptyTitle,
     this.emptyArt,
     this.loadAsset,
+    this.headers = false,
   });
 
   @override
@@ -123,6 +131,7 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final sections = widget.sections;
+    if (widget.headers) return _stacked(cs, sections);
     if (_section >= sections.length) _section = 0;
     // Never open on an empty filter while another one has results. Searching
     // for something that exists and being shown "nothing here" — because the
@@ -181,6 +190,41 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
         ),
       ],
     );
+  }
+
+  /// The `headers` layout: one list, each non-empty section under its title.
+  Widget _stacked(ColorScheme cs, List<Map<String, dynamic>> sections) {
+    final rows = <Widget>[];
+    for (final s in sections) {
+      final items = ((s['items'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((m) => m.cast<String, dynamic>())
+          .toList();
+      if (items.isEmpty) continue;
+      final title = (s['title'] ?? '').toString();
+      if (title.isNotEmpty) {
+        rows.add(Padding(
+          padding: EdgeInsets.fromLTRB(16, rows.isEmpty ? 12 : 22, 16, 4),
+          child: Text(
+            title.toUpperCase(),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: cs.primary,
+                  letterSpacing: 1.1,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ));
+      }
+      for (var i = 0; i < items.length; i++) {
+        if (i > 0) {
+          rows.add(Divider(
+              height: 1, indent: 72, color: cs.outlineVariant.withAlpha(50)));
+        }
+        rows.add(_row(cs, items[i]));
+      }
+    }
+    if (rows.isEmpty) return _empty(cs);
+    return ListView(children: rows);
   }
 
   Widget _sectionChip(ColorScheme cs, Map<String, dynamic> s, int idx) {

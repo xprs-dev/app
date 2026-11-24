@@ -20,7 +20,7 @@ import 'package:reticulum/reticulum.dart' as reticulum;
 
 import 'iwi_profile.dart';
 import 'identity_backup.dart';
-import 'vanity_callsign_page.dart';
+import 'callsign_picker.dart';
 import 'profile_service.dart';
 import '../services/android_permissions_service.dart';
 import '../services/i18n/core_i18n.dart';
@@ -273,12 +273,24 @@ class _WelcomePageState extends State<WelcomePage> {
   /// search runs on its own isolate inside that page, so it never competes with
   /// this screen for frames.
   Future<void> _openVanityPage() async {
-    final picked = await Navigator.of(context).push<IwiProfile>(
+    final picked = await Navigator.of(context).push<PickedCallsign>(
       MaterialPageRoute(
-        builder: (_) => VanityCallsignPage(currentCallsign: _preview.callsign),
+        builder: (_) => CallsignPickerPage(
+          source: IsolateCallsignSource('X1'),
+          currentCallsign: _preview.callsign,
+        ),
       ),
     );
-    if (picked != null && mounted) _selectVanity(picked);
+    if (picked != null && mounted) {
+      _selectVanity(IwiProfile(
+        id: picked.callsign,
+        nickname: '',
+        callsign: picked.callsign,
+        npub: picked.npub,
+        nsec: picked.nsec,
+        createdAt: DateTime.now().millisecondsSinceEpoch,
+      ));
+    }
   }
 
   /// Use a found vanity match as the active preview (so Continue keeps it).

@@ -261,8 +261,10 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
     final tip = _t(group.getString('tip'));
     // Group names aren't usually translatable (they're slugs more
     // than labels), but authors can still opt in by passing
-    // `@key` — the resolver is lossless for literal strings.
-    final name = _t(group.name);
+    // `@key` — the resolver is lossless for literal strings. A `label`
+    // (empty for none) is the heading when the name is only an id, such as
+    // one a wapp hides with `<name>__hidden`.
+    final name = _t(group.getString('label') ?? group.name);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
@@ -512,6 +514,7 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
     return DetailsField(
       sections: sections,
       emptyText: _t(field.getString('empty')),
+      rows: field.getString('layout') == 'rows',
     );
   }
 
@@ -1605,6 +1608,10 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
 
   Widget _renderAction(GeoUiBlock action) {
     final name = action.name ?? '';
+    // A run of buttons on the screen skips hidden ones before it gets here;
+    // a button inside a group card comes straight here, and `__hidden` has to
+    // hold for it too.
+    if (_hidden(name)) return const SizedBox.shrink();
     // `<name>__label`, set by the wapp with ui.field.set, the way `__hidden`
     // and `__readonly` already work. A screen definition is written once for
     // every kind of thing that will ever use it; what the button DOES is
@@ -1815,6 +1822,12 @@ IconData geoUiResolveIcon(String name) {
     // settings screen wants.
     case 'wifi':
       return Icons.wifi;
+    case 'bluetooth':
+      return Icons.bluetooth;
+    case 'system_update':
+      return Icons.system_update;
+    case 'check_circle':
+      return Icons.check_circle_outline;
     case 'key':
       return Icons.key;
     case 'memory':

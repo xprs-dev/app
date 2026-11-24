@@ -62,6 +62,7 @@
   "onboarding.vanity.tried": "{count} chaves testadas · {time}",
   "onboarding.vanity.still_looking": "ainda a procurar…",
   "onboarding.vanity.searching": "A procurar…",
+  "onboarding.vanity.unavailable": "Procurar um indicativo precisa da app; não funciona num navegador.",
   "onboarding.vanity.empty": "Os resultados aparecem aqui.\nO seu indicativo continua a ser {callsign} até escolher um.",
   "onboarding.vanity.use": "Usar",
   "onboarding.apps.get_started": "Começar",

@@ -62,6 +62,7 @@
   "onboarding.vanity.tried": "{count} clés essayées · {time}",
   "onboarding.vanity.still_looking": "recherche en cours…",
   "onboarding.vanity.searching": "Recherche…",
+  "onboarding.vanity.unavailable": "La recherche d'indicatif a besoin de l'application ; elle ne fonctionne pas dans un navigateur.",
   "onboarding.vanity.empty": "Les résultats apparaîtront ici.\nVotre indicatif reste {callsign} tant que vous n'en choisissez pas un.",
   "onboarding.vanity.use": "Utiliser",
   "onboarding.apps.get_started": "Commencer",

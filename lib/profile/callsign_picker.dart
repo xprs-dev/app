@@ -1,32 +1,34 @@
 /*
- * VanityCallsignPage — a full screen for one job: finding a callsign you like.
+ * CallsignPickerPage — the one screen for choosing a callsign, whoever it is
+ * for: a person (X1, the welcome page), a station (X3, a board flashed by the
+ * Firmwares wapp) or a group (X5, a new group in Chat).
  *
- * A callsign is the first thing a new user is asked to accept, and it is
- * random. Most people want their initials in it. Squeezed into the corner of
- * the welcome page, the generator was a text field, a button, some counters and
- * a wrap of chips competing for room with the preview card, the nickname field
- * and the Continue button — on a phone, all of it at once. So it gets its own
- * screen: type a pattern, watch it search, tap the one you want.
+ * A callsign is its kind's two characters and the first characters of a key
+ * (XPRS.md 3), so choosing one means generating keys until one starts the way
+ * the person likes. The screen is the same for every kind: type a few
+ * letters, watch it search, tap the one you want. What differs is WHERE the
+ * keys are made, and that is a [CallsignKeySource]: [IsolateCallsignSource]
+ * searches on a worker isolate (callsign_search_io.dart; docs/performance.md
+ * 8.1) and hands the chosen key back. Who keeps it is the caller's business:
+ * a person's profile, a station the Firmwares wapp hands it to sealed, or the
+ * core's group-key pool (XprsGroupKeys.offer, 26.1: a wapp never holds a
+ * group's key).
  *
- * The search itself is a brute force — generate keypairs until a callsign
- * contains the pattern — so it runs on its OWN ISOLATE. It must never be on the
- * main isolate: it burns a core flat out for as long as it runs, and it runs for
- * minutes on a 4-character pattern.
- *
- * Returns the chosen [IwiProfile] via Navigator.pop, or null if the user backs
- * out. Nothing is written to disk here — the welcome page still owns that.
+ * Returns the chosen [PickedCallsign] via Navigator.pop, or null when the
+ * person backs out. Nothing is written anywhere here.
  */
 
 import 'dart:async';
-import 'dart:isolate';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:reticulum/reticulum.dart' show NostrCrypto;
 
-import 'iwi_profile.dart';
-import '../util/nostr_key_generator.dart';
 import '../services/i18n/core_i18n.dart';
+import 'callsign_key_source.dart';
+
+export 'callsign_key_source.dart';
+export 'callsign_search.dart';
 
 /// The only characters a callsign can ever contain.
 ///
@@ -94,71 +96,44 @@ class CallsignLengthFacts {
   }
 }
 
-/// Brute-forces vanity callsigns off the main isolate. The main isolate sends
-/// `{pattern, batchSize, length}`; we generate that many keypairs and reply with
-/// `{keysGenerated, matches}` where each match's callsign contains the pattern.
-/// One batch per reply keeps the UI responsive and the search stoppable.
-void vanityIsolate(SendPort mainSendPort) {
-  final port = ReceivePort();
-  mainSendPort.send(port.sendPort);
-  port.listen((message) {
-    if (message == 'stop') {
-      port.close();
-      return;
-    }
-    if (message is Map) {
-      final pattern = message['pattern'] as String;
-      final batchSize = message['batchSize'] as int;
-      final length =
-          (message['length'] as int?) ?? kDefaultCallsignLength;
-      var generated = 0;
-      final matches = <Map<String, String>>[];
-      for (var i = 0; i < batchSize; i++) {
-        final keys =
-            NostrKeyGenerator.generateKeyPair(callsignLength: length);
-        generated++;
-        if (keys.callsign.contains(pattern)) {
-          matches.add({
-            'npub': keys.npub,
-            'nsec': keys.nsec,
-            'callsign': keys.callsign,
-          });
-        }
-      }
-      mainSendPort.send({'keysGenerated': generated, 'matches': matches});
-    }
-  });
-}
+class CallsignPickerPage extends StatefulWidget {
+  /// Where the keys come from, and so what kind of callsign this is.
+  final CallsignKeySource source;
 
-class VanityCallsignPage extends StatefulWidget {
-  /// The callsign currently on the welcome page, so it can be shown as the one
-  /// in play and the user knows what they are replacing.
+  /// The callsign in play now, so the person knows what they would replace.
+  /// Empty when there is none yet (a board not flashed).
   final String currentCallsign;
 
-  const VanityCallsignPage({super.key, required this.currentCallsign});
+  /// A length the caller cannot change: a station derives its callsign with
+  /// its firmware's length and a group with the core's, so offering another
+  /// would find keys that come out differently. Null shows the length picker.
+  final int? fixedLength;
+
+  const CallsignPickerPage({
+    super.key,
+    required this.source,
+    this.currentCallsign = '',
+    this.fixedLength,
+  });
 
   @override
-  State<VanityCallsignPage> createState() => _VanityCallsignPageState();
+  State<CallsignPickerPage> createState() => _CallsignPickerPageState();
 }
 
-class _VanityCallsignPageState extends State<VanityCallsignPage> {
+class _CallsignPickerPageState extends State<CallsignPickerPage> {
   final TextEditingController _pattern = TextEditingController();
 
-  /// How many characters of the key the callsign will show. Fixed once the
-  /// profile is written — the callsign is also its directory name on disk —
-  /// so this screen is the only place it can be chosen.
-  int _length = kDefaultCallsignLength;
+  /// How many characters of the key the callsign will show.
+  late int _length = widget.fixedLength ?? kDefaultCallsignLength;
 
   bool _running = false;
   int _tried = 0;
+  String _gaveUp = '';
   Duration _elapsed = Duration.zero;
-  Timer? _timer;
   Stopwatch? _watch;
-  final List<IwiProfile> _matches = [];
+  final List<PickedCallsign> _matches = [];
 
-  Isolate? _isolate;
-  ReceivePort? _receivePort;
-  SendPort? _sendPort;
+  String get _prefix => widget.source.prefix;
 
   @override
   void dispose() {
@@ -176,47 +151,31 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
     setState(() {
       _running = true;
       _tried = 0;
+      _gaveUp = '';
       _elapsed = Duration.zero;
       _matches.clear();
     });
+    // No timer: every source reports at least twice a second while it
+    // searches, and each report moves the clock (CallsignKeySource.start).
     _watch = Stopwatch()..start();
-    _timer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      if (mounted) setState(() => _elapsed = _watch!.elapsed);
-    });
-    _receivePort = ReceivePort();
-    _isolate = await Isolate.spawn(vanityIsolate, _receivePort!.sendPort);
-    _receivePort!.listen((message) {
-      if (message is SendPort) {
-        _sendPort = message;
-        _requestBatch(pattern);
-      } else if (message is Map && mounted) {
-        setState(() {
-          _tried += message['keysGenerated'] as int;
-          for (final m in (message['matches'] as List)) {
-            final mm = (m as Map).cast<String, String>();
-            final cs = mm['callsign']!;
-            if (_matches.any((p) => p.callsign == cs)) continue;
-            _matches.insert(
-              0,
-              IwiProfile(
-                id: cs,
-                nickname: '',
-                callsign: cs,
-                npub: mm['npub']!,
-                nsec: mm['nsec']!,
-                createdAt: DateTime.now().millisecondsSinceEpoch,
-              ),
-            );
-            if (_matches.length > 50) _matches.removeLast();
-          }
-        });
-        if (_running && mounted) _requestBatch(pattern);
-      }
+    await widget.source.start(pattern, _length, (tried, found) {
+      if (!mounted) return;
+      setState(() {
+        _tried += tried;
+        _elapsed = _watch?.elapsed ?? _elapsed;
+        for (final m in found) {
+          // New matches go below, so the row under a finger never moves.
+          if (_matches.length >= 50) break;
+          if (_matches.any((p) => p.callsign == m.callsign)) continue;
+          _matches.add(m);
+        }
+      });
+    }, (why) {
+      if (!mounted) return;
+      _stop();
+      setState(() => _gaveUp = why);
     });
   }
-
-  void _requestBatch(String pattern) => _sendPort
-      ?.send({'pattern': pattern, 'batchSize': 1000, 'length': _length});
 
   /// Changing the length invalidates every match already found (they are the
   /// wrong shape now) and any pattern longer than the new callsign.
@@ -234,15 +193,8 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
   }
 
   void _stop() {
-    _sendPort?.send('stop');
-    _isolate?.kill(priority: Isolate.immediate);
-    _isolate = null;
-    _receivePort?.close();
-    _receivePort = null;
-    _sendPort = null;
+    widget.source.stop();
     _running = false;
-    _timer?.cancel();
-    _timer = null;
     _watch?.stop();
     if (mounted) setState(() {});
   }
@@ -253,9 +205,9 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
-  /// Hand the chosen identity back to the welcome page. Stop the search first —
-  /// it is a core at 100% and nobody is watching it any more.
-  void _use(IwiProfile p) {
+  /// Hand the choice back. Stop the search first: it is a core at 100% and
+  /// nobody is watching it any more.
+  void _use(PickedCallsign p) {
     _stop();
     Navigator.of(context).pop(p);
   }
@@ -281,7 +233,7 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
             for (var i = kMinCallsignLength; i <= kMaxCallsignLength; i++)
               ButtonSegment<int>(
                 value: i,
-                label: Text('X1${'•' * i}'),
+                label: Text('$_prefix${'•' * i}'),
                 enabled: !_running,
               ),
           ],
@@ -325,6 +277,16 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
     );
   }
 
+  /// What the list says before anything is found.
+  String _emptyText() {
+    if (_running) return tr('onboarding.vanity.searching');
+    if (_gaveUp.isNotEmpty) return _gaveUp;
+    // Without a callsign in play (a board not flashed yet, a group not made)
+    // only the first line applies.
+    final s = tr('onboarding.vanity.empty', {'callsign': widget.currentCallsign});
+    return widget.currentCallsign.isEmpty ? s.split('\n').first : s;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -365,8 +327,10 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                 style: theme.textTheme.bodySmall?.copyWith(color: cs.tertiary),
               ),
               const SizedBox(height: 20),
-              _lengthPicker(theme, cs),
-              const SizedBox(height: 20),
+              if (widget.fixedLength == null) ...[
+                _lengthPicker(theme, cs),
+                const SizedBox(height: 20),
+              ],
               Row(
                 children: [
                   Expanded(
@@ -449,10 +413,7 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                 child: _matches.isEmpty
                     ? Center(
                         child: Text(
-                          _running
-                              ? tr('onboarding.vanity.searching')
-                              : tr('onboarding.vanity.empty',
-                                  {'callsign': widget.currentCallsign}),
+                          _emptyText(),
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyMedium
                               ?.copyWith(color: cs.onSurfaceVariant),
@@ -460,7 +421,8 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                       )
                     : ListView.separated(
                         itemCount: _matches.length,
-                        separatorBuilder: (context, i) => const Divider(height: 1),
+                        separatorBuilder: (context, i) =>
+                            const Divider(height: 1),
                         itemBuilder: (context, i) {
                           final m = _matches[i];
                           return ListTile(
@@ -477,11 +439,13 @@ class _VanityCallsignPageState extends State<VanityCallsignPage> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            subtitle: Text(
-                              '${m.npub.substring(0, 20)}…',
-                              style: const TextStyle(
-                                  fontFamily: 'monospace', fontSize: 11),
-                            ),
+                            subtitle: m.npub.length > 20
+                                ? Text(
+                                    '${m.npub.substring(0, 20)}…',
+                                    style: const TextStyle(
+                                        fontFamily: 'monospace', fontSize: 11),
+                                  )
+                                : null,
                             trailing: FilledButton(
                               onPressed: () => _use(m),
                               child: Text(tr('onboarding.vanity.use')),

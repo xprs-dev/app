@@ -39,8 +39,8 @@ const Map<String, String> _allowed = {
   'lib/profile/identity_backup.dart': 'a backup carries both names',
   // The profile editor shows the derived name in its own read-only row.
   'lib/profile/profile_edit_page.dart': 'shown as itself, read-only',
-  // The vanity generator is about derivation by definition.
-  'lib/profile/vanity_callsign_page.dart': 'about derivation itself',
+  // The callsign picker is about derivation by definition.
+  'lib/profile/callsign_picker.dart': 'about derivation itself',
   // The model defines both.
   'lib/profile/iwi_profile.dart': 'defines them',
   // The derived name becomes the ALIAS the receive door answers to, which is

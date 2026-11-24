@@ -8,6 +8,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xprs/services/xprs/xprs_group_keys.dart';
+import 'package:reticulum/reticulum.dart' show NostrCrypto;
 
 void main() {
   late Directory tmp;
@@ -122,5 +123,18 @@ void main() {
     // Going back to the very first one still creates THAT group.
     final g = k.create(nick: 'early', callsign: first.first)!;
     expect(g.callsign, first.first);
+  });
+
+  test('a key found by the callsign search is offered and created by its callsign', () {
+    final k = XprsGroupKeys.instance;
+    final kp = NostrCrypto.generateKeyPair();
+    final call = k.offer(kp)!;
+    expect(call, 'X5${NostrCrypto.deriveCallsign(kp.publicKeyHex)}');
+    expect(k.mine(), isEmpty, reason: 'an offer stores nothing');
+    final g = k.create(nick: 'searched', callsign: call)!;
+    expect(g.callsign, call);
+    expect(g.npub, kp.npub, reason: 'the group is the offered key, not a fresh one');
+    // A held group's callsign is never offered again.
+    expect(k.offer(kp), isNull);
   });
 }

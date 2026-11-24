@@ -62,6 +62,7 @@
   "onboarding.vanity.tried": "{count} Schlüssel geprüft · {time}",
   "onboarding.vanity.still_looking": "sucht noch…",
   "onboarding.vanity.searching": "Suche…",
+  "onboarding.vanity.unavailable": "Die Rufzeichensuche braucht die App; im Browser läuft sie nicht.",
   "onboarding.vanity.empty": "Treffer erscheinen hier.\nDein Rufzeichen bleibt {callsign}, bis du eines wählst.",
   "onboarding.vanity.use": "Verwenden",
   "onboarding.apps.get_started": "Los geht's",

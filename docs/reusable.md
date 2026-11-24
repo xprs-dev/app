@@ -1701,10 +1701,13 @@ maxBytes`). Any wapp reading an address it did not vet sends one.
 
 - **`CallsignPickerPage`** (`lib/profile/callsign_picker.dart`): THE screen
   for choosing a callsign by letters, for every kind. Pass a
-  `CallsignKeySource`: `IsolateCallsignSource('X1'|'X3')` searches on its own
-  isolate and returns the key with the callsign; `GroupPoolCallsignSource()`
-  searches the core's group-key pool, which keeps the key, and returns the
-  callsign only. Users: the welcome page (X1), `ui.callsign.pick` from a wapp
+  `CallsignKeySource`: `IsolateCallsignSource(prefix)` searches on a worker
+  isolate (`callsign_search_io.dart`, web stub behind `callsign_search.dart`)
+  and returns the key with the callsign, reporting every 250 ms so the page
+  needs no timer. For a group the caller hands the chosen key to
+  `XprsGroupKeys.offer(kp)` (core), which keeps it in its pool and returns
+  the callsign; never search with `candidates()`, which mints on the
+  caller's isolate. Users: the welcome page (X1), `ui.callsign.pick` from a wapp
   (Firmwares, X3), and the `search: "X5"` button of a prompt's `cycle`
   (Chat's new group). Do not write another search; add a source if a new
   kind keeps its keys somewhere else.

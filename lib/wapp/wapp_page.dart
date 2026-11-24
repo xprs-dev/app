@@ -57,6 +57,8 @@ import 'geoui/widgets/micron_view.dart';
 import 'geoui/widgets/profile_route.dart';
 import 'geoui/widgets/media_view.dart' show sharedMediaArchive;
 import '../profile/profile_edit_page.dart';
+import '../profile/callsign_picker.dart';
+import '../services/xprs/xprs_group_keys.dart';
 import '../util/media_ref.dart';
 import '../util/nostr_crypto.dart';
 import '../util/nostr_imeta.dart';
@@ -2523,6 +2525,11 @@ class _WappPageState extends State<WappPage>
               break;
             }
           }
+        } else if (type == 'ui.callsign.pick') {
+          // A wapp asks the person to choose a callsign (a station's, when a
+          // board is flashed or re-keyed). The search is the app's own screen,
+          // on its own isolate: a wapp has no thread to grind keys on.
+          _pickCallsign(data);
         } else if (type == 'ui.screen.close') {
           if (_panelScreen != null) {
             _panelScreen = null;
@@ -4091,6 +4098,69 @@ class _WappPageState extends State<WappPage>
     );
   }
 
+  /// `ui.callsign.pick` {field, prefix, length, current}: open the one
+  /// callsign picker ([CallsignPickerPage]) and hand the choice back as the
+  /// command `<field>_picked` with `<field>_call` among its fields.
+  ///
+  /// X5 (a group): the core's group-key pool keeps the chosen key, and the
+  /// wapp gets the callsign and creates the group by it
+  /// (hal_xprs_group_create_as). Any other kind's key comes back too, as
+  /// `<field>_nsec`, a secret field: it rides
+  /// that one command, is never stored with the wapp's settings, and is
+  /// dropped right after.
+  Future<void> _pickCallsign(Map<String, dynamic> data) async {
+    final field = (data['field'] ?? 'callsign').toString();
+    var prefix = (data['prefix'] ?? 'X1').toString().toUpperCase();
+    if (!RegExp(r'^X[1-5]$').hasMatch(prefix)) prefix = 'X1';
+    final want = (data['length'] as num?)?.toInt();
+    final length = want != null &&
+            want >= kMinCallsignLength &&
+            want <= kMaxCallsignLength
+        ? want
+        : null;
+    final picked = await _openCallsignPicker(
+      prefix,
+      current: (data['current'] ?? '').toString(),
+      length: length,
+    );
+    if (!mounted || picked == null) return;
+    final secret = '${field}_nsec';
+    _fieldValues['${field}_call'] = picked.callsign;
+    if (picked.nsec.isNotEmpty) {
+      _secretFields.add(secret);
+      _fieldValues[secret] = picked.nsec;
+    }
+    _sendCommand('${field}_picked');
+    _fieldValues.remove(secret);
+  }
+
+  /// The callsign picker for a kind. Every kind searches on the picker's
+  /// worker isolate (docs/performance.md 8.1). A group's chosen key is then
+  /// offered to the core's group-key pool, which keeps it, and only the
+  /// callsign comes back: the wapp creates the group by it
+  /// (hal_xprs_group_create_as) and never holds the key.
+  Future<PickedCallsign?> _openCallsignPicker(String prefix,
+      {String current = '', int? length}) async {
+    final group = prefix == 'X5';
+    final picked = await Navigator.of(context).push<PickedCallsign>(
+      MaterialPageRoute(
+        builder: (_) => CallsignPickerPage(
+          source: IsolateCallsignSource(prefix),
+          currentCallsign: current,
+          // The pool derives at the default length; offering another would
+          // find callsigns it cannot create.
+          fixedLength: group ? kDefaultCallsignLength : length,
+        ),
+      ),
+    );
+    if (picked == null || !group) return picked;
+    final call = XprsGroupKeys.instance.offer(NostrKeyPair(
+      privateKeyHex: NostrCrypto.decodeNsec(picked.nsec),
+      publicKeyHex: NostrCrypto.decodeNpub(picked.npub),
+    ));
+    return call == null ? null : PickedCallsign(callsign: call);
+  }
+
   /// Close an open `ui.screen.open` panel AND tell the wapp it went.
   ///
   /// The arrow on a panel's app bar is the host's, so a wapp used to learn
@@ -4691,6 +4761,11 @@ class _WappPageState extends State<WappPage>
     // more (`prompt_more`, answered with ui.prompt.cycle) instead of the
     // dialog going round the same few again.
     final cycleMore = cycle?['more'] == true;
+    // `search: "X5"`: a search button beside the arrows opens the callsign
+    // picker for that kind, and the one chosen joins the values, shown. Only
+    // a group's, whose keys the core pool keeps: the dialog hands back the
+    // value, so the key behind it has to be somewhere the wapp can create by.
+    final cycleSearch = (cycle?['search'] ?? '').toString() == 'X5';
     var cycleAsked = false;
     var cycleWaiting = false;
     void Function(VoidCallback)? cycleSet;
@@ -4797,6 +4872,22 @@ class _WappPageState extends State<WappPage>
                       ),
                     ),
                   ),
+                  if (cycleSearch)
+                    IconButton(
+                      icon: const Icon(Icons.search),
+                      tooltip: tr('onboarding.vanity.title'),
+                      onPressed: () async {
+                        final p = await _openCallsignPicker('X5');
+                        if (p == null) return;
+                        setLocal(() {
+                          if (!cycleValues.contains(p.callsign)) {
+                            cycleValues.add(p.callsign);
+                          }
+                          cycleShown.add(cycleAt);
+                          cycleAt = cycleValues.indexOf(p.callsign);
+                        });
+                      },
+                    ),
                   IconButton(
                     icon: const Icon(Icons.undo),
                     tooltip: cycleBack.isNotEmpty ? cycleBack : null,
@@ -7365,6 +7456,7 @@ class _WappPageState extends State<WappPage>
             emptyTitle: _resolveOrNull(field.getString('empty_title')),
             emptyArt: field.getString('empty_art'),
             loadAsset: _readWappArt,
+            headers: field.getString('layout') == 'headers',
             onTap: (id) {
               if (_wappName == 'social' && name == 'follows_list') {
                 _openNostrProfile(id);
@@ -9395,6 +9487,11 @@ class _WappPageState extends State<WappPage>
       } catch (_) {
         return null;
       }
+    }
+    // A picture on the web (a board's product photo from the firmware
+    // catalogue), decoded bounded like every network image here.
+    if (pic.startsWith('https://') || pic.startsWith('http://')) {
+      return bannerImage(pic, width: 720);
     }
     final refs = MediaRef.findAll(pic);
     if (refs.isEmpty) return null;
