@@ -3764,6 +3764,8 @@ function applyServices(sv){
   /* Files by reference (API-HTTP.md /api/xprs/file): a station that
    * says nothing serves none, and the editor offers no image button. */
   if(sv&&sv.file)fileCaps={get:!!sv.file.get,put:!!sv.file.put,max:+sv.file.max||0};
+  /* Messages drawn before this answer came show placeholders: try them now. */
+  if(fileCaps.get){var ph=document.querySelectorAll('.mdph'),q;for(q=0;q<ph.length;q++)mdImgTry(ph[q]);}
   var p=sv&&sv.page;
   if(!p)return tidyMenu();
   if(p.session){canSession=true;ensureSession(0);}
