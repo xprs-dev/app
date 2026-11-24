@@ -11,6 +11,7 @@ import 'package:xprs_core/src/platform/os.dart' as platform;
 import 'package:xprs_core/src/services/xprs/xprs_passphrases.dart';
 import 'package:xprs_core/src/services/xprs/xprs_shared_position.dart';
 
+import '../profile/profile_service.dart';
 import '../services/i18n/core_i18n.dart';
 import '../services/location_service.dart';
 import '../services/notification_service.dart';
@@ -27,9 +28,27 @@ String positionRadiusLabel(int m) => m >= 1000 ? '${m ~/ 1000} km' : '$m m';
 /// switch. A desktop is not a moving thing with a GPS and stays off until its
 /// owner says; whoever already chose keeps their choice.
 void sharePositionByDefault() {
+  if (!platform.isAndroid && !platform.isIOS) return;
+  // On a first run there is no profile yet: the bell keeps its notices per
+  // profile, so one raised now would be gone when the profile opens. The
+  // default and its notice wait for it; nothing is aired before either.
+  final active = ProfileService.instance.activeProfileNotifier;
+  if (active.value != null) {
+    _shareByDefault();
+    return;
+  }
+  late final void Function() once;
+  once = () {
+    if (active.value == null) return;
+    active.removeListener(once);
+    _shareByDefault();
+  };
+  active.addListener(once);
+}
+
+void _shareByDefault() {
   final prefs = PreferencesService.instanceSync;
   if (prefs == null || prefs.positionShareChosen) return;
-  if (!platform.isAndroid && !platform.isIOS) return;
   prefs.positionShare = true;
   NotificationService.instance.show(XprsNotification(
     level: NotificationLevel.info,
@@ -91,7 +110,25 @@ class _PositionShareCardState extends State<PositionShareCard> {
     _rehide();
   }
 
-  void _newCode() {
+  /// A new code cuts off everyone who had the old one: asked first, since
+  /// the button sits beside Copy.
+  Future<void> _newCode() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('settings.position.code_new')),
+        content: Text(tr('settings.position.code_help')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(tr('common.cancel'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(tr('settings.position.code_new'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
     final c = xprsNewPosCode();
     _prefs?.positionCode = c;
     _code.text = c;
@@ -258,24 +295,28 @@ class _PositionShareCardState extends State<PositionShareCard> {
                     helperText: tr('settings.position.code_help'),
                     helperMaxLines: 3,
                     border: const OutlineInputBorder(),
-                    suffixIcon: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.copy),
-                          tooltip: tr('settings.position.code_copy'),
-                          onPressed: _copyCode,
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.refresh),
-                          tooltip: tr('settings.position.code_new'),
-                          onPressed: _newCode,
-                        ),
-                      ],
-                    ),
                   ),
                   onChanged: _codeChanged,
                   onSubmitted: (_) => _saveCode(),
+                ),
+              ),
+              // Under the field, not inside it: on a narrow phone two icons
+              // in the field cut the code short.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+                child: Wrap(
+                  children: [
+                    TextButton.icon(
+                      icon: const Icon(Icons.copy, size: 18),
+                      label: Text(tr('settings.position.code_copy')),
+                      onPressed: _copyCode,
+                    ),
+                    TextButton.icon(
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: Text(tr('settings.position.code_new')),
+                      onPressed: _newCode,
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -309,39 +350,34 @@ class _PositionShareCardState extends State<PositionShareCard> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-            child: Row(
+            child: Column(
               children: [
-                SizedBox(
-                  width: 110,
-                  child: TextField(
-                    controller: _friend,
-                    textCapitalization: TextCapitalization.characters,
-                    autocorrect: false,
-                    decoration: InputDecoration(
-                      labelText: tr('settings.position.friend_call'),
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                    ),
+                TextField(
+                  controller: _friend,
+                  textCapitalization: TextCapitalization.characters,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                    labelText: tr('settings.position.friend_call'),
+                    border: const OutlineInputBorder(),
+                    isDense: true,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _friendCode,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    decoration: InputDecoration(
-                      labelText: tr('settings.position.friend_code'),
-                      border: const OutlineInputBorder(),
-                      isDense: true,
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _friendCode,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: InputDecoration(
+                    labelText: tr('settings.position.friend_code'),
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.add),
+                      tooltip: tr('settings.position.friend_add'),
+                      onPressed: _addFriend,
                     ),
-                    onSubmitted: (_) => _addFriend(),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  tooltip: tr('settings.position.friend_add'),
-                  onPressed: _addFriend,
+                  onSubmitted: (_) => _addFriend(),
                 ),
               ],
             ),

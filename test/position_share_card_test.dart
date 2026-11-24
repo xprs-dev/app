@@ -63,15 +63,38 @@ void main() {
     await t.pump();
     expect(copied, code);
 
+    // A new code is asked about first, and kept when the answer is no.
+    await t.tap(find.byIcon(Icons.refresh));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await t.pumpAndSettle();
+    expect(PreferencesService.instanceSync!.positionCode, code);
+
+    await t.tap(find.byIcon(Icons.refresh));
+    await t.pumpAndSettle();
     await t.runAsync(() async {
-      await t.tap(find.byIcon(Icons.refresh));
+      await t.tap(find.widgetWithText(FilledButton, 'New code'));
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
-    await t.pump();
+    await t.pumpAndSettle();
     final next = PreferencesService.instanceSync!.positionCode;
     expect(next, isNot(code));
     expect(find.text(next), findsOneWidget);
     expect(find.text(code), findsNothing);
+  });
+
+  testWidgets('on a narrow phone the whole code is on the line', (t) async {
+    t.view.physicalSize = const Size(360, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await open(t);
+    final code = PreferencesService.instanceSync!.positionCode;
+    // The code has the field's whole width: nothing sits beside it.
+    final field = find.widgetWithText(TextField, code);
+    final typed = find.descendant(of: field, matching: find.byType(EditableText));
+    expect(t.getSize(typed).width, greaterThan(t.getSize(field).width - 40));
+    expect(find.descendant(of: field, matching: find.byType(IconButton)), findsNothing);
+    expect(t.takeException(), isNull);
   });
 
   testWidgets('switched off, nothing is said and the code is put away', (t) async {
