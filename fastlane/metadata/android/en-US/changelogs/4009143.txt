@@ -1,0 +1,6 @@
+Chat tests: expect the relayer in via (0.10.17) and Share link first in the member panel (0.10.14)
+One callsign picker for people, stations and groups; Firmwares and Chat updated
+Firmwares 0.4.0: one list, one station page, one install panel; Chat 0.10.24
+Group keys: offer() takes one key minted elsewhere into the pool
+Location: the code in full on a narrow phone, a new code is confirmed, the first-run notice survives
+...and 4 more changes.
