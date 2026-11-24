@@ -1,0 +1,3 @@
+A public group's pictures are anybody's, like its words (10.7.1)
+Chat 0.10.23: a button over the chat jumps to words that arrived late
+Chat 0.10.23: words that arrive late are counted, rung and marked, and the room jumps to them
