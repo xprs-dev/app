@@ -426,6 +426,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 .grp+.daysep{margin-top:2px}
 .msg{max-width:85%}
 .daysep{align-self:center;margin:10px 0 4px;position:sticky;top:0;z-index:2}
+.daysep.under{visibility:hidden}
 .daysep span{display:inline-block;background:var(--panel);border:1px solid var(--border);color:var(--muted);
         font-size:12px;padding:3px 12px;border-radius:999px;box-shadow:0 1px 4px rgba(0,0,0,.25)}
 .msg .meta{font-size:11px;margin-bottom:2px}
@@ -1023,6 +1024,25 @@ function openBody(privBytes,peerX,x){
 
 function nostrAvailable(){return !!(window.nostr&&window.nostr.getPublicKey);}
 
+/* One request at a time to the extension, [fn](done) each. nos2x shows a popup
+ * per request and queues the rest; a popup closing can deny the next one
+ * before it is seen, and the login (identity, then session) asks twice at
+ * once. A request that took long had a person answer a popup: the next waits
+ * a moment, until that window is gone. */
+var nostrBusy=false,nostrWaiting=[];
+function nostrQueue(fn){
+  nostrWaiting.push(fn);
+  if(!nostrBusy)nostrNext(0);}
+function nostrNext(gap){
+  var fn=nostrWaiting.shift();
+  if(!fn){nostrBusy=false;return;}
+  nostrBusy=true;
+  setTimeout(function(){
+    var t0=Date.now(),over=false;
+    var done=function(){if(over)return;over=true;nostrNext(Date.now()-t0>400?700:0);};
+    try{fn(done);}catch(e){done();}
+  },gap);}
+
 /* "YYYY-MM-DD_hh:mm:ss" (UTC) -> epoch seconds, or 0. */
 function tsEpoch(ts){
   var m=/^(\d{4})-(\d\d)-(\d\d)_(\d\d):(\d\d):(\d\d)$/.exec(ts||'');
@@ -1052,11 +1072,14 @@ function nostrSignWire(canonical,pubHex,cb){
     var sig=b85enc(unhexBytes(signed.sig));
     var i=canonical.indexOf(' m:');
     cb(i>=0?canonical.slice(0,i)+' sig:'+sig+canonical.slice(i):canonical+' sig:'+sig);};
-  try{
-    var r=window.nostr.signEvent(ev.event);
-    if(r&&r.then)r.then(done,function(e){cb(null,(e&&e.message)||'the signer refused');});
-    else done(r);
-  }catch(e){cb(null,(e&&e.message)||'the signer refused');}
+  nostrQueue(function(next){
+    var no=function(e){next();cb(null,(e&&e.message)||'the signer refused');};
+    try{
+      var r=window.nostr.signEvent(ev.event);
+      if(r&&r.then)r.then(function(v){next();done(v);},no);
+      else{next();done(r);}
+    }catch(e){no(e);}
+  });
 }
 function unhexBytes(h){var b=new Uint8Array(h.length/2);
   for(var i=0;i<b.length;i++)b[i]=parseInt(h.substr(2*i,2),16);return b;}
@@ -1085,18 +1108,22 @@ function xToNip04(x){
 function nostrSeal(peerHex,text,cb){
   var n=window.nostr&&window.nostr.nip04;
   if(!n||!n.encrypt){cb(null);return;}
-  try{
-    var r=n.encrypt(peerHex,text),f=function(c){cb(nip04ToX(c));};
-    if(r&&r.then)r.then(f,function(){cb(null);});else f(r);
-  }catch(e){cb(null);}}
+  nostrQueue(function(next){
+    try{
+      var r=n.encrypt(peerHex,text),f=function(c){next();cb(nip04ToX(c));};
+      if(r&&r.then)r.then(f,function(){next();cb(null);});else f(r);
+    }catch(e){next();cb(null);}
+  });}
 /* Open an `x:` value from [peerHex] with the extension: cb(text) or cb(null). */
 function nostrOpen(peerHex,x,cb){
   var n=window.nostr&&window.nostr.nip04,c=xToNip04(x);
   if(!n||!n.decrypt||!c){cb(null);return;}
-  try{
-    var r=n.decrypt(peerHex,c),f=function(t){cb(typeof t==='string'?t:null);};
-    if(r&&r.then)r.then(f,function(){cb(null);});else f(r);
-  }catch(e){cb(null);}}
+  nostrQueue(function(next){
+    try{
+      var r=n.decrypt(peerHex,c),f=function(t){next();cb(typeof t==='string'?t:null);};
+      if(r&&r.then)r.then(f,function(){next();cb(null);});else f(r);
+    }catch(e){next();cb(null);}
+  });}
 
 // ---- formatted text (XPRS.md 4.11): a small markdown, read safely --------
 // A t:blog's m: is markdown: paragraphs, headings, emphasis, lists, quotes,
@@ -1565,16 +1592,30 @@ function fileRoom(){
    the station held three letters for somebody whose page never asked for
    them (seen on a C3, 2026-11-22). Asked again, more patiently, until the
    station answers; what is asked is tiny and asking twice costs nothing. */
+/* The callsign whose login is under way: one at a time, or every caller
+ * (the station's services, choosing the extension, Administration) asked
+ * the signer for its own signature. */
+var sessAsking='';
 function ensureSession(tries){
-  if(!canSession||sess||!canSign())return;
+  if(!canSession||sess||!canSign()||sessAsking===mycall)return;
   var n=tries||0,who=mycall;
+  sessAsking=who;
+  function end(){if(sessAsking===who)sessAsking='';}
   function again(){
+    end();
     if(n<12&&!sess&&mycall===who)setTimeout(function(){ensureSession(n+1);},Math.min(3000+n*2000,15000));}
   sendIdentity();
   getJSON('/api/session',function(d){
     if(!d||!d.nonce)return again();
-    signAny('t:session f:'+mycall+' ts:'+tsNow()+' m:'+d.nonce,function(w){
-      if(!w)return;
+    signAny('t:session f:'+mycall+' ts:'+tsNow()+' m:'+d.nonce,function(w,why){
+      /* Unsigned: said, and asked once more (a signer popup can be closed
+         or lost behind another window). */
+      if(!w){
+        end();
+        if(mycall!==who)return;
+        snack('Not signed in: '+(why||'the signature failed')+(n<1?'. Asking again…':''));
+        if(n<1)setTimeout(function(){ensureSession(n+1);},1500);
+        return;}
       var x=new XMLHttpRequest();
       x.open('POST','/api/session',true);
       x.timeout=25000;
@@ -1582,7 +1623,7 @@ function ensureSession(tries){
       x.onload=function(){
         var j=null;try{j=JSON.parse(x.responseText);}catch(e){}
         if(x.status===200&&j&&j.session){
-          sess=j.session;chatLoaded=false;chatDeep=false;load();
+          end();sess=j.session;chatLoaded=false;chatDeep=false;load();
           onSession(j);
           if(tab==='admin')loadAdmin();
           if(canModerate)loadMyRole();
@@ -1592,6 +1633,7 @@ function ensureSession(tries){
           /* The station has not heard our identity yet: say it again. */
           identSent=0;again();}
         else if(x.status>=500)again();
+        else{end();snack('Not signed in: '+((j&&j.error)||'the station said '+x.status));}
       };
       x.send(JSON.stringify({wire:w}));
     });
@@ -1819,6 +1861,10 @@ function cancelReply(){
  * focus, and a vibration where the device has one. */
 var sndOn=stGet('xprs_sound')!=='0';
 var audioCtx=null,unread=0,baseTitle=document.title;
+/* Only news beeps: a message heard for the first time by this page and sent
+ * after it opened. Opening or switching a room draws its history again, and
+ * that stays quiet. */
+var noticed={},openedAt=Math.floor(Date.now()/1000)-30;
 function unlockAudio(){
   if(!audioCtx){
     try{audioCtx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}
@@ -2555,7 +2601,9 @@ function render(row){
   if(room===null)return;
   if(room.slice(0,3)==='dm:'){dmPeers[room.slice(3)]=true;countDm(room.slice(3),row);}
   if(allRows.indexOf(row)<0)allRows.push(row);
-  if(room!==curRoom){renderSide();return;}
+  /* Heard in another room: the side list counts it; opening that room later
+   * draws it without a beep. */
+  if(room!==curRoom){noticed[wireId(w)]=1;renderSide();return;}
   /* One bubble per message (XPRS.md 5): copies that came round by other
    * relays differ only in via:, which the identifier leaves out. */
   var sk=wireId(w);
@@ -2638,7 +2686,8 @@ function render(row){
     au.style.cursor='pointer';
     au.title='Message '+row.from+' directly';
     au.onclick=function(){openDm(row.from);};
-    notice();   /* somebody else spoke: beep, vibrate, count in the title */
+    if(!noticed[sk]){noticed[sk]=1;   /* somebody else spoke: beep, vibrate, count in the title */
+      if((row.ts||0)>=openedAt)notice();}
   }
   domById[id]=d.querySelector('.likes');
   refreshLikes(id);
@@ -2716,7 +2765,20 @@ function drawDays(){
       var p=document.createElement('div');p.className='daysep';p.setAttribute('data-ts',ds-0.5);
       p.innerHTML='<span>'+esc(dayLabel(t))+'</span>';box.insertBefore(p,kids[i]);last=ds;}
   }
+  daysStuck();
 }
+/* Every day scrolled past stays stuck at the top, all at the same height:
+ * only the newest of them shows, or their pills pile up on each other. */
+function daysStuck(){
+  var box=el('msgs');if(!box)return;
+  var ps=box.querySelectorAll('.daysep'),i,top=[];
+  for(i=0;i<ps.length;i++)top.push(ps[i].getBoundingClientRect().top);
+  for(i=0;i<ps.length;i++)
+    ps[i].classList.toggle('under',i+1<ps.length&&Math.abs(top[i+1]-top[i])<2);
+}
+var daysScroll=0;
+el('msgs').addEventListener('scroll',function(){
+  if(!daysScroll)daysScroll=requestAnimationFrame(function(){daysScroll=0;daysStuck();});},{passive:true});
 function clearChat(){
   toggleMenu();
   clearedBefore=Math.floor(Date.now()/1000);
@@ -2877,6 +2939,61 @@ function tick(){
 }
 // Stats, Station and Settings live behind the menu, not in the tab row.
 function openView(t){toggleMenu();showTab(t);}
+
+// ---- Back goes back a section ------------------------------------------------
+//
+// A phone's back gesture and the browser's Back left the site from anywhere,
+// because the page had no history of its own. Each place a tap leads to (a
+// tab, a room, a gallery folder or event, a forum topic) is one history entry,
+// the address unchanged; an open menu, side list or picture viewer is one too,
+// so Back closes it first. Back comes to the place before; from the first one
+// it leaves the site. The page's own back arrows step the history back too.
+var navStack=[],navAt=0,navBusy=false;
+function navHere(){
+  var m=el('menu'),sd=el('side');
+  return {tab:tab,room:curRoom,
+    galCat:GAL_KINDS[curRoom]?galCat:null,
+    galEv:GAL_KINDS[curRoom]&&galEvent?{id:galEvent.id,title:galEvent.title}:null,
+    topic:curRoom.slice(0,2)==='f:'&&forumTopic?{id:forumTopic.id,title:forumTopic.title}:null,
+    menu:!!m&&/\bopen\b/.test(m.className),side:!!sd&&/\bopen\b/.test(sd.className),
+    box:!!el('galbox')};}
+function navKey(s){return s?JSON.stringify([s.tab,s.room,s.galCat,s.galEv,s.topic,s.menu,s.side,s.box]):'';}
+function navOver(s){return !!s&&(s.menu||s.side||s.box);}
+function navCheck(){
+  if(navBusy||curRoom==='onew')return;
+  var now=navHere(),cur=navStack[navAt],k=navKey(now);
+  if(k===navKey(cur))return;
+  if(navAt>0&&k===navKey(navStack[navAt-1])){navBusy=true;history.back();return;}
+  if(navOver(cur)){navStack[navAt]=now;history.replaceState({nav:navAt},'');return;}
+  navStack.length=++navAt;navStack[navAt]=now;
+  history.pushState({nav:navAt},'');}
+function navRestore(s){
+  navBusy=true;
+  try{
+    if(!s.menu)closeMenu();
+    if(!s.side)closeSide();
+    if(!s.box)galClose();
+    if(s.tab!==tab)showTab(s.tab);
+    if(s.room!==curRoom)switchRoom(s.room);
+    if(GAL_KINDS[s.room]&&(s.galCat!==galCat||navKey({galEv:s.galEv})!==navKey({galEv:galEvent}))){
+      galCat=s.galCat;galEvent=s.galEv;galRows=null;loadGallery(true);}
+    if(s.room.slice(0,2)==='f:'&&JSON.stringify(s.topic)!==JSON.stringify(forumTopic&&{id:forumTopic.id,title:forumTopic.title})){
+      if(s.topic)openTopic(s.topic.id,s.topic.title);else closeTopic();}
+  }catch(e){}
+  navBusy=false;}
+function navStart(){
+  navStack=[navHere()];navAt=0;history.replaceState({nav:0},'');
+  ['click','keyup','touchend','hashchange'].forEach(function(t){
+    (t==='hashchange'?window:document).addEventListener(t,function(){setTimeout(navCheck,0);},true);});
+  window.addEventListener('popstate',function(e){
+    var n=e.state&&typeof e.state.nav==='number'?e.state.nav:null;
+    navBusy=false;
+    if(n===null)return;
+    navAt=n;
+    var s=navStack[n];
+    if(!s){navStack[n]=navHere();return;}   /* from before a reload: stay */
+    if(navKey(s)!==navKey(navHere()))navRestore(s);});
+}
 
 // Traffic: every packet the station filed, not only the ones chat shows.
 //
@@ -5211,6 +5328,7 @@ function adminRelease(){
   var asked=groupFromAddress();
   if(asked){followGroup(asked,true);curRoom='o:'+asked;}
   switchRoom(curRoom);
+  navStart();
   load();
   tabTimer=setInterval(tick,TAB_MS.chat);
   getJSON('/api/services',applyServices);
