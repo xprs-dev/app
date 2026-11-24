@@ -25,5 +25,7 @@
   "notifications.cleanup.deleted.other": "Foram apagados {n} ficheiros guardados para outras pessoas. Os seus ficheiros não foram tocados.",
   "notifications.update.ready": "O XPRS {version} está pronto a instalar",
   "notifications.update.ready.body": "Toque para instalar.",
+  "notifications.position.default": "A sua localização aproximada é partilhada",
+  "notifications.position.default.body": "Num raio de 100 km, no mapa das estações. Toque para alterar ou desligar.",
   "notifications.liked": "{from} gostou da sua mensagem"
 }

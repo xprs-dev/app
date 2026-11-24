@@ -1696,3 +1696,32 @@ the three calls.
 A `Range: bytes=0-N` header on `hal_http_request2` caps the answer at N+1
 bytes whatever the server does (`WappEngine._rangeCap`, `HttpTransport.request
 maxBytes`). Any wapp reading an address it did not vet sends one.
+
+## Wapp UI bridges (2026-11-24)
+
+- **`CallsignPickerPage`** (`lib/profile/callsign_picker.dart`): THE screen
+  for choosing a callsign by letters, for every kind. Pass a
+  `CallsignKeySource`: `IsolateCallsignSource('X1'|'X3')` searches on its own
+  isolate and returns the key with the callsign; `GroupPoolCallsignSource()`
+  searches the core's group-key pool, which keeps the key, and returns the
+  callsign only. Users: the welcome page (X1), `ui.callsign.pick` from a wapp
+  (Firmwares, X3), and the `search: "X5"` button of a prompt's `cycle`
+  (Chat's new group). Do not write another search; add a source if a new
+  kind keeps its keys somewhere else.
+- **`ui.callsign.pick`** {field, prefix, length, current} (`wapp_page.dart`
+  `_pickCallsign`): a wapp opens that screen; the answer is the command
+  `<field>_picked` with `<field>_call`, plus the secret `<field>_nsec` unless
+  the kind keeps its key in the core (X5).
+- **An image field takes a web URL** (`_imageForPicture`): `https://` goes
+  through `bannerImage`, decoded bounded like every network picture.
+
+## A setting on by default, said once (`launcher/position_share_card.dart`)
+
+- `sharePositionByDefault()`: a default that changes for people who never
+  chose (`PreferencesService.positionShareChosen`, i.e. the key is absent) is
+  written once and announced with a notification whose `source` is the page
+  that holds the switch (`hostNotificationPages`). Reuse the three steps for
+  any default turned on later: never-chosen test, write, notice that opens it.
+- The code field in `PositionShareCard` (text field, copy and new-code icons
+  in `suffixIcon`, saved when the typing pauses): the shape for any secret a
+  person shares by hand.

@@ -42,7 +42,8 @@ import 'services/task_monitor_service.dart';
 import 'launcher/archiver_page.dart';
 import 'launcher/boot_splash.dart';
 import 'launcher/launcher.dart';
-import 'launcher/position_share_card.dart' show PositionSharePage;
+import 'launcher/position_share_card.dart'
+    show PositionSharePage, sharePositionByDefault;
 import 'launcher/update_page.dart';
 import 'wapp/wapp_open.dart';
 import 'boot/core_host_app.dart';
@@ -526,6 +527,9 @@ Future<void> _boot() async {
   // A wapp that needs this station's place links straight to the switch.
   hostNotificationPages[PositionSharePage.target] =
       () => const PositionSharePage();
+  // A phone shares its place to 100 km unless its owner chose otherwise:
+  // turned on once, with a notice that opens the switch.
+  sharePositionByDefault();
   // The archiver's cleanup result ("Free space") opens its page.
   hostNotificationPages[ArchiverPage.target] = () => const ArchiverPage();
 

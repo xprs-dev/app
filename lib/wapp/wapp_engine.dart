@@ -3719,7 +3719,7 @@ class WappEngine {
     final halXprsStations = WasmFunction(
       (int outPtr, int outCap) {
         if (outCap <= 0) return 0;
-        final bytes = utf8.encode(XprsMonitor.instance.stationsJson());
+        final bytes = utf8.encode(XprsMonitor.instance.stationsJson(forOwner: true));
         if (bytes.length > outCap) return -bytes.length;
         return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
       },
@@ -3816,7 +3816,8 @@ class WappEngine {
     final halXprsStation = WasmFunction(
       (int callPtr, int callLen, int outPtr, int outCap) {
         if (outCap <= 0 || callLen <= 0) return 0;
-        final row = XprsMonitor.instance.stationJson(_readStr(callPtr, callLen));
+        final row = XprsMonitor.instance
+            .stationJson(_readStr(callPtr, callLen), forOwner: true);
         if (row == null) return 0;
         final bytes = utf8.encode(jsonEncode(row));
         if (bytes.length > outCap) return -bytes.length;
@@ -3825,14 +3826,15 @@ class WappEngine {
       params: [ValueTy.i32, ValueTy.i32, ValueTy.i32, ValueTy.i32],
       results: [ValueTy.i32],
     );
-    // hal_xprs_position: this station's position as its owner shares it, the
-    // same coarsened pos:/acc: its beacon carries (xprs_shared_position.dart).
+    // hal_xprs_position: this station's position as everyone reads it, the
+    // readable digits of the pos:/acc: its beacon carries, bars dropped
+    // (xprs_shared_position.dart).
     final halXprsPosition = WasmFunction(
       (int outPtr, int outCap) {
         if (outCap <= 0) return 0;
         final at = XprsSharedPosition.instance.current();
         if (at == null) return 0;
-        final bytes = utf8.encode(jsonEncode({'pos': at.pos, 'acc': at.acc}));
+        final bytes = utf8.encode(jsonEncode({'pos': xprsPosStrip(at.pos), 'acc': at.acc}));
         if (bytes.length > outCap) return -bytes.length;
         return _writeBytes(outPtr, outCap, Uint8List.fromList(bytes));
       },

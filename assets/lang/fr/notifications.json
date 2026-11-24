@@ -25,5 +25,7 @@
   "notifications.cleanup.deleted.other": "{n} fichiers conservés pour d'autres ont été supprimés. Vos propres fichiers n'ont pas été touchés.",
   "notifications.update.ready": "XPRS {version} est prêt à être installé",
   "notifications.update.ready.body": "Touchez pour installer.",
+  "notifications.position.default": "Votre position approximative est partagée",
+  "notifications.position.default.body": "Dans un rayon de 100 km, sur la carte des stations. Touchez pour modifier ou désactiver.",
   "notifications.liked": "{from} a aimé votre message"
 }
