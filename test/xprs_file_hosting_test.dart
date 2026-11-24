@@ -10,6 +10,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xprs/services/xprs/xprs_group_read.dart';
 import 'package:xprs/services/mesh/mesh_bulk_spool.dart';
 import 'package:xprs/services/xprs/xprs_file_acl.dart';
 import 'package:xprs/services/xprs/xprs_files.dart';
@@ -48,8 +49,7 @@ void main() {
       );
     });
     server.authorize = (sha, requester, {required bool sigVerified}) {
-      final scope = XprsFileAcl.instance.scopeOf(sha);
-      if (scope == null || scope == XprsFileScope.public) return true;
+      if (XprsFileAcl.instance.isOpen(sha)) return true;
       if (!sigVerified) return false;
       return XprsFileAcl.instance.authorized(sha, requester);
     };
@@ -127,6 +127,20 @@ void main() {
     final (sha, _) = putBlob([4, 2], 'png');
     XprsFileAcl.instance.bind(sha, scope: XprsFileScope.public);
     expect(serve(sha, 'X9ZZZ9', sigVerified: false), 202);
+  });
+
+  // A public group's words are anybody's (10.7.1), so are its pictures; a
+  // private one's stay with proven members.
+  test("a public group's file is served to anyone, a private one's is not", () {
+    XprsGroupRead.instance.init('${tmp.path}/read.zx');
+    final (sha, _) = putBlob([5, 7], 'jpg');
+    XprsFileAcl.instance.bind(sha, scope: XprsFileScope.group, group: 'X5PUBG');
+    expect(serve(sha, 'X9ZZZ9', sigVerified: false), 403,
+        reason: 'nothing read of the group yet: not known public');
+    XprsGroupRead.instance.noteSeen('X5PUBG', sealed: false, tsMs: 100000);
+    expect(serve(sha, 'X9ZZZ9', sigVerified: false), 202);
+    XprsGroupRead.instance.noteSeen('X5PUBG', sealed: true, tsMs: 200000);
+    expect(serve(sha, 'X9ZZZ9', sigVerified: false), 403);
   });
 
   int put(String from, {String size = 'size:240kB'}) {
