@@ -1228,15 +1228,25 @@ function mdRender(text,opts){
 
 
 // ---- storage: localStorage -> cookie -> memory (captive WebViews) ----
+/* A cookie only where localStorage does not work: a cookie travels to the
+   server with every request, and xprs_nsec is the secret key (in clear over
+   a station's http, to GitHub's servers on xprs.dev). One left by an older
+   page is dropped as soon as localStorage holds the value. */
 var mem={};
-function stGet(k){
-  try{var v=localStorage.getItem(k);if(v!==null)return v;}catch(e){}
+function cookieGet(k){
   var m=document.cookie.match(new RegExp('(?:^|; )'+k+'=([^;]*)'));
-  if(m)return decodeURIComponent(m[1]);
+  return m?decodeURIComponent(m[1]):null;}
+function cookieDrop(k){try{document.cookie=k+'=; max-age=0; path=/';}catch(e){}}
+function stGet(k){
+  try{var v=localStorage.getItem(k);if(v!==null){if(cookieGet(k)!==null)cookieDrop(k);return v;}}catch(e){}
+  var c=cookieGet(k);
+  if(c!==null)return c;
   return mem[k]!==undefined?mem[k]:null;}
 function stSet(k,v){
-  try{localStorage.setItem(k,v);}catch(e){}
-  try{document.cookie=k+'='+encodeURIComponent(v)+'; max-age=31536000; path=/';}catch(e){}
+  var kept=false;
+  try{localStorage.setItem(k,v);kept=localStorage.getItem(k)===v;}catch(e){}
+  if(kept)cookieDrop(k);
+  else try{document.cookie=k+'='+encodeURIComponent(v)+'; max-age=31536000; path=/';}catch(e){}
   mem[k]=v;}
 
 /* One rule for the message box: where it is disabled it is not shown. Set
@@ -2121,7 +2131,17 @@ function openGroupFromAddress(){
   switchRoom('o:'+g);
   return true;
 }
-window.addEventListener('hashchange',function(){openGroupFromAddress();});
+/* The person the address asks to write to (#dm=<callsign>): opened as that
+   private conversation. How the xprs.dev map's "Message" lands on the
+   station that carries it, where the replies are. */
+function dmFromAddress(){
+  var m=/[#&]dm=([A-Za-z0-9]{3,12}(?:-[A-Za-z0-9]{1,3})?)(?:&|$)/.exec(location.hash||'');
+  return m?baseCall(m[1].toUpperCase()):'';
+}
+window.addEventListener('hashchange',function(){
+  if(openGroupFromAddress())return;
+  var p=dmFromAddress();if(p)openDm(p);
+});
 function joinGroupPrompt(){
   var g=groupName(prompt('Group name (an open group like LISBOA, or a group\'s X5 callsign):')||'');
   if(!g){snack('A name of letters and digits, up to 16');switchRoom('local');return;}
@@ -5387,8 +5407,9 @@ function adminRelease(){
   if(b)useKey(b);else el('call').textContent='\u2026';
   renderSide();
   /* A link to a group opens on it; anything else on the usual room. */
-  var asked=groupFromAddress();
+  var asked=groupFromAddress(),peer=asked?'':dmFromAddress();
   if(asked){followGroup(asked,true);curRoom='o:'+asked;}
+  else if(peer&&peer!==baseCall(mycall)){dmPeers[peer]=true;curRoom='dm:'+peer;}
   switchRoom(curRoom);
   navStart();
   load();
