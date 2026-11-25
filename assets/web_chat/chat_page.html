@@ -674,6 +674,7 @@ body.mapui.wide #mapbg .leaflet-bottom{bottom:0}
 .maptag{display:inline-block;font-size:10px;border:1px solid var(--border);border-radius:8px;padding:1px 7px;
   margin-right:4px;color:var(--muted)}
 .mapall{width:100%;margin-top:2px}
+.mapbase{margin-top:4px;color:var(--accent)}
 .mapcnt.big{line-height:34px;font-size:11px}
 #mapbox{height:55vh;min-height:260px;flex:none;background:#1f1f1f}
 #maplist{padding:0 0 20px}
@@ -4036,8 +4037,10 @@ function galAdd(inp){
    /api/status on a host that does not name itself there (the boards). */
 function showStation(call){
   if(!call)return;
+  var was=stationCall;
   stationCall=String(call).toUpperCase();
   el('stcall').textContent='('+call+')';
+  if(was!==stationCall&&mapRows&&canSwitch())mapShow(mapRows);
 }
 // ---- where the station is: the app's own choice (XPRS.md 15.1, 6.2.1) ----
 // The administrator shares the station's location or not, gives its exact
@@ -5766,8 +5769,8 @@ function loadAccounts(){
   h+='<h3>My archivers</h3><div class="accs">';
   if(!mine.length)h+='<p class="dim">'+(sess?'None yet':'Proving your identity to the station…')+'</p>';
   mine.forEach(function(c,i){
-    h+='<div class="acc"><b>'+esc(c)+'</b>'+(c===stationCall?'<span class="dim">this station</span>':'')+
-      '<span class="sp"></span>'+
+    h+='<div class="acc"><b>'+esc(c)+'</b>'+(c===stationCall?'<span class="dim">'+(canSwitch()?'browsing here':'this station')+'</span>':'')+
+      '<span class="sp"></span>'+useBtn(c)+
       (i?'<button class="act" title="Prefer" onclick="holdMove(\''+esc(c)+'\')">↑</button>':'')+
       (mine.length>1?'<button class="act" onclick="holdDrop(\''+esc(c)+'\')">Remove</button>':'')+'</div>';
   });
@@ -5779,11 +5782,37 @@ function loadAccounts(){
     h+='<h3>Archivers in reach</h3><div class="accs">';
     more.slice(0,20).forEach(function(x){
       h+='<div class="acc"><b>'+esc(x.call)+'</b>'+(x.at?'<span class="dim">'+esc(ago(Date.now()/1000-x.at))+'</span>':'')+
-        '<span class="sp"></span><button class="act" onclick="holdAdd(\''+esc(x.call)+'\')">Add</button></div>';
+        '<span class="sp"></span>'+useBtn(x.call)+'<button class="act" onclick="holdAdd(\''+esc(x.call)+'\')">Add</button></div>';
     });
     h+='</div>';
   }
   el('v-accounts').innerHTML=h;
+}
+/* ---- the page's base: another archiver (xprs.dev) -----------------------
+   The chat, the groups, the map and the station views come from one
+   archiver; on xprs.dev it can be another one anywhere, to see what is said
+   in its part of the world. The shell links to it and checks its proof
+   first (XPRS_REMOTE.use), so one that does not answer changes nothing;
+   then the portal opens again on it, the map where it was. Where the
+   visitor's mail is kept is not changed: that is Add. */
+function canSwitch(){var R=remote();return !!(R&&R.use);}
+function useBtn(c){
+  return canSwitch()&&baseCall(c)!==baseCall(stationCall)?'<button class="act" title="Browse from this archiver" onclick="baseSwitch(\''+esc(c)+'\')">Use</button>':'';
+}
+var MAP_VIEW='xprs.in.view';
+function baseSwitch(c){
+  if(!canSwitch()||baseCall(c)===baseCall(stationCall))return;
+  snack('Switching to '+c+'…');
+  remote().use(c).then(function(go){
+    if(mapObj)try{var m=mapObj.getCenter();
+      sessionStorage.setItem(MAP_VIEW,JSON.stringify({lat:m.lat,lon:m.lng,z:mapObj.getZoom()}));}catch(e){}
+    go();
+  },function(){snack(c+' cannot be reached from here right now; still on '+stationCall);});
+}
+/* The view kept by a switch, once. */
+function mapViewKept(){
+  try{var v=JSON.parse(sessionStorage.getItem(MAP_VIEW)||'null');sessionStorage.removeItem(MAP_VIEW);
+    return v&&isFinite(v.lat)&&isFinite(v.lon)&&isFinite(v.z)?v:null;}catch(e){return null;}
 }
 function holdMove(c){var m=accHold().slice(),i=m.indexOf(c);if(i<1)return;m.splice(i,1);m.splice(i-1,0,c);declareHold(m);}
 function holdDrop(c){var m=accHold().filter(function(x){return x!==c;});if(m.length)declareHold(m);}
@@ -5916,7 +5945,10 @@ function mapMake(){
 /* The map in [box]: the view's own box, or the whole page (mapuiOn). */
 function mapInit(box){
     /* Drawn on a canvas: thousands of markers are one element, not thousands. */
-    mapObj=L.map(box,{worldCopyJump:true,preferCanvas:true,zoomControl:!('ontouchstart' in window)}).setView([30,0],2);
+    var kept=mapViewKept();
+    mapObj=L.map(box,{worldCopyJump:true,preferCanvas:true,zoomControl:!('ontouchstart' in window)})
+      .setView(kept?[kept.lat,kept.lon]:[30,0],kept?kept.z:2);
+    if(kept)mapFitted=true;
     mapLayer=L.layerGroup().addTo(mapObj);
     mapObj.attributionControl.setPrefix(false);
     var Dark=L.GridLayer.extend({createTile:function(c,done){
@@ -6022,7 +6054,9 @@ function mapDraw(rows,cachedAt){
     }
     if(s.pos.metres>=20000){var ring=L.circle(ll,{radius:s.pos.metres,color:'#FFC107',weight:1,fillOpacity:.07,interactive:false}).addTo(mapLayer);bounds.extend(ring.getBounds());}
     /* Popups are made when opened: a thousand stations, no thousand popups. */
-    mapMarks[s.call]=L.circleMarker(ll,{radius:7,color:'#A5D6A7',fillColor:'#43A047',fillOpacity:.95,weight:2})
+    var base=s.call===baseCall(stationCall);
+    mapMarks[s.call]=L.circleMarker(ll,base?{radius:9,color:'#FFC107',fillColor:'#43A047',fillOpacity:.95,weight:4}:
+        {radius:7,color:'#A5D6A7',fillColor:'#43A047',fillOpacity:.95,weight:2})
       .addTo(mapLayer).bindPopup(function(){return mapPop(mapByCall(s.call)||s);});
     bounds.extend(ll);
   });
@@ -6058,7 +6092,15 @@ function mapPop(s){
   var tags=mapTagsOf(s).map(function(t){return '<span class="maptag">'+esc(mapTagName(t))+'</span>';}).join('');
   return mapName(s)+(s.nick?' <span class="dim">'+esc(s.nick)+'</span>':'')+mapMsg(s)+
     (tags?'<div class="maptags">'+tags+'</div>':'')+
-    '<div class="dim">'+(s.last?esc(ago(Date.now()/1000-s.last))+' ago':'')+'</div>';
+    '<div class="dim">'+(s.last?esc(ago(Date.now()/1000-s.last))+' ago':'')+'</div>'+mapUse(s);
+}
+/* An archiver, as the page's base: what the chat, the groups and the map
+   show come from it (baseSwitch). Where the page can reach other stations
+   (xprs.dev) and only for one that keeps messages (serve:archive). */
+function mapUse(s){
+  if(!canSwitch()||(s.serve||[]).indexOf('archive')<0)return '';
+  if(s.call===baseCall(stationCall))return '<div class="dim mapbase">Browsing from here</div>';
+  return '<button class="act mapall" onclick="baseSwitch(\''+esc(s.call)+'\')">Use this archiver</button>';
 }
 /* A station from the list, on the map: its marker centred and opened, the
    drawer folded so the map shows. */
