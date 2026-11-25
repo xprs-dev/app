@@ -1,5 +1,11 @@
 part of 'launcher.dart';
 
+/// The wapp the home screen's devices bar ("36 XPRS devices") opens. It is on
+/// the front screen through that bar, so it holds no module bar
+/// (LaunchCountStore.kDefaultModuleWapps) and the dock leaves it out too,
+/// keeping that icon for another wapp; it is still in the all-apps sheet.
+const _kStatusBarWapp = 'mesh';
+
 /// Resolve one home-screen slot (module bars or dock) to concrete tiles.
 ///
 /// [preferred] is the user's pinned order, or the most-used ranking when they

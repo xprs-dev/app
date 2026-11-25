@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import '../services/i18n/core_i18n.dart';
 
 /// The first thing a new person sees after creating their station: what the
-/// three wapps on the home screen are for. Status, Chat and Mesh are the ones
-/// held on the home bars (LaunchCountStore.kDefaultModuleWapps), so each page
-/// names a thing the person will find there the moment they finish.
+/// three wapps on the home screen are for. Status and Chat hold the top home
+/// bars (LaunchCountStore.kDefaultModuleWapps) and Mesh is behind the devices
+/// bar under them (_kStatusBarWapp in home_modules.dart), so each page names a thing the person will
+/// find there the moment they finish.
 ///
 /// Shown once, on a profile with no launch history (launcher_app.dart). Skip
 /// is always there; nothing here is required to use the app.

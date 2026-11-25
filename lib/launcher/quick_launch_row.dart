@@ -79,10 +79,12 @@ class _QuickLaunchRowState extends State<_QuickLaunchRow> {
         valueListenable: WappUnreadService.instance.counts,
         builder: (context, unread, _) {
         // The bars resolve themselves from the same inputs, so resolving them
-        // again here gives exactly the set they are showing.
+        // again here gives exactly the set they are showing. The devices bar
+        // counts too: the wapp it opens is already on the front screen.
         final onBars = {
           for (final e in _resolveHomeSlot(widget.entries, _moduleFavourites, 3))
             if (e.wappId != null) e.wappId!,
+          _kStatusBarWapp,
         };
         final selected = _resolveDockSlot(
           widget.entries,

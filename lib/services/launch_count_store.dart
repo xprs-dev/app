@@ -44,7 +44,9 @@ class LaunchCountStore {
   }
 
   /// The three wapps a person needs to find first: Status (the `social`
-  /// install), Chat and Mesh. They hold the module bars until the user pins
+  /// install), Chat and Check-in. Mesh is not one of them: the devices bar
+  /// under these opens it (`_kStatusBarWapp` in launcher/home_modules.dart),
+  /// and a Mesh bar beside it was the same door twice. They hold the module bars until the user pins
   /// something of their own, so a fresh install always shows them, and a
   /// wapp opened often does not push one of them off the home screen; the
   /// dock below is where most-used wapps go.
@@ -55,7 +57,7 @@ class LaunchCountStore {
   static const List<String> kDefaultModuleWapps = [
     'social',
     'chat',
-    'mesh',
+    'checkin',
   ];
 
   /// The bars that never move: Status on top, Chat right under it. A pin or
