@@ -4212,6 +4212,7 @@ function drawAdmin(d){
        engine keeps it (pos_range in the settings). */
     if('pos_range' in s){
       var pr=s.pos_range||100000,pat=s.pos_at||'',pll=pat.split(',');
+      adminPos=s;
       var aired=s.pos_share&&pll.length===2?posBarred(+pll[0],+pll[1],pr):'';
       h+='<h3>Location</h3><div class="card" id="ad-pos">'+
         '<label class="opt"><input type="checkbox" id="ps-on"'+(s.pos_share?' checked':'')+
@@ -4219,13 +4220,18 @@ function drawAdmin(d){
         '<small>Shown on maps so people can find this station, at xprs.dev/in/ too. Everyone sees only the square of the size below; the exact spot stays on the station.</small></span></label>'+
         '<div class="frow"><input id="ps-lat" class="grow" inputmode="decimal" oninput="adminDirty=true" placeholder="Latitude, e.g. 48.1372" value="'+esc(pll[0]||'')+'">'+
         '<input id="ps-lon" class="grow" inputmode="decimal" oninput="adminDirty=true" placeholder="Longitude, e.g. 11.5756" value="'+esc(pll[1]||'')+'">'+
-        '<button class="act" onclick="posFromDevice()">Use this device&rsquo;s location</button></div>'+
+        '<button class="act" onclick="posFromDevice()">Use this device&rsquo;s location</button>'+
+        /* A station that can ask its owner's phone in reach (XPRS.md 8, q:pos). */
+        (s.pos_locate?'<button class="act" onclick="posLocate()">Use my phone&rsquo;s location</button>':'')+'</div>'+
         '<div class="frow"><span class="lead" style="min-width:180px">Everyone sees: within</span>'+
         '<select id="ps-r">'+POS_RANGES.map(function(m){
           return '<option value="'+m+'"'+(pr===m?' selected':'')+'>'+rangeText(m)+'</option>';}).join('')+'</select>'+
         '<span class="sp"></span><button class="act primary" onclick="posSave()">Save</button></div>'+
-        '<p class="lead">'+(aired?'Shared: '+esc(aired)+' (within '+rangeText(pr)+')':
+        '<p class="lead">'+(s.pos_asking?'Asking your phone where it is&hellip;':
+          aired?'Shared: '+esc(aired)+' (within '+rangeText(pr)+')':
           s.pos_share?'No location set.':'Not shared.')+'</p></div>';
+      /* The phone answers within two minutes: look again until it has. */
+      if(s.pos_asking){clearTimeout(posPoll);posPoll=setTimeout(function(){if(tab==='admin')loadAdmin();},5000);}
     }
     h+='<h3>Mesh</h3><div class="card">'+
       '<p class="lead">How far away an alert, a post or a message may come from and still be kept here, shown and relayed. '+
@@ -5327,7 +5333,8 @@ function adminDo(action,extra){
             action==='release'?'Administration given up':
             action==='appoint'?'Asked '+extra.call+' to moderate':
             action==='dismiss'?extra.call+' no longer moderates':
-            action==='lift'?extra.call+' may post again':'Saved');
+            action==='lift'?extra.call+' may post again':
+            action==='locate'?'Asking your phone where it is\u2026':'Saved');
       /* The administrator moderates too: accept the role the station offered. */
       if((action==='claim'||(action==='appoint'&&extra.call===baseCall(mycall)))&&
          j.role==='invited'&&j.offer){myOffer=j.offer;acceptModerator();}
@@ -5479,8 +5486,14 @@ function posSave(){
   adminSet({pos_share:true,pos_at:+lat.toFixed(5)+','+(+lon.toFixed(5)),pos_range:r});
   applyPos({pos:posBarred(lat,lon,r),acc:r});
 }
+var adminPos=null,posPoll=null;
+/* Ask the owner's phone in reach where it is: the station does (q:pos). */
+function posLocate(){adminDo('locate',{});}
 function posShare(on){
-  if(on&&!(el('ps-lat').value&&el('ps-lon').value)){el('ps-on').checked=false;
+  if(on&&!(el('ps-lat').value&&el('ps-lon').value)){
+    /* No point yet: a station that can ask its owner's phone does. */
+    if(adminPos&&adminPos.pos_locate)return adminSet({pos_share:true,pos_range:+el('ps-r').value});
+    el('ps-on').checked=false;
     return snack('Its latitude and longitude first, then Save');}
   if(on)return posSave();
   adminSet({pos_share:false});applyPos(null);
@@ -5491,6 +5504,10 @@ function posAsk(){
   var card=el('ad-pos');
   function type(why){snack(why+': type its latitude and longitude, then Save');
     if(card){card.scrollIntoView({behavior:'smooth',block:'center'});el('ps-lat').focus();}}
+  /* On the station's own hotspot the browser gives no location (http);
+     a station that can ask its owner's phone does, once sharing is on. */
+  if((!navigator.geolocation||!window.isSecureContext)&&adminPos&&adminPos.pos_locate)
+    return adminSet({pos_share:true,pos_range:100000});
   if(!navigator.geolocation||!window.isSecureContext)return type('This browser cannot tell the location here');
   navigator.geolocation.getCurrentPosition(function(p){
     var lat=p.coords.latitude,lon=p.coords.longitude;
