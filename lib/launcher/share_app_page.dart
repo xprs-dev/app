@@ -331,10 +331,13 @@ class _ShareAppPageState extends State<ShareAppPage>
   Widget _url(String url) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 8, 4),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          // One line, shrunk to fit beside the button; the button copies it.
           Flexible(
-            child: SelectableText(url,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16)),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(url,
+                  maxLines: 1, style: const TextStyle(fontSize: 16)),
+            ),
           ),
           IconButton(
             tooltip: tr('common.copy'),
