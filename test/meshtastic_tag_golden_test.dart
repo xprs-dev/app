@@ -2,6 +2,7 @@
 // and its message Info shows the relay path (who carried it here). Renders the
 // real ChatViewField headlessly and captures goldens -- the desktop GUI could
 // not be built/driven in this environment (no Wayland input tooling).
+import 'dart:ffi' show Abi;
 import 'dart:io';
 import 'package:xprs/wapp/geoui/widgets/chat_view_field.dart';
 import 'package:flutter/material.dart';
@@ -13,9 +14,12 @@ import 'i18n_english.dart';
 // flutter test renders text as boxes unless real fonts are loaded; load the
 // Roboto + MaterialIcons that ship with the Flutter SDK so the goldens read.
 // The goldens were drawn on a dev machine with these fonts and its Flutter.
-// Where the fonts cannot be found, or on CI (which follows the newest stable
-// Flutter, whose text rendering moves by a few pixels), the widget assertions
-// still run and only the pixel comparison is skipped.
+// Where the fonts cannot be found, on CI (which follows the newest stable
+// Flutter, whose text rendering moves by a few pixels), or on an ARM machine,
+// the widget assertions still run and only the pixel comparison is skipped.
+// The ARM case is the Raspberry Pi: its Skia anti-aliases the tags' 1 px
+// rounded borders differently, 0.24% of the image and nothing else
+// (2026-11-25; the bridge itself was checked on the air the same day).
 var _fontsLoaded = false;
 
 Future<void> _loadFonts() async {
@@ -23,7 +27,8 @@ Future<void> _loadFonts() async {
       '${Platform.environment['HOME']}/flutter';
   final cache = '$root/bin/cache/artifacts/material_fonts';
   _fontsLoaded = File('$cache/Roboto-Regular.ttf').existsSync() &&
-      Platform.environment['CI'] == null;
+      Platform.environment['CI'] == null &&
+      Abi.current() == Abi.linuxX64;
   Future<void> add(String family, List<String> files) async {
     final loader = FontLoader(family);
     for (final f in files) {
