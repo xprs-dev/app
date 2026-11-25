@@ -1848,22 +1848,86 @@ function tsPlus(sec){
     '_'+p(d.getUTCHours())+':'+p(d.getUTCMinutes())+':'+p(d.getUTCSeconds());}
 function onSession(j){
   sessHolders=j.holders||null;
-  if(canSign()){
-    /* The account's archivers (accHold): the first one is the station that
-       offers when there are none yet; with several stations in reach
-       (xprs.dev, window.XPRS_REMOTE) more are added that offer too, so the
-       mail is kept in more than one place. Declared again when this station
-       does not know the list, when it changed, or near its until:. */
-    var mine=accHold(),e=accEntry();
+  if(canSign())profileArchivers(j,function(mine,adopted){
+    /* The account's archivers (accHold): the person's own, as the network
+       knows them (profileArchivers); the station that offers when nobody
+       holds their mail yet; with several stations in reach (xprs.dev,
+       window.XPRS_REMOTE) more are added that offer too, so the mail is
+       kept in more than one place, unless the person chose the list.
+       Declared again when this station does not know the list, when it
+       changed, or near its until:; never a list taken from the network,
+       which is already the person's own signed word (its windows and
+       until: are theirs, not this page's to flatten). */
+    var e=accEntry();
     if(!mine.length&&j.offer)mine=[j.offer];
     var said=e&&e.said===mine.join(',')&&e.saidAt&&Date.now()-e.saidAt<23*86400000;
-    if(mine.length&&(j.offer||!said)&&!declaring)declareHold(mine);
-    if(window.XPRS_REMOTE)setTimeout(function(){moreArchivers(mine);},0);
-  }
+    if(!adopted&&mine.length&&(j.offer||!said)&&!declaring)declareHold(mine);
+    if(window.XPRS_REMOTE){
+      if(!(e&&e.chosen))setTimeout(function(){moreArchivers(mine);},0);
+      setTimeout(otherMail,0);
+    }
+  });
   /* Mail that waited while this browser was closed: older than the chat
      window's first page, so asked for by name, once per session. */
   if(j.mail>0)fetchMail(0);
-  if(window.XPRS_REMOTE)setTimeout(otherMail,0);
+}
+/* ---- the person's archivers, from the network (XPRS.md 9.12, 12.9.5) ----
+   Like a NOSTR user's relay list: where a person's mail and words are kept
+   is THEIR signed declaration (t:mailbox hold:), made on any device, and
+   archivers pass those declarations to each other. The session reply names
+   what the station knows (`holders`); that is the account's list, and what
+   this browser remembered is only a copy of it. Kept over it only while a
+   declaration this page made a moment ago may not have arrived yet. A
+   station that knows none is not the last word: on xprs.dev the other
+   archivers in reach are asked before anything is declared, so a new
+   browser never names a mailbox over the person's own. */
+var PROFILE_FRESH_MS=10*60000;
+function sameList(a,b){return a.join(',')===b.join(',');}
+function profileArchivers(j,done){
+  var who=mycall,local=accHold(),e=accEntry();
+  function adopt(net){
+    if(mycall!==who)return;
+    if(!sameList(net,local)){
+      accSet({hold:net,said:net.join(','),saidAt:Date.now(),chosen:1});
+      sessHolders=net.slice();
+      if(tab==='accounts')loadAccounts();
+    }
+    done(net,true);
+  }
+  var net=holdersOf(j);
+  if(net.length){
+    var mineNow=e&&e.saidAt&&Date.now()-e.saidAt<PROFILE_FRESH_MS;
+    if(local.length&&!sameList(net,local)&&mineNow)return done(local,false);
+    /* The same list as here: this page's own, declared as before. */
+    if(sameList(net,local))return done(local,false);
+    return adopt(net);
+  }
+  if(local.length||!remote()||!remote().archivers)return done(local,false);
+  profileAround(function(found){
+    if(mycall!==who)return;
+    if(found.length)adopt(found);else done(local,false);
+  });
+}
+function holdersOf(j){
+  return ((j&&j.holders)||[]).map(function(c){return baseCall(String(c).toUpperCase());})
+    .filter(function(c,i,a){return /^[A-Z0-9]{3,8}$/.test(c)&&a.indexOf(c)===i;});
+}
+/* The other archivers in reach, a few at a time, asked who holds this
+   person's mail: the first that knows answers for all. */
+var PROFILE_ASK=6;
+function profileAround(done){
+  var cands=remote().archivers().map(function(a){return a.call;})
+    .filter(function(c){return baseCall(c)!==baseCall(stationCall);}).slice(0,PROFILE_ASK);
+  var left=cands.length,over=false;
+  if(!left)return done([]);
+  cands.forEach(function(c){
+    remoteSession(c).then(function(r){
+      if(over)return;
+      var h=r&&!r.offer?holdersOf(r):[];
+      if(h.length){over=true;done(h);}
+      else if(--left===0){over=true;done([]);}
+    });
+  });
 }
 /* The letters waiting here: asked for until the station answers. */
 function fetchMail(n){
@@ -5814,12 +5878,13 @@ function mapViewKept(){
   try{var v=JSON.parse(sessionStorage.getItem(MAP_VIEW)||'null');sessionStorage.removeItem(MAP_VIEW);
     return v&&isFinite(v.lat)&&isFinite(v.lon)&&isFinite(v.z)?v:null;}catch(e){return null;}
 }
-function holdMove(c){var m=accHold().slice(),i=m.indexOf(c);if(i<1)return;m.splice(i,1);m.splice(i-1,0,c);declareHold(m);}
-function holdDrop(c){var m=accHold().filter(function(x){return x!==c;});if(m.length)declareHold(m);}
+function holdMove(c){var m=accHold().slice(),i=m.indexOf(c);if(i<1)return;m.splice(i,1);m.splice(i-1,0,c);accSet({chosen:1});declareHold(m);}
+function holdDrop(c){var m=accHold().filter(function(x){return x!==c;});if(m.length){accSet({chosen:1});declareHold(m);}}
 /* Only a station that offers (or already keeps this account's mail) is
    added: naming one that will not keep it would lose mail. */
 function holdAdd(c){
   var m=accHold().slice();if(m.indexOf(c)>=0)return;
+  accSet({chosen:1});
   if(c===stationCall||!remote()){m.push(c);declareHold(m);return;}
   snack('Asking '+c+'…');
   remoteSession(c).then(function(j){
