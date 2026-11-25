@@ -1,0 +1,9 @@
+Check-in 0.6.1: the Logbook tab is called Score (apps 5d2f666)
+Check-in 0.6.1: the Logbook tab is called Score
+Share: keep the portal address on one line
+Web chat: Map: thousands of stations in one area, found by search and filters
+Share: a copy button next to the portal addresses
+Web chat: Map popups black, like the page
+Web chat: Map popups in the page's colours wherever the map is
+Web chat: the map layout, accounts and archivers
+...and 6 more changes.
