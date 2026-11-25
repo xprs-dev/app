@@ -138,5 +138,7 @@
   "wapp_host.share.started": "Partage de {n} fichiers…",
   "wapp_host.share.done": "{n} fichiers partagés.",
   "wapp_host.share.failed": "{n} partagés, {f} n'ont pas pu être ajoutés.",
-  "wapp_host.share.name": "Un nom pour ce que vous partagez"
+  "wapp_host.share.name": "Un nom pour ce que vous partagez",
+  "wapp_host.drawer.fold": "Replier la liste",
+  "wapp_host.drawer.unfold": "Afficher la liste"
 }

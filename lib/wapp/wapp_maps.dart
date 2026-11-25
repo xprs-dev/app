@@ -108,6 +108,13 @@ extension _WappMaps on _WappPageState {
         _drainOutbox();
         if (mounted) setState(() {});
       },
+      onMarkerAction: (id, action) {
+        _engine.sendMessage(
+            jsonEncode({'command': 'marker_action', 'id': id, 'action': action}));
+        _engine.handleEvent();
+        _drainOutbox();
+        if (mounted) setState(() {});
+      },
       onViewportChanged: (lat, lon, zoom) {
         _mapLat = lat;
         _mapLon = lon;
@@ -250,6 +257,9 @@ extension _WappMaps on _WappPageState {
   }
 
   Widget _buildMapScreen(GeoUiBlock screen, GeoUiBlock mapGroup) {
+    // A map with a list in a drawer over it (wapp_drawer.dart).
+    final drawerField = _drawerField(screen, mapGroup);
+    if (drawerField != null) return _buildDrawerMapScreen(screen, mapGroup, drawerField);
     // A screen that carries BOTH the map group and the `geochat` chat field
     // renders as a vertical split: map (with radius/search) on top, the geo
     // chat panel below, separated by a drag handle so the user balances how

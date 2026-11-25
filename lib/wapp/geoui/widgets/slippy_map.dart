@@ -78,6 +78,7 @@ Widget slippyMapForTest({
   required void Function(double lat, double lon, int zoom) onViewportChanged,
   List<Map<String, dynamic>> markers = const [],
   void Function(String id)? onMarkerTap,
+  void Function(String id, String action)? onMarkerAction,
   List<Map<String, dynamic>> status = const [],
 }) =>
     SlippyMap(
@@ -91,6 +92,7 @@ Widget slippyMapForTest({
       onViewportChanged: onViewportChanged,
       markers: markers,
       onMarkerTap: onMarkerTap,
+      onMarkerAction: onMarkerAction,
       status: status,
       embedChat: false,
     );
@@ -127,6 +129,10 @@ class SlippyMap extends StatefulWidget {
 
   /// Called with a marker's id when its pin is tapped.
   final void Function(String id)? onMarkerTap;
+
+  /// Called with a marker's id and one of its `actions` (the buttons its
+  /// popup shows) when that button is pressed.
+  final void Function(String id, String action)? onMarkerAction;
 
   /// Coverage circle: filter radius (km) drawn around the station at
   /// [centerLat]/[centerLon]. Null disables the circle + slider.
@@ -204,6 +210,7 @@ class SlippyMap extends StatefulWidget {
     this.labelMaxZoom = 13,
     this.markers = const [],
     this.onMarkerTap,
+    this.onMarkerAction,
     this.radiusKm,
     this.centerLat,
     this.centerLon,
@@ -756,39 +763,44 @@ class _SlippyMapState extends State<SlippyMap>
   /// Group markers that would overlap on screen into a single cluster
   /// bubble showing the count, so dense areas stay readable. Tapping a
   /// cluster zooms in to break it apart.
+  ///
+  /// One pass over a grid of [cell]-sized squares, not every marker against
+  /// every other: a wapp may send a region's 1500 stations, and this runs on
+  /// every frame of a pan (the pairwise scan was 2.25 million distances a
+  /// frame at that size). Markers well off screen are not placed at all.
   List<Widget> _clusterMarkers(double w, double h) {
     const cell = 50.0; // px proximity that triggers grouping
-    final pts = <Offset>[];
-    final mk = <Map<String, dynamic>>[];
+    const margin = 120.0;
+    final groups = <int, List<(double, double, Map<String, dynamic>)>>{};
+    final order = <int>[];
     for (final m in widget.markers) {
       final lat = (m['lat'] as num?)?.toDouble();
       final lon = (m['lon'] as num?)?.toDouble();
       if (lat == null || lon == null) continue;
-      pts.add(Offset(_sx(lon), _sy(lat)));
-      mk.add(m);
-    }
-    final used = List<bool>.filled(pts.length, false);
-    final out = <Widget>[];
-    for (var i = 0; i < pts.length; i++) {
-      if (used[i]) continue;
-      used[i] = true;
-      final group = <int>[i];
-      for (var j = i + 1; j < pts.length; j++) {
-        if (!used[j] && (pts[j] - pts[i]).distance <= cell) {
-          used[j] = true;
-          group.add(j);
-        }
-      }
-      if (group.length == 1) {
-        out.add(_buildMarker(mk[i], w, h));
+      final x = _sx(lon), y = _sy(lat);
+      if (x < -margin || x > w + margin || y < -margin || y > h + margin) continue;
+      final key = ((y / cell).floor() + 1000) * 100000 + (x / cell).floor() + 1000;
+      final g = groups[key];
+      if (g == null) {
+        groups[key] = [(x, y, m)];
+        order.add(key);
       } else {
-        double ax = 0, ay = 0;
-        for (final g in group) { ax += pts[g].dx; ay += pts[g].dy; }
-        ax /= group.length;
-        ay /= group.length;
-        if (ax < -60 || ax > w + 60 || ay < -60 || ay > h + 60) continue;
-        out.add(_buildCluster(ax, ay, group.length));
+        g.add((x, y, m));
       }
+    }
+    final out = <Widget>[];
+    for (final key in order) {
+      final g = groups[key]!;
+      if (g.length == 1) {
+        out.add(_buildMarker(g.first.$3, w, h));
+        continue;
+      }
+      double ax = 0, ay = 0;
+      for (final p in g) {
+        ax += p.$1;
+        ay += p.$2;
+      }
+      out.add(_buildCluster(ax / g.length, ay / g.length, g.length));
     }
     return out;
   }
@@ -811,12 +823,18 @@ class _SlippyMapState extends State<SlippyMap>
     final label = (m['label'] as String?) ?? id;
     final heard = (m['heard'] as num?)?.toInt();
     final detail = (m['detail'] as String?) ?? '';
+    final actions = [
+      for (final a in (m['actions'] as List?) ?? const [])
+        if (a is Map && '${a['id'] ?? ''}'.isNotEmpty) a,
+    ];
     final coords = '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}';
 
     const pw = 230.0;
     final left = (px - pw / 2).clamp(8.0, (w - pw - 8).clamp(8.0, w));
-    final below = py < 150; // not enough room above → place below the pin
-    final top = below ? (py + 14).clamp(8.0, h - 40) : (py - 132).clamp(8.0, h);
+    final lines = '\n'.allMatches(detail).length;
+    final tall = 132.0 + (lines > 2 ? (lines - 2) * 16.0 : 0) + (actions.isEmpty ? 0 : 40);
+    final below = py < tall + 18; // not enough room above → place below the pin
+    final top = below ? (py + 14).clamp(8.0, h - 40) : (py - tall).clamp(8.0, h);
 
     return [
       Positioned(
@@ -891,6 +909,33 @@ class _SlippyMapState extends State<SlippyMap>
               if (heard != null)
                 _popupRow(Icons.schedule, tr('wapp_host.maps.last_heard', {'time': _relativeTime(heard)})),
               if (detail.isNotEmpty) _popupRow(Icons.message, detail),
+              // What the wapp offers from here (`actions` on the marker):
+              // the host sends marker_action with the marker and the action.
+              if (actions.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final a in actions)
+                        FilledButton.tonal(
+                          key: ValueKey('marker_action_${a['id']}'),
+                          style: FilledButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            minimumSize: const Size(0, 32),
+                            textStyle: const TextStyle(fontSize: 12.5),
+                          ),
+                          onPressed: () {
+                            setState(() => _popupId = null);
+                            widget.onMarkerAction?.call(id, '${a['id']}');
+                          },
+                          child: Text('${a['label'] ?? a['id']}'),
+                        ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -929,7 +974,7 @@ class _SlippyMapState extends State<SlippyMap>
             child: Text(text,
                 style: const TextStyle(
                     color: Color(0xFFe6edf3), fontSize: 11.5, height: 1.3),
-                maxLines: 3,
+                maxLines: 9,
                 overflow: TextOverflow.ellipsis),
           ),
         ],
@@ -1027,7 +1072,8 @@ class _SlippyMapState extends State<SlippyMap>
           ),
           alignment: Alignment.center,
           child: Text(
-            n > 999 ? '999+' : '$n',
+            // 1500 is 1.5k, as the portal's map says it.
+            n > 999 ? '${(n / 1000).toStringAsFixed(n < 9950 ? 1 : 0)}k' : '$n',
             style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,

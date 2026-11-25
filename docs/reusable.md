@@ -805,6 +805,19 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   (so pins and buttons keep instant taps), and `_easeTo` to settle on a whole
   zoom. `slippyMapForTest` builds it bare for widget tests
   (`test/wapp_map_gestures_test.dart` drives a two-finger pinch).
+  Pins are grouped on a grid of 50 px squares in one pass (a region's 1500
+  stations on every frame of a pan; the pairwise scan was 2.25 million
+  distances a frame), a bubble of thousands says "1.5k", pins well off screen
+  are not placed, and a pin's `actions` are buttons in its popup
+  (`onMarkerAction`; `test/wapp_map_markers_test.dart`).
+- **The map with a drawer (`lib/wapp/wapp_drawer.dart`)** — a map screen with
+  `"drawer": true` on its map group draws its `$type:"people"` screen (search
+  box, chips, list) in a drawer over the map, the xprs.dev portal's layout:
+  a bottom sheet of three heights on a phone (laid out at full height and
+  shown through a window, so the list never reflows while it moves; Back
+  folds it), a folding side panel on a wide screen. `ui.drawer` moves it,
+  `ui.map.locate` folds it. `_buildChipsField` there is the `$type:"chips"`
+  field any list screen can carry. Mesh's Stations tab uses both.
 - **Map framing in a wapp (`fit_box` in `apps/checkin/main.c`)** — a box
   of positions to a `ui.map.viewport` that fits it on a phone (about 340 px,
   latitude stretch allowed for). Frame "near me" first, "Show all" on demand.

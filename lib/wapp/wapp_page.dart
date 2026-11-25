@@ -119,6 +119,7 @@ import 'wapp_notes.dart';
 
 part '../editor/wapp_editor.dart';
 part 'wapp_maps.dart';
+part 'wapp_drawer.dart';
 part 'wapp_graph.dart';
 
 /// Generic wapp page — loads .ui.json screens from a wapp directory,
@@ -623,6 +624,13 @@ class _WappPageState extends State<WappPage>
   /// Fraction of the Geochat tab's height given to the chat panel under the
   /// map (the rest is map). User-resizable via the drag handle between them.
   double _geoSplit = 0.45;
+
+  // The map screen's drawer (wapp_drawer.dart): how far it is pulled up on a
+  // phone (peek, half, full), its height while a finger drags it, and on a
+  // wide screen whether its side panel is folded away.
+  String _drawerState = 'peek';
+  double? _drawerDragH;
+  bool _drawerFolded = false;
 
   /// Landscape only: fraction of the Geochat tab's WIDTH given to the chat
   /// column on the right (the rest is the map on the left). User-resizable via
@@ -1916,7 +1924,17 @@ class _WappPageState extends State<WappPage>
               if (data['kind'] != null) 'kind': data['kind'],
               if (data['heard'] != null) 'heard': data['heard'],
               if (data['detail'] != null) 'detail': data['detail'],
+              if (data['actions'] is List) 'actions': data['actions'],
             };
+            changed = true;
+          }
+        } else if (type == 'ui.drawer') {
+          // Move a map screen's drawer: {state: peek|half|full}.
+          final st = '${data['state'] ?? ''}';
+          if (st == 'peek' || st == 'half' || st == 'full') {
+            _drawerState = st;
+            _drawerDragH = null;
+            if (st != 'peek') _drawerFolded = false;
             changed = true;
           }
         } else if (type == 'ui.map.markers.clear') {
@@ -4675,7 +4693,13 @@ class _WappPageState extends State<WappPage>
           (max((myLat - lat).abs(), (myLon - lon).abs()) * 2.2) + 0.003;
       zoom = (log(360 * 700 / (256 * span)) / log(2)).clamp(12, 16).floor();
     }
+    // A wapp that knows how big the place is says how close to show it.
+    final asked = (m['zoom'] as num?)?.toInt();
+    if (asked != null) zoom = asked.clamp(2, 18);
     void apply() => setState(() {
+          // The place is on the map: a phone's drawer folds to show it.
+          _drawerState = 'peek';
+          _drawerDragH = null;
           _mapLat = lat;
           _mapLon = lon;
           _mapZoom = zoom;
@@ -5694,10 +5718,13 @@ class _WappPageState extends State<WappPage>
           thread == null &&
           !navBack &&
           !roomsOpen &&
-          !roomsInside,
+          !roomsInside &&
+          !_drawerBackFolds(),
       onPopInvoked: (didPop) {
         if (didPop) return;
-        if (_graphPanelBack != null) {
+        if (_drawerBackFolds()) {
+          _drawerTo('peek');
+        } else if (_graphPanelBack != null) {
           _graphPanelBack!();
         } else if (thread != null) {
           setState(() => _convOpenId = null);
@@ -7446,6 +7473,9 @@ class _WappPageState extends State<WappPage>
         if (screen.getBool('search') == true)
           _buildSearchBar(name,
               autofocus: screen.getBool('hidden') == true),
+        for (final f in screen.children.where((c) =>
+            c.keyword == 'field' && c.type == 'chips' && (c.name ?? '').isNotEmpty))
+          _buildChipsField(f),
         if (tabLabels.isNotEmpty)
           _buildPeopleTabs(name, tabLabels, tab),
         Expanded(
