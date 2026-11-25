@@ -653,11 +653,28 @@ body.mapui.wide #mapbg .leaflet-bottom{bottom:0}
 .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
 /* The Map view: the map over a list of the stations, filtered by callsign. */
 #v-map:not(.hide){display:flex;flex-direction:column;padding:0}
-.mapbar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)}
-.mapbar span{flex:1;min-width:0}
-.mapbar input{width:110px;background:transparent;color:var(--text);border:1px solid var(--border);
-  border-radius:6px;padding:6px 8px;font:inherit;text-transform:uppercase}
-.mapbar input::placeholder{text-transform:none;color:var(--muted)}
+.mapbar{display:flex;flex-direction:column;gap:6px;padding:10px 12px 6px}
+.mapbar input{width:100%;background:var(--field);color:var(--text);border:1px solid var(--border);
+  border-radius:10px;padding:9px 12px;font:inherit;font-size:15px;outline:none}
+.mapbar input:focus{border-color:var(--accent)}
+.mapbar span{font-size:12px}
+/* What stations announce (t:service), as filters: scrolled sideways. */
+.mapbar,#mapchips,.mapfound{flex:none}
+#mapchips{display:flex;gap:6px;overflow-x:auto;padding:2px 12px 10px;scrollbar-width:none;border-bottom:1px solid var(--line)}
+#mapchips:empty{display:none}
+#mapchips::-webkit-scrollbar{display:none}
+.chip{flex:none;background:transparent;border:1px solid var(--border);color:var(--text);border-radius:16px;
+  padding:6px 12px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
+.chip span{color:var(--muted);margin-left:3px}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.chip.on span{color:var(--on-accent);opacity:.75}
+.mapfound{padding:6px 12px 0;font-size:12px}
+.mapfound:empty{display:none}
+.maptags{margin-top:4px}
+.maptag{display:inline-block;font-size:10px;border:1px solid var(--border);border-radius:8px;padding:1px 7px;
+  margin-right:4px;color:var(--muted)}
+.mapall{width:100%;margin-top:2px}
+.mapcnt.big{line-height:34px;font-size:11px}
 #mapbox{height:55vh;min-height:260px;flex:none;background:#1f1f1f}
 #maplist{padding:0 0 20px}
 #maplist>.act{display:block;margin:12px auto}
@@ -5792,11 +5809,13 @@ function mapStations(rows){
   rows.forEach(function(r){
     var w=r.wire||'',c=baseCall((mapField(w,'f')||'').toUpperCase());
     if(!/^X[1-5][A-Z0-9]{2,6}$/.test(c))return;
-    var s=st[c]||(st[c]={call:c,last:0,nick:'',pos:null,posTs:0,key:'',keyTs:0,archive:false});
+    var s=st[c]||(st[c]={call:c,last:0,nick:'',pos:null,posTs:0,key:'',keyTs:0,serve:[],source:'',svcTs:0});
     if(r.ts>s.last)s.last=r.ts;
     var t=w.slice(0,2)==='t:'?w.slice(2).split(' ')[0]:'';
     if(t==='identity'){var n=mapField(w,'nick');if(n&&n!=='-'&&!s.nick)s.nick=n;}
-    if(t==='service'&&/(^|,)archive(,|$)/.test(mapField(w,'serve')))s.archive=true;
+    /* What it serves and runs on (XPRS.md 12.9 t:service): its newest word. */
+    if(t==='service'&&r.ts>=s.svcTs){s.svcTs=r.ts;var sv=mapField(w,'serve');
+      s.serve=sv?sv.split(','):[];s.source=mapField(w,'source')||'';}
     var k=t==='identity'&&r.sig==='verified'?mapField(w,'k'):'';
     if(k&&r.ts>=s.keyTs){s.key=k;s.keyTs=r.ts;}
     var pf=t==='identity'||t==='service'?mapField(w,'pos'):'';
@@ -5847,15 +5866,18 @@ function mapRecolor(d){
   }
 }
 function mapMake(){
-  el('v-map').innerHTML='<div class="mapbar"><span id="mapcount" class="dim"></span>'+
-    '<input id="mapgo" placeholder="Callsign" autocomplete="off" spellcheck="false"></div>'+
-    (mapui?'':'<div id="mapbox"></div>')+'<div id="maplist"></div>';
-  el('mapgo').oninput=function(){mapShown=50;mapList();};
+  el('v-map').innerHTML='<div class="mapbar"><input id="mapgo" type="search" placeholder="Search callsign or name" '+
+    'autocomplete="off" spellcheck="false" enterkeyhint="search"><span id="mapcount" class="dim"></span></div>'+
+    '<div id="mapchips"></div>'+(mapui?'':'<div id="mapbox"></div>')+'<div id="maplist"></div>';
+  el('mapgo').oninput=function(){mapFilter.q=this.value.trim().toLowerCase();mapShown=50;mapList();};
+  /* Enter on a callsign: that station on the map, or asked for by name when
+     the map does not know it. */
   el('mapgo').onkeydown=function(e){
     var c=this.value.trim().toUpperCase();
     if(e.key!=='Enter'||!/^[A-Z0-9]{3,8}(-[0-9]{1,2})?$/.test(c))return;
-    if(remote())location.href='/in/'+c.toLowerCase();else openDm(c);
+    if(mapByCall(baseCall(c)))mapFocus(baseCall(c));else mapLookup(baseCall(c));
   };
+  if(mapAll.length){mapChips();mapList();}
   if(mapui)return;
   mapLoadLeaflet(function(ok){
     if(!ok){el('mapbox').style.display='none';return;}
@@ -5864,7 +5886,8 @@ function mapMake(){
 }
 /* The map in [box]: the view's own box, or the whole page (mapuiOn). */
 function mapInit(box){
-    mapObj=L.map(box,{worldCopyJump:true,zoomControl:!('ontouchstart' in window)}).setView([30,0],2);
+    /* Drawn on a canvas: thousands of markers are one element, not thousands. */
+    mapObj=L.map(box,{worldCopyJump:true,preferCanvas:true,zoomControl:!('ontouchstart' in window)}).setView([30,0],2);
     mapLayer=L.layerGroup().addTo(mapObj);
     mapObj.attributionControl.setPrefix(false);
     var Dark=L.GridLayer.extend({createTile:function(c,done){
@@ -5882,7 +5905,25 @@ function mapInit(box){
     mapObj.on('popupclose',function(){mapReading=false;if(mapWaiting){var w=mapWaiting;mapWaiting=null;mapDraw(w);}});
     if(mapRows)mapDraw(mapRows);
 }
-var mapAskedAt=0;
+var mapAskedAt=0,mapBackDone=false;
+/* What the map knows, newest first: the rows of every page asked, one per
+   packet, at most MAP_KEEP (the stations of a whole region, not of the last
+   200 packets). */
+var MAP_KEEP=4000;
+function mapMerge(rows){
+  var seen={},out=[];
+  (rows||[]).concat(mapRows||[]).forEach(function(r){
+    var k=r.id||r.wire;if(!k||seen[k])return;seen[k]=1;out.push(r);});
+  out.sort(function(a,b){return (b.ts||0)-(a.ts||0);});
+  return out.length>MAP_KEEP?out.slice(0,MAP_KEEP):out;
+}
+function mapSave(){
+  try{localStorage.setItem(MAP_CACHE,JSON.stringify({at:Date.now(),rows:(mapRows||[]).slice(0,1500)}));}catch(e){}
+}
+function mapShow(rows,cachedAt){
+  if(mapReading){mapWaiting=rows;return;}
+  mapDraw(rows,cachedAt);
+}
 function loadMap(){
   if(!el('maplist'))mapMake();
   else if(mapObj)mapObj.invalidateSize();
@@ -5897,13 +5938,38 @@ function loadMap(){
     getJSON('/api/xprs/history?limit=200',function(b){
       var rows=((a&&a.rows)||[]).concat((b&&b.rows)||[]);
       if(!rows.length)return;
-      try{localStorage.setItem(MAP_CACHE,JSON.stringify({at:Date.now(),rows:rows}));}catch(e){}
-      if(mapReading){mapWaiting=rows;return;}
-      mapDraw(rows);
+      var m=mapMerge(rows);
+      mapShow(m);mapSave();
+      if(!mapBackDone&&a&&a.rows&&a.rows.length>=200){mapBackDone=true;mapBack(a.rows,14);}
     },45000);
   },45000);
 }
-var mapAll=[],mapSummary='';
+/* Older identities and announcements, a page at a time (history's `until`),
+   once per visit: where hundreds of stations share an area, the newest 200
+   packets name only some of them. */
+function mapBack(page,left){
+  var oldest=page.reduce(function(m,r){return r.ts&&r.ts<m?r.ts:m;},Infinity);
+  if(!left||!isFinite(oldest))return;
+  getJSON('/api/xprs/history?kind=identity,service&limit=200&until='+(oldest-1),function(d){
+    var rows=(d&&d.rows)||[];
+    if(!rows.length)return;
+    mapShow(mapMerge(rows));mapSave();
+    if(rows.length>=200)mapBack(rows,left-1);
+  },45000);
+}
+/* A callsign the map does not know: its own identities and announcements,
+   asked of the station by name. */
+function mapLookup(c){
+  snack('Looking for '+c+'…');
+  getJSON('/api/xprs/history?kind=identity,service&limit=20&call='+encodeURIComponent(c),function(d){
+    var rows=(d&&d.rows)||[];
+    if(!rows.length){snack(c+' was not heard here');return;}
+    mapShow(mapMerge(rows));mapSave();
+    mapFilter.q=c.toLowerCase();el('mapgo').value=c;mapShown=50;mapList();
+    if(mapMarks[c])mapFocus(c);
+  },30000);
+}
+var mapAll=[],mapSummary='',mapBoxes={};
 function mapDraw(rows,cachedAt){
   mapRows=rows;
   var all=mapAll=mapStations(rows),now=Date.now()/1000;
@@ -5913,32 +5979,44 @@ function mapDraw(rows,cachedAt){
   mapSummary=all.length+' stations · '+today+' today · '+placed.length+' mapped';
   if(ce)ce.textContent=mapSummary+(cachedAt?' · cached '+new Date(cachedAt).toLocaleString():'');
   sheetBadges();
+  mapChips();
   mapList();
   if(!mapObj)return;
   mapLayer.clearLayers();
-  mapMarks={};
-  var bounds=L.latLngBounds([]),boxes={};
+  mapMarks={};mapBoxes={};
+  var bounds=L.latLngBounds([]);
   placed.forEach(function(s){
-    var ll=[s.pos.lat,s.pos.lon],pop=mapPop(s);
+    var ll=[s.pos.lat,s.pos.lon];
     if(s.pos.box){
-      var k=s.pos.box.join(';'),b=boxes[k]||(boxes[k]={box:s.pos.box,ll:ll,range:s.pos.range,pops:[],calls:[]});
-      b.pops.push(pop);b.calls.push(s.call);return;
+      var k=s.pos.box.join(';'),b=mapBoxes[k]||(mapBoxes[k]={key:k,box:s.pos.box,ll:ll,range:s.pos.range,calls:[]});
+      b.calls.push(s.call);return;
     }
-    if(s.pos.metres>=20000){var ring=L.circle(ll,{radius:s.pos.metres,color:'#FFC107',weight:1,fillOpacity:.07}).addTo(mapLayer).bindPopup(pop);bounds.extend(ring.getBounds());}
-    mapMarks[s.call]=L.circleMarker(ll,{radius:7,color:'#A5D6A7',fillColor:'#43A047',fillOpacity:.95,weight:2}).addTo(mapLayer).bindPopup(pop);
+    if(s.pos.metres>=20000){var ring=L.circle(ll,{radius:s.pos.metres,color:'#FFC107',weight:1,fillOpacity:.07,interactive:false}).addTo(mapLayer);bounds.extend(ring.getBounds());}
+    /* Popups are made when opened: a thousand stations, no thousand popups. */
+    mapMarks[s.call]=L.circleMarker(ll,{radius:7,color:'#A5D6A7',fillColor:'#43A047',fillOpacity:.95,weight:2})
+      .addTo(mapLayer).bindPopup(function(){return mapPop(mapByCall(s.call)||s);});
     bounds.extend(ll);
   });
   /* Stations that say only which square they are in share one marker in its
-     middle, with how many they are, and say once that only the area is known. */
-  Object.keys(boxes).forEach(function(k){
-    var b=boxes[k],pop=b.pops.slice(0,12).join('<hr>')+(b.pops.length>12?'<hr>+'+(b.pops.length-12):'')+
-      '<small>Approximate: somewhere within '+esc(b.range)+' of here</small>';
-    var mk=L.marker(b.ll,{icon:L.divIcon({className:'mapcnt',html:String(b.pops.length),iconSize:[26,26]})}).addTo(mapLayer).bindPopup(pop,{maxHeight:220});
+     middle, with how many they are. Its popup names the freshest few; the
+     rest are in the Stations list, filtered to the square. */
+  Object.keys(mapBoxes).forEach(function(k){
+    var b=mapBoxes[k],n=b.calls.length;
+    var mk=L.marker(b.ll,{icon:L.divIcon({className:'mapcnt'+(n>99?' big':''),html:n>999?(n/1000).toFixed(n>9999?0:1).replace(/\.0$/,'')+'k':String(n),iconSize:n>99?[34,34]:[26,26]})})
+      .addTo(mapLayer).bindPopup(function(){return mapBoxPop(b);},{maxHeight:260});
     b.calls.forEach(function(c){mapMarks[c]=mk;});
     bounds.extend(b.box);
   });
   if(!mapFitted&&bounds.isValid()){mapObj.fitBounds(bounds,{padding:[40,40],maxZoom:10});mapFitted=true;}
 }
+var MAP_POP_MAX=6;
+function mapBoxPop(b){
+  var h=b.calls.slice(0,MAP_POP_MAX).map(function(c){return mapPop(mapByCall(c)||{call:c,last:0,nick:''});}).join('<hr>');
+  if(b.calls.length>MAP_POP_MAX)
+    h+='<hr><button class="act mapall" onclick="mapArea(\''+b.key+'\')">Show all '+b.calls.length+' here</button>';
+  return h+'<small>Approximate: somewhere within '+esc(b.range)+' of here</small>';
+}
+function mapByCall(c){for(var i=0;i<mapAll.length;i++)if(mapAll[i].call===c)return mapAll[i];return null;}
 /* A station in a popup or a row: its page where the page can open it
    (xprs.dev), and a private message when it published a key to seal to. */
 function mapName(s){
@@ -5948,26 +6026,83 @@ function mapMsg(s){
   return s.key&&s.call!==baseCall(mycall)?'<button class="act mapmsg" onclick="event.stopPropagation();mapWrite(\''+esc(s.call)+'\')">Message</button>':'';
 }
 function mapPop(s){
-  return mapName(s)+(s.nick?' '+esc(s.nick):'')+mapMsg(s)+'<br><span class="dim">'+esc(ago(Date.now()/1000-s.last))+' ago</span>';
+  var tags=mapTagsOf(s).map(function(t){return '<span class="maptag">'+esc(mapTagName(t))+'</span>';}).join('');
+  return mapName(s)+(s.nick?' <span class="dim">'+esc(s.nick)+'</span>':'')+mapMsg(s)+
+    (tags?'<div class="maptags">'+tags+'</div>':'')+
+    '<div class="dim">'+(s.last?esc(ago(Date.now()/1000-s.last))+' ago':'')+'</div>';
 }
 /* A station from the list, on the map: its marker centred and opened, the
    drawer folded so the map shows. */
 function mapFocus(c){
   var m=mapMarks[c];
   if(!m||!mapObj){snack(c+' does not say where it is');return;}
-  if(!wideScreen())sheetTo('peek');
+  if(mapui&&!wideScreen())sheetTo('peek');
   mapObj.setView(m.getLatLng(),Math.max(mapObj.getZoom(),9));
   setTimeout(function(){m.openPopup();},300);
 }
 function mapWrite(c){
-  for(var i=0;i<mapAll.length;i++)if(mapAll[i].call===c&&mapAll[i].key){var k=npubDecode(mapAll[i].key);if(k)keys[c]=k;}
+  var s=mapByCall(c);
+  if(s&&s.key){var k=npubDecode(s.key);if(k)keys[c]=k;}
   openDm(c);
+}
+
+// ---- finding stations: search, an area, what they serve --------------------
+//
+// The list is every station the map knows, the freshest first, 50 at a time.
+// A search matches callsign and nickname; an area is a square from the map
+// ("Show all here"); the chips are what stations announce in their t:service
+// (serve:archive, source:solar...), so a new kind of station is a new chip
+// without a change here.
+var mapFilter={q:'',area:'',tags:{}};
+var MAP_TAG_NAMES={'serve:archive':'Archivers','serve:relay':'Relays','serve:internet':'Internet',
+  'serve:aprs':'APRS','serve:files':'Files','serve:meshtastic':'Meshtastic','source:solar':'Solar',
+  'source:battery':'Battery','source:mains':'Mains power',placed:'On the map',key:'Can be messaged'};
+function mapTagName(t){
+  if(MAP_TAG_NAMES[t])return MAP_TAG_NAMES[t];
+  var v=t.split(':')[1]||t;return v.charAt(0).toUpperCase()+v.slice(1);
+}
+function mapTagsOf(s){
+  return (s.serve||[]).map(function(v){return 'serve:'+v;}).concat(s.source?['source:'+s.source]:[]);
+}
+function mapMatch(s){
+  var q=mapFilter.q;
+  if(q&&s.call.toLowerCase().indexOf(q)<0&&s.nick.toLowerCase().indexOf(q)<0)return false;
+  if(mapFilter.area){var b=mapBoxes[mapFilter.area];if(!b||b.calls.indexOf(s.call)<0)return false;}
+  for(var t in mapFilter.tags){
+    if(t==='placed'){if(!s.pos)return false;continue;}
+    if(t==='key'){if(!s.key)return false;continue;}
+    if(mapTagsOf(s).indexOf(t)<0)return false;
+  }
+  return true;
+}
+function mapChips(){
+  var box=el('mapchips');if(!box)return;
+  var count={};
+  mapAll.forEach(function(s){
+    mapTagsOf(s).forEach(function(t){count[t]=(count[t]||0)+1;});
+    if(s.pos)count.placed=(count.placed||0)+1;
+    if(s.key)count.key=(count.key||0)+1;
+  });
+  var tags=Object.keys(count).sort(function(a,b){return count[b]-count[a];});
+  var h=mapFilter.area?'<button class="chip on" onclick="mapArea(\'\')">This area ×</button>':'';
+  tags.forEach(function(t){
+    h+='<button class="chip'+(mapFilter.tags[t]?' on':'')+'" onclick="mapTag(\''+t+'\')">'+
+      esc(mapTagName(t))+' <span>'+count[t]+'</span></button>';});
+  box.innerHTML=h;
+}
+function mapTag(t){if(mapFilter.tags[t])delete mapFilter.tags[t];else mapFilter.tags[t]=1;mapShown=50;mapChips();mapList();}
+/* The stations of one square, from its popup. */
+function mapArea(k){
+  mapFilter.area=k;mapShown=50;
+  if(mapObj)mapObj.closePopup();
+  mapChips();mapList();
+  if(k&&mapui)sheetOpen('stations',function(){showTab('map');});
+  else if(k&&tab!=='map')showTab('map');
 }
 function mapList(){
   var box=el('maplist');if(!box)return;
-  var q=(el('mapgo').value||'').trim().toLowerCase();
-  var hits=mapAll.filter(function(s){return !q||s.call.toLowerCase().indexOf(q)>=0||s.nick.toLowerCase().indexOf(q)>=0;});
-  var h='';
+  var hits=mapAll.filter(mapMatch);
+  var h='<div class="mapfound dim">'+(hits.length===mapAll.length?'':hits.length+' of '+mapAll.length+' stations')+'</div>';
   hits.slice(0,mapShown).forEach(function(s){
     h+='<div class="maprow"'+(mapui?' onclick="mapFocus(\''+esc(s.call)+'\')"':'')+'>'+
       (mapui?'<b>'+esc(s.call)+'</b>':mapName(s))+'<span class="dim">'+esc(s.nick)+'</span>'+
@@ -5975,7 +6110,8 @@ function mapList(){
       '<span class="dim">'+esc(ago(Date.now()/1000-s.last))+'</span>'+mapMsg(s)+'</div>';
   });
   if(hits.length>mapShown)h+='<button class="act" onclick="event.stopPropagation();mapShown+=50;mapList()">Show more ('+(hits.length-mapShown)+')</button>';
-  box.innerHTML=h||'<p class="dim">'+(mapRows?'No station matches':'Looking for stations…')+'</p>';
+  if(!hits.length)h+='<p class="dim">'+(mapRows?'No station matches'+(mapFilter.q?'. Enter asks the station for '+esc(mapFilter.q.toUpperCase()):''):'Looking for stations…')+'</p>';
+  box.innerHTML=h;
 }
 
 // ---- the map layout: the map is the page, everything else in a drawer ------
