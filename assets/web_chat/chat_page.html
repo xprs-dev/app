@@ -556,6 +556,125 @@ h3:first-child{margin-top:0}
 .bars{display:flex;align-items:flex-end;gap:1px;height:52px;margin:3px 0 2px}
 .bars div{flex:1 1 0;background:var(--accent);min-height:1px}
 .dim{color:var(--muted)}
+/* ---- the map layout (body.mapui, mapuiOn): the map is the page ---------------
+   The map lies under everything in a stacking context of its own, so its
+   layers (Leaflet's z-index 400 to 1000) can never rise over the page. */
+#mapbg{position:fixed;inset:0;z-index:0;isolation:isolate;background:#1f1f1f}
+body.mapui{background:#1f1f1f}
+body.mapui .header{z-index:9;border-bottom:0;margin-top:0;height:auto;min-height:48px;
+  padding-top:var(--sat);background:linear-gradient(180deg,rgba(10,10,11,.94),rgba(10,10,11,.78));
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+body.mapui .menu-btn{display:none}
+body.mapui .my-callsign{cursor:pointer;border:1px solid var(--border);border-radius:14px;padding:5px 11px;
+  background:rgba(20,19,18,.7)}
+body.mapui #roombar{display:none!important}
+body.mapui #content{position:fixed;left:0;right:0;bottom:var(--tabsh,60px);z-index:8;flex-direction:column;
+  background:var(--bg);border-radius:18px 18px 0 0;border-top:1px solid var(--border);
+  box-shadow:0 -10px 30px rgba(0,0,0,.55);overflow:hidden;transition:height .25s ease}
+#tabs{position:fixed;left:0;right:0;bottom:0;z-index:9;display:flex;background:var(--panel);
+  border-top:1px solid var(--line);padding-bottom:var(--sab)}
+#tabs[hidden]{display:none}
+#tabs button{flex:1;background:none;border:0;color:var(--muted);padding:8px 0 7px;display:flex;
+  flex-direction:column;align-items:center;gap:3px;font:inherit;font-size:11px;position:relative;cursor:pointer}
+#tabs button svg{width:24px;height:24px}
+#tabs button.on{color:var(--accent)}
+#tabs em{position:absolute;top:3px;left:calc(50% + 6px);min-width:17px;height:17px;border-radius:9px;
+  background:var(--accent);color:var(--on-accent);font-style:normal;font-size:10px;font-weight:bold;
+  line-height:17px;padding:0 4px;display:none}
+#tabs .fold{display:none}
+#grip{flex:none;height:18px;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+#grip i{width:42px;height:4px;border-radius:2px;background:var(--dim)}
+#peek{flex:none;height:28px;display:none;align-items:center;gap:8px;padding:0 18px;font-size:13px;
+  color:var(--muted);cursor:pointer;touch-action:none;white-space:nowrap;overflow:hidden}
+#peek b{color:var(--accent)}
+body.mapui[data-sh=peek] #peek{display:flex}
+body.mapui[data-sh=peek] #shead,body.mapui[data-sh=peek] #chatwrap,body.mapui[data-sh=peek] .view{display:none!important}
+#shead{flex:none;display:flex;align-items:center;gap:4px;padding:0 10px 8px;touch-action:none;
+  border-bottom:1px solid var(--line)}
+#shead b{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#shead .back{background:none;border:0;color:var(--text);width:36px;height:36px;display:flex;
+  align-items:center;justify-content:center;cursor:pointer;border-radius:50%;flex:none}
+#shead .back:hover{background:var(--hover)}
+#shead .back svg{width:22px;height:22px}
+#shead.list .back{display:none}
+#shead.list b{padding:6px 8px 0}
+/* A tab's list is the room list, filtered by section; a room picked from it
+   opens in the drawer instead of the list. */
+body.mapui #chatwrap{flex:1;min-height:0}
+body.mapui #side{position:static;transform:none;width:auto;flex:1;box-shadow:none;border:0;
+  padding:0 0 12px;background:none;z-index:auto;display:block;overflow-y:auto}
+body.mapui #sidebg{display:none!important}
+body.mapui #side .sec{display:none}
+body.mapui[data-st=msgs] #side .sec[data-sec=people],
+body.mapui[data-st=chat] #side .sec[data-sec=chat],
+body.mapui[data-st=chat] #side .sec[data-sec=groups]{display:block}
+body.mapui.sindex #chatcol{display:none}
+body.mapui:not(.sindex) #side{display:none}
+body.mapui #side .room{padding:13px 18px;font-size:15px;border-bottom:1px solid var(--line);color:var(--text)}
+body.mapui #side .room.on{border-left:0;color:var(--accent)}
+body.mapui #side .room.new{color:var(--accent)}
+body.mapui #side .roomhead{padding:16px 18px 6px}
+body.mapui .view{flex:1;min-height:0}
+body.mapui .input-area{padding-bottom:8px}
+body.mapui .fab{bottom:34px}
+.mlist{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.mrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 14px;
+  border-bottom:1px solid var(--line);cursor:pointer;font-size:15px}
+.mrow:last-child{border-bottom:0}
+.mrow:hover{background:var(--hover)}
+body.mapui .maprow{cursor:pointer}
+body.mapui .maprow:hover{background:var(--hover)}
+/* The map's own controls clear of the bars over it. */
+#mapbg .leaflet-top{top:calc(52px + var(--sat))}
+#mapbg .leaflet-bottom{bottom:calc(var(--tabsh,60px) + 48px)}
+/* A screen wider than tall: the drawer is a panel on the left, its tabs on
+   top; the fold button leaves a rail of icons and the map the whole width. */
+body.mapui.wide #content{left:14px;right:auto;top:calc(var(--sat) + 116px);bottom:14px;
+  width:min(420px,42vw);height:auto!important;border-radius:0 0 14px 14px;border:1px solid var(--border);
+  border-top:0;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+body.mapui.wide #tabs{left:14px;right:auto;top:calc(var(--sat) + 60px);bottom:auto;width:min(420px,42vw);
+  height:56px;border:1px solid var(--border);border-radius:14px 14px 0 0;padding:0}
+body.mapui.wide #tabs .fold{display:flex;flex:0 0 46px;justify-content:center}
+body.mapui.wide #grip,body.mapui.wide #peek{display:none!important}
+body.mapui.wide.railed #content{display:none}
+body.mapui.wide.railed #tabs{width:66px;height:auto;flex-direction:column;border-radius:14px}
+body.mapui.wide.railed #tabs button{flex:none;padding:11px 0}
+body.mapui.wide.railed #tabs .fold{transform:rotate(180deg);flex:none;height:46px}
+body.mapui.wide #mapbg .leaflet-top.leaflet-left{left:calc(min(420px,42vw) + 28px)}
+body.mapui.wide.railed #mapbg .leaflet-top.leaflet-left{left:90px}
+body.mapui.wide #mapbg .leaflet-bottom{bottom:0}
+/* Accounts and archivers: one row each, its actions at the end. */
+.accs{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.acc{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.acc:last-child{border-bottom:0}
+.acc.on{background:var(--accent-soft)}
+.acc b{color:var(--accent);letter-spacing:.5px}
+.acc .act{min-height:30px;padding:5px 10px}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+/* The Map view: the map over a list of the stations, filtered by callsign. */
+#v-map:not(.hide){display:flex;flex-direction:column;padding:0}
+.mapbar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)}
+.mapbar span{flex:1;min-width:0}
+.mapbar input{width:110px;background:transparent;color:var(--text);border:1px solid var(--border);
+  border-radius:6px;padding:6px 8px;font:inherit;text-transform:uppercase}
+.mapbar input::placeholder{text-transform:none;color:var(--muted)}
+#mapbox{height:55vh;min-height:260px;flex:none;background:#1f1f1f}
+#maplist{padding:0 0 20px}
+#maplist>.act{display:block;margin:12px auto}
+.maprow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.maprow a,.maprow b{color:var(--accent);font-weight:600;text-decoration:none}
+.maprow em{font-style:normal;color:#43A047;font-size:11px}
+.mapmsg{min-height:28px;padding:4px 10px;font-size:12px;margin-left:8px}
+.mapcnt{background:var(--accent);color:var(--on-accent);border-radius:50%;font-weight:700;font-size:12px;
+  line-height:26px;text-align:center;box-shadow:0 0 0 2px rgba(10,10,11,.6)}
+#v-map .leaflet-container{background:#1f1f1f;font:inherit}
+#v-map .leaflet-popup-content-wrapper,#v-map .leaflet-popup-tip{background:var(--panel);color:var(--text);
+  border:1px solid var(--border);box-shadow:none}
+#v-map .leaflet-popup-content a{color:var(--accent);font-weight:600}
+#v-map .leaflet-popup-content small{display:block;margin-top:3px;color:var(--muted);font-size:11px}
+#v-map .leaflet-popup-content hr{border:0;border-top:1px solid var(--line);margin:6px 0}
+#v-map .leaflet-control-zoom a{background:var(--panel);color:var(--text);border-color:var(--border)}
+#v-map .leaflet-control-attribution{background:rgba(20,19,18,.8)!important;color:var(--muted)}
 .sig-verified{color:#3a3}.sig-unverified{color:#a83}.sig-none{color:var(--dim)}
 .wire{font-family:monospace;font-size:10px;color:var(--placeholder);
   overflow-wrap:anywhere;margin-top:2px}
@@ -594,10 +713,10 @@ img.shot{max-width:100%;image-rendering:pixelated;border:1px solid var(--border)
       <button id="extbtn" style="display:none" onclick="toggleExtension()">Use my NOSTR extension</button>
       <button onclick="showNpub()">Show my npub</button>
       <button onclick="exportNsec()">Export nsec</button>
-      <button onclick="importNsec()">Import another nsec</button>
-      <button onclick="newIdentity()">New identity</button>
+      <button onclick="openView('accounts')">Accounts and archivers</button>
       <div class="menu-sec">This station</div>
       <button onclick="closeMenu();goHome()">Chat</button>
+      <button onclick="openView('map')">Map</button>
       <button data-view="traffic" onclick="openView('traffic')">Traffic</button>
       <button data-view="devices" onclick="openView('devices')">Devices</button>
       <button data-view="station" onclick="openView('station')">Station</button>
@@ -658,7 +777,11 @@ img.shot{max-width:100%;image-rendering:pixelated;border:1px solid var(--border)
   <div class="view hide" id="v-station">loading&hellip;</div>
   <div class="view hide" id="v-settings"></div>
   <div class="view hide" id="v-admin"></div>
+  <div class="view hide" id="v-accounts"></div>
+  <div class="view hide" id="v-map"></div>
+  <div class="view hide" id="v-more"></div>
 </div>
+<div id="tabs" hidden></div>
 <div class="snackbar" id="snack"></div>
 <div id="msgmenu"></div>
 <script>
@@ -1430,6 +1553,7 @@ function useKey(bytes){
   if(canSession)setTimeout(function(){ensureSession(0);},0);
   stSet('xprs_nsec',nsecEncode(priv));
   document.getElementById('call').textContent=mycall;
+  accNote();
 }
 function randKey(){
   var b=new Uint8Array(32);
@@ -1440,19 +1564,6 @@ function showNpub(){toggleMenu();prompt('Your public key (share freely):',npub);
 function exportNsec(){toggleMenu();
   if(extMode){snack('Your key is in your extension');return;}
   prompt('Your SECRET key. Anyone holding it IS '+mycall+':',nsecEncode(priv));}
-function importNsec(){toggleMenu();
-  var v=prompt('Paste an nsec to become that identity:');
-  if(!v)return;
-  var b=nsecDecode(v.trim());
-  if(!b||b2n(b)===0n||b2n(b)>=N){snack('That is not a valid nsec');return;}
-  useKey(b);identSent=0;seen={};
-  document.getElementById('msgs').innerHTML='';
-  snack('Now chatting as '+mycall);load();}
-function newIdentity(){toggleMenu();
-  useKey(randKey());identSent=0;seen={};
-  document.getElementById('msgs').innerHTML='';
-  snack('New identity: '+mycall);load();}
-
 // ---- XPRS wires ----
 function tsNow(){
   var d=new Date(),p=function(n){return (n<10?'0':'')+n;};
@@ -1510,6 +1621,7 @@ function useExtension(quiet,failed){
     npub=npubEncode(pub);mycall=callsignFromNpub(npub);
     stSet('xprs_ext','1');
     sess='';identSent=0;
+    accNote();
     el('call').textContent=mycall;
     showExtButton();rerenderAll();
     if(canSession)ensureSession(0);
@@ -1718,22 +1830,22 @@ function tsPlus(sec){
     '_'+p(d.getUTCHours())+':'+p(d.getUTCMinutes())+':'+p(d.getUTCSeconds());}
 function onSession(j){
   sessHolders=j.holders||null;
-  if(j.offer&&canSign()){
-    var rec=null;try{rec=JSON.parse(stGet('xprs_mbox')||'null');}catch(e){}
-    var stale=!rec||rec.station!==j.offer||!rec.at||Date.now()-rec.at>23*86400000;
-    if(stale){
-      signAny('t:mailbox f:'+mycall+' ts:'+tsNow()+' hold:'+j.offer+' until:'+tsPlus(30*86400),function(w){
-        if(!w)return;
-        postWire(w,function(ok){
-          if(ok){stSet('xprs_mbox',JSON.stringify({station:j.offer,at:Date.now()}));
-                 sessHolders=[j.offer];if(tab==='station')loadStation();}
-        });
-      });
-    }
+  if(canSign()){
+    /* The account's archivers (accHold): the first one is the station that
+       offers when there are none yet; with several stations in reach
+       (xprs.dev, window.XPRS_REMOTE) more are added that offer too, so the
+       mail is kept in more than one place. Declared again when this station
+       does not know the list, when it changed, or near its until:. */
+    var mine=accHold(),e=accEntry();
+    if(!mine.length&&j.offer)mine=[j.offer];
+    var said=e&&e.said===mine.join(',')&&e.saidAt&&Date.now()-e.saidAt<23*86400000;
+    if(mine.length&&(j.offer||!said)&&!declaring)declareHold(mine);
+    if(window.XPRS_REMOTE)setTimeout(function(){moreArchivers(mine);},0);
   }
   /* Mail that waited while this browser was closed: older than the chat
      window's first page, so asked for by name, once per session. */
   if(j.mail>0)fetchMail(0);
+  if(window.XPRS_REMOTE)setTimeout(otherMail,0);
 }
 /* The letters waiting here: asked for until the station answers. */
 function fetchMail(n){
@@ -1758,7 +1870,10 @@ function ackOnce(row,id){
   ackedIds.push(id);while(ackedIds.length>200)ackedIds.shift();
   stSet('xprs_acked',JSON.stringify(ackedIds));
   signAny('t:receipt f:'+mycall+' d:'+baseCall(row.from)+' ts:'+tsNow()+' r:'+id+' s:ack',function(w){
-    if(w)postWire(w,null);});
+    if(!w)return;
+    postWire(w,null);
+    /* Every archiver keeping this account's mail releases its copy. */
+    remoteEach(function(c){remotePost(c,w);});});
 }
 function sendIdentity(){
   var now=Date.now();
@@ -1908,7 +2023,7 @@ window.addEventListener('focus',function(){
 function toggleSound(){
   sndOn=!sndOn;stSet('xprs_sound',sndOn?'1':'0');
   document.getElementById('sndbtn').textContent='Sound: '+(sndOn?'on':'off');
-  toggleMenu();}
+  closeMenu();}
 
 /* ---- likes (XPRS 6.5): add:like / remove:like on a message's id ---- */
 var likes={};        /* msgId -> {callsign:1} */
@@ -2305,6 +2420,7 @@ function drawRoomBar(){
   var b=el('rb-name'),c=el('rb-cnt');if(!b)return;
   b.textContent=curRoom==='forum'?'Forum':roomLabel(curRoom);
   c.style.display=n?'':'none';c.textContent=n;
+  if(mapui)sheetDraw();
 }
 function renderSide(){
   var el=document.getElementById('side');
@@ -2313,7 +2429,7 @@ function renderSide(){
   /* Whoever wrote and was not read yet comes first. */
   var peers=Object.keys(dmPeers).sort(function(a,b){
     return ((dmUnread[b]?1:0)-(dmUnread[a]?1:0))||(a<b?-1:a>b?1:0);});
-  var extra='<div class="roomhead">People</div>'+
+  var extra='<div class="sec" data-sec="people"><div class="roomhead">People</div>'+
     '<div class="room new'+(curRoom==='dmnew'?' on':'')+'" data-r="dmnew">+ Private message</div>';
   /* Rooms this station hosts (XPRS.md 10.10.1): the ones we may see. */
   function roomEntries(list,prefix){return list.map(function(hr){var k=prefix+hr.call;
@@ -2321,10 +2437,11 @@ function renderSide(){
         (hr.visibility==='private'?'<span class="lock" title="private: members only">&#128274;</span>':'')+
         '</div>';}).join('');}
   var chatRooms=hostedRooms.filter(function(hr){return hr.kind!=='forum'&&hr.kind!=='mesh'&&!GAL_KINDS[hr.kind];});
-  var hosted=chatRooms.length?'<div class="roomhead">Station rooms</div>'+roomEntries(chatRooms,'g:'):'';
+  var hosted='</div><div class="sec" data-sec="groups">'+
+    (chatRooms.length?'<div class="roomhead">Station rooms</div>'+roomEntries(chatRooms,'g:'):'');
   hosted+='<div class="roomhead">Groups</div>'+myGroups.map(function(g){return groupTree(g,0);}).join('')+
     (canRank?'<div class="room'+(curRoom==='grank'?' on':'')+'" data-r="grank">Ranking</div>':'')+
-    '<div class="room new'+(curRoom==='onew'?' on':'')+'" data-r="onew">+ Join a group</div>';
+    '<div class="room new'+(curRoom==='onew'?' on':'')+'" data-r="onew">+ Join a group</div></div>';
   /* The Forum (XPRS.md 18.5) is always on the list: its categories are the
    * station's forum rooms, shown inside, and a category open keeps it lit. */
   var forum='<div class="room'+(curRoom==='forum'||curRoom.slice(0,2)==='f:'?' on':'')+
@@ -2333,10 +2450,12 @@ function renderSide(){
    * storage (page.storage). */
   for(var gk in GAL_KINDS)forum+='<div class="room'+(curRoom===gk?' on':'')+(canGallery?'':' off')+'" data-r="'+gk+'"'+
     (canGallery?'':' title="Needs storage: a computer, or a board with a memory card"')+'>'+GAL_KINDS[gk].name+'</div>';
-  el.innerHTML=htmlp+
+  /* Each section in its own box (data-sec): the map layout's tabs show one
+     or two of them as their list (Messages: people; Chat: rooms, groups). */
+  el.innerHTML='<div class="sec" data-sec="chat">'+htmlp+
     rooms.map(function(r){return '<div class="room'+(curRoom===r?' on':'')+
       '" data-r="'+r+'">'+roomLabel(r)+'</div>';}).join('')+
-    '<div class="roomhead">Feed</div>'+
+    '</div><div class="sec" data-sec="feed"><div class="roomhead">Feed</div>'+
     '<div class="room'+(curRoom==='social'?' on':'')+
       '" data-r="social">Social</div>'+
     '<div class="room'+(curRoom==='alerts'?' on':'')+'" data-r="alerts" id="alertsroom">'+
@@ -2347,10 +2466,10 @@ function renderSide(){
     peers.map(function(p){var r='dm:'+p;
       return '<div class="room'+(curRoom===r?' on':'')+(dmUnread[p]?' unread':'')+
       '" data-r="'+r+'">'+p+(dmUnread[p]?' <span class="cnt">('+dmUnread[p]+')</span>':'')+
-      '</div>';}).join('');
+      '</div>';}).join('')+'</div>';
   var items=el.getElementsByClassName('room');
   for(var i=0;i<items.length;i++)
-    items[i].onclick=(function(r){return function(){switchRoom(r);};})(
+    items[i].onclick=(function(r){return function(){switchRoom(r);if(mapui){sheetIndex=false;sheetDraw();}};})(
       items[i].getAttribute('data-r'));
   drawRoomBar();
 }
@@ -2542,6 +2661,7 @@ function openDm(call){
   dmPeers[p]=true;
   if(tab!=='chat')showTab('chat');
   switchRoom('dm:'+p);
+  if(mapui)sheetOpen('msgs');
 }
 
 // ---- private messages -------------------------------------------------------
@@ -2862,7 +2982,9 @@ function backfillRooms(){
     var a=asks[i];
     getJSON('/api/xprs/history?kind='+a[1]+'&room='+a[0]+'&limit=100'+
             (sess?'&session='+sess:''),function(d){
-      if(d&&d.private){roomPrivate[a[0]]=true;if(curRoom===a[0])switchRoom(curRoom);}
+      /* A station keeping Local to its own network (a visitor from the
+         internet): the page starts on Global, where they can take part. */
+      if(d&&d.private){roomPrivate[a[0]]=true;if(curRoom===a[0])switchRoom(a[0]==='local'?'global':curRoom);}
       var rows=(d&&d.rows||[]).slice().reverse();
       for(var j=0;j<rows.length;j++)render(rows[j]);
       roomAnswered(a[0]);
@@ -2921,7 +3043,8 @@ function load(){
 // reply; four phones polling five endpoints each would be the whole budget
 // spent on nobody looking.
 var tab='chat', tabTimer=null;
-var TAB_MS={chat:3000,traffic:5000,devices:5000,stats:60000,station:10000,settings:5000,admin:60000};
+var TAB_MS={chat:3000,traffic:5000,devices:5000,stats:60000,station:10000,settings:5000,admin:60000,
+  accounts:60000,map:120000,more:60000};
 
 function el(id){return document.getElementById(id);}
 function esc(t){return String(t==null?'':t)
@@ -2971,12 +3094,13 @@ function showTab(t){
   if(tab==='admin'&&t!=='admin')adminDirty=false;
   tab=t;
   el('chatwrap').className=t==='chat'?'':'hide';
-  var views=['traffic','devices','stats','station','settings','admin'];
+  var views=['traffic','devices','stats','station','settings','admin','accounts','map','more'];
   for(var j=0;j<views.length;j++)
     el('v-'+views[j]).className='view'+(views[j]===t?'':' hide');
   if(tabTimer)clearInterval(tabTimer);
   tick();
   tabTimer=setInterval(tick,TAB_MS[t]||10000);
+  if(mapui)sheetDraw();
 }
 function tick(){
   if(tab==='chat'){
@@ -2995,9 +3119,12 @@ function tick(){
   else if(tab==='station')loadStation();
   else if(tab==='settings')loadSettings();
   else if(tab==='admin')loadAdmin();
+  else if(tab==='accounts')loadAccounts();
+  else if(tab==='map')loadMap();
+  else if(tab==='more')loadMore();
 }
 // Stats, Station and Settings live behind the menu, not in the tab row.
-function openView(t){toggleMenu();showTab(t);}
+function openView(t){closeMenu();showTab(t);}
 
 // ---- Back goes back a section ------------------------------------------------
 //
@@ -3010,13 +3137,14 @@ function openView(t){toggleMenu();showTab(t);}
 var navStack=[],navAt=0,navBusy=false;
 function navHere(){
   var m=el('menu'),sd=el('side');
-  return {tab:tab,room:curRoom,
+  return {tab:tab,room:curRoom,st:mapui?sheetTab:'',si:mapui&&sheetIndex,
+    sheet:mapui&&!wideScreen()&&sheetState!=='peek',
     galCat:GAL_KINDS[curRoom]?galCat:null,
     galEv:GAL_KINDS[curRoom]&&galEvent?{id:galEvent.id,title:galEvent.title}:null,
     topic:curRoom.slice(0,2)==='f:'&&forumTopic?{id:forumTopic.id,title:forumTopic.title}:null,
     menu:!!m&&/\bopen\b/.test(m.className),side:!!sd&&/\bopen\b/.test(sd.className),
     box:!!el('galbox')};}
-function navKey(s){return s?JSON.stringify([s.tab,s.room,s.galCat,s.galEv,s.topic,s.menu,s.side,s.box]):'';}
+function navKey(s){return s?JSON.stringify([s.tab,s.room,s.galCat,s.galEv,s.topic,s.menu,s.side,s.box,s.st,s.si,s.sheet]):'';}
 function navOver(s){return !!s&&(s.menu||s.side||s.box);}
 function navCheck(){
   if(navBusy||curRoom==='onew')return;
@@ -3034,6 +3162,9 @@ function navRestore(s){
     if(!s.box)galClose();
     if(s.tab!==tab)showTab(s.tab);
     if(s.room!==curRoom)switchRoom(s.room);
+    if(mapui){sheetTab=s.st||sheetTab;sheetIndex=!!s.si;
+      if(!s.sheet&&!wideScreen())sheetState='peek';else if(s.sheet&&sheetState==='peek')sheetState='half';
+      sheetDraw();}
     if(GAL_KINDS[s.room]&&(s.galCat!==galCat||navKey({galEv:s.galEv})!==navKey({galEv:galEvent}))){
       galCat=s.galCat;galEvent=s.galEv;galRows=null;loadGallery(true);}
     if(s.room.slice(0,2)==='f:'&&JSON.stringify(s.topic)!==JSON.stringify(forumTopic&&{id:forumTopic.id,title:forumTopic.title})){
@@ -5398,6 +5529,631 @@ function adminRelease(){
   adminDo('release');
 }
 
+// ---- accounts: several identities kept in this browser ----------------------
+//
+// Each is a key in this page (its nsec) or the NOSTR extension. The one in
+// use is still xprs_nsec / xprs_ext (what older pages read); the list, and
+// each account's archivers, are xprs_accounts. On xprs.dev every station's
+// portal is one origin, so the list is the same on all of them.
+function accList(){try{var a=JSON.parse(stGet('xprs_accounts')||'[]');return Array.isArray(a)?a:[];}catch(e){return [];}}
+function accSave(a){stSet('xprs_accounts',JSON.stringify(a));}
+function accIndex(a,call){for(var i=0;i<a.length;i++)if(a[i].call===call)return i;return -1;}
+function accEntry(){var a=accList(),i=accIndex(a,mycall);return i<0?null:a[i];}
+/* The account in use, recorded: called whenever the key changes. */
+function accNote(){
+  if(!mycall)return;
+  var a=accList(),i=accIndex(a,mycall),e=i<0?{call:mycall}:a[i];
+  if(extMode){e.ext=1;delete e.nsec;}else if(priv){e.nsec=nsecEncode(priv);delete e.ext;}
+  if(i<0)a.push(e);else a[i]=e;
+  accSave(a);
+  /* The shell of xprs.dev opens /in/ on one of these (in/shell.js). */
+  stSet('xprs_hold',JSON.stringify(e.hold||[]));
+  plainCache={};rSess={};told={};moreDone=false;
+}
+function accSet(f){
+  var a=accList(),i=accIndex(a,mycall);if(i<0)return;
+  for(var k in f)a[i][k]=f[k];
+  accSave(a);
+  stSet('xprs_hold',JSON.stringify(a[i].hold||[]));
+}
+function accHold(){var e=accEntry();return (e&&e.hold)||[];}
+/* What changes with the account: everything this page showed for the old one. */
+function accFresh(){
+  identSent=0;seen={};sessHolders=null;el('msgs').innerHTML='';
+  showExtButton();load();
+  if(tab==='accounts')loadAccounts();
+}
+function accUse(call){
+  var a=accList(),i=accIndex(a,call);
+  if(i<0||call===mycall)return;
+  if(a[i].ext){useExtension(false,null);return;}
+  var b=nsecDecode(a[i].nsec||'');
+  if(!b){snack('That key is damaged');return;}
+  stSet('xprs_ext','0');useKey(b);accFresh();snack('Now '+mycall);
+}
+function accDrop(call){
+  var a=accList(),i=accIndex(a,call);
+  if(i<0||call===mycall)return;
+  if(a[i].nsec){
+    prompt('Copy the secret key of '+call+' now, to have it back later:',a[i].nsec);
+    if(!confirm('Remove '+call+' from this browser?'))return;
+  }
+  a.splice(i,1);accSave(a);loadAccounts();
+}
+function accNew(){stSet('xprs_ext','0');useKey(randKey());accFresh();snack('New identity: '+mycall);}
+function accImport(){
+  var v=prompt('Paste an nsec to add that identity:');
+  if(!v)return;
+  var b=nsecDecode(v.trim());
+  if(!b||b2n(b)===0n||b2n(b)>=N){snack('That is not a valid nsec');return;}
+  stSet('xprs_ext','0');useKey(b);accFresh();snack('Now '+mycall);
+}
+
+// ---- other stations, where this page can reach them -------------------------
+//
+// On xprs.dev the page is linked to one archiver and can reach others through
+// the same gateway (window.XPRS_REMOTE, in/shell.js): a session on each of
+// this account's archivers, its mail from all of them, a receipt to all of
+// them. A station's own page reaches only that station and does none of it.
+var rSess={},told={},moreDone=false,declaring=false;
+function remote(){return window.XPRS_REMOTE&&window.XPRS_REMOTE.ask?window.XPRS_REMOTE:null;}
+function remoteEach(fn,list){
+  if(!remote())return;
+  (list||accHold()).forEach(function(c){if(c!==stationCall)fn(c);});
+}
+function signP(text){return new Promise(function(ok,no){signAny(text,function(w,why){if(w)ok(w);else no(new Error(why||'not signed'));});});}
+/* A wire handed to station [c], our identity first so it can check the
+   signature (a mailbox or receipt is refused from an unknown key). */
+function remoteSend(c,w){return remote().ask(c,'POST','/api/xprs/send',{},JSON.stringify({wire:w}));}
+function remoteIdent(c){
+  if(told[c])return Promise.resolve();
+  return signP('t:identity f:'+mycall+' ts:'+tsNow()+' k:'+npub).then(function(w){return remoteSend(c,w);})
+    .then(function(){told[c]=1;});
+}
+function remotePost(c,w){
+  if(!remote())return Promise.reject(new Error('no reach'));
+  return remoteIdent(c).then(function(){return remoteSend(c,w);});
+}
+/* A session on station [c] for this account: {session, holders, offer, mail}. */
+function remoteSession(c){
+  var R=remote();if(!R)return Promise.resolve(null);
+  if(rSess[c])return Promise.resolve(rSess[c]);
+  var who=mycall;
+  function once(again){
+    return R.ask(c,'GET','/api/session',{}).then(function(r){
+      var n=r.json&&r.json.nonce;if(!n)throw new Error('no nonce');
+      return signP('t:session f:'+mycall+' ts:'+tsNow()+' m:'+n);
+    }).then(function(w){
+      return R.ask(c,'POST','/api/session',{},JSON.stringify({wire:w}));
+    }).then(function(r){
+      if(r.status===200&&r.json&&r.json.session){if(mycall===who)rSess[c]=r.json;return r.json;}
+      if(r.status===409&&!again){told[c]=0;return remoteIdent(c).catch(function(){}).then(function(){return once(true);});}
+      return null;
+    });
+  }
+  return once(false).catch(function(){return null;});
+}
+/* More archivers for this account, up to three, from the ones in reach that
+   offer to keep its mail: redundancy, as a NOSTR user keeps several relays. */
+function moreArchivers(base){
+  var R=remote();
+  if(!R||moreDone||!R.archivers)return;
+  moreDone=true;
+  var mine=(base||accHold()).slice();
+  if(mine.length>=3)return;
+  var cands=R.archivers().map(function(a){return a.call;}).filter(function(c){return mine.indexOf(c)<0;});
+  var added=[];
+  (function next(i){
+    if(mine.length+added.length>=3||i>=cands.length||i>=8){
+      /* Added to the list as it is NOW: another declaration may have run
+         meanwhile, and what it named stays. */
+      if(added.length){
+        var now=accHold().slice();
+        added.forEach(function(c){if(now.indexOf(c)<0)now.push(c);});
+        declareHold(now);
+      }
+      return;
+    }
+    remoteSession(cands[i]).then(function(j){
+      var c=cands[i];
+      if(j&&(j.offer===c||(j.holders||[]).indexOf(c)>=0))added.push(c);
+      next(i+1);
+    });
+  })(0);
+}
+/* Sign `t:mailbox hold:<list>` (XPRS.md 9.12) and hand it to every station
+   in the list: stations do not pass it on to each other over Reticulum. */
+function declareHold(list){
+  list=list.slice(0,5);
+  if(!list.length)return;
+  /* The list is the account's from now: what is added next builds on it. */
+  accSet({hold:list});
+  declaring=true;
+  signAny('t:mailbox f:'+mycall+' ts:'+tsNow()+' hold:'+list.join(',')+' until:'+tsPlus(30*86400),function(w){
+    if(!w){declaring=false;return;}
+    postWire(w,function(ok){
+      declaring=false;
+      if(!ok)return;
+      accSet({said:list.join(','),saidAt:Date.now()});
+      sessHolders=list.slice();
+      if(tab==='station')loadStation();
+      if(tab==='accounts')loadAccounts();
+    });
+    remoteEach(function(c){remotePost(c,w).catch(function(){});},list);
+  });
+}
+/* Mail kept by this account's other archivers: asked for now and every two
+   minutes while the page is open, drawn like the mail of this station. */
+var otherTimer=null;
+function otherMail(){
+  if(!remote())return;
+  if(!otherTimer)otherTimer=setInterval(otherMail,120000);
+  var who=mycall;
+  remoteEach(function(c){
+    remoteSession(c).then(function(j){
+      if(!j||mycall!==who)return null;
+      return remote().ask(c,'GET','/api/xprs/mail',{call:mycall,session:j.session}).then(function(r){
+        if(r.status===401||r.status===403){delete rSess[c];return;}
+        var rows=((r.json&&r.json.rows)||[]).slice().reverse();
+        for(var i=0;i<rows.length;i++)render(rows[i]);
+        if(rows.length)renderSide();
+      });
+    }).catch(function(){});
+  });
+}
+
+// ---- the Accounts view ------------------------------------------------------
+function loadAccounts(){
+  var a=accList(),R=remote(),mine=accHold(),h='<h3>Accounts</h3><div class="accs">';
+  a.forEach(function(e){
+    var me=e.call===mycall;
+    h+='<div class="acc'+(me?' on':'')+'"><b>'+esc(e.call)+'</b><span class="dim">'+
+      (e.ext?'NOSTR extension':'key in this browser')+'</span><span class="sp"></span>'+
+      (me?'<span class="dim">in use</span>':
+        '<button class="act" onclick="accUse(\''+esc(e.call)+'\')">Use</button>'+
+        '<button class="act" onclick="accDrop(\''+esc(e.call)+'\')">Remove</button>')+'</div>';
+  });
+  h+='</div><div class="btnrow"><button class="act" onclick="accNew()">New identity</button>'+
+    '<button class="act" onclick="accImport()">Add a key (nsec)</button>'+
+    (nostrAvailable()&&!extMode?'<button class="act" onclick="useExtension(false,null)">Use my NOSTR extension</button>':'')+
+    '</div>';
+  h+='<h3>My archivers</h3><div class="accs">';
+  if(!mine.length)h+='<p class="dim">'+(sess?'None yet':'Proving your identity to the station…')+'</p>';
+  mine.forEach(function(c,i){
+    h+='<div class="acc"><b>'+esc(c)+'</b>'+(c===stationCall?'<span class="dim">this station</span>':'')+
+      '<span class="sp"></span>'+
+      (i?'<button class="act" title="Prefer" onclick="holdMove(\''+esc(c)+'\')">↑</button>':'')+
+      (mine.length>1?'<button class="act" onclick="holdDrop(\''+esc(c)+'\')">Remove</button>':'')+'</div>';
+  });
+  h+='</div>';
+  var more=R&&R.archivers?R.archivers().filter(function(x){return mine.indexOf(x.call)<0;}):[];
+  if(!R&&stationCall&&mine.indexOf(stationCall)<0&&sess)
+    more=[{call:stationCall}];
+  if(more.length){
+    h+='<h3>Archivers in reach</h3><div class="accs">';
+    more.slice(0,20).forEach(function(x){
+      h+='<div class="acc"><b>'+esc(x.call)+'</b>'+(x.at?'<span class="dim">'+esc(ago(Date.now()/1000-x.at))+'</span>':'')+
+        '<span class="sp"></span><button class="act" onclick="holdAdd(\''+esc(x.call)+'\')">Add</button></div>';
+    });
+    h+='</div>';
+  }
+  el('v-accounts').innerHTML=h;
+}
+function holdMove(c){var m=accHold().slice(),i=m.indexOf(c);if(i<1)return;m.splice(i,1);m.splice(i-1,0,c);declareHold(m);}
+function holdDrop(c){var m=accHold().filter(function(x){return x!==c;});if(m.length)declareHold(m);}
+/* Only a station that offers (or already keeps this account's mail) is
+   added: naming one that will not keep it would lose mail. */
+function holdAdd(c){
+  var m=accHold().slice();if(m.indexOf(c)>=0)return;
+  if(c===stationCall||!remote()){m.push(c);declareHold(m);return;}
+  snack('Asking '+c+'…');
+  remoteSession(c).then(function(j){
+    if(j&&(j.offer===c||(j.holders||[]).indexOf(c)>=0)){m.push(c);declareHold(m);snack(c+' keeps your mail too');}
+    else snack(c+(j?' has no room for your mail':' did not answer'));
+  });
+}
+
+// ---- the Map view: stations where they say they are --------------------------
+//
+// From this station's history: each identity's newest `pos:`/`acc:` (XPRS.md
+// 6.3.2, 15.1) and its service announcements. Leaflet and the map tiles come
+// from the internet when the view opens; without it the list stays.
+var mapMarks={},mapObj=null,mapLayer=null,mapRows=null,mapFitted=false,mapReading=false,mapWaiting=null,mapShown=50;
+var MAP_CACHE='xprs.in.map';
+function mapField(w,k){return headField(' '+w,k);}
+function mapPos(p){
+  if(!p)return null;
+  var parts=p.split(','),half=0;
+  if(parts.length!==2)return null;
+  function mid(raw){
+    var shown=raw.replace(/█/g,'');
+    if(!/^-?\d+(\.\d*)?$/.test(shown))return NaN;
+    var n=parseFloat(shown),dot=shown.indexOf('.'),dec=dot<0?0:shown.length-dot-1;
+    if(shown===raw)return {v:n,dec:dec};
+    /* Redaction bars (6.2.1): somewhere in the square the readable digits
+       name, so the middle of it, with the square as `box`. */
+    var unit=Math.pow(10,-dec);if(unit/2>half)half=unit/2;
+    return {v:shown.charAt(0)==='-'?n-unit/2:n+unit/2,dec:dec};
+  }
+  var la=mid(parts[0]),lo=mid(parts[1]);
+  if(!la||!lo||isNaN(la.v)||isNaN(lo.v))return null;
+  if(!(la.v>=-90&&la.v<=90&&lo.v>=-180&&lo.v<=180))return null;
+  var dec=Math.min(la.dec,lo.dec);
+  var out={lat:la.v,lon:lo.v,metres:[111000,11100,1110,111,11,1.1][Math.min(dec,5)]};
+  if(half){
+    out.box=[[la.v-half,lo.v-half],[la.v+half,lo.v+half]];
+    var m=Math.round(half*2*100000);
+    out.range=m>=1000?Math.round(m/1000)+' km':m+' m';
+  }
+  return out;
+}
+function mapStations(rows){
+  var st={};
+  rows.forEach(function(r){
+    var w=r.wire||'',c=baseCall((mapField(w,'f')||'').toUpperCase());
+    if(!/^X[1-5][A-Z0-9]{2,6}$/.test(c))return;
+    var s=st[c]||(st[c]={call:c,last:0,nick:'',pos:null,posTs:0,key:'',keyTs:0,archive:false});
+    if(r.ts>s.last)s.last=r.ts;
+    var t=w.slice(0,2)==='t:'?w.slice(2).split(' ')[0]:'';
+    if(t==='identity'){var n=mapField(w,'nick');if(n&&n!=='-'&&!s.nick)s.nick=n;}
+    if(t==='service'&&/(^|,)archive(,|$)/.test(mapField(w,'serve')))s.archive=true;
+    var k=t==='identity'&&r.sig==='verified'?mapField(w,'k'):'';
+    if(k&&r.ts>=s.keyTs){s.key=k;s.keyTs=r.ts;}
+    var pf=t==='identity'||t==='service'?mapField(w,'pos'):'';
+    if(pf&&r.ts>=s.posTs){var p=pf==='-'?null:mapPos(pf);s.pos=p;s.posTs=r.ts;}
+  });
+  return Object.keys(st).map(function(k){return st[k];}).sort(function(a,b){return b.last-a.last;});
+}
+function mapLoadLeaflet(cb){
+  if(window.L)return cb(true);
+  var css=document.createElement('link');css.rel='stylesheet';
+  css.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+  document.head.appendChild(css);
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+  s.onload=function(){cb(true);};s.onerror=function(){cb(false);};
+  document.head.appendChild(s);
+}
+/* OpenStreetMap tiles repainted dark, as the app's map does (app/lib/wapp/
+   geoui/tile_recolor.dart): near-black land, blue-grey water, grey roads. */
+var MAP_LUM=null;
+function mapRecolor(d){
+  var WATER=0x31353f,PARK=0x1c2421,SAND=0x212123,MAJOR=0x474747,BOUNDARY=0x5b6374,i,l;
+  if(!MAP_LUM){
+    var RAMP=[[0,175],[110,120],[185,24],[212,17],[236,31],[244,31],[255,61]];
+    MAP_LUM=new Uint8Array(256);
+    for(l=0;l<256;l++){
+      var v=RAMP[RAMP.length-1][1];
+      for(i=0;i+1<RAMP.length;i++){var a=RAMP[i],b=RAMP[i+1];
+        if(l<=b[0]){v=a[1]+(b[1]-a[1])*(l-a[0])/(b[0]-a[0]);break;}}
+      MAP_LUM[l]=Math.round(v);
+    }
+  }
+  for(i=0;i+3<d.length;i+=4){
+    var r=d[i],g=d[i+1],bl=d[i+2];
+    l=((299*r+587*g+114*bl)/1000)|0;var grey=MAP_LUM[l];
+    var mx=Math.max(r,g,bl),mn=Math.min(r,g,bl),chroma=mx-mn;
+    if(chroma<14){d[i]=d[i+1]=d[i+2]=grey;continue;}
+    var target;
+    if(bl>=g-8&&bl>r+15&&g>r){if(l<150){d[i]=d[i+1]=d[i+2]=grey;continue;}target=WATER;}
+    else if(g>r+6&&g>=bl)target=PARK;
+    else if(r>bl+20&&l>215&&chroma<56&&r-g<20)target=SAND;
+    else if(r>bl+20&&(g>bl+10||r>g+20))target=MAJOR;
+    else target=BOUNDARY;
+    var t=chroma>=44?30:chroma-14;
+    d[i]=grey+((((target>>16)-grey)*t/30)|0);
+    d[i+1]=grey+(((((target>>8)&0xff)-grey)*t/30)|0);
+    d[i+2]=grey+((((target&0xff)-grey)*t/30)|0);
+  }
+}
+function mapMake(){
+  el('v-map').innerHTML='<div class="mapbar"><span id="mapcount" class="dim"></span>'+
+    '<input id="mapgo" placeholder="Callsign" autocomplete="off" spellcheck="false"></div>'+
+    (mapui?'':'<div id="mapbox"></div>')+'<div id="maplist"></div>';
+  el('mapgo').oninput=function(){mapShown=50;mapList();};
+  el('mapgo').onkeydown=function(e){
+    var c=this.value.trim().toUpperCase();
+    if(e.key!=='Enter'||!/^[A-Z0-9]{3,8}(-[0-9]{1,2})?$/.test(c))return;
+    if(remote())location.href='/in/'+c.toLowerCase();else openDm(c);
+  };
+  if(mapui)return;
+  mapLoadLeaflet(function(ok){
+    if(!ok){el('mapbox').style.display='none';return;}
+    mapInit(el('mapbox'));
+  });
+}
+/* The map in [box]: the view's own box, or the whole page (mapuiOn). */
+function mapInit(box){
+    mapObj=L.map(box,{worldCopyJump:true,zoomControl:!('ontouchstart' in window)}).setView([30,0],2);
+    mapLayer=L.layerGroup().addTo(mapObj);
+    mapObj.attributionControl.setPrefix(false);
+    var Dark=L.GridLayer.extend({createTile:function(c,done){
+      var cv=document.createElement('canvas'),sz=this.getTileSize(),img=new Image();
+      cv.width=sz.x;cv.height=sz.y;img.crossOrigin='anonymous';
+      img.onload=function(){var g=cv.getContext('2d');g.drawImage(img,0,0,sz.x,sz.y);
+        try{var px=g.getImageData(0,0,sz.x,sz.y);mapRecolor(px.data);g.putImageData(px,0,0);}catch(e){}
+        done(null,cv);};
+      img.onerror=function(){done(new Error('tile'),cv);};
+      img.src='https://'+'abc'[(c.x+c.y)%3]+'.tile.openstreetmap.org/'+c.z+'/'+c.x+'/'+c.y+'.png';
+      return cv;}});
+    new Dark({maxZoom:18,attribution:'&copy; OpenStreetMap'}).addTo(mapObj);
+    /* A redraw clears the markers: it waits while somebody reads a popup. */
+    mapObj.on('popupopen',function(){mapReading=true;});
+    mapObj.on('popupclose',function(){mapReading=false;if(mapWaiting){var w=mapWaiting;mapWaiting=null;mapDraw(w);}});
+    if(mapRows)mapDraw(mapRows);
+}
+var mapAskedAt=0;
+function loadMap(){
+  if(!el('maplist'))mapMake();
+  else if(mapObj)mapObj.invalidateSize();
+  if(!mapRows){
+    try{var c=JSON.parse(localStorage.getItem(MAP_CACHE)||'null');
+      if(c&&c.rows&&c.rows.length){mapDraw(c.rows,c.at);}}catch(e){}
+  }
+  /* Asked at most once a minute: the Stations tab and the map share it. */
+  if(Date.now()-mapAskedAt<60000&&mapAskedAt)return;
+  mapAskedAt=Date.now();
+  getJSON('/api/xprs/history?kind=identity,service&limit=200',function(a){
+    getJSON('/api/xprs/history?limit=200',function(b){
+      var rows=((a&&a.rows)||[]).concat((b&&b.rows)||[]);
+      if(!rows.length)return;
+      try{localStorage.setItem(MAP_CACHE,JSON.stringify({at:Date.now(),rows:rows}));}catch(e){}
+      if(mapReading){mapWaiting=rows;return;}
+      mapDraw(rows);
+    },45000);
+  },45000);
+}
+var mapAll=[],mapSummary='';
+function mapDraw(rows,cachedAt){
+  mapRows=rows;
+  var all=mapAll=mapStations(rows),now=Date.now()/1000;
+  var placed=all.filter(function(s){return s.pos;});
+  var today=all.filter(function(s){return now-s.last<86400;}).length;
+  var ce=el('mapcount');
+  mapSummary=all.length+' stations · '+today+' today · '+placed.length+' mapped';
+  if(ce)ce.textContent=mapSummary+(cachedAt?' · cached '+new Date(cachedAt).toLocaleString():'');
+  sheetBadges();
+  mapList();
+  if(!mapObj)return;
+  mapLayer.clearLayers();
+  mapMarks={};
+  var bounds=L.latLngBounds([]),boxes={};
+  placed.forEach(function(s){
+    var ll=[s.pos.lat,s.pos.lon],pop=mapPop(s);
+    if(s.pos.box){
+      var k=s.pos.box.join(';'),b=boxes[k]||(boxes[k]={box:s.pos.box,ll:ll,range:s.pos.range,pops:[],calls:[]});
+      b.pops.push(pop);b.calls.push(s.call);return;
+    }
+    if(s.pos.metres>=20000){var ring=L.circle(ll,{radius:s.pos.metres,color:'#FFC107',weight:1,fillOpacity:.07}).addTo(mapLayer).bindPopup(pop);bounds.extend(ring.getBounds());}
+    mapMarks[s.call]=L.circleMarker(ll,{radius:7,color:'#A5D6A7',fillColor:'#43A047',fillOpacity:.95,weight:2}).addTo(mapLayer).bindPopup(pop);
+    bounds.extend(ll);
+  });
+  /* Stations that say only which square they are in share one marker in its
+     middle, with how many they are, and say once that only the area is known. */
+  Object.keys(boxes).forEach(function(k){
+    var b=boxes[k],pop=b.pops.slice(0,12).join('<hr>')+(b.pops.length>12?'<hr>+'+(b.pops.length-12):'')+
+      '<small>Approximate: somewhere within '+esc(b.range)+' of here</small>';
+    var mk=L.marker(b.ll,{icon:L.divIcon({className:'mapcnt',html:String(b.pops.length),iconSize:[26,26]})}).addTo(mapLayer).bindPopup(pop,{maxHeight:220});
+    b.calls.forEach(function(c){mapMarks[c]=mk;});
+    bounds.extend(b.box);
+  });
+  if(!mapFitted&&bounds.isValid()){mapObj.fitBounds(bounds,{padding:[40,40],maxZoom:10});mapFitted=true;}
+}
+/* A station in a popup or a row: its page where the page can open it
+   (xprs.dev), and a private message when it published a key to seal to. */
+function mapName(s){
+  return remote()?'<a href="/in/'+esc(s.call.toLowerCase())+'">'+esc(s.call)+'</a>':'<b>'+esc(s.call)+'</b>';
+}
+function mapMsg(s){
+  return s.key&&s.call!==baseCall(mycall)?'<button class="act mapmsg" onclick="event.stopPropagation();mapWrite(\''+esc(s.call)+'\')">Message</button>':'';
+}
+function mapPop(s){
+  return mapName(s)+(s.nick?' '+esc(s.nick):'')+mapMsg(s)+'<br><span class="dim">'+esc(ago(Date.now()/1000-s.last))+' ago</span>';
+}
+/* A station from the list, on the map: its marker centred and opened, the
+   drawer folded so the map shows. */
+function mapFocus(c){
+  var m=mapMarks[c];
+  if(!m||!mapObj){snack(c+' does not say where it is');return;}
+  if(!wideScreen())sheetTo('peek');
+  mapObj.setView(m.getLatLng(),Math.max(mapObj.getZoom(),9));
+  setTimeout(function(){m.openPopup();},300);
+}
+function mapWrite(c){
+  for(var i=0;i<mapAll.length;i++)if(mapAll[i].call===c&&mapAll[i].key){var k=npubDecode(mapAll[i].key);if(k)keys[c]=k;}
+  openDm(c);
+}
+function mapList(){
+  var box=el('maplist');if(!box)return;
+  var q=(el('mapgo').value||'').trim().toLowerCase();
+  var hits=mapAll.filter(function(s){return !q||s.call.toLowerCase().indexOf(q)>=0||s.nick.toLowerCase().indexOf(q)>=0;});
+  var h='';
+  hits.slice(0,mapShown).forEach(function(s){
+    h+='<div class="maprow"'+(mapui?' onclick="mapFocus(\''+esc(s.call)+'\')"':'')+'>'+
+      (mapui?'<b>'+esc(s.call)+'</b>':mapName(s))+'<span class="dim">'+esc(s.nick)+'</span>'+
+      (s.pos?'<em title="On the map">●</em>':'')+'<span class="sp"></span>'+
+      '<span class="dim">'+esc(ago(Date.now()/1000-s.last))+'</span>'+mapMsg(s)+'</div>';
+  });
+  if(hits.length>mapShown)h+='<button class="act" onclick="event.stopPropagation();mapShown+=50;mapList()">Show more ('+(hits.length-mapShown)+')</button>';
+  box.innerHTML=h||'<p class="dim">'+(mapRows?'No station matches':'Looking for stations…')+'</p>';
+}
+
+// ---- the map layout: the map is the page, everything else in a drawer ------
+//
+// Where the map can load (Leaflet and the tiles come from the internet), the
+// page becomes the map with the rest in a drawer of four tabs: Messages (the
+// People section of the room list), Chat (rooms and groups), Stations (the
+// list under the map) and More (feeds, accounts, the station's views). A tab
+// shows its list; a room or view picked from it opens in the drawer, and the
+// arrow goes back to the list. On a phone the drawer is pulled up from the
+// bottom to three heights; on a screen wider than tall it is a panel on the
+// left that folds to a rail of icons. Without the map the page is as before.
+var mapui=false,sheetTab='chat',sheetIndex=true,sheetState='peek',railed=false;
+var SHEET_IC={
+  msgs:'<path d="M3 5h18v13H3z M3 6l9 7 9-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
+  chat:'<path d="M4 4h12v9H9l-5 4z M18 8h2v10l-4-3h-6v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
+  stations:'<path d="M12 21s-6.5-5.8-6.5-11a6.5 6.5 0 1113 0c0 5.2-6.5 11-6.5 11z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="10" r="2.3" fill="currentColor"/>',
+  more:'<circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/>'};
+var SHEET_NAMES={msgs:'Messages',chat:'Chat',stations:'Stations',more:'More'};
+function wideScreen(){return innerWidth>=720&&innerWidth>innerHeight;}
+function mapuiOn(){
+  if(mapui)return;
+  mapui=true;
+  document.body.classList.add('mapui');
+  var bg=document.createElement('div');bg.id='mapbg';
+  document.body.insertBefore(bg,document.body.firstChild);
+  el('content').insertAdjacentHTML('afterbegin',
+    '<div id="grip"><i></i></div><div id="peek"></div>'+
+    '<div id="shead"><button class="back" onclick="sheetBack()" aria-label="Back">'+
+    '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'+
+    '<b id="stitle"></b><span class="sp"></span></div>');
+  var t='';
+  ['msgs','chat','stations','more'].forEach(function(k){
+    t+='<button data-st="'+k+'" onclick="sheetGo(\''+k+'\')"><svg viewBox="0 0 24 24">'+SHEET_IC[k]+'</svg>'+
+      '<span>'+SHEET_NAMES[k]+'</span><em></em></button>';});
+  t+='<button class="fold" onclick="sheetRail()" title="Fold the panel" aria-label="Fold the panel">'+
+    '<svg viewBox="0 0 24 24"><path d="M14 6l-6 6 6 6M20 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
+  el('tabs').innerHTML=t;el('tabs').hidden=false;
+  el('call').onclick=function(){sheetOpen('more',function(){showTab('accounts');});};
+  el('call').title='Accounts and archivers';
+  mapInit(bg);
+  if(el('mapbox'))el('v-map').innerHTML='';
+  gripWire();
+  window.addEventListener('resize',function(){if(mapObj)mapObj.invalidateSize();sheetDraw();});
+  /* The map keeps itself current while the page is in view. */
+  loadMap();
+  setInterval(function(){if(!document.hidden)loadMap();},120000);
+  sheetTab=curRoom.slice(0,3)==='dm:'?'msgs':'chat';sheetIndex=false;
+  sheetDraw();
+}
+/* A tab: its list, the drawer opened to half if it was down. The open tab
+   tapped again folds the drawer back. */
+function sheetGo(k){
+  if(k===sheetTab&&sheetIndex&&!wideScreen()&&sheetState!=='peek'){sheetTo('peek');return;}
+  if(railed){railed=false;}
+  sheetTab=k;sheetIndex=true;
+  if(k==='stations')showTab('map');
+  else if(k==='more')showTab('more');
+  else if(tab!=='chat')showTab('chat');
+  if(sheetState==='peek')sheetState='half';
+  sheetDraw();
+}
+/* Something opened from a tab's list (or from the map): shown in the drawer. */
+function sheetOpen(k,fn){
+  if(!mapui){if(fn)fn();return;}
+  sheetTab=k;sheetIndex=false;railed=false;
+  if(fn)fn();
+  if(sheetState==='peek')sheetState='half';
+  sheetDraw();
+}
+function sheetBack(){
+  if(sheetTab==='more'&&tab!=='more')showTab('more');
+  else if((sheetTab==='msgs'||sheetTab==='chat')&&tab!=='chat')showTab('chat');
+  sheetIndex=true;sheetDraw();
+}
+function sheetRail(){railed=!railed;sheetDraw();setTimeout(function(){if(mapObj)mapObj.invalidateSize();},260);}
+function sheetTo(st){sheetState=st;sheetDraw();}
+function sheetHeights(){
+  var H=innerHeight,top=(el('content').parentNode?document.querySelector('.header').getBoundingClientRect().bottom:50);
+  var tabsH=el('tabs').offsetHeight||60;
+  return {peek:46,half:Math.round((H-tabsH)*0.5),full:Math.max(200,H-top-tabsH-6)};
+}
+function sheetDraw(){
+  if(!mapui)return;
+  var b=document.body,wide=wideScreen();
+  b.classList.toggle('wide',wide);
+  b.classList.toggle('railed',wide&&railed);
+  b.setAttribute('data-st',sheetTab);
+  b.classList.toggle('sindex',sheetIndex);
+  var listy=sheetIndex||sheetTab==='stations';
+  var st=wide?'full':sheetState;
+  b.setAttribute('data-sh',st);
+  document.documentElement.style.setProperty('--tabsh',(wide?0:el('tabs').offsetHeight)+'px');
+  var c=el('content');
+  if(wide)c.style.height='';else c.style.height=sheetHeights()[st]+'px';
+  var bs=el('tabs').querySelectorAll('[data-st]');
+  for(var i=0;i<bs.length;i++)bs[i].className=bs[i].getAttribute('data-st')===sheetTab&&(wide?!railed:st!=='peek')?'on':'';
+  el('stitle').textContent=listy?SHEET_NAMES[sheetTab]:
+    (tab==='chat'?(curRoom==='forum'?'Forum':roomLabel(curRoom)):
+     ({accounts:'Accounts and archivers',station:'Station',traffic:'Traffic',devices:'Devices',stats:'Stats',settings:'Settings',admin:'Administration'})[tab]||SHEET_NAMES[sheetTab]);
+  el('shead').className=listy?'list':'';
+  sheetBadges();
+  /* A conversation coming into view (opened, or the drawer raised) shows its
+     newest messages: it filled while hidden and was never scrolled. */
+  var shown=!sheetIndex&&tab==='chat'&&st!=='peek'?curRoom+'|'+st:'';
+  if(shown&&shown!==sheetShown){var m=el('msgs');setTimeout(function(){m.scrollTop=m.scrollHeight;},0);}
+  sheetShown=shown;
+}
+var sheetShown='';
+/* The Messages tab counts the people who wrote and were not read; the folded
+   drawer says who, in one line. */
+function sheetBadges(){
+  if(!mapui)return;
+  var n=0,first='',k;
+  for(k in dmUnread)if(dmUnread[k]){n++;if(!first)first=k;}
+  var em=el('tabs').querySelector('[data-st="msgs"] em');
+  if(em){em.textContent=n||'';em.style.display=n?'':'none';}
+  var p=el('peek');
+  if(!p)return;
+  if(first)p.innerHTML='<b>'+esc(first)+'</b><span>'+dmUnread[first]+' new message'+(dmUnread[first]>1?'s':'')+'</span>';
+  else p.innerHTML='<span>'+esc(mapSummary||'Pull up for messages, chat and stations')+'</span>';
+  p.onclick=function(){if(first)openDm(first);else sheetTo('half');};
+}
+/* The drawer follows the finger (or the mouse) on its handle, its bar and
+   the folded line, and settles on the nearest of its three heights. */
+function gripWire(){
+  var c=el('content'),start=0,h0=0,moved=false,drag=false;
+  function down(e){
+    if(wideScreen())return;
+    drag=true;moved=false;start=e.clientY;h0=c.getBoundingClientRect().height;
+    c.style.transition='none';
+    try{e.target.setPointerCapture(e.pointerId);}catch(x){}
+  }
+  function move(e){
+    if(!drag)return;
+    var dy=e.clientY-start;if(Math.abs(dy)>6)moved=true;
+    if(!moved)return;
+    var hs=sheetHeights();
+    c.style.height=Math.max(hs.peek,Math.min(hs.full,h0-dy))+'px';
+    e.preventDefault();
+  }
+  function up(){
+    if(!drag)return;
+    drag=false;c.style.transition='';
+    if(!moved)return;
+    var hs=sheetHeights(),h=c.getBoundingClientRect().height,best='peek',d=1e9;
+    ['peek','half','full'].forEach(function(k){if(Math.abs(hs[k]-h)<d){d=Math.abs(hs[k]-h);best=k;}});
+    sheetTo(best);
+  }
+  ['grip','peek','shead'].forEach(function(id){
+    var x=el(id);
+    x.addEventListener('pointerdown',down);x.addEventListener('pointermove',move);
+    x.addEventListener('pointerup',up);x.addEventListener('pointercancel',up);
+  });
+  el('grip').addEventListener('click',function(){if(!moved)sheetTo(sheetState==='peek'?'half':sheetState==='half'?'full':'peek');});
+}
+/* The More tab: the feeds, this visitor, this station: what the menu holds,
+   where a menu has no room. A station view the station does not serve is
+   not listed (its menu entry is hidden, applyServices). */
+function loadMore(){
+  var shown=function(sel){var b=document.querySelector(sel);return b&&b.style.display!=='none';};
+  function row(label,act,sub){return '<div class="mrow" onclick="'+act+'"><span>'+label+'</span>'+(sub?'<span class="dim">'+sub+'</span>':'')+'</div>';}
+  var h='<h3>Feed</h3><div class="mlist">'+
+    row('Social','sheetRoom(\'social\')')+row(alertsLabel(),'sheetRoom(\'alerts\')')+
+    row(blogLabel(),'sheetRoom(\'blog\')')+row('Forum','sheetRoom(\'forum\')');
+  for(var gk in GAL_KINDS)if(canGallery)h+=row(GAL_KINDS[gk].name,'sheetRoom(\''+gk+'\')');
+  h+='</div><h3>You</h3><div class="mlist">'+
+    row('Accounts and archivers','sheetOpen(\'more\',function(){showTab(\'accounts\')})',esc(mycall))+
+    row('Show my npub','prompt(\'Your public key (share freely):\',npub)')+
+    (extMode?'':row('Export nsec','prompt(\'Your SECRET key. Anyone holding it IS \'+mycall+\':\',nsecEncode(priv))'))+
+    '</div><h3>This station</h3><div class="mlist">';
+  [['station','Station'],['traffic','Traffic'],['devices','Devices'],['stats','Stats'],['settings','Settings']].forEach(function(v){
+    if(shown('[data-view="'+v[0]+'"]'))h+=row(v[1],'sheetOpen(\'more\',function(){showTab(\''+v[0]+'\')})');});
+  if(shown('#adminbtn'))h+=row('Administration','sheetOpen(\'more\',function(){showTab(\'admin\')})');
+  h+=row(el('sndbtn').textContent,'toggleSound();loadMore()')+'</div>';
+  el('v-more').innerHTML=h;
+}
+function sheetRoom(r){sheetOpen('more',function(){if(tab!=='chat')showTab('chat');switchRoom(r);});}
 // ---- boot: an identity before the first keystroke, the extension first ----
 (function(){
   var saved=stGet('xprs_nsec');
@@ -5413,6 +6169,8 @@ function adminRelease(){
   switchRoom(curRoom);
   navStart();
   load();
+  /* Where the map loads, the page is the map (mapuiOn). */
+  mapLoadLeaflet(function(ok){if(ok)mapuiOn();});
   tabTimer=setInterval(tick,TAB_MS.chat);
   getJSON('/api/services',applyServices);
   /* The alerts count in the tab, whatever tab is open: once, then every
