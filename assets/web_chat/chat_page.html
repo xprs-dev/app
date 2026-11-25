@@ -675,18 +675,23 @@ body.mapui.wide #mapbg .leaflet-bottom{bottom:0}
   margin-right:4px;color:var(--muted)}
 .mapall{width:100%;margin-top:2px}
 .mapcnt.big{line-height:34px;font-size:11px}
-.mapcnt.arch{background:#FFC107;color:#1a1a1a;line-height:30px;box-shadow:0 0 0 2px #1a1a1a,0 0 0 3px #FFC107}
-.maparch{display:flex;align-items:center;justify-content:center;background:#FFC107;color:#1a1a1a;
-  border-radius:50%;box-shadow:0 0 0 2px #1a1a1a,0 0 0 3px #FFC107}
-.maparch svg{width:17px;height:17px}
-.maparch.base{box-shadow:0 0 0 2px #1a1a1a,0 0 0 5px #43A047}
-/* The filter over the map: archivers, people or other stations. */
-.mapshow{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;max-width:calc(100vw - 84px)}
-.mapshow button{background:rgba(20,19,18,.88);border:1px solid var(--border);color:var(--text);border-radius:14px;
-  padding:5px 10px;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
-.mapshow button span{color:var(--muted);margin-left:2px}
-.mapshow button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
-.mapshow button.on span{color:var(--on-accent);opacity:.75}
+.mapcnt.corner{line-height:20px;font-size:11px;box-shadow:0 0 0 2px #141312}
+/* An archiver: a dark disc, a gold rim, the archive drawn in gold; the one
+   in use filled gold. Several: the same, with how many. */
+.maparch,.mapcnt.arch{position:relative;background:#141312;color:#FFC107;border-radius:50%;
+  box-shadow:0 0 0 2px #FFC107,0 1px 6px rgba(0,0,0,.6)}
+.maparch svg,.mapcnt.arch svg{position:absolute;left:50%;top:50%;width:16px;height:16px;transform:translate(-50%,-50%)}
+.maparch.base{background:#FFC107;color:#141312;box-shadow:0 0 0 2px #141312,0 0 0 4px #FFC107,0 1px 6px rgba(0,0,0,.6)}
+.mapcnt.arch b{position:absolute;right:-7px;bottom:-5px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;
+  background:#FFC107;color:#141312;font-size:10px;line-height:16px;text-align:center}
+/* The filter over the map: one segmented control. */
+.mapshow{display:flex;background:rgba(20,19,18,.9);border:1px solid var(--border);border-radius:17px;padding:2px;
+  box-shadow:0 1px 6px rgba(0,0,0,.5)}
+.mapshow button{background:none;border:0;color:var(--text);border-radius:15px;padding:5px 10px;font:inherit;
+  font-size:12.5px;cursor:pointer;white-space:nowrap}
+.mapshow button span{color:var(--muted);margin-left:3px;font-size:11px}
+.mapshow button.on{background:var(--accent);color:var(--on-accent)}
+.mapshow button.on span{color:var(--on-accent);opacity:.7}
 #mapbox{height:55vh;min-height:260px;flex:none;background:#1f1f1f}
 #maplist{padding:0 0 20px}
 #maplist>.act{display:block;margin:12px auto}
@@ -6044,6 +6049,7 @@ function mapInit(box){
       else if(mapZoomWaiting){mapZoomWaiting=false;mapRender();}});
     /* Archivers above every other marker. */
     mapObj.createPane('mapArch').style.zIndex=650;
+    mapObj.createPane('mapBadge').style.zIndex=660;
     mapObj.on('zoomend',mapRender);
     var Show=L.Control.extend({onAdd:function(){var d=L.DomUtil.create('div','mapshow');d.id='mapshow';
       L.DomEvent.disableClickPropagation(d);L.DomEvent.disableScrollPropagation(d);return d;}});
@@ -6197,8 +6203,8 @@ function mapRender(){
   var archs=mapCluster(arch,proj,MAP_NEAR);
   mapCluster(rest,proj,MAP_NEAR).forEach(function(c,i){
     /* Under an archiver, the bubble moves aside at this zoom: both show. */
-    var under=archs.some(function(a){var dx=a.xy.x-c.xy.x,dy=a.xy.y-c.xy.y;return dx*dx+dy*dy<MAP_ASIDE*MAP_ASIDE;});
-    if(under)c.ll=mapObj.unproject(L.point(c.xy.x+MAP_ASIDE*0.8,c.xy.y+MAP_ASIDE*0.6),z);
+    var under=null;archs.forEach(function(a){var dx=a.xy.x-c.xy.x,dy=a.xy.y-c.xy.y;if(!under&&dx*dx+dy*dy<MAP_ASIDE*MAP_ASIDE)under=a;});
+    if(under){c.ll=under.ll;c.corner=true;}
     mapPlace(c,'c'+i,false);
   });
   archs.forEach(function(c,i){mapPlace(c,'a'+i,true);});
@@ -6207,7 +6213,7 @@ function mapRender(){
 }
 function mapPlace(c,key,arch){
   var mk,s0=mapByCall(c.pts[0].call);
-  if(c.pts.length===1&&s0){
+  if(c.pts.length===1&&s0&&!c.corner){
     var s=s0,ll=c.ll,base=s.call===baseCall(stationCall);
     if(!arch&&!s.pos.box&&s.pos.metres>=20000)ll=c.pts[0].ll;
     if(arch)
@@ -6224,8 +6230,11 @@ function mapPlace(c,key,arch){
   }else{
     var n=c.pts.length,b={key:key,ll:c.ll,calls:c.pts.map(function(p){return p.call;})};
     mapBoxes[key]=b;
-    mk=L.marker(c.ll,{pane:arch?'mapArch':'markerPane',icon:L.divIcon({className:'mapcnt'+(arch?' arch':'')+(n>99?' big':''),
-      html:n>999?(n/1000).toFixed(n>9999?0:1).replace(/\.0$/,'')+'k':String(n),iconSize:n>99?[34,34]:arch?[30,30]:[26,26]})});
+    var txt=n>999?(n/1000).toFixed(n>9999?0:1).replace(/\.0$/,'')+'k':String(n);
+    /* People under an archiver: their count on its top-right corner. */
+    mk=c.corner?L.marker(c.ll,{pane:'mapBadge',icon:L.divIcon({className:'mapcnt corner',html:txt,iconSize:[20,20],iconAnchor:[-6,24]})}):
+      L.marker(c.ll,{pane:arch?'mapArch':'markerPane',icon:L.divIcon({className:'mapcnt'+(arch?' arch':'')+(n>99?' big':''),
+        html:arch?ARCH_SVG+'<b>'+txt+'</b>':txt,iconSize:n>99?[34,34]:arch?[30,30]:[26,26]})});
     /* Zoomed into while they can still come apart; listed when they share
        one square or the map is as close as it goes. */
     var list=function(){L.popup({maxHeight:260}).setLatLng(c.ll).setContent(mapBoxPop(b)).openOn(mapObj);};
