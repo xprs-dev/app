@@ -675,6 +675,18 @@ body.mapui.wide #mapbg .leaflet-bottom{bottom:0}
   margin-right:4px;color:var(--muted)}
 .mapall{width:100%;margin-top:2px}
 .mapcnt.big{line-height:34px;font-size:11px}
+.mapcnt.arch{background:#FFC107;color:#1a1a1a;line-height:30px;box-shadow:0 0 0 2px #1a1a1a,0 0 0 3px #FFC107}
+.maparch{display:flex;align-items:center;justify-content:center;background:#FFC107;color:#1a1a1a;
+  border-radius:50%;box-shadow:0 0 0 2px #1a1a1a,0 0 0 3px #FFC107}
+.maparch svg{width:17px;height:17px}
+.maparch.base{box-shadow:0 0 0 2px #1a1a1a,0 0 0 5px #43A047}
+/* The filter over the map: archivers, people or other stations. */
+.mapshow{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;max-width:calc(100vw - 84px)}
+.mapshow button{background:rgba(20,19,18,.88);border:1px solid var(--border);color:var(--text);border-radius:14px;
+  padding:5px 10px;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+.mapshow button span{color:var(--muted);margin-left:2px}
+.mapshow button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.mapshow button.on span{color:var(--on-accent);opacity:.75}
 #mapbox{height:55vh;min-height:260px;flex:none;background:#1f1f1f}
 #maplist{padding:0 0 20px}
 #maplist>.act{display:block;margin:12px auto}
@@ -6027,7 +6039,15 @@ function mapInit(box){
     new Dark({maxZoom:18,attribution:'&copy; OpenStreetMap'}).addTo(mapObj);
     /* A redraw clears the markers: it waits while somebody reads a popup. */
     mapObj.on('popupopen',function(){mapReading=true;});
-    mapObj.on('popupclose',function(){mapReading=false;if(mapWaiting){var w=mapWaiting;mapWaiting=null;mapDraw(w);}});
+    mapObj.on('popupclose',function(){mapReading=false;
+      if(mapWaiting){var w=mapWaiting;mapWaiting=null;mapZoomWaiting=false;mapDraw(w);}
+      else if(mapZoomWaiting){mapZoomWaiting=false;mapRender();}});
+    /* Archivers above every other marker. */
+    mapObj.createPane('mapArch').style.zIndex=650;
+    mapObj.on('zoomend',mapRender);
+    var Show=L.Control.extend({onAdd:function(){var d=L.DomUtil.create('div','mapshow');d.id='mapshow';
+      L.DomEvent.disableClickPropagation(d);L.DomEvent.disableScrollPropagation(d);return d;}});
+    new Show({position:'topright'}).addTo(mapObj);
     if(mapRows)mapDraw(mapRows);
 }
 var mapAskedAt=0,mapBackDone=false;
@@ -6106,42 +6126,126 @@ function mapDraw(rows,cachedAt){
   sheetBadges();
   mapChips();
   mapList();
+  mapRender();
+}
+/* ---- the map's markers: near ones merged, archivers on top -------------
+   Stations closer on the screen than MAP_NEAR pixels are one bubble with
+   how many they are, worked out again at every zoom (mapCluster), so the
+   map reads the same from a continent to a street. Archivers (serve:archive,
+   on any kind of machine) are a layer of their own above the rest, never
+   folded into a bubble of people: the one most worth finding stays
+   visible at every zoom. A bubble opens on a tap: zoomed into while its
+   stations can still be told apart, else listed. */
+var MAP_NEAR=44,MAP_ASIDE=30,mapFocusing='',mapZoomWaiting=false;
+var ARCH_SVG='<svg viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 9h14v11H5zM9.5 12h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+/* [pts] {call, ll:[lat,lon]} into groups whose members lie within [near]
+   pixels of the group's first one, [project] giving a point's pixels at the
+   zoom drawn. One pass over a grid of [near]-sized cells. */
+function mapCluster(pts,project,near){
+  var grid={},out=[];
+  pts.forEach(function(p){
+    var xy=project(p.ll),cx=Math.floor(xy.x/near),cy=Math.floor(xy.y/near),hit=null;
+    for(var dx=-1;dx<=1&&!hit;dx++)for(var dy=-1;dy<=1&&!hit;dy++){
+      var cell=grid[(cx+dx)+','+(cy+dy)];
+      if(cell)for(var i=0;i<cell.length;i++){
+        var c=cell[i],ddx=c.xy.x-xy.x,ddy=c.xy.y-xy.y;
+        if(ddx*ddx+ddy*ddy<=near*near){hit=c;break;}
+      }
+    }
+    if(hit){hit.pts.push(p);return;}
+    var c={xy:xy,ll:p.ll,pts:[p]},k=cx+','+cy;
+    (grid[k]||(grid[k]=[])).push(c);out.push(c);
+  });
+  return out;
+}
+/* What a station is, for the filter over the map: an archiver whatever it
+   runs on, a person (X1), or any other station (boards, relays, gateways). */
+var MAP_KINDS=[['all','All'],['archive','Archivers'],['people','People'],['other','Other']];
+var MAP_SHOW='xprs.in.mapshow';
+var mapShowKind=(function(){try{var v=localStorage.getItem(MAP_SHOW);
+  return /^(all|archive|people|other)$/.test(v||'')?v:'all';}catch(e){return 'all';}})();
+function mapKind(s){return (s.serve||[]).indexOf('archive')>=0?'archive':/^X1/.test(s.call)?'people':'other';}
+function mapShows(s){return mapShowKind==='all'||mapKind(s)===mapShowKind;}
+function mapShowSet(k){
+  mapShowKind=k;try{localStorage.setItem(MAP_SHOW,k);}catch(e){}
+  if(mapObj)mapObj.closePopup();
+  mapShown=50;mapRender();mapList();
+}
+/* The filter itself, over the map: how many of each the map shows. */
+function mapShowDraw(){
+  var box=el('mapshow');if(!box)return;
+  var n={all:0,archive:0,people:0,other:0};
+  mapAll.forEach(function(s){if(s.pos){n.all++;n[mapKind(s)]++;}});
+  box.innerHTML=MAP_KINDS.map(function(k){
+    return '<button class="'+(mapShowKind===k[0]?'on':'')+'" onclick="mapShowSet(\''+k[0]+'\')">'+
+      esc(k[1])+' <span>'+n[k[0]]+'</span></button>';}).join('');
+}
+function mapRender(){
+  mapShowDraw();
   if(!mapObj)return;
+  if(mapReading){mapZoomWaiting=true;return;}
   mapLayer.clearLayers();
   mapMarks={};mapBoxes={};
-  var bounds=L.latLngBounds([]);
-  placed.forEach(function(s){
-    var ll=[s.pos.lat,s.pos.lon];
-    if(s.pos.box){
-      var k=s.pos.box.join(';'),b=mapBoxes[k]||(mapBoxes[k]={key:k,box:s.pos.box,ll:ll,range:s.pos.range,calls:[]});
-      b.calls.push(s.call);return;
+  var z=mapObj.getZoom(),proj=function(ll){return mapObj.project(ll,z);};
+  var arch=[],rest=[],bounds=L.latLngBounds([]);
+  mapAll.forEach(function(s){
+    if(!s.pos)return;
+    bounds.extend(s.pos.box||[s.pos.lat,s.pos.lon]);
+    if(!mapShows(s))return;
+    (mapKind(s)==='archive'?arch:rest).push({call:s.call,ll:[s.pos.lat,s.pos.lon]});
+  });
+  var archs=mapCluster(arch,proj,MAP_NEAR);
+  mapCluster(rest,proj,MAP_NEAR).forEach(function(c,i){
+    /* Under an archiver, the bubble moves aside at this zoom: both show. */
+    var under=archs.some(function(a){var dx=a.xy.x-c.xy.x,dy=a.xy.y-c.xy.y;return dx*dx+dy*dy<MAP_ASIDE*MAP_ASIDE;});
+    if(under)c.ll=mapObj.unproject(L.point(c.xy.x+MAP_ASIDE*0.8,c.xy.y+MAP_ASIDE*0.6),z);
+    mapPlace(c,'c'+i,false);
+  });
+  archs.forEach(function(c,i){mapPlace(c,'a'+i,true);});
+  if(!mapFitted&&bounds.isValid()){mapFitted=true;mapObj.fitBounds(bounds,{padding:[40,40],maxZoom:10});}
+  if(mapFocusing&&mapMarks[mapFocusing]){var f=mapMarks[mapFocusing];mapFocusing='';f.xOpen();}
+}
+function mapPlace(c,key,arch){
+  var mk,s0=mapByCall(c.pts[0].call);
+  if(c.pts.length===1&&s0){
+    var s=s0,ll=c.ll,base=s.call===baseCall(stationCall);
+    if(!arch&&!s.pos.box&&s.pos.metres>=20000)ll=c.pts[0].ll;
+    if(arch)
+      mk=L.marker(ll,{pane:'mapArch',icon:L.divIcon({className:'maparch'+(base?' base':''),html:ARCH_SVG,iconSize:[30,30]})});
+    else{
+      if(!s.pos.box&&s.pos.metres>=20000)
+        L.circle(ll,{radius:s.pos.metres,color:'#FFC107',weight:1,fillOpacity:.07,interactive:false}).addTo(mapLayer);
+      mk=L.circleMarker(ll,{radius:7,color:'#A5D6A7',fillColor:'#43A047',fillOpacity:s.pos.box?.55:.95,weight:2});
     }
-    if(s.pos.metres>=20000){var ring=L.circle(ll,{radius:s.pos.metres,color:'#FFC107',weight:1,fillOpacity:.07,interactive:false}).addTo(mapLayer);bounds.extend(ring.getBounds());}
     /* Popups are made when opened: a thousand stations, no thousand popups. */
-    var base=s.call===baseCall(stationCall);
-    mapMarks[s.call]=L.circleMarker(ll,base?{radius:9,color:'#FFC107',fillColor:'#43A047',fillOpacity:.95,weight:4}:
-        {radius:7,color:'#A5D6A7',fillColor:'#43A047',fillOpacity:.95,weight:2})
-      .addTo(mapLayer).bindPopup(function(){return mapPop(mapByCall(s.call)||s);});
-    bounds.extend(ll);
-  });
-  /* Stations that say only which square they are in share one marker in its
-     middle, with how many they are. Its popup names the freshest few; the
-     rest are in the Stations list, filtered to the square. */
-  Object.keys(mapBoxes).forEach(function(k){
-    var b=mapBoxes[k],n=b.calls.length;
-    var mk=L.marker(b.ll,{icon:L.divIcon({className:'mapcnt'+(n>99?' big':''),html:n>999?(n/1000).toFixed(n>9999?0:1).replace(/\.0$/,'')+'k':String(n),iconSize:n>99?[34,34]:[26,26]})})
-      .addTo(mapLayer).bindPopup(function(){return mapBoxPop(b);},{maxHeight:260});
-    b.calls.forEach(function(c){mapMarks[c]=mk;});
-    bounds.extend(b.box);
-  });
-  if(!mapFitted&&bounds.isValid()){mapObj.fitBounds(bounds,{padding:[40,40],maxZoom:10});mapFitted=true;}
+    mk.bindPopup(function(){var t=mapByCall(s.call)||s;
+      return mapPop(t)+(t.pos&&t.pos.box?'<small>Approximate: somewhere within '+esc(t.pos.range)+' of here</small>':'');});
+    mk.xOpen=function(){mk.openPopup();};
+  }else{
+    var n=c.pts.length,b={key:key,ll:c.ll,calls:c.pts.map(function(p){return p.call;})};
+    mapBoxes[key]=b;
+    mk=L.marker(c.ll,{pane:arch?'mapArch':'markerPane',icon:L.divIcon({className:'mapcnt'+(arch?' arch':'')+(n>99?' big':''),
+      html:n>999?(n/1000).toFixed(n>9999?0:1).replace(/\.0$/,'')+'k':String(n),iconSize:n>99?[34,34]:arch?[30,30]:[26,26]})});
+    /* Zoomed into while they can still come apart; listed when they share
+       one square or the map is as close as it goes. */
+    var list=function(){L.popup({maxHeight:260}).setLatLng(c.ll).setContent(mapBoxPop(b)).openOn(mapObj);};
+    mk.on('click',function(){
+      var bb=L.latLngBounds(c.pts.map(function(p){return p.ll;}));
+      if(bb.getNorthEast().equals(bb.getSouthWest())||mapObj.getZoom()>=mapObj.getMaxZoom())list();
+      else mapObj.fitBounds(bb,{padding:[60,60]});
+    });
+    mk.xOpen=list;
+  }
+  mk.addTo(mapLayer);
+  c.pts.forEach(function(p){mapMarks[p.call]=mk;});
 }
 var MAP_POP_MAX=6;
 function mapBoxPop(b){
   var h=b.calls.slice(0,MAP_POP_MAX).map(function(c){return mapPop(mapByCall(c)||{call:c,last:0,nick:''});}).join('<hr>');
   if(b.calls.length>MAP_POP_MAX)
     h+='<hr><button class="act mapall" onclick="mapArea(\''+b.key+'\')">Show all '+b.calls.length+' here</button>';
-  return h+'<small>Approximate: somewhere within '+esc(b.range)+' of here</small>';
+  var sq=null;b.calls.forEach(function(c){var t=mapByCall(c);if(!sq&&t&&t.pos&&t.pos.box)sq=t.pos.range;});
+  return h+(sq?'<small>Approximate: somewhere within '+esc(sq)+' of here</small>':'');
 }
 function mapByCall(c){for(var i=0;i<mapAll.length;i++)if(mapAll[i].call===c)return mapAll[i];return null;}
 /* A station in a popup or a row: its page where the page can open it
@@ -6168,11 +6272,16 @@ function mapUse(s){
 /* A station from the list, on the map: its marker centred and opened, the
    drawer folded so the map shows. */
 function mapFocus(c){
-  var m=mapMarks[c];
-  if(!m||!mapObj){snack(c+' does not say where it is');return;}
+  var s=mapByCall(c);
+  if(!s||!s.pos||!mapObj){snack(c+' does not say where it is');return;}
+  if(!mapShows(s))mapShowSet('all');
   if(mapui&&!wideScreen())sheetTo('peek');
-  mapObj.setView(m.getLatLng(),Math.max(mapObj.getZoom(),9));
-  setTimeout(function(){m.openPopup();},300);
+  mapObj.closePopup();
+  mapFocusing=c;
+  mapObj.setView([s.pos.lat,s.pos.lon],Math.max(mapObj.getZoom(),12));
+  /* Drawn again at the new zoom (zoomend); and once more in case the zoom
+     did not change, which fires nothing. */
+  setTimeout(function(){if(mapFocusing===c)mapRender();},400);
 }
 function mapWrite(c){
   var s=mapByCall(c);
@@ -6206,7 +6315,8 @@ function mapTagsOf(s){
 function mapMatch(s){
   var q=mapFilter.q;
   if(q&&s.call.toLowerCase().indexOf(q)<0&&s.nick.toLowerCase().indexOf(q)<0)return false;
-  if(mapFilter.area){var b=mapBoxes[mapFilter.area];if(!b||b.calls.indexOf(s.call)<0)return false;}
+  if(!mapShows(s))return false;
+  if(mapFilter.area&&mapFilter.area.indexOf(s.call)<0)return false;
   for(var t in mapFilter.tags){
     if(t==='placed'){if(!s.pos)return false;continue;}
     if(t==='key'){if(!s.key)return false;continue;}
@@ -6232,7 +6342,7 @@ function mapChips(){
 function mapTag(t){if(mapFilter.tags[t])delete mapFilter.tags[t];else mapFilter.tags[t]=1;mapShown=50;mapChips();mapList();}
 /* The stations of one square, from its popup. */
 function mapArea(k){
-  mapFilter.area=k;mapShown=50;
+  mapFilter.area=k&&mapBoxes[k]?mapBoxes[k].calls.slice():'';mapShown=50;
   if(mapObj)mapObj.closePopup();
   mapChips();mapList();
   if(k&&mapui)sheetOpen('stations',function(){showTab('map');});
