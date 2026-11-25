@@ -1,0 +1,5 @@
+Web chat: Use my phone's location, where the station can ask (portal)
+Web chat: the Location card in the app's one system (portal)
+Location: a server shares its place in the app's one system
+Map: status pills on a map without chat
+Check-in: test the map with two identities exactly as the live archive sends them
