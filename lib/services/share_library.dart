@@ -18,6 +18,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../platform/fs.dart';
+import '../version.dart';
 import 'package:xprs_core/src/platform/core_host.dart' show CoreHost;
 import 'artifact_fetch.dart';
 import 'log_service.dart';
@@ -112,9 +113,11 @@ class ShareLibrary {
   /// The newest release on this device's update channel: the feed when it
   /// answers (~1 KB), else what the updater last learned (kept across
   /// restarts), so a phone with no internet can still fetch from a station.
+  /// A device running a beta hands on betas, so what it gives a Windows user
+  /// is not older than what it runs itself.
   Future<ReleaseInfo?> refreshRelease() async {
     final u = UpdateService.instance;
-    final beta = u.betaEnabled;
+    final beta = u.betaEnabled || kAppVersion.contains('-');
     final r = await u.releaseFromFeed(beta ? 'beta.json' : 'stable.json',
             prereleaseOk: beta) ??
         (beta ? (u.beta.value ?? u.stable.value) : u.stable.value);

@@ -34,6 +34,8 @@ class _ShareAppPageState extends State<ShareAppPage>
   final _lib = ShareLibrary.instance;
   final bool _android = platform.platformName() == 'android';
 
+  /// This copy can be handed on as one file (known before the portal runs).
+  bool _selfShareable = false;
   bool _loading = true;
   bool _switching = false;
   String? _fatal;
@@ -62,9 +64,11 @@ class _ShareAppPageState extends State<ShareAppPage>
     try {
       await _svc.restore();
       await _lib.load();
+      final apk = await _svc.apkInfo();
       final addrs = await _svc.localAddresses();
       if (!mounted) return;
       setState(() {
+        _selfShareable = apk?.shareable ?? false;
         _addrs = addrs;
         _loading = false;
       });
@@ -82,6 +86,9 @@ class _ShareAppPageState extends State<ShareAppPage>
   Future<void> _refreshAddresses() async {
     final addrs = await _svc.localAddresses();
     if (mounted) setState(() => _addrs = addrs);
+    // The page may have opened with no internet (this phone's hotspot on, so
+    // its Wi-Fi off); a network that came back can answer the feed now.
+    if (_lib.release.value == null) unawaited(_lib.refreshRelease());
   }
 
   Future<void> _setPortal(bool on) async {
@@ -250,7 +257,8 @@ class _ShareAppPageState extends State<ShareAppPage>
 
   Widget _installerRow(
       ColorScheme cs, UpdatePlatform p, double? progress, ReleaseInfo? release) {
-    final self = p == UpdatePlatform.android && _svc.apkShareable;
+    final self =
+        p == UpdatePlatform.android && (_selfShareable || _svc.apkShareable);
     ShareEntry? held;
     for (final e in _lib.files.value) {
       if (e.platform == p) held = e;
