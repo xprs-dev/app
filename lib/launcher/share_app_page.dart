@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../platform/platform.dart' as platform;
@@ -325,10 +326,28 @@ class _ShareAppPageState extends State<ShareAppPage>
         UpdatePlatform.unknown => Icons.help_outline,
       };
 
+  /// The address, with a copy button so it can be pasted into a message or
+  /// another tool rather than only scanned.
   Widget _url(String url) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-        child: SelectableText(url,
-            textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+        padding: const EdgeInsets.fromLTRB(16, 0, 8, 4),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Flexible(
+            child: SelectableText(url,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16)),
+          ),
+          IconButton(
+            tooltip: tr('common.copy'),
+            icon: const Icon(Icons.copy, size: 20),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: url));
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(tr('common.copied')),
+                  duration: const Duration(seconds: 2)));
+            },
+          ),
+        ]),
       );
 
   Widget _qr(String data) => Padding(
