@@ -674,7 +674,6 @@ body.mapui.wide #mapbg .leaflet-bottom{bottom:0}
 .maptag{display:inline-block;font-size:10px;border:1px solid var(--border);border-radius:8px;padding:1px 7px;
   margin-right:4px;color:var(--muted)}
 .mapall{width:100%;margin-top:2px}
-.mapbase{margin-top:4px;color:var(--accent)}
 .mapcnt.big{line-height:34px;font-size:11px}
 #mapbox{height:55vh;min-height:260px;flex:none;background:#1f1f1f}
 #maplist{padding:0 0 20px}
@@ -5833,7 +5832,7 @@ function loadAccounts(){
   h+='<h3>My archivers</h3><div class="accs">';
   if(!mine.length)h+='<p class="dim">'+(sess?'None yet':'Proving your identity to the station…')+'</p>';
   mine.forEach(function(c,i){
-    h+='<div class="acc"><b>'+esc(c)+'</b>'+(c===stationCall?'<span class="dim">'+(canSwitch()?'browsing here':'this station')+'</span>':'')+
+    h+='<div class="acc"><b>'+esc(c)+'</b>'+(c===stationCall?'<span class="dim">this station</span>':'')+
       '<span class="sp"></span>'+useBtn(c)+
       (i?'<button class="act" title="Prefer" onclick="holdMove(\''+esc(c)+'\')">↑</button>':'')+
       (mine.length>1?'<button class="act" onclick="holdDrop(\''+esc(c)+'\')">Remove</button>':'')+'</div>';
@@ -5861,7 +5860,7 @@ function loadAccounts(){
    visitor's mail is kept is not changed: that is Add. */
 function canSwitch(){var R=remote();return !!(R&&R.use);}
 function useBtn(c){
-  return canSwitch()&&baseCall(c)!==baseCall(stationCall)?'<button class="act" title="Browse from this archiver" onclick="baseSwitch(\''+esc(c)+'\')">Use</button>':'';
+  return canSwitch()&&baseCall(c)!==baseCall(stationCall)?'<button class="act" title="Visit this archiver" onclick="baseSwitch(\''+esc(c)+'\')">Visit</button>':'';
 }
 var MAP_VIEW='xprs.in.view';
 function baseSwitch(c){
@@ -6154,7 +6153,7 @@ function mapMsg(s){
   return s.key&&s.call!==baseCall(mycall)?'<button class="act mapmsg" onclick="event.stopPropagation();mapWrite(\''+esc(s.call)+'\')">Message</button>':'';
 }
 function mapPop(s){
-  var tags=mapTagsOf(s).map(function(t){return '<span class="maptag">'+esc(mapTagName(t))+'</span>';}).join('');
+  var tags=mapTagsOf(s).map(function(t){return '<span class="maptag">'+esc(mapTagOne(t))+'</span>';}).join('');
   return mapName(s)+(s.nick?' <span class="dim">'+esc(s.nick)+'</span>':'')+mapMsg(s)+
     (tags?'<div class="maptags">'+tags+'</div>':'')+
     '<div class="dim">'+(s.last?esc(ago(Date.now()/1000-s.last))+' ago':'')+'</div>'+mapUse(s);
@@ -6163,9 +6162,8 @@ function mapPop(s){
    show come from it (baseSwitch). Where the page can reach other stations
    (xprs.dev) and only for one that keeps messages (serve:archive). */
 function mapUse(s){
-  if(!canSwitch()||(s.serve||[]).indexOf('archive')<0)return '';
-  if(s.call===baseCall(stationCall))return '<div class="dim mapbase">Browsing from here</div>';
-  return '<button class="act mapall" onclick="baseSwitch(\''+esc(s.call)+'\')">Use this archiver</button>';
+  if(!canSwitch()||(s.serve||[]).indexOf('archive')<0||s.call===baseCall(stationCall))return '';
+  return '<button class="act mapall" onclick="baseSwitch(\''+esc(s.call)+'\')">Visit</button>';
 }
 /* A station from the list, on the map: its marker centred and opened, the
    drawer folded so the map shows. */
@@ -6193,6 +6191,11 @@ var mapFilter={q:'',area:'',tags:{}};
 var MAP_TAG_NAMES={'serve:archive':'Archivers','serve:relay':'Relays','serve:internet':'Internet',
   'serve:aprs':'APRS','serve:files':'Files','serve:meshtastic':'Meshtastic','source:solar':'Solar',
   'source:battery':'Battery','source:mains':'Mains power',placed:'On the map',key:'Can be messaged'};
+/* One station's tag, in a popup: what it is (an Archiver), where the chips
+   name groups of them (Archivers). */
+var MAP_TAG_ONE={'serve:archive':'Archiver','serve:relay':'Relay','serve:internet':'Internet',
+  'serve:aprs':'APRS','serve:files':'Files','serve:meshtastic':'Meshtastic'};
+function mapTagOne(t){return MAP_TAG_ONE[t]||mapTagName(t);}
 function mapTagName(t){
   if(MAP_TAG_NAMES[t])return MAP_TAG_NAMES[t];
   var v=t.split(':')[1]||t;return v.charAt(0).toUpperCase()+v.slice(1);
