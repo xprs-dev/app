@@ -1,6 +1,12 @@
 /*
- * ShareAppService on native: the HTTP server that hands out this APK, and the
- * channel to ShareBridge.kt for the APK path and the LocalOnlyHotspot.
+ * ShareAppService on native: the web portal. An HTTP server on the local
+ * network that serves the web chat, and the installers this device can hand
+ * on (its own APK on Android, plus ShareLibrary's files for other systems);
+ * the channel to ShareBridge.kt for the APK path and the hotspot screen.
+ *
+ * The portal is a switch its owner leaves on or off (`share.portal`): on, it
+ * outlives the page and the app's window, and comes back at boot, so a phone
+ * left on a table behaves as a station for whoever joins its network.
  *
  * Runs on the UI isolate, which is fine for what it does: the file is streamed
  * with openRead().pipe (async, chunked, never the whole APK on the heap) and
@@ -15,40 +21,38 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'background_service.dart';
 import 'log_service.dart';
 import 'share_app_types.dart';
+import 'share_library.dart';
+import 'update_models.dart';
 import 'package:xprs_core/src/services/preferences_service.dart';
 import 'package:xprs_core/src/services/station/station_host.dart';
 import 'web_chat_api.dart';
+import '../version.dart';
 import '../wapp/android_foreground_service.dart';
 
 export 'share_app_types.dart';
+export 'share_library.dart' show ShareEntry, ShareLibrary;
 
 class ShareAppService {
-  ShareAppService._() {
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'hotspotStopped') {
-        hotspotUp.value = false;
-        hotspot = null;
-      }
-    });
-  }
+  ShareAppService._();
   static final ShareAppService instance = ShareAppService._();
+
+  static const String _kPortal = 'share.portal';
+
+  /// The portal switch as its owner left it; follows [setPortal].
+  final ValueNotifier<bool> portal = ValueNotifier<bool>(false);
 
   /// Tried first so the URL is easy to type by hand; any free port otherwise.
   static const int preferredPort = 8642;
 
   static const _channel = MethodChannel('com.xprs.app/share');
 
-  /// Completed APK transfers since the page opened.
+  /// Completed installer downloads since the portal started.
   final ValueNotifier<int> downloads = ValueNotifier<int>(0);
-  final ValueNotifier<bool> hotspotUp = ValueNotifier<bool>(false);
-
-  /// The hotspot this service started, while it is up, so the page can show
-  /// its QR again after the person left it and came back.
-  ShareHotspot? hotspot;
 
   /// The web chat page, built in the `portal` repo and bundled as plain
   /// HTML: F-Droid's scanner refuses any archive in the source tree, a gzip
@@ -63,11 +67,28 @@ class ShareAppService {
   String _apkPath = '';
   String _version = '';
   String _abi = '';
+  int _apkSize = 0;
+  List<ShareEntry> Function() _library = _liveLibrary;
+  static List<ShareEntry> _liveLibrary() => ShareLibrary.instance.files.value;
 
   bool get running => _server != null;
 
   /// Whether this copy can be handed on as one file.
   bool get apkShareable => _apkPath.isNotEmpty;
+
+  /// Everything `/app` offers: this copy's APK first, when it can be handed
+  /// on, then the library (its own APK only when this copy cannot be).
+  List<ShareEntry> get files => [
+        if (apkShareable)
+          ShareEntry(
+              platform: UpdatePlatform.android,
+              name: apkName,
+              path: _apkPath,
+              size: _apkSize,
+              self: true),
+        for (final e in _library())
+          if (!(apkShareable && e.platform == UpdatePlatform.android)) e,
+      ];
 
   /// Visitors that have reached the web chat since it started.
   int get visitors => _api?.visitors.length ?? 0;
@@ -87,30 +108,50 @@ class ShareAppService {
     );
   }
 
-  Future<ShareHotspot> startHotspot() async {
+  /// Open the system's hotspot screen (Android). False where there is none.
+  Future<bool> openHotspotSettings() async {
+    if (!Platform.isAndroid) return false;
     try {
-      final m = await _channel.invokeMapMethod<String, dynamic>('startHotspot');
-      final ssid = m?['ssid'] as String? ?? '';
-      if (ssid.isEmpty) throw const ShareAppException('generic');
-      hotspotUp.value = true;
-      return hotspot = ShareHotspot(
-        ssid: ssid,
-        psk: m?['psk'] as String? ?? '',
-        security: m?['security'] as String? ?? 'WPA',
-      );
-    } on PlatformException catch (e) {
-      throw ShareAppException(e.code);
-    } on MissingPluginException {
-      throw const ShareAppException('unsupported');
+      return await _channel.invokeMethod<bool>('openHotspotSettings') ?? false;
+    } catch (_) {
+      return false;
     }
   }
 
-  Future<void> stopHotspot() async {
-    hotspotUp.value = false;
-    hotspot = null;
+  /// Read the switch and, when it is on, start the portal. At boot
+  /// ([hostBoot]) and when the page opens.
+  Future<void> restore() async {
+    final p = await SharedPreferences.getInstance();
+    portal.value = p.getBool(_kPortal) ?? false;
+    if (portal.value) await _startPortal();
+  }
+
+  /// The switch. On: serve now and at every boot until switched off.
+  Future<void> setPortal(bool on) async {
+    portal.value = on;
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(_kPortal, on);
+    if (on) {
+      await _startPortal();
+    } else {
+      await stop();
+    }
+  }
+
+  Future<void> _startPortal() async {
+    if (running) return;
+    await ShareLibrary.instance.load();
+    // The chat does not need the APK: a copy installed from a store in
+    // pieces cannot be handed on, and can still host the chat.
+    ShareApkInfo? apk;
     try {
-      await _channel.invokeMethod<void>('stopHotspot');
+      apk = await apkInfo();
     } catch (_) {}
+    await start(
+        apkPath: apk != null && apk.shareable ? apk.path : '',
+        version: kAppVersion,
+        abi: apk?.abi ?? '',
+        apkSize: apk?.size ?? 0);
   }
 
   /// Start serving: the web chat at `/`, its API under `/api/`, and, when
@@ -122,13 +163,17 @@ class ShareAppService {
     String apkPath = '',
     String version = '',
     String abi = '',
+    int apkSize = 0,
     int? port,
     WebChatApi? api,
     Uint8List? chatPage,
+    List<ShareEntry> Function()? library,
   }) async {
     _apkPath = apkPath;
+    _library = library ?? _liveLibrary;
     _version = version;
     _abi = abi;
+    _apkSize = apkSize;
     if (_server != null) return _server!.port;
     _api = api ?? _liveApi();
     // The owner administers this phone before the first visitor of its own
@@ -174,7 +219,7 @@ class ShareAppService {
   /// through the API), which the bridge and digipeater carry on under the
   /// owner's policy; what it reads is the archive's undirected rows.
   WebChatApi _liveApi() => StationHost.instance.api ??= stationWebChatApi(
-        appPath: () => apkShareable ? '/app' : null,
+        appPath: () => files.isEmpty ? null : '/app',
         store: PreferencesService.instanceSync?.store,
       );
 
@@ -185,15 +230,11 @@ class ShareAppService {
     _liveApi();
     await StationHost.instance
         .serve(PreferencesService.instanceSync?.xprsHostStation ?? false);
+    // The web portal, when its owner left it on.
+    await restore();
   }
 
   static const String _holder = 'share';
-
-  /// Stop serving, release the process and take the hotspot down.
-  Future<void> stopSharing() async {
-    await stop();
-    await stopHotspot();
-  }
 
   Future<void> stop() async {
     final s = _server;
@@ -205,26 +246,17 @@ class ShareAppService {
     }
   }
 
-  /// IPv4 addresses another phone could reach us on, best first: the hotspot
-  /// interface, then Wi-Fi, then anything else that is not cellular or a
-  /// tunnel (those are never on the same network as a phone next to us).
+  /// IPv4 addresses another device could reach us on, best first: a hotspot
+  /// interface, then Wi-Fi, then wired, then anything else. Cellular,
+  /// tunnels, VPNs and virtual bridges are left out: those are never on the
+  /// same network as a device next to us.
   Future<List<String>> localAddresses() async {
     final ranked = <MapEntry<int, String>>[];
     try {
       final list = await NetworkInterface.list(type: InternetAddressType.IPv4);
       for (final ni in list) {
-        final n = ni.name.toLowerCase();
-        if (const ['rmnet', 'ccmni', 'tun', 'dummy', 'v4-', 'clat', 'ppp', 'ipsec']
-            .any(n.startsWith)) {
-          continue;
-        }
-        final rank = n.startsWith('ap') ||
-                n.startsWith('swlan') ||
-                n.startsWith('softap')
-            ? 0
-            : n.startsWith('wlan')
-                ? 1
-                : 2;
+        final rank = shareInterfaceRank(ni.name);
+        if (rank == null) continue;
         for (final a in ni.addresses) {
           if (a.isLoopback || a.isLinkLocal) continue;
           ranked.add(MapEntry(rank, a.address));
@@ -240,18 +272,17 @@ class ShareAppService {
     try {
       final path = req.uri.path;
       final read = req.method == 'GET' || req.method == 'HEAD';
-      final isApk = apkShareable &&
-          (path == '/app/$apkName' ||
-              path == '/$apkName' ||
-              path == '/xprs.apk');
+      final all = files;
+      final file = read ? _fileFor(all, path) : null;
       if (read && path == '/') {
         await _serveChat(req);
         return;
-      } else if (read && apkShareable && (path == '/app' || path == '/app/')) {
-        res.headers.contentType = ContentType.html;
-        res.write(_page());
-      } else if (read && isApk) {
-        await _serveApk(req);
+      } else if (read && all.isNotEmpty && (path == '/app' || path == '/app/')) {
+        res.headers.contentType = ContentType('text', 'html', charset: 'utf-8');
+        res.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
+        res.write(_page(all));
+      } else if (file != null) {
+        await _serveFile(req, file);
         return;
       } else if (path.startsWith('/api/') && _api != null) {
         await _serveApi(req);
@@ -338,9 +369,30 @@ class ShareAppService {
     await res.close();
   }
 
-  Future<void> _serveApk(HttpRequest req) async {
+  /// The file [path] names: `/app/<name>`, and for this copy's APK the
+  /// addresses already handed out (`/<name>`, `/xprs.apk`).
+  ShareEntry? _fileFor(List<ShareEntry> all, String path) {
+    for (final e in all) {
+      if (path == '/app/${e.name}') return e;
+      if (e.self && (path == '/${e.name}' || path == '/xprs.apk')) return e;
+    }
+    return null;
+  }
+
+  static ContentType _typeOf(String name) {
+    final n = name.toLowerCase();
+    if (n.endsWith('.apk')) {
+      return ContentType('application', 'vnd.android.package-archive');
+    }
+    if (n.endsWith('.gz')) return ContentType('application', 'gzip');
+    if (n.endsWith('.zip')) return ContentType('application', 'zip');
+    return ContentType('application', 'octet-stream');
+  }
+
+  Future<void> _serveFile(HttpRequest req, ShareEntry entry) async {
     final res = req.response;
-    final file = File(_apkPath);
+    final file = File(entry.path);
+
     final size = await file.length();
     var start = 0;
     var end = size; // exclusive
@@ -368,11 +420,10 @@ class ShareAppService {
           HttpHeaders.contentRangeHeader, 'bytes $start-${end - 1}/$size');
     }
     res.headers
-      ..contentType =
-          ContentType('application', 'vnd.android.package-archive')
+      ..contentType = _typeOf(entry.name)
       ..contentLength = end - start
       ..set(HttpHeaders.acceptRangesHeader, 'bytes')
-      ..set('Content-Disposition', 'attachment; filename="$apkName"');
+      ..set('Content-Disposition', 'attachment; filename="${entry.name}"');
     if (req.method == 'HEAD') {
       await res.close();
       return;
@@ -381,35 +432,61 @@ class ShareAppService {
     await file.openRead(start, end).pipe(res);
     if (end == size) {
       downloads.value++;
-      LogService.instance.add('share-app: served $apkName to $peer');
+      LogService.instance.add('share-app: served ${entry.name} to $peer');
     }
   }
 
-  String _page() {
-    final v = const HtmlEscape().convert(_version);
-    final name = const HtmlEscape().convert(apkName);
-    final abi = _abi.isEmpty
-        ? ''
-        : '<p class="s">Built for ${const HtmlEscape().convert(_abi)} phones.</p>';
+  static const Map<UpdatePlatform, String> _labels = {
+    UpdatePlatform.android: 'Android',
+    UpdatePlatform.windows: 'Windows',
+    UpdatePlatform.linux: 'Linux',
+    UpdatePlatform.macos: 'macOS',
+  };
+
+  /// What to do with the file, per system, in a few words.
+  static const Map<UpdatePlatform, String> _howTo = {
+    UpdatePlatform.android:
+        'Open the file. If asked, allow this browser to install apps.',
+    UpdatePlatform.windows: 'Run the file and follow the installer.',
+    UpdatePlatform.linux: 'Extract it and run ./xprs',
+    UpdatePlatform.macos: 'Open the file and move XPRS to Applications.',
+  };
+
+  /// `/app`: one button per system. The visitor's own system goes first and
+  /// stands out; the page's script decides that from the browser's own user
+  /// agent, so the server stays a list of files.
+  String _page(List<ShareEntry> all) {
+    const esc = HtmlEscape();
+    final v = esc.convert(_version);
+    final rows = StringBuffer();
+    for (final e in all) {
+      final size =
+          e.size > 0 ? ' · ${(e.size / 1e6).toStringAsFixed(0)} MB' : '';
+      final abi = e.self && _abi.isNotEmpty ? ' · ${esc.convert(_abi)}' : '';
+      rows.write('<div class="r" data-os="${e.platform.name}">'
+          '<a class="b" href="/app/${esc.convert(e.name)}" download>'
+          '${_labels[e.platform]}</a>'
+          '<p class="s">${esc.convert(e.name)}$size$abi</p>'
+          '<p class="s">${esc.convert(_howTo[e.platform]!)}</p></div>');
+    }
     return '''<!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>XPRS $v</title>
 <style>
 body{font-family:sans-serif;margin:0;padding:24px 16px;background:#111;color:#eee;text-align:center}
-a.b{display:inline-block;margin:24px 0;padding:16px 32px;border-radius:12px;background:#2e7d32;color:#fff;font-size:20px;text-decoration:none}
-ol{text-align:left;max-width:420px;margin:0 auto;line-height:1.5}
-.s{color:#aaa;font-size:14px}
+.r{margin:0 auto 20px;max-width:420px}
+a.b{display:block;margin:0 0 6px;padding:14px;border-radius:12px;background:#333;color:#fff;font-size:20px;text-decoration:none}
+.r.me a.b{background:#2e7d32}
+.s{color:#aaa;font-size:14px;margin:2px 0}
 </style></head><body>
 <h1>XPRS</h1>
 <p>Version $v</p>
-<a class="b" href="/app/$name">Download</a>
-$abi
-<ol>
-<li>Tap Download and wait for it to finish.</li>
-<li>Open the downloaded file.</li>
-<li>If Android asks, allow this browser to install apps, then go back and tap Install.</li>
-</ol>
+<div id="l">$rows</div>
+<script>
+(function(){var u=navigator.userAgent,o=/Android/i.test(u)?'android':/Windows/i.test(u)?'windows':/Mac OS X|Macintosh/i.test(u)&&!/iPhone|iPad/i.test(u)?'macos':/Linux|X11/i.test(u)?'linux':'';
+var l=document.getElementById('l'),m=l.querySelector('[data-os="'+o+'"]');if(m){m.className+=' me';l.insertBefore(m,l.firstChild);}})();
+</script>
 </body></html>''';
   }
 }

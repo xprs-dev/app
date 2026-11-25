@@ -15,14 +15,6 @@ class ShareApkInfo {
   bool get shareable => path.isNotEmpty && splits == 0;
 }
 
-class ShareHotspot {
-  final String ssid;
-  final String psk;
-  final String security;
-  const ShareHotspot(
-      {required this.ssid, required this.psk, required this.security});
-}
-
 class ShareAppException implements Exception {
   final String code;
   const ShareAppException(this.code);
@@ -30,11 +22,28 @@ class ShareAppException implements Exception {
   String toString() => 'ShareAppException($code)';
 }
 
-/// The QR text a phone camera turns into "join this network" (the ZXing
-/// WIFI: format; Android 10+ cameras and most QR apps read it).
-String wifiQr(ShareHotspot h) {
-  String esc(String v) => v.replaceAllMapped(
-      RegExp(r'[\\;,:"]'), (m) => '\\${m[0]}');
-  final pass = h.security == 'nopass' ? '' : 'P:${esc(h.psk)};';
-  return 'WIFI:T:${h.security};S:${esc(h.ssid)};$pass;';
+/// How good an interface is for a visitor next to us (lower is better),
+/// or null to leave it out. Android, Linux, macOS and Windows names.
+int? shareInterfaceRank(String name) {
+  final n = name.toLowerCase();
+  const skip = [
+    'rmnet', 'ccmni', 'tun', 'tap', 'dummy', 'v4-', 'clat', 'ppp', 'ipsec',
+    'docker', 'veth', 'br-', 'virbr', 'vmnet', 'vboxnet', 'lxc', 'lxd',
+    'podman', 'cni', 'flannel', 'zt', 'tailscale', 'wg', 'utun', 'awdl',
+    'llw', 'anpi', 'bridge', 'vethernet', 'loopback', 'bluetooth', 'npcap',
+  ];
+  if (skip.any(n.startsWith) || n.contains('virtual') || n.contains('vpn')) {
+    return null;
+  }
+  if (n.startsWith('ap') || n.startsWith('swlan') || n.startsWith('softap')) {
+    return 0;
+  }
+  if (n.startsWith('wl') || n.startsWith('wi-fi') || n.startsWith('wifi') ||
+      n.contains('wireless')) {
+    return 1;
+  }
+  if (n.startsWith('eth') || n.startsWith('en') || n.startsWith('ethernet')) {
+    return 2;
+  }
+  return 3;
 }

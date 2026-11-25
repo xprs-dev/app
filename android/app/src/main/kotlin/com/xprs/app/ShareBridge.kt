@@ -1,51 +1,68 @@
 package com.xprs.app
 
 import android.content.Context
-import android.net.wifi.SoftApConfiguration
-import android.net.wifi.WifiManager
+import android.content.Intent
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
+import android.provider.Settings
 import android.util.Log
-import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 /**
- * "Share app" (drawer -> Share app): what Dart cannot reach by itself.
+ * Share (drawer -> Share): what Dart cannot reach by itself.
  *
- *   apkInfo       -> where the installed APK lives, and whether it is one file
- *   startHotspot  -> a LocalOnlyHotspot (no internet, OS-chosen SSID and
- *                    passphrase) for a phone with no Wi-Fi in common with us
- *   stopHotspot   -> release it
+ *   apkInfo             -> where the installed APK lives, and whether it is
+ *                          one file
+ *   openHotspotSettings -> the system's own hotspot screen
  *
- * The HTTP server that hands out the APK is Dart (ShareAppService). UI engine
- * only: the hotspot exists while the Share app page is open, so this is owned
- * by MainActivity and closed in its onDestroy.
+ * The HTTP server (the web portal) is Dart (ShareAppService). Engine-scoped,
+ * attached by NativeBridgeRegistry, so it answers on the headless engine an
+ * always-on phone boots into, not only while the Activity exists: the portal
+ * comes back after a reboot with nobody opening the app.
+ *
+ * There is no app-made hotspot any more. Android's LocalOnlyHotspot was used
+ * until 2026-11-25, when the OUKITEL C61 (Android 15) was measured reporting
+ * "AndroidShare_3712, WPA2/WPA3" to the app while its radio beaconed the
+ * system hotspot's own name and WPA2 key: the QR named a network that did
+ * not exist. It also lived only as long as the Activity, which a portal left
+ * on as a station outlives. The system hotspot is what the person can see,
+ * name, and leave on.
  */
-class ShareBridge(context: Context, messenger: BinaryMessenger) {
-    companion object {
-        const val CHANNEL = "com.xprs.app/share"
-        private const val TAG = "ShareBridge"
+object ShareBridge {
+    private const val CHANNEL = "com.xprs.app/share"
+    private const val TAG = "ShareBridge"
+
+    private var channel: MethodChannel? = null
+    private var engine: FlutterEngine? = null
+
+    @Synchronized
+    fun attach(context: Context, flutterEngine: FlutterEngine) {
+        if (engine === flutterEngine && channel != null) return
+        val app = context.applicationContext
+        channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+            .also { ch -> ch.setMethodCallHandler { call, result -> handle(app, call, result) } }
+        engine = flutterEngine
     }
 
-    private val app = context.applicationContext
-    private val channel = MethodChannel(messenger, CHANNEL)
-    private val main = Handler(Looper.getMainLooper())
-    private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
+    @Synchronized
+    fun dispose(flutterEngine: FlutterEngine) {
+        if (engine !== flutterEngine) return
+        channel?.setMethodCallHandler(null)
+        channel = null
+        engine = null
+    }
 
-    init {
-        channel.setMethodCallHandler { call, result ->
-            when (call.method) {
-                "apkInfo" -> result.success(apkInfo())
-                "startHotspot" -> startHotspot(result)
-                "stopHotspot" -> { stopHotspot(); result.success(null) }
-                else -> result.notImplemented()
-            }
+    private fun handle(app: Context, call: MethodCall, result: MethodChannel.Result) {
+        when (call.method) {
+            "apkInfo" -> result.success(apkInfo(app))
+            "openHotspotSettings" -> result.success(openHotspotSettings(app))
+            else -> result.notImplemented()
         }
     }
 
-    private fun apkInfo(): Map<String, Any?> {
+    private fun apkInfo(app: Context): Map<String, Any?> {
         val ai = app.applicationInfo
         return mapOf(
             "path" to ai.sourceDir,
@@ -57,78 +74,17 @@ class ShareBridge(context: Context, messenger: BinaryMessenger) {
         )
     }
 
-    private fun startHotspot(result: MethodChannel.Result) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            result.error("unsupported", "LocalOnlyHotspot needs Android 8", null)
-            return
-        }
-        val current = reservation
-        if (current != null) {
-            result.success(describe(current))
-            return
-        }
-        val wifi = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        var replied = false
-        try {
-            wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
-                override fun onStarted(r: WifiManager.LocalOnlyHotspotReservation) {
-                    reservation = r
-                    if (!replied) { replied = true; result.success(describe(r)) }
-                }
-
-                override fun onStopped() {
-                    reservation = null
-                    channel.invokeMethod("hotspotStopped", null)
-                }
-
-                override fun onFailed(reason: Int) {
-                    val code = when (reason) {
-                        ERROR_NO_CHANNEL -> "no_channel"
-                        ERROR_INCOMPATIBLE_MODE -> "incompatible_mode"
-                        ERROR_TETHERING_DISALLOWED -> "tethering_disallowed"
-                        else -> "generic"
-                    }
-                    Log.w(TAG, "LocalOnlyHotspot failed: $code")
-                    if (!replied) { replied = true; result.error(code, null, null) }
-                }
-            }, main)
-        } catch (e: SecurityException) {
-            result.error("permission", e.message, null)
-        } catch (e: IllegalStateException) {
-            // Another request of ours is still outstanding.
-            result.error("busy", e.message, null)
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun describe(r: WifiManager.LocalOnlyHotspotReservation): Map<String, Any?> {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val c = r.softApConfiguration
-            val security = when (c.securityType) {
-                SoftApConfiguration.SECURITY_TYPE_OPEN -> "nopass"
-                SoftApConfiguration.SECURITY_TYPE_WPA3_SAE -> "SAE"
-                else -> "WPA"
+    /** The hotspot screen where there is one (a hidden but stable action),
+     *  the network settings otherwise. */
+    private fun openHotspotSettings(app: Context): Boolean {
+        for (action in listOf("android.settings.TETHER_SETTINGS", Settings.ACTION_WIRELESS_SETTINGS)) {
+            try {
+                app.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return true
+            } catch (e: Exception) {
+                Log.w(TAG, "$action: ${e.message}")
             }
-            return mapOf("ssid" to c.ssid, "psk" to c.passphrase, "security" to security)
         }
-        val c = r.wifiConfiguration
-        return mapOf(
-            "ssid" to c?.SSID?.trim('"'),
-            "psk" to c?.preSharedKey?.trim('"'),
-            "security" to if (c?.preSharedKey.isNullOrEmpty()) "nopass" else "WPA",
-        )
-    }
-
-    fun stopHotspot() {
-        try {
-            reservation?.close()
-        } catch (_: Exception) {
-        }
-        reservation = null
-    }
-
-    fun dispose() {
-        stopHotspot()
-        channel.setMethodCallHandler(null)
+        return false
     }
 }

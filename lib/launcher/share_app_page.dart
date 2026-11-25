@@ -1,23 +1,26 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../platform/platform.dart' as platform;
-import '../services/android_permissions_service.dart';
-import '../services/share_app_service.dart';
-import '../version.dart';
 import '../services/i18n/core_i18n.dart';
+import '../services/share_app_service.dart';
+import '../services/share_library.dart';
+import '../services/update_models.dart';
 
-/// Drawer -> Share: let a nearby phone chat with this one, and give it the app.
+/// Drawer -> Share: the web portal, and the installers it hands out.
 ///
-/// The phone serves, over HTTP on the local network (ShareAppService), the web
-/// chat at `/` (any browser, nothing to install) and, when this copy can be
-/// handed on, its own APK under `/app` (the chat links to it). The other phone
-/// joins the same network, by scanning the hotspot QR when there is no Wi-Fi
-/// the two have in common, then scans the chat QR. No internet, store or cable
-/// involved.
+/// The portal (ShareAppService) is an HTTP server on the local network: the
+/// web chat at `/` for any browser, nothing to install, and `/app` with the
+/// installers. Its switch is the first thing on the page because it is a
+/// state the person leaves on, so the phone or desktop behaves as a station
+/// for whoever joins its network, and it stays on after the page, the app's
+/// window, and a reboot.
+///
+/// A device with no network in common with the visitor uses the system
+/// hotspot (Android), which the person names, sees and leaves on; the app
+/// makes no hotspot of its own (ShareBridge.kt says why).
 class ShareAppPage extends StatefulWidget {
   const ShareAppPage({super.key});
 
@@ -28,72 +31,45 @@ class ShareAppPage extends StatefulWidget {
 class _ShareAppPageState extends State<ShareAppPage>
     with WidgetsBindingObserver {
   final _svc = ShareAppService.instance;
+  final _lib = ShareLibrary.instance;
+  final bool _android = platform.platformName() == 'android';
 
-  ShareApkInfo? _apk;
   bool _loading = true;
+  bool _switching = false;
   String? _fatal;
-
-  ShareHotspot? _hotspot;
-  bool _hotspotBusy = false;
-  String? _hotspotError;
-
   List<String> _addrs = const [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _svc.hotspotUp.addListener(_onHotspotChanged);
     _boot();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _svc.hotspotUp.removeListener(_onHotspotChanged);
-    // Sharing keeps running after the page closes (the person put the phone
-    // down and the other one is chatting); "Stop sharing" ends it.
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Back from system settings, where the user may have switched on their
-    // own hotspot or joined a Wi-Fi.
+    // Back from the hotspot screen or the system's Wi-Fi settings.
     if (state == AppLifecycleState.resumed) _refreshAddresses();
-  }
-
-  void _onHotspotChanged() {
-    if (!_svc.hotspotUp.value && _hotspot != null && mounted) {
-      setState(() => _hotspot = null);
-      _refreshAddresses();
-    }
   }
 
   Future<void> _boot() async {
     try {
-      final apk = await _svc.apkInfo();
-      if (apk == null) {
-        setState(() {
-          _loading = false;
-          _fatal = tr('share.android_only');
-        });
-        return;
-      }
-      // The chat does not need the APK: a copy installed from a store in
-      // pieces cannot be handed on, and can still host the chat.
-      await _svc.start(
-          apkPath: apk.shareable ? apk.path : '',
-          version: kAppVersion,
-          abi: apk.abi);
+      await _svc.restore();
+      await _lib.load();
       final addrs = await _svc.localAddresses();
       if (!mounted) return;
       setState(() {
-        _hotspot = _svc.hotspot;
-        _apk = apk;
         _addrs = addrs;
         _loading = false;
       });
+      // Sizes for the Add buttons: the ~1 KB feed, once per visit.
+      unawaited(_lib.refreshRelease());
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -108,92 +84,34 @@ class _ShareAppPageState extends State<ShareAppPage>
     if (mounted) setState(() => _addrs = addrs);
   }
 
-  /// The hotspot needs NEARBY_WIFI_DEVICES on Android 13+, and location (the
-  /// permission and the system switch) below that. The intro asked for both,
-  /// but either can have been revoked since.
-  Future<bool> _ensureHotspotPermission() async {
-    final sdk = await platform.androidSdkInt();
-    if (sdk >= 33) {
-      return (await Permission.nearbyWifiDevices.request()).isGranted;
-    }
-    if (!(await Permission.locationWhenInUse.request()).isGranted) return false;
-    return AndroidPermissionsService.instance.locationServicesOn();
-  }
-
-  Future<void> _startHotspot() async {
-    setState(() {
-      _hotspotBusy = true;
-      _hotspotError = null;
-    });
+  Future<void> _setPortal(bool on) async {
+    setState(() => _switching = true);
     try {
-      if (!await _ensureHotspotPermission()) {
-        throw const ShareAppException('permission');
+      await _svc.setPortal(on);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(tr('share.start_failed', {'error': e}))));
       }
-      final before = _addrs.toSet();
-      final h = await _svc.startHotspot();
-      if (!mounted) return;
-      setState(() => _hotspot = h);
-      // The hotspot interface gets its address a moment after it is up.
-      for (var i = 0; i < 10 && mounted; i++) {
-        final addrs = await _svc.localAddresses();
-        if (!mounted) return;
-        setState(() => _addrs = addrs);
-        if (addrs.any((a) => !before.contains(a))) break;
-        await Future<void>.delayed(const Duration(milliseconds: 600));
-      }
-    } on ShareAppException catch (e) {
-      if (mounted) setState(() => _hotspotError = _hotspotMessage(e.code));
-    } finally {
-      if (mounted) setState(() => _hotspotBusy = false);
     }
+    await _refreshAddresses();
+    if (mounted) setState(() => _switching = false);
   }
 
-  Future<void> _stopHotspot() async {
-    await _svc.stopHotspot();
-    if (!mounted) return;
-    setState(() => _hotspot = null);
-    _refreshAddresses();
-  }
-
-  String _hotspotMessage(String code) {
-    switch (code) {
-      case 'unsupported':
-        return tr('share.hotspot.unsupported');
-      case 'incompatible_mode':
-        return tr('share.hotspot.incompatible');
-      case 'tethering_disallowed':
-        return tr('share.hotspot.disallowed');
-      case 'permission':
-        return tr('share.hotspot.permission');
-      default:
-        return tr('share.hotspot.failed');
-    }
+  Future<void> _add(UpdatePlatform p) async {
+    final why = await _lib.add(p);
+    if (why == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(why == 'release'
+            ? tr('share.installers.no_release')
+            : tr('share.installers.failed', {'os': _osName(p)}))));
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(tr('share.title')),
-        actions: [
-          if (_fatal == null && !_loading)
-            IconButton(
-              tooltip: tr('share.stop'),
-              icon: const Icon(Icons.stop_circle_outlined),
-              onPressed: () async {
-                await _svc.stopSharing();
-                if (mounted) Navigator.of(context).maybePop();
-              },
-            ),
-          if (_fatal == null && !_loading)
-            IconButton(
-              tooltip: tr('common.refresh'),
-              icon: const Icon(Icons.refresh),
-              onPressed: _refreshAddresses,
-            ),
-        ],
-      ),
+      appBar: AppBar(title: Text(tr('share.title'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -201,135 +119,209 @@ class _ShareAppPageState extends State<ShareAppPage>
               children: _fatal != null
                   ? [_card(cs, _text(cs, _fatal!))]
                   : [
-                      Text(
-                        tr('share.intro'),
-                        style: TextStyle(color: cs.onSurfaceVariant),
+                      _card(cs, _portalSwitch(cs)),
+                      // The library too: an installer added below shows up
+                      // in "Install the app" at once.
+                      ListenableBuilder(
+                        listenable: Listenable.merge([_svc.portal, _lib.files]),
+                        builder: (context, _) => _svc.portal.value
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: _portalOn(context, cs))
+                            : const SizedBox.shrink(),
                       ),
                       const SizedBox(height: 20),
-                      _header(context, tr('share.step.network')),
-                      _card(cs, _networkStep(cs)),
-                      const SizedBox(height: 20),
-                      _header(context, tr('share.step.chat')),
-                      _card(cs, _chatStep(cs)),
-                      if (_svc.apkShareable) ...[
-                        const SizedBox(height: 20),
-                        _header(context, tr('share.step.app')),
-                        _card(cs, _appStep(cs)),
-                      ],
+                      _header(context, tr('share.installers')),
+                      _card(cs, _installers(cs)),
                     ],
             ),
     );
   }
 
-  Widget _networkStep(ColorScheme cs) {
-    final h = _hotspot;
-    if (h != null) {
-      return Column(children: [
-        _text(cs, tr('share.hotspot.scan')),
-        _qr(wifiQr(h)),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: SelectableText(
-            '${tr('share.hotspot.network', {'ssid': h.ssid})}\n'
-            '${h.security == 'nopass' ? tr('share.hotspot.nopass') : tr('share.hotspot.password', {'psk': h.psk})}',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 16),
-          ),
+  Widget _portalSwitch(ColorScheme cs) => ValueListenableBuilder<bool>(
+        valueListenable: _svc.portal,
+        builder: (_, on, _) => SwitchListTile(
+          value: on,
+          onChanged: _switching ? null : _setPortal,
+          secondary: Icon(on ? Icons.wifi_tethering : Icons.portable_wifi_off,
+              color: on ? cs.primary : cs.onSurfaceVariant),
+          title: Text(tr('share.portal'),
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(on ? tr('share.portal.on') : tr('share.portal.off')),
         ),
-        TextButton.icon(
-          onPressed: _stopHotspot,
-          icon: const Icon(Icons.wifi_off),
-          label: Text(tr('share.hotspot.stop')),
-        ),
-        const SizedBox(height: 8),
-      ]);
+      );
+
+  List<Widget> _portalOn(BuildContext context, ColorScheme cs) {
+    if (_addrs.isEmpty) {
+      return [
+        const SizedBox(height: 12),
+        _card(
+            cs,
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _text(cs, tr('share.no_network')),
+              _networkHint(cs),
+            ])),
+      ];
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _text(cs, tr('share.hotspot.offer')),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: FilledButton.icon(
-            onPressed: _hotspotBusy ? null : _startHotspot,
-            icon: _hotspotBusy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.wifi_tethering),
-            label: Text(tr('share.hotspot.create')),
-          ),
-        ),
-        if (_hotspotError != null) ...[
-          _text(cs, _hotspotError!, color: cs.error),
-          _text(cs, tr('share.hotspot.manual')),
-        ],
+    final base = 'http://${_addrs.first}:${_svc.port}';
+    final files = _svc.files;
+    return [
+      const SizedBox(height: 20),
+      _header(context, tr('share.chat')),
+      _card(
+          cs,
+          Column(children: [
+            _qr('$base/'),
+            _url('$base/'),
+            if (_addrs.length > 1)
+              _text(
+                  cs,
+                  tr('share.chat.alternatives', {
+                    'urls': _addrs
+                        .skip(1)
+                        .map((a) => 'http://$a:${_svc.port}/')
+                        .join('  ')
+                  }),
+                  small: true),
+            ValueListenableBuilder<int>(
+              valueListenable: _svc.visitorCount,
+              builder: (_, n, _) => _text(cs,
+                  n == 0 ? tr('share.visitors.none') : trn('share.visitors', n),
+                  small: true),
+            ),
+            _networkHint(cs),
+          ])),
+      if (files.isNotEmpty) ...[
+        const SizedBox(height: 20),
+        _header(context, tr('share.install')),
+        _card(
+            cs,
+            Column(children: [
+              _qr('$base/app'),
+              _url('$base/app'),
+              ValueListenableBuilder<int>(
+                valueListenable: _svc.downloads,
+                builder: (_, n, _) => _text(
+                    cs,
+                    n == 0
+                        ? tr('share.downloads.none')
+                        : trn('share.downloads', n),
+                    small: true),
+              ),
+            ])),
       ],
+    ];
+  }
+
+  /// How the other device gets onto this one's network.
+  Widget _networkHint(ColorScheme cs) {
+    if (!_android) return _text(cs, tr('share.same_network'), small: true);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+      child: Column(children: [
+        _text(cs, tr('share.hotspot.hint'), small: true),
+        OutlinedButton.icon(
+          onPressed: () async {
+            if (!await _svc.openHotspotSettings() && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(tr('share.hotspot.none'))));
+            }
+          },
+          icon: const Icon(Icons.wifi_tethering),
+          label: Text(tr('share.hotspot.open')),
+        ),
+      ]),
     );
   }
 
-  Widget _chatStep(ColorScheme cs) {
-    if (_addrs.isEmpty) {
-      return _text(cs, tr('share.chat.no_network'));
+  Widget _installers(ColorScheme cs) => ValueListenableBuilder<List<ShareEntry>>(
+        valueListenable: _lib.files,
+        builder: (_, _, _) => ValueListenableBuilder<Map<UpdatePlatform, double>>(
+          valueListenable: _lib.busy,
+          builder: (_, busy, _) => ValueListenableBuilder<ReleaseInfo?>(
+            valueListenable: _lib.release,
+            builder: (_, release, _) => Column(children: [
+              for (final p in kSharePlatforms)
+                _installerRow(cs, p, busy[p], release),
+            ]),
+          ),
+        ),
+      );
+
+  Widget _installerRow(
+      ColorScheme cs, UpdatePlatform p, double? progress, ReleaseInfo? release) {
+    final self = p == UpdatePlatform.android && _svc.apkShareable;
+    ShareEntry? held;
+    for (final e in _lib.files.value) {
+      if (e.platform == p) held = e;
     }
-    final url = 'http://${_addrs.first}:${_svc.port}/';
-    return Column(children: [
-      _text(cs, tr('share.chat.scan')),
-      _qr(url),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-        child: SelectableText(url,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 16)),
-      ),
-      if (_addrs.length > 1)
-        _text(
-            cs,
-            tr('share.chat.alternatives', {
-              'urls': _addrs.skip(1).map((a) => 'http://$a:${_svc.port}/').join('  ')
-            }),
-            small: true),
-      ValueListenableBuilder<int>(
-        valueListenable: _svc.visitorCount,
-        builder: (_, n, _) => _text(
-            cs,
-            n == 0 ? tr('share.visitors.none') : trn('share.visitors', n),
-            small: true),
-      ),
-    ]);
+    // What the feed offers for this system, by name (macOS has no build yet).
+    ReleaseAsset? offered;
+    if (release != null) {
+      for (final a in release.assets) {
+        if (sharePlatformOf(a.name) == p) offered = a;
+      }
+    }
+    final String subtitle;
+    Widget? trailing;
+    if (self) {
+      subtitle = tr('share.installers.self');
+    } else if (progress != null) {
+      subtitle = tr('share.installers.adding');
+      trailing = SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(
+              strokeWidth: 2.5, value: progress < 0 ? null : progress));
+    } else if (held != null) {
+      subtitle = tr('share.installers.added', {'size': _mb(held.size)});
+      trailing = IconButton(
+        tooltip: tr('share.installers.remove'),
+        icon: const Icon(Icons.delete_outline),
+        onPressed: () => _lib.remove(p),
+      );
+    } else {
+      subtitle = release != null && offered == null
+          ? tr('share.installers.none')
+          : offered != null
+              ? _mb(offered.size)
+              : '';
+      trailing = release != null && offered == null
+          ? null
+          : TextButton(
+              onPressed: () => _add(p), child: Text(tr('share.installers.add')));
+    }
+    return ListTile(
+      leading: Icon(_osIcon(p), color: cs.onSurfaceVariant),
+      title: Text(_osName(p)),
+      subtitle: subtitle.isEmpty ? null : Text(subtitle),
+      trailing: trailing,
+    );
   }
 
-  Widget _appStep(ColorScheme cs) {
-    final apk = _apk;
-    final mb = apk == null ? '' : ' (${(apk.size / 1e6).toStringAsFixed(0)} MB)';
-    if (_addrs.isEmpty) {
-      return _text(cs, tr('share.app.finish_first'));
-    }
-    final url = 'http://${_addrs.first}:${_svc.port}/app';
-    return Column(children: [
-      _text(cs, tr('share.app.how', {'mb': mb})),
-      _qr(url),
-      Padding(
+  static String _mb(int bytes) => '${(bytes / 1e6).toStringAsFixed(0)} MB';
+
+  static String _osName(UpdatePlatform p) => switch (p) {
+        UpdatePlatform.android => 'Android',
+        UpdatePlatform.windows => 'Windows',
+        UpdatePlatform.linux => 'Linux',
+        UpdatePlatform.macos => 'macOS',
+        UpdatePlatform.unknown => '',
+      };
+
+  static IconData _osIcon(UpdatePlatform p) => switch (p) {
+        UpdatePlatform.android => Icons.android,
+        UpdatePlatform.windows => Icons.desktop_windows_outlined,
+        UpdatePlatform.linux => Icons.computer_outlined,
+        UpdatePlatform.macos => Icons.laptop_mac_outlined,
+        UpdatePlatform.unknown => Icons.help_outline,
+      };
+
+  Widget _url(String url) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
         child: SelectableText(url,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 16)),
-      ),
-      ValueListenableBuilder<int>(
-        valueListenable: _svc.downloads,
-        builder: (_, n, _) => _text(
-            cs,
-            n == 0 ? tr('share.downloads.none') : trn('share.downloads', n),
-            small: true),
-      ),
-      if (apk != null && apk.abi.isNotEmpty)
-        _text(
-            cs,
-            tr('share.app.abi', {'abi': apk.abi}),
-            small: true),
-    ]);
-  }
+            textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+      );
 
   Widget _qr(String data) => Padding(
         padding: const EdgeInsets.all(12),
@@ -354,6 +346,7 @@ class _ShareAppPageState extends State<ShareAppPage>
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
         child: Text(
           s,
+          textAlign: small ? TextAlign.center : null,
           style: TextStyle(
             color: color ?? (small ? cs.onSurfaceVariant : null),
             fontSize: small ? 13 : null,
@@ -372,6 +365,7 @@ class _ShareAppPageState extends State<ShareAppPage>
 
   Widget _card(ColorScheme cs, Widget child) => Card(
         elevation: 0,
+        margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: cs.outlineVariant.withAlpha(80)),

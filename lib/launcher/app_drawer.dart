@@ -100,7 +100,8 @@ class _AppDrawer extends StatelessWidget {
                   );
                 },
               ),
-            if (platform.platformName() == 'android')
+            // Android and desktop alike: the web portal and the installers.
+            if (!kIsWeb)
               ListTile(
                 leading: const Icon(Icons.share),
                 title: Text(tr('common.share')),

@@ -1728,3 +1728,35 @@ maxBytes`). Any wapp reading an address it did not vet sends one.
 - The code field in `PositionShareCard` (text field, copy and new-code icons
   in `suffixIcon`, saved when the typing pauses): the shape for any secret a
   person shares by hand.
+
+## Fetching a release artifact by its sha256 (`lib/services/artifact_fetch.dart`)
+
+`ArtifactFetch.overMesh` / `overReticulum` / `overWeb` move one feed asset
+(`ReleaseAsset`: name, url, size, sha256) into a folder the caller names, each
+lane checking the sha256 before it answers. Try them in that order: a station
+in earshot (BLE bulk lane, straight to disk), an always-on archiver or this
+device's own mirror over Reticulum, then the feed's URL. The caller keeps its
+own progress state; the lanes only move and verify bytes. Users: the updater
+(`UpdateService._downloadOverMesh` / `_downloadOverReticulum`) and Share's
+installers (`ShareLibrary.add`). Anything else that needs "a release binary,
+offline if possible" (a wapp bundle, a firmware image named in a feed) should
+call these rather than grow a fourth lane. `UpdateNative.download` and
+`writeBytes` take a `dir:` for the same reason.
+
+## A switch that outlives its page (`ShareAppService.setPortal` / `restore`)
+
+A service a person leaves on (the Share web portal) keeps its state in one
+preference, flips it with `setPortal(on)`, and re-reads it with `restore()`
+from two places: the page's `initState`, and `hostBoot()` (called by
+`PermissionGate.startGatedServices`, which also runs on the headless boot
+engine). The native side it needs lives in `NativeBridgeRegistry`, never in
+`MainActivity`, or the service comes back at boot without its channel.
+The page shows the switch first, as a `SwitchListTile` bound to the service's
+`ValueNotifier<bool>`.
+
+## Which network a visitor can reach us on (`shareInterfaceRank`)
+
+`lib/services/share_app_types.dart`: ranks an interface name from Android,
+Linux, macOS or Windows (hotspot, Wi-Fi, wired, other) and drops cellular,
+tunnels, VPNs and virtual bridges. Use it for any "scan this QR from the
+device next to you" address.

@@ -27,6 +27,7 @@ object NativeBridgeRegistry {
             BgBridge.attach(appContext, flutterEngine)
             UpdateBridge.attach(appContext, flutterEngine)
             UsbSerial.attach(appContext, flutterEngine)
+            ShareBridge.attach(appContext, flutterEngine)
             return
         }
 
@@ -41,6 +42,9 @@ object NativeBridgeRegistry {
         // USB serial for the flasher: a Context is all it needs, so it lives
         // here with the other engine-scoped bridges.
         UsbSerial.attach(appContext, flutterEngine)
+        // Share's APK path and hotspot screen: the web portal can come back at
+        // boot on the headless engine, so its channel lives here too.
+        ShareBridge.attach(appContext, flutterEngine)
         ble5 = Ble5(appContext, flutterEngine.dartExecutor.binaryMessenger)
         wifiDirect = WifiDirect(appContext, flutterEngine.dartExecutor.binaryMessenger)
         engine = flutterEngine
@@ -69,6 +73,7 @@ object NativeBridgeRegistry {
         }
         engine?.let { UpdateBridge.dispose(it) }
         engine?.let { UsbSerial.dispose(it) }
+        engine?.let { ShareBridge.dispose(it) }
         ble5 = null
         wifiDirect = null
         engine = null

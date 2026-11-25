@@ -19,7 +19,6 @@
  */
 
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -34,15 +33,9 @@ import 'reticulum/rns_service.dart';
 import 'update_models.dart';
 import 'update_platform.dart';
 import 'update_native.dart';
-import '../util/nostr_crypto.dart';
 import 'log_service.dart';
 import 'i18n/core_i18n.dart';
-import 'mesh/mesh_service.dart';
-import 'update_mirror_service.dart';
-import 'xprs/xprs_catchup.dart';
-import 'xprs/xprs_publisher.dart';
-import 'xprs/xprs_monitor.dart';
-import 'xprs/xprs_files.dart';
+import 'artifact_fetch.dart';
 import 'notification_service.dart';
 import '../platform/fs.dart';
 import 'package:xprs_core/src/platform/core_host.dart' show CoreHost;
@@ -147,53 +140,6 @@ class UpdateService with WidgetsBindingObserver {
   /// that had not started -- which is exactly how the fault above was
   /// reported.
   final ValueNotifier<String> phase = ValueNotifier('');
-
-  static Uint8List? _hexBytes(String hex) {
-    if (hex.length != 64) return null;
-    try {
-      return Uint8List.fromList([
-        for (var i = 0; i < 64; i += 2) int.parse(hex.substring(i, i + 2), radix: 16),
-      ]);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// A station's `link:ble` beacon counts as evidence of a bulk lane for this
-  /// long — three beacon periods, the same window the publisher ranks paths on.
-  static const int meshEvidenceMs = 3 * 60 * 1000;
-
-  Future<bool> _ble5Active() async {
-    for (final b in XprsPublisher.instance.bearers) {
-      if (b.name == 'ble5') {
-        return XprsPublisher.instance.isBearerEnabled('ble5') && await b.active;
-      }
-    }
-    return false;
-  }
-
-  /// How long a station in earshot gets to say 202 before we ask the next one.
-  static const Duration meshAcceptWithin = Duration(seconds: 30);
-
-  /// How long the DHT gets to name a provider before we go to the web.
-  static const Duration providerProbeTimeout = Duration(seconds: 20);
-
-  /// How long to wait for a Reticulum provider before falling back to the web.
-  /// Long enough for a DHT resolve plus a multi-source transfer of a ~60 MB
-  /// artifact, short enough that a phone with no mirror in reach is not stuck.
-  static const Duration reticulumFetchTimeout = Duration(minutes: 5);
-
-  /// The fetch deadline, sized to the artifact. A flat five minutes was
-  /// measured on the bench to expire seconds AFTER a 35 MB swarm fetch
-  /// finished at ~120 kB/s; a 57 MB APK at that rate would have been cut off
-  /// at 85%. The floor is the old value; above it, a modest 20 kB/s budget so
-  /// a slow-but-moving transfer is never abandoned while the bar is climbing.
-  /// A fetch that actually stalls is ended by the swarm's own per-piece
-  /// timeouts, not by this.
-  static Duration reticulumTimeoutFor(int sizeBytes) {
-    final budget = Duration(seconds: sizeBytes ~/ (20 * 1024));
-    return budget > reticulumFetchTimeout ? budget : reticulumFetchTimeout;
-  }
 
   // True while a DownloadManager poll loop is running, so we never spin up a
   // second tracker (e.g. resume racing a fresh download).
@@ -942,65 +888,28 @@ class UpdateService with WidgetsBindingObserver {
     }
   }
 
-  /// Ask a station in earshot for the artifact, over XPRS + the bulk lane.
-  ///
-  /// Returns the local path on success. Costs one 250-byte packet to find out:
-  /// a station that does not hold it answers `404` and we move on, which is
-  /// exactly what section 31.2's budget is for.
+  /// Ask a station in earshot for the artifact, over XPRS + the bulk lane
+  /// (ArtifactFetch.overMesh). Returns the local path on success.
   Future<String?> _downloadOverMesh(
       ReleaseInfo release, ReleaseAsset asset) async {
-    final self = MeshService.instance.tableCallsign;
-    if (self.isEmpty) return null;
-    // Only over a lane that can carry the bytes. A `cmd:file` is answered on
-    // the advert channel and the FILE travels the bulk lane (25.2.2), and the
-    // bulk lane is BLE. Measured on the bench: the desktop, with no Bluetooth,
-    // asked a phone it could hear over LAN; the phone held the release and
-    // said 202 in 200 ms; and with no lane for the bytes the desktop then sat
-    // on that 202 for the transfer's whole timeout. So: our radio must be on,
-    // and the station must have declared `link:ble` recently (10.6.1) — not
-    // merely be a callsign we have archived a packet from.
-    if (!await _ble5Active()) return null;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final stations = XprsCatchup.instance.stationsInEarshot().where((c) {
-      final st = XprsMonitor.instance.stations[c.toUpperCase()];
-      return st != null &&
-          st.declaredBearersFresh(now, meshEvidenceMs).contains('ble');
-    }).toList();
-    if (stations.isEmpty) return null;
-
+    if ((await ArtifactFetch.meshStations()).isEmpty) return null;
     status.value = UpdateStatus.downloading;
     progress.value = 0;
     error = null;
     lastSource = 'xprs';
     UpdateNative.serviceStart('Fetching XPRS ${release.version} over the mesh');
     try {
-      for (final station in stations) {
-        final dot = asset.name.lastIndexOf('.');
-        phase.value = tr('updates.phase.mesh', {'station': station});
-        final path = await XprsFileFetch.instance.fetch(
-          archiver: station,
-          shaHex: asset.sha256,
-          selfCallsign: NostrCrypto.bareCallsign(self),
-          ext: dot >= 0 ? asset.name.substring(dot + 1) : '',
-          // Land it where the installer expects, as a file: an APK that became
-          // a database blob would have to be written back out to be installed.
-          destDir: await UpdateNative.supportDir(),
-          // Seconds to say 202, not the transfer's hour: a station that does
-          // not hold the release is asked and left behind, never waited on.
-          acceptWithin: meshAcceptWithin,
-          // The feed states the length exactly: the internet lane can then
-          // take pieces from every station that holds the release.
-          exactSize: asset.size,
-        );
-        if (path == null) continue; // 404 / refused / timed out: try the next
-        await _markReady(path, release.version);
-        LogService.instance.add(
-            'update: ${release.version} arrived from $station over the mesh');
-        return path;
+      final got = await ArtifactFetch.overMesh(asset,
+          destDir: (await UpdateNative.supportDir())!,
+          onStation: (s) =>
+              phase.value = tr('updates.phase.mesh', {'station': s}));
+      if (got == null) {
+        lastSource = null;
+        status.value = UpdateStatus.checking;
+        return null;
       }
-      lastSource = null;
-      status.value = UpdateStatus.checking;
-      return null;
+      await _markReady(got.path, release.version);
+      return got.path;
     } catch (e) {
       lastSource = null;
       status.value = UpdateStatus.checking;
@@ -1010,7 +919,8 @@ class UpdateService with WidgetsBindingObserver {
     }
   }
 
-  /// Try to fetch [asset] by its content address over Reticulum.
+  /// Try to fetch [asset] by its content address over Reticulum
+  /// (ArtifactFetch.overReticulum).
   ///
   /// Returns false (quietly, leaving the status untouched) when no provider
   /// answers in time, so the caller can fall back to HTTPS. The bounded wait
@@ -1025,93 +935,39 @@ class UpdateService with WidgetsBindingObserver {
   Future<bool> _downloadOverReticulum(
       ReleaseInfo release, ReleaseAsset asset) async {
     final folder = release.isPrerelease ? _betaFolder : _stableFolder;
-    final shaHex = asset.sha256.toLowerCase();
-    final dot = asset.name.lastIndexOf('.');
-    final ext = dot >= 0 ? asset.name.substring(dot + 1) : '';
     status.value = UpdateStatus.downloading;
     progress.value = 0;
     error = null;
     lastSource = 'reticulum';
     UpdateNative.serviceStart('Fetching XPRS ${release.version} over Reticulum');
     try {
-      // An always-on archiver already holds every release it mirrors, verified at
-      // ingest. The DHT probe below asks for OTHER providers by design, so
-      // without this a mirror that was the only holder concluded nobody had
-      // it and went to the web for bytes sitting on its own disk.
-      final mine = UpdateMirrorService.instance.pathForSha(shaHex);
-      if (mine != null) {
-        phase.value = tr('updates.phase.mirror');
-        final dir = await UpdateNative.supportDir();
-        final dest = '$dir${pathSeparator}${asset.name}';
-        await fs.file(mine).copy(dest);
-        lastSource = 'mirror';
-        await _markReady(dest, release.version);
-        LogService.instance
-            .add('update: ${release.version} taken from our own mirror');
-        return true;
-      }
-      // Is there anybody to fetch FROM? The fetch's timeout is sized for
-      // moving the bytes, and with no always-on archiver holding this release it
-      // spent all five minutes learning that nobody did -- after the mesh had
-      // already spent its share. Ask the DHT the cheap question first.
-      phase.value = tr('updates.phase.search');
-      final providers = await RnsService.instance
-          .contentProviderCount(shaHex, timeout: providerProbeTimeout);
-      if (providers == 0) {
-        LogService.instance.add(
-            'update: no always-on archiver holds ${release.version} yet — web');
+      final got = await ArtifactFetch.overReticulum(
+        asset,
+        folder: folder,
+        destDir: (await UpdateNative.supportDir())!,
+        onPhase: (p, n) => phase.value = switch (p) {
+          ReticulumPhase.mirror => tr('updates.phase.mirror'),
+          ReticulumPhase.search => tr('updates.phase.search'),
+          ReticulumPhase.fetch =>
+            'Fetching from $n always-on archiver${n == 1 ? '' : 's'}',
+        },
+        onProgress: (v) => progress.value = v,
+      );
+      if (got == null) {
         lastSource = null;
         status.value = UpdateStatus.checking;
         return false;
       }
-      phase.value =
-          'Fetching from $providers always-on archiver${providers == 1 ? '' : 's'}';
-      // Show what is arriving. The fetch reports pieces (or bytes) as they
-      // land; a bar that sat at 0% for the whole transfer is what "not
-      // starting" looked like from the outside.
-      final shaB = _hexBytes(shaHex);
-      // Lives only while a download the user started is in flight, cancelled
-      // in the finally below: it costs nothing per hour with the screen off
-      // because it never exists then.
-      final ticker = Timer.periodic(const Duration(milliseconds: 500), (_) { // arch-ignore: no-sub-minute-poll bounded to one user-initiated download, cancelled in finally
-        if (shaB == null) return;
-        final pr = RnsService.instance.fileFetchProgress(shaB);
-        if (pr != null && pr.total > 0) progress.value = pr.received / pr.total;
-      });
-      Uint8List? bytes;
-      try {
-        bytes = await RnsService.instance.folderFetchBytes(folder, shaHex,
-            ext: ext,
-            timeout: reticulumTimeoutFor(asset.size),
-            size: asset.size);
-      } finally {
-        ticker.cancel();
-      }
-      if (bytes == null || bytes.isEmpty) {
-        lastSource = null;
-        status.value = UpdateStatus.checking;
-        return false;
-      }
-      // Content-addressed already, but a mismatch here would mean handing the
-      // installer something nobody vouched for. Assert it.
-      final got = crypto.sha256.convert(bytes).toString();
-      if (got != shaHex) {
-        error = 'Update failed integrity check (sha mismatch)';
-        status.value = UpdateStatus.error;
-        return false;
-      }
-      final path = await UpdateNative.writeBytes(asset.name, bytes, (r, t) {
-        if (t > 0) progress.value = r / t;
-      });
-      if (path == null) {
-        error = 'Could not write the update to disk';
-        status.value = UpdateStatus.error;
-        return false;
-      }
-      LogService.instance.add(
-          'update: ${release.version} fetched over Reticulum (${bytes.length} B)');
-      await _markReady(path, release.version);
+      lastSource = got.source == ArtifactSource.mirror ? 'mirror' : 'reticulum';
+      LogService.instance.add(got.source == ArtifactSource.mirror
+          ? 'update: ${release.version} taken from our own mirror'
+          : 'update: ${release.version} fetched over Reticulum');
+      await _markReady(got.path, release.version);
       return true;
+    } on ArtifactFetchException {
+      error = 'Update failed integrity check (sha mismatch)';
+      status.value = UpdateStatus.error;
+      return false;
     } catch (e) {
       lastSource = null;
       status.value = UpdateStatus.checking;

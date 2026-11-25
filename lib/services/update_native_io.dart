@@ -88,14 +88,15 @@ class UpdateNative {
     }
   }
 
-  /// Stream-download [url] to the support dir as [filename], reporting bytes.
-  /// Returns the saved path, or null on failure.
+  /// Stream-download [url] to the support dir (or [dir]) as [filename],
+  /// reporting bytes. Returns the saved path, or null on failure.
   static Future<String?> download(
     String url,
     String filename,
-    void Function(int received, int total) onProgress,
-  ) async {
-    final dir = await supportDir();
+    void Function(int received, int total) onProgress, {
+    String? dir,
+  }) async {
+    dir ??= await supportDir();
     if (dir == null) return null;
     final dest = '$dir/$filename';
     final client = http.Client();
@@ -157,9 +158,10 @@ class UpdateNative {
   static Future<String?> writeBytes(
     String filename,
     Uint8List bytes,
-    void Function(int received, int total) onProgress,
-  ) async {
-    final dir = await supportDir();
+    void Function(int received, int total) onProgress, {
+    String? dir,
+  }) async {
+    dir ??= await supportDir();
     if (dir == null) return null;
     final dest = '$dir/$filename';
     try {

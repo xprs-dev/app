@@ -1,15 +1,12 @@
 /*
- * Share: the web chat and this installed APK, for a nearby phone.
+ * Share: the web portal. An HTTP server on the local network that serves the
+ * web chat at `/` (any browser, nothing to install) and the installers this
+ * device can hand on at `/app`: its own APK on Android, plus whatever
+ * ShareLibrary fetched for other systems.
  *
- * The sending phone serves its own APK over plain HTTP on the local network
- * (an offline LocalOnlyHotspot when the two phones share no Wi-Fi), and the
- * receiving phone opens the URL from a QR code in its browser:
- *
- *   GET /                    -> a small download page
- *   GET /xprs-<version>.apk  -> the APK, Range-capable so a browser resumes
- *
- * Nothing else is served, and the server only runs while the Share app page
- * is open. Conditional export keeps dart:io out of the web build.
+ * A switch its owner leaves on or off (`share.portal`); on, it outlives the
+ * Share page and comes back at boot. Conditional export keeps dart:io out of
+ * the web build.
  */
 
 export 'share_app_service_stub.dart'

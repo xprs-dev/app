@@ -5,6 +5,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xprs/services/share_app_service.dart';
+import 'package:xprs/services/share_library.dart';
+import 'package:xprs/services/update_models.dart';
 import 'package:xprs/services/web_chat_api.dart';
 
 void main() {
@@ -167,11 +169,106 @@ void main() {
     expect(svc.visitors, 1);
   });
 
-  test('wifi QR escapes special characters', () {
-    expect(
-        wifiQr(const ShareHotspot(ssid: 'a;b', psk: r'p:w\d', security: 'WPA')),
-        r'WIFI:T:WPA;S:a\;b;P:p\:w\\d;;');
-    expect(wifiQr(const ShareHotspot(ssid: 'open', psk: '', security: 'nopass')),
-        'WIFI:T:nopass;S:open;;');
+  test('installers for other systems are served next to this copy',
+      () async {
+    final exe = File('${dir.path}/xprs-9.9.9-windows-x64-setup.exe');
+    await exe.writeAsBytes(bytes.sublist(0, 5000));
+    final tgz = File('${dir.path}/xprs-9.9.9-linux-x64.tar.gz');
+    await tgz.writeAsBytes(bytes.sublist(0, 7000));
+    final other = File('${dir.path}/xprs-9.9.9-android-arm64-v8a.apk');
+    await other.writeAsBytes(bytes.sublist(0, 100));
+    List<ShareEntry> lib() => [
+          ShareEntry(
+              platform: UpdatePlatform.android,
+              name: 'xprs-9.9.9-android-arm64-v8a.apk',
+              path: other.path,
+              size: 100),
+          ShareEntry(
+              platform: UpdatePlatform.windows,
+              name: 'xprs-9.9.9-windows-x64-setup.exe',
+              path: exe.path,
+              size: 5000),
+          ShareEntry(
+              platform: UpdatePlatform.linux,
+              name: 'xprs-9.9.9-linux-x64.tar.gz',
+              path: tgz.path,
+              size: 7000),
+        ];
+    final port = await svc.start(
+        apkPath: apk.path,
+        version: '9.9.9',
+        port: 0,
+        api: api(),
+        chatPage: chatHtml,
+        library: lib);
+    final html = String.fromCharCodes(await body(await get(port, '/app')));
+    expect(html, contains('href="/app/xprs-9.9.9.apk"'));
+    expect(html, contains('href="/app/xprs-9.9.9-windows-x64-setup.exe"'));
+    expect(html, contains('href="/app/xprs-9.9.9-linux-x64.tar.gz"'));
+    // This copy is the Android one; the library's APK is not offered twice.
+    expect(html, isNot(contains('android-arm64-v8a.apk')));
+    final w = await get(port, '/app/xprs-9.9.9-windows-x64-setup.exe');
+    expect(w.statusCode, 200);
+    expect(await body(w), bytes.sublist(0, 5000));
+    final l = await get(port, '/app/xprs-9.9.9-linux-x64.tar.gz');
+    expect(l.headers.contentType?.mimeType, 'application/gzip');
+    expect(await body(l), bytes.sublist(0, 7000));
+    final hidden = await get(port, '/app/xprs-9.9.9-android-arm64-v8a.apk');
+    expect(hidden.statusCode, 404);
+    await body(hidden);
+  });
+
+  test('a desktop with no APK of its own serves the library alone', () async {
+    final tgz = File('${dir.path}/xprs-1.0.0-android-arm64-v8a.apk');
+    await tgz.writeAsBytes(bytes.sublist(0, 3000));
+    final port = await svc.start(
+        port: 0,
+        api: api(),
+        chatPage: chatHtml,
+        library: () => [
+              ShareEntry(
+                  platform: UpdatePlatform.android,
+                  name: 'xprs-1.0.0-android-arm64-v8a.apk',
+                  path: tgz.path,
+                  size: 3000),
+            ]);
+    expect(svc.apkShareable, isFalse);
+    final r = await get(port, '/app/xprs-1.0.0-android-arm64-v8a.apk');
+    expect(r.statusCode, 200);
+    expect(await body(r), bytes.sublist(0, 3000));
+    // The aliases belong to this copy only.
+    final alias = await get(port, '/xprs.apk');
+    expect(alias.statusCode, 404);
+    await body(alias);
+  });
+
+  test('a visitor is offered the addresses of real networks only', () {
+    int? rank(String n) => shareInterfaceRank(n);
+    expect(rank('ap0'), 0);
+    expect(rank('swlan0'), 0);
+    expect(rank('wlan0'), 1);
+    expect(rank('wlp2s0'), 1);
+    expect(rank('Wi-Fi'), 1);
+    expect(rank('eth0'), 2);
+    expect(rank('enp3s0'), 2);
+    expect(rank('en0'), 2);
+    expect(rank('Ethernet'), 2);
+    for (final n in [
+      'rmnet_data0', 'tun0', 'docker0', 'veth12ab', 'br-1234', 'virbr0',
+      'tailscale0', 'wg0', 'utun3', 'awdl0', 'vEthernet (WSL)',
+      'VirtualBox Host-Only Network', 'zt5u4y'
+    ]) {
+      expect(rank(n), isNull, reason: n);
+    }
+  });
+
+  test('an artifact name says which system it is for', () {
+    expect(sharePlatformOf('xprs-1.2.3-android-arm64-v8a.apk'),
+        UpdatePlatform.android);
+    expect(sharePlatformOf('xprs-1.2.3-beta.1-windows-x64-setup.exe'),
+        UpdatePlatform.windows);
+    expect(sharePlatformOf('xprs-1.2.3-linux-x64.tar.gz'), UpdatePlatform.linux);
+    expect(sharePlatformOf('notes.txt'), isNull);
+    expect(sharePlatformOf('xprs-1.2.3-android-arm64-v8a.apk.part'), isNull);
   });
 }

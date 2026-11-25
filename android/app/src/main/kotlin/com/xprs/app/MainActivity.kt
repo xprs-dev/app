@@ -38,7 +38,6 @@ class MainActivity : FlutterFragmentActivity() {
 
     // Share app page: installed-APK lookup and the LocalOnlyHotspot. UI engine
     // only, so a hotspot never outlives the Activity that opened it.
-    private var shareBridge: ShareBridge? = null
 
     // Wi-Fi multicast lock: by default Android drops incoming broadcast/multicast
     // UDP to save power, which would stop the Reticulum LAN auto-peering
@@ -107,8 +106,6 @@ class MainActivity : FlutterFragmentActivity() {
         multicastLock = null
         hwVideo?.dispose()
         hwVideo = null
-        shareBridge?.dispose()
-        shareBridge = null
         super.onDestroy()
     }
 
@@ -212,9 +209,6 @@ class MainActivity : FlutterFragmentActivity() {
         // replaces the channel handler (old players were disposed above).
         hwVideo?.dispose()
         hwVideo = HwVideo(flutterEngine.renderer, flutterEngine.dartExecutor.binaryMessenger)
-
-        shareBridge?.dispose()
-        shareBridge = ShareBridge(this, flutterEngine.dartExecutor.binaryMessenger)
 
         // LAN broadcast/multicast reception is BgService's (applyTier): a lock
         // held here lived as long as the Activity, which is the whole night

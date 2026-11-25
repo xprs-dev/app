@@ -16,15 +16,17 @@ class UpdateNative {
   static Future<String?> download(
     String url,
     String filename,
-    void Function(int received, int total) onProgress,
-  ) async =>
+    void Function(int received, int total) onProgress, {
+    String? dir,
+  }) async =>
       null;
 
   static Future<String?> writeBytes(
     String filename,
     Uint8List bytes,
-    void Function(int received, int total) onProgress,
-  ) async =>
+    void Function(int received, int total) onProgress, {
+    String? dir,
+  }) async =>
       null;
 
   static Future<List<String>> supportedAbis() async => const [];
