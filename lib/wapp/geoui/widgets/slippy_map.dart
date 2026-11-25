@@ -78,6 +78,7 @@ Widget slippyMapForTest({
   required void Function(double lat, double lon, int zoom) onViewportChanged,
   List<Map<String, dynamic>> markers = const [],
   void Function(String id)? onMarkerTap,
+  List<Map<String, dynamic>> status = const [],
 }) =>
     SlippyMap(
       lat: lat,
@@ -90,6 +91,7 @@ Widget slippyMapForTest({
       onViewportChanged: onViewportChanged,
       markers: markers,
       onMarkerTap: onMarkerTap,
+      status: status,
       embedChat: false,
     );
 
@@ -1617,7 +1619,14 @@ class _SlippyMapState extends State<SlippyMap>
         clipBehavior: Clip.hardEdge,
         children: [
           Positioned.fill(child: mapStack),
-          if (widget.onChatSend != null) ..._buildChatOverlay(w, h),
+          if (widget.onChatSend != null) ..._buildChatOverlay(w, h)
+          // A map without chat still shows its status pills (a count, an
+          // "Updated" time), at the top, under the search bar if any.
+          else if (widget.status.isNotEmpty)
+            Positioned(
+                top: widget.showSearch ? 64 : 12,
+                left: 12,
+                child: _statusPills()),
         ],
       );
     });

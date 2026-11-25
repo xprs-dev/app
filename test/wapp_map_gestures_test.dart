@@ -15,7 +15,8 @@ Future<void> settle(WidgetTester t) async {
 void main() {
   Future<List<(double, double, int)>> pump(WidgetTester t,
       {List<Map<String, dynamic>> markers = const [],
-      void Function(String)? onTap}) async {
+      void Function(String)? onTap,
+      List<Map<String, dynamic>> status = const []}) async {
     final seen = <(double, double, int)>[];
     t.view.physicalSize = const Size(400, 700);
     t.view.devicePixelRatio = 1;
@@ -26,6 +27,7 @@ void main() {
           onViewportChanged: (la, lo, z) => seen.add((la, lo, z)),
           markers: markers,
           onMarkerTap: onTap,
+          status: status,
         ),
       ),
     ));
@@ -105,5 +107,14 @@ void main() {
     await t.tap(find.text('CT1ABC'));
     await settle(t);
     expect(tapped, 'st:CT1ABC');
+  });
+
+  testWidgets('a map without chat still shows its status pills', (t) async {
+    await pump(t, status: [
+      {'id': 'pl_n', 'label': '2 stations', 'on': false},
+      {'id': 'pl_at', 'label': 'Updated 3 min ago', 'on': false},
+    ]);
+    expect(find.text('2 stations'), findsOneWidget);
+    expect(find.text('Updated 3 min ago'), findsOneWidget);
   });
 }
