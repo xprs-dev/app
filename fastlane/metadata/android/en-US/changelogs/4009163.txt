@@ -1,0 +1,2 @@
+Home: Check-in takes the Mesh bar; Mesh stays behind the devices bar
+Flash: bound the Linux serial drain so probing a running board takes seconds

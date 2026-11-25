@@ -4,5 +4,5 @@
 // kAppVersion is the semantic version shown in the Update Center and compared
 // against GitHub releases; kBuildNumber is the +N build (Android versionCode).
 
-const String kAppVersion = '1.14.1-beta.2';
-const int kBuildNumber = 400914;
+const String kAppVersion = '1.14.1-beta.3';
+const int kBuildNumber = 400916;
