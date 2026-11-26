@@ -155,10 +155,10 @@ class MarkerClusterIndex {
 /// Where a fan of [n] markers sits around their point, in screen pixels
 /// from it (Leaflet.markercluster's spiderfy): up to 8 on a circle, more
 /// on a spiral, each [sep] pixels from the next so their labels fit.
-List<(double, double)> spiderOffsets(int n, {double sep = 46}) {
+List<(double, double)> spiderOffsets(int n, {double sep = 60}) {
   final out = <(double, double)>[];
   if (n <= 8) {
-    final leg = max(sep * (2 + n) / (2 * pi), 34.0);
+    final leg = max(sep * (2 + n) / (2 * pi), 56.0);
     final step = 2 * pi / n;
     for (var i = 0; i < n; i++) {
       final a = -pi / 2 + i * step; // the first one straight up
@@ -166,7 +166,7 @@ List<(double, double)> spiderOffsets(int n, {double sep = 46}) {
     }
     return out;
   }
-  var leg = 30.0, a = 0.0;
+  var leg = 40.0, a = 0.0;
   for (var i = 0; i < n; i++) {
     a += sep * 0.8 / leg + i * 0.0005;
     out.add((leg * cos(a), leg * sin(a)));

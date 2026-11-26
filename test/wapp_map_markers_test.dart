@@ -260,6 +260,34 @@ void main() {
     expect((a - b).distance, greaterThan(20));
   });
 
+  testWidgets('the group beside an archiver zooms in on its stations, not on where it stepped aside to', (t) async {
+    await pump(t, [
+      {'id': 'pl:X3ARCH', 'lat': lat0, 'lon': lon0, 'label': 'X3ARCH', 'kind': 'archive'},
+      {'id': 'pl:X1A', 'lat': lat0 - 3 / k, 'lon': lon0 + 4 / k, 'label': 'X1A'},
+      {'id': 'pl:X1B', 'lat': lat0 + 2 / k, 'lon': lon0 + 6 / k, 'label': 'X1B'},
+    ]);
+    await t.tap(find.text('2'));
+    await settle(t);
+    expect(find.text('X1A'), findsOneWidget);
+    expect(find.text('X1B'), findsOneWidget);
+    expect(find.text('X3ARCH'), findsOneWidget, reason: 'the archiver still in view beside them');
+  });
+
+  testWidgets("a fanned marker's popup keeps clear of the fan", (t) async {
+    await pump(t, [
+      for (final c in ['X3ONE', 'X3TWO', 'X3SIX', 'X3TEN', 'X1ANA'])
+        {'id': 'pl:$c', 'lat': lat0, 'lon': lon0, 'label': c, 'detail': '$c detail'},
+    ]);
+    await t.tap(find.text('5'));
+    await settle(t);
+    await t.tap(find.text('X3TWO'));
+    await settle(t);
+    final pop = t.getRect(find.ancestor(of: find.text('X3TWO detail'), matching: find.byType(Container)).first);
+    for (final c in ['X3ONE', 'X3SIX', 'X3TEN', 'X1ANA']) {
+      expect(pop.overlaps(t.getRect(find.byKey(ValueKey('pin_pl:$c')))), isFalse, reason: '$c covered');
+    }
+  });
+
   testWidgets('a locate with an id opens that marker, fanning out its point first', (t) async {
     final markers = [
       for (final c in ['X3A', 'X3B', 'X3C'])

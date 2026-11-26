@@ -308,6 +308,8 @@ class _SlippyMapState extends State<SlippyMap>
   // Where each marker's point was drawn this frame (a fanned one away from
   // its point), for its popup; absent while it is inside a group.
   final Map<String, Offset> _shownAt = {};
+  // The open fan on screen (its point and reach), so a popup keeps clear.
+  Rect? _fanRect;
   // A marker the wapp asked to open (openId), once the map is drawn there.
   String? _pendingOpen;
   static const spiderMax = 40;
@@ -942,6 +944,7 @@ class _SlippyMapState extends State<SlippyMap>
     }
 
     final arch = [for (final d in drawn) if (d.$3.group == 1) d.$4];
+    _fanRect = null;
     final sp = moving ? null : _spider;
     final out = <Widget>[];
     // Under everything: a tap on the map folds a fan and closes a popup.
@@ -976,9 +979,11 @@ class _SlippyMapState extends State<SlippyMap>
           }
           continue;
         }
-        // A group under an archiver steps aside, as the portal's.
+        // A group under an archiver steps aside, as the portal's (a tap
+        // still zooms on where its stations are).
+        final focus = at;
         if (group == 0 && arch.any((a) => (a - at).distance < 30)) at += const Offset(22, 22);
-        out.add(_buildCluster(at, d.$1, d.$2, n));
+        out.add(_buildCluster(at, focus, d.$1, d.$2, n));
       }
     }
     // The fan: legs from the point to each marker, the markers at their feet.
@@ -988,6 +993,11 @@ class _SlippyMapState extends State<SlippyMap>
       final e = Curves.easeOutBack.transform(_spiderAnim.value);
       final offs = spiderOffsets(n.count);
       final feet = [for (final o in offs) c + Offset(o.$1, o.$2) * e];
+      var reach = 0.0;
+      for (final f in feet) {
+        reach = max(reach, (f - c).distance);
+      }
+      _fanRect = Rect.fromCircle(center: c, radius: reach + 30);
       out.add(Positioned.fill(
         child: IgnorePointer(
           child: CustomPaint(painter: _SpiderLegs(c, feet, n.group == 1)),
@@ -996,8 +1006,11 @@ class _SlippyMapState extends State<SlippyMap>
       for (var k = 0; k < n.count; k++) {
         final m = ms[n.points[k]];
         final id = m['id']?.toString() ?? '';
-        _shownAt[id] = feet[k];
-        final wgt = _buildMarker(m, feet[k], chosen: id == _popupId);
+        // The leg ends in the middle of the mark: a pin's tip goes below
+        // its foot, an archiver's square sits on it.
+        final at = _isArchive(m) ? feet[k] : feet[k] + const Offset(0, 16);
+        _shownAt[id] = at;
+        final wgt = _buildMarker(m, at, chosen: id == _popupId);
         if (id == _popupId) {
           top = wgt;
         } else {
@@ -1063,7 +1076,13 @@ class _SlippyMapState extends State<SlippyMap>
     final lines = '\n'.allMatches(detail).length;
     final tall = 132.0 + (lines > 2 ? (lines - 2) * 16.0 : 0) + (actions.isEmpty ? 0 : 40);
     final below = py < tall + 18; // not enough room above → place below the pin
-    final top = below ? (py + 14).clamp(8.0, h - 40) : (py - tall).clamp(8.0, h);
+    var top = below ? (py + 14).clamp(8.0, h - 40) : (py - tall).clamp(8.0, h);
+    // A fanned marker's popup clears the whole fan: below it when the fan
+    // is in the top half, above it otherwise.
+    final fan = _fanRect;
+    if (fan != null && fan.inflate(4).contains(Offset(px, py))) {
+      top = fan.center.dy < h / 2 ? min(fan.bottom + 4, h - tall - 8) : max(8.0, fan.top - tall - 4);
+    }
 
     return [
       Positioned(
@@ -1282,7 +1301,7 @@ class _SlippyMapState extends State<SlippyMap>
   /// rest). A tap zooms in to the level where it comes apart, centred on
   /// it, the markers sliding out as it goes; when no zoom would part it
   /// (one point, or the deepest zoom) it fans out around its point.
-  Widget _buildCluster(Offset at, int lvl, int i, ClusterNode n) {
+  Widget _buildCluster(Offset at, Offset focus, int lvl, int i, ClusterNode n) {
     final count = n.count;
     final arch = n.group == 1;
     final sz = count > 99 ? 42.0 : 36.0;
@@ -1306,7 +1325,7 @@ class _SlippyMapState extends State<SlippyMap>
             _spider = null;
           });
           final c = _viewSize.center(Offset.zero);
-          _easeTo(ez.toDouble(), at, c - at);
+          _easeTo(ez.toDouble(), focus, c - focus);
         },
         child: Container(
           decoration: BoxDecoration(
