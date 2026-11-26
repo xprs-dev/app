@@ -809,7 +809,14 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   stations on every frame of a pan; the pairwise scan was 2.25 million
   distances a frame), a bubble of thousands says "1.5k", pins well off screen
   are not placed, and a pin's `actions` are buttons in its popup
-  (`onMarkerAction`; `test/wapp_map_markers_test.dart`).
+  (`onMarkerAction`; `test/wapp_map_markers_test.dart`). A square's
+  neighbours within a cell of it join its bubble (one hop, never a chain),
+  so pins either side of a square's edge are not drawn on top of each other.
+  Labels are placed in turn and one that would cover another (or a bubble)
+  is left off: the pin stays, the open pin and a moused-over one always say
+  their name. A bubble's tap zooms just far enough to split it, centred on
+  it; when no zoom would (one point, deepest zoom), and on a long press, it
+  lists its pins over the map and a row opens that pin's popup.
 - **The map with a drawer (`lib/wapp/wapp_drawer.dart`)** — a map screen with
   `"drawer": true` on its map group draws its `$type:"people"` screen (search
   box, chips, list) in a drawer over the map, the xprs.dev portal's layout:

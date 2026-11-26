@@ -36,6 +36,7 @@
   "wapp_host.key.imported": "Importiert: {callsign}",
   "wapp_host.key.invalid": "Ungültiger nsec: {error}",
   "wapp_host.loading.posts": "Neue Beiträge werden geholt…",
+  "wapp_host.maps.here_n": "{n} hier",
   "wapp_host.maps.coords_copied": "Koordinaten kopiert",
   "wapp_host.maps.exit_fullscreen": "Vollbild verlassen",
   "wapp_host.maps.fullscreen": "Vollbild",
