@@ -6037,8 +6037,9 @@ function mapScripts(urls,cb){
   document.head.appendChild(s);
 }
 /* The newest, most detailed world map the station shares, as {ref,z}. */
-function mapWorld(cb){
-  if(!stationCall)return cb(null);
+function mapWorld(cb,waited){
+  /* The map can open before the page knows its station: wait for it. */
+  if(!stationCall)return (waited|0)>=60?cb(null):setTimeout(function(){mapWorld(cb,(waited|0)+1);},1000);
   getJSON('/api/xprs/history?kind=file&call='+encodeURIComponent(stationCall)+'&limit=100',function(d){
     var best=null;
     ((d&&d.rows)||[]).forEach(function(r){
@@ -6047,7 +6048,7 @@ function mapWorld(cb){
       if(z<=14&&(!best||z>best.z||(z===best.z&&(r.ts||0)>best.ts)))best={ref:f,z:z,ts:r.ts||0};
     });
     cb(best);
-  });
+  },30000);  /* a history query takes seconds on a big archiver, more over a link */
 }
 /* pmtiles' Source over /api/xprs/file/<ref>: Range requests, on the
    station's own network and over a Reticulum link alike. A link answers at
