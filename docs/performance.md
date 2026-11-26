@@ -2022,3 +2022,59 @@ the planner).
 > main isolate holds more incoming rows meanwhile instead of dropping them.
 > Until it exists the old query runs. Without a writer thread (web, tests)
 > the store is small and it is built inline.
+
+### 8.30 An index that exists is not an index that is used (2026-11-26)
+
+Three days after 8.29 built `idx_pk_type`, the Pi's server (a 315,000-row,
+278 MB archive) still froze for 3 to 12 s whenever a page opened, and a map
+read over Reticulum waited 12 to 23 s behind it. The stall watch named
+history requests again. Run against a copy of the live file
+(`core/tool/history_time.dart`), the page's own asks cost, on their first
+ask: the station's files 3.4 s, its forty blog rows 6 s, warnings 11 s,
+talk 17 s. `core/tool/plan_probe.dart` printed why:
+
+```
+WHERE toc IN (?) AND type = ?   plan: idx_pk_to (toc=?) + TEMP B-TREE   5165 ms
+... INDEXED BY idx_pk_type      plan: idx_pk_type (type=?)                 3 ms
+WHERE fromc = ? AND type IN (?) plan: idx_pk_from (fromc=?)             3578 ms
+```
+
+zx's planner takes the first index an equality fits. `toc = ''` is most of
+a spool and a station's own `fromc` is its 44,000 beacons, so both walked
+nearly everything, with the right index sitting in the file. The archive
+now names it (`INDEXED BY idx_pk_type`) for every ask of a few types:
+undirected, one author, one callsign (`only:`), the station's own rows. The
+choice between the type index and the author's is made from the per-type
+counts it already holds in memory (`_rareTypesMax`). The same asks: 3 to
+8 ms, 0.23 s at the worst on their first ask (everything readable, ten
+types).
+
+> **After adding an index, read the plan of the statement that was slow.**
+> `EXPLAIN QUERY PLAN` on the real file, before and after. 8.29 measured the
+> index on a statement written for the test (`type = ?` alone), which the
+> planner does serve; the statement the archive actually ran also said
+> `toc IN ('')`, and that one never changed.
+
+Two more, found on the way:
+
+- **A count for a status screen read 31 MB every twenty seconds.** The
+  observed-node store (8.29) recounted its table with every flush; three of
+  the five counts read every row. Off the main isolate, so no stall, but
+  1.5 MB/s of reads that pushed the archive out of the page cache on a
+  machine short of memory. Counted now only after rows were written, and at
+  most every five minutes.
+- **The probe broke what it measured.** A spy that wrapped
+  `XMLHttpRequest.prototype.send` called `addEventListener`, which the
+  page's Reticulum request object (xprs.dev `in/shell.js`, `RnsXHR`) does
+  not have: every map read after it threw, and "the map is blank when
+  zoomed in" was reproduced for an hour by the instrument. Hook
+  `XprsRns.api`, which is a plain function, or count in
+  `setRequestHeader`.
+
+On the page's side (xprs.dev `in/shell.js`): calls over a link go one at a
+time, which a small board needs, and a map tile waited behind every poll.
+Ranged reads of a file now have a line of their own, so two calls at most
+are in flight, the second only for a station that shares a file to read by
+range. Measured from a browser through the Pi's gateway, the old server
+still behind it: zoom 10 settles in 5 s and zoom 12 in 3 s; the first view
+after opening took 56 s, all of it the history asks above.
