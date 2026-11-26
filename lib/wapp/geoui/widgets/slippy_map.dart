@@ -440,54 +440,61 @@ class _SlippyMapState extends State<SlippyMap>
   /// segment its label and how many, the chosen one filled.
   Widget _filterBar() {
     final cs = Theme.of(context).colorScheme;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Container(
-        key: const ValueKey('map_filter'),
-        padding: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-          color: const Color(0xE6141312),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFF30363d)),
-          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 1))],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final f in widget.filter)
-              GestureDetector(
+    // Every segment shares the width: the bar fits any phone at any text
+    // size, its words shrinking a little rather than running off the edge.
+    return Container(
+      key: const ValueKey('map_filter'),
+      height: 38,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xF0141312),
+        borderRadius: BorderRadius.circular(19),
+        border: Border.all(color: const Color(0xFF30363d)),
+        boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 1))],
+      ),
+      child: Row(
+        children: [
+          for (final f in widget.filter)
+            Expanded(
+              flex: '${f['label']}'.length + 3,
+              child: GestureDetector(
                 key: ValueKey('map_filter_${f['id']}'),
                 behavior: HitTestBehavior.opaque,
                 onTap: () => widget.onFilter?.call('${f['id']}'),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
                   decoration: BoxDecoration(
                     color: f['on'] == true ? cs.primary : Colors.transparent,
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Text.rich(
-                    TextSpan(children: [
-                      TextSpan(text: '${f['label']}'),
-                      if (f['count'] != null)
-                        TextSpan(
-                          text: '  ${f['count']}',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: (f['on'] == true ? cs.onPrimary : Colors.white).withAlpha(170),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text.rich(
+                      TextSpan(children: [
+                        TextSpan(text: '${f['label']}'),
+                        if (f['count'] != null)
+                          TextSpan(
+                            text: ' ${f['count']}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              color: (f['on'] == true ? cs.onPrimary : Colors.white).withAlpha(160),
+                            ),
                           ),
-                        ),
-                    ]),
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: f['on'] == true ? cs.onPrimary : Colors.white,
+                      ]),
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: f['on'] == true ? cs.onPrimary : Colors.white,
+                      ),
                     ),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -1164,13 +1171,15 @@ class _SlippyMapState extends State<SlippyMap>
     final left = (px - pw / 2).clamp(8.0, (w - pw - 8).clamp(8.0, w));
     final lines = '\n'.allMatches(detail).length;
     final tall = 132.0 + (lines > 2 ? (lines - 2) * 16.0 : 0) + (actions.isEmpty ? 0 : 40);
-    final below = py < tall + 18; // not enough room above → place below the pin
-    var top = below ? (py + 14).clamp(8.0, h - 40) : (py - tall).clamp(8.0, h);
+    // Clear of what sits over the top of the map (the filter, the pills).
+    final ceiling = 8.0 + (widget.filter.isNotEmpty ? 44 : 0) + (widget.status.isNotEmpty ? 36 : 0);
+    final below = py < ceiling + tall + 18; // no room above → below the pin
+    var top = (below ? (py + 14).clamp(ceiling, max(ceiling, h - 40)) : (py - tall).clamp(ceiling, max(ceiling, h))).toDouble();
     // A fanned marker's popup clears the whole fan: below it when the fan
     // is in the top half, above it otherwise.
     final fan = _fanRect;
     if (fan != null && fan.inflate(4).contains(Offset(px, py))) {
-      top = fan.center.dy < h / 2 ? min(fan.bottom + 4, h - tall - 8) : max(8.0, fan.top - tall - 4);
+      top = fan.center.dy < h / 2 ? min(fan.bottom + 4, h - tall - 8) : max(ceiling, fan.top - tall - 4);
     }
 
     return [
@@ -1950,7 +1959,8 @@ class _SlippyMapState extends State<SlippyMap>
               // sit bottom-left and the zoom control is higher up, so this
               // corner is clear; when the geo-chat FAB is showing (plain map,
               // chat minimised) we shift left of it so they don't overlap.
-              if (widget.onExpand != null && widget.bottomInset < h - 150)
+              // Not over a drawer: the drawer's map is the screen already.
+              if (widget.onExpand != null && widget.bottomInset == 0)
                 Positioned(
                   right: (widget.embedChat && !_chatVisible) ? 64 : 12,
                   bottom: 12 + widget.bottomInset,

@@ -1927,6 +1927,9 @@ class _WappPageState extends State<WappPage>
               if (data['heard'] != null) 'heard': data['heard'],
               if (data['detail'] != null) 'detail': data['detail'],
               if (data['actions'] is List) 'actions': data['actions'],
+              if (data['tags'] is List) 'tags': data['tags'],
+              if (data['filled'] == true) 'filled': true,
+              if (data['coords'] == false) 'coords': false,
             };
             changed = true;
           }
