@@ -83,6 +83,7 @@ extension _WappMaps on _WappPageState {
     VoidCallback? onExpand,
     bool isFullscreen = false,
     double bottomInset = 0,
+    Widget? extraControl,
   }) {
     // What the map carries besides tiles and pins. Each is on unless the map
     // group says false: `radius` (the coverage circle and its slider),
@@ -137,6 +138,7 @@ extension _WappMaps on _WappPageState {
         if (mounted) setState(() {});
       },
       bottomInset: bottomInset,
+      extraControl: extraControl,
       onViewportChanged: (lat, lon, zoom) {
         _mapLat = lat;
         _mapLon = lon;

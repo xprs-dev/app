@@ -633,6 +633,9 @@ class _WappPageState extends State<WappPage>
   String _drawerState = 'peek';
   double? _drawerDragH;
   bool _drawerFolded = false;
+  // A drawer screen that holds a graph too: the graph shown instead of the
+  // map (the same stations, drawn as the network they make).
+  bool _drawerGraph = false;
 
   /// Landscape only: fraction of the Geochat tab's WIDTH given to the chat
   /// column on the right (the rest is the map on the left). User-resizable via

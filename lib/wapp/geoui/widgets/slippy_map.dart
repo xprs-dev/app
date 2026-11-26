@@ -218,6 +218,10 @@ class SlippyMap extends StatefulWidget {
   final List<Map<String, dynamic>> filter;
   final void Function(String id)? onFilter;
 
+  /// A button the host stacks above the zoom control (the map/graph
+  /// switch), so both views keep it in the same place.
+  final Widget? extraControl;
+
   /// Centre the coverage circle on the device's current GPS position. Wired
   /// only where a fix is possible (mobile); returns true on success. Null hides
   /// the "my location" button.
@@ -245,6 +249,7 @@ class SlippyMap extends StatefulWidget {
     this.bottomInset = 0,
     this.filter = const [],
     this.onFilter,
+    this.extraControl,
     this.radiusKm,
     this.centerLat,
     this.centerLon,
@@ -445,6 +450,8 @@ class _SlippyMapState extends State<SlippyMap>
     return Container(
       key: const ValueKey('map_filter'),
       height: 38,
+      // A phone's width; on a desktop it does not run across the whole map.
+      constraints: const BoxConstraints(maxWidth: 460),
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: const Color(0xF0141312),
@@ -2093,16 +2100,16 @@ class _SlippyMapState extends State<SlippyMap>
                 // Over a drawer: just above its edge, moving with it, gone
                 // when it covers the map.
                 if (widget.bottomInset < h - 150)
-                  Positioned(right: 12, bottom: widget.bottomInset + 14, child: _buildZoomControl())
+                  Positioned(right: 12, bottom: widget.bottomInset + 14, child: _withExtra(_buildZoomControl()))
                 else
                   const SizedBox.shrink()
               else if (w < 600)
-                Positioned(right: 12, bottom: 84, child: _buildZoomControl())
+                Positioned(right: 12, bottom: 84, child: _withExtra(_buildZoomControl()))
               else
                 Positioned(
                   left: 12,
                   top: h / 2 - 44,
-                  child: _buildZoomControl(),
+                  child: _withExtra(_buildZoomControl()),
                 ),
               // Coordinates — always bottom-left, leaving the bottom-right
               // corner for the full-screen toggle in both orientations. Not
@@ -2159,6 +2166,10 @@ class _SlippyMapState extends State<SlippyMap>
       );
     });
   }
+
+  Widget _withExtra(Widget zoom) => widget.extraControl == null
+      ? zoom
+      : Column(mainAxisSize: MainAxisSize.min, children: [widget.extraControl!, const SizedBox(height: 10), zoom]);
 
   /// A single unified zoom control (+ over −, split by a divider) — the
   /// familiar map widget, with a rounded translucent body and a shadow.

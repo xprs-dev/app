@@ -34,8 +34,18 @@ class _GraphView extends StatefulWidget {
     this.onPanelNav,
     this.onOpenProfile,
     this.avatarFor,
+    this.bottomInset = 0,
+    this.extraControl,
     super.key,
   });
+
+  /// How much of its bottom a drawer covers: the recenter button and the
+  /// bearer chips sit above it.
+  final double bottomInset;
+
+  /// A button the host stacks above the recenter one (the map/graph
+  /// switch), so both views keep it in the same place.
+  final Widget? extraControl;
 
   /// The latest {nodes,edges,…} snapshot (ui.graph.set).
   final ValueListenable<Map<String, dynamic>?> data;
@@ -650,10 +660,22 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
   // Recenter: fold the open cluster, drop focus/selection, frame everything
   // — and resume following the network as it grows.
   Widget _buildRecenter() {
+    final over = widget.bottomInset > 0;
     return Positioned(
       right: 12,
-      bottom: 96,
-      child: Material(
+      bottom: over ? widget.bottomInset + 14 : 96,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.extraControl != null) ...[widget.extraControl!, const SizedBox(height: 10)],
+          _recenterButton(),
+        ],
+      ),
+    );
+  }
+
+  Widget _recenterButton() {
+    return Material(
         color: const Color(0xE6161B22),
         shape: const CircleBorder(side: BorderSide(color: _gBorder)),
         child: InkWell(
@@ -675,7 +697,6 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
             child: Icon(Icons.center_focus_strong, size: 22, color: _gFg),
           ),
         ),
-      ),
     );
   }
 
@@ -900,8 +921,8 @@ class _GraphViewState extends State<_GraphView> with TickerProviderStateMixin {
     }
     return Positioned(
       left: 10,
-      right: 10,
-      bottom: 12,
+      right: 70, // clear of the recenter column
+      bottom: 12 + widget.bottomInset,
       child: Wrap(
         alignment: WrapAlignment.center,
         spacing: 6,
@@ -2739,9 +2760,12 @@ class _GraphBackdropPainter extends CustomPainter {
 // ── _WappPageState integration ─────────────────────────────────────────────
 extension _WappGraphExt on _WappPageState {
   /// Full-bleed native graph screen for a `$type:"graph"` group.
-  Widget _buildGraphScreen(GeoUiBlock screen, GeoUiBlock group) {
+  Widget _buildGraphScreen(GeoUiBlock screen, GeoUiBlock group,
+      {double bottomInset = 0, Widget? extraControl}) {
     return _GraphView(
       key: const ValueKey('wapp-graph'),
+      bottomInset: bottomInset,
+      extraControl: extraControl,
       data: _graphData,
       hubs: _graphHubs,
       onCommand: (cmd) {

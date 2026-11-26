@@ -49,14 +49,45 @@ extension _WappDrawer on _WappPageState {
   }
 
   Widget _buildDrawerMapScreen(GeoUiBlock screen, GeoUiBlock mapGroup, GeoUiBlock field) {
-    // The map knows how much of it the drawer covers, so its buttons sit
+    // A graph group on the same screen is the same stations drawn as the
+    // network they make: one floating button over the + and − (over the
+    // recenter button on the graph) switches between the two, and the
+    // drawer, its search and its list stay as they are.
+    final graphGroup = screen.children
+        .where((c) => c.keyword == 'group' && c.type == 'graph')
+        .firstOrNull;
+    final showGraph = graphGroup != null && _drawerGraph;
+    final switcher = graphGroup == null
+        ? null
+        : Tooltip(
+            message: tr(showGraph ? 'wapp_host.drawer.show_map' : 'wapp_host.drawer.show_graph'),
+            child: Material(
+              key: const ValueKey('view_switch'),
+              color: const Color(0xE6161B22),
+              shape: const CircleBorder(side: BorderSide(color: Color(0xFF30363d))),
+              elevation: 3,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => setState(() => _drawerGraph = !_drawerGraph),
+                child: Padding(
+                  padding: const EdgeInsets.all(11),
+                  child: Icon(showGraph ? Icons.map_outlined : Icons.hub_outlined,
+                      size: 22, color: const Color(0xFFE6EDF3)),
+                ),
+              ),
+            ),
+          );
+    // The view knows how much of it the drawer covers, so its buttons sit
     // just above the drawer's edge (and move with it).
-    Widget mapUnder(double covered) => _buildSlippyMap(
-          mapGroup,
-          embedChat: false,
-          onExpand: () => _openFullScreenMap(mapGroup),
-          bottomInset: covered,
-        );
+    Widget mapUnder(double covered) => showGraph
+        ? _buildGraphScreen(screen, graphGroup, bottomInset: covered, extraControl: switcher)
+        : _buildSlippyMap(
+            mapGroup,
+            embedChat: false,
+            onExpand: () => _openFullScreenMap(mapGroup),
+            bottomInset: covered,
+            extraControl: switcher,
+          );
     final list = _buildPeopleScreen(screen, field);
     final cs = Theme.of(context).colorScheme;
     return LayoutBuilder(builder: (context, box) {
