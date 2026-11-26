@@ -21,7 +21,8 @@ String timeAgo(DateTime dt, {DateTime? now}) {
   final secs = diff.inSeconds;
   // Future-skew: the author's clock (or ours) is wrong. Don't say "in 3 hours".
   if (secs < -60) return 'now';
-  if (secs < 45) return 'just now';
+  // Under a minute, or "0 minutes ago" (seconds 45 to 59).
+  if (secs < 60) return 'just now';
   final mins = diff.inMinutes;
   if (mins < 60) return '$mins minute${mins == 1 ? '' : 's'} ago';
   final hours = diff.inHours;

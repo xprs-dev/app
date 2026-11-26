@@ -19,8 +19,6 @@
   "archiver.serve.always_on": "Always on",
   "archiver.serve.always_on.help": "Larger budgets, several askers at once, release mirror",
   "archiver.serve.needs_public": "Turn on Keep messages for others first",
-  "archiver.serve.dial": "Answers connections at",
-  "archiver.serve.dial.hint": "host[:port]",
   "archiver.serve.room": "Take new stations",
   "archiver.serve.room.help": "Off announces room:no, so newcomers choose another archiver",
   "archiver.files.help": "Pictures and files this device hosts for people who fetch them",

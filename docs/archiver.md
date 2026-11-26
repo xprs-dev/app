@@ -238,9 +238,10 @@ tabs (2026-11-26; there were five):
   what is held, and the file index.
 - **Our archiver:** the callsign it answers under (the device's X3), messages
   (people I follow, limit, age), files (ONE limit for the file store, sources,
-  Free space), serving others (only while charging, always on, `dial:`,
-  `room:`), a link to Settings > Hardware, and **Advanced**: the three parts
-  one by one.
+  Free space), serving others (only while charging, always on, `room:`), a link to Settings > Hardware, and **Advanced**: the three parts
+  one by one. `dial:` (13.0.2) is not on the page: it is a public TCP
+  address a server's operator states, set with `POST /api/xprs/archiver
+  {"dial": ...}`, and a person's device never has one.
 - **Archivers we use:** the archivers this station relies on (the one list
   behind the publication push and the mailbox declaration), each with when and
   how it was last heard, its uptime, records, power, internet and room; the

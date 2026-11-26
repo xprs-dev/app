@@ -6,7 +6,9 @@
 //   Overview          the one switch, what the archiver gave (active for, data
 //                     served, people served, requests), then the details
 //   Our archiver      every setting of the archiver this device runs: messages,
-//                     files, serving others, and its parts one by one
+//                     files, serving others, and its parts one by one. Not the
+//                     `dial:` address (13.0.2): a server operator's setting,
+//                     reached through the remote API, never a person's
 //   Archivers we use  the archivers this station hands its words and mail to,
 //                     each with what was last heard of it, and the others heard
 //
@@ -59,7 +61,6 @@ class _ArchiverPageState extends State<ArchiverPage> {
   Map<String, dynamic> _files = const {};
   Map<String, dynamic> _dir = const {};
   Timer? _tick;
-  final _dial = TextEditingController();
   final _search = TextEditingController();
   List<Map<String, Object>> _found = const [];
   List<ArchiverDay> _days = const [];
@@ -70,7 +71,6 @@ class _ArchiverPageState extends State<ArchiverPage> {
   @override
   void initState() {
     super.initState();
-    _dial.text = _prefs?.xprsDial ?? '';
     // Today's row is current when the page opens, not up to an hour old.
     ArchiverStats.instance.sample();
     _refresh();
@@ -82,7 +82,6 @@ class _ArchiverPageState extends State<ArchiverPage> {
   @override
   void dispose() {
     _tick?.cancel();
-    _dial.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -585,18 +584,6 @@ class _ArchiverPageState extends State<ArchiverPage> {
               a['alwaysOn'] == true,
               public ? (v) => _apply({'alwaysOn': v}) : null,
               icon: Icons.bolt),
-          const Divider(height: 1),
-          ListTile(
-            leading: const Icon(Icons.lan_outlined),
-            title: Text(tr('archiver.serve.dial')),
-            subtitle: TextField(
-              controller: _dial,
-              enabled: public,
-              decoration: InputDecoration(
-                  hintText: tr('archiver.serve.dial.hint'), isDense: true),
-              onSubmitted: (v) => _apply({'dial': v}),
-            ),
-          ),
           const Divider(height: 1),
           _switch(tr('archiver.serve.room'), tr('archiver.serve.room.help'),
               p.xprsRoom, public ? (v) => _apply({'room': v}) : null,

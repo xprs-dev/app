@@ -8,6 +8,8 @@ void main() {
   test('the boundaries read the way a person would say them', () {
     expect(timeAgo(now.subtract(const Duration(seconds: 10)), now: now),
         'just now');
+    expect(timeAgo(now.subtract(const Duration(seconds: 50)), now: now),
+        'just now', reason: 'never "0 minutes ago"');
     expect(timeAgo(now.subtract(const Duration(minutes: 1)), now: now),
         '1 minute ago');
     expect(timeAgo(now.subtract(const Duration(minutes: 19)), now: now),

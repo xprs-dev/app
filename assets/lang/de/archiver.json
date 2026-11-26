@@ -19,8 +19,6 @@
   "archiver.serve.always_on": "Immer an",
   "archiver.serve.always_on.help": "Größere Budgets, mehrere Anfragen gleichzeitig, Release-Spiegel",
   "archiver.serve.needs_public": "Zuerst Nachrichten für andere behalten einschalten",
-  "archiver.serve.dial": "Nimmt Verbindungen an unter",
-  "archiver.serve.dial.hint": "host[:port]",
   "archiver.serve.room": "Neue Stationen aufnehmen",
   "archiver.serve.room.help": "Aus kündigt room:no an, Neue wählen dann einen anderen Archivierer",
   "archiver.files.help": "Bilder und Dateien, die dieses Gerät für andere bereithält",
