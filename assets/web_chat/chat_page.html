@@ -6023,15 +6023,61 @@ function mapMake(){
     mapInit(el('mapbox'));
   });
 }
-/* The map in [box]: the view's own box, or the whole page (mapuiOn). */
-function mapInit(box){
-    /* Drawn on a canvas: thousands of markers are one element, not thousands. */
-    var kept=mapViewKept();
-    mapObj=L.map(box,{worldCopyJump:true,preferCanvas:true,zoomControl:!('ontouchstart' in window)})
-      .setView(kept?[kept.lat,kept.lon]:[30,0],kept?kept.z:2);
-    if(kept)mapFitted=true;
-    mapLayer=L.layerGroup().addTo(mapObj);
-    mapObj.attributionControl.setPrefix(false);
+/* The base map. A station that shares a world map (a t:file named
+   world-z<N>-<day>.pmtiles, core docs/plan-file-sharing.md) has it drawn in
+   Protomaps' black theme, read from the station a range at a time: its
+   level of detail, not OpenStreetMap's. Otherwise, or when the libraries
+   do not load, OpenStreetMap repainted dark. */
+var MAP_LIBS=['https://cdn.jsdelivr.net/npm/pmtiles@4.3.0/dist/pmtiles.js',
+  'https://cdn.jsdelivr.net/npm/protomaps-leaflet@5.1.0/dist/protomaps-leaflet.js'];
+function mapScripts(urls,cb){
+  if(!urls.length)return cb(true);
+  var s=document.createElement('script');s.src=urls[0];
+  s.onload=function(){mapScripts(urls.slice(1),cb);};s.onerror=function(){cb(false);};
+  document.head.appendChild(s);
+}
+/* The newest, most detailed world map the station shares, as {ref,z}. */
+function mapWorld(cb){
+  if(!stationCall)return cb(null);
+  getJSON('/api/xprs/history?kind=file&call='+encodeURIComponent(stationCall)+'&limit=100',function(d){
+    var best=null;
+    ((d&&d.rows)||[]).forEach(function(r){
+      var w=r.wire||'',m=/^world-z(\d{1,2})-\d+\.pmtiles$/.exec(mapField(w,'name')||''),f=mapField(w,'file');
+      if(!m||!f)return;var z=+m[1];
+      if(z<=14&&(!best||z>best.z||(z===best.z&&(r.ts||0)>best.ts)))best={ref:f,z:z,ts:r.ts||0};
+    });
+    cb(best);
+  });
+}
+/* pmtiles' Source over /api/xprs/file/<ref>: Range requests, on the
+   station's own network and over a Reticulum link alike. A link answers at
+   most a part (256 KB) a request: a shorter answer is read on from there. */
+function mapRanges(ref){
+  var url=fileUrl(ref);
+  function part(off,len,signal){
+    return new Promise(function(ok,no){
+      var x=new XMLHttpRequest();x.open('GET',url,true);x.responseType='arraybuffer';
+      x.setRequestHeader('Range','bytes='+off+'-'+(off+len-1));
+      if(signal)signal.addEventListener('abort',function(){x.abort();no(new Error('aborted'));});
+      x.onload=function(){
+        if(x.status===206)ok(x.response);
+        else if(x.status===200)ok(x.response.slice(off,off+len));
+        else no(new Error('HTTP '+x.status));};
+      x.onerror=function(){no(new Error('range'));};
+      x.send();});
+  }
+  return {getKey:function(){return url;},getBytes:function(off,len,signal){
+    var out=new Uint8Array(len),got=0;
+    function more(){
+      return part(off+got,len-got,signal).then(function(b){
+        var n=Math.min(b.byteLength,len-got);out.set(new Uint8Array(b,0,n),got);got+=n;
+        if(got>=len||!n)return {data:got>=len?out.buffer:out.slice(0,got).buffer};
+        return more();});
+    }
+    return more();}};
+}
+function mapBase(){
+  function osm(){
     var Dark=L.GridLayer.extend({createTile:function(c,done){
       var cv=document.createElement('canvas'),sz=this.getTileSize(),img=new Image();
       cv.width=sz.x;cv.height=sz.y;img.crossOrigin='anonymous';
@@ -6042,6 +6088,30 @@ function mapInit(box){
       img.src='https://'+'abc'[(c.x+c.y)%3]+'.tile.openstreetmap.org/'+c.z+'/'+c.x+'/'+c.y+'.png';
       return cv;}});
     new Dark({maxZoom:18,attribution:'&copy; OpenStreetMap'}).addTo(mapObj);
+  }
+  mapWorld(function(w){
+    if(!w)return osm();
+    mapScripts(window.protomapsL&&window.pmtiles?[]:MAP_LIBS,function(ok){
+      if(!ok||!window.protomapsL||!window.pmtiles)return osm();
+      try{
+        protomapsL.leafletLayer({url:new pmtiles.PMTiles(mapRanges(w.ref)),flavor:'black',lang:'en',
+          maxDataZoom:w.z,maxZoom:18,attribution:'<a href="https://protomaps.com">Protomaps</a> '+
+          '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(mapObj);
+        mapObj.getContainer().style.background='#2b2b2b';
+      }catch(e){osm();}
+    });
+  });
+}
+/* The map in [box]: the view's own box, or the whole page (mapuiOn). */
+function mapInit(box){
+    /* Drawn on a canvas: thousands of markers are one element, not thousands. */
+    var kept=mapViewKept();
+    mapObj=L.map(box,{worldCopyJump:true,preferCanvas:true,zoomControl:!('ontouchstart' in window)})
+      .setView(kept?[kept.lat,kept.lon]:[30,0],kept?kept.z:2);
+    if(kept)mapFitted=true;
+    mapLayer=L.layerGroup().addTo(mapObj);
+    mapObj.attributionControl.setPrefix(false);
+    mapBase();
     /* A redraw clears the markers: it waits while somebody reads a popup. */
     mapObj.on('popupopen',function(){mapReading=true;});
     mapObj.on('popupclose',function(){mapReading=false;
