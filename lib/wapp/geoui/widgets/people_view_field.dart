@@ -230,7 +230,11 @@ class _PeopleViewFieldState extends State<PeopleViewField> {
   Widget _sectionChip(ColorScheme cs, Map<String, dynamic> s, int idx) {
     final sel = _section == idx;
     final title = (s['title'] ?? '').toString();
-    final count = ((s['items'] as List?) ?? const []).length;
+    // A row the wapp marks `"note": true` (an empty state written as a row,
+    // "No station in reach") keeps its section open but is not counted.
+    final count = ((s['items'] as List?) ?? const [])
+        .where((m) => !(m is Map && m['note'] == true))
+        .length;
     final iconName = (s['icon'] ?? '').toString();
     final icon = iconName.isEmpty ? null : geoUiResolveIcon(iconName);
     // A filter with nothing behind it stays tappable — "show me the rooms" is
