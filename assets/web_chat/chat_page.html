@@ -6059,7 +6059,7 @@ function mapRanges(ref){
     return new Promise(function(ok,no){
       var x=new XMLHttpRequest();x.open('GET',url,true);x.responseType='arraybuffer';
       x.setRequestHeader('Range','bytes='+off+'-'+(off+len-1));
-      if(signal)signal.addEventListener('abort',function(){x.abort();no(new Error('aborted'));});
+      if(signal)signal.addEventListener('abort',function(){x.abort();var e=new Error('aborted');e.name='AbortError';no(e);});
       x.onload=function(){
         if(x.status===206)ok(x.response);
         else if(x.status===200)ok(x.response.slice(off,off+len));
@@ -6090,16 +6090,23 @@ function mapBase(){
       return cv;}});
     new Dark({maxZoom:18,attribution:'&copy; OpenStreetMap'}).addTo(mapObj);
   }
+  /* A map at once, from openstreetmap.org; the station's own world map draws
+     over it as its tiles come (at once on its network, slower over a link),
+     and where none came yet, or the station shares none, this one shows. */
+  osm();
   mapWorld(function(w){
-    if(!w)return osm();
+    if(!w)return;
     mapScripts(window.protomapsL&&window.pmtiles?[]:MAP_LIBS,function(ok){
-      if(!ok||!window.protomapsL||!window.pmtiles)return osm();
+      if(!ok||!window.protomapsL||!window.pmtiles)return;
       try{
-        protomapsL.leafletLayer({url:new pmtiles.PMTiles(mapRanges(w.ref)),flavor:'black',lang:'en',
+        var pl=protomapsL.leafletLayer({url:new pmtiles.PMTiles(mapRanges(w.ref)),flavor:'black',lang:'en',
           maxDataZoom:w.z,maxZoom:18,attribution:'<a href="https://protomaps.com">Protomaps</a> '+
-          '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(mapObj);
-        mapObj.getContainer().style.background='#2b2b2b';
-      }catch(e){osm();}
+          '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'});
+        /* A tile whose data did not come stays clear (the map under it shows)
+           instead of the flavour's plain background; land and water cover the rest. */
+        pl.backgroundColor=null;
+        pl.addTo(mapObj);
+      }catch(e){}
     });
   });
 }
