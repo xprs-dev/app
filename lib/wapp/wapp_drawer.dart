@@ -122,7 +122,9 @@ extension _WappDrawer on _WappPageState {
       // the list keeps its size while the drawer moves (no reflow per frame)
       // and the folded drawer still shows the search box at its top.
       const handleH = 22.0;
-      final peekH = screen.getBool('search') == true ? handleH + 58.0 : handleH + 34.0;
+      // Folded, it clears the phone's gesture bar.
+      final peekH = (screen.getBool('search') == true ? handleH + 58.0 : handleH + 34.0) +
+          MediaQuery.paddingOf(context).bottom;
       final fullH = box.maxHeight;
       final heights = {'peek': peekH, 'half': (box.maxHeight * 0.5).clamp(peekH, fullH), 'full': fullH};
       final h = (_drawerDragH ?? heights[_drawerState] ?? peekH).clamp(peekH, fullH);
