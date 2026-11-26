@@ -205,6 +205,11 @@
 "id": "4a7829"
 },
 {
+"wire": "t:identity f:X1QZ3N ts:2026-11-24_18:00:00 nick:Ana pos:38\u2588\u2588\u2588\u2588\u2588,-9\u2588\u2588\u2588\u2588\u2588 acc:100000 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": null,
+"id": "8a3735"
+},
+{
 "wire": "t:identity f:X3VGAZ ts:2026-11-14_09:00:00 nick:bench pos:40,-8 acc:171000 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": null,
 "id": "a0e22d"
@@ -1163,6 +1168,16 @@
 "wire": "t:service f:X3PTZM d:X3KEEP ts:2026-11-09_10:00:00 dial:178.202.105.29 k:npub1... m:3f9a1c2e4b7d6a80 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": null,
 "id": "e48b19"
+},
+{
+"wire": "t:service f:X3ARC1 serve:archive source:solar backup:battery uplink:satellite plan:unlimited ts:2026-11-26_09:00:00 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 180,
+"id": "7d1f62"
+},
+{
+"wire": "t:observation f:X1QZ3N link:lan peers:0 source:grid backup:battery uplink:cellular plan:limited ts:2026-11-26_09:00:00 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 183,
+"id": "67876f"
 },
 {
 "wire": "t:channel f:X1QZ3N freq:145.500MHz mode:fm kind:listen since:2026-08-08_18:00:00 until:2026-08-08_22:00:00 ts:2026-08-08_14:26:40",

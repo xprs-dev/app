@@ -824,6 +824,11 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   its popup (`onMarkerAction`); `test/wapp_map_markers_test.dart`,
   `test/map_cluster_index_test.dart`. Reuse the index for any map of many
   points (it has no Flutter in it).
+- **Map or graph behind one drawer (`wapp_drawer.dart`, `_drawerGraph`)** — a
+  drawer screen that also holds a `$type:"graph"` group shows either view
+  behind the same drawer; `extraControl` puts the switch button above the
+  map's zoom control and the graph's recenter button, and `bottomInset`
+  lifts both views' buttons (and the graph's bearer chips) over the drawer.
 - **The map with a drawer (`lib/wapp/wapp_drawer.dart`)** — a map screen with
   `"drawer": true` on its map group draws its `$type:"people"` screen (search
   box, chips, list) in a drawer over the map, the xprs.dev portal's layout:
@@ -1787,3 +1792,12 @@ The page shows the switch first, as a `SwitchListTile` bound to the service's
 Linux, macOS or Windows (hotspot, Wi-Fi, wired, other) and drops cellular,
 tunnels, VPNs and virtual bridges. Use it for any "scan this QR from the
 device next to you" address.
+
+## A spec key's words as a settings dropdown (`HardwarePage._choice`)
+
+`HardwarePage._choice` (`lib/launcher/hardware_page.dart`) shows one XPRS key
+as a dropdown of its words, each labelled by the string `<prefix><word>`, and
+stores the word itself. The word lists live beside the composer that airs
+them (`kXprsSourceChoices` etc. in core `xprs_conditions.dart`), so the
+settings and the wire cannot drift. Reuse it for any setting that is an XPRS
+enum (`site:`, `room:`).

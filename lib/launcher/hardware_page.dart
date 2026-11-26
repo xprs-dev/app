@@ -1,27 +1,21 @@
-import 'package:flutter/material.dart';
-import 'package:reticulum/src/services/social/listening_schedule.dart';
-import 'package:reticulum/src/services/social/node_profile.dart';
+import 'dart:async';
 
-import '../services/i18n/schedule_text.dart';
+import 'package:flutter/material.dart';
 
 import '../services/preferences_service.dart';
 import '../services/social/node_profile_service.dart';
 import '../services/i18n/core_i18n.dart';
+import '../services/power_state.dart';
+import '../platform/platform.dart' as platform;
+import 'package:xprs_core/src/services/files/capacity_governor.dart';
+import 'package:xprs_core/src/services/xprs/xprs_conditions.dart';
 
-/// Settings → Hardware: what this device is made of (docs/NOSTR.md).
+/// Settings > Hardware: what keeps this device going, as XPRS announces it
+/// (XPRS.md 13.0.4: `source:`, `backup:`, `uplink:`, `plan:`).
 ///
-/// Stated ONCE, for the device, and read by every role — a box volunteered as
-/// both an Archiver and an Archiver must not be asked twice what it is plugged
-/// into, and two answers that can disagree is a bug waiting to be filed.
-///
-/// Full-size on purpose: the value is in the *combinations* — power source ×
-/// uplink × which radios are actually attached — and a settings row cannot lay
-/// that out.
-///
-/// Nothing here is a boast. The device announces facts; every other node scores
-/// them for itself, and what it has *observed* about us always beats what we
-/// *claimed*. So the page shows the measured numbers next to the stated ones,
-/// where the two can be compared honestly.
+/// Stated once, for the device, and read by every role. The summary at the
+/// top is built from the choices below and changes with them; the measured
+/// numbers (time powered, observed speed) sit next to the stated ones.
 class HardwarePage extends StatefulWidget {
   const HardwarePage({super.key});
 
@@ -30,12 +24,36 @@ class HardwarePage extends StatefulWidget {
 }
 
 class _HardwarePageState extends State<HardwarePage> {
+  static const _auto = 'auto';
   PreferencesService? _prefs;
+
+  /// "Battery" or "Plugged to energy": seen, never stated. A desktop with no
+  /// battery counts as plugged in (PowerState.isPowered).
+  final _powered = PowerState.instance.powered;
+
+  /// The network the device is on, followed live: the link type and the
+  /// data plan change with it unless the owner picked them.
+  final _net = CapacityGovernor.instance.netKind;
 
   @override
   void initState() {
     super.initState();
     _prefs = PreferencesService.instanceSync;
+    _powered.addListener(_onPower);
+    _net.addListener(_onPower);
+    // Fresh on open rather than up to a minute old.
+    unawaited(CapacityGovernor.instance.evaluate());
+  }
+
+  @override
+  void dispose() {
+    _powered.removeListener(_onPower);
+    _net.removeListener(_onPower);
+    super.dispose();
+  }
+
+  void _onPower() {
+    if (mounted) setState(() {});
   }
 
   NodeProfileService get _svc => NodeProfileService.instance;
@@ -43,6 +61,8 @@ class _HardwarePageState extends State<HardwarePage> {
   void _save(VoidCallback change) {
     setState(change);
   }
+
+  String get _seenUplink => xprsSeenUplink(_net.value.name);
 
   @override
   Widget build(BuildContext context) {
@@ -52,15 +72,23 @@ class _HardwarePageState extends State<HardwarePage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final profile = _svc.build();
+    final source = p.nodeSource ?? 'grid';
+    final backup = p.nodeBackup ?? xprsDefaultBackup(platform.platformName());
+    final seen = _seenUplink;
+    final uplink = p.nodeUplinkWord ?? seen;
+    final statedPlan = p.nodePlanFor(uplink);
+    final plan = statedPlan ?? xprsDefaultPlan(uplink);
 
     return Scaffold(
       appBar: AppBar(title: Text(tr('hardware.title'))),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          Text(
-            tr('hardware.intro'),
-            style: TextStyle(color: cs.onSurfaceVariant),
+          _header(context, tr('hardware.device_type')),
+          _card(
+            cs,
+            _summary(cs,
+                source: source, backup: backup, uplink: uplink, plan: plan),
           ),
           const SizedBox(height: 20),
 
@@ -68,44 +96,32 @@ class _HardwarePageState extends State<HardwarePage> {
           _card(
             cs,
             Column(children: [
+              ListTile(
+                leading: Icon(_powered.value
+                    ? Icons.power
+                    : Icons.battery_std),
+                title: Text(tr('hardware.power.source')),
+                subtitle: Text(_powered.value
+                    ? tr('hardware.power.plugged')
+                    : tr('hardware.power.battery')),
+              ),
               // A dropdown belongs in the BODY of the row, not in a ListTile's
               // trailing slot: given a wide child, the tile crushes its title to
               // one letter per line. Full-width field, label above.
-              _field(
-                cs,
-                icon: Icons.bolt,
-                label: tr('hardware.power.source'),
-                child: DropdownButton<int>(
-                  value: p.nodePower,
-                  isExpanded: true,
-                  underline: const SizedBox.shrink(),
-                  items: [
-                    DropdownMenuItem(value: -1, child: Text(tr('hardware.power.not_stated'))),
-                    for (var i = 0; i < PowerSource.values.length - 1; i++)
-                      DropdownMenuItem(
-                        value: i,
-                        child: Text(_powerLabel(PowerSource.values[i])),
-                      ),
-                  ],
-                  onChanged: (v) => _save(() => p.nodePower = v ?? -1),
-                ),
-              ),
-              _field(
-                cs,
-                icon: Icons.battery_charging_full,
-                label: tr('hardware.autonomy'),
-                value: p.nodeAutonomyHours == 0
-                    ? tr('common.unknown')
-                    : tr('hardware.autonomy.hours', {'n': p.nodeAutonomyHours}),
-                child: Slider(
-                  value: p.nodeAutonomyHours.clamp(0, 168).toDouble(),
-                  max: 168,
-                  divisions: 24,
-                  label: tr('hardware.autonomy.hours',
-                      {'n': p.nodeAutonomyHours}),
-                  onChanged: (v) => _save(() => p.nodeAutonomyHours = v.round()),
-                ),
-              ),
+              _choice(cs,
+                  icon: Icons.bolt,
+                  label: tr('hardware.energy'),
+                  value: source,
+                  words: kXprsSourceChoices,
+                  prefix: 'hardware.energy.',
+                  onChanged: (v) => _save(() => p.nodeSource = v)),
+              _choice(cs,
+                  icon: Icons.battery_charging_full,
+                  label: tr('hardware.backup'),
+                  value: backup,
+                  words: kXprsBackupChoices,
+                  prefix: 'hardware.backup.',
+                  onChanged: (v) => _save(() => p.nodeBackup = v)),
               // Only once it has been watched: "Powered 0%" above "not
               // watched long enough to say" contradicted itself.
               if (profile.poweredPct > 0)
@@ -114,35 +130,58 @@ class _HardwarePageState extends State<HardwarePage> {
                   tr('hardware.powered.pct', {'pct': profile.poweredPct}),
                   tr('hardware.powered.measured'),
                 ),
+              const SizedBox(height: 8),
             ]),
           ),
           const SizedBox(height: 20),
 
-          _header(context, tr('hardware.uplink')),
+          _header(context, tr('hardware.internet')),
           _card(
             cs,
             Column(children: [
+              // "Automatic" follows the network; any other word pins it (a
+              // satellite dish looks like Wi-Fi from in here).
               _field(
                 cs,
                 icon: Icons.public,
-                label: tr('hardware.uplink.label'),
-                value: tr('hardware.uplink.now', {'uplink': _uplinkLabel(profile.uplink)}),
-                child: DropdownButton<int>(
-                  value: p.nodeUplink,
+                label: tr('hardware.internet.link'),
+                child: DropdownButton<String>(
+                  value: p.nodeUplinkWord ?? _auto,
                   isExpanded: true,
                   underline: const SizedBox.shrink(),
                   items: [
                     DropdownMenuItem(
-                        value: -1, child: Text(tr('hardware.uplink.detect'))),
-                    for (var i = 0; i < UplinkKind.values.length - 1; i++)
+                        value: _auto,
+                        child: Text(tr('hardware.auto.value', {
+                          'value': tr('hardware.internet.$seen'),
+                        }))),
+                    for (final w in kXprsUplinkChoices)
                       DropdownMenuItem(
-                        value: i,
-                        child: Text(_uplinkLabel(UplinkKind.values[i])),
-                      ),
+                          value: w, child: Text(tr('hardware.internet.$w'))),
                   ],
-                  onChanged: (v) => _save(() => p.nodeUplink = v ?? -1),
+                  onChanged: (v) => _save(
+                      () => p.nodeUplinkWord = v == _auto ? null : v),
                 ),
               ),
+              // One plan per kind of link: on Wi-Fi it says Wi-Fi's, on the
+              // mobile network the phone's own, each defaulted until changed.
+              if (uplink != 'none')
+                _choice(cs,
+                    icon: Icons.data_usage,
+                    label: tr('hardware.plan'),
+                    hint: statedPlan == null ? tr('hardware.auto') : null,
+                    value: plan,
+                    words: kXprsPlanChoices,
+                    prefix: 'hardware.plan.',
+                    onChanged: (v) => _save(() {
+                          p.setNodePlanFor(
+                              uplink, v == xprsDefaultPlan(uplink) ? null : v);
+                          // The one switch for serving files over mobile
+                          // data: an unlimited mobile plan can afford it.
+                          if (uplink == 'cellular') {
+                            p.fileServeOnCellular = v == 'unlimited';
+                          }
+                        })),
               // Shown once there is a measurement: until something has been
               // timed, "not measured yet" was all this line could ever say.
               if (profile.bwClass > 0)
@@ -151,221 +190,95 @@ class _HardwarePageState extends State<HardwarePage> {
                   tr('hardware.speed.observed', {'bw': _bw(profile.bwClass)}),
                   tr('hardware.speed.why'),
                 ),
+              const SizedBox(height: 8),
             ]),
-          ),
-          const SizedBox(height: 20),
-
-          _header(context, tr('hardware.radios')),
-          Text(
-            tr('hardware.radios.intro'),
-            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          _card(
-            cs,
-            Column(children: [
-              for (final r in _svc.radios)
-                ListTile(
-                  leading: Icon(_linkIcon(r.link)),
-                  title: Text(r.rangeKm > 0
-                      ? '${_linkLabel(r.link)} · ${r.rangeKm} km'
-                      : _linkLabel(r.link)),
-                  subtitle: Text([
-                    if (r.freqKhz > 0) _freq(r.freqKhz),
-                    if (r.mode.isNotEmpty) r.mode,
-                    trSchedule(r.schedule),
-                  ].join(' · ')),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: tr('common.delete'),
-                    onPressed: () => _save(() {
-                      final rs = _svc.radios..removeWhere((x) => x.link == r.link);
-                      _svc.radios = rs;
-                    }),
-                  ),
-                ),
-              ListTile(
-                leading: const Icon(Icons.add),
-                title: Text(tr('hardware.radio.add')),
-                onTap: _addRadio,
-              ),
-            ]),
-          ),
-          const SizedBox(height: 24),
-
-          _card(
-            cs,
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(tr('hardware.meaning'),
-                      style: TextStyle(
-                          color: cs.primary, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Text(_verdict(profile),
-                      style: TextStyle(color: cs.onSurface)),
-                ],
-              ),
-            ),
           ),
         ],
       ),
     );
   }
 
-  /// The honest, two-mode reading of the profile. People who own hardware that
-  /// matters in a disaster should be told — they are the ones who decide
-  /// whether to keep it running.
-  String _verdict(NodeProfile p) {
-    final normal = p.uplink == UplinkKind.fibre || p.uplink == UplinkKind.wifi
-        ? tr('hardware.verdict.normal.fast')
-        : p.uplink == UplinkKind.cellular
-            ? tr('hardware.verdict.normal.phone')
-            : tr('hardware.verdict.normal.plain');
+  /// One 13.0.4 key as a dropdown of its words, labelled `<prefix><word>`.
+  Widget _choice(
+    ColorScheme cs, {
+    required IconData icon,
+    required String label,
+    required String value,
+    required List<String> words,
+    required String prefix,
+    required ValueChanged<String> onChanged,
+    String? hint,
+  }) =>
+      _field(
+        cs,
+        icon: icon,
+        label: label,
+        value: hint,
+        child: DropdownButton<String>(
+          value: words.contains(value) ? value : null,
+          isExpanded: true,
+          underline: const SizedBox.shrink(),
+          items: [
+            for (final w in words)
+              DropdownMenuItem(value: w, child: Text(tr('$prefix$w'))),
+          ],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
+      );
 
-    final String outage;
-    if (p.gridIndependent && p.uplinkIndependent && p.reachableOffgrid) {
-      outage = tr('hardware.verdict.best');
-    } else if (p.gridIndependent && p.reachableOffgrid) {
-      outage = tr('hardware.verdict.offgrid');
-    } else if (p.gridIndependent) {
-      outage = tr('hardware.verdict.power');
-    } else if (p.reachableOffgrid) {
-      outage = tr('hardware.verdict.reach');
-    } else {
-      outage = tr('hardware.verdict.depends');
-    }
-    return '$normal\n\n$outage';
-  }
-
-  /// What a new radio of [link] starts from: LoRa on 868.2 MHz, packet on
-  /// the 2 m APRS frequency, and no frequency or mode for Bluetooth and WiFi
-  /// Direct, which have neither to state.
-  static ({int range, int freq, String mode}) _radioDefaults(int link) =>
-      switch (link) {
-        LinkFlag.lora => (range: 5, freq: 868200, mode: 'LoRa-SF7BW125'),
-        LinkFlag.packetRadio => (range: 30, freq: 144800, mode: 'AX.25 1200'),
-        _ => (range: 0, freq: 0, mode: ''),
-      };
-
-  static bool _hasFrequency(int link) =>
-      link == LinkFlag.lora || link == LinkFlag.packetRadio;
-
-  Future<void> _addRadio() async {
-    var link = LinkFlag.lora;
-    var d = _radioDefaults(link);
-    final range = TextEditingController(text: '${d.range}');
-    final freq = TextEditingController(text: '${d.freq}');
-    final mode = TextEditingController(text: d.mode);
-    final schedule = TextEditingController(text: 'always');
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: Text(tr('hardware.radio.add')),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+  /// The choices below, read back as four lines: what the device is, its
+  /// energy, its internet, and what a power cut does to it.
+  Widget _summary(ColorScheme cs,
+      {required String source,
+      required String backup,
+      required String uplink,
+      required String plan}) {
+    final phone = const {'android', 'ios'}.contains(platform.platformName());
+    final energy = backup == 'none'
+        ? '${tr('hardware.energy.$source')} · ${tr('hardware.summary.no_backup')}'
+        : '${tr('hardware.energy.$source')} · '
+            '${tr('hardware.summary.backup', {'backup': tr('hardware.backup.$backup')})}';
+    final internet = uplink == 'none'
+        ? tr('hardware.internet.none')
+        : '${tr('hardware.internet.$uplink')} · ${tr('hardware.plan.$plan')}';
+    final outage = source != 'grid'
+        ? tr('hardware.summary.outage.runs')
+        : backup != 'none'
+            ? tr('hardware.summary.outage.backup')
+            : tr('hardware.summary.outage.stops');
+    final rows = [
+      (tr('hardware.summary.device'),
+          tr(phone ? 'hardware.kind.phone' : 'hardware.kind.computer')),
+      (tr('hardware.summary.energy'), energy),
+      (tr('hardware.internet'), internet),
+      (tr('hardware.summary.outage'), outage),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(children: [
+        for (final (label, value) in rows)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                DropdownButtonFormField<int>(
-                  initialValue: link,
-                  // A long name ("Packet radio (AX.25)", or longer in German)
-                  // is cut short instead of pushing past the dialog's edge.
-                  isExpanded: true,
-                  decoration: InputDecoration(labelText: tr('hardware.radio.link')),
-                  items: [
-                    const DropdownMenuItem(
-                        value: LinkFlag.lora, child: Text('LoRa')),
-                    DropdownMenuItem(
-                        value: LinkFlag.packetRadio,
-                        child: Text(tr('hardware.link.packet_ax25'))),
-                    DropdownMenuItem(
-                        value: LinkFlag.bluetooth,
-                        child: Text(tr('hardware.link.bluetooth'))),
-                    DropdownMenuItem(
-                        value: LinkFlag.wifiDirect,
-                        child: Text(tr('hardware.link.wifi_direct'))),
-                  ],
-                  // Another kind of radio starts from its own defaults: a
-                  // Bluetooth link kept LoRa's 868 MHz before.
-                  onChanged: (v) => setLocal(() {
-                    link = v ?? LinkFlag.lora;
-                    d = _radioDefaults(link);
-                    range.text = '${d.range}';
-                    freq.text = '${d.freq}';
-                    mode.text = d.mode;
-                  }),
+                SizedBox(
+                  width: 120,
+                  child: Text(label,
+                      style: TextStyle(color: cs.onSurfaceVariant)),
                 ),
-                TextFormField(
-                  controller: range,
-                  decoration: InputDecoration(
-                      labelText: tr('hardware.radio.range'),
-                      helperText: tr('hardware.radio.range.help')),
-                  keyboardType: TextInputType.number,
-                ),
-                if (_hasFrequency(link)) ...[
-                  TextFormField(
-                    controller: freq,
-                    decoration: InputDecoration(
-                      labelText: tr('hardware.radio.freq'),
-                      helperText: tr('hardware.radio.freq.help'),
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                  TextFormField(
-                    controller: mode,
-                    decoration:
-                        InputDecoration(labelText: tr('hardware.radio.mode')),
-                  ),
-                ],
-                TextFormField(
-                  controller: schedule,
-                  decoration: InputDecoration(
-                    labelText: tr('hardware.radio.schedule'),
-                    helperText: tr('hardware.radio.schedule.help'),
-                  ),
-                  // The reading below follows what is typed.
-                  onChanged: (_) => setLocal(() {}),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  trSchedule(ListeningSchedule.parse(schedule.text)),
-                  style: const TextStyle(fontSize: 12),
+                Expanded(
+                  child: Text(value,
+                      style: TextStyle(
+                          color: cs.onSurface, fontWeight: FontWeight.w500)),
                 ),
               ],
             ),
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(tr('common.cancel'))),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(tr('common.add'))),
-          ],
-        ),
-      ),
+      ]),
     );
-
-    final hasFreq = _hasFrequency(link);
-    final entry = RadioEntry(
-      link: link,
-      rangeKm: int.tryParse(range.text.trim()) ?? d.range,
-      freqKhz: hasFreq ? (int.tryParse(freq.text.trim()) ?? d.freq) : 0,
-      mode: hasFreq ? mode.text.trim() : '',
-      schedule: ListeningSchedule.parse(schedule.text.trim()),
-    );
-    for (final c in [range, freq, mode, schedule]) {
-      c.dispose();
-    }
-    if (ok != true) return;
-    final rs = _svc.radios
-      ..removeWhere((r) => r.link == link)
-      ..add(entry);
-    _save(() => _svc.radios = rs);
   }
 
   Widget _header(BuildContext context, String s) => Padding(
@@ -449,47 +362,6 @@ class _HardwarePageState extends State<HardwarePage> {
           ],
         ),
       );
-
-  static String _powerLabel(PowerSource p) => switch (p) {
-        PowerSource.solarBattery => tr('hardware.power.solar_battery'),
-        PowerSource.windHydro => tr('hardware.power.wind_hydro'),
-        PowerSource.solar => tr('hardware.power.solar'),
-        PowerSource.gridUps => tr('hardware.power.grid_ups'),
-        PowerSource.grid => tr('hardware.power.grid'),
-        PowerSource.vehicle => tr('hardware.power.vehicle'),
-        PowerSource.batteryOnly => tr('hardware.power.battery'),
-        PowerSource.unknown => tr('hardware.power.not_stated'),
-      };
-
-  static String _uplinkLabel(UplinkKind u) => switch (u) {
-        UplinkKind.satellite => tr('hardware.uplink.satellite'),
-        UplinkKind.fibre => tr('hardware.uplink.fibre'),
-        UplinkKind.wifi => tr('hardware.uplink.wifi'),
-        UplinkKind.cellular => tr('hardware.uplink.cellular'),
-        UplinkKind.none => tr('hardware.uplink.none'),
-        UplinkKind.unknown => tr('common.unknown'),
-      };
-
-  static String _linkLabel(int l) => switch (l) {
-        LinkFlag.lora => 'LoRa',
-        LinkFlag.packetRadio => tr('hardware.link.packet'),
-        LinkFlag.bluetooth => tr('hardware.link.bluetooth'),
-        LinkFlag.wifiDirect => tr('hardware.link.wifi_direct'),
-        LinkFlag.serial => tr('hardware.link.serial'),
-        _ => tr('hardware.link.radio'),
-      };
-
-  static IconData _linkIcon(int l) => switch (l) {
-        LinkFlag.lora => Icons.settings_input_antenna,
-        LinkFlag.packetRadio => Icons.radio,
-        LinkFlag.bluetooth => Icons.bluetooth,
-        LinkFlag.wifiDirect => Icons.wifi_tethering,
-        _ => Icons.cable,
-      };
-
-  static String _freq(int khz) => khz % 1000 == 0
-      ? '${khz ~/ 1000} MHz'
-      : '${(khz / 1000).toStringAsFixed(3)} MHz';
 
   static String _bw(int cls) {
     final bps = 1 << cls;

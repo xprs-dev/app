@@ -62,7 +62,7 @@
   "settings.topic.privacy.desc": "Location sharing, coverage and muted accounts",
   "settings.topic.device.desc": "Callsign and owner",
   "settings.topic.groups.desc": "Your groups and invitations",
-  "settings.topic.hardware.desc": "Power, internet and radios",
+  "settings.topic.hardware.desc": "Power and internet",
   "settings.topic.network": "Network",
   "settings.topic.network.desc": "Reticulum servers",
   "settings.topic.updates.desc": "Where updates come from",
