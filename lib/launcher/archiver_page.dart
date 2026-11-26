@@ -13,9 +13,9 @@
 //                     each with what was last heard of it, and the others heard
 //
 // Every number comes from the core (xprsArchiveStatusJson, NodeRoleApi,
-// XprsMonitor) and the daily log (ArchiverStats); every change goes through
-// one writer (applyArchiverSettings) shared with the remote API, so the page
-// and `/api/xprs/archiver` cannot drift apart.
+// xprsKnownArchivers, xprsArchiversHeard) and the daily log (ArchiverStats);
+// every change goes through one writer (applyArchiverSettings) shared with
+// the remote API, so the page and `/api/xprs/archiver` cannot drift apart.
 //
 // Reads are cheap counts and run when the page opens, after each change, on
 // pull-to-refresh, and once a minute while the page is in front.
@@ -28,19 +28,16 @@ import 'package:xprs_core/src/services/social/node_role_api.dart';
 import 'package:xprs_core/src/services/xprs/xprs_archivers_known.dart';
 import 'package:xprs_core/src/services/xprs/xprs_conditions.dart';
 import 'package:xprs_core/src/services/xprs/xprs_names.dart';
-import 'package:xprs_core/src/services/xprs/xprs_vocab.dart' show xprsFmtDuration;
 import 'package:xprs_core/src/profile/device_identity.dart';
 
 import '../services/i18n/core_i18n.dart';
 import '../services/i18n/format.dart';
 import '../services/notification_service.dart';
 import '../services/preferences_service.dart';
-import '../services/reticulum/rns_service.dart';
 import '../services/xprs/archiver_settings.dart';
 import '../services/xprs/archiver_stats.dart';
 import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_history_server.dart';
-import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_station_policy.dart';
 import '../util/time_ago.dart';
 import 'archiver_charts.dart';
@@ -67,6 +64,9 @@ class _ArchiverPageState extends State<ArchiverPage> {
   List<Map<String, Object>> _found = const [];
   List<ArchiverDay> _days = const [];
   List<XprsKnownArchiver> _known = const [];
+
+  /// This device's freshest sighting of each archiver, by callsign.
+  Map<String, XprsArchiverHeard> _heard = const {};
   int _cared = 0;
 
   PreferencesService? get _prefs => PreferencesService.instanceSync;
@@ -131,6 +131,12 @@ class _ArchiverPageState extends State<ArchiverPage> {
       _days = ArchiverStats.instance.days;
       _cared = archive.caredFor();
       _known = xprsKnownArchivers();
+      final heard = <String, XprsArchiverHeard>{};
+      for (final h in xprsArchiversHeard()) {
+        final had = heard[h.callsign];
+        if (had == null || h.lastMs > had.lastMs) heard[h.callsign] = h;
+      }
+      _heard = heard;
     });
   }
 
@@ -656,20 +662,14 @@ class _ArchiverPageState extends State<ArchiverPage> {
 
   /// What is known of one archiver, as up to three lines: when it was last
   /// heard (or announced, when only the cache knows it), what it offers, and
-  /// what keeps it going (13.0.5). The cache [k] is the archiver's own
-  /// announcement; [st] and [rns] are what this device heard itself.
-  List<String> _facts(String call, XprsStation? st,
-      ({String callsign, int lastSeenMs, int uptimeS})? rns,
-      XprsKnownArchiver? k) {
-    final heardMs = [st?.lastMs ?? 0, rns?.lastSeenMs ?? 0]
-        .reduce((x, y) => x > y ? x : y);
+  /// what keeps it going (13.0.5). [k] is the archiver's own announcement
+  /// from the cache; [h] is this device's freshest sighting of it.
+  List<String> _facts(XprsArchiverHeard? h, XprsKnownArchiver? k) {
     final String when;
-    if (heardMs > 0) {
+    if (h != null && h.lastMs > 0) {
       when = tr('archiver.used.heard', {
-        'ago': timeAgo(DateTime.fromMillisecondsSinceEpoch(heardMs)),
-        'how': _how(st != null && st.lastMs >= (rns?.lastSeenMs ?? 0)
-            ? st.bearer
-            : 'rns'),
+        'ago': timeAgo(DateTime.fromMillisecondsSinceEpoch(h.lastMs)),
+        'how': _how(h.bearer),
       });
     } else if (k != null && k.announcedMs > 0) {
       when = tr(k.stale ? 'archiver.used.stale' : 'archiver.used.announced', {
@@ -678,19 +678,17 @@ class _ArchiverPageState extends State<ArchiverPage> {
     } else {
       when = tr('archiver.used.not_heard');
     }
-    final count = k?.count ?? st?.count;
+    final count = k?.count ?? h?.count;
     final offer = [
       if (k?.sizeBytes != null)
         tr('archiver.used.free', {'size': xprsStepBytes(k!.sizeBytes!)}),
       if (count != null) tr('archiver.used.records', {'n': _compact(count)}),
-      if (k?.room == false || st?.room == 'no') tr('archiver.status.no_room'),
+      if (k?.room == false || h?.room == false) tr('archiver.status.no_room'),
     ].join(' · ');
-    final source = k?.source ?? st?.readings['source'];
-    final backup = k?.backup ?? st?.readings['backup'];
-    final uplink = k?.uplink ?? st?.readings['uplink'];
-    final uptime = k?.uptime ??
-        st?.uptime ??
-        ((rns?.uptimeS ?? 0) > 0 ? xprsFmtDuration(rns!.uptimeS) : null);
+    final source = k?.source;
+    final backup = k?.backup;
+    final uplink = k?.uplink;
+    final uptime = k?.uptime ?? h?.uptime;
     final keeps = [
       if (source != null)
         tr(source != 'grid'
@@ -707,12 +705,10 @@ class _ArchiverPageState extends State<ArchiverPage> {
     return [when, if (offer.isNotEmpty) offer, if (keeps.isNotEmpty) keeps];
   }
 
-  Widget _archiverTile(String call, XprsStation? st,
-      ({String callsign, int lastSeenMs, int uptimeS})? rns,
-      XprsKnownArchiver? k,
+  Widget _archiverTile(String call, XprsArchiverHeard? h, XprsKnownArchiver? k,
       {required Widget trailing, required bool chosen}) {
     final cs = Theme.of(context).colorScheme;
-    final facts = _facts(call, st, rns, k);
+    final facts = _facts(h, k);
     return ListTile(
       leading: Icon(chosen ? Icons.cloud_done_outlined : Icons.cloud_outlined,
           color: chosen ? cs.primary : cs.onSurfaceVariant),
@@ -730,32 +726,23 @@ class _ArchiverPageState extends State<ArchiverPage> {
     final prefs = _prefs;
     final list = prefs?.xprsArchivers ?? const <String>[];
     final self = XprsArchive.instance.archiverName.toUpperCase();
-    final heard = XprsMonitor.instance.stations;
-    final announced = {
-      // arch-ignore: no-core-calls-from-screen a read of who announced, for display; nothing is chosen, sent or fetched
-      for (final a in RnsService.instance.announcedArchivers())
-        a.callsign.toUpperCase(): a,
-    };
-    XprsStation? st(String c) => heard[c] ?? heard[c.toUpperCase()];
     Future<void> setList(List<String> v) => _apply({'archivers': v});
     final known = {for (final k in _known) k.callsign: k};
+    final heard = _heard;
 
     // Every other archiver this device knows of: from the cache of their
     // announcements (13.0.5) in the order a station chooses in, then any
-    // heard announcing serve:archive or on Reticulum that the cache does
-    // not hold yet, most records first.
+    // heard that the cache does not hold yet, most records first.
     final excluded = {self, ...list};
     final ranked = [
       for (final k in _known)
         if (!excluded.contains(k.callsign)) k.callsign,
     ];
-    final extra = <String>{
-      for (final s in heard.values)
-        if (s.services.contains('archive')) s.callsign.toUpperCase(),
-      ...announced.keys,
-    }..removeWhere((c) => excluded.contains(c) || known.containsKey(c));
-    ranked.addAll(extra.toList()
-      ..sort((x, y) => (st(y)?.count ?? 0).compareTo(st(x)?.count ?? 0)));
+    ranked.addAll([
+      for (final c in heard.keys)
+        if (!excluded.contains(c) && !known.containsKey(c)) c,
+    ]..sort((x, y) =>
+        (heard[y]?.count ?? 0).compareTo(heard[x]?.count ?? 0)));
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
@@ -766,8 +753,7 @@ class _ArchiverPageState extends State<ArchiverPage> {
               icon: Icons.auto_mode),
           for (final c in list) ...[
             const Divider(height: 1),
-            _archiverTile(c, st(c), announced[c.toUpperCase()],
-                known[c.toUpperCase()],
+            _archiverTile(c, heard[c.toUpperCase()], known[c.toUpperCase()],
                 chosen: true,
                 trailing: IconButton(
                   tooltip: tr('archiver.mine.remove'),
@@ -781,8 +767,7 @@ class _ArchiverPageState extends State<ArchiverPage> {
             ListTile(title: Text(tr('archiver.used.others.none'))),
           for (var i = 0; i < ranked.length; i++) ...[
             if (i > 0) const Divider(height: 1),
-            _archiverTile(ranked[i], st(ranked[i]), announced[ranked[i]],
-                known[ranked[i]],
+            _archiverTile(ranked[i], heard[ranked[i]], known[ranked[i]],
                 chosen: false,
                 trailing: TextButton(
                   onPressed: () => setList([...list, ranked[i]]),
