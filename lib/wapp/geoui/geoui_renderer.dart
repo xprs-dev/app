@@ -16,6 +16,7 @@ import '../wapp_open.dart' show openNotificationTarget;
 import '../../editor/code_editor_field.dart';
 import 'widgets/media_shelf_field.dart';
 import 'widgets/route_field.dart';
+import 'widgets/place_map_field.dart';
 import 'widgets/icon_field.dart';
 import 'widgets/media_view.dart' show MediaThumbnail, GalleryMediaTile;
 import '../../util/media_ref.dart' show MediaRef;
@@ -451,12 +452,41 @@ class _GeoUiScreenRendererState extends State<GeoUiScreenRenderer> {
       'details' => _renderDetailsField(fieldName, field),
       'popularity' => _renderPopularityField(fieldName),
       'route' => RouteField(value: _jsonValue(fieldName)),
+      'place' => _renderPlaceField(fieldName, label, field),
       'media' => MediaShelfField(value: _jsonValue(fieldName)),
       'image' => _renderImageField(fieldName, label, tip, field),
       'gallery' => _renderGalleryField(fieldName, label, tip, field),
       'secret' => _renderSecretField(fieldName, label, tip, field),
       _ => _renderStringField(fieldName, label, tip, field),
     };
+  }
+
+  /// `$type:"place"` — one place on a small still map (place_map_field.dart);
+  /// a tap opens it on the full map. Nothing when the value names no place.
+  Widget _renderPlaceField(String name, String label, GeoUiBlock field) {
+    final p = PlaceMapField.parse(widget.bindings.getValue(name)) ??
+        PlaceMapField.parse(_jsonValue(name));
+    if (p == null) return const SizedBox.shrink();
+    final title = field.getString('label') == null ? '' : label;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (title.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(title, style: Theme.of(context).textTheme.titleSmall),
+          ),
+        PlaceMapField(
+          lat: p.lat,
+          lon: p.lon,
+          label: p.label,
+          zoom: p.zoom ?? field.getNumber('zoom')?.toInt() ?? 15,
+          height: field.getNumber('height')?.toDouble() ?? 180,
+          tileUrl: field.getString('tile-url') ?? kDefaultTileUrl,
+          tileStyle: field.getString('tile-style') ?? '',
+        ),
+      ],
+    );
   }
 
   /// `$type:"popularity"` — a native monthly bar chart of seeders and unique

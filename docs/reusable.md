@@ -829,6 +829,13 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   behind the same drawer; `extraControl` puts the switch button above the
   map's zoom control and the graph's recenter button, and `bottomInset`
   lifts both views' buttons (and the graph's bearer chips) over the drawer.
+- **One place on a small map (`lib/wapp/geoui/widgets/place_map_field.dart`,
+  `$type:"place"`)** — a still map of a few cached tiles with a pin and a
+  label, a tap opening the place on a full `SlippyMap`. `PlaceMapField.parse`
+  reads `{lat,lon,label?,zoom?}` or `"lat,lon"`; `worldPx` / `tilesFor` are
+  the tile arithmetic of a fixed view (wraps the antimeridian). Use it for any
+  record that happened somewhere instead of a "Show on map" button
+  (`test/place_map_field_test.dart`).
 - **The map with a drawer (`lib/wapp/wapp_drawer.dart`)** — a map screen with
   `"drawer": true` on its map group draws its `$type:"people"` screen (search
   box, chips, list) in a drawer over the map, the xprs.dev portal's layout:
