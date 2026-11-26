@@ -111,12 +111,11 @@ Future<void> ensureRnsAutostart() async {
     rns.emailResolver = (email) => EmailResolveService.instance.resolve(email);
     rns.diskIndexPath = ws.getAbsolutePath('disk_index.zx');
 
-    // Persistent observed-node cache lives in the mesh wapp's per-profile
-    // data folder (user-specific data the mesh wapp surfaces; the
-    // reticulum->mesh boot migration moves it). The store creates the
-    // directory if the wapp hasn't written there yet.
-    rns.observedStorePath =
-        wappDataStorageFor(prefs, 'mesh').getAbsolutePath('observed.zx');
+    // Persistent observed-node cache: the core's own, beside its other
+    // stores. It lived in the Mesh wapp's folder until 2026-11; the boot
+    // migration (migrateReticulumToMesh) drops that copy. A cache, so it
+    // refills from announces.
+    rns.observedStorePath = ws.getAbsolutePath('observed.zx');
 
     // Announce our callsign so peers/repeaters can show a human name (plaintext
     // presence beacon, same as the manual start path).

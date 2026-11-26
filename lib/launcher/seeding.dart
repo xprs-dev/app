@@ -185,9 +185,21 @@ Future<void> migrateNostrToSocial() => _migrateWappFolder('nostr', 'social');
 /// history, its dedup ring and its autostart setting across the rename.
 Future<void> migrateMessagesToMail() => _migrateWappFolder('messages', 'mail');
 
-/// Rename reticulum -> mesh: the graph wapp now covers Reticulum AND xprs,
-/// and its data dir carries the node's observed.zx (rns_autostart).
-Future<void> migrateReticulumToMesh() => _migrateWappFolder('reticulum', 'mesh');
+/// Rename reticulum -> mesh: the graph wapp now covers Reticulum AND xprs.
+/// Its data dir used to carry the node's observed-node cache, which is now
+/// the core's own (rns_autostart); the old copy is dropped here, once.
+Future<void> migrateReticulumToMesh() async {
+  await _migrateWappFolder('reticulum', 'mesh');
+  if (ProfileService.instance.activeProfile == null) return;
+  try {
+    final data = wappsDataStorage(await PreferencesService.instance());
+    if (await data.exists('mesh/observed.zx')) {
+      await data.delete('mesh/observed.zx');
+    }
+  } catch (e) {
+    debugPrint('migrate observed cache: $e');
+  }
+}
 
 /// First-run bootstrap, run as a boot task BEFORE the UI so the launcher
 /// never renders an empty grid mid-seed. Installs the curated default

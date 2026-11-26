@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'dart:io'
     show FileMode, Platform, Process, Socket, RawSynchronousSocket, HttpClient;
 
-import 'package:file/file.dart' show File, Directory;
+import 'package:file/file.dart' show Directory;
 
 import 'package:wasm_run/wasm_run.dart';
 
@@ -3014,8 +3014,10 @@ class WappEngine {
     // address; a joiner resolves the same seed to that address. See RnsService.
     final halRnsRvAnnounce = WasmFunction(
       (int seedPtr, int seedLen, int appPtr, int appLen) {
-        if (seedLen <= 0) return -1;
+        final tag = _appId;
+        if (tag == null || seedLen <= 0) return -1;
         RnsService.instance.rvAnnounce(
+            tag,
             _readBytes(seedPtr, seedLen),
             appLen > 0 ? _readBytes(appPtr, appLen) : Uint8List(0));
         return 1;
