@@ -66,6 +66,7 @@ import 'geoui/conversation_db.dart';
 import 'geoui/conversation_store.dart';
 import 'geoui/geo_chat_archive.dart';
 import 'geoui/activity_archive.dart';
+import 'package:xprs_core/src/services/social/feed_backfill.dart';
 import 'geoui/widgets/conversations_field.dart';
 import 'geoui/widgets/people_view_field.dart';
 import 'geoui/widgets/members_panel_field.dart';
@@ -595,15 +596,9 @@ class _WappPageState extends State<WappPage>
     setState(() {});
   }
 
-  /// Periodic FEED backfill over Reticulum (complements APRS-IS, which loses
-  /// messages): asks peers for FEED notes since the last sweep.
-  Timer? _feedBackfillTimer;
-  // A faster sweep right after the wapp opens, so a device that just joined the
-  // network fetches older FEED posts as soon as RNS is up AND a relay peer has
-  // been discovered (the steady 3-min timer was too slow for a fresh join).
-  Timer? _fastBackfillTimer;
-  int _fastBackfillTicks = 0;
-  int _lastFeedBackfillSec = 0;
+  /// Recovers Activity posts and group messages this device missed, from
+  /// Reticulum peers (core FeedBackfill decides when; this page merges).
+  FeedBackfill? _feedBackfill;
 
   /// Callsigns we follow / have blocked (bridged from the APRS wapp), so the
   /// profile UI shows the right Follow/Following + Block/Unblock controls.
@@ -1125,20 +1120,6 @@ class _WappPageState extends State<WappPage>
     // Repaint (throttled) when the NOSTR engine pushes fresh stats/events, so
     // an open thread's like/reply counts update the moment they arrive.
     RnsService.instance.addNostrListener(_onNostrChanged);
-    // Periodically recover FEED posts lost over APRS-IS from Reticulum peers.
-    _feedBackfillTimer = Timer.periodic(
-      const Duration(minutes: 3),
-      (_) => unawaited(_backfillFeed()),
-    );
-    // Aggressive early sweep: a just-joined device often comes up before RNS is
-    // connected and before any relay peer is known, so the single 8s shot used
-    // to miss and then wait 3 minutes. Retry every 15s for the first ~5 minutes
-    // (until a sweep actually pulls notes), so older posts arrive promptly once
-    // the node connects and discovers a peer.
-    _fastBackfillTimer = Timer.periodic(
-      const Duration(seconds: 15),
-      (_) => unawaited(_fastBackfillTick()),
-    );
     // If this wapp is running as a background service, hand it over to this
     // page so only one engine (and one BLE scan) is live while it's open.
     // Keep the future: _loadWapp awaits it before reading conversations so
@@ -1374,6 +1355,12 @@ class _WappPageState extends State<WappPage>
     _wappData = wappData;
     _geoArchive = GeoChatArchive.forStorage(wappData);
     _activityArchive = ActivityArchive.forStorage(wappData);
+    _feedBackfill ??= FeedBackfill(
+      archive: () => _activityArchive,
+      groupTopics: _openGroupTopics,
+      onGroupNotes: _mergeGroupNotes,
+      onChanged: _onActivityBackfilled,
+    )..start();
     if (_wappName == 'social') {
       final legacyArchive = _activityArchive!;
       _activityArchive = ActivityArchive.forStorage(
@@ -5185,8 +5172,8 @@ class _WappPageState extends State<WappPage>
     RnsService.instance.removeProfileListener(_onProfilesChanged);
     RnsService.instance.removeNostrListener(_onNostrChanged);
     _nostrSearchCtl.dispose();
-    _feedBackfillTimer?.cancel();
-    _fastBackfillTimer?.cancel();
+    _feedBackfill?.dispose();
+    _feedBackfill = null;
     // Stop the one-shot firehose poller: no more polls once nobody is looking.
     _allPoller?.dispose();
     _allPoller = null;
@@ -8721,54 +8708,11 @@ class _WappPageState extends State<WappPage>
     }
   }
 
-  /// Recover FEED posts that were lost over APRS-IS by asking peers on Reticulum
-  /// for FEED notes since the last sweep (NOSTR kind-1), reconstructing each as a
-  /// feed entry (the callsign is derived from the note's pubkey) and archiving
-  /// any we don't already have. APRS-IS stays the primary path; this fills gaps.
-  /// One aggressive early backfill attempt; stops the fast timer once it pulls
-  /// notes (connected + a peer found) or after ~5 minutes of trying.
-  Future<void> _fastBackfillTick() async {
-    _fastBackfillTicks++;
-    final added = await _backfillFeed();
-    if (added > 0 || _fastBackfillTicks >= 20) {
-      _fastBackfillTimer?.cancel();
-      _fastBackfillTimer = null;
-    }
-  }
-
-  bool _backfillRunning = false;
-
-  Future<int> _backfillFeed() async {
-    final arch = _activityArchive;
-    if (arch == null || !RnsService.instance.isUp) return 0;
-    // Never let backfills overlap: each may query several peers, and the fast
-    // timer fires every 15s — without this guard they pile up into many
-    // concurrent relay queries and swamp the node.
-    if (_backfillRunning) return 0;
-    _backfillRunning = true;
-    try {
-      final a = await _backfillFeedInner(arch);
-      // Same sweep also backfills the subscribed group conversations (Messages
-      // tab) so a fresh install sees previous group messages, not just Activity.
-      final g = await _backfillGroups();
-      return a + g;
-    } finally {
-      _backfillRunning = false;
-    }
-  }
-
-  /// Backfill the Messages-tab group conversations from Reticulum: for each
-  /// subscribed group (`#NAME` / `#NAME*`), ask peers for that group's kind-1
-  /// notes and add any we don't already have. Mirrors [_backfillFeedInner] but
-  /// targets conversations instead of the Activity feed. Idempotent: dedups on
-  /// the message id (sha1(from|text)[:2], identical to the wapp's group msg_id),
-  /// which also collapses a backfilled post against its live copy. Runs on the
-  /// same fast/slow timers, so a just-joined device fills group history once RNS
-  /// is up and a relay/peer is reachable.
-  Future<int> _backfillGroups() async {
+  /// The group topics (`NAME` of `#NAME` / `#NAME*`) open in Messages: what
+  /// [FeedBackfill] asks peers about.
+  Set<String> _openGroupTopics() {
     final store = _convStores['conversations'];
-    if (store == null || !RnsService.instance.isUp) return 0;
-    // Distinct group topics from the subscribed (open) group conversations.
+    if (store == null) return const {};
     final topics = <String>{};
     for (final entry in store.items.entries) {
       final id = entry.key;
@@ -8778,144 +8722,38 @@ class _WappPageState extends State<WappPage>
       if (star >= 0) t = t.substring(0, star);
       if (t.isNotEmpty) topics.add(t);
     }
-    if (topics.isEmpty) return 0;
-    final selfPub = RnsService.instance.selfPubHex?.toLowerCase();
-    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final since = nowSec - 7 * 24 * 3600; // last week, like the FEED backfill
-    var added = 0;
-    for (final topic in topics) {
-      List<Map<String, dynamic>> notes;
-      try {
-        notes = await RnsService.instance.fetchFeedBackfill(
-          since,
-          topic: topic,
-        );
-      } catch (_) {
-        continue;
-      }
-      if (!mounted) return added;
-      if (notes.isEmpty) continue;
-      // Deliver to whichever ids the user actually has (global and/or local).
-      final convIds = <String>[
-        for (final cand in ['#$topic*', '#$topic'])
-          if (store.items[cand] != null && !store.items[cand]!.closed) cand,
-      ];
-      for (final convId in convIds) {
-        final it = store.items[convId]!;
-        // Dedup needs this conversation's tail, so read it before comparing.
-        final existingMids = <String>{
-          for (final m in store.messagesOf(convId))
-            if ((m['mid'] ?? '').toString().isNotEmpty) m['mid'].toString(),
-        };
-        final preUnread = it.unread; // backfilled history shouldn't ring badges
-        // Oldest→newest so appended bubbles read in chronological order.
-        for (final n in notes.reversed) {
-          final pub = (n['pub'] ?? '').toString();
-          final text = (n['text'] ?? '').toString();
-          if (pub.isEmpty || text.isEmpty) continue;
-          if (selfPub != null && pub.toLowerCase() == selfPub) continue;
-          String from;
-          try {
-            from = 'X1${NostrCrypto.deriveCallsign(pub)}';
-          } catch (_) {
-            continue;
-          }
-          final mid = activityMid(from, text);
-          if (!existingMids.add(mid))
-            continue; // already present (live or prior)
-          final ts = (n['ts'] as int?) ?? nowSec;
-          final dt = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
-          final hhmm =
-              '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-          store.addMessage({
-            'id': convId,
-            'dir': 'in',
-            'from': from,
-            'text': text,
-            'time': hhmm,
-            'via': 'RET',
-            'mid': mid,
-            'key': mid,
-            'parent': (n['parent'] ?? '').toString(),
-            't': ts * 1000,
-          });
-          added++;
-        }
-        it.unread = preUnread;
-      }
-    }
-    if (added > 0) {
-      if (mounted) setState(() {});
-    }
-    return added;
+    return topics;
   }
 
-  Future<int> _backfillFeedInner(ActivityArchive arch) async {
-    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final since = _lastFeedBackfillSec == 0
-        ? nowSec -
-              7 *
-                  24 *
-                  3600 // first run: last week
-        : _lastFeedBackfillSec - 300; // small overlap so nothing slips through
-    List<Map<String, dynamic>> notes;
-    try {
-      notes = await RnsService.instance.fetchFeedBackfill(since);
-    } catch (_) {
-      return 0;
-    }
-    if (!mounted) return 0;
-    final selfPub = RnsService.instance.selfPubHex;
+  /// Merges notes [FeedBackfill] recovered for [topic] into the group's open
+  /// conversations (global and/or local), skipping any already there: the id
+  /// is the wapp's own group msg_id, so a backfilled copy of a live message
+  /// is the same message. Backfilled history does not ring the badge.
+  void _mergeGroupNotes(String topic, List<BackfillNote> notes) {
+    final store = _convStores['conversations'];
+    if (store == null || !mounted) return;
     var added = 0;
-    for (final n in notes) {
-      final pub = (n['pub'] ?? '').toString();
-      final text = (n['text'] ?? '').toString();
-      if (pub.isEmpty || text.isEmpty) continue;
-      if (selfPub != null && pub.toLowerCase() == selfPub) {
-        continue; // our own posts aren't "missed" — we already have them
+    for (final convId in ['#$topic*', '#$topic']) {
+      final it = store.items[convId];
+      if (it == null || it.closed) continue;
+      final have = <String>{
+        for (final m in store.messagesOf(convId))
+          if ((m['mid'] ?? '').toString().isNotEmpty) m['mid'].toString(),
+      };
+      final preUnread = it.unread;
+      for (final n in notes) {
+        if (!have.add(n.mid)) continue;
+        store.addMessage({...n.toRow(), 'id': convId, 'key': n.mid});
+        added++;
       }
-      String from;
-      try {
-        from = 'X1${NostrCrypto.deriveCallsign(pub)}';
-      } catch (_) {
-        continue;
-      }
-      // Dedup on content (old rows may lack a stored mid).
-      if (arch.hasContent(from, text)) continue;
-      final mid = activityMid(from, text);
-      final ts = (n['ts'] as int?) ?? nowSec;
-      final dt = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
-      final hhmm =
-          '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-      arch.add({
-        'dir': 'in',
-        'from': from,
-        'text': text,
-        'time': hhmm,
-        'via':
-            'RET', // Reticulum over the internet (matches the wapp's RET tag)
-        'mid': mid,
-        'parent': (n['parent'] ?? '').toString(),
-        't': ts * 1000,
-        // NIP-92 imeta (video poster/blurhash/dim) recovered from the event.
-        'meta': (n['meta'] ?? '').toString(),
-      });
-      // Backfilled posts can reference large media. Do NOT auto-download it during
-      // backfill — the Activity card shows the size + a one-click download button
-      // so the user decides (a week of history could be many GB otherwise).
-      added++;
+      it.unread = preUnread;
     }
-    // Only advance the high-water mark once a sweep actually returned notes. A
-    // fresh node usually comes up before any relay/peer is reachable; advancing on
-    // an empty sweep would lock us out of ever re-fetching the 7-day history (the
-    // bug that left Activity empty for new users). Keep retrying the full week
-    // until the first real pull, then switch to incremental.
-    if (notes.isNotEmpty) _lastFeedBackfillSec = nowSec;
-    if (added > 0) {
-      _activityRev.value++;
-      if (mounted) setState(() {});
-    }
-    return added;
+    if (added > 0) setState(() {});
+  }
+
+  void _onActivityBackfilled() {
+    _activityRev.value++;
+    if (mounted) setState(() {});
   }
 
   /// Open a publication's full-screen forum thread (the post + its replies).

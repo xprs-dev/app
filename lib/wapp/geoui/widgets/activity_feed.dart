@@ -4,11 +4,15 @@
 // opens its conversation; tapping a name opens the profile. App-agnostic — it
 // just renders the post maps it's given and reports compose/attach/taps back.
 
+export 'package:xprs_core/src/services/storage/activity_archive.dart'
+    show activityMid;
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
+import 'package:xprs_core/src/services/storage/activity_archive.dart'
+    show activityMid;
 import 'package:flutter/gestures.dart';
 import '../../../services/social/note_text.dart';
 import 'package:flutter/material.dart';
@@ -993,15 +997,6 @@ class _ActivityFeedState extends State<ActivityFeed> {
 }
 
 // ── Shared helpers + reusable post card ─────────────────────────────────────
-
-/// Post id, mirroring the APRS wapp's msg_id(): first 2 bytes of
-/// sha1("from|text") as 4 lowercase hex chars. Fills `mid` for posts archived
-/// before the wapp stamped one.
-String activityMid(String from, String text) {
-  final d = sha1.convert(utf8.encode('$from|$text')).bytes;
-  const hx = '0123456789abcdef';
-  return '${hx[d[0] >> 4]}${hx[d[0] & 15]}${hx[d[1] >> 4]}${hx[d[1] & 15]}';
-}
 
 const _activityMonths = [
   'Jan',

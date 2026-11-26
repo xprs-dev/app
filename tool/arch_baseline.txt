@@ -122,11 +122,8 @@ lib/wapp/native/wasm_video_player.dart :: no-sub-minute-poll :: _ticker = Timer.
 lib/wapp/native/wasm_video_session.dart :: no-sub-minute-poll :: _pump = Timer.periodic(const Duration(milliseconds: 8), (_) => _drain());
 lib/wapp/wapp_engine.dart :: no-whole-file-read :: : fs.file(path).readAsBytesSync();
 lib/wapp/wapp_engine.dart :: no-whole-file-read :: f.readAsBytesSync(),
-lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: notes = await RnsService.instance.fetchFeedBackfill(
-lib/wapp/wapp_page.dart :: no-core-calls-from-screen :: notes = await RnsService.instance.fetchFeedBackfill(since);
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(milliseconds: 400), (t) {
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(milliseconds: 600), (t) {
-lib/wapp/wapp_page.dart :: no-sub-minute-poll :: _fastBackfillTimer = Timer.periodic(
 lib/wapp/wapp_page.dart :: no-sub-minute-poll :: _tickTimer = Timer.periodic(Duration(milliseconds: interval), (_) {
 lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: (_wappName == 'social' && _socialFeedFilter == 'nomadnet')
 lib/wapp/wapp_page.dart :: no-wapp-special-case-in-host :: bool get _isAppCreator => _wappName == 'app-creator';
