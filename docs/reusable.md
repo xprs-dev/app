@@ -813,9 +813,13 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   A group's tap eases to its expansion zoom, centred on it; markers no zoom
   parts (one point, deepest zoom) fan out on legs (`spiderOffsets`: a
   circle up to 8, a spiral beyond), and over `spiderMax` the wapp gets
-  `onMarkersHere(ids)` to list them. `kind: "archive"` markers are the
-  portal's yellow square, grouped apart and drawn above the rest (a group
-  under one steps aside). `openId`/`openSeq` open a marker's popup (fanned
+  `onMarkersHere(ids)` to list them. Markers are the portal's: a dot,
+  the label above in map lettering; `kind: "archive"` the dark disc with a
+  gold rim and mark (`filled` gold), grouped apart and drawn above the rest
+  (a group under one steps aside). `bottomInset` keeps the buttons above a
+  drawer; `filter`/`onFilter` is the segmented filter over the map
+  (`ui.map.filter`); a popup shows `tags` as chips and drops the
+  coordinates for `coords: false`. `openId`/`openSeq` open a marker's popup (fanned
   first) — `ui.map.locate` with an `id`. A pin's `actions` are buttons in
   its popup (`onMarkerAction`); `test/wapp_map_markers_test.dart`,
   `test/map_cluster_index_test.dart`. Reuse the index for any map of many

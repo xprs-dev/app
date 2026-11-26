@@ -49,11 +49,14 @@ extension _WappDrawer on _WappPageState {
   }
 
   Widget _buildDrawerMapScreen(GeoUiBlock screen, GeoUiBlock mapGroup, GeoUiBlock field) {
-    final map = _buildSlippyMap(
-      mapGroup,
-      embedChat: false,
-      onExpand: () => _openFullScreenMap(mapGroup),
-    );
+    // The map knows how much of it the drawer covers, so its buttons sit
+    // just above the drawer's edge (and move with it).
+    Widget mapUnder(double covered) => _buildSlippyMap(
+          mapGroup,
+          embedChat: false,
+          onExpand: () => _openFullScreenMap(mapGroup),
+          bottomInset: covered,
+        );
     final list = _buildPeopleScreen(screen, field);
     final cs = Theme.of(context).colorScheme;
     return LayoutBuilder(builder: (context, box) {
@@ -98,7 +101,7 @@ extension _WappDrawer on _WappPageState {
             Expanded(
               child: Stack(
                 children: [
-                  Positioned.fill(child: map),
+                  Positioned.fill(child: mapUnder(0)),
                   if (_drawerFolded)
                     Positioned(
                       left: 12,
@@ -142,7 +145,7 @@ extension _WappDrawer on _WappPageState {
 
       return Stack(
         children: [
-          Positioned.fill(child: map),
+          Positioned.fill(child: mapUnder(h)),
           Positioned(
             left: 0,
             right: 0,

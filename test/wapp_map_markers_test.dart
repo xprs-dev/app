@@ -323,4 +323,106 @@ void main() {
     expect(pins(), 3);
     expect(find.text('X3B here'), findsOneWidget);
   });
+
+  testWidgets('over a drawer the zoom buttons sit just above its edge, and hide when it covers the map', (t) async {
+    Future<void> at(double inset) async {
+      t.view.physicalSize = const Size(400, 700);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SlippyMap(
+            lat: lat0,
+            lon: lon0,
+            zoom: 10,
+            tileUrl: '',
+            showSearch: false,
+            minZoom: 2,
+            maxZoom: 18,
+            onViewportChanged: (_, __, ___) {},
+            embedChat: false,
+            bottomInset: inset,
+          ),
+        ),
+      ));
+      await settle(t);
+    }
+
+    await at(80);
+    final minus = t.getRect(find.byIcon(Icons.remove));
+    expect(minus.bottom, lessThanOrEqualTo(700 - 80), reason: 'above the folded drawer');
+    expect(minus.bottom, greaterThan(700 - 80 - 40), reason: 'right above it, not floating mid-map');
+    await at(350);
+    expect(t.getRect(find.byIcon(Icons.remove)).bottom, lessThanOrEqualTo(350));
+    await at(640);
+    expect(find.byIcon(Icons.remove), findsNothing, reason: 'the drawer covers the map');
+  });
+
+  testWidgets('the filter over the map: segments with counts, a tap says which', (t) async {
+    final chosen = <String>[];
+    t.view.physicalSize = const Size(400, 700);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SlippyMap(
+          lat: lat0,
+          lon: lon0,
+          zoom: 10,
+          tileUrl: '',
+          showSearch: false,
+          minZoom: 2,
+          maxZoom: 18,
+          onViewportChanged: (_, __, ___) {},
+          embedChat: false,
+          filter: const [
+            {'id': 'all', 'label': 'All', 'count': 7, 'on': true},
+            {'id': 'archive', 'label': 'Archivers', 'count': 2, 'on': false},
+            {'id': 'people', 'label': 'People', 'count': 3, 'on': false},
+            {'id': 'other', 'label': 'Other', 'count': 2, 'on': false},
+          ],
+          onFilter: chosen.add,
+        ),
+      ),
+    ));
+    await settle(t);
+    expect(find.byKey(const ValueKey('map_filter')), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('map_filter_archive')));
+    expect(chosen, ['archive']);
+  });
+
+  testWidgets("a station's popup: its tags as chips, no coordinates; Visit and Keep my messages here", (t) async {
+    final acted = <String>[];
+    await pump(t, [
+      {
+        'id': 'pl:X3PTZM',
+        'lat': lat0,
+        'lon': lon0,
+        'label': 'X3PTZM',
+        'kind': 'archive',
+        'detail': 'XPRS-server\nHeard 3 min ago',
+        'tags': ['Archiver', 'Solar'],
+        'coords': false,
+        'actions': [
+          {'id': 'visit', 'label': 'Visit'},
+          {'id': 'keep', 'label': 'Keep my messages here'},
+        ],
+      },
+    ], onAction: (id, a) => acted.add(a));
+    await t.tap(find.text('X3PTZM'));
+    await settle(t);
+    expect(find.text('Archiver'), findsOneWidget);
+    expect(find.text('Solar'), findsOneWidget);
+    expect(find.byIcon(Icons.copy), findsNothing, reason: 'no coordinates to copy');
+    await t.tap(find.text('Visit'));
+    expect(acted, ['visit']);
+  });
+
+  testWidgets('an archiver that keeps my messages is drawn filled', (t) async {
+    await pump(t, [
+      {'id': 'pl:X3MINE', 'lat': lat0, 'lon': lon0, 'label': 'X3MINE', 'kind': 'archive', 'filled': true},
+    ]);
+    final icon = t.widget<Icon>(find.byIcon(Icons.inventory_2_outlined));
+    expect(icon.color, const Color(0xFF141312), reason: 'dark mark on gold');
+  });
 }

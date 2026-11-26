@@ -82,6 +82,7 @@ extension _WappMaps on _WappPageState {
     required bool embedChat,
     VoidCallback? onExpand,
     bool isFullscreen = false,
+    double bottomInset = 0,
   }) {
     // What the map carries besides tiles and pins. Each is on unless the map
     // group says false: `radius` (the coverage circle and its slider),
@@ -128,6 +129,14 @@ extension _WappMaps on _WappPageState {
       },
       openId: _locateId,
       openSeq: _locateSeq,
+      filter: _mapFilter,
+      onFilter: (id) {
+        _engine.sendMessage(jsonEncode({'command': 'map_filter', 'id': id}));
+        _engine.handleEvent();
+        _drainOutbox();
+        if (mounted) setState(() {});
+      },
+      bottomInset: bottomInset,
       onViewportChanged: (lat, lon, zoom) {
         _mapLat = lat;
         _mapLon = lon;

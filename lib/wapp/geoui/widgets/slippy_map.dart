@@ -208,6 +208,16 @@ class SlippyMap extends StatefulWidget {
   /// True when this instance IS the full-screen page (picks the exit icon).
   final bool isFullscreen;
 
+  /// How much of the map's bottom something else covers (a drawer over it):
+  /// the zoom, locate and full-screen buttons sit just above it, and hide
+  /// when it covers nearly all of the map.
+  final double bottomInset;
+
+  /// A filter over the map (`ui.map.filter`): segments [{id,label,count,on}],
+  /// the portal's All / Archivers / People / Other. A tap is [onFilter].
+  final List<Map<String, dynamic>> filter;
+  final void Function(String id)? onFilter;
+
   /// Centre the coverage circle on the device's current GPS position. Wired
   /// only where a fix is possible (mobile); returns true on success. Null hides
   /// the "my location" button.
@@ -232,6 +242,9 @@ class SlippyMap extends StatefulWidget {
     this.onMarkersHere,
     this.openId,
     this.openSeq = 0,
+    this.bottomInset = 0,
+    this.filter = const [],
+    this.onFilter,
     this.radiusKm,
     this.centerLat,
     this.centerLon,
@@ -423,6 +436,62 @@ class _SlippyMapState extends State<SlippyMap>
   /// Compact transport/status indicators (e.g. APRS-IS, BLE) — a coloured dot
   /// (green = on, grey = off) with a label. Driven by `ui.map.status`; empty
   /// for map wapps that push no status.
+  /// The filter over the map, one segmented control as the portal's: each
+  /// segment its label and how many, the chosen one filled.
+  Widget _filterBar() {
+    final cs = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Container(
+        key: const ValueKey('map_filter'),
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: const Color(0xE6141312),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFF30363d)),
+          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 1))],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final f in widget.filter)
+              GestureDetector(
+                key: ValueKey('map_filter_${f['id']}'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => widget.onFilter?.call('${f['id']}'),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: f['on'] == true ? cs.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text.rich(
+                    TextSpan(children: [
+                      TextSpan(text: '${f['label']}'),
+                      if (f['count'] != null)
+                        TextSpan(
+                          text: '  ${f['count']}',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: (f['on'] == true ? cs.onPrimary : Colors.white).withAlpha(170),
+                          ),
+                        ),
+                    ]),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: f['on'] == true ? cs.onPrimary : Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _statusPills() {
     final items = widget.status;
     if (items.isEmpty) return const SizedBox.shrink();
@@ -1006,9 +1075,9 @@ class _SlippyMapState extends State<SlippyMap>
       for (var k = 0; k < n.count; k++) {
         final m = ms[n.points[k]];
         final id = m['id']?.toString() ?? '';
-        // The leg ends in the middle of the mark: a pin's tip goes below
-        // its foot, an archiver's square sits on it.
-        final at = _isArchive(m) ? feet[k] : feet[k] + const Offset(0, 16);
+        // The leg ends in the middle of the mark (every mark is centred
+        // on its point).
+        final at = feet[k];
         _shownAt[id] = at;
         final wgt = _buildMarker(m, at, chosen: id == _popupId);
         if (id == _popupId) {
@@ -1032,12 +1101,14 @@ class _SlippyMapState extends State<SlippyMap>
     final key = '${scaler.scale(10)}|$label';
     return _labelWs[key] ??= () {
       final tp = TextPainter(
-        text: TextSpan(text: label, style: const TextStyle(fontSize: 10, height: 1.1, fontWeight: FontWeight.bold)),
+        text: TextSpan(
+            text: label,
+            style: const TextStyle(fontSize: 10, height: 1.1, letterSpacing: 0.3, fontWeight: FontWeight.w800)),
         textDirection: TextDirection.ltr,
         textScaler: scaler,
         maxLines: 1,
       )..layout();
-      final w = min(160.0, tp.width + 14);
+      final w = min(160.0, tp.width + 10);
       tp.dispose();
       return w;
     }();
@@ -1077,7 +1148,7 @@ class _SlippyMapState extends State<SlippyMap>
     final shown = _shownAt[id];
     if (shown == null) return const [];
     final px = shown.dx;
-    final py = shown.dy - (_isArchive(m) ? 14 : 0);
+    final py = shown.dy - (_isArchive(m) ? 16 : 8);
     final label = (m['label'] as String?) ?? id;
     final heard = (m['heard'] as num?)?.toInt();
     final detail = (m['detail'] as String?) ?? '';
@@ -1086,6 +1157,8 @@ class _SlippyMapState extends State<SlippyMap>
         if (a is Map && '${a['id'] ?? ''}'.isNotEmpty) a,
     ];
     final coords = '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}';
+    final showCoords = m['coords'] != false;
+    final tags = [for (final t in (m['tags'] as List?) ?? const []) '$t'];
 
     const pw = 230.0;
     final left = (px - pw / 2).clamp(8.0, (w - pw - 8).clamp(8.0, w));
@@ -1136,8 +1209,41 @@ class _SlippyMapState extends State<SlippyMap>
                   ),
                 ],
               ),
+              if (tags.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, bottom: 2),
+                  child: Wrap(
+                    spacing: 5,
+                    runSpacing: 5,
+                    children: [
+                      for (final t in tags)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: t == 'Keeps your messages' || t == 'Archiver'
+                                ? const Color(0x33FFC107)
+                                : const Color(0x1FFFFFFF),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color: t == 'Keeps your messages' || t == 'Archiver'
+                                    ? const Color(0xAAFFC107)
+                                    : const Color(0xFF30363d)),
+                          ),
+                          child: Text(t,
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: t == 'Keeps your messages' || t == 'Archiver'
+                                      ? const Color(0xFFFFC107)
+                                      : const Color(0xFFc9d1d9))),
+                        ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 4),
-              // Coordinates with a copy button.
+              // Coordinates with a copy button (not for a station: its popup
+              // is about the station).
+              if (showCoords)
               Padding(
                 padding: const EdgeInsets.only(top: 3),
                 child: Row(
@@ -1172,7 +1278,16 @@ class _SlippyMapState extends State<SlippyMap>
               ),
               if (heard != null)
                 _popupRow(Icons.schedule, tr('wapp_host.maps.last_heard', {'time': _relativeTime(heard)})),
-              if (detail.isNotEmpty) _popupRow(Icons.message, detail),
+              if (detail.isNotEmpty)
+                showCoords
+                    ? _popupRow(Icons.message, detail)
+                    : Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(detail,
+                            maxLines: 9,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Color(0xFFb1bac4), fontSize: 12, height: 1.35)),
+                      ),
               // What the wapp offers from here (`actions` on the marker):
               // the host sends marker_action with the marker and the action.
               if (actions.isNotEmpty)
@@ -1313,14 +1428,53 @@ class _SlippyMapState extends State<SlippyMap>
     ];
   }
 
-  /// A group: a bubble with how many (yellow for archivers, orange for the
-  /// rest). A tap zooms in to the level where it comes apart, centred on
-  /// it, the markers sliding out as it goes; when no zoom would part it
-  /// (one point, or the deepest zoom) it fans out around its point.
+  /// A group: a bubble with how many, in the app's accent; a group of
+  /// archivers is the archiver's dark disc with its gold rim and mark, and
+  /// how many on a gold badge (the portal's). A tap zooms in to the level
+  /// where it comes apart, centred on it, the markers sliding out as it
+  /// goes; when no zoom would part it (one point, or the deepest zoom) it
+  /// fans out around its point. A long press always fans it out.
   Widget _buildCluster(Offset at, Offset focus, int lvl, int i, ClusterNode n) {
     final count = n.count;
     final arch = n.group == 1;
-    final sz = count > 99 ? 42.0 : 36.0;
+    final cs = Theme.of(context).colorScheme;
+    final sz = arch ? 32.0 : (count > 99 ? 40.0 : count > 9 ? 34.0 : 30.0);
+    final label = count > 999 ? '${(count / 1000).toStringAsFixed(count < 9950 ? 1 : 0)}k' : '$count';
+    final Widget body = arch
+        ? Stack(clipBehavior: Clip.none, children: [
+            _archDisc(sz, filled: false),
+            Positioned(
+              right: -8,
+              bottom: -6,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 18),
+                height: 18,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFC107),
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: const Color(0xFF141312), width: 1.5),
+                ),
+                // 1500 is 1.5k, as the portal's map says it.
+                child: Text(label,
+                    style: const TextStyle(color: Color(0xFF141312), fontSize: 10.5, fontWeight: FontWeight.w800)),
+              ),
+            ),
+          ])
+        : Container(
+            decoration: BoxDecoration(
+              color: cs.primary,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: cs.primary.withAlpha(90), spreadRadius: 5),
+                const BoxShadow(color: Colors.black54, blurRadius: 5, offset: Offset(0, 1)),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: Text(label,
+                style: TextStyle(color: cs.onPrimary, fontWeight: FontWeight.w800, fontSize: count > 99 ? 11.5 : 13)),
+          );
     return Positioned(
       key: ValueKey('cluster_${lvl}_$i'),
       left: at.dx - sz / 2,
@@ -1343,71 +1497,68 @@ class _SlippyMapState extends State<SlippyMap>
           final c = _viewSize.center(Offset.zero);
           _easeTo(ez.toDouble(), focus, c - focus);
         },
-        child: Container(
-          decoration: BoxDecoration(
-            color: arch ? const Color(0xFFFFC107) : const Color(0xE6FB8C00),
-            shape: BoxShape.circle,
-            border: Border.all(color: arch ? const Color(0xFF1A1A1A) : Colors.white, width: 2),
-            boxShadow: [
-              const BoxShadow(color: Colors.black54, blurRadius: 4),
-              if (arch) const BoxShadow(color: Color(0xFFFFC107), spreadRadius: 3),
-            ],
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            // 1500 is 1.5k, as the portal's map says it.
-            count > 999 ? '${(count / 1000).toStringAsFixed(count < 9950 ? 1 : 0)}k' : '$count',
-            style: TextStyle(
-              color: arch ? const Color(0xFF1A1A1A) : Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: count > 99 ? 11 : 13,
-            ),
-          ),
-        ),
+        child: body,
       ),
     );
   }
 
-  /// One marker drawn at [at] (its point, or its foot in a fan): its label,
-  /// and a pin whose tip is the point, or for an archiver (kind "archive")
-  /// the portal's yellow square with the archive mark, centred on it. The
-  /// [chosen] one (its popup open) is larger and ringed.
+  /// The archiver's mark (the portal's): a dark disc with a gold rim and
+  /// the archive drawn in gold; [filled] (it keeps this phone's messages)
+  /// gold with the archive in dark.
+  Widget _archDisc(double sz, {required bool filled, bool chosen = false}) => Container(
+        width: sz,
+        height: sz,
+        decoration: BoxDecoration(
+          color: filled ? const Color(0xFFFFC107) : const Color(0xFF141312),
+          shape: BoxShape.circle,
+          border: Border.all(color: filled ? const Color(0xFF141312) : const Color(0xFFFFC107), width: 2),
+          boxShadow: [
+            if (filled) const BoxShadow(color: Color(0xFFFFC107), spreadRadius: 2),
+            BoxShadow(color: chosen ? Colors.white : Colors.black54, blurRadius: chosen ? 10 : 5, offset: const Offset(0, 1)),
+          ],
+        ),
+        child: Icon(Icons.inventory_2_outlined,
+            size: sz * 0.52, color: filled ? const Color(0xFF141312) : const Color(0xFFFFC107)),
+      );
+
+  /// One marker drawn at [at] (its point, or its foot in a fan), centred on
+  /// it: a station a dot in its colour, an archiver (kind "archive") the
+  /// gold-rimmed disc, filled when `filled` (it keeps this phone's
+  /// messages); its callsign above in map lettering (white with a dark
+  /// outline, no box). The [chosen] one (its popup open) is larger and
+  /// ringed.
   Widget _buildMarker(Map<String, dynamic> m, Offset at, {bool chosen = false}) {
     final id = m['id']?.toString() ?? '';
     final label = (m['label'] as String?) ?? id;
     final color = _markerColor(m['color']);
     final arch = _isArchive(m);
-    final iconSz = arch ? (chosen ? 34.0 : 28.0) : (chosen ? 36.0 : 28.0);
-    final labelH = label.isNotEmpty ? 18.0 : 0.0;
-    final pinW = max(iconSz + 8, label.isNotEmpty ? _labelW(label) : 0.0);
+    final sz = arch ? (chosen ? 34.0 : 28.0) : (chosen ? 18.0 : 13.0);
+    final labelH = label.isNotEmpty ? 16.0 : 0.0;
+    final boxW = max(sz + 16, label.isNotEmpty ? _labelW(label) : 0.0);
     final Widget mark = arch
-        ? Container(
-            width: iconSz,
-            height: iconSz,
-            margin: const EdgeInsets.only(top: 2),
+        ? _archDisc(sz, filled: m['filled'] == true, chosen: chosen)
+        : Container(
+            width: sz,
+            height: sz,
             decoration: BoxDecoration(
-              color: const Color(0xFFFFC107),
-              borderRadius: BorderRadius.circular(7),
-              border: Border.all(color: const Color(0xFF1A1A1A), width: 2),
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(color: chosen ? Colors.white : const Color(0xFF0D1117), width: chosen ? 2.5 : 2),
               boxShadow: [
-                BoxShadow(color: chosen ? Colors.white : Colors.black54, blurRadius: chosen ? 8 : 4),
+                BoxShadow(color: chosen ? color.withAlpha(140) : Colors.black54, blurRadius: chosen ? 10 : 3, spreadRadius: chosen ? 3 : 0),
               ],
             ),
-            child: Icon(Icons.inventory_2_outlined, size: iconSz * 0.6, color: const Color(0xFF1A1A1A)),
-          )
-        : Icon(Icons.location_on,
-            color: color,
-            size: iconSz,
-            shadows: [
-              Shadow(color: chosen ? Colors.white : Colors.black54, blurRadius: chosen ? 6 : 3),
-            ]);
-    // A pin's tip is its point; an archiver's square is centred on it.
-    final top = arch ? at.dy - iconSz / 2 - 2 - labelH : at.dy - iconSz - labelH;
+          );
+    const halo = [
+      Shadow(color: Color(0xFF0D1117), blurRadius: 2),
+      Shadow(color: Color(0xFF0D1117), blurRadius: 4),
+      Shadow(color: Color(0xFF0D1117), offset: Offset(0, 1), blurRadius: 2),
+    ];
     return Positioned(
       key: ValueKey('pin_$id'),
-      left: at.dx - pinW / 2,
-      top: top,
-      width: pinW,
+      left: at.dx - boxW / 2,
+      top: at.dy - sz / 2 - labelH - 2,
+      width: boxW,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
@@ -1420,28 +1571,23 @@ class _SlippyMapState extends State<SlippyMap>
             mainAxisSize: MainAxisSize.min,
             children: [
               if (labelH > 0)
-                Container(
+                SizedBox(
                   height: labelH,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: chosen
-                        ? (arch ? const Color(0xFFFFC107) : color).withAlpha(240)
-                        : Colors.black.withAlpha(204),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
                   child: Text(
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        color: chosen && arch ? const Color(0xFF1A1A1A) : Colors.white,
+                        color: chosen ? (arch ? const Color(0xFFFFC107) : Colors.white) : const Color(0xFFE6EDF3),
                         fontSize: 10,
                         height: 1.1,
-                        fontWeight: FontWeight.bold),
+                        letterSpacing: 0.3,
+                        fontWeight: FontWeight.w800,
+                        shadows: halo),
                   ),
                 ),
+              const SizedBox(height: 2),
               mark,
             ],
           ),
@@ -1804,10 +1950,10 @@ class _SlippyMapState extends State<SlippyMap>
               // sit bottom-left and the zoom control is higher up, so this
               // corner is clear; when the geo-chat FAB is showing (plain map,
               // chat minimised) we shift left of it so they don't overlap.
-              if (widget.onExpand != null)
+              if (widget.onExpand != null && widget.bottomInset < h - 150)
                 Positioned(
                   right: (widget.embedChat && !_chatVisible) ? 64 : 12,
-                  bottom: 12,
+                  bottom: 12 + widget.bottomInset,
                   child: _mapIconButton(
                     icon: widget.isFullscreen
                         ? Icons.fullscreen_exit
@@ -1933,7 +2079,14 @@ class _SlippyMapState extends State<SlippyMap>
               // FAB \u2014 where phone-map users expect them. Landscape: left,
               // vertically centred so they stay clear of the right-side chat
               // panel.
-              if (w < 600)
+              if (w < 600 && widget.bottomInset > 0)
+                // Over a drawer: just above its edge, moving with it, gone
+                // when it covers the map.
+                if (widget.bottomInset < h - 150)
+                  Positioned(right: 12, bottom: widget.bottomInset + 14, child: _buildZoomControl())
+                else
+                  const SizedBox.shrink()
+              else if (w < 600)
                 Positioned(right: 12, bottom: 84, child: _buildZoomControl())
               else
                 Positioned(
@@ -1942,7 +2095,9 @@ class _SlippyMapState extends State<SlippyMap>
                   child: _buildZoomControl(),
                 ),
               // Coordinates — always bottom-left, leaving the bottom-right
-              // corner for the full-screen toggle in both orientations.
+              // corner for the full-screen toggle in both orientations. Not
+              // over a drawer: a map of places has no use for them there.
+              if (widget.bottomInset == 0)
               Positioned(
                 left: 12,
                 bottom: 12,
@@ -1977,11 +2132,19 @@ class _SlippyMapState extends State<SlippyMap>
           if (widget.onChatSend != null) ..._buildChatOverlay(w, h)
           // A map without chat still shows its status pills (a count, an
           // "Updated" time), at the top, under the search bar if any.
-          else if (widget.status.isNotEmpty)
+          else if (widget.status.isNotEmpty || widget.filter.isNotEmpty)
             Positioned(
                 top: widget.showSearch ? 64 : 12,
                 left: 12,
-                child: _statusPills()),
+                right: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (widget.filter.isNotEmpty) _filterBar(),
+                    if (widget.filter.isNotEmpty && widget.status.isNotEmpty) const SizedBox(height: 6),
+                    if (widget.status.isNotEmpty) _statusPills(),
+                  ],
+                )),
         ],
       );
     });

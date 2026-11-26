@@ -613,6 +613,8 @@ class _WappPageState extends State<WappPage>
   // Transport/status indicators shown on the map, pushed by the wapp via
   // `ui.map.status` (e.g. APRS-IS connected, BLE active). Each {id,label,on}.
   final List<Map<String, dynamic>> _mapStatus = [];
+  // The filter over the map (`ui.map.filter`): [{id,label,count,on}].
+  final List<Map<String, dynamic>> _mapFilter = [];
 
   // Geo-chat panel open/closed (owned here so the unread badge survives tab
   // switches) and the count of Live messages received while it was closed.
@@ -1958,6 +1960,16 @@ class _WappPageState extends State<WappPage>
               }
             }
           }
+          changed = true;
+        } else if (type == 'ui.map.filter') {
+          // The segments over the map (the portal's All / Archivers /
+          // People / Other); a tap sends {"command":"map_filter","id"}.
+          _mapFilter
+            ..clear()
+            ..addAll([
+              for (final it in (data['items'] as List? ?? const []))
+                if (it is Map) Map<String, dynamic>.from(it),
+            ]);
           changed = true;
         } else if (type == 'ui.map.radius') {
           // Coverage circle: centre (my station) + filter radius (km).
