@@ -1170,14 +1170,29 @@
 "id": "e48b19"
 },
 {
-"wire": "t:service f:X3ARC1 serve:archive source:solar backup:battery uplink:satellite plan:unlimited ts:2026-11-26_09:00:00 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
-"bytes": 180,
-"id": "7d1f62"
+"wire": "t:observation f:X3ARC1 link:lan serve:archive source:solar backup:battery uplink:satellite plan:unlimited ts:2026-11-26_09:00:00 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 193,
+"id": "510288"
 },
 {
 "wire": "t:observation f:X1QZ3N link:lan peers:0 source:grid backup:battery uplink:cellular plan:limited ts:2026-11-26_09:00:00 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 "bytes": 183,
 "id": "67876f"
+},
+{
+"wire": "t:service f:X3ARC1 serve:archive,files count:48211 file:qA7dTf2mWx9bK4pZcV0yLuJ3gRhN8sE5iDoQ6vXaB1M.xdir room:yes size:50GB ts:2026-11-26_09:00:00 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 211,
+"id": "ea108f"
+},
+{
+"wire": "t:observation f:X3ARC1 link:lan serve:archive,files room:yes source:solar backup:battery uplink:satellite plan:unlimited uptime:4day lifetime:210day bw:2MB/s ts:2026-11-26_09:00:00 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 245,
+"id": "2634d6"
+},
+{
+"wire": "t:command f:X1QZ3N d:X3ARC1 ts:2026-11-26_10:00:00 cmd:history kind:service since:2026-11-26_09:00:00 sig:KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+"bytes": 166,
+"id": "da582e"
 },
 {
 "wire": "t:channel f:X1QZ3N freq:145.500MHz mode:fm kind:listen since:2026-08-08_18:00:00 until:2026-08-08_22:00:00 ts:2026-08-08_14:26:40",

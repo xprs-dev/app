@@ -1803,3 +1803,21 @@ stores the word itself. The word lists live beside the composer that airs
 them (`kXprsSourceChoices` etc. in core `xprs_conditions.dart`), so the
 settings and the wire cannot drift. Reuse it for any setting that is an XPRS
 enum (`site:`, `room:`).
+
+## Byte sizes and rates on the wire — `xprsStepBytes` / `xprsStepRate` / `xprsParseBytes`
+
+`core/lib/src/services/xprs/xprs_conditions.dart`. A quantity a station
+announces and others cache (`size:`, `bw:`, XPRS.md 13.0.5) is rounded DOWN
+to 1, 2 or 5 times a power of ten in decimal units (`50GB`, `2MB/s`), so it
+never overstates and does not change on every megabyte. Show it to a person
+as the same string: `trBytes` is binary and would turn `50GB` into "46.6 GB".
+
+## The archivers this station knows — `xprsKnownArchivers()`
+
+`core/lib/src/services/xprs/xprs_archivers_known.dart`. The cached
+announcements (`t:service` plus the archiver's own observation) read
+together, best first by `xprsCompareArchivers`. `XprsKnownArchiver.from` is
+pure for tests. It reads the store (one query plus one per archiver), so a
+loop that runs every minute keeps a copy and re-reads it every ten minutes
+(`MeshService._knownArchivers`); a page reads it on refresh.
+

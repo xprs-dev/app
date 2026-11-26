@@ -112,9 +112,10 @@ void main() {
 
     tearDown(() => XprsDirectoryAnnouncer.instance.debugReset());
 
-    test('a signed t:service naming the file, only when the listing changed, every ten minutes',
+    test('a signed t:service naming the file: when the listing or the offer changed, and hourly',
         () async {
       final ann = XprsDirectoryAnnouncer.instance..debugReset();
+      String? room;
       var entries = [const XprsDirectoryEntry('X1AAAA', t0)];
       final stored = <(String sha, String? previous)>[];
       final aired = <String>[];
@@ -127,7 +128,8 @@ void main() {
         ..signingKey = (() => key)
         ..serve = (() => 'archive,files')
         ..dial = (() => 'arc1.example.org')
-        ..room = (() => null)
+        ..room = (() => room)
+        ..size = (() => '50GB')
         ..store = ((bytes, sha, previous) => stored.add((sha, previous)))
         ..air = ((w) async => aired.add(w))
         ..deposit = deposited.add;
@@ -141,6 +143,9 @@ void main() {
       expect(p['count'], '212', reason: 'records held, never callsigns (13.0.1)');
       expect(p['dial'], 'arc1.example.org');
       expect(p.has('room'), isFalse);
+      expect(p['size'], '50GB', reason: 'free space offered (13.0.5)');
+      expect(p.has('source'), isFalse,
+          reason: 'what keeps it going rides the observation');
       expect(p['ts'], xprsNowTs(t0));
       expect(xprsVerify(p, XprsCrypto.publicKeyXOnly(key)), XprsSigState.verified);
       expect(XprsDirectory.announces(p), isTrue);
@@ -150,7 +155,7 @@ void main() {
       expect(aired, [wire]);
       expect(deposited, [wire]);
 
-      // Unchanged: nothing goes out, however long it has been.
+      // Unchanged, within the hour: nothing goes out.
       expect(await ann.tick(nowMs: t0 + 11 * 60000), isNull);
       expect(ann.unchanged, 1);
       // Changed, but inside ten minutes of the last look: not yet.
@@ -162,10 +167,21 @@ void main() {
       expect(stored, hasLength(2));
       expect(stored.last.$2, sha, reason: 'the previous listing is dropped');
       expect(ann.published, 2);
+      // Unchanged for an hour: announced again, so a reader can tell a
+      // quiet archiver from a gone one (13.0.5).
+      expect(await ann.tick(nowMs: t0 + 33 * 60000), isNull);
+      final beat = await ann.tick(nowMs: t0 + 83 * 60000);
+      expect(beat, isNotNull);
+      expect(stored, hasLength(2), reason: 'the same listing, not stored again');
+      // The offer changed: announced at the next look, not in an hour.
+      room = 'no';
+      final full = await ann.tick(nowMs: t0 + 94 * 60000);
+      expect(XprsPacket.parse(full!)!['room'], 'no');
+      expect(ann.published, 4);
       // Not a public archiver: a directory is nobody's business.
       ann.isPublic = () => false;
       entries = [const XprsDirectoryEntry('X1CCCC', t0)];
-      expect(await ann.tick(nowMs: t0 + 60 * 60000, force: true), isNull);
+      expect(await ann.tick(nowMs: t0 + 200 * 60000, force: true), isNull);
     });
   });
 

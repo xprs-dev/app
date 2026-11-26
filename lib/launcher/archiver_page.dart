@@ -25,6 +25,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:xprs_core/src/services/social/node_role_api.dart';
+import 'package:xprs_core/src/services/xprs/xprs_archivers_known.dart';
+import 'package:xprs_core/src/services/xprs/xprs_conditions.dart';
 import 'package:xprs_core/src/services/xprs/xprs_names.dart';
 import 'package:xprs_core/src/services/xprs/xprs_vocab.dart' show xprsFmtDuration;
 import 'package:xprs_core/src/profile/device_identity.dart';
@@ -64,6 +66,7 @@ class _ArchiverPageState extends State<ArchiverPage> {
   final _search = TextEditingController();
   List<Map<String, Object>> _found = const [];
   List<ArchiverDay> _days = const [];
+  List<XprsKnownArchiver> _known = const [];
   int _cared = 0;
 
   PreferencesService? get _prefs => PreferencesService.instanceSync;
@@ -127,6 +130,7 @@ class _ArchiverPageState extends State<ArchiverPage> {
       _dir = _decode(NodeRoleApi.instance.statusJson());
       _days = ArchiverStats.instance.days;
       _cared = archive.caredFor();
+      _known = xprsKnownArchivers();
     });
   }
 
@@ -650,43 +654,65 @@ class _ArchiverPageState extends State<ArchiverPage> {
         _ => bearer,
       };
 
-  /// What is known of one archiver: last heard and how, then what it says of
-  /// itself (uptime, records, power and internet, room).
+  /// What is known of one archiver, as up to three lines: when it was last
+  /// heard (or announced, when only the cache knows it), what it offers, and
+  /// what keeps it going (13.0.5). The cache [k] is the archiver's own
+  /// announcement; [st] and [rns] are what this device heard itself.
   List<String> _facts(String call, XprsStation? st,
-      ({String callsign, int lastSeenMs, int uptimeS})? rns) {
-    final lastMs = [st?.lastMs ?? 0, rns?.lastSeenMs ?? 0]
+      ({String callsign, int lastSeenMs, int uptimeS})? rns,
+      XprsKnownArchiver? k) {
+    final heardMs = [st?.lastMs ?? 0, rns?.lastSeenMs ?? 0]
         .reduce((x, y) => x > y ? x : y);
-    final heard = lastMs == 0
-        ? tr('archiver.used.not_heard')
-        : tr('archiver.used.heard', {
-            'ago': timeAgo(DateTime.fromMillisecondsSinceEpoch(lastMs)),
-            'how': _how(st != null && st.lastMs >= (rns?.lastSeenMs ?? 0)
-                ? st.bearer
-                : 'rns'),
-          });
-    final uptime = st?.uptime ??
+    final String when;
+    if (heardMs > 0) {
+      when = tr('archiver.used.heard', {
+        'ago': timeAgo(DateTime.fromMillisecondsSinceEpoch(heardMs)),
+        'how': _how(st != null && st.lastMs >= (rns?.lastSeenMs ?? 0)
+            ? st.bearer
+            : 'rns'),
+      });
+    } else if (k != null && k.announcedMs > 0) {
+      when = tr(k.stale ? 'archiver.used.stale' : 'archiver.used.announced', {
+        'ago': timeAgo(DateTime.fromMillisecondsSinceEpoch(k.announcedMs)),
+      });
+    } else {
+      when = tr('archiver.used.not_heard');
+    }
+    final count = k?.count ?? st?.count;
+    final offer = [
+      if (k?.sizeBytes != null)
+        tr('archiver.used.free', {'size': xprsStepBytes(k!.sizeBytes!)}),
+      if (count != null) tr('archiver.used.records', {'n': _compact(count)}),
+      if (k?.room == false || st?.room == 'no') tr('archiver.status.no_room'),
+    ].join(' · ');
+    final source = k?.source ?? st?.readings['source'];
+    final backup = k?.backup ?? st?.readings['backup'];
+    final uplink = k?.uplink ?? st?.readings['uplink'];
+    final uptime = k?.uptime ??
+        st?.uptime ??
         ((rns?.uptimeS ?? 0) > 0 ? xprsFmtDuration(rns!.uptimeS) : null);
-    final source = st?.readings['source'];
-    final uplink = st?.readings['uplink'];
-    final about = [
-      if (uptime != null) tr('archiver.used.uptime', {'t': uptime}),
-      if (st?.count != null) tr('archiver.used.records', {'n': _compact(st!.count)}),
-      if (source != null && const {'grid', 'solar', 'wind', 'hydro', 'generator'}
-          .contains(source))
-        tr('hardware.energy.$source'),
+    final keeps = [
+      if (source != null)
+        tr(source != 'grid'
+            ? 'hardware.summary.outage.runs'
+            : (backup != null && backup != 'none')
+                ? 'hardware.summary.outage.backup'
+                : 'hardware.summary.outage.stops'),
       if (uplink != null &&
           const {'wifi', 'lan', 'cellular', 'satellite', 'none'}.contains(uplink))
         tr('hardware.internet.$uplink'),
-      if (st?.room == 'no') tr('archiver.status.no_room'),
+      if (k?.bwBytesPerS != null) xprsStepRate(k!.bwBytesPerS!)!,
+      if (uptime != null) tr('archiver.used.uptime', {'t': uptime}),
     ].join(' · ');
-    return [heard, if (about.isNotEmpty) about];
+    return [when, if (offer.isNotEmpty) offer, if (keeps.isNotEmpty) keeps];
   }
 
   Widget _archiverTile(String call, XprsStation? st,
       ({String callsign, int lastSeenMs, int uptimeS})? rns,
+      XprsKnownArchiver? k,
       {required Widget trailing, required bool chosen}) {
     final cs = Theme.of(context).colorScheme;
-    final facts = _facts(call, st, rns);
+    final facts = _facts(call, st, rns, k);
     return ListTile(
       leading: Icon(chosen ? Icons.cloud_done_outlined : Icons.cloud_outlined,
           color: chosen ? cs.primary : cs.onSurfaceVariant),
@@ -706,21 +732,30 @@ class _ArchiverPageState extends State<ArchiverPage> {
     final self = XprsArchive.instance.archiverName.toUpperCase();
     final heard = XprsMonitor.instance.stations;
     final announced = {
+      // arch-ignore: no-core-calls-from-screen a read of who announced, for display; nothing is chosen, sent or fetched
       for (final a in RnsService.instance.announcedArchivers())
         a.callsign.toUpperCase(): a,
     };
     XprsStation? st(String c) => heard[c] ?? heard[c.toUpperCase()];
     Future<void> setList(List<String> v) => _apply({'archivers': v});
+    final known = {for (final k in _known) k.callsign: k};
 
-    // Every other archiver this device knows of: heard announcing
-    // serve:archive, or announced on Reticulum. Most records first.
-    final others = <String>{
+    // Every other archiver this device knows of: from the cache of their
+    // announcements (13.0.5) in the order a station chooses in, then any
+    // heard announcing serve:archive or on Reticulum that the cache does
+    // not hold yet, most records first.
+    final excluded = {self, ...list};
+    final ranked = [
+      for (final k in _known)
+        if (!excluded.contains(k.callsign)) k.callsign,
+    ];
+    final extra = <String>{
       for (final s in heard.values)
         if (s.services.contains('archive')) s.callsign.toUpperCase(),
       ...announced.keys,
-    }..removeWhere((c) => c == self || list.contains(c));
-    final ranked = others.toList()
-      ..sort((x, y) => (st(y)?.count ?? 0).compareTo(st(x)?.count ?? 0));
+    }..removeWhere((c) => excluded.contains(c) || known.containsKey(c));
+    ranked.addAll(extra.toList()
+      ..sort((x, y) => (st(y)?.count ?? 0).compareTo(st(x)?.count ?? 0)));
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
@@ -732,6 +767,7 @@ class _ArchiverPageState extends State<ArchiverPage> {
           for (final c in list) ...[
             const Divider(height: 1),
             _archiverTile(c, st(c), announced[c.toUpperCase()],
+                known[c.toUpperCase()],
                 chosen: true,
                 trailing: IconButton(
                   tooltip: tr('archiver.mine.remove'),
@@ -746,6 +782,7 @@ class _ArchiverPageState extends State<ArchiverPage> {
           for (var i = 0; i < ranked.length; i++) ...[
             if (i > 0) const Divider(height: 1),
             _archiverTile(ranked[i], st(ranked[i]), announced[ranked[i]],
+                known[ranked[i]],
                 chosen: false,
                 trailing: TextButton(
                   onPressed: () => setList([...list, ranked[i]]),

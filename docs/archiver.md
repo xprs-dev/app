@@ -95,6 +95,20 @@ What crosses between archivers:
 | `t:mailbox hold:` | who chose whom to hold their mail |
 | `t:identity` (bulk, `kind:identity`) | who is called what: people, stations, groups |
 
+**Advertising an archiver (13.0.5).** What it offers rides `t:service`
+(`serve:`, `count:`, `room:`, `size:` = free space still offered, stepped
+down to 1/2/5 x 10^n); what keeps it going rides its own `t:observation`
+(`source:`, `backup:`, `uplink:`, `plan:`, `uptime:`, `lifetime:`, `bw:` =
+measured internet speed). Two packets because one would pass 250 bytes. The
+service goes out when the directory or the offer changes and every hour
+regardless; older than three hours is stale. Every station keeps the newest
+`t:service` of each station (`kXprsCoreFollowedKinds`, so the catch-up asks
+its archivers `kind:service` with a watermark) and the newest observation of
+each archiver (`xprsIsArchiverObservation`); a `kind:service` answer carries
+each archiver's observation right after its announcement. `xprsKnownArchivers`
+reads the cache in choosing order (`xprsCompareArchivers`), the Archivers we
+use tab lists it, and `XprsArchiverChoice` ranks offers by it.
+
 **Gossip** is reachability only. It has three layers, consulted in order:
 
 - **L1, declared:** the station's own `hold:` list.

@@ -447,6 +447,31 @@ void main() {
         isEmpty);
   });
 
+  test('kind:service carries each archiver\'s newest observation after it (13.0.5)',
+      () {
+    for (final w in [
+      't:service f:X3ARC1 serve:archive,files count:4 room:yes size:50GB ts:2026-08-13_10:00:00',
+      't:observation f:X3ARC1 link:lan serve:archive source:solar uplink:satellite ts:2026-08-13_09:00:00',
+      't:observation f:X3ARC1 link:lan serve:archive source:grid uplink:wifi ts:2026-08-13_08:00:00',
+      't:service f:X3RLY1 serve:relay ts:2026-08-13_10:01:00',
+      't:observation f:X3RLY1 link:lan ts:2026-08-13_10:01:00',
+    ]) {
+      a.admit(_p(w), bearer: 'ble', nowMs: 1000);
+    }
+    a.flush(nowMs: 100000);
+    final page = srv.serveInline(
+        _p('t:command f:X1BBB d:X1SELF ts:2026-08-13_12:00:00 cmd:history '
+            'kind:service'),
+        selfBase: 'X1SELF');
+    final body = [for (final w in page.skip(1).take(page.length - 2)) _p(w)];
+    expect([for (final p in body) '${p.type} ${p['f']}'], [
+      'service X3RLY1',
+      'service X3ARC1',
+      'observation X3ARC1',
+    ], reason: 'a relay\'s observation is not an archiver\'s; only the newest');
+    expect(body.last['source'], 'solar');
+  });
+
   test('a freely served digest (the firmware mirror) is answered past the budget',
       () {
     const sha =

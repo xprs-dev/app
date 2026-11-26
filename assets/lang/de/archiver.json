@@ -117,5 +117,8 @@
   "archiver.how.bluetooth": "Bluetooth",
   "archiver.how.radio": "Funk",
   "archiver.requests.files": "Dateianfragen pro Stunde",
-  "archiver.requests.bandwidth": "Dateiverkehr pro Stunde"
+  "archiver.requests.bandwidth": "Dateiverkehr pro Stunde",
+  "archiver.used.announced": "Gemeldet {ago}",
+  "archiver.used.stale": "Nicht mehr gemeldet seit {ago}",
+  "archiver.used.free": "{size} frei"
 }
