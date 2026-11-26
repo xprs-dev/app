@@ -1,36 +1,59 @@
-// The wapp map with a region's stations on it: a crowd is grouped into
-// count bubbles in one pass (no marker against every other), stations off
-// screen cost nothing, and a marker's popup offers the wapp's actions.
+// The wapp map with a region's stations on it, as Leaflet.markercluster's
+// map behaves on the xprs.dev portal: groups worked out per zoom level (a
+// pan never regroups them), a tapped group zooms in to where it comes apart
+// with its markers sliding out, stations on one point fan out around it on
+// legs, archivers drawn apart and above the rest, and a marker's popup
+// offering the wapp's actions.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xprs/wapp/geoui/widgets/slippy_map.dart';
 
-// A pin is keyed pin_<id> whether or not its label is shown.
-int pins() => find
-    .byWidgetPredicate((w) => w.key is ValueKey && '${(w.key as ValueKey).value}'.startsWith('pin_'))
+// A pin is keyed pin_<id>.
+Finder pinsF() => find.byWidgetPredicate(
+    (w) => w.key is ValueKey && '${(w.key as ValueKey).value}'.startsWith('pin_'));
+int pins() => pinsF().evaluate().length;
+
+List<int> bubbles() => find
+    .byType(Text)
     .evaluate()
-    .length;
+    .map((e) => (e.widget as Text).data ?? '')
+    .map(int.tryParse)
+    .whereType<int>()
+    .toList();
 
 Future<void> settle(WidgetTester t) async {
-  for (var i = 0; i < 4; i++) {
+  for (var i = 0; i < 8; i++) {
     await t.pump(const Duration(milliseconds: 100));
   }
 }
 
+// The test map opens on Lisbon at zoom 10: a degree of longitude is
+// 256 * 1024 / 360 px.
+const k = 256 * 1024 / 360;
+const lat0 = 38.7223, lon0 = -9.1393;
+
 void main() {
   Future<void> pump(WidgetTester t, List<Map<String, dynamic>> markers,
-      {void Function(String)? onTap, void Function(String, String)? onAction}) async {
-    // The test map opens on Lisbon (38.7223, -9.1393) at zoom 10.
+      {void Function(String)? onTap,
+      void Function(String, String)? onAction,
+      void Function(List<String>)? onHere,
+      String? openId,
+      int openSeq = 0,
+      int zoom = 10}) async {
     t.view.physicalSize = const Size(400, 700);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
         body: slippyMapForTest(
+          zoom: zoom,
           onViewportChanged: (_, __, ___) {},
           markers: markers,
           onMarkerTap: onTap,
           onMarkerAction: onAction,
+          onMarkersHere: onHere,
+          openId: openId,
+          openSeq: openSeq,
         ),
       ),
     ));
@@ -50,30 +73,34 @@ void main() {
     final sw = Stopwatch()..start();
     await pump(t, markers);
     sw.stop();
-    // Every station is counted in some bubble, none drawn twice.
-    final texts = find.byType(Text).evaluate().map((e) => (e.widget as Text).data ?? '').toList();
-    final counts = texts.map(int.tryParse).whereType<int>().fold<int>(0, (a, b) => a + b);
-    final singles = pins();
-    expect(counts + singles, 1500);
-    expect(singles, lessThan(40), reason: 'a crowd is grouped, not 1500 pins');
+    expect(bubbles().fold<int>(0, (a, b) => a + b) + pins(), 1500, reason: 'each counted once');
+    expect(pins(), lessThan(40), reason: 'a crowd is grouped, not 1500 pins');
     expect(sw.elapsedMilliseconds, lessThan(5000));
   });
 
   testWidgets('a bubble of thousands says 1.5k', (t) async {
     await pump(t, [
-      for (var i = 0; i < 1500; i++)
-        {'id': 'pl:X3K$i', 'lat': 38.7223, 'lon': -9.1393, 'label': 'X3K$i'},
+      for (var i = 0; i < 1500; i++) {'id': 'pl:X3K$i', 'lat': lat0, 'lon': lon0, 'label': 'X3K$i'},
     ]);
     expect(find.text('1.5k'), findsOneWidget);
   });
 
   testWidgets('stations far off screen are not placed', (t) async {
     await pump(t, [
-      {'id': 'pl:HERE', 'lat': 38.7223, 'lon': -9.1393, 'label': 'HERE'},
+      {'id': 'pl:HERE', 'lat': lat0, 'lon': lon0, 'label': 'HERE'},
       {'id': 'pl:FAR', 'lat': 60.0, 'lon': 20.0, 'label': 'FAR'},
     ]);
     expect(find.text('HERE'), findsOneWidget);
     expect(find.text('FAR'), findsNothing);
+  });
+
+  testWidgets('every pin keeps its label', (t) async {
+    await pump(t, [
+      {'id': 'pl:LEFT', 'lat': lat0, 'lon': lon0, 'label': 'LEFTSTATION'},
+      {'id': 'pl:RIGHT', 'lat': lat0, 'lon': lon0 + 70 / k, 'label': 'RIGHTSTATION'},
+    ]);
+    expect(find.text('LEFTSTATION'), findsOneWidget);
+    expect(find.text('RIGHTSTATION'), findsOneWidget);
   });
 
   testWidgets("a marker's popup offers the wapp's actions", (t) async {
@@ -81,8 +108,8 @@ void main() {
     await pump(t, [
       {
         'id': 'pl:X3ABC',
-        'lat': 38.7223,
-        'lon': -9.1393,
+        'lat': lat0,
+        'lon': lon0,
         'label': 'X3ABC',
         'detail': 'Hill · 5 min ago',
         'actions': [
@@ -94,100 +121,155 @@ void main() {
     await t.tap(find.text('X3ABC'));
     await settle(t);
     expect(tapped, ['pl:X3ABC']);
-    expect(find.text('Message'), findsOneWidget);
     await t.tap(find.text('Message'));
     await settle(t);
     expect(acted, ['pl:X3ABC/message']);
     expect(find.text('Open'), findsNothing, reason: 'the popup closes');
   });
 
-  // At zoom 10 a degree of longitude is 256 * 1024 / 360 px.
-  const k = 256 * 1024 / 360;
-  const lat0 = 38.7223, lon0 = -9.1393;
-
-  testWidgets('two pins either side of a grid line are one bubble, not two on top of each other', (t) async {
-    // A pair 10 px apart, moved 3 px at a time across 70 px: it crosses a
-    // 50 px square's edge on the way, and is never drawn as two pins.
-    for (var d = 0.0; d < 70; d += 3) {
-      await pump(t, [
-        {'id': 'pl:A', 'lat': lat0, 'lon': lon0 + d / k, 'label': 'AAAAAA'},
-        {'id': 'pl:B', 'lat': lat0, 'lon': lon0 + (d + 10) / k, 'label': 'BBBBBB'},
-      ]);
-      expect(pins(), 0, reason: 'at +$d px the two overlapping pins were both drawn');
-      expect(find.text('2'), findsOneWidget);
+  testWidgets('a pan keeps the same groups (they are per zoom, not per frame)', (t) async {
+    final markers = [
+      for (var i = 0; i < 300; i++)
+        {'id': 'pl:P$i', 'lat': lat0 - 0.1 + (i % 20) * 0.01, 'lon': lon0 - 0.1 + (i ~/ 20) * 0.013, 'label': 'P$i'},
+    ];
+    await pump(t, markers);
+    final before = bubbles()..sort();
+    // Pan a little in steps: the groups ride with the map.
+    for (var dx = 0; dx < 3; dx++) {
+      await t.drag(find.byType(SlippyMap), const Offset(13, 7));
+      await t.pump(const Duration(milliseconds: 50));
+      final now = bubbles()..sort();
+      expect(now, before, reason: 'regrouped by a ${(dx + 1) * 13} px pan');
     }
   });
 
-  testWidgets('a grid of pins is not chained into one bubble', (t) async {
-    await pump(t, [
-      for (var i = 0; i < 6; i++)
-        for (var j = 0; j < 6; j++)
-          {'id': 'pl:G$i$j', 'lat': lat0 + j * 45 / k, 'lon': lon0 + i * 45 / k, 'label': 'G$i$j'},
-    ]);
-    final texts = find.byType(Text).evaluate().map((e) => (e.widget as Text).data ?? '');
-    final counts = texts.map(int.tryParse).whereType<int>().toList();
-    expect(counts.fold<int>(0, (a, b) => a + b) + pins(), 36);
-    expect(counts.every((n) => n <= 9), isTrue, reason: 'no bubble swallows the grid: $counts');
-  });
-
-  testWidgets('a label that would cover another is left off, its pin stays and still opens', (t) async {
-    final tapped = <String>[];
-    await pump(t, [
-      {'id': 'pl:LEFT', 'lat': lat0, 'lon': lon0, 'label': 'LEFTSTATION'},
-      // 60 px to the right: apart as pins, not as labels.
-      {'id': 'pl:RIGHT', 'lat': lat0, 'lon': lon0 + 60 / k, 'label': 'RIGHTSTATION'},
-    ], onTap: tapped.add);
-    expect(pins(), 2);
-    final labels = find.text('LEFTSTATION').evaluate().length + find.text('RIGHTSTATION').evaluate().length;
-    expect(labels, 1, reason: 'one label kept, the one that would cover it dropped');
-    final hidden = find.text('LEFTSTATION').evaluate().isEmpty ? 'LEFT' : 'RIGHT';
-    await t.tap(find.byKey(ValueKey('pin_pl:$hidden')));
-    await settle(t);
-    expect(tapped, ['pl:$hidden']);
-    expect(find.text('${hidden}STATION'), findsWidgets, reason: 'the chosen pin names itself');
-  });
-
-  testWidgets('a bubble of pins on one point lists them; a row opens that pin', (t) async {
-    final tapped = <String>[];
-    await pump(t, [
-      for (final c in ['X3ONE', 'X3TWO', 'X3SIX'])
-        {'id': 'pl:$c', 'lat': lat0, 'lon': lon0, 'label': c, 'detail': '$c detail'},
-    ], onTap: tapped.add);
-    await t.tap(find.text('3'));
-    await settle(t);
-    expect(find.byKey(const ValueKey('cluster_list')), findsOneWidget);
-    expect(find.text('3 here'), findsOneWidget);
-    expect(find.text('X3TWO detail'), findsOneWidget);
-    await t.tap(find.byKey(const ValueKey('cluster_row_pl:X3TWO')));
-    await settle(t);
-    expect(tapped, ['pl:X3TWO']);
-    expect(find.byKey(const ValueKey('cluster_list')), findsNothing);
-  });
-
-  testWidgets('a bubble that zooming can split zooms in on it, far enough to split it', (t) async {
+  testWidgets('a group tapped zooms in where it comes apart, the markers sliding out', (t) async {
     await pump(t, [
       {'id': 'pl:P1', 'lat': lat0, 'lon': lon0 + 100 / k, 'label': 'P1'},
       {'id': 'pl:P2', 'lat': lat0, 'lon': lon0 + 106 / k, 'label': 'P2'},
     ]);
+    expect(pins(), 0);
     await t.tap(find.text('2'));
-    for (var i = 0; i < 10; i++) {
-      await t.pump(const Duration(milliseconds: 100));
+    // The bubble rides the zoom in; at the level where it parts, the two
+    // come out of it, close together still, and slide apart.
+    for (var i = 0; i < 6; i++) {
+      await t.pump(const Duration(milliseconds: 60));
     }
-    expect(find.text('2'), findsNothing);
-    expect(pins(), 2);
+    expect(pins(), 2, reason: 'out of the bubble as the zoom crosses its level');
+    final mid = (t.getCenter(find.byKey(const ValueKey('pin_pl:P1'))) -
+            t.getCenter(find.byKey(const ValueKey('pin_pl:P2'))))
+        .distance;
+    await settle(t);
+    final end = (t.getCenter(find.byKey(const ValueKey('pin_pl:P1'))) -
+            t.getCenter(find.byKey(const ValueKey('pin_pl:P2'))))
+        .distance;
+    expect(end, greaterThan(mid), reason: 'sliding apart, not jumping');
+    expect(end, greaterThan(40), reason: 'apart enough to tap each');
     // Centred on them.
     final p = t.getCenter(find.byKey(const ValueKey('pin_pl:P1')));
-    expect(p.dx, inInclusiveRange(100, 300));
+    expect(p.dx, inInclusiveRange(80, 320));
     expect(p.dy, inInclusiveRange(150, 550));
   });
 
-  testWidgets('a long press on any bubble lists it', (t) async {
+  testWidgets('zooming out gathers them back into their group', (t) async {
     await pump(t, [
-      {'id': 'pl:L1', 'lat': lat0, 'lon': lon0, 'label': 'L1'},
-      {'id': 'pl:L2', 'lat': lat0, 'lon': lon0 + 6 / k, 'label': 'L2'},
-    ]);
-    await t.longPress(find.text('2'));
+      {'id': 'pl:Q1', 'lat': lat0, 'lon': lon0, 'label': 'Q1'},
+      {'id': 'pl:Q2', 'lat': lat0, 'lon': lon0 + 45 / k, 'label': 'Q2'},
+    ], zoom: 12);
+    expect(pins(), 2);
+    await t.tap(find.byIcon(Icons.remove));
+    await t.tap(find.byIcon(Icons.remove));
     await settle(t);
-    expect(find.text('2 here'), findsOneWidget);
+    expect(pins(), 0);
+    expect(find.text('2'), findsOneWidget);
+  });
+
+  testWidgets('stations on one point fan out on legs; each opens; a tap on the map folds them', (t) async {
+    final tapped = <String>[];
+    await pump(t, [
+      for (final c in ['X3ONE', 'X3TWO', 'X3SIX', 'X3TEN', 'X1ANA'])
+        {
+          'id': 'pl:$c',
+          'lat': lat0,
+          'lon': lon0,
+          'label': c,
+          'detail': '$c detail',
+          'actions': [
+            {'id': 'open', 'label': 'Open'},
+          ],
+        },
+    ], onTap: tapped.add);
+    await t.tap(find.text('5'));
+    await settle(t);
+    expect(pins(), 5, reason: 'fanned out');
+    for (final c in ['X3ONE', 'X3TWO', 'X3SIX', 'X3TEN', 'X1ANA']) {
+      expect(find.text(c), findsOneWidget, reason: 'with its label');
+    }
+    final centres = [
+      for (final c in ['X3ONE', 'X3TWO', 'X3SIX', 'X3TEN', 'X1ANA'])
+        t.getCenter(find.byKey(ValueKey('pin_pl:$c')))
+    ];
+    for (var i = 0; i < centres.length; i++) {
+      for (var j = i + 1; j < centres.length; j++) {
+        expect((centres[i] - centres[j]).distance, greaterThan(24), reason: 'no two on each other');
+      }
+    }
+    await t.tap(find.text('X3TWO'));
+    await settle(t);
+    expect(tapped, ['pl:X3TWO']);
+    expect(find.text('X3TWO detail'), findsOneWidget, reason: 'its popup, where it is drawn');
+    expect(pins(), 5, reason: 'the fan stays open under the popup');
+    await t.tapAt(const Offset(30, 650));
+    await settle(t);
+    expect(pins(), 0, reason: 'folded back into the group');
+    expect(find.text('5'), findsOneWidget);
+  });
+
+  testWidgets('more on one point than a fan holds: the wapp lists them', (t) async {
+    List<String>? listed;
+    await pump(t, [
+      for (var i = 0; i < 60; i++) {'id': 'pl:Z$i', 'lat': lat0, 'lon': lon0, 'label': 'Z$i'},
+    ], onHere: (ids) => listed = ids);
+    await t.tap(find.text('60'));
+    await settle(t);
+    expect(listed?.length, 60);
+    expect(pins(), 0);
+  });
+
+  testWidgets('without a list to hand them to, they fan out on a spiral', (t) async {
+    await pump(t, [
+      for (var i = 0; i < 20; i++) {'id': 'pl:S$i', 'lat': lat0, 'lon': lon0, 'label': 'S$i'},
+    ]);
+    await t.tap(find.text('20'));
+    await settle(t);
+    expect(pins(), 20);
+  });
+
+  testWidgets("an archiver is the yellow square, never inside the others' group", (t) async {
+    await pump(t, [
+      {'id': 'pl:X3ARCH', 'lat': lat0, 'lon': lon0, 'label': 'X3ARCH', 'kind': 'archive'},
+      {'id': 'pl:X1A', 'lat': lat0, 'lon': lon0 + 3 / k, 'label': 'X1A'},
+      {'id': 'pl:X1B', 'lat': lat0, 'lon': lon0 + 6 / k, 'label': 'X1B'},
+    ]);
+    expect(find.byIcon(Icons.inventory_2_outlined), findsOneWidget);
+    expect(find.text('X3ARCH'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget, reason: 'the two others, apart from it');
+    // The group steps aside so both show and both take a tap.
+    final a = t.getCenter(find.byIcon(Icons.inventory_2_outlined));
+    final b = t.getCenter(find.text('2'));
+    expect((a - b).distance, greaterThan(20));
+  });
+
+  testWidgets('a locate with an id opens that marker, fanning out its point first', (t) async {
+    final markers = [
+      for (final c in ['X3A', 'X3B', 'X3C'])
+        {'id': 'pl:$c', 'lat': lat0, 'lon': lon0, 'label': c, 'detail': '$c here'},
+    ];
+    await pump(t, markers);
+    expect(pins(), 0);
+    await pump(t, markers, openId: 'pl:X3B', openSeq: 1);
+    await settle(t);
+    expect(pins(), 3);
+    expect(find.text('X3B here'), findsOneWidget);
   });
 }

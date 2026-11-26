@@ -115,6 +115,19 @@ extension _WappMaps on _WappPageState {
         _drainOutbox();
         if (mounted) setState(() {});
       },
+      // Too many on one point to fan out: the wapp lists them.
+      onMarkersHere: (ids) {
+        _engine.sendMessage(jsonEncode({
+          'command': 'markers_here',
+          'id': ids.isEmpty ? '' : ids.first,
+          'ids': ids,
+        }));
+        _engine.handleEvent();
+        _drainOutbox();
+        if (mounted) setState(() {});
+      },
+      openId: _locateId,
+      openSeq: _locateSeq,
       onViewportChanged: (lat, lon, zoom) {
         _mapLat = lat;
         _mapLon = lon;

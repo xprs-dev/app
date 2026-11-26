@@ -805,18 +805,21 @@ home screen's `_PermissionBanner` opens the page while Bluetooth is refused.
   (so pins and buttons keep instant taps), and `_easeTo` to settle on a whole
   zoom. `slippyMapForTest` builds it bare for widget tests
   (`test/wapp_map_gestures_test.dart` drives a two-finger pinch).
-  Pins are grouped on a grid of 50 px squares in one pass (a region's 1500
-  stations on every frame of a pan; the pairwise scan was 2.25 million
-  distances a frame), a bubble of thousands says "1.5k", pins well off screen
-  are not placed, and a pin's `actions` are buttons in its popup
-  (`onMarkerAction`; `test/wapp_map_markers_test.dart`). A square's
-  neighbours within a cell of it join its bubble (one hop, never a chain),
-  so pins either side of a square's edge are not drawn on top of each other.
-  Labels are placed in turn and one that would cover another (or a bubble)
-  is left off: the pin stays, the open pin and a moused-over one always say
-  their name. A bubble's tap zooms just far enough to split it, centred on
-  it; when no zoom would (one point, deepest zoom), and on a long press, it
-  lists its pins over the map and a row opens that pin's popup.
+  Markers are grouped as Leaflet.markercluster's map does, by
+  `lib/wapp/geoui/map_cluster_index.dart` (pure Dart, supercluster's method):
+  the groups of every zoom level built once per set of markers, each node
+  with its children one level closer, so a pan never regroups and a zoom
+  that crosses a level slides the markers out of their group (or into it).
+  A group's tap eases to its expansion zoom, centred on it; markers no zoom
+  parts (one point, deepest zoom) fan out on legs (`spiderOffsets`: a
+  circle up to 8, a spiral beyond), and over `spiderMax` the wapp gets
+  `onMarkersHere(ids)` to list them. `kind: "archive"` markers are the
+  portal's yellow square, grouped apart and drawn above the rest (a group
+  under one steps aside). `openId`/`openSeq` open a marker's popup (fanned
+  first) — `ui.map.locate` with an `id`. A pin's `actions` are buttons in
+  its popup (`onMarkerAction`); `test/wapp_map_markers_test.dart`,
+  `test/map_cluster_index_test.dart`. Reuse the index for any map of many
+  points (it has no Flutter in it).
 - **The map with a drawer (`lib/wapp/wapp_drawer.dart`)** — a map screen with
   `"drawer": true` on its map group draws its `$type:"people"` screen (search
   box, chips, list) in a drawer over the map, the xprs.dev portal's layout:

@@ -4660,6 +4660,10 @@ class _WappPageState extends State<WappPage>
   // Highlighted target from the last "locate" tap (drawn as a reticle on the
   // map so the station is unmistakable).
   double? _locateLat, _locateLon;
+  // The marker a locate names (`id`), opened with its popup; the count
+  // tells the map a new locate asked for it again.
+  String? _locateId;
+  int _locateSeq = 0;
 
   // An incoming chat message can carry a media token plus the seeder's
   // BitTorrent infohash + LAN peer hint ("file:<sha>.<ext> … ih:<40hex>
@@ -4705,6 +4709,11 @@ class _WappPageState extends State<WappPage>
           _mapZoom = zoom;
           _locateLat = lat;
           _locateLon = lon;
+          final id = m['id']?.toString();
+          if (id != null && id.isNotEmpty) {
+            _locateId = id;
+            _locateSeq++;
+          }
           // Show the located station, not the fitted coverage circle, when
           // the map (re)mounts for this navigation.
           _mapAutoFit = false;

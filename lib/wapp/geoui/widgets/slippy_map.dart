@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 
 import '../../../connections/internet/http_transport.dart';
 import '../../../services/i18n/core_i18n.dart';
+import '../map_cluster_index.dart';
 import '../tile_cache.dart';
 import '../tile_math.dart' as tiles;
 import 'chat_view_field.dart';
@@ -79,6 +80,9 @@ Widget slippyMapForTest({
   List<Map<String, dynamic>> markers = const [],
   void Function(String id)? onMarkerTap,
   void Function(String id, String action)? onMarkerAction,
+  void Function(List<String> ids)? onMarkersHere,
+  String? openId,
+  int openSeq = 0,
   List<Map<String, dynamic>> status = const [],
 }) =>
     SlippyMap(
@@ -93,6 +97,9 @@ Widget slippyMapForTest({
       markers: markers,
       onMarkerTap: onMarkerTap,
       onMarkerAction: onMarkerAction,
+      onMarkersHere: onMarkersHere,
+      openId: openId,
+      openSeq: openSeq,
       status: status,
       embedChat: false,
     );
@@ -133,6 +140,17 @@ class SlippyMap extends StatefulWidget {
   /// Called with a marker's id and one of its `actions` (the buttons its
   /// popup shows) when that button is pressed.
   final void Function(String id, String action)? onMarkerAction;
+
+  /// Markers too many to fan out on one point (more than [spiderMax]): the
+  /// wapp is handed their ids to list them (Mesh opens its drawer on them).
+  /// Without it they fan out anyway, on a spiral.
+  final void Function(List<String> ids)? onMarkersHere;
+
+  /// A marker to open, centred and with its popup (fanned out first when it
+  /// shares its point): set with a new [openSeq] each time (ui.map.locate
+  /// with an id, the portal's mapFocus).
+  final String? openId;
+  final int openSeq;
 
   /// Coverage circle: filter radius (km) drawn around the station at
   /// [centerLat]/[centerLon]. Null disables the circle + slider.
@@ -211,6 +229,9 @@ class SlippyMap extends StatefulWidget {
     this.markers = const [],
     this.onMarkerTap,
     this.onMarkerAction,
+    this.onMarkersHere,
+    this.openId,
+    this.openSeq = 0,
     this.radiusKm,
     this.centerLat,
     this.centerLon,
@@ -273,12 +294,23 @@ class _SlippyMapState extends State<SlippyMap>
   // Id of the marker whose info popup is open (null = none).
   String? _popupId;
 
-  // The pin under the mouse (desktop): its label shows even when crowded.
-  String? _hoverId;
-
-  // A bubble's stations listed over the map, and where the bubble was.
-  List<String>? _listIds;
-  Offset? _listAt;
+  // The markers' groups per zoom level (map_cluster_index.dart), built again
+  // only when the markers change.
+  MarkerClusterIndex? _cx;
+  int _cxSig = 0;
+  // The level drawn and the one it is moving from: as the zoom crosses a
+  // level, markers slide out of their group (closer) or into it (further).
+  int? _lvl, _lvlFrom;
+  late final AnimationController _lvlAnim;
+  // A group fanned out around its point (Leaflet's spiderfy): level, node.
+  (int, int)? _spider;
+  late final AnimationController _spiderAnim;
+  // Where each marker's point was drawn this frame (a fanned one away from
+  // its point), for its popup; absent while it is inside a group.
+  final Map<String, Offset> _shownAt = {};
+  // A marker the wapp asked to open (openId), once the map is drawn there.
+  String? _pendingOpen;
+  static const spiderMax = 40;
 
   // Search
   final _searchController = TextEditingController();
@@ -580,6 +612,13 @@ class _SlippyMapState extends State<SlippyMap>
     _pulse = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat();
+    _lvlAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300), value: 1)
+      ..addListener(() => setState(() {}));
+    _spiderAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 240), value: 1)
+      ..addListener(() => setState(() {}));
+    _pendingOpen = widget.openId;
     _ease = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 260))
       ..addListener(_easeTick)
@@ -595,6 +634,23 @@ class _SlippyMapState extends State<SlippyMap>
     _pxX = v.x;
     _pxY = v.y;
     _fs = v.scale;
+    _levelCheck();
+  }
+
+  /// The zoom crossed a level of the groups: slide the markers between the
+  /// two (from a gesture or an ease, never from a build).
+  void _levelCheck() {
+    final cx = _cx;
+    if (cx == null) return;
+    final l = cx.levelFor((tiles.viewZoom(_view) + 1e-6).floor());
+    if (_lvl == null || l == _lvl) {
+      _lvl = l;
+      return;
+    }
+    _lvlFrom = _lvl;
+    _lvl = l;
+    _spider = null; // a fan folds when the zoom moves, as Leaflet's
+    _lvlAnim.forward(from: 0);
   }
 
   /// Screen position of a longitude / latitude, and back.
@@ -647,6 +703,11 @@ class _SlippyMapState extends State<SlippyMap>
   @override
   void didUpdateWidget(SlippyMap old) {
     super.didUpdateWidget(old);
+    if (widget.openSeq != old.openSeq && widget.openId != null) {
+      _pendingOpen = widget.openId;
+      _spider = null;
+      _popupId = null;
+    }
     if ((old.lat - widget.lat).abs() > 0.0001 ||
         (old.lon - widget.lon).abs() > 0.0001 ||
         old.zoom != widget.zoom) {
@@ -663,6 +724,8 @@ class _SlippyMapState extends State<SlippyMap>
     _debounce?.cancel();
     _pulse.dispose();
     _ease.dispose();
+    _lvlAnim.dispose();
+    _spiderAnim.dispose();
     super.dispose();
   }
 
@@ -767,112 +830,183 @@ class _SlippyMapState extends State<SlippyMap>
     return 180 / pi * atan(0.5 * (exp(n) - exp(-n)));
   }
 
-  /// Group markers that would overlap on screen into a single cluster
-  /// bubble showing the count, so dense areas stay readable.
-  ///
-  /// One pass over a grid of [cell]-sized squares, not every marker against
-  /// every other: a wapp may send a region's 1500 stations, and this runs on
-  /// every frame of a pan (the pairwise scan was 2.25 million distances a
-  /// frame at that size). Markers well off screen are not placed at all.
-  /// A second pass joins a square's neighbours whose centres are closer
-  /// than a cell, so two pins either side of a square's edge are one
-  /// bubble, not two pins drawn on top of each other.
-  ///
-  /// The single pins then place their labels in turn (the open one first)
-  /// and a label that would cover one already placed, or a bubble, is left
-  /// off: the pin stays, and a tap (or a mouse over it) still names it.
-  List<Widget> _clusterMarkers(double w, double h) {
-    const cell = 50.0; // px proximity that triggers grouping
-    const margin = 120.0;
-    final groups = <int, List<(double, double, Map<String, dynamic>)>>{};
-    final order = <int>[];
-    for (final m in widget.markers) {
-      final lat = (m['lat'] as num?)?.toDouble();
-      final lon = (m['lon'] as num?)?.toDouble();
-      if (lat == null || lon == null) continue;
-      final x = _sx(lon), y = _sy(lat);
-      if (x < -margin || x > w + margin || y < -margin || y > h + margin) continue;
-      final key = _cellKey(x, y, cell);
-      final g = groups[key];
-      if (g == null) {
-        groups[key] = [(x, y, m)];
-        order.add(key);
-      } else {
-        g.add((x, y, m));
-      }
+  /// Web Mercator in [0, 1) of a marker, null when it has no place.
+  static (double, double)? _merc(Map<String, dynamic> m) {
+    final lat = (m['lat'] as num?)?.toDouble();
+    final lon = (m['lon'] as num?)?.toDouble();
+    if (lat == null || lon == null) return null;
+    final r = pi / 180 * lat.clamp(-85.0511, 85.0511);
+    return ((lon + 180) / 360, (1 - log(tan(r) + 1 / cos(r)) / pi) / 2);
+  }
+
+  /// A Mercator point on the screen now.
+  Offset _scr(ClusterNode n) {
+    final world = _tileSize * pow(2, _zoom);
+    return Offset((n.x * world - _pxX) * _fs, (n.y * world - _pxY) * _fs);
+  }
+
+  /// The groups of the markers now: built again only when one was added,
+  /// moved or removed. Archivers are grouped apart from the rest.
+  MarkerClusterIndex _index() {
+    final ms = widget.markers;
+    var sig = ms.length;
+    for (final m in ms) {
+      sig = Object.hash(sig, m['id'], m['lat'], m['lon'], m['kind']);
     }
-    Offset centre(List<(double, double, Map<String, dynamic>)> g) {
-      double ax = 0, ay = 0;
-      for (final p in g) {
-        ax += p.$1;
-        ay += p.$2;
+    if (_cx == null || sig != _cxSig) {
+      _cxSig = sig;
+      _cx = MarkerClusterIndex.build(
+        [for (final m in ms) _merc(m)],
+        minZoom: widget.minZoom,
+        maxZoom: widget.maxZoom,
+        group: [for (final m in ms) _isArchive(m) ? 1 : 0],
+      );
+      _spider = null;
+      _lvlFrom = null;
+    }
+    return _cx!;
+  }
+
+  static bool _isArchive(Map<String, dynamic> m) => m['kind'] == 'archive';
+
+  /// The markers as Leaflet.markercluster draws them: the groups of the
+  /// zoom level the map is at, sliding out of their group when the zoom
+  /// crosses a level closer and into it further out; a group tapped zooms
+  /// in to where it comes apart, or fans out around its point when no zoom
+  /// would part it; archivers apart from the rest and above them, with a
+  /// group under an archiver moved aside so both show.
+  List<Widget> _clusterMarkers(double w, double h) {
+    _shownAt.clear();
+    final cx = _index();
+    final ms = widget.markers;
+    final l = cx.levelFor((tiles.viewZoom(_view) + 1e-6).floor());
+    if (_lvl != l) {
+      // A new view from the wapp (no gesture): straight there.
+      _lvl = l;
+      _lvlFrom = null;
+    }
+    final moving = _lvlFrom != null && _lvlFrom != l && _lvlAnim.isAnimating;
+    final t = Curves.easeOutCubic.transform(_lvlAnim.value);
+    // Each node drawn: its level, index, where now.
+    final drawn = <(int, int, ClusterNode, Offset)>[];
+    const margin = 80.0;
+    bool onScreen(Offset p) =>
+        p.dx > -margin && p.dx < w + margin && p.dy > -margin && p.dy < h + margin;
+    if (moving && _lvlFrom! < l) {
+      // Closer: this level's nodes come out of their group of the last one.
+      final from = cx.at(_lvlFrom!);
+      final nodes = cx.at(l);
+      for (var i = 0; i < nodes.length; i++) {
+        final p1 = _scr(nodes[i]);
+        final p0 = _scr(from[cx.ancestor(l, i, _lvlFrom!)]);
+        final p = Offset.lerp(p0, p1, t)!;
+        if (onScreen(p) || onScreen(p1)) drawn.add((l, i, nodes[i], p));
       }
-      return Offset(ax / g.length, ay / g.length);
+    } else if (moving) {
+      // Further: the last level's nodes go into their group of this one.
+      final into = cx.at(l);
+      final nodes = cx.at(_lvlFrom!);
+      for (var i = 0; i < nodes.length; i++) {
+        final p0 = _scr(nodes[i]);
+        final p1 = _scr(into[cx.ancestor(_lvlFrom!, i, l)]);
+        final p = Offset.lerp(p0, p1, t)!;
+        if (onScreen(p) || onScreen(p0)) drawn.add((_lvlFrom!, i, nodes[i], p));
+      }
+    } else {
+      final nodes = cx.at(l);
+      for (var i = 0; i < nodes.length; i++) {
+        final p = _scr(nodes[i]);
+        if (onScreen(p)) drawn.add((l, i, nodes[i], p));
+      }
     }
 
-    // Join a square's neighbours whose centre is within a cell of its own,
-    // one hop only: a chain of joins would make a dense grid one bubble.
-    final centres = {for (final k in order) k: centre(groups[k]!)};
-    final used = <int>{};
-    final merged = <int, List<(double, double, Map<String, dynamic>)>>{};
-    final roots = <int>[];
-    for (final k in order) {
-      if (!used.add(k)) continue;
-      final g = [...groups[k]!];
-      for (final d in const [1, 99999, 100000, 100001, -1, -99999, -100000, -100001]) {
-        final n = k + d;
-        final c = centres[n];
-        if (c == null || used.contains(n)) continue;
-        if ((c - centres[k]!).distance < cell) {
-          used.add(n);
-          g.addAll(groups[n]!);
+    // A marker the wapp asked to open: its popup, fanned out first when it
+    // shares its group (after this frame: a build starts no animation).
+    final want = _pendingOpen;
+    if (want != null && !moving) {
+      _pendingOpen = null;
+      final nodes = cx.at(l);
+      for (var i = 0; i < nodes.length; i++) {
+        if (!nodes[i].points.any((k) => ms[k]['id']?.toString() == want)) continue;
+        final group = nodes[i].count > 1;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() {
+            _popupId = want;
+            if (group) _spider = (l, i);
+          });
+          if (group) _spiderAnim.forward(from: 0);
+        });
+        break;
+      }
+    }
+
+    final arch = [for (final d in drawn) if (d.$3.group == 1) d.$4];
+    final sp = moving ? null : _spider;
+    final out = <Widget>[];
+    // Under everything: a tap on the map folds a fan and closes a popup.
+    if (_spider != null || _popupId != null) {
+      out.add(Positioned.fill(
+        child: GestureDetector(
+          key: const ValueKey('map_dismiss'),
+          behavior: HitTestBehavior.translucent,
+          onTap: () => setState(() {
+            _spider = null;
+            _popupId = null;
+          }),
+        ),
+      ));
+    }
+    Widget? top;
+    for (final group in const [0, 1]) {
+      for (final d in drawn) {
+        final n = d.$3;
+        if (n.group != group) continue;
+        if (sp != null && sp.$1 == d.$1 && sp.$2 == d.$2) continue; // fanned below
+        var at = d.$4;
+        if (n.count == 1) {
+          final m = ms[n.points.first];
+          final id = m['id']?.toString() ?? '';
+          _shownAt[id] = at;
+          final wgt = _buildMarker(m, at, chosen: id == _popupId);
+          if (id == _popupId) {
+            top = wgt;
+          } else {
+            out.add(wgt);
+          }
+          continue;
+        }
+        // A group under an archiver steps aside, as the portal's.
+        if (group == 0 && arch.any((a) => (a - at).distance < 30)) at += const Offset(22, 22);
+        out.add(_buildCluster(at, d.$1, d.$2, n));
+      }
+    }
+    // The fan: legs from the point to each marker, the markers at their feet.
+    if (sp != null && sp.$1 == l && sp.$2 < cx.at(l).length) {
+      final n = cx.at(l)[sp.$2];
+      final c = _scr(n);
+      final e = Curves.easeOutBack.transform(_spiderAnim.value);
+      final offs = spiderOffsets(n.count);
+      final feet = [for (final o in offs) c + Offset(o.$1, o.$2) * e];
+      out.add(Positioned.fill(
+        child: IgnorePointer(
+          child: CustomPaint(painter: _SpiderLegs(c, feet, n.group == 1)),
+        ),
+      ));
+      for (var k = 0; k < n.count; k++) {
+        final m = ms[n.points[k]];
+        final id = m['id']?.toString() ?? '';
+        _shownAt[id] = feet[k];
+        final wgt = _buildMarker(m, feet[k], chosen: id == _popupId);
+        if (id == _popupId) {
+          top = wgt;
+        } else {
+          out.add(wgt);
         }
       }
-      merged[k] = g;
-      roots.add(k);
     }
-
-    final bubbles = <Widget>[];
-    final taken = <Rect>[];
-    final singles = <(double, double, Map<String, dynamic>)>[];
-    for (final r in roots) {
-      final g = merged[r]!;
-      if (g.length == 1) {
-        singles.add(g.first);
-        continue;
-      }
-      final c = centre(g);
-      taken.add(Rect.fromCircle(center: c, radius: 21));
-      bubbles.add(_buildCluster(c.dx, c.dy, [for (final p in g) p.$3]));
-    }
-    // The open pin (and the one under the mouse) name themselves first.
-    int rank(Map<String, dynamic> m) {
-      final id = m['id']?.toString();
-      return id == _popupId ? 0 : (id == _hoverId ? 1 : 2);
-    }
-
-    singles.sort((a, b) => rank(a.$3) - rank(b.$3));
-    final pins = <Widget>[];
-    Widget? top;
-    for (final p in singles) {
-      final m = p.$3;
-      final label = (m['label'] as String?) ?? (m['id']?.toString() ?? '');
-      final pin = Rect.fromLTWH(p.$1 - 11, p.$2 - 28, 22, 28);
-      final lw = _labelW(label);
-      final lr = Rect.fromLTWH(p.$1 - lw / 2, p.$2 - 46, lw, 18);
-      final chosen = rank(m) < 2;
-      final show = label.isNotEmpty && (chosen || !taken.any((t) => t.overlaps(lr)));
-      if (show) taken.add(lr);
-      taken.add(pin);
-      final wgt = _buildMarker(m, w, h, showLabel: show, chosen: m['id']?.toString() == _popupId);
-      if (m['id']?.toString() == _popupId) {
-        top = wgt;
-      } else {
-        pins.add(wgt);
-      }
-    }
-    // Drawn bottom to top: pins without labels, labelled ones, the open one.
-    return [...bubbles, ...pins.reversed, if (top != null) top];
+    if (top != null) out.add(top);
+    return out;
   }
 
   /// A pin label's width: about 6.6 px a character at its 10 px bold, plus
@@ -880,115 +1014,20 @@ class _SlippyMapState extends State<SlippyMap>
   /// neighbour.
   static double _labelW(String label) => min(140.0, label.length * 6.6 + 16);
 
-  static int _cellKey(double x, double y, double cell) =>
-      ((y / cell).floor() + 1000) * 100000 + (x / cell).floor() + 1000;
-
-  /// A bubble's stations as a list over the map, when zooming in would not
-  /// tell them apart (or on a long press): tap one to open its popup.
-  List<Widget> _buildClusterList(double w, double h) {
-    final ids = _listIds;
-    if (ids == null || _listAt == null) return const [];
-    final byId = {for (final m in widget.markers) m['id']?.toString(): m};
-    final rows = [for (final id in ids) if (byId[id] != null) byId[id]!];
-    if (rows.isEmpty) return const [];
-    const pw = 240.0;
-    const rowH = 40.0;
-    final shown = min(rows.length, 6);
-    final tall = 40.0 + shown * rowH;
-    final at = _listAt!;
-    final left = (at.dx - pw / 2).clamp(8.0, max(8.0, w - pw - 8)).toDouble();
-    final below = at.dy < tall + 30;
-    final top = (below ? (at.dy + 26).clamp(8.0, max(8.0, h - tall - 8)) : (at.dy - tall - 26).clamp(8.0, h)).toDouble();
-    return [
-      Positioned(
-        left: left,
-        top: top,
-        width: pw,
-        child: Container(
-          key: const ValueKey('cluster_list'),
-          decoration: BoxDecoration(
-            color: const Color(0xF0161b22),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF30363d)),
-            boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 2))],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 6, 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(tr('wapp_host.maps.here_n', {'n': '${rows.length}'}),
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                    ),
-                    InkWell(
-                      onTap: () => setState(() => _listIds = null),
-                      child: const Icon(Icons.close, size: 16, color: Color(0xFF8b949e)),
-                    ),
-                  ],
-                ),
-              ),
-              ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: shown * rowH),
-                child: ListView(
-                  padding: EdgeInsets.zero,
-                  shrinkWrap: true,
-                  children: [
-                    for (final m in rows)
-                      InkWell(
-                        key: ValueKey('cluster_row_${m['id']}'),
-                        onTap: () {
-                          final id = m['id']?.toString() ?? '';
-                          widget.onMarkerTap?.call(id);
-                          setState(() {
-                            _listIds = null;
-                            _popupId = id;
-                          });
-                        },
-                        child: SizedBox(
-                          height: rowH,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Row(
-                              children: [
-                                Icon(Icons.location_on, size: 18, color: _markerColor(m['color'])),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('${m['label'] ?? m['id']}',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                              color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600)),
-                                      if ('${m['detail'] ?? ''}'.isNotEmpty)
-                                        Text('${m['detail']}'.split('\n').first,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(color: Color(0xFF8b949e), fontSize: 11)),
-                                    ],
-                                  ),
-                                ),
-                                const Icon(Icons.chevron_right, size: 16, color: Color(0xFF8b949e)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 6),
-            ],
-          ),
-        ),
-      ),
-    ];
+  /// Fan out node [i] of level [lvl] around its point, or, when there are
+  /// more than [spiderMax] and the wapp lists them, hand it their ids.
+  void _openSpider(int lvl, int i) {
+    final n = _cx!.at(lvl)[i];
+    if (n.count > spiderMax && widget.onMarkersHere != null) {
+      widget.onMarkersHere!([for (final k in n.points) widget.markers[k]['id']?.toString() ?? '']);
+      return;
+    }
+    HapticFeedback.selectionClick();
+    setState(() {
+      _popupId = null;
+      _spider = (lvl, i);
+    });
+    _spiderAnim.forward(from: 0);
   }
 
   /// Info popup anchored next to a tapped marker: its position, when it was
@@ -1004,8 +1043,12 @@ class _SlippyMapState extends State<SlippyMap>
     final lat = (m['lat'] as num?)?.toDouble();
     final lon = (m['lon'] as num?)?.toDouble();
     if (lat == null || lon == null) return const [];
-    final px = _sx(lon);
-    final py = _sy(lat);
+    // Where it is drawn (a fanned marker away from its point); inside a
+    // group now, it has no popup.
+    final shown = _shownAt[id];
+    if (shown == null) return const [];
+    final px = shown.dx;
+    final py = shown.dy - (_isArchive(m) ? 14 : 0);
     final label = (m['label'] as String?) ?? id;
     final heard = (m['heard'] as num?)?.toInt();
     final detail = (m['detail'] as String?) ?? '';
@@ -1235,78 +1278,54 @@ class _SlippyMapState extends State<SlippyMap>
     ];
   }
 
-  /// A cluster bubble: orange circle with the count. A tap zooms in just
-  /// far enough to tell its pins apart, centred on them; when no zoom would
-  /// (they share a point, or the map is at its deepest) it lists them
-  /// instead. A long press always lists them.
-  Widget _buildCluster(double cx, double cy, List<Map<String, dynamic>> members) {
-    final n = members.length;
-    final sz = n > 99 ? 44.0 : 38.0;
-    void list() {
-      HapticFeedback.selectionClick();
-      setState(() {
-        _popupId = null;
-        _listIds = [for (final m in members) m['id']?.toString() ?? ''];
-        _listAt = Offset(cx, cy);
-      });
-    }
-
+  /// A group: a bubble with how many (yellow for archivers, orange for the
+  /// rest). A tap zooms in to the level where it comes apart, centred on
+  /// it, the markers sliding out as it goes; when no zoom would part it
+  /// (one point, or the deepest zoom) it fans out around its point.
+  Widget _buildCluster(Offset at, int lvl, int i, ClusterNode n) {
+    final count = n.count;
+    final arch = n.group == 1;
+    final sz = count > 99 ? 42.0 : 36.0;
     return Positioned(
-      left: cx - sz / 2,
-      top: cy - sz / 2,
+      key: ValueKey('cluster_${lvl}_$i'),
+      left: at.dx - sz / 2,
+      top: at.dy - sz / 2,
       width: sz,
       height: sz,
       child: GestureDetector(
-        key: ValueKey('cluster_${members.first['id']}'),
         behavior: HitTestBehavior.opaque,
-        onLongPress: list,
+        onLongPress: () => _openSpider(lvl, i),
         onTap: () {
-          // How far apart the pins are now, and the zoom that spreads them
-          // over more than a cell (each step doubles the distance).
-          double x0 = double.infinity, x1 = -double.infinity;
-          double y0 = double.infinity, y1 = -double.infinity;
-          for (final m in members) {
-            final x = _sx((m['lon'] as num).toDouble()), y = _sy((m['lat'] as num).toDouble());
-            x0 = min(x0, x);
-            x1 = max(x1, x);
-            y0 = min(y0, y);
-            y1 = max(y1, y);
-          }
-          final spread = max(x1 - x0, y1 - y0);
-          final size = _viewSize;
-          final z = tiles.viewZoom(_view);
-          // Room for them all: the spread may grow to half the view.
-          final fit = spread > 0 ? z + log(min(size.width, size.height) * 0.5 / spread) / ln2 : double.infinity;
-          final split = spread > 0 ? z + log(60 / spread) / ln2 : double.infinity;
-          if (split > widget.maxZoom + 0.01) {
-            list();
+          final ez = _cx!.expansionZoom(lvl, i);
+          if (ez == null || ez > widget.maxZoom) {
+            _openSpider(lvl, i);
             return;
           }
-          final target = min(fit, max(split, z + 1)).clamp(z + 1, widget.maxZoom.toDouble()).ceilToDouble();
-          final c = Offset((x0 + x1) / 2, (y0 + y1) / 2);
           setState(() {
             _popupId = null;
-            _listIds = null;
+            _spider = null;
           });
-          _easeTo(target, c, size.center(Offset.zero) - c);
+          final c = _viewSize.center(Offset.zero);
+          _easeTo(ez.toDouble(), at, c - at);
         },
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xE6FB8C00),
+            color: arch ? const Color(0xFFFFC107) : const Color(0xE6FB8C00),
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2),
-            boxShadow: const [
-              BoxShadow(color: Colors.black54, blurRadius: 4),
+            border: Border.all(color: arch ? const Color(0xFF1A1A1A) : Colors.white, width: 2),
+            boxShadow: [
+              const BoxShadow(color: Colors.black54, blurRadius: 4),
+              if (arch) const BoxShadow(color: Color(0xFFFFC107), spreadRadius: 3),
             ],
           ),
           alignment: Alignment.center,
           child: Text(
             // 1500 is 1.5k, as the portal's map says it.
-            n > 999 ? '${(n / 1000).toStringAsFixed(n < 9950 ? 1 : 0)}k' : '$n',
+            count > 999 ? '${(count / 1000).toStringAsFixed(count < 9950 ? 1 : 0)}k' : '$count',
             style: TextStyle(
-              color: Colors.white,
+              color: arch ? const Color(0xFF1A1A1A) : Colors.white,
               fontWeight: FontWeight.bold,
-              fontSize: n > 99 ? 11 : 13,
+              fontSize: count > 99 ? 11 : 13,
             ),
           ),
         ),
@@ -1314,47 +1333,53 @@ class _SlippyMapState extends State<SlippyMap>
     );
   }
 
-  /// Build one marker pin (label chip + teardrop icon), anchored so the
-  /// icon's tip sits on the geographic point. Off-screen markers collapse.
-  /// [showLabel] is off when the label would cover another; the [chosen]
-  /// pin (its popup open) is larger and ringed.
-  Widget _buildMarker(Map<String, dynamic> m, double w, double h,
-      {bool showLabel = true, bool chosen = false}) {
-    final lat = (m['lat'] as num?)?.toDouble();
-    final lon = (m['lon'] as num?)?.toDouble();
-    if (lat == null || lon == null) return const SizedBox.shrink();
-    final px = _sx(lon);
-    final py = _sy(lat);
-    if (px < -200 || px > w + 200 || py < -200 || py > h + 200) {
-      return const SizedBox.shrink();
-    }
+  /// One marker drawn at [at] (its point, or its foot in a fan): its label,
+  /// and a pin whose tip is the point, or for an archiver (kind "archive")
+  /// the portal's yellow square with the archive mark, centred on it. The
+  /// [chosen] one (its popup open) is larger and ringed.
+  Widget _buildMarker(Map<String, dynamic> m, Offset at, {bool chosen = false}) {
     final id = m['id']?.toString() ?? '';
     final label = (m['label'] as String?) ?? id;
     final color = _markerColor(m['color']);
-    final iconSz = chosen ? 36.0 : 28.0;
-    final pinW = showLabel && label.isNotEmpty ? max(36.0, _labelW(label)) : 36.0;
-    final labelH = showLabel && label.isNotEmpty ? 18.0 : 0.0;
+    final arch = _isArchive(m);
+    final iconSz = arch ? (chosen ? 34.0 : 28.0) : (chosen ? 36.0 : 28.0);
+    final labelH = label.isNotEmpty ? 18.0 : 0.0;
+    final pinW = max(iconSz + 8, label.isNotEmpty ? _labelW(label) : 0.0);
+    final Widget mark = arch
+        ? Container(
+            width: iconSz,
+            height: iconSz,
+            margin: const EdgeInsets.only(top: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFC107),
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(color: const Color(0xFF1A1A1A), width: 2),
+              boxShadow: [
+                BoxShadow(color: chosen ? Colors.white : Colors.black54, blurRadius: chosen ? 8 : 4),
+              ],
+            ),
+            child: Icon(Icons.inventory_2_outlined, size: iconSz * 0.6, color: const Color(0xFF1A1A1A)),
+          )
+        : Icon(Icons.location_on,
+            color: color,
+            size: iconSz,
+            shadows: [
+              Shadow(color: chosen ? Colors.white : Colors.black54, blurRadius: chosen ? 6 : 3),
+            ]);
+    // A pin's tip is its point; an archiver's square is centred on it.
+    final top = arch ? at.dy - iconSz / 2 - 2 - labelH : at.dy - iconSz - labelH;
     return Positioned(
       key: ValueKey('pin_$id'),
-      left: px - pinW / 2,
-      top: py - iconSz - labelH,
+      left: at.dx - pinW / 2,
+      top: top,
       width: pinW,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        onEnter: (_) {
-          if (!showLabel) setState(() => _hoverId = id);
-        },
-        onExit: (_) {
-          if (_hoverId == id) setState(() => _hoverId = null);
-        },
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {
             widget.onMarkerTap?.call(id);
-            setState(() {
-              _listIds = null;
-              _popupId = _popupId == id ? null : id;
-            });
+            setState(() => _popupId = _popupId == id ? null : id);
           },
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1365,7 +1390,9 @@ class _SlippyMapState extends State<SlippyMap>
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: chosen ? color.withAlpha(235) : Colors.black.withAlpha(204),
+                    color: chosen
+                        ? (arch ? const Color(0xFFFFC107) : color).withAlpha(240)
+                        : Colors.black.withAlpha(204),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -1373,19 +1400,14 @@ class _SlippyMapState extends State<SlippyMap>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: Colors.white,
+                    style: TextStyle(
+                        color: chosen && arch ? const Color(0xFF1A1A1A) : Colors.white,
                         fontSize: 10,
                         height: 1.1,
                         fontWeight: FontWeight.bold),
                   ),
                 ),
-              Icon(Icons.location_on,
-                  color: color,
-                  size: iconSz,
-                  shadows: [
-                    Shadow(color: chosen ? Colors.white : Colors.black54, blurRadius: chosen ? 6 : 3),
-                  ]),
+              mark,
             ],
           ),
         ),
@@ -1436,7 +1458,6 @@ class _SlippyMapState extends State<SlippyMap>
   void _onScaleStart(ScaleStartDetails d, double w, double h) {
     _ease.stop();
     _popupId = null; // any drag dismisses an open marker popup
-    _listIds = null;
     _circleDrag = null;
     if (d.pointerCount >= 2) _gPinched = true;
     // One finger on the coverage circle: the edge band resizes it, anywhere
@@ -1744,8 +1765,6 @@ class _SlippyMapState extends State<SlippyMap>
               ..._buildHighlight(w, h),
               // Info popup for a tapped marker.
               ..._buildMarkerPopup(w, h),
-              // A bubble's stations, listed.
-              ..._buildClusterList(w, h),
               // Full-screen toggle in the bottom-RIGHT corner. The coordinates
               // sit bottom-left and the zoom control is higher up, so this
               // corner is clear; when the geo-chat FAB is showing (plain map,
@@ -2038,4 +2057,29 @@ class _SearchResult {
   final String type;
   final double lat, lon;
   _SearchResult(this.name, this.type, this.lat, this.lon);
+}
+
+/// The legs of a fan: a thin line from the shared point to each marker, and
+/// a dot on the point (Leaflet.markercluster's spider legs).
+class _SpiderLegs extends CustomPainter {
+  final Offset c;
+  final List<Offset> feet;
+  final bool arch;
+  _SpiderLegs(this.c, this.feet, this.arch);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final leg = Paint()
+      ..color = (arch ? const Color(0xFFFFC107) : Colors.white).withAlpha(170)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    for (final f in feet) {
+      canvas.drawLine(c, f, leg);
+    }
+    canvas.drawCircle(c, 5, Paint()..color = Colors.black54);
+    canvas.drawCircle(c, 3.5, Paint()..color = arch ? const Color(0xFFFFC107) : const Color(0xFFFB8C00));
+  }
+
+  @override
+  bool shouldRepaint(_SpiderLegs o) => o.c != c || o.feet != feet || o.arch != arch;
 }
