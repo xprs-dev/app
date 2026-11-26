@@ -1022,10 +1022,26 @@ class _SlippyMapState extends State<SlippyMap>
     return out;
   }
 
-  /// A pin label's width: about 6.6 px a character at its 10 px bold, plus
-  /// padding. The pin's box is this wide, so it takes no taps meant for a
-  /// neighbour.
-  static double _labelW(String label) => min(140.0, label.length * 6.6 + 16);
+  /// A pin label's width, measured at its 10 px bold and the screen's text
+  /// scale (a phone's larger text cut "X1WATT" to "X1W…" when it was
+  /// guessed), plus padding. The pin's box is this wide, so it takes no
+  /// taps meant for a neighbour. Measured once per label and scale.
+  final Map<String, double> _labelWs = {};
+  double _labelW(String label) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final key = '${scaler.scale(10)}|$label';
+    return _labelWs[key] ??= () {
+      final tp = TextPainter(
+        text: TextSpan(text: label, style: const TextStyle(fontSize: 10, height: 1.1, fontWeight: FontWeight.bold)),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final w = min(160.0, tp.width + 14);
+      tp.dispose();
+      return w;
+    }();
+  }
 
   /// Fan out node [i] of level [lvl] around its point, or, when there are
   /// more than [spiderMax] and the wapp lists them, hand it their ids.

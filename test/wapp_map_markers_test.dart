@@ -5,6 +5,7 @@
 // legs, archivers drawn apart and above the rest, and a marker's popup
 // offering the wapp's actions.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xprs/wapp/geoui/widgets/slippy_map.dart';
 
@@ -101,6 +102,28 @@ void main() {
     ]);
     expect(find.text('LEFTSTATION'), findsOneWidget);
     expect(find.text('RIGHTSTATION'), findsOneWidget);
+  });
+
+  testWidgets("labels are whole at a phone's larger text", (t) async {
+    t.view.physicalSize = const Size(400, 700);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(size: Size(400, 700), textScaler: TextScaler.linear(1.3)),
+        child: Scaffold(
+          body: slippyMapForTest(onViewportChanged: (_, __, ___) {}, markers: [
+            {'id': 'pl:X1WATT', 'lat': lat0, 'lon': lon0, 'label': 'X1WATT'},
+            {'id': 'pl:X3PTZM', 'lat': lat0, 'lon': lon0 + 90 / k, 'label': 'X3PTZM', 'kind': 'archive'},
+          ]),
+        ),
+      ),
+    ));
+    await settle(t);
+    for (final c in ['X1WATT', 'X3PTZM']) {
+      final p = t.renderObject<RenderParagraph>(find.text(c));
+      expect(p.didExceedMaxLines, isFalse, reason: '$c cut short');
+    }
   });
 
   testWidgets("a marker's popup offers the wapp's actions", (t) async {
