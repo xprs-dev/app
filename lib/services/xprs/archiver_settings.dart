@@ -26,9 +26,18 @@
  *                               they outrank what the archiver announces, and
  *                               null clears one back to the announced dial
  *   alwaysOn      bool          only takes effect on a public archiver
+ *   archiver      bool          THE switch: on serves messages (`public`),
+ *                               files (`serve:files`) and the file-location
+ *                               index together; off stops all three
+ *   files         bool          files for others alone (Advanced)
+ *   fileIndex     bool          the file-location index alone (Advanced)
+ *   filesGb       int > 0       the one limit of the file store
+ *   onlyCharging  bool          serve files and the index only on charger
+ *                               and an unlimited link
  */
 import '../mesh/mesh_service.dart';
 import '../preferences_service.dart';
+import '../reticulum/rns_service.dart';
 import '../update_mirror_service.dart';
 import 'xprs_ingest.dart';
 
@@ -55,6 +64,36 @@ Future<bool> applyArchiverSettings(Map<String, dynamic> data,
   }
   if (data.containsKey('public')) {
     await prefs.setXprsPublicArchiver(data['public'] == true);
+  }
+  // The whole archiver at once (12.9.2: the spool and the file store
+  // reinforce each other, so one switch serves both). The parts can still be
+  // set alone below; "on" is the date the page counts from.
+  if (data.containsKey('archiver')) {
+    final on = data['archiver'] == true;
+    await prefs.setXprsPublicArchiver(on);
+    _setFiles(prefs, on);
+    _setFileIndex(prefs, on);
+  }
+  if (data.containsKey('files')) _setFiles(prefs, data['files'] == true);
+  if (data.containsKey('fileIndex')) {
+    _setFileIndex(prefs, data['fileIndex'] == true);
+  }
+  if (positive(data['filesGb']) case final v?) {
+    // One store, one limit: what is admitted and what eviction keeps.
+    prefs.hostCeilingGb = v;
+    if (prefs.archiveQuotaGb > 0) prefs.archiveQuotaGb = v;
+  }
+  if (data.containsKey('onlyCharging')) {
+    prefs.hostCapacityGated = data['onlyCharging'] == true;
+    if (prefs.archiverVolunteer != 'off') {
+      _setFileIndex(prefs, true);
+    } else {
+      RnsService.instance.applyHostingSettings();
+    }
+  }
+  if (prefs.xprsArchiverSinceMs == 0 &&
+      (prefs.xprsPublicArchiver || prefs.archiveQuotaGb > 0)) {
+    prefs.xprsArchiverSinceMs = DateTime.now().millisecondsSinceEpoch;
   }
   if (data.containsKey('keepFollowed')) {
     await prefs.setXprsKeepFollowed(data['keepFollowed'] == true);
@@ -95,4 +134,23 @@ Future<bool> applyArchiverSettings(Map<String, dynamic> data,
   if (data.isNotEmpty) MeshService.instance.applyArchiveLimits();
   if (redial) MeshService.instance.redialArchivers();
   return true;
+}
+
+/// Whether this station is an archiver at all: any of its three parts on.
+bool archiverOn(PreferencesService p) =>
+    p.xprsPublicArchiver || p.archiveQuotaGb > 0 || p.archiverVolunteer != 'off';
+
+/// Files for others: the store admits them under the one limit, or nothing.
+void _setFiles(PreferencesService p, bool on) {
+  final gb = p.hostCeilingGb > 0 ? p.hostCeilingGb : 10;
+  p.archiveQuotaGb = on ? (p.archiveQuotaGb > 0 ? p.archiveQuotaGb : gb) : 0;
+}
+
+/// The responder that sends files and the index archivers swap (12.9.2).
+/// Unlike NodeRoleApi's `volunteer=off`, switching off keeps the charging
+/// choice, so switching back on restores it.
+void _setFileIndex(PreferencesService p, bool on) {
+  p.archiverVolunteer = !on ? 'off' : (p.hostCapacityGated ? 'auto' : 'always');
+  p.hostEnabled = on;
+  RnsService.instance.applyHostingSettings();
 }

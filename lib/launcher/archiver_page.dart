@@ -2,12 +2,21 @@
 // archivers it relies on itself (XPRS.md section 12). A core function of the
 // app, so a page of the app rather than a wapp; it replaced the Archive wapp.
 //
-// Every number comes from the core (xprsArchiveStatusJson, NodeRoleApi) and
-// every change goes through one writer (applyArchiverSettings) shared with the
-// remote API, so the page and `/api/xprs/archiver` cannot drift apart.
+// Three tabs:
+//   Overview          the one switch, what the archiver gave (active for, data
+//                     served, people served, requests), then the details
+//   Our archiver      every setting of the archiver this device runs: messages,
+//                     files, serving others, and its parts one by one
+//   Archivers we use  the archivers this station hands its words and mail to,
+//                     each with what was last heard of it, and the others heard
 //
-// Reads are cheap SQL counts and run when the page opens, after each change,
-// on pull-to-refresh, and once a minute while the page is in front.
+// Every number comes from the core (xprsArchiveStatusJson, NodeRoleApi,
+// XprsMonitor) and the daily log (ArchiverStats); every change goes through
+// one writer (applyArchiverSettings) shared with the remote API, so the page
+// and `/api/xprs/archiver` cannot drift apart.
+//
+// Reads are cheap counts and run when the page opens, after each change, on
+// pull-to-refresh, and once a minute while the page is in front.
 
 import 'dart:async';
 import 'dart:convert';
@@ -15,9 +24,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:xprs_core/src/services/social/node_role_api.dart';
 import 'package:xprs_core/src/services/xprs/xprs_names.dart';
+import 'package:xprs_core/src/services/xprs/xprs_vocab.dart' show xprsFmtDuration;
 import 'package:xprs_core/src/profile/device_identity.dart';
 
 import '../services/i18n/core_i18n.dart';
+import '../services/i18n/format.dart';
 import '../services/notification_service.dart';
 import '../services/preferences_service.dart';
 import '../services/reticulum/rns_service.dart';
@@ -25,9 +36,12 @@ import '../services/xprs/archiver_settings.dart';
 import '../services/xprs/archiver_stats.dart';
 import '../services/xprs/xprs_archive.dart';
 import '../services/xprs/xprs_history_server.dart';
+import '../services/xprs/xprs_monitor.dart';
 import '../services/xprs/xprs_station_policy.dart';
+import '../util/time_ago.dart';
 import 'archiver_charts.dart';
 import 'device_identity_card.dart';
+import 'hardware_page.dart';
 
 class ArchiverPage extends StatefulWidget {
   const ArchiverPage({super.key});
@@ -119,6 +133,7 @@ class _ArchiverPageState extends State<ArchiverPage> {
 
   Future<void> _apply(Map<String, dynamic> change) async {
     await applyArchiverSettings(change);
+    ArchiverStats.instance.sample();
     _refresh();
   }
 
@@ -135,6 +150,30 @@ class _ArchiverPageState extends State<ArchiverPage> {
     if (n >= 1000000) return '${(n / 1e6).toStringAsFixed(1)}M';
     if (n >= 10000) return '${(n / 1000).round()}k';
     return '$n';
+  }
+
+  /// Bytes up to petabytes: an always-on archiver's lifetime outgrows GB.
+  static String _bytes(num b) {
+    final v = b.toInt();
+    const tb = 1 << 40, pb = 1 << 50;
+    if (v >= pb) return tr('archiver.unit.pb', {'n': trDecimal(v / pb, 1)});
+    if (v >= tb) return tr('archiver.unit.tb', {'n': trDecimal(v / tb, 1)});
+    return trBytes(v);
+  }
+
+  /// "4 months" since [ms].
+  static String _age(int ms) {
+    final days =
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms)).inDays;
+    if (days < 1) return tr('archiver.age.today');
+    if (days < 60) return tr('archiver.age.days', {'n': '$days'});
+    if (days < 730) return tr('archiver.age.months', {'n': '${days ~/ 30}'});
+    return tr('archiver.age.years', {'n': '${days ~/ 365}'});
+  }
+
+  static String _date(int ms) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    return '${d.day}/${d.month}/${d.year}';
   }
 
   Widget _section(BuildContext context, String title, List<Widget> children,
@@ -194,10 +233,6 @@ class _ArchiverPageState extends State<ArchiverPage> {
                     Text(t.value,
                         style: tt.titleLarge
                             ?.copyWith(fontWeight: FontWeight.w600)),
-                    if (t.frac != null) ...[
-                      const SizedBox(height: 4),
-                      LinearProgressIndicator(value: t.frac),
-                    ],
                     if (t.hint.isNotEmpty)
                       Text(t.hint,
                           style: tt.bodySmall
@@ -241,17 +276,6 @@ class _ArchiverPageState extends State<ArchiverPage> {
     );
   }
 
-
-  // ── impact ────────────────────────────────────────────────────────────────
-
-  static String _size(num bytes) {
-    final b = bytes.toDouble();
-    if (b >= 1 << 30) return '${(b / (1 << 30)).toStringAsFixed(1)} GB';
-    if (b >= 1 << 20) return '${(b / (1 << 20)).toStringAsFixed(1)} MB';
-    if (b >= 1024) return '${(b / 1024).round()} KB';
-    return '${b.round()} B';
-  }
-
   static String _dayLabel(String d) {
     // yyyy-mm-dd -> d/m
     if (d.length != 10) return d;
@@ -271,121 +295,99 @@ class _ArchiverPageState extends State<ArchiverPage> {
   }
 
   Widget _plain(BuildContext context, String title, Widget child,
-      {String? help}) =>
+          {String? help}) =>
       _section(context, title, [
-        Padding(padding: const EdgeInsets.all(16), child: child),
+        // Full width even when the child is one short line of text.
+        SizedBox(
+          width: double.infinity,
+          child: Padding(padding: const EdgeInsets.all(16), child: child),
+        ),
       ], help: help);
 
-  Widget _bigNumber(BuildContext context, String value, String label) {
-    final tt = Theme.of(context).textTheme;
+  // ── overview ──────────────────────────────────────────────────────────────
+
+  /// What is on, in a line: "Messages · Files · File index · Always on".
+  String _status(PreferencesService p) => [
+        if (p.xprsPublicArchiver) tr('archiver.status.messages'),
+        if (p.archiveQuotaGb > 0) tr('archiver.status.files'),
+        if (p.archiverVolunteer != 'off') tr('archiver.status.index'),
+        if (p.xprsAlwaysOn) tr('archiver.status.always_on'),
+        if (p.xprsPublicArchiver && !p.xprsRoom) tr('archiver.status.no_room'),
+      ].join(' · ');
+
+  /// THE switch, first on the page: the whole archiver on or off.
+  Widget _switchCard(BuildContext context, PreferencesService p) {
     final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(value,
-            style: tt.displaySmall?.copyWith(
-                fontWeight: FontWeight.w700, color: cs.onSurface)),
-        Text(label, style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
-      ],
+    final tt = Theme.of(context).textTheme;
+    final on = archiverOn(p);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Material(
+        color: on ? cs.primaryContainer : cs.surfaceContainerHigh,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        clipBehavior: Clip.antiAlias,
+        child: SwitchListTile(
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          secondary: Icon(on ? Icons.inventory_2 : Icons.inventory_2_outlined,
+              size: 32, color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant),
+          title: Text(tr('archiver.switch'),
+              style: tt.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: on ? cs.onPrimaryContainer : cs.onSurface)),
+          subtitle: Text(on ? _status(p) : tr('archiver.switch.off'),
+              style: TextStyle(
+                  color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant)),
+          value: on,
+          onChanged: (v) => _apply({'archiver': v}),
+        ),
+      ),
     );
   }
 
-  Widget _impactTab(BuildContext context) {
+  Widget _overviewTab(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final p = _prefs;
+    if (p == null) return const SizedBox.shrink();
     final a = _arch;
+    final f = _files;
+    final d = _dir;
     final rec = a['records'] is Map ? a['records'] as Map : const {};
-    final public = a['public'] == true;
-    final cared = _cared;
     final d14 = _lastDays(14);
     final d30 = _lastDays(30);
-    final answered30 = d30.fold<int>(0, (s, d) => s + d.ans);
+    // The same count as the chart below: asks answered plus mail handed over.
+    final answered30 = d30.fold<int>(0, (s, d) => s + d.ans + d.mail);
     final mail30 = d30.fold<int>(0, (s, d) => s + d.mail);
-    final answeredAll = _days.fold<int>(0, (s, d) => s + d.ans + d.mail);
-    final bytes = XprsArchive.instance.spoolBytes;
-    final total = (rec['total'] as num?)?.toInt() ?? 0;
+    final served14 = d14.fold<int>(0, (s, d) => s + d.srv);
+    final since = p.xprsArchiverSinceMs;
     final storage = [
       for (final d in d30)
         if (d.bytes > 0) ChartPoint(_dayLabel(d.d), d.bytes.toDouble()),
-    ];
-    final reqSpark = [
-      for (final v in (_files['reqSpark'] as List? ?? const [])) v as num,
-    ];
-    final qSpark = [
-      for (final v in (_dir['querySpark'] as List? ?? const [])) v as num,
-    ];
-    final milestones = <(String, int, int)>[
-      (tr('archiver.impact.m.answers', {'n': '100'}), answeredAll, 100),
-      (tr('archiver.impact.m.answers', {'n': '1 000'}), answeredAll, 1000),
-      (tr('archiver.impact.m.packets', {'n': '10 000'}), total, 10000),
-      (tr('archiver.impact.m.storage', {'n': '100 MB'}), bytes, 100 << 20),
-      (tr('archiver.impact.m.storage', {'n': '1 GB'}), bytes, 1 << 30),
-      (tr('archiver.impact.m.cared', {'n': '10'}), cared, 10),
     ];
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        if (!public)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cs.outline),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    const Icon(Icons.volunteer_activism_outlined, size: 28),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(tr('archiver.impact.invite.title'),
-                          style: tt.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700)),
-                    ),
-                  ]),
-                  const SizedBox(height: 8),
-                  Text(tr('archiver.impact.invite.body'),
-                      style: tt.bodyMedium
-                          ?.copyWith(color: cs.onSurfaceVariant)),
-                  const SizedBox(height: 14),
-                  FilledButton.icon(
-                    icon: const Icon(Icons.public),
-                    label: Text(tr('archiver.impact.invite.go')),
-                    onPressed: () => _apply({'public': true}),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        _plain(
-          context,
-          tr('archiver.impact.title'),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _bigNumber(context, '$cared',
-                  tr('archiver.impact.cared', {'n': '$cared'})),
-              const SizedBox(height: 16),
-              Row(children: [
-                Expanded(
-                    child: _bigNumberSmall(context, '$answered30',
-                        tr('archiver.impact.answered30'))),
-                Expanded(
-                    child: _bigNumberSmall(
-                        context, '$mail30', tr('archiver.impact.mail30'))),
-                Expanded(
-                    child: _bigNumberSmall(
-                        context, _size(bytes), tr('archiver.impact.held'))),
-              ]),
-            ],
-          ),
-          help: tr('archiver.impact.help'),
-        ),
+        _switchCard(context, p),
+
+        // ── summary ──
+        _section(context, tr('archiver.overview.title'), [
+          _tiles(context, [
+            _Tile(
+                tr('archiver.head.active'),
+                since == 0 ? tr('archiver.head.active.never') : _age(since),
+                since == 0
+                    ? ''
+                    : tr('archiver.head.active.since', {'date': _date(since)})),
+            _Tile(tr('archiver.head.served'), _bytes(p.xprsServedBytesTotal),
+                tr('archiver.head.served.hint')),
+            _Tile(tr('archiver.head.people'), _compact(_cared),
+                tr('archiver.head.people.hint')),
+            _Tile(tr('archiver.head.answered'), _compact(answered30),
+                tr('archiver.head.answered.hint')),
+          ]),
+        ]),
         _plain(
           context,
           tr('archiver.impact.chart.answers'),
@@ -401,6 +403,40 @@ class _ArchiverPageState extends State<ArchiverPage> {
           ),
           help: tr('archiver.impact.chart.answers.help'),
         ),
+
+        // ── details ──
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),
+          child: Text(tr('archiver.details'),
+              style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        ),
+        _plain(
+          context,
+          tr('archiver.chart.served'),
+          BarChart(
+            points: [
+              for (final d in d14)
+                ChartPoint(_dayLabel(d.d), d.srv.toDouble()),
+            ],
+            idle: tr('archiver.chart.served.idle', {'size': _bytes(served14)}),
+            format: (p) => '${p.label}: ${_bytes(p.value)}',
+          ),
+        ),
+        _section(context, tr('archiver.requests.title'), [
+          _tiles(context, [
+            _Tile(tr('archiver.tile.asks'), '${a['asksLastHour'] ?? 0}',
+                tr('archiver.tile.asks.hint', {
+                  'answered': '${a['answered'] ?? 0}',
+                  'refused': '${a['refused'] ?? 0}',
+                })),
+            _Tile(tr('archiver.requests.mail'), _compact(mail30),
+                tr('archiver.head.answered.hint')),
+            _Tile(tr('archiver.requests.files'), '${f['reqAvgPerHour'] ?? 0}',
+                tr('archiver.files.last_hour', {'n': '${f['reqLastHour'] ?? 0}'})),
+            _Tile(tr('archiver.requests.bandwidth'), '${f['bwPerHourText'] ?? ''}',
+                tr('archiver.files.last_hour', {'n': '${f['bwLastHourText'] ?? ''}'})),
+          ]),
+        ]),
         _plain(
           context,
           tr('archiver.impact.chart.storage'),
@@ -410,8 +446,8 @@ class _ArchiverPageState extends State<ArchiverPage> {
               : LineChart(
                   points: storage,
                   idle: tr('archiver.impact.chart.storage.idle',
-                      {'size': _size(storage.last.value)}),
-                  format: (p) => '${p.label}: ${_size(p.value)}',
+                      {'size': _bytes(storage.last.value)}),
+                  format: (p) => '${p.label}: ${_bytes(p.value)}',
                 ),
         ),
         _plain(
@@ -429,77 +465,40 @@ class _ArchiverPageState extends State<ArchiverPage> {
           ]),
           help: tr('archiver.impact.split.help'),
         ),
-        _plain(
-          context,
-          tr('archiver.impact.day'),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                  tr('archiver.impact.day.files', {
-                    'n': '${reqSpark.fold<num>(0, (s, v) => s + v).round()}'
-                  }),
-                  style: tt.bodyMedium),
-              const SizedBox(height: 6),
-              Sparkline(values: reqSpark),
-              const SizedBox(height: 14),
-              Text(
-                  tr('archiver.impact.day.queries', {
-                    'n': '${qSpark.fold<num>(0, (s, v) => s + v).round()}'
-                  }),
-                  style: tt.bodyMedium),
-              const SizedBox(height: 6),
-              Sparkline(values: qSpark),
-            ],
-          ),
-        ),
-        _section(context, tr('archiver.impact.milestones'), [
-          for (var i = 0; i < milestones.length; i++) ...[
-            if (i > 0) const Divider(height: 1),
-            _milestone(context, milestones[i]),
-          ],
+        _section(context, tr('archiver.held.title'), [
+          _tiles(context, [
+            _Tile(tr('archiver.tile.disk'), '${a['bytesText'] ?? ''}',
+                tr('archiver.tile.disk.hint', {'n': _compact(rec['total'])})),
+            _Tile(tr('archiver.files.used'), '${f['usedText'] ?? ''}',
+                tr('archiver.held.files', {'n': _compact(f['items'])})),
+            _Tile(tr('archiver.files.served'), _compact(f['servedItems']), ''),
+          ]),
         ]),
+        _section(context, tr('archiver.index.title'), [
+          _tiles(context, [
+            _Tile(tr('archiver.dir.links'), _compact(d['pointers']), ''),
+            _Tile(tr('archiver.dir.synced'), _compact(d['syncPeers']), ''),
+            _Tile(tr('archiver.dir.queries'), '${d['queriesAvgPerHour'] ?? 0}',
+                tr('archiver.files.last_hour', {'n': '${d['queriesLastHour'] ?? 0}'})),
+          ]),
+        ], help: tr('archiver.index.help')),
       ],
     );
   }
 
-  Widget _bigNumberSmall(BuildContext context, String value, String label) {
-    final tt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(value,
-            style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-        Text(label, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-      ],
-    );
-  }
+  // ── our archiver ──────────────────────────────────────────────────────────
 
-  Widget _milestone(BuildContext context, (String, int, int) m) {
-    final cs = Theme.of(context).colorScheme;
-    final done = m.$2 >= m.$3;
-    return ListTile(
-      leading: Icon(done ? Icons.emoji_events : Icons.emoji_events_outlined,
-          color: done ? cs.onSurface : cs.outline),
-      title: Text(m.$1,
-          style: TextStyle(color: done ? cs.onSurface : cs.onSurfaceVariant)),
-      subtitle: done
-          ? Text(tr('archiver.impact.m.done'))
-          : Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: LinearProgressIndicator(
-                  value: (m.$2 / m.$3).clamp(0.0, 1.0).toDouble()),
-            ),
-    );
-  }
+  /// One limit for the file store, admitted and kept alike.
+  static const List<int> _fileLimits = [1, 5, 10, 25, 50, 100, 200];
 
-  // ── tabs ──────────────────────────────────────────────────────────────────
-
-  Widget _archiveTab(BuildContext context) {
+  Widget _settingsTab(BuildContext context) {
+    final p = _prefs;
+    if (p == null) return const SizedBox.shrink();
     final a = _arch;
-    final rec = a['records'] is Map ? a['records'] as Map : const {};
-    final public = a['public'] == true;
+    final f = _files;
+    final public = p.xprsPublicArchiver;
+    final files = p.archiveQuotaGb > 0;
+    final index = p.archiverVolunteer != 'off';
     final announced = '${a['announced'] ?? ''}';
     final name = XprsArchive.instance.archiverName;
     return ListView(
@@ -508,7 +507,7 @@ class _ArchiverPageState extends State<ArchiverPage> {
         _section(context, tr('archiver.archive.title'), [
           ListTile(
             leading: const Icon(Icons.router_outlined),
-            title: Text(name.isEmpty ? '—' : name,
+            title: Text(name.isEmpty ? '-' : name,
                 style: const TextStyle(
                     fontFamily: 'monospace', fontWeight: FontWeight.w600)),
             subtitle: Text(announced.isEmpty
@@ -527,38 +526,11 @@ class _ArchiverPageState extends State<ArchiverPage> {
                   )
                 : null,
           ),
-          const Divider(height: 1),
-          _tiles(context, [
-            _Tile(tr('archiver.tile.mine'), _compact(rec['own']),
-                tr('archiver.tile.mine.hint')),
-            _Tile(tr('archiver.tile.followed'), _compact(rec['followed']),
-                tr('archiver.tile.followed.hint',
-                    {'n': '${a['followedCallsigns'] ?? 0}'})),
-            _Tile(
-                tr('archiver.tile.strangers'),
-                public ? _compact(rec['stranger']) : '0',
-                public
-                    ? tr('archiver.tile.strangers.hint',
-                        {'quota': '${a['quotaText'] ?? ''}'})
-                    : tr('archiver.tile.strangers.off'),
-                frac: public ? (a['fullFrac'] as num?)?.toDouble() : null),
-            _Tile(tr('archiver.tile.disk'), '${a['bytesText'] ?? ''}',
-                tr('archiver.tile.disk.hint', {'n': _compact(rec['total'])})),
-            _Tile(tr('archiver.tile.asks'), '${a['asksLastHour'] ?? 0}',
-                tr('archiver.tile.asks.hint', {
-                  'answered': '${a['answered'] ?? 0}',
-                  'refused': '${a['refused'] ?? 0}',
-                })),
-          ]),
         ], help: tr('archiver.archive.help')),
-        _section(context, tr('archiver.keep.title'), [
+        _section(context, tr('archiver.set.messages'), [
           _switch(tr('archiver.keep.followed'), tr('archiver.keep.followed.help'),
               a['keepFollowed'] == true, (v) => _apply({'keepFollowed': v}),
               icon: Icons.people_outline),
-          const Divider(height: 1),
-          _switch(tr('archiver.keep.public'), tr('archiver.keep.public.help'),
-              public, (v) => _apply({'public': v}),
-              icon: Icons.public),
           const Divider(height: 1),
           _choice<int>(
               tr('archiver.keep.quota'),
@@ -579,7 +551,35 @@ class _ArchiverPageState extends State<ArchiverPage> {
               (v) => _apply({'maxDays': v}),
               icon: Icons.schedule),
         ]),
+        _section(context, tr('archiver.set.files'), [
+          _choice<int>(tr('archiver.files.limit'), p.hostCeilingGb,
+              [for (final g in _fileLimits) (g, '$g GB')],
+              (v) => _apply({'filesGb': v}),
+              icon: Icons.sd_storage_outlined),
+          const Divider(height: 1),
+          _switch(tr('archiver.files.followed'), null, f['followed'] == true,
+              files ? (v) => _filesPref('followed=${v ? 1 : 0}') : null),
+          const Divider(height: 1),
+          _switch(tr('archiver.files.nearby'), null, f['fromNearby'] == true,
+              files ? (v) => _filesPref('fromNearby=${v ? 1 : 0}') : null),
+          const Divider(height: 1),
+          _switch(tr('archiver.files.mirror'), null, f['mirrorSmall'] == true,
+              files ? (v) => _filesPref('mirrorSmall=${v ? 1 : 0}') : null),
+          const Divider(height: 1),
+          ListTile(
+            leading: Icon(Icons.delete_sweep_outlined,
+                color: Theme.of(context).colorScheme.error),
+            title: Text(tr('archiver.files.free')),
+            subtitle: Text(tr('archiver.files.free.help',
+                {'n': '${f['freeableText'] ?? ''}'})),
+            onTap: _confirmFree,
+          ),
+        ], help: tr('archiver.files.help')),
         _section(context, tr('archiver.serve.title'), [
+          _switch(tr('archiver.set.charging'), tr('archiver.set.charging.help'),
+              p.hostCapacityGated, (v) => _apply({'onlyCharging': v}),
+              icon: Icons.battery_charging_full),
+          const Divider(height: 1),
           _switch(tr('archiver.serve.always_on'),
               tr(public ? 'archiver.serve.always_on.help' : 'archiver.serve.needs_public'),
               a['alwaysOn'] == true,
@@ -599,103 +599,37 @@ class _ArchiverPageState extends State<ArchiverPage> {
           ),
           const Divider(height: 1),
           _switch(tr('archiver.serve.room'), tr('archiver.serve.room.help'),
-              _prefs?.xprsRoom ?? true,
-              public ? (v) => _apply({'room': v}) : null,
+              p.xprsRoom, public ? (v) => _apply({'room': v}) : null,
               icon: Icons.group_add_outlined),
-        ], help: tr('archiver.serve.help')),
-      ],
-    );
-  }
-
-  Widget _filesTab(BuildContext context) {
-    final f = _files;
-    final quota = (f['quotaGb'] as num?)?.toInt() ?? 0;
-    final on = quota != 0;
-    return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
-      children: [
-        _section(context, tr('archiver.files.title'), [
-          _tiles(context, [
-            _Tile(tr('archiver.files.used'), '${f['usedText'] ?? ''}',
-                on
-                    ? tr('archiver.files.used.of', {'quota': '${f['quotaText'] ?? ''}'})
-                    : tr('archiver.files.used.off'),
-                frac: on ? (f['fullFrac'] as num?)?.toDouble() : null),
-            _Tile(tr('archiver.files.requests'), '${f['reqAvgPerHour'] ?? 0}',
-                tr('archiver.files.last_hour', {'n': '${f['reqLastHour'] ?? 0}'})),
-            _Tile(tr('archiver.files.bandwidth'), '${f['bwPerHourText'] ?? ''}',
-                tr('archiver.files.last_hour', {'n': '${f['bwLastHourText'] ?? ''}'})),
-            _Tile(tr('archiver.files.kept'), _compact(f['items']), ''),
-            _Tile(tr('archiver.files.served'), _compact(f['servedItems']), ''),
-            _Tile(tr('archiver.files.freeable'), '${f['freeableText'] ?? ''}', ''),
-          ]),
-        ], help: tr('archiver.files.help')),
-        _hostSection(context),
-        _section(context, tr('archiver.files.settings'), [
-          _switch(tr('archiver.files.enable'), null, on,
-              (v) => _filesPref('quotaGb=${v ? (quota == 0 ? 5 : quota) : 0}'),
-              icon: Icons.folder_shared_outlined),
-          const Divider(height: 1),
-          _choice<int>(tr('archiver.files.limit'), on ? quota : 5,
-              const [(5, '5 GB'), (20, '20 GB'), (50, '50 GB'), (200, '200 GB')],
-              on ? (v) => _filesPref('quotaGb=$v') : null,
-              icon: Icons.storage),
-          const Divider(height: 1),
-          _switch(tr('archiver.files.followed'), null, f['followed'] == true,
-              on ? (v) => _filesPref('followed=${v ? 1 : 0}') : null),
-          const Divider(height: 1),
-          _switch(tr('archiver.files.nearby'), null, f['fromNearby'] == true,
-              on ? (v) => _filesPref('fromNearby=${v ? 1 : 0}') : null),
-          const Divider(height: 1),
-          _switch(tr('archiver.files.mirror'), null, f['mirrorSmall'] == true,
-              on ? (v) => _filesPref('mirrorSmall=${v ? 1 : 0}') : null),
-          const Divider(height: 1),
+        ]),
+        _section(context, tr('archiver.set.hardware'), [
           ListTile(
-            leading: Icon(Icons.delete_sweep_outlined,
-                color: Theme.of(context).colorScheme.error),
-            title: Text(tr('archiver.files.free')),
-            subtitle: Text(tr('archiver.files.free.help',
-                {'n': '${f['freeableText'] ?? ''}'})),
-            onTap: _confirmFree,
+            leading: const Icon(Icons.electrical_services),
+            title: Text(tr('archiver.set.hardware.open')),
+            subtitle: Text(tr('archiver.set.hardware.help')),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => const HardwarePage()));
+              _refresh();
+            },
           ),
         ]),
+        _section(context, tr('archiver.set.advanced'), [
+          _switch(tr('archiver.part.messages'), tr('archiver.part.messages.help'),
+              public, (v) => _apply({'public': v}),
+              icon: Icons.public),
+          const Divider(height: 1),
+          _switch(tr('archiver.part.files'), tr('archiver.part.files.help'),
+              files, (v) => _apply({'files': v}),
+              icon: Icons.folder_shared_outlined),
+          const Divider(height: 1),
+          _switch(tr('archiver.part.index'), tr('archiver.part.index.help'),
+              index, (v) => _apply({'fileIndex': v}),
+              icon: Icons.hub_outlined),
+        ], help: tr('archiver.set.advanced.help')),
       ],
     );
-  }
-
-  /// Room for the pictures of followed people; strangers' files go first,
-  /// then followed media largest first, and notes are never evicted.
-  static const List<int> _hostCeilings = [1, 5, 10, 25, 50, 100];
-
-  /// Hosting for the mesh (relay + file host): the master switch, the
-  /// charging gate and the media ceiling. Moved here from Settings > Network
-  /// so everything stored for others is on this page. It fills the same
-  /// hosted store the tiles above count and Free space empties.
-  Widget _hostSection(BuildContext context) {
-    final prefs = _prefs;
-    final hostOn = prefs?.hostEnabled ?? true;
-    void set(void Function(PreferencesService p) change) {
-      if (prefs == null) return;
-      change(prefs);
-      RnsService.instance.applyHostingSettings();
-      _refresh();
-    }
-
-    return _section(context, tr('archiver.host.title'), [
-      _switch(tr('archiver.host.enable'), tr('archiver.host.enable.help'),
-          hostOn, (v) => set((p) => p.hostEnabled = v),
-          icon: Icons.cloud_upload_outlined),
-      const Divider(height: 1),
-      _switch(tr('archiver.host.charging'), tr('archiver.host.charging.help'),
-          prefs?.hostCapacityGated ?? true,
-          hostOn ? (v) => set((p) => p.hostCapacityGated = v) : null,
-          icon: Icons.battery_charging_full),
-      const Divider(height: 1),
-      _choice<int>(tr('archiver.host.media'), prefs?.hostCeilingGb ?? 10,
-          [for (final g in _hostCeilings) (g, '$g GB')],
-          hostOn ? (v) => set((p) => p.hostCeilingGb = v) : null,
-          icon: Icons.sd_storage_outlined),
-    ], help: tr('archiver.host.help'));
   }
 
   Future<void> _confirmFree() async {
@@ -719,48 +653,88 @@ class _ArchiverPageState extends State<ArchiverPage> {
     _refresh();
   }
 
-  Widget _directoryTab(BuildContext context) {
-    final d = _dir;
-    final volunteer = '${d['volunteer'] ?? 'off'}';
-    final enabled = volunteer != 'off';
-    final plugged = volunteer != 'always';
-    void set(bool en, bool pl) {
-      NodeRoleApi.instance
-          .setPref('volunteer=${!en ? 'off' : (pl ? 'auto' : 'always')}');
-      _refresh();
-    }
+  // ── archivers we use ──────────────────────────────────────────────────────
 
-    return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
-      children: [
-        _section(context, tr('archiver.dir.title'), [
-          _tiles(context, [
-            _Tile(tr('archiver.dir.queries'), '${d['queriesAvgPerHour'] ?? 0}',
-                tr('archiver.files.last_hour', {'n': '${d['queriesLastHour'] ?? 0}'})),
-            _Tile(tr('archiver.dir.links'), _compact(d['pointers']), ''),
-            _Tile(tr('archiver.dir.authors'), _compact(d['authors']), ''),
-            _Tile(tr('archiver.dir.synced'), _compact(d['syncPeers']), ''),
-            _Tile(tr('archiver.dir.pruned'), _compact(d['demoted']), ''),
-            _Tile(tr('archiver.dir.directories'), _compact(d['archiversKnown']), ''),
-          ]),
-        ], help: tr('archiver.dir.help')),
-        _section(context, tr('archiver.files.settings'), [
-          _switch(tr('archiver.dir.enable'), null, enabled,
-              (v) => set(v, plugged), icon: Icons.hub_outlined),
-          const Divider(height: 1),
-          _switch(tr('archiver.dir.plugged'), null, plugged,
-              enabled ? (v) => set(enabled, v) : null,
-              icon: Icons.battery_charging_full),
-        ]),
-      ],
+  static String _how(String bearer) => switch (bearer) {
+        'rns' => tr('archiver.how.internet'),
+        'lan' => tr('archiver.how.lan'),
+        'ble5' || 'ble' => tr('archiver.how.bluetooth'),
+        'lora' || 'espnow' => tr('archiver.how.radio'),
+        _ => bearer,
+      };
+
+  /// What is known of one archiver: last heard and how, then what it says of
+  /// itself (uptime, records, power and internet, room).
+  List<String> _facts(String call, XprsStation? st,
+      ({String callsign, int lastSeenMs, int uptimeS})? rns) {
+    final lastMs = [st?.lastMs ?? 0, rns?.lastSeenMs ?? 0]
+        .reduce((x, y) => x > y ? x : y);
+    final heard = lastMs == 0
+        ? tr('archiver.used.not_heard')
+        : tr('archiver.used.heard', {
+            'ago': timeAgo(DateTime.fromMillisecondsSinceEpoch(lastMs)),
+            'how': _how(st != null && st.lastMs >= (rns?.lastSeenMs ?? 0)
+                ? st.bearer
+                : 'rns'),
+          });
+    final uptime = st?.uptime ??
+        ((rns?.uptimeS ?? 0) > 0 ? xprsFmtDuration(rns!.uptimeS) : null);
+    final source = st?.readings['source'];
+    final uplink = st?.readings['uplink'];
+    final about = [
+      if (uptime != null) tr('archiver.used.uptime', {'t': uptime}),
+      if (st?.count != null) tr('archiver.used.records', {'n': _compact(st!.count)}),
+      if (source != null && const {'grid', 'solar', 'wind', 'hydro', 'generator'}
+          .contains(source))
+        tr('hardware.energy.$source'),
+      if (uplink != null &&
+          const {'wifi', 'lan', 'cellular', 'satellite', 'none'}.contains(uplink))
+        tr('hardware.internet.$uplink'),
+      if (st?.room == 'no') tr('archiver.status.no_room'),
+    ].join(' · ');
+    return [heard, if (about.isNotEmpty) about];
+  }
+
+  Widget _archiverTile(String call, XprsStation? st,
+      ({String callsign, int lastSeenMs, int uptimeS})? rns,
+      {required Widget trailing, required bool chosen}) {
+    final cs = Theme.of(context).colorScheme;
+    final facts = _facts(call, st, rns);
+    return ListTile(
+      leading: Icon(chosen ? Icons.cloud_done_outlined : Icons.cloud_outlined,
+          color: chosen ? cs.primary : cs.onSurfaceVariant),
+      title: Text(call,
+          style: const TextStyle(
+              fontFamily: 'monospace', fontWeight: FontWeight.w600)),
+      subtitle: Text(facts.join('\n'),
+          style: TextStyle(color: cs.onSurfaceVariant)),
+      isThreeLine: facts.length > 1,
+      trailing: trailing,
     );
   }
 
-  Widget _mineTab(BuildContext context) {
+  Widget _usedTab(BuildContext context) {
     final prefs = _prefs;
     final list = prefs?.xprsArchivers ?? const <String>[];
-    final self = XprsArchive.instance.archiverName;
+    final self = XprsArchive.instance.archiverName.toUpperCase();
+    final heard = XprsMonitor.instance.stations;
+    final announced = {
+      for (final a in RnsService.instance.announcedArchivers())
+        a.callsign.toUpperCase(): a,
+    };
+    XprsStation? st(String c) => heard[c] ?? heard[c.toUpperCase()];
     Future<void> setList(List<String> v) => _apply({'archivers': v});
+
+    // Every other archiver this device knows of: heard announcing
+    // serve:archive, or announced on Reticulum. Most records first.
+    final others = <String>{
+      for (final s in heard.values)
+        if (s.services.contains('archive')) s.callsign.toUpperCase(),
+      ...announced.keys,
+    }..removeWhere((c) => c == self || list.contains(c));
+    final ranked = others.toList()
+      ..sort((x, y) => (st(y)?.count ?? 0).compareTo(st(x)?.count ?? 0));
+
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
@@ -770,18 +744,28 @@ class _ArchiverPageState extends State<ArchiverPage> {
               icon: Icons.auto_mode),
           for (final c in list) ...[
             const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.cloud_upload_outlined),
-              title: Text(c, style: const TextStyle(fontFamily: 'monospace')),
-              subtitle: Text(tr('archiver.mine.holds')),
-              trailing: IconButton(
-                tooltip: tr('archiver.mine.remove'),
-                icon: const Icon(Icons.close),
-                onPressed: () => setList([...list]..remove(c)),
-              ),
-            ),
+            _archiverTile(c, st(c), announced[c.toUpperCase()],
+                chosen: true,
+                trailing: IconButton(
+                  tooltip: tr('archiver.mine.remove'),
+                  icon: const Icon(Icons.close),
+                  onPressed: () => setList([...list]..remove(c)),
+                )),
           ],
         ], help: tr('archiver.mine.help')),
+        _section(context, tr('archiver.used.others'), [
+          if (ranked.isEmpty)
+            ListTile(title: Text(tr('archiver.used.others.none'))),
+          for (var i = 0; i < ranked.length; i++) ...[
+            if (i > 0) const Divider(height: 1),
+            _archiverTile(ranked[i], st(ranked[i]), announced[ranked[i]],
+                chosen: false,
+                trailing: TextButton(
+                  onPressed: () => setList([...list, ranked[i]]),
+                  child: Text(tr('archiver.used.add')),
+                )),
+          ],
+        ]),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
           child: TextField(
@@ -800,7 +784,8 @@ class _ArchiverPageState extends State<ArchiverPage> {
           ),
         ),
         for (final r in _found)
-          if ('${r['call']}' != self && !list.contains('${r['call']}'))
+          if ('${r['call']}'.toUpperCase() != self &&
+              !list.contains('${r['call']}'.toUpperCase()))
             ListTile(
               leading: const Icon(Icons.add_circle_outline),
               title: Text('${r['call']}',
@@ -822,29 +807,24 @@ class _ArchiverPageState extends State<ArchiverPage> {
 
   Widget _page(BuildContext context) {
     return DefaultTabController(
-      length: 5,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: Text(tr('launcher.drawer.archiver')),
           bottom: TabBar(
-            isScrollable: true,
             tabs: [
-              Tab(icon: const Icon(Icons.insights_outlined), text: tr('archiver.tab.impact')),
-              Tab(icon: const Icon(Icons.inventory_2_outlined), text: tr('archiver.tab.archive')),
-              Tab(icon: const Icon(Icons.folder_shared_outlined), text: tr('archiver.tab.files')),
-              Tab(icon: const Icon(Icons.hub_outlined), text: tr('archiver.tab.directory')),
-              Tab(icon: const Icon(Icons.cloud_upload_outlined), text: tr('archiver.tab.mine')),
+              Tab(icon: const Icon(Icons.insights_outlined), text: tr('archiver.tab.overview')),
+              Tab(icon: const Icon(Icons.tune), text: tr('archiver.tab.settings')),
+              Tab(icon: const Icon(Icons.cloud_upload_outlined), text: tr('archiver.tab.used')),
             ],
           ),
         ),
         body: RefreshIndicator(
           onRefresh: () async => _refresh(),
           child: TabBarView(children: [
-            _impactTab(context),
-            _archiveTab(context),
-            _filesTab(context),
-            _directoryTab(context),
-            _mineTab(context),
+            _overviewTab(context),
+            _settingsTab(context),
+            _usedTab(context),
           ]),
         ),
       ),
@@ -853,9 +833,8 @@ class _ArchiverPageState extends State<ArchiverPage> {
 }
 
 class _Tile {
-  const _Tile(this.label, this.value, this.hint, {this.frac});
+  const _Tile(this.label, this.value, this.hint);
   final String label;
   final String value;
   final String hint;
-  final double? frac;
 }

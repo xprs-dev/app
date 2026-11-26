@@ -72,4 +72,44 @@ void main() {
     expect(p.xprsArchiverDials['X3ARC9'], 'arc9.example:4243');
     expect(p.xprsArchiverDialsByHand, isEmpty);
   });
+
+  test('one switch turns the whole archiver on and off', () async {
+    final p = PreferencesService.instanceSync!;
+    p.hostCapacityGated = false;
+    await applyArchiverSettings({'archiver': true});
+    expect(p.xprsPublicArchiver, isTrue);
+    expect(p.archiveQuotaGb, 10, reason: 'the one limit, not zero');
+    expect(p.archiverVolunteer, 'always', reason: 'charging choice kept');
+    expect(p.hostEnabled, isTrue);
+    expect(archiverOn(p), isTrue);
+    expect(p.xprsArchiverSinceMs, greaterThan(0));
+    final since = p.xprsArchiverSinceMs;
+
+    await applyArchiverSettings({'archiver': false});
+    expect(p.xprsPublicArchiver, isFalse);
+    expect(p.archiveQuotaGb, 0);
+    expect(p.archiverVolunteer, 'off');
+    expect(p.hostEnabled, isFalse);
+    expect(p.hostCapacityGated, isFalse, reason: 'off keeps the choice');
+    expect(archiverOn(p), isFalse);
+
+    await applyArchiverSettings({'archiver': true});
+    expect(p.archiverVolunteer, 'always');
+    expect(p.xprsArchiverSinceMs, since, reason: 'since never moves');
+  });
+
+  test('one file limit; charging gate follows the index', () async {
+    final p = PreferencesService.instanceSync!;
+    await applyArchiverSettings({'archiver': true, 'filesGb': 50});
+    expect(p.hostCeilingGb, 50);
+    expect(p.archiveQuotaGb, 50);
+    await applyArchiverSettings({'onlyCharging': true});
+    expect(p.archiverVolunteer, 'auto');
+    await applyArchiverSettings({'files': false});
+    expect(p.archiveQuotaGb, 0);
+    expect(p.xprsPublicArchiver, isTrue, reason: 'parts set alone');
+    await applyArchiverSettings({'filesGb': 20});
+    expect(p.hostCeilingGb, 20);
+    expect(p.archiveQuotaGb, 0, reason: 'a limit does not switch files on');
+  });
 }

@@ -10,6 +10,7 @@
  *   ans    asks answered that day       (sum of counter deltas)
  *   ref    asks refused that day
  *   mail   held mail handed over that day
+ *   srv    bytes served to askers that day (records and files)
  *   own/fol/str/bytes/cared   the archive at the day's last sample
  *
  * Cost (docs/performance.md 8): one sample an hour on a Timer, plus one when
@@ -20,6 +21,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../preferences_service.dart';
+import '../reticulum/rns_service.dart';
 import 'xprs_archive.dart';
 import 'xprs_history_server.dart';
 import 'xprs_mailbox.dart';
@@ -29,6 +31,7 @@ class ArchiverDay {
       {this.ans = 0,
       this.ref = 0,
       this.mail = 0,
+      this.srv = 0,
       this.own = 0,
       this.fol = 0,
       this.str = 0,
@@ -36,7 +39,7 @@ class ArchiverDay {
       this.cared = 0});
 
   final String d;
-  int ans, ref, mail;
+  int ans, ref, mail, srv;
   int own, fol, str, bytes, cared;
 
   int get records => own + fol + str;
@@ -46,6 +49,7 @@ class ArchiverDay {
         'ans': ans,
         'ref': ref,
         'mail': mail,
+        'srv': srv,
         'own': own,
         'fol': fol,
         'str': str,
@@ -62,6 +66,7 @@ class ArchiverDay {
         ans: n('ans'),
         ref: n('ref'),
         mail: n('mail'),
+        srv: n('srv'),
         own: n('own'),
         fol: n('fol'),
         str: n('str'),
@@ -75,6 +80,7 @@ typedef ArchiverReading = ({
   int answered,
   int refused,
   int mail,
+  int served,
   int own,
   int fol,
   int str,
@@ -101,6 +107,7 @@ List<ArchiverDay> foldArchiverReading(List<ArchiverDay> days,
     ..ans += delta(now.answered, last?.answered)
     ..ref += delta(now.refused, last?.refused)
     ..mail += delta(now.mail, last?.mail)
+    ..srv += delta(now.served, last?.served)
     ..own = now.own
     ..fol = now.fol
     ..str = now.str
@@ -110,6 +117,19 @@ List<ArchiverDay> foldArchiverReading(List<ArchiverDay> days,
     out.removeAt(0);
   }
   return out;
+}
+
+/// When a device that has no "since" yet started archiving: the first day
+/// its log shows it answering or holding strangers' records, else [now].
+/// Pure, for the upgrade from a log kept before the date was.
+int archiverSince(List<ArchiverDay> days, DateTime now) {
+  for (final d in days) {
+    if (d.ans > 0 || d.str > 0) {
+      final t = DateTime.tryParse(d.d);
+      if (t != null) return t.millisecondsSinceEpoch;
+    }
+  }
+  return now.millisecondsSinceEpoch;
 }
 
 class ArchiverStats {
@@ -169,15 +189,24 @@ class ArchiverStats {
       answered: hs.answered,
       refused: hs.refused429,
       mail: XprsMailboxCounters.sweepDelivered,
+      served: hs.bytesServed +
+          (RnsService.instance.serveQuota?.bytesServedTotal ?? 0),
       own: c.own,
       fol: c.followed,
       str: c.stranger,
       bytes: archive.spoolBytes,
       cared: archive.caredFor(),
     );
-    final folded =
-        foldArchiverReading(days, now, _last, dayOf(DateTime.now()));
+    final log = days;
+    final folded = foldArchiverReading(log, now, _last, dayOf(DateTime.now()));
+    final last = _last;
     _last = now;
+    prefs.xprsServedBytesTotal += last == null || now.served < last.served
+        ? now.served
+        : now.served - last.served;
+    if (prefs.xprsArchiverSinceMs == 0 && prefs.xprsPublicArchiver) {
+      prefs.xprsArchiverSinceMs = archiverSince(log, DateTime.now());
+    }
     prefs.xprsArchiverStats =
         jsonEncode([for (final d in folded) d.toJson()]);
   }

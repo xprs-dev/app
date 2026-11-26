@@ -1,6 +1,6 @@
 // Settings is a short menu of topics, each opening its own page, and every
-// page draws without an error. Hardware's radio dialog starts each kind of
-// radio from its own defaults.
+// page draws without an error. The Archiver page's one switch sets all of
+// its parts.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -73,8 +73,8 @@ void main() {
           reason: '$t is still loading');
       expect(find.widgetWithText(AppBar, t), findsOneWidget, reason: t);
       if (t == 'Network') {
-        // Hosting lives on the Archiver page (Files), not here.
-        expect(find.text('Host for the mesh'), findsNothing);
+        // Hosting lives on the Archiver page, not here.
+        expect(find.text('Host files for others'), findsNothing);
         expect(find.byType(SwitchListTile), findsNothing);
       }
       if (t == 'Location & privacy') {
@@ -94,47 +94,50 @@ void main() {
     expect(find.text('Say where this device serves'), findsNothing);
   });
 
-  testWidgets('a Bluetooth radio has no frequency to state', (tester) async {
+  testWidgets('Hardware states energy and internet, and has no radios',
+      (tester) async {
     await pump(tester, const HardwarePage());
-    await tester.scrollUntilVisible(find.text('Add a radio'), 200,
-        scrollable: find.byType(Scrollable).first);
-    // Fully on screen, not just its top edge, or the tap lands below it.
-    await tester.ensureVisible(find.text('Add a radio'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Add a radio'));
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(find.widgetWithText(TextFormField, '868200'), findsOneWidget);
-    await tester.tap(find.text('LoRa').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Bluetooth').last);
-    await tester.pumpAndSettle();
-    expect(find.widgetWithText(TextFormField, '868200'), findsNothing,
-        reason: 'LoRa\'s frequency stayed on a Bluetooth link');
+    expect(tester.takeException(), isNull);
+    expect(find.text('Type of device'), findsOneWidget);
+    expect(find.text('Energy source'), findsOneWidget);
+    expect(find.text('Add a radio'), findsNothing);
   });
 
-  testWidgets('the Archiver Files tab holds the hosting switches',
+  testWidgets('the Archiver has three tabs and one switch for all of it',
       (tester) async {
     await pump(tester, const ArchiverPage());
-    await tester.tap(find.text('Files'));
+    expect(tester.takeException(), isNull);
+    for (final t in ['Overview', 'Our archiver', 'Archivers we use']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    final prefs = PreferencesService.instanceSync!;
+    final main = find.widgetWithText(SwitchListTile, 'Archiver');
+    if (tester.widget<SwitchListTile>(main).value) {
+      await tester.tap(main);
+      await tester.pumpAndSettle();
+    }
+    expect(prefs.xprsPublicArchiver, isFalse);
+    expect(prefs.archiveQuotaGb, 0);
+    expect(prefs.archiverVolunteer, 'off');
+    await tester.tap(main);
+    await tester.pumpAndSettle();
+    expect(prefs.xprsPublicArchiver, isTrue);
+    expect(prefs.archiveQuotaGb, greaterThan(0));
+    expect(prefs.archiverVolunteer, isNot('off'));
+
+    await tester.tap(find.text('Our archiver'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expect(find.text('Hosting'), findsOneWidget);
-    expect(find.text('Storage for media'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Share the file index'), 200,
+        scrollable: find
+            .byWidgetPredicate((w) =>
+                w is Scrollable && w.axisDirection == AxisDirection.down)
+            .last);
+    expect(find.text('Share the file index'), findsOneWidget);
 
-    final prefs = PreferencesService.instanceSync!;
-    expect(prefs.hostEnabled, isTrue);
-    await tester.tap(find.widgetWithText(SwitchListTile, 'Host for the mesh'));
+    await tester.tap(find.text('Archivers we use'));
     await tester.pumpAndSettle();
-    expect(prefs.hostEnabled, isFalse);
-    // Off: the charging gate has nothing to gate.
-    expect(
-        tester
-            .widget<SwitchListTile>(find.widgetWithText(
-                SwitchListTile, 'Only when charging on Wi-Fi'))
-            .onChanged,
-        isNull);
-    prefs.hostEnabled = true;
+    expect(tester.takeException(), isNull);
     // Close the page: its once-a-minute refresh timer ends with it.
     await tester.pumpWidget(const SizedBox());
   });

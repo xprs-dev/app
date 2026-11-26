@@ -5,11 +5,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xprs/services/xprs/archiver_stats.dart';
 
 ArchiverReading r(int answered,
-        {int refused = 0, int mail = 0, int own = 0, int bytes = 0}) =>
+        {int refused = 0,
+        int mail = 0,
+        int served = 0,
+        int own = 0,
+        int bytes = 0}) =>
     (
       answered: answered,
       refused: refused,
       mail: mail,
+      served: served,
       own: own,
       fol: 0,
       str: 0,
@@ -53,5 +58,27 @@ void main() {
     final back = ArchiverDay.fromJson(d.toJson())!;
     expect(back.toJson(), d.toJson());
     expect(ArchiverDay.fromJson({'d': 'bad'}), isNull);
+  });
+
+  test('bytes served add up as deltas, a restart counts whole', () {
+    var days = foldArchiverReading(
+        const [], r(1, served: 1000), null, '2026-11-18');
+    days = foldArchiverReading(
+        days, r(2, served: 1500), r(1, served: 1000), '2026-11-18');
+    days = foldArchiverReading(
+        days, r(1, served: 200), r(2, served: 1500), '2026-11-18');
+    expect(days.single.srv, 1700);
+  });
+
+  test('since: the first day it answered or held strangers, else now', () {
+    final now = DateTime(2026, 11, 26);
+    expect(archiverSince(const [], now), now.millisecondsSinceEpoch);
+    expect(
+        archiverSince([
+          ArchiverDay('2026-10-01'),
+          ArchiverDay('2026-10-02', str: 5),
+          ArchiverDay('2026-10-03', ans: 9),
+        ], now),
+        DateTime(2026, 10, 2).millisecondsSinceEpoch);
   });
 }

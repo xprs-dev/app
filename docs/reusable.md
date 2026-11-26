@@ -1653,13 +1653,15 @@ beside location sharing so both read the same location, GPS or typed.
 `lib/launcher/archiver_page.dart`. Everything this device stores or serves for
 others is set on the Archiver page, never in Settings: a new control is one
 `_switch(title, help, value, onChanged)` or `_choice<T>(title, value, options,
-onChanged)` inside a `_section(context, title, [...], help:)`. `_hostSection`
-(Files tab) is the pattern for a group that writes preferences directly and
-then calls a core `apply…()`: pass `null` as `onChanged` to grey a row out.
-The hosting switches (`hostEnabled`, `hostCapacityGated`, `hostCeilingGb`)
-moved here from Settings > Network on 2026-11-20; they fill the same hosted
-store the Files tiles count and "Free space" empties, so no second
-"used / clear" pair is needed.
+onChanged)` inside a `_section(context, title, [...], help:)`; pass `null`
+as `onChanged` to grey a row out. Every write goes through
+`applyArchiverSettings` (below), including the hosting switches: the page has
+three tabs since 2026-11-26 and no group writes preferences on its own any
+more. `_switchCard` is the shape for a page's one master switch (a tinted
+card, the status of its parts as one line under the title), and `_facts`
+turns what XprsMonitor and the Reticulum relay directory know of a station
+into "Heard 3 min ago over the local network / up 2d · 1.2k records · Grid ·
+Wi-Fi", the line to reuse wherever another archiver is listed.
 
 A widget test that opens the page must touch `NodeRoleApi.instance.serveRings`
 in `setUpAll` first: its minute timer otherwise starts inside the test's fake

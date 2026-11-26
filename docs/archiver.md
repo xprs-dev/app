@@ -227,17 +227,40 @@ the packet itself.
 The **Archiver** page, in the launcher's top-left menu
 (`lib/launcher/archiver_page.dart`). It was the Archive wapp until
 2026-11-18; the archiver is a core function of every station, so it is a page
-of the app, and a boot task removes the old wapp (`retireArchiverWapp`). Four
-tabs:
+of the app, and a boot task removes the old wapp (`retireArchiverWapp`). Three
+tabs (2026-11-26; there were five):
 
-- **Archive:** the callsign it answers under (the device's X3), what it
-  announces, the packet tiers, what it keeps (people I follow, public, limit,
-  age) and how it serves others (always on, `dial:`, `room:`).
-- **Files:** media hosted for others: usage, requests, bandwidth, the limit
-  and sources, and Free space.
-- **Directory:** the "who has this?" pointer role.
-- **My archivers:** the archivers this station relies on (the one list behind
-  the publication push and the mailbox declaration), and auto-select.
+- **Overview:** THE switch, then what the archiver gave: active for (since
+  `xprs.archiverSince`), data served to requesters in total
+  (`xprs.servedBytes`, records and files), people served, requests answered
+  in 30 days, the 14-day requests chart. Below them the details: data served
+  per day, requests and mail, storage, the mine/followed/strangers split,
+  what is held, and the file index.
+- **Our archiver:** the callsign it answers under (the device's X3), messages
+  (people I follow, limit, age), files (ONE limit for the file store, sources,
+  Free space), serving others (only while charging, always on, `dial:`,
+  `room:`), a link to Settings > Hardware, and **Advanced**: the three parts
+  one by one.
+- **Archivers we use:** the archivers this station relies on (the one list
+  behind the publication push and the mailbox declaration), each with when and
+  how it was last heard, its uptime, records, power, internet and room; the
+  other archivers heard, with Add; search as a fallback; auto-select.
+
+**One switch, three parts.** Being an archiver is three things that used to
+have five switches: keeping messages for others (`public`, `serve:archive`),
+hosting files for others (the file store's quota, `serve:files`), and the
+file-location index archivers sync among themselves (`volunteer`, the
+Reticulum responder and `PointerSyncService`; 12.9.2). None of them is
+NOSTR-only, whatever older comments say. `{'archiver': bool}` sets all three;
+`files` and `fileIndex` set one; `archiverOn` reads them. Switching the index
+off keeps the charging choice (`hostCapacityGated`), which NodeRoleApi's
+`volunteer=off` did not. The file store had two limits (`archiveQuotaGb` for
+admission, `hostCeilingGb` for eviction); `filesGb` writes both.
+
+**The numbers behind Overview** are the daily log (`ArchiverStats`, 60 rows):
+`srv` is the bytes served that day, the delta of
+`XprsHistoryServer.bytesServed` plus the file host's `bytesServedTotal`, both
+process counters, and the same delta is added to the lifetime total.
 
 Every change goes through `applyArchiverSettings`
 (`lib/services/xprs/archiver_settings.dart`), the same function behind
