@@ -1,0 +1,5 @@
+Wapp map labels: a crowded label steps aside, pins across a grid line join one bubble, a bubble zooms to split or lists its pins
+Wapp map drawer: folded, it clears the phone's gesture bar; Mesh 1.6.1
+Mesh 1.6.1: the stations map is drawn when the wapp starts (a JSON page never sends ready)
+Wapp maps: a list in a drawer over the map, filter chips, popup buttons, and 1500 pins grouped in one pass
+...and 8 more changes.
