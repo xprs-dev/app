@@ -5972,38 +5972,6 @@ function mapLoadLeaflet(cb){
   s.onload=function(){cb(true);};s.onerror=function(){cb(false);};
   document.head.appendChild(s);
 }
-/* OpenStreetMap tiles repainted dark, as the app's map does (app/lib/wapp/
-   geoui/tile_recolor.dart): near-black land, blue-grey water, grey roads. */
-var MAP_LUM=null;
-function mapRecolor(d){
-  var WATER=0x31353f,PARK=0x1c2421,SAND=0x212123,MAJOR=0x474747,BOUNDARY=0x5b6374,i,l;
-  if(!MAP_LUM){
-    var RAMP=[[0,175],[110,120],[185,24],[212,17],[236,31],[244,31],[255,61]];
-    MAP_LUM=new Uint8Array(256);
-    for(l=0;l<256;l++){
-      var v=RAMP[RAMP.length-1][1];
-      for(i=0;i+1<RAMP.length;i++){var a=RAMP[i],b=RAMP[i+1];
-        if(l<=b[0]){v=a[1]+(b[1]-a[1])*(l-a[0])/(b[0]-a[0]);break;}}
-      MAP_LUM[l]=Math.round(v);
-    }
-  }
-  for(i=0;i+3<d.length;i+=4){
-    var r=d[i],g=d[i+1],bl=d[i+2];
-    l=((299*r+587*g+114*bl)/1000)|0;var grey=MAP_LUM[l];
-    var mx=Math.max(r,g,bl),mn=Math.min(r,g,bl),chroma=mx-mn;
-    if(chroma<14){d[i]=d[i+1]=d[i+2]=grey;continue;}
-    var target;
-    if(bl>=g-8&&bl>r+15&&g>r){if(l<150){d[i]=d[i+1]=d[i+2]=grey;continue;}target=WATER;}
-    else if(g>r+6&&g>=bl)target=PARK;
-    else if(r>bl+20&&l>215&&chroma<56&&r-g<20)target=SAND;
-    else if(r>bl+20&&(g>bl+10||r>g+20))target=MAJOR;
-    else target=BOUNDARY;
-    var t=chroma>=44?30:chroma-14;
-    d[i]=grey+((((target>>16)-grey)*t/30)|0);
-    d[i+1]=grey+(((((target>>8)&0xff)-grey)*t/30)|0);
-    d[i+2]=grey+((((target&0xff)-grey)*t/30)|0);
-  }
-}
 function mapMake(){
   el('v-map').innerHTML='<div class="mapbar"><input id="mapgo" type="search" placeholder="Search callsign or name" '+
     'autocomplete="off" spellcheck="false" enterkeyhint="search"><span id="mapcount" class="dim"></span></div>'+
@@ -6078,22 +6046,9 @@ function mapRanges(ref){
     return more();}};
 }
 function mapBase(){
-  function osm(){
-    var Dark=L.GridLayer.extend({createTile:function(c,done){
-      var cv=document.createElement('canvas'),sz=this.getTileSize(),img=new Image();
-      cv.width=sz.x;cv.height=sz.y;img.crossOrigin='anonymous';
-      img.onload=function(){var g=cv.getContext('2d');g.drawImage(img,0,0,sz.x,sz.y);
-        try{var px=g.getImageData(0,0,sz.x,sz.y);mapRecolor(px.data);g.putImageData(px,0,0);}catch(e){}
-        done(null,cv);};
-      img.onerror=function(){done(new Error('tile'),cv);};
-      img.src='https://'+'abc'[(c.x+c.y)%3]+'.tile.openstreetmap.org/'+c.z+'/'+c.x+'/'+c.y+'.png';
-      return cv;}});
-    new Dark({maxZoom:18,attribution:'&copy; OpenStreetMap'}).addTo(mapObj);
-  }
-  /* A map at once, from openstreetmap.org; the station's own world map draws
-     over it as its tiles come (at once on its network, slower over a link),
-     and where none came yet, or the station shares none, this one shows. */
-  osm();
+  /* Only the station's own hosted world map (a shared folder's pmtiles),
+     never a third-party tile server. Its land colour until tiles come. */
+  mapObj.getContainer().style.background='#2b2b2b';
   mapWorld(function(w){
     if(!w)return;
     mapScripts(window.protomapsL&&window.pmtiles?[]:MAP_LIBS,function(ok){
@@ -6102,9 +6057,6 @@ function mapBase(){
         var pl=protomapsL.leafletLayer({url:new pmtiles.PMTiles(mapRanges(w.ref)),flavor:'black',lang:'en',
           maxDataZoom:w.z,maxZoom:18,attribution:'<a href="https://protomaps.com">Protomaps</a> '+
           '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'});
-        /* A tile whose data did not come stays clear (the map under it shows)
-           instead of the flavour's plain background; land and water cover the rest. */
-        pl.backgroundColor=null;
         pl.addTo(mapObj);
       }catch(e){}
     });
