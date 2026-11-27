@@ -361,3 +361,15 @@ asker's own identity, not X3PTZM's `t:service`, and the groups list stayed
 empty. Next: check that `cmd:history kind:service only:<archiver>` answers
 with the archiver's own newest `t:service` (does it keep its own? does
 `only:` equal to the answering station match?).
+
+## 2026-11-27: the federation run exists
+
+`portal/test/interop_federation.py` is the three-station run this plan asked
+for (server edition only so far): rooms (Global crosses, Regional and Local
+do not), who is cared for where, mail from a person at one archiver to a
+person at another with the receipt back, a file found by its hash, and a
+public moderator's removal reaching every archiver. Its first run failed 14
+checks and led to XPRS.md 12.9.8 (archivers hand on what they take
+first-hand). Still open from this plan: a desktop app and a board as one of
+the three stations.
+
