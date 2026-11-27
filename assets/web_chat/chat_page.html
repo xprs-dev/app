@@ -687,6 +687,8 @@ body.mapui.wide #mapbg .leaflet-bottom{bottom:0}
 /* The filter over the map: one segmented control. */
 .mapshow{display:flex;background:rgba(20,19,18,.9);border:1px solid var(--border);border-radius:17px;padding:2px;
   box-shadow:0 1px 6px rgba(0,0,0,.5)}
+.mapload{background:rgba(20,19,18,.9);border:1px solid var(--border);border-radius:12px;padding:5px 10px;
+  color:var(--text);font-size:12px;max-width:70vw;pointer-events:none}
 .mapshow button{background:none;border:0;color:var(--text);border-radius:15px;padding:5px 10px;font:inherit;
   font-size:12.5px;cursor:pointer;white-space:nowrap}
 .mapshow button span{color:var(--muted);margin-left:3px;font-size:11px}
@@ -6018,6 +6020,73 @@ function mapWorld(cb,waited){
     cb(best);
   },30000);  /* a history query takes seconds on a big archiver, more over a link */
 }
+/* What was read of a map stays in the browser (IndexedDB), by the file's
+   reference and the range: a reference names its bytes, so a kept part is
+   never stale, and a visitor who comes back asks the station only for what
+   they have not seen. The parts longest unused go when it passes
+   MAP_KEEP_MAX. Without IndexedDB (a private window, a captive WebView)
+   every read goes out, as before. */
+var MAP_KEEP_MAX=96*1048576,mapKeepDb=null,mapKeepSize=0;
+function mapKeepOpen(){
+  if(mapKeepDb)return mapKeepDb;
+  mapKeepDb=new Promise(function(ok){
+    try{
+      var q=indexedDB.open('xprs-map',1);
+      q.onupgradeneeded=function(){var d=q.result;d.createObjectStore('parts');
+        d.createObjectStore('used').createIndex('t','t');};
+      q.onerror=q.onblocked=function(){ok(null);};
+      q.onsuccess=function(){var d=q.result,n=0;
+        try{var c=d.transaction('used').objectStore('used').openCursor();
+          c.onsuccess=function(){var k=c.result;if(k){n+=k.value.n;k.continue();}else{mapKeepSize=n;ok(d);}};
+          c.onerror=function(){ok(null);};
+        }catch(e){ok(null);}};
+    }catch(e){ok(null);}
+  });
+  return mapKeepDb;
+}
+function mapKeepGet(key){
+  return mapKeepOpen().then(function(d){
+    if(!d)return null;
+    return new Promise(function(ok){
+      try{var t=d.transaction(['parts','used'],'readwrite'),g=t.objectStore('parts').get(key);
+        g.onsuccess=function(){var b=g.result;
+          if(b)t.objectStore('used').put({t:Date.now(),n:b.byteLength},key);
+          ok(b||null);};
+        g.onerror=function(){ok(null);};t.onabort=function(){ok(null);};
+      }catch(e){ok(null);}
+    });
+  });
+}
+function mapKeepPut(key,buf){
+  mapKeepOpen().then(function(d){
+    if(!d)return;
+    try{var t=d.transaction(['parts','used'],'readwrite');
+      t.objectStore('parts').put(buf,key);
+      t.objectStore('used').put({t:Date.now(),n:buf.byteLength},key);
+      mapKeepSize+=buf.byteLength;
+      if(mapKeepSize>MAP_KEEP_MAX)mapKeepTrim(t);
+    }catch(e){}
+  });
+}
+function mapKeepTrim(t){
+  var c=t.objectStore('used').index('t').openCursor();
+  c.onsuccess=function(){var k=c.result;
+    if(!k||mapKeepSize<=MAP_KEEP_MAX*0.8)return;
+    mapKeepSize-=k.value.n;t.objectStore('parts').delete(k.primaryKey);k.delete();k.continue();};
+}
+/* Said over the map while it is being read from the station: a map that is
+   not drawn yet is on its way, not broken. [d] reads begun or done. */
+var mapLoadN=0,mapLoadBytes=0,mapLoadT=0;
+function mapLoading(d,bytes){
+  mapLoadN=Math.max(0,mapLoadN+d);if(bytes)mapLoadBytes+=bytes;
+  var e=el('mapload');if(!e)return;
+  clearTimeout(mapLoadT);
+  if(mapLoadN>0){
+    e.textContent='Loading map tiles over the decentralized network\u2026'+
+      (mapLoadBytes?' '+(mapLoadBytes/1048576).toFixed(1)+' MB':'');
+    e.style.display='';
+  }else mapLoadT=setTimeout(function(){e.style.display='none';mapLoadBytes=0;},800);
+}
 /* pmtiles' Source over /api/xprs/file/<ref>: Range requests, on the
    station's own network and over a Reticulum link alike. A link answers at
    most a part (256 KB) a request: a shorter answer is read on from there. */
@@ -6036,20 +6105,28 @@ function mapRanges(ref){
       x.send();});
   }
   return {getKey:function(){return url;},getBytes:function(off,len,signal){
-    var out=new Uint8Array(len),got=0;
+    var out=new Uint8Array(len),got=0,key=ref+'|'+off+'|'+len;
     function more(){
       return part(off+got,len-got,signal).then(function(b){
         var n=Math.min(b.byteLength,len-got);out.set(new Uint8Array(b,0,n),got);got+=n;
-        if(got>=len||!n)return {data:got>=len?out.buffer:out.slice(0,got).buffer};
+        if(got>=len){mapKeepPut(key,out.buffer);return {data:out.buffer};}
+        if(!n)return {data:out.slice(0,got).buffer};
         return more();});
     }
-    return more();}};
+    return mapKeepGet(key).then(function(kept){
+      if(kept)return {data:kept};
+      mapLoading(1);
+      return more().then(function(r){mapLoading(-1,got);return r;},
+        function(e){mapLoading(-1,got);throw e;});
+    });}};
 }
 function mapBase(){
   /* Only the station's own hosted world map (a shared folder's pmtiles),
      never a third-party tile server. Its land colour until tiles come. */
   mapObj.getContainer().style.background='#2b2b2b';
+  mapLoading(1);  /* asking the station which map it shares */
   mapWorld(function(w){
+    mapLoading(-1);
     if(!w)return;
     mapScripts(window.protomapsL&&window.pmtiles?[]:MAP_LIBS,function(ok){
       if(!ok||!window.protomapsL||!window.pmtiles)return;
@@ -6071,6 +6148,9 @@ function mapInit(box){
     if(kept)mapFitted=true;
     mapLayer=L.layerGroup().addTo(mapObj);
     mapObj.attributionControl.setPrefix(false);
+    var Load=L.Control.extend({onAdd:function(){var d=L.DomUtil.create('div','mapload');d.id='mapload';
+      d.style.display='none';return d;}});
+    new Load({position:'bottomright'}).addTo(mapObj);
     mapBase();
     /* A redraw clears the markers: it waits while somebody reads a popup. */
     mapObj.on('popupopen',function(){mapReading=true;});
