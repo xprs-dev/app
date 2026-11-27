@@ -440,7 +440,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 .msg .meta.under{margin-bottom:0;margin-top:2px}
 .msg .dots{background:transparent;border:0;color:var(--muted);
         cursor:pointer;font-size:13px;padding:0 5px}
-.msg .likes{color:#e0708a;font-size:11px;margin-left:6px}
+.msg .likes{background:transparent;border:0;cursor:pointer;font:inherit;font-size:12px;color:var(--muted);margin-left:6px;padding:0 3px;opacity:.6}
+.msg .likes.some{opacity:1}.msg .likes.on,.likebtn.on{color:#ff5a6e;opacity:1}
+.likebtn{padding:2px 8px;min-width:40px}
 #msgmenu{position:fixed;background:var(--panel);border:1px solid var(--border);
         border-radius:6px;z-index:20;display:none;min-width:170px;
         box-shadow:0 8px 20px rgba(0,0,0,.35)}
@@ -762,6 +764,7 @@ img.shot{max-width:100%;image-rendering:pixelated;border:1px solid var(--border)
       <div class="menu-sec">This page</div>
       <button onclick="clearChat()">Clear chat view</button>
       <button onclick="toggleSound()" id="sndbtn">Sound: on</button>
+      <button id="instbtn" style="display:none" onclick="installApp()">Install as an app</button>
     </div>
   </div>
 </div>
@@ -1562,6 +1565,26 @@ document.addEventListener('click',function(e){
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeMenu();});
 /* A section heading shows only when something under it does (a host that
    serves no Stats, Station or Settings still has Administration). */
+/* The page as an app on this device (xprs.dev/in: the shell that carries the
+   page holds the browser's offer, window.XPRS_REMOTE.install). Where the
+   browser installs a page itself (Android, a desktop) the entry asks it to;
+   on an iPhone, where only Safari's Share sheet can, it says how. A station's
+   own page cannot be installed (it has no https), and shows no entry. */
+function installOffer(){
+  var b=el('instbtn'),i=window.XPRS_REMOTE&&window.XPRS_REMOTE.install;
+  if(!b)return;
+  b.style.display=i&&i.state()!=='no'?'':'none';
+  tidyMenu();
+}
+function installApp(){
+  closeMenu();
+  var i=window.XPRS_REMOTE&&window.XPRS_REMOTE.install;if(!i)return;
+  var s=i.state();
+  if(s==='ask')i.ask();
+  else if(s==='ios')alert('To install XPRS on this iPhone or iPad:\n\n1. Tap the Share button.\n2. Choose "Add to Home Screen".');
+  else if(s==='menu')alert('To install XPRS: open the browser\'s menu and choose "Install app" or "Add to Home screen".');
+}
+window.addEventListener('xprs-install',function(){installOffer();});
 function tidyMenu(){
   var kids=el('menu').children,i,sec=null,any=false;
   for(i=0;i<=kids.length;i++){
@@ -1705,8 +1728,28 @@ var keyWait={};              /* base callsign -> callbacks waiting for it */
 function npubDecode(str){var d=bech32Decode(str);
   if(!d||d.hrp!=='npub')return null;var b=to8(d.data);
   return b.length===32?b:null;}
+/* A callsign is derived from its key (XPRS.md 3), so a key that derives to
+   the callsign asked for is that person's for ever: kept in this browser,
+   the 300 learned last, and never asked for again. */
+function keyKept(c){
+  try{var h=(JSON.parse(localStorage.getItem('xprs_keys')||'{}')||{})[c];
+    if(!h||h.length!==64)return null;
+    var b=new Uint8Array(32);for(var i=0;i<32;i++)b[i]=parseInt(h.substr(i*2,2),16);
+    return b;}catch(e){return null;}
+}
+function keyKeep(c,k){
+  try{
+    if(callsignFromNpub(npubEncode(k)).slice(2)!==c.slice(2))return;
+    var m=JSON.parse(localStorage.getItem('xprs_keys')||'{}')||{},ks;
+    delete m[c];m[c]=hex(k);
+    ks=Object.keys(m);
+    while(ks.length>300)delete m[ks.shift()];
+    localStorage.setItem('xprs_keys',JSON.stringify(m));
+  }catch(e){}
+}
 function fetchKey(call,cb){
   var c=baseCall(call);
+  if(!keys[c]){var kk=keyKept(c);if(kk)keys[c]=kk;}
   if(keys[c]){cb(keys[c]);return;}
   if(keyWait[c]){keyWait[c].push(cb);return;}
   keyWait[c]=[cb];
@@ -1726,7 +1769,7 @@ function fetchKey(call,cb){
           if(m)k=npubDecode(m[1]);
         }
         /* Not found is not remembered as a fact: the identity may arrive next. */
-        if(k)keys[c]=k;else keyMiss[c]=Date.now();
+        if(k){keys[c]=k;keyKeep(c,k);}else keyMiss[c]=Date.now();
         keyDown[c]=!d;
         var w=keyWait[c];delete keyWait[c];
         for(i=0;i<w.length;i++)w[i](k);
@@ -2044,7 +2087,7 @@ function sendOut(wire,text,sealed,peer){
           to:peer||(curRoom.slice(0,2)==='g:'||curRoom.slice(0,2)==='o:'?curRoom.slice(2):''),
           wire:wire,plain:text,sealed:sealed});
   postWire(wire,function(ok,why){
-    if(ok)return;
+    if(ok){quiet=0;if(THRIFTY)setTimeout(tick,4000);return;}
     /* Said on the bubble, where it stays, and not only in a snackbar that
      * is gone in three seconds: a bubble that still reads "signed" after the
      * station refused it looks delivered. The station names its reason, e.g.
@@ -2125,36 +2168,85 @@ function toggleSound(){
   document.getElementById('sndbtn').textContent='Sound: '+(sndOn?'on':'off');
   closeMenu();}
 
-/* ---- likes (XPRS 6.5): add:like / remove:like on a message's id ---- */
-var likes={};        /* msgId -> {callsign:1} */
-var domById={};      /* msgId -> bubble meta element to refresh */
-var myLikes={};      /* msgId -> 1 (mine, for toggling) */
+/* ---- likes (XPRS.md 7.5): add:like / remove:like on a packet's id ----
+   One table for everything that can be liked: a message, a status, a blog
+   post, a forum topic and its comments. A heart on the post itself says how
+   many like it and whether this visitor does; a tap adds or withdraws. */
+var likes={};        /* id -> {callsign:1} */
+var likeAt={};       /* id|callsign -> ts of the newest word held on it */
+var domById={};      /* id -> the heart of its bubble */
+var myLikes={};      /* id -> 1 (mine, for toggling) */
 function likeCount(id){var n=0;for(var k in likes[id]||{})n++;return n;}
+function likeMark(id){var n=likeCount(id);return (myLikes[id]?'♥':'♡')+(n?' '+n:'');}
+function likeTitle(id){return myLikes[id]?'You like this (tap to take it back)':'Like';}
+/* The heart of a card (a blog post, a forum post). */
+function likeBtn(id){
+  return '<button class="act quiet likebtn'+(myLikes[id]?' on':'')+'" data-like="'+esc(id)+
+    '" onclick="event.stopPropagation();sendLike(\''+esc(id)+'\')" title="'+likeTitle(id)+'">'+likeMark(id)+'</button>';
+}
 function refreshLikes(id){
-  var el=domById[id];if(!el)return;
-  var n=likeCount(id);
-  el.textContent=n?('\u2665 '+n):'';}
+  var e=domById[id],i;
+  if(e){e.textContent=likeMark(id);e.title=likeTitle(id);
+    e.className='likes'+(likeCount(id)?' some':'')+(myLikes[id]?' on':'');}
+  var bs=document.querySelectorAll('[data-like="'+id+'"]');
+  for(i=0;i<bs.length;i++){bs[i].textContent=likeMark(id);bs[i].title=likeTitle(id);
+    bs[i].className='act quiet likebtn'+(myLikes[id]?' on':'');}
+}
+/* A reaction heard: counted once per callsign, the newest word of each
+   winning, in whatever order the rows arrive. */
 function applyReaction(row){
   var w=row.wire||'';
   var rm=w.match(/ r:([0-9a-f]{6})/);
   if(!rm)return;
-  var id=rm[1],from=baseCall(row.from||'');
+  var add=/ add:like/.test(w),rem=/ remove:like/.test(w);
+  if(!add&&!rem)return;
+  var id=rm[1],from=baseCall(row.from||''),k=id+'|'+from,ts=row.ts||0;
+  if((likeAt[k]||0)>ts)return;
+  likeAt[k]=ts;
   if(!likes[id])likes[id]={};
-  if(/ add:like/.test(w)){likes[id][from]=1;}
-  else if(/ remove:like/.test(w)){delete likes[id][from];}
-  if(from===baseCall(mycall))myLikes[id]=/ add:like/.test(w)?1:0;
+  if(add)likes[id][from]=1;else delete likes[id][from];
+  if(from===baseCall(mycall))myLikes[id]=add?1:0;
   refreshLikes(id);}
-function sendLike(id){
-  var verb=myLikes[id]?'remove':'add';
-  myLikes[id]=verb==='add'?1:0;
+/* Where the liked post lives: a room, a group, a forum category or a private
+   conversation is named in d:, as a post to it is. */
+function likeDest(){
+  var p=curRoom.slice(0,2);
+  if(p==='g:'||p==='o:'||p==='f:')return ' d:'+curRoom.slice(2);
+  if(curRoom.slice(0,3)==='dm:')return ' d:'+curRoom.slice(3);
+  return '';
+}
+function likeSet(id,on,ts){
+  var me=baseCall(mycall);
+  myLikes[id]=on?1:0;likeAt[id+'|'+me]=ts;
   if(!likes[id])likes[id]={};
-  if(verb==='add')likes[id][baseCall(mycall)]=1;
-  else delete likes[id][baseCall(mycall)];
+  if(on)likes[id][me]=1;else delete likes[id][me];
   refreshLikes(id);
+}
+function sendLike(id){
+  if(!canSign())return snack('Not ready');
+  var on=!myLikes[id],now=Math.floor(Date.now()/1000);
+  sendIdentity();
+  likeSet(id,on,now);
   var par=idmap[id];
-  var sc=par&&par.scope&&par.scope!=='global'?' scope:'+par.scope:'';
-  signAny('t:reaction f:'+mycall+' ts:'+tsNow()+sc+' '+verb+':like r:'+id,function(wire){
-    if(wire)postWire(wire,null);});}
+  var sc=par&&par.scope&&par.scope!=='global'&&!likeDest()?' scope:'+par.scope:'';
+  signAny('t:reaction f:'+mycall+likeDest()+' ts:'+tsNow()+sc+' '+(on?'add':'remove')+':like r:'+id,function(wire){
+    if(!wire){likeSet(id,!on,now);return snack('Not signed');}
+    postWire(wire,function(ok,why){
+      if(ok)return;
+      likeSet(id,!on,now);
+      snack(why||'The station refused it');});});}
+/* The likes of what a feed shows (the blog, a forum topic): the reactions
+   the station holds, asked for beside the posts, at most once a minute. */
+var likesAt={};
+function loadLikes(name,q){
+  var t=Date.now();
+  if(t-(likesAt[name]||0)<every(60000))return;
+  likesAt[name]=t;
+  feedRead(name,'/api/xprs/history?kind=reaction'+q,200,function(d){
+    var rows=(d&&d.rows)||[];
+    for(var i=rows.length-1;i>=0;i--)applyReaction(rows[i]);
+  });
+}
 
 /* ---- the per-message menu ---- */
 function showMsgMenu(ev,id,from,own){
@@ -2463,8 +2555,8 @@ function leaveGroupAct(g){
 function loadGroup(){
   if(curRoom.slice(0,2)!=='o:')return;
   var g=curRoom.slice(2);
-  getJSON('/api/xprs/history?kind=message,reaction&room='+encodeURIComponent(g)+
-          '&limit=100'+(sess?'&session='+encodeURIComponent(sess):''),function(d){
+  feedRead('o|'+g+'|'+meBase(),'/api/xprs/history?kind=message,reaction&room='+encodeURIComponent(g)+
+          (sess?'&session='+encodeURIComponent(sess):''),100,function(d){
     if(!d||!d.rows||curRoom!=='o:'+g)return;
     if(g.slice(0,2)==='X5'){
       /* One record per group, kept across polls: the station's word when it
@@ -2485,7 +2577,7 @@ function loadGroup(){
     var rows=d.rows.slice().reverse();
     for(var i=0;i<rows.length;i++)render(rows[i]);
     roomAnswered('o:'+g);
-  });
+  },{sess:!!sess,draw:true});
 }
 function roomOf(row){
   var w=row.wire||'';
@@ -2954,7 +3046,7 @@ function render(row){
   /* mood: (27.1) is decoration: one italic word beside the post. */
   var mm=w.match(/ mood:([a-z]+) /);
   if(mm)badge+='<span class="mood">'+mm[1]+'</span>';
-  var extras='<span class="likes"></span>'+
+  var extras='<button class="likes"></button>'+
     '<button class="dots" title="Message options">&#8942;</button>';
   if(own){
     d.innerHTML='<div class="bubble"></div>'+
@@ -2972,6 +3064,7 @@ function render(row){
       if((row.ts||0)>=openedAt)notice();}
   }
   domById[id]=d.querySelector('.likes');
+  domById[id].onclick=function(ev){ev.stopPropagation();sendLike(id);};
   refreshLikes(id);
   d.querySelector('.dots').onclick=function(ev){
     showMsgMenu(ev,id,row.from,own);};
@@ -3115,21 +3208,50 @@ function backfillRooms(){
             ['social','status']];
   (function next(i){
     if(i>=asks.length)return;
-    var a=asks[i];
-    getJSON('/api/xprs/history?kind='+a[1]+'&room='+a[0]+'&limit=100'+
-            (sess?'&session='+sess:''),function(d){
+    var a=asks[i],went=false;
+    feedRead('room|'+a[0],'/api/xprs/history?kind='+a[1]+'&room='+a[0]+
+            (sess?'&session='+sess:''),100,function(d){
       /* A station keeping Local to its own network (a visitor from the
          internet): the page starts on Global, where they can take part. */
       if(d&&d.private){roomPrivate[a[0]]=true;if(curRoom===a[0])switchRoom(a[0]==='local'?'global':curRoom);}
-      var rows=(d&&d.rows||[]).slice().reverse();
-      for(var j=0;j<rows.length;j++)render(rows[j]);
+      if(THRIFTY)feedRender(d&&d.rows||[]);
+      else{var rows=(d&&d.rows||[]).slice().reverse();
+        for(var j=0;j<rows.length;j++)render(rows[j]);}
+      /* What is held is drawn first and the station's answer after it: the
+         next room is asked once the station answered (or held nothing). */
+      if(went)return;
+      went=true;
       roomAnswered(a[0]);
       next(i+1);
     });
   })(0);
 }
 var loadBusy=false,chatDeep=false;
+/* Rows handed to render() already (thrifty: an answer is everything held). */
+var fedRows={};
+function feedRender(rows){
+  for(var i=rows.length-1;i>=0;i--){
+    var r=rows[i],t=r.type||'',id=feedId(r)+'|'+(r.to||'');
+    if(fedRows[id]&&t!=='reaction')continue;
+    fedRows[id]=1;
+    if(t==='message'||t==='reaction'||t==='status')render(r);
+  }
+}
+function meBase(){return baseCall(mycall||'')||'-';}
+function loadFar(){
+  feedRead('chat|'+meBase(),'/api/xprs/history?kind=message,reaction,status'+(sess?'&session='+sess:''),100,function(d){
+    if(!d||!d.rows)return;
+    if(d.fresh)quiet=0;else if(d.fresh===0)quiet++;
+    chatLoaded=true;chatDeep=true;
+    if(d.moderation)applyModeration(d.moderation);
+    setTimeout(backfillRooms,0);
+    feedRender(d.rows);
+    if(curRoom.slice(0,3)==='dm:')lookState(curRoom);
+    document.getElementById('stat').textContent=(d.held!==undefined?d.held+' packets held':'ok');
+  },{cap:600,ms:20000,sess:!!sess});
+}
 function load(){
+  if(THRIFTY)return loadFar();
   // Every three seconds, and never two at once: a station without PSRAM
   // serves 200 rows in five seconds, and a page that asked for them every
   // three seconds with a four-second timeout queued abandoned requests at
@@ -3222,6 +3344,138 @@ function getJSON(url,cb,ms){
     x.send();
   }catch(e){cb(null);}
 }
+// ---- thrift: what was read is kept, only what is new is asked for ---------
+//
+// On a station's own network a listing is read whole each time, as it always
+// was: the bytes cross one room. Over a Reticulum link (xprs.dev/in, the
+// installed app: window.XPRS_REMOTE) every byte is carried by somebody's
+// uplink or radio, so there:
+//   - a listing read once stays in this browser (IndexedDB), is drawn from
+//     there at the next visit before the station answered, and
+//   - a repeated read asks only for what is newer (since=, API-HTTP.md),
+//     with five minutes of overlap for packets that came round late; the
+//     whole window is read again every half hour, which is also what
+//     takes away a row the station no longer holds;
+//   - the clocks tick slower: the conversation every twenty seconds, every
+//     minute once nothing was said for a while, and every two minutes, alone,
+//     on a page nobody is looking at. A call over a link costs a couple of
+//     kB however little it carries, so how OFTEN is the whole cost.
+// ?thrifty=1 turns it on over HTTP (the tests, a metered connection).
+var THRIFTY=!!window.XPRS_REMOTE||/[?&]thrifty=1/.test(location.search);
+function every(ms){return THRIFTY?ms*4:ms;}
+/* The listings kept: one record per station and listing, the 120 used last. */
+var KEEP_MAX=120,keepDb=null;
+function keepOpen(){
+  if(keepDb)return keepDb;
+  keepDb=new Promise(function(ok){
+    try{
+      var q=indexedDB.open('xprs-keep',1);
+      q.onupgradeneeded=function(){q.result.createObjectStore('feeds',{keyPath:'k'}).createIndex('at','at');};
+      q.onerror=q.onblocked=function(){ok(null);};
+      q.onsuccess=function(){ok(q.result);};
+    }catch(e){ok(null);}
+  });
+  return keepDb;
+}
+function keepGet(k){
+  return keepOpen().then(function(d){
+    if(!d)return null;
+    return new Promise(function(ok){
+      try{var g=d.transaction('feeds').objectStore('feeds').get(k);
+        g.onsuccess=function(){ok(g.result||null);};g.onerror=function(){ok(null);};
+      }catch(e){ok(null);}
+    });
+  });
+}
+function keepPut(v){
+  keepOpen().then(function(d){
+    if(!d)return;
+    try{var s=d.transaction('feeds','readwrite').objectStore('feeds');
+      v.at=Date.now();s.put(v);
+      var c=s.count();
+      c.onsuccess=function(){var over=c.result-KEEP_MAX;if(over<=0)return;
+        var cur=s.index('at').openCursor();
+        cur.onsuccess=function(){var k=cur.result;if(!k||over<=0)return;over--;k.delete();k.continue();};};
+    }catch(e){}
+  });
+}
+var FEED_SLACK=300,FEED_FULL_MS=1800000,feeds={};
+function feedId(r){return r.id||wireId(r.wire||'');}
+/* Rows into a listing held: one per identifier, newest first, the oldest
+   dropped past its cap. An author's withdrawal (r:<id> remove:..., XPRS.md
+   7.8.2) takes what it names out of what is held. Returns how many were new. */
+function feedPut(f,rows,replace){
+  var i,j,r,id,n=0,gone={};
+  if(replace){f.rows=[];f.ids={};}
+  for(i=0;i<rows.length;i++){r=rows[i];id=feedId(r);
+    if(f.ids[id])continue;
+    f.ids[id]=1;f.rows.push(r);n++;
+    if((r.ts||0)>f.newest)f.newest=r.ts;
+  }
+  for(i=0;i<f.rows.length;i++){r=f.rows[i];
+    var m=/^t:(?!reaction )\S+ .*? r:([0-9a-f]{6}) remove:(blog|message|status|warning|info|file)( |$)/.exec((r.wire||'').split(' m:')[0]);
+    if(m)gone[m[1]]=baseCall(r.from||'');
+  }
+  for(id in gone){
+    for(j=f.rows.length-1;j>=0;j--)
+      if(feedId(f.rows[j])===id&&baseCall(f.rows[j].from||'')===gone[id])f.rows.splice(j,1);
+  }
+  if(n||replace)f.rows.sort(function(a,b){return (b.ts||0)-(a.ts||0);});
+  while(f.rows.length>f.cap)delete f.ids[feedId(f.rows.pop())];
+  return n;
+}
+function feedAnswer(f){
+  var d={},k;for(k in f.last||{})d[k]=f.last[k];
+  d.ok=true;d.rows=f.rows.slice();d.count=d.rows.length;return d;
+}
+/* A listing of /api/xprs/history: [url] without limit= or since=, [limit]
+   the window asked for. [cb] gets an answer of the station's shape, its rows
+   everything held. opt: cap (rows kept, twice the window when not said), ms
+   (the patience), full (ms between whole reads), sess (the rows depend on
+   the visitor's session: read whole once with one), draw (the caller draws
+   from the answer even when nothing changed), grow (a whole read adds to
+   what is held and replaces nothing: stations seen, which do not go away).
+   An answer from the station says in `fresh` how many rows were new. */
+function feedRead(name,url,limit,cb,opt){
+  opt=opt||{};
+  url+=(url.indexOf('?')<0?'?':'&')+'limit='+limit;
+  if(!THRIFTY)return getJSON(url,cb,opt.ms);
+  var key=((window.XPRS_REMOTE&&window.XPRS_REMOTE.station)||'')+'|'+name,f=feeds[key];
+  if(!f){
+    f=feeds[key]={k:key,rows:[],ids:{},newest:0,fullAt:0,last:null,cap:opt.cap||limit*2,
+                  busy:false,sess:false,rev:1,shown:0};
+    f.ready=keepGet(key).then(function(v){
+      if(v&&v.rows){feedPut(f,v.rows,true);f.fullAt=v.fullAt||0;f.askedAt=v.at||0;f.last=v.last||null;f.sess=!!v.sess;}
+    });
+  }
+  f.ready.then(function(){
+    var drew=false;
+    if(f.rows.length&&(f.rev!==f.shown||opt.draw)){f.shown=f.rev;drew=true;cb(feedAnswer(f));}
+    if(f.busy){if(!drew&&f.rows.length)cb(feedAnswer(f));return;}
+    var now=Date.now();
+    var full=!f.fullAt||now-f.fullAt>(opt.full||FEED_FULL_MS)||(!!opt.sess&&!f.sess);
+    /* What came since the last ask, with the overlap; never later than just
+       after the newest held, whatever this browser's clock says. So a quiet
+       listing is not sent its newest row again at every ask. */
+    var since=Math.floor((f.askedAt||f.fullAt)/1000)-FEED_SLACK;
+    if(f.newest&&f.newest+1<since)since=f.newest+1;
+    f.busy=true;
+    getJSON(url+(full?'':'&since='+since),function(d){
+      f.busy=false;
+      if(!d||!d.rows){if(!drew)cb(f.rows.length?feedAnswer(f):d);return;}
+      /* A window that came back full is the newest there is: it is the
+         listing now, and what lay between it and what was held is unknown. */
+      var whole=full||d.rows.length>=limit,was=JSON.stringify(f.last);
+      f.askedAt=now;
+      var n=feedPut(f,d.rows,whole&&!opt.grow),k;
+      if(whole){f.fullAt=Date.now();f.sess=!!opt.sess;}
+      f.last={};for(k in d)if(k!=='rows'&&k!=='count')f.last[k]=d[k];
+      var changed=n>0||whole||JSON.stringify(f.last)!==was;
+      if(changed){f.rev++;keepPut({k:f.k,rows:f.rows,fullAt:f.fullAt,last:f.last,sess:f.sess});}
+      if(changed||!drew){f.shown=f.rev;var out=feedAnswer(f);out.fresh=n;cb(out);}
+    },opt.ms);
+  });
+}
 function fail(id,what){
   el(id).innerHTML='<p class="dim">'+esc(what)+' unavailable on this station.</p>';
 }
@@ -3235,10 +3489,26 @@ function showTab(t){
     el('v-'+views[j]).className='view'+(views[j]===t?'':' hide');
   if(tabTimer)clearInterval(tabTimer);
   tick();
-  tabTimer=setInterval(tick,TAB_MS[t]||10000);
+  tabTimer=setInterval(function(){tick(true);},tabMs(t));
   if(mapui)sheetDraw();
 }
-function tick(){
+function tabMs(t){var ms=TAB_MS[t]||10000;return THRIFTY?Math.max(20000,ms*4):ms;}
+/* Thrifty, and nobody looking: the conversation alone (a new message still
+   counts in the title and beeps), every two minutes. Looked at again: now. */
+var hiddenTick=0,quiet=0,quietSkip=0;
+document.addEventListener('visibilitychange',function(){if(THRIFTY&&!document.hidden){quiet=0;tick();}});
+/* [clocked]: called by the tab's clock, not by something the visitor did. */
+function tick(clocked){
+  if(THRIFTY&&document.hidden){
+    if(tab!=='chat'||Date.now()-hiddenTick<120000)return;
+    hiddenTick=Date.now();
+  }
+  /* Three asks with nothing new: the conversation is quiet, and is asked
+     for every third beat (a minute) until somebody says something. */
+  else if(THRIFTY&&clocked&&tab==='chat'&&quiet>=3){
+    quietSkip=(quietSkip+1)%3;
+    if(quietSkip)return;
+  }
   if(tab==='chat'){
     if(curRoom==='alerts')loadAlertsFeed();
     else if(curRoom==='blog')loadBlogFeed();
@@ -3763,10 +4033,10 @@ function fileIcon(ref){
 }
 function galLoadRows(cb){
   var hr=galRoom();if(!hr)return cb();
-  getJSON('/api/xprs/history?room='+hr.call+'&kind=message,file,reaction&limit=500'+
-    (sess?'&session='+encodeURIComponent(sess):''),function(d){
+  feedRead('gal|'+hr.call+'|'+meBase(),'/api/xprs/history?room='+hr.call+'&kind=message,file,reaction'+
+    (sess?'&session='+encodeURIComponent(sess):''),500,function(d){
     galRows=galTree((d&&d.rows)||[]);galAt=Date.now();cb();
-  });
+  },{sess:!!sess,cap:1500,draw:true});
 }
 function galHead(back,title,extra){
   return '<div class="galbar"><button class="act quiet" onclick="galBack()">&larr; '+esc(back)+'</button>'+
@@ -3811,7 +4081,7 @@ function galCount(t,ps){
 function loadGallery(force){
   var v=el('msgs');if(!v||!GAL_KINDS[curRoom])return;
   galKind=curRoom;var K=galK();
-  if(!force&&Date.now()-galAt<15000)return;
+  if(!force&&Date.now()-galAt<every(15000))return;
   /* Never redrawn under a field being typed in, an upload, or music playing. */
   if(!force&&((document.activeElement&&v.contains(document.activeElement))||(el('gal-up')&&el('gal-up').textContent)||
      (el('gal-player')&&!el('gal-player').paused)))return;
@@ -4471,15 +4741,15 @@ function loadRooms(cb){
 function loadHosted(){
   if(curRoom.slice(0,2)!=='g:')return;
   var call=curRoom.slice(2);
-  getJSON('/api/xprs/history?kind=message,reaction&room='+encodeURIComponent(call)+
-          '&limit=100'+(sess?'&session='+encodeURIComponent(sess):''),function(d){
+  feedRead('g|'+call+'|'+meBase(),'/api/xprs/history?kind=message,reaction&room='+encodeURIComponent(call)+
+          (sess?'&session='+encodeURIComponent(sess):''),100,function(d){
     if(!d||!d.rows)return;
     /* Removals are by packet id; who a ROOM sent away is the room's own. */
     if(d.moderation)applyModeration({removed:d.moderation.removed||[],away:Object.keys(modAway),edits:d.moderation.edits});
     var rows=d.rows.slice().reverse();
     for(var i=0;i<rows.length;i++)render(rows[i]);
     roomAnswered('g:'+call);
-  });
+  },{sess:!!sess,draw:true});
 }
 /* What the asker may do with a hosted room: leave it (10.3), and as its
    moderator or the station's administrator close or open it to new posts
@@ -4796,7 +5066,7 @@ function forumCards(list){
 }
 function loadForumIndex(force){
   var t=Date.now();
-  if(!force&&t-forumIndexAt<15000)return;
+  if(!force&&t-forumIndexAt<every(15000))return;
   forumIndexAt=t;
   var draw=function(){
     if(curRoom!=='forum'||el('composer'))return;
@@ -4947,7 +5217,7 @@ function postCard(p,op){
     '<div class="body md">'+mdHtml(p.text)+'</div>'+
     '<div class="l2">'+(op?callLink(p.from):'')+pendPills(p)+
     (p.tags?p.tags.split(',').map(function(x){return '<span class="pill">'+esc(x)+'</span>';}).join(''):'')+
-    '<span class="sp"></span>'+
+    '<span class="sp"></span>'+(p.pend?'':likeBtn(p.id))+
     (p.pend?'':own?'<button class="act quiet" onclick="forumWithdraw(\''+esc(p.id)+'\')">Withdraw</button>':
      mod?'<button class="act quiet" onclick="forumRemove(\''+esc(p.id)+'\')">Delete</button>':'')+
     '</div></div>';
@@ -4955,7 +5225,7 @@ function postCard(p,op){
 function loadForum(force){
   var hr=forumRoom();if(!hr)return;
   var t=Date.now();
-  if(!force&&t-forumAt<15000)return;
+  if(!force&&t-forumAt<every(15000))return;
   forumAt=t;
   var q=sess?'&session='+encodeURIComponent(sess):'';
   var here='f:'+hr.call;
@@ -4973,7 +5243,8 @@ function loadForum(force){
     return;
   }
   var want=forumTopic.id;
-  getJSON('/api/xprs/history?room='+encodeURIComponent(hr.call)+'&kind=blog&root='+encodeURIComponent(want)+'&limit=200'+q,function(d){
+  loadLikes('likes|'+hr.call+'|'+meBase(),'&room='+encodeURIComponent(hr.call)+q);
+  feedRead('topic|'+hr.call+'|'+want+'|'+meBase(),'/api/xprs/history?room='+encodeURIComponent(hr.call)+'&kind=blog&root='+encodeURIComponent(want)+q,200,function(d){
     if(!d||!d.rows||curRoom!==here||!forumTopic||forumTopic.id!==want)return;
     lookDone();
     if(d.moderation)applyModeration({removed:d.moderation.removed||[],away:Object.keys(modAway),edits:d.moderation.edits});
@@ -4990,7 +5261,7 @@ function loadForum(force){
       (top?postCard(top,true):'<div class="card"><div class="empty">This topic is gone.</div></div>')+
       comments.map(function(c){return postCard(c,false);}).join('');
     var box=el('msgs');box.scrollTop=box.scrollHeight;
-  });
+  },{sess:!!sess,draw:true});
 }
 // ---- posts on their way (XPRS.md 18, 7.6) ---------------------------------
 // The station answers a send at once but files it in its archive on its own
@@ -5301,7 +5572,7 @@ function blogCard(p){
     '<div class="l2">'+callLink(p.from)+
     (p.tags?p.tags.split(',').map(function(t){return '<span class="pill">'+esc(t)+'</span>';}).join(''):'')+
     (p.file?mdFileHtml(p.file,p.file.split('.').pop()):'')+
-    pendPills(p)+'</div></div>';
+    pendPills(p)+(p.pend?'':'<span class="sp"></span>'+likeBtn(p.id))+'</div></div>';
 }
 /* Pending posts as cards: a topic or a post as a post, a comment as one. */
 function pendCards(list){return list.map(function(p){return p.title?(p.room?postCard(p,true):blogCard(p)):postCard(p,false);}).join('');}
@@ -5310,16 +5581,17 @@ function pendCards(list){return list.map(function(p){return p.title?(p.room?post
  * station is asked at most every fifteen unless the visitor just opened it. */
 function loadBlogFeed(force){
   var t=Date.now();
-  if(!force&&t-blogAt<15000)return;
+  if(!force&&t-blogAt<(THRIFTY?300000:15000))return;
   blogAt=t;
-  getJSON('/api/xprs/history?kind=blog&limit=200',function(d){
+  if(curRoom==='blog')loadLikes('likes','');
+  feedRead('blog','/api/xprs/history?kind=blog',200,function(d){
     if(!d||!d.rows)return;
     if(d.moderation)applyModeration(d.moderation);
     blogs=blogPosts(d.rows);blogLoaded=true;
     pendPrune(blogs);
     if(curRoom==='blog'){markBlogSeen();lookDone();if(!el('composer'))el('msgs').innerHTML=blogCards();}
     var b=el('blogroom');if(b)b.innerHTML=blogLabel();
-  });
+  },{draw:!!force});
 }
 // ---- alerts (XPRS.md 10.10.2): the warnings and notices the station holds --
 var alerts={},alertsSeen={},alertTimer=null,alertPolicy='moderators';
@@ -5331,7 +5603,7 @@ function parseTs(s){
 /* Active from ts: until until:, or for a day without one. */
 function alertUntil(w,ts){var m=w.match(/ until:(\S+)/);var u=m?parseTs(m[1]):0;return u||((ts||0)+86400);}
 function pollAlerts(cb){
-  getJSON('/api/xprs/history?kind=warning,info&limit=100',function(d){
+  feedRead('alerts','/api/xprs/history?kind=warning,info',100,function(d){
     if(!d||!d.rows)return;
     var now=Math.floor(Date.now()/1000),withdrawn={},active={},i,r,w;
     for(i=0;i<d.rows.length;i++){r=d.rows[i];w=r.wire||'';
@@ -5346,7 +5618,7 @@ function pollAlerts(cb){
     var a=el('alertsroom');
     if(a)a.innerHTML=alertsLabel();
     if(cb)cb();
-  });
+  },{draw:!!cb});
 }
 /* "Alerts (2)" while there are alerts this browser has not looked at. */
 function alertsLabel(){
@@ -6022,13 +6294,17 @@ function mapStations(rows){
   });
   return Object.keys(st).map(function(k){return st[k];}).sort(function(a,b){return b.last-a.last;});
 }
+/* The map's libraries: from where the page itself came when that place keeps
+   them (xprs.dev/in/lib/, XPRS_REMOTE.lib: fetched once and kept with the
+   app), else from the public CDNs, as a station's own page does. */
+var LIB=(window.XPRS_REMOTE&&window.XPRS_REMOTE.lib)||'';
 function mapLoadLeaflet(cb){
   if(window.L)return cb(true);
   var css=document.createElement('link');css.rel='stylesheet';
-  css.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+  css.href=LIB?LIB+'leaflet.min.css':'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
   document.head.appendChild(css);
   var s=document.createElement('script');
-  s.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+  s.src=LIB?LIB+'leaflet.min.js':'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
   s.onload=function(){cb(true);};s.onerror=function(){cb(false);};
   document.head.appendChild(s);
 }
@@ -6056,7 +6332,9 @@ function mapMake(){
    Protomaps' black theme, read from the station a range at a time: its
    level of detail, not OpenStreetMap's. Otherwise, or when the libraries
    do not load, OpenStreetMap repainted dark. */
-var MAP_LIBS=['https://cdn.jsdelivr.net/npm/pmtiles@4.3.0/dist/pmtiles.js',
+var MAP_LIBS=window.XPRS_REMOTE&&window.XPRS_REMOTE.lib?
+  [window.XPRS_REMOTE.lib+'pmtiles.js',window.XPRS_REMOTE.lib+'protomaps-leaflet.js']:
+  ['https://cdn.jsdelivr.net/npm/pmtiles@4.3.0/dist/pmtiles.js',
   'https://cdn.jsdelivr.net/npm/protomaps-leaflet@5.1.0/dist/protomaps-leaflet.js'];
 function mapScripts(urls,cb){
   if(!urls.length)return cb(true);
@@ -6068,7 +6346,10 @@ function mapScripts(urls,cb){
 function mapWorld(cb,waited){
   /* The map can open before the page knows its station: wait for it. */
   if(!stationCall)return (waited|0)>=60?cb(null):setTimeout(function(){mapWorld(cb,(waited|0)+1);},1000);
-  getJSON('/api/xprs/history?kind=file&call='+encodeURIComponent(stationCall)+'&limit=100',function(d){
+  var said=false;
+  feedRead('map-world','/api/xprs/history?kind=file&call='+encodeURIComponent(stationCall),100,function(d){
+    if(said)return;      /* asked once: the first answer (what is held, when something is) */
+    said=true;
     var best=null;
     ((d&&d.rows)||[]).forEach(function(r){
       var w=r.wire||'',m=/^world-z(\d{1,2})-\d+\.pmtiles$/.exec(mapField(w,'name')||''),f=mapField(w,'file');
@@ -6076,7 +6357,7 @@ function mapWorld(cb,waited){
       if(z<=14&&(!best||z>best.z||(z===best.z&&(r.ts||0)>best.ts)))best={ref:f,z:z,ts:r.ts||0};
     });
     cb(best);
-  },30000);  /* a history query takes seconds on a big archiver, more over a link */
+  },{ms:30000,full:86400000});  /* a history query takes seconds on a big archiver, more over a link */
 }
 /* What was read of a map stays in the browser (IndexedDB), by the file's
    reference and the range: a reference names its bytes, so a kept part is
@@ -6251,17 +6532,23 @@ function loadMap(){
       if(c&&c.rows&&c.rows.length){mapDraw(c.rows,c.at);}}catch(e){}
   }
   /* Asked at most once a minute: the Stations tab and the map share it. */
-  if(Date.now()-mapAskedAt<60000&&mapAskedAt)return;
+  if(Date.now()-mapAskedAt<(THRIFTY?900000:60000)&&mapAskedAt)return;
   mapAskedAt=Date.now();
-  getJSON('/api/xprs/history?kind=identity,service&limit=200',function(a){
-    getJSON('/api/xprs/history?limit=200',function(b){
+  /* Thrifty, the stations seen are held and grow from visit to visit
+     (feedRead): what is asked is who announced since. The older pages
+     (mapBack, a megabyte on a busy archiver) are not read over a link. */
+  var went=false;
+  feedRead('map-id','/api/xprs/history?kind=identity,service',200,function(a){
+    if(went&&!(a&&a.fresh))return;
+    went=true;
+    feedRead('map-all','/api/xprs/history',200,function(b){
       var rows=((a&&a.rows)||[]).concat((b&&b.rows)||[]);
       if(!rows.length)return;
       var m=mapMerge(rows);
       mapShow(m);mapSave();
-      if(!mapBackDone&&a&&a.rows&&a.rows.length>=200){mapBackDone=true;mapBack(a.rows,14);}
-    },45000);
-  },45000);
+      if(!THRIFTY&&!mapBackDone&&a&&a.rows&&a.rows.length>=200){mapBackDone=true;mapBack(a.rows,14);}
+    },{ms:45000,cap:400,full:86400000,grow:true});
+  },{ms:45000,cap:MAP_KEEP,full:86400000,grow:true});
 }
 /* Older identities and announcements, a page at a time (history's `until`),
    once per visit: where hundreds of stations share an area, the newest 200
@@ -6732,15 +7019,16 @@ function sheetRoom(r){sheetOpen('more',function(){if(tab!=='chat')showTab('chat'
   else if(peer&&peer!==baseCall(mycall)){dmPeers[peer]=true;curRoom='dm:'+peer;}
   switchRoom(curRoom);
   navStart();
+  installOffer();
   load();
   /* Where the map loads, the page is the map (mapuiOn). */
   mapLoadLeaflet(function(ok){if(ok)mapuiOn();});
-  tabTimer=setInterval(tick,TAB_MS.chat);
+  tabTimer=setInterval(function(){tick(true);},tabMs('chat'));
   getJSON('/api/services',applyServices);
   /* The alerts count in the tab, whatever tab is open: once, then every
      thirty seconds (one small request; an alert read late is worth less). */
   pollAlerts();loadBlogFeed();
-  alertTimer=setInterval(function(){pollAlerts();loadBlogFeed();},30000);
+  alertTimer=setInterval(function(){if(THRIFTY&&document.hidden)return;pollAlerts();loadBlogFeed();},THRIFTY?600000:30000);
   /* An extension injects `window.nostr` a moment after the page starts:
      look for it for 3 s. Chosen before: use it. Declined before: the page's
      key. Never asked: ask. No extension: the page's key, made now if new. */
