@@ -1,8 +1,6 @@
 {
   "archiver.archive.title": "This archiver",
   "archiver.archive.help": "The device keeps signed packets for the network and answers whoever asks for them. It does so under its own station callsign.",
-  "archiver.archive.announces": "On the air: serve:{claim}",
-  "archiver.archive.announces_nothing": "Announces no role",
   "archiver.tile.mine": "Mine",
   "archiver.tile.followed": "People I follow",
   "archiver.tile.strangers": "Strangers",

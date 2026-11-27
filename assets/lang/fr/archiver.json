@@ -1,8 +1,6 @@
 {
   "archiver.archive.title": "Cet archiveur",
   "archiver.archive.help": "L'appareil conserve des paquets signés pour le réseau et répond à qui les demande. Il le fait sous son propre indicatif de station.",
-  "archiver.archive.announces": "À l'antenne : serve:{claim}",
-  "archiver.archive.announces_nothing": "N'annonce aucun rôle",
   "archiver.tile.mine": "Les miens",
   "archiver.tile.followed": "Ceux que je suis",
   "archiver.tile.strangers": "Inconnus",

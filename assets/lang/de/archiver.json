@@ -1,8 +1,6 @@
 {
   "archiver.archive.title": "Dieser Archivierer",
   "archiver.archive.help": "Das Gerät bewahrt signierte Pakete für das Netz auf und beantwortet, wer danach fragt. Es tut das unter seinem eigenen Stationsrufzeichen.",
-  "archiver.archive.announces": "Auf Sendung: serve:{claim}",
-  "archiver.archive.announces_nothing": "Kündigt keine Rolle an",
   "archiver.tile.mine": "Meine",
   "archiver.tile.followed": "Denen ich folge",
   "archiver.tile.strangers": "Fremde",

@@ -1,8 +1,6 @@
 {
   "archiver.archive.title": "Este arquivador",
   "archiver.archive.help": "O dispositivo guarda pacotes assinados para a rede e responde a quem os pedir. Fá-lo com o seu próprio indicativo de estação.",
-  "archiver.archive.announces": "No ar: serve:{claim}",
-  "archiver.archive.announces_nothing": "Não anuncia nenhum papel",
   "archiver.tile.mine": "Meus",
   "archiver.tile.followed": "Quem sigo",
   "archiver.tile.strangers": "Desconhecidos",

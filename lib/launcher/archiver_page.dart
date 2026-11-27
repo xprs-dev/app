@@ -508,7 +508,6 @@ class _ArchiverPageState extends State<ArchiverPage> {
     final public = p.xprsPublicArchiver;
     final files = p.archiveQuotaGb > 0;
     final index = p.archiverVolunteer != 'off';
-    final announced = '${a['announced'] ?? ''}';
     final name = XprsArchive.instance.archiverName;
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
@@ -519,9 +518,6 @@ class _ArchiverPageState extends State<ArchiverPage> {
             title: Text(name.isEmpty ? '-' : name,
                 style: const TextStyle(
                     fontFamily: 'monospace', fontWeight: FontWeight.w600)),
-            subtitle: Text(announced.isEmpty
-                ? tr('archiver.archive.announces_nothing')
-                : tr('archiver.archive.announces', {'claim': announced})),
             // The archiver's name is the device's X3: pick another here, as
             // in Settings > This device.
             trailing: DeviceIdentity.instance.ready &&
