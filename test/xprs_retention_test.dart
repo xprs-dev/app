@@ -44,9 +44,16 @@ void main() {
 
   test('a stranger\'s presence is not written down', () {
     heard('t:observation f:X3R8XX link:ble peers:4');
-    heard('t:service f:X3R8XX serve:archive count:212');
     expect(admitted, isEmpty,
         reason: 'presence repeats forever and nothing reads it');
+  });
+
+  test("but an archiver's offer is: every station keeps it (XPRS 13.0.5)", () {
+    // core 96c43cc: t:service is a kind the core follows, kept newest-only,
+    // so the device can choose an archiver (xprsKnownArchivers).
+    heard('t:service f:X3R8XX serve:archive count:212');
+    expect(admitted, ['service'],
+        reason: 'the archiver choice reads the newest offer of each archiver');
   });
 
   test("but a stranger's KEY BINDING is", () {
