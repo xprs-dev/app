@@ -3003,15 +3003,22 @@ function render(row){
   var box=document.getElementById('msgs');
   var t=row.ts||0;
   d.setAttribute('data-ts',t||9e9);
-  var at=null,kids=box.children;
-  if(t)for(var j=kids.length-1;j>=0;j--){
+  var at=null,kids=box.children,j;
+  /* The Social feed is a timeline: the newest status on top, as the blog. */
+  var down=msgsNewestFirst();
+  if(down){
+    if(t)for(j=0;j<kids.length;j++)
+      if(+kids[j].getAttribute('data-ts')<=t){at=kids[j];break;}
+    if(!t)at=kids[0]||null;
+  }else if(t)for(j=kids.length-1;j>=0;j--){
     if(+kids[j].getAttribute('data-ts')<=t){at=kids[j].nextSibling;break;}
     at=kids[j];}
   var stick=box.scrollTop+box.clientHeight>=box.scrollHeight-40;
   lookDone();
   box.insertBefore(d,at);
   daysSoon();
-  if(stick||own)box.scrollTop=box.scrollHeight;
+  if(down){if(own)box.scrollTop=0;}
+  else if(stick||own)box.scrollTop=box.scrollHeight;
   return d;
 }
 // ---- a conversation follows its end ---------------------------------------
@@ -3021,9 +3028,10 @@ function render(row){
 // half the screen. Scrolling to the end only when a message was appended left
 // the newest one under the message box each time one of those came after it.
 // Somebody who scrolled up to read is left where they are. A feed (alerts,
-// blog, a gallery) reads from its top and is not followed.
+// blog, a gallery, the Social timeline) reads from its top and is not followed.
 var msgsStick=true;
-function msgsFeed(b){return /\balerts\b/.test(b.className);}
+function msgsNewestFirst(){return curRoom==='social';}
+function msgsFeed(b){return /\balerts\b/.test(b.className)||msgsNewestFirst();}
 function msgsEnd(){
   var b=el('msgs');
   if(b&&msgsStick&&tab==='chat'&&!msgsFeed(b))b.scrollTop=b.scrollHeight;
@@ -3061,7 +3069,8 @@ function drawDays(){
     if(!t||t>=9e9||!/\bmsg\b/.test(kids[i].className))continue;
     var ds=dayStart(t);
     if(ds!==last){
-      var p=document.createElement('div');p.className='daysep';p.setAttribute('data-ts',ds-0.5);
+      /* Newest first, the pill sits just after its day's last second. */
+      var p=document.createElement('div');p.className='daysep';p.setAttribute('data-ts',msgsNewestFirst()?ds+86399.5:ds-0.5);
       p.innerHTML='<span>'+esc(dayLabel(t))+'</span>';box.insertBefore(p,kids[i]);last=ds;}
   }
   daysStuck();
