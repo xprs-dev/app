@@ -1445,10 +1445,9 @@ class BleService {
     // GATT plane also owes delivery. BEFORE the size router — encrypted 1:1s
     // exceed the advert cap and never reach the broadcast path at all.
     //
-    // It answers true for the one case where the street should not pay: a 1:1
-    // to an Android we hear ourselves, both ways, right now. That message is
-    // handed over the session lane instead, and aired after all if the lane has
-    // not delivered it in two minutes (MeshCustodyDelegate.sweepSuppressed).
+    // A 1:1 to an Android we hear right now is ALSO handed over the session
+    // lane, and still aired: a station nearby keeping a copy is what reaches
+    // a peer that has just walked away (MeshCustodyDelegate.onAirFrame).
     if (MeshCustodyDelegate.onAirFrame(payload, outbound: true)) return;
     if (payload.length > smallCap) {
       _gattSend(payload);
