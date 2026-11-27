@@ -5511,6 +5511,7 @@ function applyModeration(m){
     if(modRemoved[d.getAttribute('data-id')]||modAway[d.getAttribute('data-from')])
       d.parentNode.removeChild(d);
   }
+  daysSoon();   /* a day whose only message went has no pill */
 }
 function loadMyRole(){
   if(!sess)return;
