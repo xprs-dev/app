@@ -591,7 +591,19 @@ phone in the middle, checking sent, delivered after the writer left, shown
 once, and the receipt back. Run it (about 20 minutes) before any release
 that touches the core's custody, mailbox, publisher or BLE code, or the
 firmware's index release, and paste its JSON into the commit or release
-notes. The first full passes are recorded here when they happen.
+notes.
+
+First runs (2026-11-27, app build 980, both boards on firmware a879c35):
+phone → phone with the T-Dongle in the middle PASSED (delivered 25 s after
+the recipient came back, shown once though heard three times, receipt back
+35 s after the writer returned). Phone → board, carried by the other phone,
+delivered (`via:` the carrying phone). A board as the recipient sends no
+receipt to a stranger's phone (13.7.1), so the script marks that n/a. A
+second run failed while the writing phone (TANK2) was deaf for about twenty
+minutes: it kept airing but its scan returned nothing until the scan
+watchdog's third restart (480 s each). That deaf spell, not the rules above,
+is the open problem on this bench; a run is only worth reading when both
+phones report a fresh `lastScanResultAgeMs` in `/api/status` `mesh.gatt`.
 
 ## 6. Releasing carried copies
 

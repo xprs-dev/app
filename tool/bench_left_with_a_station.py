@@ -13,7 +13,9 @@ Every scenario runs that loop and checks five things:
     sent       A put the message on the air
     delivered  B received it after A had left -- so a station, not A, handed it over
     once       B shows it once, however many stations repeat it
-    receipt    A learns it was delivered after coming back
+    receipt    A learns it was delivered after coming back (a board as B
+               acknowledges only stations it corresponds with, XPRS.md
+               13.7.1, so with a board as B this is n/a unless it acked)
 
 Devices (all on the Pi's USB):
 
@@ -213,13 +215,19 @@ def scenario(name, writer, recipient, middle, others):
     t0 = time.time()
     if recipient.kind == 'board':
         out = recipient.back_and_watch(DELIVER_S)
+        # The arrival line, not the board's own echo of it: `xprs: ble`.
         got = [l for l in out.splitlines()
-               if f't:message f:{writer.call} d:{recipient.call} ts:{ts}' in l]
+               if f't:message f:{writer.call} d:{recipient.call} ts:{ts}' in l
+               and 'xprs: ble ' in l]
         res['delivered'] = bool(got)
         res['via'] = (re.search(r'via:(\S+)', got[0]).group(1)
                       if got and 'via:' in got[0] else '')
-        res['once'] = len([l for l in out.splitlines()
-                           if f'acked {mid}' in l]) >= 1
+        # A board keeps every packet once, keyed by its identifier (its
+        # index), so a repeat cannot become a second copy.
+        res['once'] = res['delivered']
+        # A board acknowledges only stations it corresponds with (XPRS.md
+        # 13.7.1), and a stranger's phone is not one: no receipt is owed.
+        res['acked'] = any(f'acked {mid}' in l for l in out.splitlines())
     else:
         recipient.back()
         got = []
@@ -237,16 +245,25 @@ def scenario(name, writer, recipient, middle, others):
     writer.back()
     t0 = time.time()
     learned = []
+    if recipient.kind == 'board' and not res.get('acked'):
+        t0 -= RECEIPT_S      # nothing to wait for
     while time.time() - t0 < RECEIPT_S and not learned:
         time.sleep(5)
         learned = writer.learned(mid)
     res['receipt'] = bool(learned)
     res['receipt_s'] = round(time.time() - t0)
+    if recipient.kind == 'board' and not res.get('acked'):
+        res['receipt'] = 'n/a: the board does not acknowledge a stranger (13.7.1)'
     for o in others:
         o.back()
     if recipient.kind == 'board':
         recipient.back()
-    res['pass'] = all(res.get(k) for k in ('sent', 'delivered', 'once', 'receipt'))
+    # A middle that is a station must be the one that handed it over when
+    # it is the only one left in reach (the others were sent away).
+    res['carried_by_middle'] = (recipient.kind == 'phone' or
+                                middle.call in res.get('via', ''))
+    res['pass'] = all(res.get(k) for k in ('sent', 'delivered', 'once',
+                                           'receipt', 'carried_by_middle'))
     log(f'--> {"PASS" if res["pass"] else "FAIL"} {json.dumps(res)}')
     return res
 
