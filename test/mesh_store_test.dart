@@ -104,13 +104,16 @@ void main() {
     // rows in the whole store and only then filtered for the peer. A message
     // sent to the neighbour standing right there was parked, taken off the air
     // for 1:1 delivery, and never handed over.
+    // Our own backlog (selfCallsign below is X1VCVM): a stranger's would
+    // stop at the per-sender limits, tested further down.
     for (var i = 0; i < 400; i++) {
       store.offer(
           target: 'XOTHER',
           sender: 'X1VCVM',
           wire: _wire('X1VCVM', 'XOTHER', 'old$i'),
           am: 'old$i',
-          inTransit: true);
+          inTransit: true,
+          ours: true);
     }
     expect(
         store.offer(
@@ -118,7 +121,8 @@ void main() {
             sender: 'X1VCVM',
             wire: _wire('X1VCVM', 'X3ARK', 'hello'),
             am: 'fresh1',
-            inTransit: true),
+            inTransit: true,
+            ours: true),
         isTrue);
 
     final batch = store.pendingFor('X3ARK', null, selfCallsign: 'X1VCVM');
@@ -282,6 +286,82 @@ void main() {
     expect(left, containsAll(['ur0000', 'hi0000'])); // the top two survive
     expect(left, isNot(contains('lo0000'))); // the bottom went first
     expect(left, isNot(contains('no0000')));
+  });
+
+  // One sender, or a crowd of invented callsigns, cannot fill the store
+  // (2026-11-27): somebody else's mail is limited per sender held, per sender
+  // per hour, and for everybody together per hour. Our own is not.
+  group('limits on other people\'s mail', () {
+    late int held, perHour, all;
+    setUp(() {
+      held = store.perSenderMax;
+      perHour = store.perSenderPerHour;
+      all = store.othersPerHour;
+    });
+    tearDown(() {
+      store.perSenderMax = held;
+      store.perSenderPerHour = perHour;
+      store.othersPerHour = all;
+    });
+    bool park(String from, int i, {bool ours = false}) => store.offer(
+        target: 'X1DEST',
+        sender: from,
+        wire: _wire(from, 'X1DEST', '$from $i'),
+        am: '$from-$i'.toLowerCase(),
+        ours: ours);
+
+    test('the defaults', () {
+      expect(store.perSenderMax, 200);
+      expect(store.perSenderPerHour, 60);
+      expect(store.othersPerHour, 600);
+    });
+
+    test('one sender is taken at most perSenderPerHour times an hour', () {
+      store.perSenderPerHour = 5;
+      final took = [for (var i = 0; i < 8; i++) park('X1SPAM', i)];
+      expect(took.where((t) => t).length, 5);
+      expect(store.refusedSenderRate, greaterThanOrEqualTo(3));
+      // Somebody else is not held back by it.
+      expect(park('X1OTHR', 0), isTrue);
+    });
+
+    test('one sender has at most perSenderMax rows held at once', () {
+      store.perSenderMax = 3;
+      for (var i = 0; i < 3; i++) {
+        expect(park('X1FULL', i), isTrue);
+      }
+      expect(park('X1FULL', 3), isFalse);
+      expect(store.refusedSenderHeld, greaterThanOrEqualTo(1));
+      // A delivered row makes room again.
+      store.purgeAm('x1full-0');
+      expect(park('X1FULL', 4), isTrue);
+    });
+
+    test('many invented callsigns stop at othersPerHour together', () {
+      store.othersPerHour = 10;
+      var took = 0;
+      for (var i = 0; i < 25; i++) {
+        if (park('X1F${i.toString().padLeft(3, '0')}', 0)) took++;
+      }
+      expect(took, 10);
+      expect(store.refusedOthersRate, greaterThanOrEqualTo(15));
+    });
+
+    test('our own mail is never limited', () {
+      store.perSenderPerHour = 1;
+      store.othersPerHour = 1;
+      store.perSenderMax = 1;
+      for (var i = 0; i < 5; i++) {
+        expect(park('X1SELF', i, ours: true), isTrue);
+      }
+    });
+
+    test('a duplicate costs the sender nothing', () {
+      store.perSenderPerHour = 2;
+      expect(park('X1DUPE', 0), isTrue);
+      expect(park('X1DUPE', 0), isFalse); // the same am: a duplicate
+      expect(park('X1DUPE', 1), isTrue); // still the second of two
+    });
   });
 
   // A device must carry for strangers, but not without limit.
