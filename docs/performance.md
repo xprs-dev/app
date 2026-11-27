@@ -2065,16 +2065,22 @@ named, 1 to 40 ms whatever the callsign holds.
 > row counts is a statement about the data; `SELECT type, COUNT(*) ... GROUP
 > BY type` on the real file takes seconds and replaces the guess.
 
-Still a scan: `only:X kind:observation` reads every observation in the
-window for the callsign in its `hears:` list (`instr(wire, ?)`), 3 to 4 s
-for 100,000. It needs a table of who each observation hears. The slow-ask
-line now says what was asked (`kind:`, `only:`), so the log says how often.
+That left one, and the slow-ask line, which now says what was asked
+(`kind:`, `only:`), named it within ten minutes of the install:
+`kind:identity,observation only:X`, sent by every phone for every callsign
+it looks up, 2.3 to 5 s each. "The sightings held of X" read every
+observation in the window for X in its wire (`instr(wire, ?)`): 100,000
+rows. No index on `packets` can answer it, because who an observation hears
+is a list inside the row. So the list is a table: `heard_by(callc, byc, pts,
+id)`, one line per callsign heard (360,000 for that file, 11 MB), filled
+once by the writer thread, written with every observation after, and pruned
+once a start of the lines whose packet is gone. The ask is a range of it and
+one row by id each: 4 to 50 ms. It is also exact now, where `instr` answered
+for any callsign that began with the one asked.
 
-> **After adding an index, read the plan of the statement that was slow.**
-> `EXPLAIN QUERY PLAN` on the real file, before and after. 8.29 measured the
-> index on a statement written for the test (`type = ?` alone), which the
-> planner does serve; the statement the archive actually ran also said
-> `toc IN ('')`, and that one never changed.
+> **A question about what is INSIDE a column needs a table of its own.**
+> A scan that is "confined to one type and a window" is still every row of
+> the commonest type.
 
 Two more, found on the way:
 
