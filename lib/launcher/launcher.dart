@@ -15,6 +15,7 @@
  */
 library;
 
+import 'package:xprs_core/src/services/xprs/xprs_public_moderators_sync.dart';
 import '../services/remote_api_access.dart';
 import '../services/i18n/flutter_locales.dart';
 import 'dart:convert';

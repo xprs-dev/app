@@ -18,6 +18,8 @@
   "settings.remote.no_lan": "Ahora no está en una red local.",
   "settings.ble_debug.title": "Registro de depuración BLE",
   "settings.ble_debug.help": "Registrar la actividad BLE (anuncios, escaneo, difusión) en el registro de la aplicación",
+  "settings.public_mods.title": "Moderadores de las salas públicas",
+  "settings.public_mods.help": "Ocultar los mensajes que los moderadores indicados en xprs.dev eliminaron de las salas Regional y Global",
   "settings.reticulum.title": "Reticulum",
   "settings.reticulum.help": "Hubs de arranque a los que se conecta el nodo. Prueba cada uno en orden hasta que alguno responda con tráfico Reticulum real.",
   "settings.reticulum.servers": "Servidores de arranque",

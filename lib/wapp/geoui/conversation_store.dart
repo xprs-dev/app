@@ -83,6 +83,10 @@ class ConversationItem {
   /// host only offers the menu entries; the wapp judges each act.
   bool mod = false;
 
+  /// The authority in [mod] is to remove other people's messages, not to
+  /// correct them (the public rooms' moderators, XPRS.md 10.10.3).
+  bool modRemoveOnly = false;
+
   /// The wapp says this station cannot write here now (a group closed to new
   /// posts, XPRS.md 10.4.2): the room shows a note where the message box was.
   bool noPost = false;
@@ -396,7 +400,9 @@ class ConversationStore {
     // ([mayNotifyFor], [totalUnread]) in both engines.
     if (d.containsKey('muted')) it.muted = d['muted'] == true;
     // The row is stated whole each time, so absent means no authority.
-    it.mod = d['mod'] == true;
+    // `"remove"`: authority to remove only (the public rooms, 10.10.3).
+    it.mod = d['mod'] == true || d['mod'] == 'remove';
+    it.modRemoveOnly = d['mod'] == 'remove';
     // Likewise: absent means this station may write here.
     it.noPost = d['nopost'] == true;
     if (d.containsKey('unread')) {

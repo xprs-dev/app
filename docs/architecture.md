@@ -563,6 +563,39 @@ decision). What ships is the device rule above, for a TYPE:
 The wapp reads `hal_xprs_history` and subscribes to `xprs.<type>` only to
 redraw. Another wapp following polls, offers or warnings uses the same verb.
 
+### Moderating rooms that belong to nobody (2026-11-27)
+
+Regional and Global have no station and no group behind them, so XPRS.md 10
+gives nobody authority there. These binaries take it from a published list:
+the keys in `https://xprs.dev/moderators.json` may remove a message from
+those rooms (XPRS.md 10.10.3). The tempting shapes were a key written into
+the program, a wapp fetching the list itself, and the core deciding what a
+removed message looks like on a screen. What ships, by §3:
+
+| piece | layer | why |
+|---|---|---|
+| the list, read from xprs.dev and kept between reads | core (`XprsPublicModerators`, its sync) | the network and the settings store |
+| is this act signed by a listed key, at its own date | core | keys and signature checks; bounded per minute (performance.md 8.15) |
+| dropping the message from the archive, refusing late copies | core (`XprsArchive.purgePublic`) | storage |
+| signing our own removal | core (`XprsPublicModOps`) | a wapp never holds a key |
+| what a removal looks like, and when Delete is offered | wapp (Chat's `room_moderation_sync`, its `"mod":"remove"` row) | what a message means to one application (§1) |
+| the same for a browser | the portal page's JavaScript, over the station API | one page for every station |
+
+- **No new verb.** The Chat already asked the core three things about a
+  closed group: what its moderators did, what a callsign's role is, and to
+  sign an act. The host answers the same three for the group `*`.
+- **Told, not asked.** `core.moderation` (`CoreState.moderation`) says a
+  removal took effect or the list changed; the wapp reads the verdict again.
+  The list itself is asked for at start and when an uplink comes up
+  (`RnsService.uplinkUps`), never on a clock.
+- **One rule, two engines.** The station API has a Dart engine (the core's
+  `WebChatApi`) and a C one (the boards' `xwc.c`). The portal's conformance
+  suite states the rule once and runs against both; it found, on its first
+  run, that a removal naming a call for help hid it from history.
+- **The wapp decides nothing about authority.** It shows Delete when the core
+  says our key is listed, and the core still refuses an act from a key that
+  is not.
+
 ### The device and its people (2026-11-14)
 
 Every install holds two kinds of name, as an ESP32 station and its owner do

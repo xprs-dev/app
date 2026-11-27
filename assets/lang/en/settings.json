@@ -18,6 +18,8 @@
   "settings.remote.no_lan": "Not on a local network now.",
   "settings.ble_debug.title": "BLE debug logging",
   "settings.ble_debug.help": "Log BLE advertise/scan/broadcast activity to the app log",
+  "settings.public_mods.title": "Public rooms' moderators",
+  "settings.public_mods.help": "Hide messages that the moderators listed at xprs.dev removed from the Regional and Global rooms",
   "settings.reticulum.title": "Reticulum",
   "settings.reticulum.help": "Bootstrap hubs the node connects to. It tries each in order until one answers with real Reticulum traffic.",
   "settings.reticulum.servers": "Bootstrap servers",

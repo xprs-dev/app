@@ -163,6 +163,10 @@ class ChatViewField extends StatefulWidget {
   final void Function(Map<String, dynamic> m)? onHistory;
   final bool canModerate;
 
+  /// With [canModerate]: other people's messages can be removed, not
+  /// corrected (the wapp said so on the room's row).
+  final bool moderateRemoveOnly;
+
   /// Not null: this station cannot write here, and this is why. The note
   /// stands where the message box would be.
   final String? closedNote;
@@ -219,6 +223,7 @@ class ChatViewField extends StatefulWidget {
     this.onUnsend,
     this.onHistory,
     this.canModerate = false,
+    this.moderateRemoveOnly = false,
     this.closedNote,
     this.onBlock,
     this.onDirectMessage,
@@ -1840,7 +1845,9 @@ class _ChatViewFieldState extends State<ChatViewField> {
             // XPRS.md 7.8: our own words can be corrected or withdrawn at any
             // time; somebody else's only by a moderator or the admin, who are
             // told which on the row (10.4.1).
-            if (_mayChange(m, outgoing) && widget.onEdit != null)
+            if (_mayChange(m, outgoing) &&
+                widget.onEdit != null &&
+                (outgoing || !widget.moderateRemoveOnly))
               ListTile(
                 leading: const Icon(Icons.edit_outlined),
                 title: Text(tr(outgoing ? 'common.edit' : 'geoui.chat.menu.edit_mod')),

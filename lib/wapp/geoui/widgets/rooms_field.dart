@@ -1332,6 +1332,7 @@ class _RoomsFieldState extends State<RoomsField> {
                     onRepeat: widget.onRepeat,
                     onHistory: widget.onHistory,
                     canModerate: room?.mod ?? false,
+                    moderateRemoveOnly: room?.modRemoveOnly ?? false,
                     closedNote: (room?.noPost ?? false)
                         ? tr('geoui.rooms.closed_note')
                         : null,

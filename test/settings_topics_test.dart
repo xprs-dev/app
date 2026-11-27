@@ -82,6 +82,11 @@ void main() {
         expect(find.text("Share this device's location"), findsOneWidget);
         expect(find.text('Say where this device serves'), findsOneWidget);
         expect(find.text('Muted accounts'), findsOneWidget);
+        // And whose removals are honoured in the public rooms (10.10.3).
+        await tester.scrollUntilVisible(
+            find.text("Public rooms' moderators"), 200,
+            scrollable: find.byType(Scrollable).first);
+        expect(find.text("Public rooms' moderators"), findsOneWidget);
       }
       await tester.pageBack();
       await tester.pumpAndSettle();

@@ -18,6 +18,8 @@
   "settings.remote.no_lan": "Pas sur un réseau local en ce moment.",
   "settings.ble_debug.title": "Journal de débogage BLE",
   "settings.ble_debug.help": "Consigner l'activité BLE (annonces, balayage, diffusion) dans le journal de l'application",
+  "settings.public_mods.title": "Modérateurs des salons publics",
+  "settings.public_mods.help": "Masquer les messages que les modérateurs indiqués sur xprs.dev ont retirés des salons Régional et Global",
   "settings.reticulum.title": "Reticulum",
   "settings.reticulum.help": "Hubs d'amorçage auxquels le nœud se connecte. Il les essaie dans l'ordre jusqu'à ce que l'un réponde avec du vrai trafic Reticulum.",
   "settings.reticulum.servers": "Serveurs d'amorçage",

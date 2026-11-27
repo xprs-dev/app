@@ -359,6 +359,7 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
             const CoverageCard(),
             const SizedBox(height: 24),
             ..._secMuted(cs),
+            ..._secPublicMods(cs),
           ],
         SettingsTopic.network => _secRns(cs),
         SettingsTopic.updates => _secFolders(cs),
@@ -659,6 +660,33 @@ class _IwiSettingsPageState extends State<IwiSettingsPage> {
   List<Widget> _secDevice(ColorScheme cs) => [
       // ── This device ──
       const DeviceIdentityCard(),
+      const SizedBox(height: 24),
+      ];
+
+  List<Widget> _secPublicMods(ColorScheme cs) => [
+      // The public rooms' moderators (XPRS.md 10.10.3): honoured unless the
+      // person says otherwise. The core applies it; this only asks.
+      Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withAlpha(80)),
+        ),
+        color: cs.surfaceContainerLow,
+        child: SwitchListTile(
+          secondary: const Icon(Icons.shield_outlined),
+          title: Text(tr('settings.public_mods.title')),
+          subtitle: Text(
+            tr('settings.public_mods.help'),
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+          value: _prefs?.xprsHonourPublicModerators ?? true,
+          onChanged: (v) async {
+            await xprsSetHonourPublicModerators(v);
+            if (mounted) setState(() {});
+          },
+        ),
+      ),
       const SizedBox(height: 24),
       ];
 

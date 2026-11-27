@@ -18,6 +18,8 @@
   "settings.remote.no_lan": "Gerade in keinem lokalen Netz.",
   "settings.ble_debug.title": "BLE-Debug-Protokoll",
   "settings.ble_debug.help": "BLE-Aktivität (Advertising, Scan, Broadcast) im App-Protokoll festhalten",
+  "settings.public_mods.title": "Moderatoren der öffentlichen Räume",
+  "settings.public_mods.help": "Nachrichten ausblenden, die die auf xprs.dev genannten Moderatoren aus den Räumen Regional und Global entfernt haben",
   "settings.reticulum.title": "Reticulum",
   "settings.reticulum.help": "Bootstrap-Hubs, mit denen sich der Knoten verbindet. Er probiert sie der Reihe nach, bis einer mit echtem Reticulum-Verkehr antwortet.",
   "settings.reticulum.servers": "Bootstrap-Server",

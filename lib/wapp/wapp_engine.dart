@@ -38,6 +38,8 @@ import '../services/xprs/xprs_group_keys.dart';
 import '../services/xprs/xprs_group_read.dart';
 import '../services/xprs/xprs_group_ops.dart';
 import 'package:xprs_core/src/services/xprs/xprs_group_rank_rows.dart';
+import 'package:xprs_core/src/services/xprs/xprs_public_mod_ops.dart';
+import 'package:xprs_core/src/services/xprs/xprs_public_moderators.dart';
 import 'package:xprs_core/src/services/xprs/xprs_group_act.dart'
     show xprsGroupNickShown;
 import '../services/xprs/xprs_groups.dart';
@@ -4794,6 +4796,21 @@ class WappEngine {
         final g =
             _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
         if (g.isEmpty) return 0;
+        if (g == '*') {
+          // The public rooms (XPRS.md 10.10.3): what the listed moderators
+          // removed, newest last, as the core judged it. Removal only, so
+          // every row is one; the newest 150 fit the wapp's buffer.
+          final ids = XprsPublicModerators.instance.removed.toList();
+          final from = ids.length > 150 ? ids.length - 150 : 0;
+          final rows = [
+            for (final t in ids.sublist(from))
+              {'id': '*$t', 'kind': 'remove', 'target': t, 'signer': '',
+               'srole': 'mod', 'ts': 0, 'text': ''},
+          ];
+          final b = utf8.encode(jsonEncode(rows));
+          if (b.length > outCap) return -b.length;
+          return _writeBytes(outPtr, outCap, Uint8List.fromList(b));
+        }
         final acts = XprsGroups.instance.moderationOf(g);
         final out = <Map<String, Object>>[
           for (final a in acts)
@@ -4825,6 +4842,14 @@ class WappEngine {
             _readStr(gPtr, gLen).trim().replaceFirst('#', '').toUpperCase();
         final c = _readStr(cPtr, cLen).trim().toUpperCase();
         if (g.isEmpty || c.isEmpty) return 0;
+        if (g == '*') {
+          // The public rooms' authority is a key on the published list, and
+          // the only key this station can speak for is its own profile's.
+          final me = XprsArchive.instance.selfCallsign.trim().toUpperCase();
+          final own = me.isNotEmpty &&
+              NostrCrypto.bareCallsign(c) == NostrCrypto.bareCallsign(me);
+          return own && XprsPublicModOps.listed ? 3 : 0;
+        }
         return switch (XprsGroups.instance.roleAt(g, c, ts * 1000)) {
           XprsRole.invited => 1,
           XprsRole.member => 2,
@@ -4851,6 +4876,20 @@ class WappEngine {
         final text = xLen > 0 ? _readStr(xPtr, xLen) : '';
         if (g.isEmpty || target.isEmpty || (kind != 1 && kind != 2)) return -1;
         if (kind == 1 && text.trim().isEmpty) return -1;
+        if (g == '*') {
+          // The public rooms: removal only, by a listed key (10.10.3). The
+          // core signs with the profile's key and refuses any other.
+          if (kind != 2) return -1;
+          try {
+            final why = XprsPublicModOps.remove(target);
+            if (why == null) return 0;
+            return why.startsWith('not a moderator') ? -2 : -1;
+          } catch (e) {
+            LogService.instance
+                .add('xprs: public removal failed (${e.runtimeType})');
+            return -1;
+          }
+        }
         try {
           final r = XprsGroupOps.moderate(g, target,
               edit: kind == 1 ? text : null);
