@@ -111,6 +111,14 @@ class Phone:
     def back(self):
         self.adb('svc', 'bluetooth', 'enable')
 
+    def hearing(self):
+        """Is the phone's Bluetooth scan delivering adverts right now? A
+        phone whose scan went quiet (seen on TANK2 for twenty minutes) fails
+        every scenario for a reason that has nothing to do with carrying."""
+        g = self.api('GET', '/api/status').get('mesh', {}).get('gatt', {})
+        age = g.get('lastScanResultAgeMs')
+        return age is not None and age < 30000
+
     def lines(self, n=3000):
         d = self.api('GET', f'/api/log?n={n}')
         return [str(x) for x in (d.get('lines', d) if isinstance(d, dict) else d)]
@@ -191,6 +199,15 @@ class Board:
 
 def scenario(name, writer, recipient, middle, others):
     log(f'=== {name}: {writer} -> {recipient}, kept by {middle}')
+    for d in (writer, recipient, middle):
+        if d.kind == 'phone':
+            t = time.time()
+            while not d.hearing() and time.time() - t < 600:
+                time.sleep(10)
+            if not d.hearing():
+                log(f'{d} hears nothing over Bluetooth: scenario not run')
+                return {'name': name, 'pass': False,
+                        'invalid': f'{d.call} deaf (lastScanResultAgeMs)'}
     res = {'name': name, 'writer': writer.call, 'recipient': recipient.call,
            'middle': middle.call}
     # Everybody else away, so the only station that can carry it is `middle`.
