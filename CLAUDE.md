@@ -20,6 +20,17 @@ baseline and the `// arch-ignore: <rule> <reason>` escape.
 Transport specifics: `docs/ble5.md` (how bytes leave the device, every byte
 budget on the path) and `docs/store-and-forward.md` (delivery to absent peers).
 
+## MUST: a message left with a station always gets through
+
+Writing to somebody who is away, a station nearby keeping it, and that person
+getting it on arrival (with the receipt back to the writer) over Bluetooth
+alone is the use case XPRS is valued for (spec/USECASES.md 10). Chat messages
+must never stop doing this. The rules and why each exists are
+`docs/store-and-forward.md` section 5.5; do not re-implement any of them
+another way. A change to the core's custody, mailbox, publisher or BLE code,
+or to the firmware's index release, runs `tool/bench_left_with_a_station.py`
+on every phone and board on the bench before it is released.
+
 ## Sibling repositories
 
 This is the application. Four things it works with live next to it, and the

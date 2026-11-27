@@ -534,6 +534,65 @@ What is still a limitation: `m:try` names who HEARD a station (12.9's
 directory is not built), so a fetch following it reaches a hearer that may
 keep nothing; and the ESP32 archiver still picks one gateway rather than all.
 
+## 5.5 Left with a station: the prime use case, and the rules that keep it working (2026-11-27)
+
+**This is the case XPRS is valued for, and it must always work.** Somebody
+writes a chat message to a person who is not there. Any station within
+Bluetooth reach (a board left in the room, another person's phone, an
+archiver or not) keeps a copy. The writer leaves. When the person arrives
+within Bluetooth reach of that station, the message reaches them without
+anybody doing anything, and they see it once. Their "delivered" and "read"
+receipts travel back the same way, through whatever station hears them, so
+the writer gets the tick and stops sending. People moving from one place to
+another organise themselves this way; it is spec/USECASES.md use case 10.
+
+Chat messages are the part that must never break. Other kinds of mail ride
+the same path and matter less.
+
+The rules, each one learned on the bench (Bluetooth only, two phones and two
+ESP32s, 2026-11-27). Do not change one without running the bench test below.
+
+1. **Mail is aired even when the recipient seems next to us.** A 1:1 to a
+   phone we hear goes over the session lane AND on the air
+   (`MeshCustodyDelegate.onAirFrame`, `XprsPublisher` `_sessionTakes`). The
+   session saves airtime only when the peer is there; "heard a moment ago" is
+   also the moment somebody walks away, and a message held back for the dial
+   was never kept by anybody. Asks and their answers may stay off the air;
+   mail may not.
+2. **Any station keeps other people's mail.** Phones park it
+   (`MeshCustodyDelegate.onAirFrame` → `MeshStore.offer`); ESP32s keep every
+   packet in their index and hand a recipient its mail when heard (XPRS.md
+   36.8.1). Being an archiver is not required.
+3. **A recipient heard is handed its mail at once.** On boards, the release
+   is paced per callsign (10 min), but new mail for a callsign clears that
+   wait (`rel_mail_arrived`): somebody heard leaving and back within ten
+   minutes used to find the station silent about the letter left meanwhile.
+   Phones deliver on hearing (12.8.1) and in the minute sweep
+   (`XprsMailbox.sweepHeld`).
+4. **Shown once.** The recipient keys every copy by its identifier; repeats
+   from several holders are counted (`heard`), never shown twice.
+5. **Receipts go back the same way, for three days.** A `t:receipt` is mail:
+   kept by any station, handed to the writer when the writer is heard (boards
+   release `message,receipt`, not messages only). A receipt is handed over
+   once (`XprsMailbox.handOverOnce`, the board's `acked_note` after airing it):
+   nothing acknowledges a receipt, and a holder otherwise repeated it at every
+   sighting. A receipt older than three days is dropped, not sent
+   (`XprsMailbox.receiptMaxAge`, the board's `RCPT_MAX_AGE_S`).
+6. **The recipient does not repeat what reached it.** `MeshService._relayable`
+   refuses a packet addressed to us: mail at the end of its road.
+7. **Bounded, per sender.** Somebody else's mail is limited per sender and
+   per hour (section 4, "One sender cannot fill the store"), so a flood of
+   made-up callsigns cannot push out the mail already waiting.
+
+**The bench test** is `tool/bench_left_with_a_station.py`: it puts every
+phone and board on Bluetooth only and runs phone → phone with a board in the
+middle, phone → board with a board in the middle, and phone → board with a
+phone in the middle, checking sent, delivered after the writer left, shown
+once, and the receipt back. Run it (about 20 minutes) before any release
+that touches the core's custody, mailbox, publisher or BLE code, or the
+firmware's index release, and paste its JSON into the commit or release
+notes. The first full passes are recorded here when they happen.
+
 ## 6. Releasing carried copies
 
 The recipient's `?ACK <am>` purges carriers still holding a copy. The have-bloom
