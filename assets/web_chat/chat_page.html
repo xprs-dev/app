@@ -3023,9 +3023,10 @@ function render(row){
 // Somebody who scrolled up to read is left where they are. A feed (alerts,
 // blog, a gallery) reads from its top and is not followed.
 var msgsStick=true;
+function msgsFeed(b){return /\balerts\b/.test(b.className);}
 function msgsEnd(){
   var b=el('msgs');
-  if(b&&msgsStick&&tab==='chat'&&!/\balerts\b/.test(b.className))b.scrollTop=b.scrollHeight;
+  if(b&&msgsStick&&tab==='chat'&&!msgsFeed(b))b.scrollTop=b.scrollHeight;
 }
 (function(){
   var b=document.getElementById('msgs');if(!b)return;
@@ -6604,9 +6605,11 @@ function sheetDraw(){
   el('shead').className=listy?'list':'';
   sheetBadges();
   /* A conversation coming into view (opened, or the drawer raised) shows its
-     newest messages: it filled while hidden and was never scrolled. */
+     newest messages: it filled while hidden and was never scrolled. A feed
+     (the blog, alerts, a gallery) has its newest first and shows its top:
+     sent to its end it opened on its oldest post. */
   var shown=!sheetIndex&&tab==='chat'&&st!=='peek'?curRoom+'|'+st:'';
-  if(shown&&shown!==sheetShown){var m=el('msgs');setTimeout(function(){m.scrollTop=m.scrollHeight;},0);}
+  if(shown&&shown!==sheetShown){var m=el('msgs');setTimeout(function(){m.scrollTop=msgsFeed(m)?0:m.scrollHeight;},0);}
   sheetShown=shown;
 }
 var sheetShown='';
