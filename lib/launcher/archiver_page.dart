@@ -5,11 +5,11 @@
 // Three tabs:
 //   Overview          the one switch, what the archiver gave (active for, data
 //                     served, people served, requests), then the details
-//   Our archiver      every setting of the archiver this device runs: messages,
+//   Settings          every setting of the archiver this device runs: messages,
 //                     files, serving others, and its parts one by one. Not the
 //                     `dial:` address (13.0.2): a server operator's setting,
 //                     reached through the remote API, never a person's
-//   Archivers we use  the archivers this station hands its words and mail to,
+//   Backup            the archivers this station hands its words and mail to,
 //                     each with what was last heard of it, and the others heard
 //
 // Every number comes from the core (xprsArchiveStatusJson, NodeRoleApi,
@@ -595,7 +595,7 @@ class _ArchiverPageState extends State<ArchiverPage> {
               public ? (v) => _apply({'alwaysOn': v}) : null,
               icon: Icons.bolt),
           const Divider(height: 1),
-          _switch(tr('archiver.serve.room'), tr('archiver.serve.room.help'),
+          _switch(tr('archiver.serve.room'), null,
               p.xprsRoom, public ? (v) => _apply({'room': v}) : null,
               icon: Icons.group_add_outlined),
         ]),

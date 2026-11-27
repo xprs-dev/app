@@ -107,7 +107,7 @@ void main() {
       (tester) async {
     await pump(tester, const ArchiverPage());
     expect(tester.takeException(), isNull);
-    for (final t in ['Overview', 'Our archiver', 'Archivers we use']) {
+    for (final t in ['Overview', 'Settings', 'Backup']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     final prefs = PreferencesService.instanceSync!;
@@ -125,7 +125,7 @@ void main() {
     expect(prefs.archiveQuotaGb, greaterThan(0));
     expect(prefs.archiverVolunteer, isNot('off'));
 
-    await tester.tap(find.text('Our archiver'));
+    await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.scrollUntilVisible(find.text('Share the file index'), 200,
@@ -135,7 +135,7 @@ void main() {
             .last);
     expect(find.text('Share the file index'), findsOneWidget);
 
-    await tester.tap(find.text('Archivers we use'));
+    await tester.tap(find.text('Backup'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     // Close the page: its once-a-minute refresh timer ends with it.
