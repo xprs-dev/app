@@ -2042,12 +2042,33 @@ WHERE fromc = ? AND type IN (?) plan: idx_pk_from (fromc=?)             3578 ms
 zx's planner takes the first index an equality fits. `toc = ''` is most of
 a spool and a station's own `fromc` is its 44,000 beacons, so both walked
 nearly everything, with the right index sitting in the file. The archive
-now names it (`INDEXED BY idx_pk_type`) for every ask of a few types:
-undirected, one author, one callsign (`only:`), the station's own rows. The
-choice between the type index and the author's is made from the per-type
-counts it already holds in memory (`_rareTypesMax`). The same asks: 3 to
-8 ms, 0.23 s at the worst on their first ask (everything readable, ten
-types).
+now names it (`INDEXED BY idx_pk_type`) for every undirected ask of a few
+types. The same asks: 3 to 8 ms, 0.23 s at the worst on their first ask
+(everything readable, ten types).
+
+**The next day, installed, other stations' asks still held it 2 to 4 s.**
+The first fix read a callsign's rows of a type on the type index when the
+type was rare (under 5,000 rows) and on the callsign's otherwise. Counting
+the file by type said why that was a guess: 189,000 of its 315,000 rows are
+`command` (the history asks themselves, kept), 44,000 by the station and
+54,000 addressed to it. `service` has 5,594 rows, just over the line, so
+`only:<station> kind:service` walked the 54,000 addressed to it to find
+none (`core/tool/station_asks_time.dart`). No threshold is right: walking
+the type costs a small author as much as walking the callsign costs a busy
+one. The question is "this callsign, this type", so that is the index:
+`idx_pk_ft(fromc, type, pts)` and `idx_pk_tt(toc, type, pts)`, built once
+by the writer thread (12 s and 2.6 MB each on that file). One author, one
+callsign (`only:`) and the station's own rows are now one range per type,
+named, 1 to 40 ms whatever the callsign holds.
+
+> **Count the table before choosing between two indexes.** A heuristic on
+> row counts is a statement about the data; `SELECT type, COUNT(*) ... GROUP
+> BY type` on the real file takes seconds and replaces the guess.
+
+Still a scan: `only:X kind:observation` reads every observation in the
+window for the callsign in its `hears:` list (`instr(wire, ?)`), 3 to 4 s
+for 100,000. It needs a table of who each observation hears. The slow-ask
+line now says what was asked (`kind:`, `only:`), so the log says how often.
 
 > **After adding an index, read the plan of the statement that was slow.**
 > `EXPLAIN QUERY PLAN` on the real file, before and after. 8.29 measured the
