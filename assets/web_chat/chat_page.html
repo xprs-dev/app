@@ -2174,6 +2174,10 @@ function showMsgMenu(ev,id,from,own){
       '<button onclick="menuAct(\'mout24\',\''+id+'\',\''+from+'\')">Send '+from+' away for a day</button>'+
       '<button onclick="menuAct(\'mout\',\''+id+'\',\''+from+'\')">Send '+from+' away until lifted</button>';
   }
+  else if(!own&&pubModHere()){
+    items+='<div class="modsep">Moderator</div>'+
+      '<button onclick="menuAct(\'pdel\',\''+id+'\',\''+from+'\')">Delete for everyone</button>';
+  }
   m.innerHTML=items;
   m.style.display='block';
   var x=Math.min(ev.clientX,window.innerWidth-180);
@@ -2188,6 +2192,7 @@ function menuAct(act,id,from){
   else if(act==='like')sendLike(id);
   else if(act==='dm')openDm(from);
   else if(act==='mdel')modDelete(id);
+  else if(act==='pdel')pubDelete(id);
   else if(act==='mhide')modAct('r:'+id+' hide:message',function(){
     applyModeration({removed:[id],away:Object.keys(modAway)});snack('Hidden');});
   else if(act==='medit')modCorrect(id);
@@ -4221,6 +4226,7 @@ function applyServices(sv){
     if(sb)sb.style.display='none';
   }
   if(p.moderation){canModerate=true;if(sess)loadMyRole();}
+  if(p.admin)loadPubMods();
   if(p.rooms){canRooms=true;loadRooms();}
   if(p.storage||p.gallery){canGallery=true;renderSide();}
   if(p.groups){canRank=true;renderSide();}
@@ -5538,6 +5544,26 @@ function modHere(){
   if(curRoom.slice(0,2)==='o:'){var gi=groupInfo[curRoom.slice(2)];
     return !!gi&&(gi.role==='mod'||gi.role==='admin');}
   return myStationRole==='mod';
+}
+/* The public rooms (XPRS.md 10.10.3): Regional and Global belong to no
+   station, so the keys listed at xprs.dev/moderators.json remove there, and
+   nothing else. The station says whose removals it honours; a visitor whose
+   own key is one signs the removal here, addressed to nobody. */
+var pubMods=[];
+function loadPubMods(){
+  getJSON('/api/admin',function(d){if(d&&d.public_moderators)pubMods=d.public_moderators;});}
+function pubModHere(){
+  return !!npub&&pubMods.indexOf(npub)>=0&&canSign()&&(curRoom==='regional'||curRoom==='global');}
+function pubDelete(id){
+  if(!confirm('Delete this message for everyone? This cannot be undone.'))return;
+  signAny('t:moderate f:'+mycall+' ts:'+tsNow()+' r:'+id+' remove:message',function(w){
+    if(!w)return snack('Not signed');
+    postWire(w,function(ok,why){
+      if(!ok)return snack(why||'The station refused it');
+      applyModeration({removed:[id],away:Object.keys(modAway)});
+      snack('Deleted');
+    });
+  });
 }
 function modAct(body,done,to){
   if(!stationCall||!canSign())return snack('Not ready yet');
