@@ -185,6 +185,19 @@ Storage is bounded at 100 MB or 7 days, whichever is reached first, with
 that a busy location cannot fill the disk with mail the device may never
 deliver. Local mail is never refused.
 
+**One sender cannot fill the store (2026-11-27).** A phone has room for a lot
+of other people's mail, which is what makes a station left in a room useful;
+what it must not do is let one callsign, or a thousand invented on the spot,
+take that room. `MeshStore.offer` refuses somebody else's mail past three
+limits, decided at the door: 200 rows held for one sender at once, 60 taken
+from one sender in a clock hour, and 600 taken from everybody but us in a
+clock hour (the last is what bounds the invented callsigns). Our own outbound
+copy is never limited. A refusal answers a custody offer "quota", so the giver
+keeps its copy. Counted in the store status (`refusedSenderHeld`,
+`refusedSenderRate`, `refusedOthersRate`). The ESP32 keeps every packet in its
+index and applies the two hourly limits there (`xmailcap.h`, 60 and 600); the
+nRF52's flash mailbox has its own `XMB_PER_FROM`.
+
 [XPRS.md](XPRS.md) section 31.3 cites this policy as the model of a decision the
 format deliberately leaves alone: it states no retention period, no minimum and
 no eviction order, because a dongle with a microSD card and a home server with a
