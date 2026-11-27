@@ -1,0 +1,5 @@
+GeoUI icons for kinds of place (cafe, home, campsite, bus, ferry...); Check-in 0.9.0
+web chat: map: only the station's own hosted world map; no OpenStreetMap tiles
+web chat: map: always a map (OSM at once), the station's world map drawn over it; tiles without data stay clear
+web chat: map: wait for the station before picking its world map; 30 s for that history query
+...and 18 more changes.
