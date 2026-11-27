@@ -2597,6 +2597,7 @@ function lookState(r){
 function roomAnswered(r){roomReady[r]=true;lookState(r);}
 function switchRoom(r){
   curRoom=r;
+  msgsStick=true;
   closeSide();
   cancelReply();
   seen={};
@@ -3013,6 +3014,26 @@ function render(row){
   if(stick||own)box.scrollTop=box.scrollHeight;
   return d;
 }
+// ---- a conversation follows its end ---------------------------------------
+// A reader at the end of a conversation stays there whatever makes the list
+// taller after a message was placed: the day pills (drawn a moment later), a
+// picture that loads, a badge or a reaction that arrives, the keyboard taking
+// half the screen. Scrolling to the end only when a message was appended left
+// the newest one under the message box each time one of those came after it.
+// Somebody who scrolled up to read is left where they are. A feed (alerts,
+// blog, a gallery) reads from its top and is not followed.
+var msgsStick=true;
+function msgsEnd(){
+  var b=el('msgs');
+  if(b&&msgsStick&&tab==='chat'&&!/\balerts\b/.test(b.className))b.scrollTop=b.scrollHeight;
+}
+(function(){
+  var b=document.getElementById('msgs');if(!b)return;
+  b.addEventListener('scroll',function(){msgsStick=b.scrollTop+b.clientHeight>=b.scrollHeight-40;});
+  b.addEventListener('load',msgsEnd,true);  /* pictures: load does not bubble */
+  if(window.MutationObserver)new MutationObserver(msgsEnd).observe(b,{childList:true,subtree:true,characterData:true});
+  if(window.ResizeObserver)new ResizeObserver(msgsEnd).observe(b);
+})();
 // ---- days in a conversation, as WhatsApp and Telegram show them ----------
 // A bubble says the time; a pill above the first message of each day says
 // which day: Today, Yesterday, the weekday within the week, then the date.
