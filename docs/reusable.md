@@ -464,6 +464,16 @@ settings field does the same with a `Timer` cancelled and restarted in
 `onChanged`, flushed in `dispose`; an invalid value is pointed out and not
 stored.
 
+### `isBetaVersion` — a version's channel, read from its numbers
+
+Versions are numbers only from 1.15.0 (`kNumbersOnlyFrom`): `X.Y.0` is
+stable, `X.Y.Z` with Z above 0 is a beta; older releases keep their label
+(releases.md section 4). `isBetaVersion(version)` in
+`lib/services/update_models.dart` is the one copy: the feed, the update
+folders, the mirror, sharing our own binary and `tool/publish_release.dart`
+ask it. Anything that needs "is this a beta" (a badge, a filter, a tool)
+calls it and never looks for a `-` itself.
+
 ### Periodic work without a poll — the update scheduler
 
 **Files:** `lib/services/update_models.dart` (`updateCheckDue`,

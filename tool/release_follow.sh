@@ -23,7 +23,9 @@ APP=xprs-dev/app
 DL=xprs-dev/downloads
 SITE=xprs-dev/xprs-dev.github.io
 FILE="https://xprs.dev/downloads/${TAG}/xprs-${VER}-android-arm64-v8a.apk"
-[[ "$VER" == *-* ]] && FEED=beta.json || FEED=stable.json
+# X.Y.0 is stable, X.Y.Z with Z above 0 a beta (releases.md section 4); a
+# labelled version is one of the older betas.
+[[ "$VER" == *-* || "${VER##*.}" != 0 ]] && FEED=beta.json || FEED=stable.json
 
 say() { echo "$(date '+%H:%M:%S') release_follow $TAG: $*"; }
 until_ok() { # <seconds> <description> <command...>

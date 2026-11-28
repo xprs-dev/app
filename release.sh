@@ -13,10 +13,13 @@
 # HTTPS request for a binary only when none holds it. See releases.md.
 #
 # Usage:
-#   ./release.sh                 # auto-bump patch (or prerelease counter)
-#   ./release.sh 1.2.0           # stable release
-#   ./release.sh 1.2.0-beta.1    # beta (pre-release; shows in the beta channel)
-#   ./release.sh 1.2.0 -y        # skip confirmation
+# Versions are numbers only (releases.md section 4): X.Y.0 is a stable
+# release, X.Y.Z with Z above 0 is a beta on the way to X.(Y+1).0.
+#
+#   ./release.sh                 # the next beta: 1.15.0 -> 1.15.1 -> 1.15.2
+#   ./release.sh stable          # the next stable: 1.15.2 -> 1.16.0
+#   ./release.sh 1.16.0          # that version exactly
+#   ./release.sh stable -y       # skip confirmation
 # =============================================================================
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,22 +45,34 @@ done
 
 current=$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d+ -f1)
 
-# Auto-bump if no version given.
-if [[ -z "$VERSION" ]]; then
-  if [[ "$current" == *-* ]]; then
-    base="${current%-*}"; label="${current##*-}"
-    name="${label%.*}"; num="${label##*.}"
-    VERSION="${base}-${name}.$((num + 1))"
-  else
-    IFS=. read -r MA MI PA <<<"$current"
-    VERSION="${MA}.${MI}.$((PA + 1))"
-  fi
+# The first version numbered without labels (kNumbersOnlyFrom in
+# lib/services/update_models.dart). Below it X.Y.Z was stable whatever Z, and
+# a copy installed from those releases still reads it so: nothing is released
+# there any more.
+FIRST=1.15.0
+
+# No version given: the next beta. "stable": the next stable.
+IFS=. read -r MA MI PA <<<"${current%%-*}"
+if [[ "$VERSION" == stable ]]; then
+  VERSION="${MA}.$((MI + 1)).0"
+elif [[ -z "$VERSION" ]]; then
+  VERSION="${MA}.${MI}.$((PA + 1))"
 fi
 
-# Validate: X.Y.Z or X.Y.Z-(alpha|beta|rc).N
-if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
-  echo "error: invalid version '$VERSION' (use X.Y.Z or X.Y.Z-beta.N)"; exit 1
+# Validate: X.Y.Z, numbers only, from $FIRST on.
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "error: invalid version '$VERSION' (use X.Y.Z: X.Y.0 stable, X.Y.Z beta)"; exit 1
 fi
+if [[ "$(printf '%s\n%s\n' "$FIRST" "$VERSION" | sort -V | head -1)" != "$FIRST" ]]; then
+  echo "error: $VERSION is below $FIRST, where versions became numbers only."
+  echo "       The next stable is './release.sh stable' (or $FIRST)."; exit 1
+fi
+if [[ "$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -1)" != "$VERSION" || "$VERSION" == "$current" ]]; then
+  echo "error: $VERSION is not newer than $current"; exit 1
+fi
+IFS=. read -r NMA NMI NPA <<<"$VERSION"
+if [[ "$NPA" == 0 ]]; then KIND="STABLE"; else KIND="beta, towards ${NMA}.$((NMI + 1)).0"; fi
+echo ">> v${VERSION}: ${KIND}"
 
 # The build number: the commit count, raised by a fixed base. Each APK's
 # versionCode is CODE x 10 plus an ABI digit (android/app/build.gradle.kts),

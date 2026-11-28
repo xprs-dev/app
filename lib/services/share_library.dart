@@ -117,7 +117,7 @@ class ShareLibrary {
   /// is not older than what it runs itself.
   Future<ReleaseInfo?> refreshRelease() async {
     final u = UpdateService.instance;
-    final beta = u.betaEnabled || kAppVersion.contains('-');
+    final beta = u.betaEnabled || isBetaVersion(kAppVersion);
     final r = await u.releaseFromFeed(beta ? 'beta.json' : 'stable.json',
             prereleaseOk: beta) ??
         (beta ? (u.beta.value ?? u.stable.value) : u.stable.value);

@@ -111,9 +111,10 @@ class ReleaseInfo {
       body: json['body'] as String?,
       publishedAt:
           (json['publishedAt'] as String?) ?? (json['published_at'] as String?),
-      isPrerelease: (json['prerelease'] as bool?) ??
-          (json['isPrerelease'] as bool?) ??
-          false,
+      isPrerelease: ((json['prerelease'] as bool?) ??
+              (json['isPrerelease'] as bool?) ??
+              false) ||
+          isBetaVersion(_stripV(version)),
       assets: assets,
     );
   }
@@ -252,11 +253,29 @@ List<ReleaseInfo> releasesFromFolder(Map<String, dynamic> folderState) {
     out.add(ReleaseInfo(
       version: version,
       tagName: 'v$version',
-      isPrerelease: version.contains('-'),
+      isPrerelease: isBetaVersion(version),
       assets: assets,
     ));
   });
   return out;
+}
+
+/// The first version numbered without labels (docs/releases.md): from here
+/// on `X.Y.0` is a stable release and `X.Y.Z` with Z above 0 is a beta on
+/// the way to `X.(Y+1).0`. Below it a beta carries a label (`1.14.1-beta.5`)
+/// and a plain `X.Y.Z` is stable whatever its last number (`1.14.3`).
+const String kNumbersOnlyFrom = '1.15.0';
+
+/// Whether [version] is a beta: a labelled one of the older releases, or a
+/// non-zero last number from [kNumbersOnlyFrom] on. One copy: the update
+/// folders, the feed, the mirror and the sharing of our own binary all ask
+/// here, and tool/publish_release.dart imports it.
+bool isBetaVersion(String version) {
+  final v = version.split('+').first;
+  if (v.contains('-')) return true;
+  if (compareSemver(v, kNumbersOnlyFrom) < 0) return false;
+  final parts = v.split('.');
+  return parts.length > 2 && (int.tryParse(parts[2]) ?? 0) > 0;
 }
 
 /// Compare two version strings, pre-release aware (semver §11).

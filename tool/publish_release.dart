@@ -17,14 +17,17 @@
 // Usage:
 //   dart run tool/publish_release.dart \
 //       --site <path-to-website-repo> \
-//       --version <X.Y.Z[-beta.N]> \
+//       --version <X.Y.Z> \
 //       --base-url <https://host/path/to/v1.2.3> \
 //       [--notes <notes-file>] [--name "<title>"] [--date <ISO8601>] \
 //       <artifact> [<artifact> ...]
 //
-// Channel is derived from the version: a pre-release (contains '-') publishes
-// to beta.json only; a stable version publishes to BOTH stable.json and
-// beta.json (so the beta channel always tracks the newest build).
+// Channel is derived from the version (isBetaVersion, update_models.dart):
+// X.Y.0 is stable, X.Y.Z with Z above 0 is a beta (releases.md section 4). A
+// beta publishes to beta.json only, with "prerelease": true so that a copy
+// installed before the numbers-only scheme reads it as one; a stable version
+// publishes to BOTH stable.json and beta.json (so the beta channel always
+// tracks the newest build).
 //
 // `--site` defaults to ../website relative to the repo root (the local
 // checkout of the GitHub Pages repo serving xprs.dev).
@@ -34,6 +37,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart' as crypto;
+import 'package:xprs/services/update_models.dart' show isBetaVersion;
 
 void main(List<String> argv) {
   String? site;
@@ -65,7 +69,7 @@ void main(List<String> argv) {
   }
 
   if (version == null || version.isEmpty) {
-    stderr.writeln('error: --version <X.Y.Z[-beta.N]> is required');
+    stderr.writeln('error: --version <X.Y.Z> is required');
     exit(2);
   }
   if (artifacts.isEmpty) {
@@ -89,7 +93,7 @@ void main(List<String> argv) {
   updatesDir.createSync(recursive: true);
 
   final v = version; // promoted non-null
-  final isPre = v.contains('-');
+  final isPre = isBetaVersion(v);
   final assets = <Map<String, dynamic>>[];
   for (final path in artifacts) {
     final f = File(path);

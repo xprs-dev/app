@@ -257,6 +257,8 @@ jobs:
           files: dist/*
           body_path: notes.md
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          # X.Y.0 is stable; X.Y.Z with Z above 0 is a beta (releases.md
+          # section 4). The site's feed takes its stable from this mark.
+          prerelease: ${{ contains(github.ref_name, '-') || !endsWith(github.ref_name, '.0') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

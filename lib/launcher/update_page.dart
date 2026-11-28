@@ -287,16 +287,6 @@ class _UpdatePageState extends State<UpdatePage> {
           child: Text(tr('updates.notes', {'version': sel.version}),
               style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
         ),
-        if (sel.isPrerelease)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              border: Border.all(color: cs.outline),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(tr('updates.beta.badge'),
-                style: text.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
-          ),
       ]),
       const SizedBox(height: 10),
       XprsMdText(

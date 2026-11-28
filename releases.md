@@ -84,16 +84,16 @@ per artifact, and any device that cannot reach a mirror at all.
 
 ```json
 {
-  "version": "1.2.0-beta.1",
-  "tagName": "v1.2.0-beta.1",
-  "name": "XPRS 1.2.0-beta.1",
+  "version": "1.15.1",
+  "tagName": "v1.15.1",
+  "name": "XPRS 1.15.1",
   "body": "release notes (markdown)",
   "publishedAt": "2026-08-26T09:15:04Z",
   "prerelease": true,
   "assets": [
     {
-      "name": "xprs-1.2.0-beta.1-android-arm64-v8a.apk",
-      "url": "https://…/xprs-1.2.0-beta.1-android-arm64-v8a.apk",
+      "name": "xprs-1.15.1-android-arm64-v8a.apk",
+      "url": "https://…/xprs-1.15.1-android-arm64-v8a.apk",
       "size": 56830740,
       "sha256": "ae7acaee…"
     }
@@ -105,8 +105,10 @@ per artifact, and any device that cannot reach a mirror at all.
 - `sha256` is required in practice — an artifact without one cannot be fetched
   over Reticulum and cannot be verified after an HTTPS download.
 - `beta.json` always points at the newest build; `stable.json` only at
-  non-pre-release versions. A stable publish writes BOTH, so beta users get
-  stable releases too.
+  stable versions (`X.Y.0`, section 4). A stable publish writes BOTH, so beta
+  users get stable releases too.
+- `prerelease` is `true` for a beta. A copy installed before 1.15.0 knows a
+  beta only by this field (or by a label in the name), so it stays.
 - Written by `tool/publish_release.dart`, which is the **only** implementation
   of this format. `sync.yml` runs that script rather than re-deriving the JSON.
 
@@ -143,10 +145,47 @@ exist. `test/update_mirror_test.dart` pins every name the workflow publishes.
 
 ## 4. Cutting a release
 
+### Versions are numbers only
+
+From 1.15.0 on a version carries no label. The last number says what it is:
+
+| Version | What it is |
+|---|---|
+| `X.Y.0` | a stable release |
+| `X.Y.Z`, Z above 0 | a beta, on the way to `X.(Y+1).0` |
+
+So after the stable 1.15.0 come the betas 1.15.1, 1.15.2, ... and the next
+stable is 1.16.0. A stable gets no fix of its own number: the fix goes out as
+a beta and then as the next stable.
+
+One function decides, `isBetaVersion` in `lib/services/update_models.dart`,
+with the first such version in `kNumbersOnlyFrom`; `release.sh`,
+`tool/publish_release.dart`, `tool/release_follow.sh`, `release.yml` and the
+F-Droid recipe (`UpdateCheckMode: Tags ^v\d+\.\d+\.0$`, also in fdroiddata)
+follow the same rule.
+
+**The releases before 1.15.0 keep their meaning**, because the copies
+installed from them still update: a beta there has a label
+(`1.14.1-beta.5`) and a plain `X.Y.Z` is stable whatever its last number
+(`1.14.3`). Nothing is released below 1.15.0 any more, and `release.sh`
+refuses to. What such a copy does with the new numbers:
+
+- It orders versions by their numbers, so 1.15.1 is newer than 1.15.0 and
+  older than 1.16.0 for it too.
+- On the stable channel it reads `stable.json` and the stable folder, which
+  only ever receive `X.Y.0`: it is never offered a beta.
+- On the beta channel it reads `beta.json`, where a beta says
+  `"prerelease": true`, and updates as before.
+- Only with the feed out of reach, on the beta channel, it finds a beta in
+  the beta folder, takes it for a stable by its name, looks for the file in
+  the stable folder and finds none. It installs nothing wrong and updates at
+  the next stable or when the feed answers. 1.15.0 reached both channels
+  through the old mechanism, and from it on the copy knows the rule.
+
 ```sh
-./release.sh 1.2.0            # stable
-./release.sh 1.2.0-beta.1     # beta (pre-release; beta channel only)
-./release.sh                  # auto-bump patch, or the prerelease counter
+./release.sh                  # the next beta: 1.15.0 -> 1.15.1 -> 1.15.2
+./release.sh stable           # the next stable: 1.15.2 -> 1.16.0
+./release.sh 1.16.0           # that version exactly
 ```
 
 `release.sh` bumps `pubspec.yaml`, regenerates `lib/version.dart`, pins
@@ -157,8 +196,8 @@ git submodules under `deps/` that F-Droid builds from (`docs/f-droid.md`
 section 7), adds the F-Droid changelog copies, commits, tags and pushes. Pushing the tag is what triggers everything else.
 
 1. **`release.yml`** (this repo, on `v*`) builds the three platforms and
-   attaches the artifacts to a GitHub Release. `prerelease` is set when the tag
-   contains a `-`. Nothing is committed. Android is built by fdroidserver in
+   attaches the artifacts to a GitHub Release. `prerelease` is set for a beta
+   (a tag not ending in `.0`). Nothing is committed. Android is built by fdroidserver in
    F-Droid's buildserver image, signed with the release key, and checked with
    F-Droid's own `verify_apks` (`docs/f-droid.md` §5).
 2. **`publish.yml`** (`xprs-dev/downloads`, hourly or manual) serves the newest

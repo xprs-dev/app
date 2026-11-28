@@ -30,7 +30,6 @@
   "updates.checked": "Geprüft {ago}",
   "updates.installed.line": "Installiert: XPRS {version} · Build {build}",
   "updates.download.now": "Jetzt herunterladen",
-  "updates.beta.badge": "Beta",
   "updates.phase.search": "Suche nach einer Kopie bei Archivern in der Nähe",
   "updates.phase.web": "Von xprs.dev",
   "updates.phase.mesh": "Von {station} über das Mesh",
