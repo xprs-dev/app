@@ -3445,7 +3445,7 @@ function feedRead(name,url,limit,cb,opt){
     f=feeds[key]={k:key,rows:[],ids:{},newest:0,fullAt:0,last:null,cap:opt.cap||limit*2,
                   busy:false,sess:false,rev:1,shown:0};
     f.ready=keepGet(key).then(function(v){
-      if(v&&v.rows){feedPut(f,v.rows,true);f.fullAt=v.fullAt||0;f.askedAt=v.at||0;f.last=v.last||null;f.sess=!!v.sess;}
+      if(v&&v.rows){feedPut(f,v.rows,true);f.fullAt=v.fullAt||0;f.askedAt=v.at||0;f.last=v.last||null;f.sess=!!v.sess;f.cur=v.cur||'';}
     });
   }
   f.ready.then(function(){
@@ -3459,19 +3459,23 @@ function feedRead(name,url,limit,cb,opt){
        listing is not sent its newest row again at every ask. */
     var since=Math.floor((f.askedAt||f.fullAt)/1000)-FEED_SLACK;
     if(f.newest&&f.newest+1<since)since=f.newest+1;
+    /* And of those, only what the station filed after its last answer
+       (`cursor`, handed back as `after`, API-HTTP.md): a line said in the
+       last minutes is not sent again at every ask. A station that knows no
+       cursor answers by since alone, as before. */
     f.busy=true;
-    getJSON(url+(full?'':'&since='+since),function(d){
+    getJSON(url+(full?'':'&since='+since+(f.cur?'&after='+encodeURIComponent(f.cur):'')),function(d){
       f.busy=false;
       if(!d||!d.rows){if(!drew)cb(f.rows.length?feedAnswer(f):d);return;}
       /* A window that came back full is the newest there is: it is the
          listing now, and what lay between it and what was held is unknown. */
       var whole=full||d.rows.length>=limit,was=JSON.stringify(f.last);
-      f.askedAt=now;
+      f.askedAt=now;f.cur=d.cursor||'';
       var n=feedPut(f,d.rows,whole&&!opt.grow),k;
       if(whole){f.fullAt=Date.now();f.sess=!!opt.sess;}
-      f.last={};for(k in d)if(k!=='rows'&&k!=='count')f.last[k]=d[k];
+      f.last={};for(k in d)if(k!=='rows'&&k!=='count'&&k!=='cursor')f.last[k]=d[k];
       var changed=n>0||whole||JSON.stringify(f.last)!==was;
-      if(changed){f.rev++;keepPut({k:f.k,rows:f.rows,fullAt:f.fullAt,last:f.last,sess:f.sess});}
+      if(changed){f.rev++;keepPut({k:f.k,rows:f.rows,fullAt:f.fullAt,last:f.last,sess:f.sess,cur:f.cur});}
       if(changed||!drew){f.shown=f.rev;var out=feedAnswer(f);out.fresh=n;cb(out);}
     },opt.ms);
   });
