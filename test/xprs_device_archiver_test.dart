@@ -137,7 +137,7 @@ void main() {
   });
 
   test('another command to the X3 still gets a signed 404', () async {
-    ask('t:command f:X1BBB d:$x3 ts:2026-08-13_12:00:00 cmd:zdiag');
+    ask('t:command f:X1BBB d:$x3 ts:2026-08-13_12:00:00 cmd:reboot');
     await Future<void>.delayed(Duration.zero);
     final r = results();
     expect(r.single['code'], '404');

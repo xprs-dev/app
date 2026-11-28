@@ -66,7 +66,6 @@
 ../core/lib/src/services/reticulum/rns_service.dart :: no-whole-file-read :: archive.putBytes(fs.file(diskPath).readAsBytesSync(),
 ../core/lib/src/services/reticulum/rns_service.dart :: no-whole-file-read :: final bytes = fs.file(diskPath).readAsBytesSync();
 ../core/lib/src/services/social/keep_service.dart :: no-sub-minute-interval-constant :: static const Duration _tick = Duration(seconds: 3);
-../core/lib/src/services/xprs/xprs_archive.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 20), (_) => unawaited(flushInSlices()));
 ../core/lib/src/services/xprs/xprs_files.dart :: no-sub-minute-interval-constant :: static const Duration askEvery = Duration(seconds: 45);
 ../core/lib/src/services/xprs/xprs_lan.dart :: no-native-import-outside-io-file :: import 'dart:io';
 ../core/lib/src/services/xprs/xprs_lan.dart :: no-sub-minute-interval-constant :: static const Duration sweepEvery = Duration(seconds: 30);
