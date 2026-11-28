@@ -56,7 +56,6 @@
 ../core/lib/src/services/nostr/nostr_signer.dart :: no-native-import-outside-io-file :: import 'dart:isolate';
 ../core/lib/src/services/reticulum/rns_service.dart :: no-native-import-outside-io-file :: import 'dart:io' hide File, Directory, FileSystemEntity, Link;
 ../core/lib/src/services/reticulum/rns_service.dart :: no-sub-minute-interval-constant :: static const Duration _rvReannounceEvery = Duration(seconds: 8);
-../core/lib/src/services/reticulum/rns_service.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 1), (_) => _runLxmfRetries());
 ../core/lib/src/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _diskSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
 ../core/lib/src/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _lanBeaconTimer = Timer.periodic(
 ../core/lib/src/services/reticulum/rns_service.dart :: no-sub-minute-poll :: _mirrorTimer ??= Timer.periodic(
