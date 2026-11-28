@@ -329,9 +329,14 @@ void main() {
     final before = XprsIngest.refusedRns;
     Uint8List wire(String s) => Uint8List.fromList(utf8.encode(s));
 
+    // Stamped now: a packet with an old `ts:` is a replay from an archive,
+    // and since core 56d7097 a replay says what its author did, not that the
+    // author is in reach (the assertions on `remote` below are about reach).
+    String at(int sec) => xprsNowTs(
+        DateTime.now().millisecondsSinceEpoch + sec * 1000);
     // A stranger's broadcast over the hub: refused, counted.
     XprsIngest.reticulum(
-        'aa11', wire('t:info f:X1AAA ts:2026-08-13_10:00:00 m:hub chatter'));
+        'aa11', wire('t:info f:X1AAA ts:${at(-3)} m:hub chatter'));
     a.flush(nowMs: 1000);
     expect(a.query(), isEmpty);
     expect(XprsIngest.refusedRns, before + 1);
@@ -341,14 +346,14 @@ void main() {
     XprsIngest.reticulum(
         'aa11',
         wire(xprsSign(
-                _p('t:mailbox f:X1AAA ts:2026-08-13_10:01:00 hold:X1SELF'),
+                _p('t:mailbox f:X1AAA ts:${at(-2)} hold:X1SELF'),
                 _d)
             .encode()));
     XprsIngest.reticulum(
-        'aa11', wire('t:info f:X1AAA ts:2026-08-13_10:02:00 m:now archived'));
+        'aa11', wire('t:info f:X1AAA ts:${at(-1)} m:now archived'));
     // Mail TO a declared station is held too (we are its mailbox).
     XprsIngest.reticulum('bb22',
-        wire('t:message f:X1ZZZ d:X1AAA ts:2026-08-13_10:03:00 m:for them'));
+        wire('t:message f:X1ZZZ d:X1AAA ts:${at(0)} m:for them'));
     a.flush(nowMs: 2000);
     final types = a.query().map((r) => r['type']).toList();
     expect(types, containsAll(['mailbox', 'info', 'message']));
