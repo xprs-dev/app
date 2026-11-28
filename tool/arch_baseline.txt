@@ -45,7 +45,6 @@
 ../core/lib/src/services/media_disk_cache.dart :: no-whole-file-read :: final bytes = await f.readAsBytes();
 ../core/lib/src/services/mesh/mesh_bulk_spool.dart :: no-native-import-outside-io-file :: import 'dart:io';
 ../core/lib/src/services/mesh/mesh_bulk_spool.dart :: no-whole-file-read :: final bytes = File(_partPath(hex)).readAsBytesSync();
-../core/lib/src/services/mesh/mesh_courier.dart :: no-sub-minute-poll :: _pump ??= Timer.periodic(const Duration(seconds: 5), (_) => _tick());
 ../core/lib/src/services/mesh/mesh_service.dart :: no-sub-minute-interval-constant :: static const Duration _beaconInterval = Duration(seconds: 30);
 ../core/lib/src/services/mesh/mesh_service.dart :: no-sub-minute-poll :: Timer.periodic(const Duration(seconds: 300), (_) => _sendXprsLanBeacon());
 ../core/lib/src/services/mesh/mesh_service.dart :: no-sub-minute-poll :: _beaconTimer = Timer.periodic(const Duration(seconds: 10), (_) {
