@@ -372,6 +372,18 @@ Future<void> _boot() async {
     init: migrateReticulumToMesh,
   );
   BootOrchestrator.instance.register(
+    id: 'migrate-firmwares-things-to-devices',
+    name: 'Migrate Firmwares and Things to Devices',
+    description:
+        'One-time merge of two wapps into Devices: the Firmwares folder is '
+        'renamed (stations, autostart and offered-set markers included), '
+        'what Things kept is carried into the same key-value file, and '
+        'Things is removed. Idempotent; runs before seeding + bundled-wapp '
+        'upgrade so the renamed install picks up the new bundle.',
+    mode: BootStart.sequential,
+    init: migrateFirmwaresAndThingsToDevices,
+  );
+  BootOrchestrator.instance.register(
     id: 'seed-default-wapps',
     name: 'Seed default wapps',
     description:

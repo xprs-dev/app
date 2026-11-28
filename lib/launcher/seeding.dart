@@ -29,9 +29,11 @@ const _kDefaultSeedNames = {
   'social',
   'xprs',
   'torrents',
-  // Sets up a station you just flashed (XPRS.md 11.10): the one way a person
-  // without a serial cable gets a new board onto their network.
-  'firmwares',
+  // Installs XPRS on a board and sets up the station you just flashed
+  // (XPRS.md 11.10): the one way a person without a serial cable gets a new
+  // board onto their network. Also lists and administers every station and
+  // device around (it was Firmwares and Things).
+  'devices',
   // Chasing stations in person for their check-ins and badges, and giving
   // check-ins from your own station. Clockless, and it listens to nothing
   // until a check-in is out or its owner turns the station on.
@@ -199,6 +201,45 @@ Future<void> migrateReticulumToMesh() async {
   } catch (e) {
     debugPrint('migrate observed cache: $e');
   }
+}
+
+/// Firmwares and Things became one wapp, Devices. Firmwares is renamed (its
+/// stations, their keys and its autostart move with it); what Things kept
+/// (names, kinds, watches, how to reach a camera) is merged into the same
+/// key-value file, where no key of one collides with a key of the other
+/// (`st.`, `stx.`, `fl.` against `cap.`, `name.`, `nick.`, `watch.`,
+/// `conn.`); then Things is retired. Somebody who had only Things gets
+/// Devices installed, or their devices would vanish with it. Idempotent.
+Future<void> migrateFirmwaresAndThingsToDevices() async {
+  if (ProfileService.instance.activeProfile == null) return;
+  await _migrateWappFolder('firmwares', 'devices');
+  final prefs = await PreferencesService.instance();
+  final installed = installedAppsStorage();
+  final data = wappsDataStorage(prefs);
+  try {
+    final hadThings = await installed.directoryExists('things') ||
+        await data.directoryExists('things');
+    if (!hadThings) return;
+    final theirs = await data.readJson('things/kv.json');
+    if (theirs != null && theirs.isNotEmpty) {
+      final ours = await data.readJson('devices/kv.json') ?? <String, dynamic>{};
+      // Ours wins a tie: a second run must never put an old value back.
+      await data.writeJson('devices/kv.json', {...theirs, ...ours});
+      debugPrint('migrate things -> devices: ${theirs.length} keys carried');
+    }
+    if (prefs.getWappAutostart('things') && !prefs.getWappAutostart('devices')) {
+      await prefs.setWappAutostart('devices', true);
+    }
+    if (await installed.directoryExists('things') &&
+        !await installed.directoryExists('devices')) {
+      if (await _installDefaultWapp('devices')) {
+        debugPrint('migrate things -> devices: installed Devices');
+      }
+    }
+  } catch (e) {
+    debugPrint('migrate things -> devices: $e');
+  }
+  await _retireWapp('things');
 }
 
 /// First-run bootstrap, run as a boot task BEFORE the UI so the launcher
@@ -385,7 +426,7 @@ Future<int> _seedDefaultsFromFilesystem() async {
 /// the upgrade pass only touches already-installed wapps. So backfill each of
 /// these exactly ONCE per profile, recorded in `.seeded.json['offered']` so a
 /// wapp the user later uninstalls is never resurrected.
-const _kBackfillDefaults = {'mp4player', 'mesh', 'firmwares', 'alerts', 'checkin'};
+const _kBackfillDefaults = {'mp4player', 'mesh', 'devices', 'alerts', 'checkin'};
 
 /// Install any [_kBackfillDefaults] not yet offered to this profile. Runs every
 /// launch (cheap: a marker read + a set check). Returns the count installed.

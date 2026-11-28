@@ -228,7 +228,7 @@ const rules = <Rule>[
         "not publish on a named wapp's behalf\").",
     appliesTo: ['lib/wapp/**', 'lib/launcher/**', 'lib/ui/**'],
     pattern: r'''\b(?:_?wappName|wappId|wapp\.name|entry\.name)\s*[!=]=\s*'''
-        r'''['"](alerts|app-creator|archiver|atm|chat|circles|files|firmwares|forum|install|mail|maps|mediapack|mesh|movies|mp4player|social|tasks|terminal|tester|things|torrents|wallet|xprs)['"]''',
+        r'''['"](alerts|app-creator|archiver|atm|chat|circles|devices|files|firmwares|forum|install|mail|maps|mediapack|mesh|movies|mp4player|social|tasks|terminal|tester|things|torrents|wallet|xprs)['"]''',
     message: 'Give every wapp the capability (a manifest flag, a HAL verb, a '
         'field type) and let this wapp use it.',
   ),

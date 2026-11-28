@@ -37,6 +37,8 @@ import '../services/xprs/xprs_group_act.dart' show xprsGroupNickShown;
 import '../services/xprs/xprs_group_keys.dart';
 import '../services/xprs/xprs_group_read.dart';
 import '../services/xprs/xprs_group_ops.dart';
+import 'package:xprs_core/src/profile/device_identity.dart';
+import 'package:xprs_core/src/services/xprs/xprs_owned_stations.dart';
 import 'package:xprs_core/src/services/xprs/xprs_group_rank_rows.dart';
 import 'package:xprs_core/src/services/xprs/xprs_public_mod_ops.dart';
 import 'package:xprs_core/src/services/xprs/xprs_public_moderators.dart';
@@ -790,6 +792,27 @@ class WappEngine {
     final halIdentity = WasmFunction(
       (int ptr, int len) => _writeStr(
           ptr, len, ProfileService.instance.activeProfile?.wireCallsign ?? ''),
+      params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
+    );
+    // The device's own station (its X3), for a wapp that administers it. Empty
+    // on a headless station, whose profile IS the device.
+    final halIdentityDevice = WasmFunction(
+      (int ptr, int len) {
+        final dev = DeviceIdentity.instance;
+        return _writeStr(
+            ptr, len, dev.ready && !dev.isProfileKey ? dev.callsign : '');
+      },
+      params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
+    );
+    // The stations the profile owns, by their own word (XprsOwnedStations).
+    final halXprsOwned = WasmFunction(
+      (int ptr, int cap) {
+        final all = XprsOwnedStations.instance.all;
+        if (all.isEmpty) return 0;
+        final bytes = utf8.encode(jsonEncode(all));
+        if (bytes.length > cap) return -2;
+        return _writeBytes(ptr, cap, Uint8List.fromList(bytes));
+      },
       params: [ValueTy.i32, ValueTy.i32], results: [ValueTy.i32],
     );
     // The active profile's Nostr public key as base64url (no padding) of the
@@ -5264,6 +5287,8 @@ class WappEngine {
       // System
       WasmImport('hal', 'platform', halPlatform),
       WasmImport('hal', 'identity', halIdentity),
+      WasmImport('hal', 'identity_device', halIdentityDevice),
+      WasmImport('hal', 'xprs_owned', halXprsOwned),
       WasmImport('hal', 'identity_pubkey', halIdentityPubkey),
       WasmImport('hal', 'identity_sign', halIdentitySign),
       WasmImport('hal', 'verify', halVerify),

@@ -640,6 +640,58 @@ a device with two profiles archives from the active one. A headless server
 whose profile is already an `X3` is its own device and airs one observation,
 as before.
 
+### One wapp for every machine, and a station its owners run from anywhere (2026-11-28)
+
+Firmwares (boards and stations) and Things (`X4` equipment) were two wapps
+listing the same room. They are one wapp now, **Devices**: the boards on a
+USB cable, the stations heard or owned, and the equipment a controller
+speaks for, in one list, each opening the page that fits it. Both halves
+were kept whole (`apps/devices/stations.c`, `things.c`); a shell
+(`main.c`) reads the wapp's one inbox and one event queue and hands each
+command and event to its half, holds a subscription while either half wants
+it, and draws the one list from the sections each half writes. The host
+knows nothing of this: `migrateFirmwaresAndThingsToDevices` renames the
+Firmwares install, carries what Things kept into the same key-value file
+and retires Things, the way every earlier rename did.
+
+**Who may change a station is the station's own list, and it is the same
+list everywhere.** XPRS.md 11.9's `owner:` holds up to four callsigns, each
+of whom may do everything; there is no second, weaker role. An ESP32 has
+obeyed its owners since 11.9 was written. A phone, a desktop and a Linux
+server did not: the device's `X3` answered `q:policy` and returned
+`code:404` to every command. `XprsDeviceAdmin` (core) is that missing half:
+
+- The profiles on the device own it whatever a command says (whoever holds
+  the machine holds it). An owner's `cmd:set owner:` names the others, and
+  they fill what is left of the four. That is how a phone left at home as a
+  station is given to the account that will run it.
+- `serve:` is the archiver's switch (`archive` present or not). `use:` and
+  `first:` are about bridging packets onto a radio, which this kind of
+  station does not do: they change nothing and the result says what is.
+- The gate is the firmware's, in the firmware's order: never carried
+  (`via:`), the signature verified, an unowned station claimed only on a
+  local bearer, then the replay rule (`ts:` later than the last accepted).
+  A repeat of a command already answered gets the same answer again and is
+  acted on once.
+
+**Past the gate the lane does not matter.** An owner's command that arrived
+over Reticulum is as good as one from the same room, on the phone as on the
+ESP32 (whose firmware keeps one exception: a sealed command, a WiFi
+password or a key, is taken on a local bearer only). The wapp does nothing
+for this: it sends a command once through `hal_xprs_send`, the courier
+delivers it on whatever path the core has ("A command is the core's to
+deliver"), and a station that is yours stays in the wapp's list whether or
+not it is in earshot. Remote administration is therefore not a feature of
+the wapp; it is what owning a station already meant once every station
+obeyed its owners.
+
+A device administering itself (the Devices wapp on the phone that is the
+station) addresses its own `X3`. There is no air between a phone and
+itself, so `XprsCommandCourier.toSelf` hands the command to
+`XprsDeviceAdmin` directly and the signed result reaches the wapp through
+`WappDelivery` like a heard one. The wapp learns which station is the
+device it runs on from `hal_identity_device`, a fact every wapp may read.
+
 ### A person is a key; everything else is an identity under it (2026-11-21)
 
 The one thing that identifies a person is their `npub`. The callsign their
